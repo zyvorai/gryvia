@@ -1,0 +1,85 @@
+---
+# Install KubeFabric Operators
+
+- name: Install Helm
+  block:
+    - name: Download Helm install script
+      get_url:
+        url: https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+        dest: /tmp/get_helm.sh
+        mode: '0755'
+
+    - name: Install Helm
+      shell: /tmp/get_helm.sh
+      args:
+        creates: /usr/local/bin/helm
+
+- name: Create kubefabric-system namespace
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: kubefabric-system
+
+- name: Install KubeFabric CRDs
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ item }}"
+  loop:
+    - ../../../crds/fabricgpunode.yaml
+    - ../../../crds/fabricaijob.yaml
+    - ../../../crds/fabricstorage.yaml
+    - ../../../crds/fabricnetwork.yaml
+    - ../../../crds/fabricquota.yaml
+
+- name: Install KubeFabric core via Helm
+  kubernetes.core.helm:
+    name: kubefabric
+    chart_ref: ../../../helm/kubefabric-core
+    release_namespace: kubefabric-system
+    create_namespace: yes
+    values:
+      gpuOperator:
+        enabled: true
+        replicas: 1
+      aiOperator:
+        enabled: true
+        replicas: 1
+      nvidiaDevicePlugin:
+        enabled: true
+      dcgmExporter:
+        enabled: true
+      monitoring:
+        enabled: true
+
+- name: Wait for operators to be ready
+  kubernetes.core.k8s_info:
+    kind: Deployment
+    namespace: kubefabric-system
+    name: "{{ item }}"
+    wait: yes
+    wait_condition:
+      type: Available
+      status: "True"
+    wait_timeout: 300
+  loop:
+    - kubefabric-gpu-operator
+    - kubefabric-ai-operator
+
+- name: Install observability stack
+  kubernetes.core.helm:
+    name: kubefabric-observability
+    chart_ref: ../../../helm/observability
+    release_namespace: kubefabric-system
+    create_namespace: yes
+    values:
+      prometheus:
+        enabled: true
+      grafana:
+        enabled: true
+
+- name: Display installation status
+  debug:
+    msg: "KubeFabric has been successfully installed!"

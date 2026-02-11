@@ -1,0 +1,134 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: fabricquotas.kubefabric.ai
+spec:
+  group: kubefabric.ai
+  names:
+    kind: FabricQuota
+    listKind: FabricQuotaList
+    plural: fabricquotas
+    singular: fabricquota
+    shortNames:
+      - fquota
+      - quota
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required:
+                - team
+              properties:
+                team:
+                  type: string
+                  description: "Team or tenant name"
+                maxGpus:
+                  type: integer
+                  description: "Maximum number of GPUs"
+                  minimum: 0
+                maxJobs:
+                  type: integer
+                  description: "Maximum concurrent jobs"
+                  minimum: 0
+                maxStorage:
+                  type: string
+                  description: "Maximum storage (e.g., 100Ti)"
+                gpuTypes:
+                  type: array
+                  description: "Allowed GPU types"
+                  items:
+                    type: string
+                    enum:
+                      - H100
+                      - H200
+                      - A100
+                      - A100-80GB
+                      - L40
+                      - L40S
+                      - V100
+                      - T4
+                      - any
+                priority:
+                  type: integer
+                  description: "Team priority (0-100)"
+                  minimum: 0
+                  maximum: 100
+                  default: 50
+                budget:
+                  type: object
+                  description: "Cost budget"
+                  properties:
+                    currency:
+                      type: string
+                      default: USD
+                    monthly:
+                      type: number
+                      description: "Monthly budget"
+                    alert:
+                      type: number
+                      description: "Alert threshold %"
+                      minimum: 0
+                      maximum: 100
+                      default: 80
+                limits:
+                  type: object
+                  description: "Resource limits"
+                  properties:
+                    gpuHoursPerMonth:
+                      type: integer
+                    storageGB:
+                      type: integer
+                    networkBandwidth:
+                      type: string
+            status:
+              type: object
+              properties:
+                used:
+                  type: object
+                  properties:
+                    gpus:
+                      type: integer
+                    jobs:
+                      type: integer
+                    storage:
+                      type: string
+                    gpuHours:
+                      type: integer
+                available:
+                  type: object
+                  properties:
+                    gpus:
+                      type: integer
+                    jobs:
+                      type: integer
+                cost:
+                  type: object
+                  properties:
+                    currentMonth:
+                      type: number
+                    lastMonth:
+                      type: number
+                    projected:
+                      type: number
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Team
+          type: string
+          jsonPath: .spec.team
+        - name: Max-GPUs
+          type: integer
+          jsonPath: .spec.maxGpus
+        - name: Used-GPUs
+          type: integer
+          jsonPath: .status.used.gpus
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp

@@ -1,0 +1,42 @@
+---
+# KubeFabric Bare Metal Deployment - Main Playbook
+
+- name: Prepare all nodes
+  hosts: all
+  become: yes
+  roles:
+    - common
+    - kernel-tuning
+    - container-runtime
+
+- name: Setup control plane
+  hosts: control_plane
+  become: yes
+  roles:
+    - kubernetes-control-plane
+
+- name: Setup GPU nodes
+  hosts: gpu_nodes
+  become: yes
+  roles:
+    - nvidia-drivers
+    - rdma
+    - gpu-optimization
+
+- name: Join worker nodes
+  hosts: gpu_nodes
+  become: yes
+  roles:
+    - kubernetes-worker
+
+- name: Install KubeFabric operators
+  hosts: control_plane[0]
+  become: yes
+  roles:
+    - kubefabric-install
+
+- name: Configure GPU nodes in KubeFabric
+  hosts: control_plane[0]
+  become: yes
+  roles:
+    - kubefabric-configure

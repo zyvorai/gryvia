@@ -1,0 +1,148 @@
+# Default values for kubefabric-core
+
+# GPU Operator configuration
+gpuOperator:
+  enabled: true
+  image:
+    repository: kubefabric/gpu-operator
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  replicas: 1
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  healthCheck:
+    enabled: true
+    intervalSeconds: 60
+  nodeSelector: {}
+  tolerations: []
+
+# AI Workload Operator configuration
+aiOperator:
+  enabled: true
+  image:
+    repository: kubefabric/ai-operator
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  replicas: 1
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  nodeSelector: {}
+  tolerations: []
+
+# Storage Operator configuration
+storageOperator:
+  enabled: false
+  image:
+    repository: kubefabric/storage-operator
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  replicas: 1
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+# Network Operator configuration
+networkOperator:
+  enabled: false
+  image:
+    repository: kubefabric/network-operator
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  replicas: 1
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+# NVIDIA GPU device plugin
+nvidiaDevicePlugin:
+  enabled: true
+  image:
+    repository: nvcr.io/nvidia/k8s-device-plugin
+    tag: v0.14.3
+    pullPolicy: IfNotPresent
+
+# NVIDIA DCGM Exporter for metrics
+dcgmExporter:
+  enabled: true
+  image:
+    repository: nvcr.io/nvidia/k8s/dcgm-exporter
+    tag: 3.1.8-3.1.5-ubuntu22.04
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 9400
+
+# RBAC configuration
+rbac:
+  create: true
+
+# Service Account configuration
+serviceAccount:
+  create: true
+  name: kubefabric-operator
+  annotations: {}
+
+# Namespace configuration
+namespace:
+  create: true
+  name: kubefabric-system
+
+# CRD installation
+crds:
+  install: true
+  keep: true
+
+# Monitoring configuration
+monitoring:
+  enabled: true
+  prometheus:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      interval: 30s
+  grafana:
+    enabled: true
+    dashboards:
+      enabled: true
+
+# High availability
+ha:
+  enabled: false
+  leaderElection: true
+
+# Security
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  fsGroup: 65532
+
+podSecurityContext:
+  seccompProfile:
+    type: RuntimeDefault
+
+# Image pull secrets
+imagePullSecrets: []
+
+# Global labels
+labels: {}
+
+# Global annotations
+annotations: {}

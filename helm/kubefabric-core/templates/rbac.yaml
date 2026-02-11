@@ -1,0 +1,172 @@
+{{- if .Values.rbac.create -}}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "kubefabric.fullname" . }}-manager-role
+  labels:
+    {{- include "kubefabric.labels" . | nindent 4 }}
+rules:
+  # Manage FabricGpuNode resources
+  - apiGroups:
+      - kubefabric.ai
+    resources:
+      - fabricgpunodes
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - kubefabric.ai
+    resources:
+      - fabricgpunodes/status
+    verbs:
+      - get
+      - patch
+      - update
+  - apiGroups:
+      - kubefabric.ai
+    resources:
+      - fabricgpunodes/finalizers
+    verbs:
+      - update
+
+  # Manage FabricAIJob resources
+  - apiGroups:
+      - kubefabric.ai
+    resources:
+      - fabricaijobs
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - kubefabric.ai
+    resources:
+      - fabricaijobs/status
+    verbs:
+      - get
+      - patch
+      - update
+  - apiGroups:
+      - kubefabric.ai
+    resources:
+      - fabricaijobs/finalizers
+    verbs:
+      - update
+
+  # Manage Kubernetes nodes
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+    verbs:
+      - get
+      - list
+      - watch
+      - update
+      - patch
+
+  # Manage pods
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+
+  # Manage StatefulSets
+  - apiGroups:
+      - apps
+    resources:
+      - statefulsets
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+
+  # Manage Services
+  - apiGroups:
+      - ""
+    resources:
+      - services
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+
+  # Manage PVCs
+  - apiGroups:
+      - ""
+    resources:
+      - persistentvolumeclaims
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+
+  # Leader election
+  - apiGroups:
+      - coordination.k8s.io
+    resources:
+      - leases
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+
+  # Events
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "kubefabric.fullname" . }}-manager-rolebinding
+  labels:
+    {{- include "kubefabric.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "kubefabric.fullname" . }}-manager-role
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "kubefabric.serviceAccountName" . }}
+    namespace: {{ .Values.namespace.name }}
+{{- end }}
