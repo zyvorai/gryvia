@@ -1,0 +1,466 @@
+---
+# Advanced GPU Sharing and Fractional GPUs
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: fabricgpusharingpolicies.kubefabric.io
+spec:
+  group: kubefabric.io
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                # GPU nodes this policy applies to
+                nodeSelector:
+                  type: object
+                  additionalProperties:
+                    type: string
+
+                # Sharing strategy
+                strategy:
+                  type: string
+                  enum: [time-slicing, mig, fractional, spatial]
+                  description: |
+                    time-slicing: Share GPU via time-slicing (V100, T4)
+                    mig: Use Multi-Instance GPU (A100, H100)
+                    fractional: Fractional GPU allocation
+                    spatial: Spatial partitioning
+
+                # Time-slicing configuration
+                timeSlicing:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                      default: false
+
+                    # Max pods per GPU
+                    maxPodsPerGPU:
+                      type: integer
+                      minimum: 1
+                      maximum: 16
+                      default: 4
+
+                    # Time slice duration
+                    sliceDuration:
+                      type: string
+                      default: "100ms"
+
+                    # Memory limits per pod
+                    memoryLimitPercent:
+                      type: integer
+                      minimum: 1
+                      maximum: 100
+
+                    # Enforce limits
+                    enforcement:
+                      type: string
+                      enum: [soft, hard]
+                      default: soft
+
+                # Fractional GPU configuration
+                fractionalGPU:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                      default: false
+
+                    # Granularity of fractions
+                    granularity:
+                      type: string
+                      enum: ["1/2", "1/4", "1/8", "1/16"]
+                      default: "1/4"
+
+                    # Allow oversubscription
+                    oversubscription:
+                      type: object
+                      properties:
+                        enabled:
+                          type: boolean
+                          default: false
+                        maxRatio:
+                          type: number
+                          default: 1.5
+                          description: "1.5 = allow 150% allocation"
+
+                # MIG configuration
+                mig:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                      default: false
+
+                    # MIG profile distribution
+                    profiles:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                          count:
+                            type: integer
+
+                # Quality of Service
+                qos:
+                  type: object
+                  properties:
+                    guaranteedMemory:
+                      type: boolean
+                      default: true
+
+                    guaranteedCompute:
+                      type: boolean
+                      default: false
+
+                    isolationLevel:
+                      type: string
+                      enum: [none, memory, compute, full]
+                      default: memory
+
+                # Priority-based allocation
+                priority:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                      default: false
+
+                    highPriorityShare:
+                      type: integer
+                      description: "Percentage for high priority jobs"
+
+                    preemptLowPriority:
+                      type: boolean
+                      default: false
+
+            status:
+              type: object
+              properties:
+                affectedNodes:
+                  type: array
+                  items:
+                    type: string
+
+                totalGPUs:
+                  type: integer
+
+                effectiveGPUs:
+                  type: integer
+                  description: "Total allocatable GPU units after sharing"
+
+                currentAllocations:
+                  type: object
+                  properties:
+                    physical:
+                      type: integer
+                    fractional:
+                      type: integer
+                    utilization:
+                      type: number
+
+      additionalPrinterColumns:
+        - name: Strategy
+          type: string
+          jsonPath: .spec.strategy
+        - name: Physical-GPUs
+          type: integer
+          jsonPath: .status.totalGPUs
+        - name: Effective-GPUs
+          type: integer
+          jsonPath: .status.effectiveGPUs
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+
+  scope: Cluster
+  names:
+    plural: fabricgpusharingpolicies
+    singular: fabricgpusharingpolicy
+    kind: FabricGPUSharingPolicy
+    shortNames:
+      - fgpushare
+
+---
+# Example: Time-Slicing for V100 GPUs
+apiVersion: kubefabric.io/v1
+kind: FabricGPUSharingPolicy
+metadata:
+  name: v100-time-slicing
+spec:
+  nodeSelector:
+    kubefabric.io/gpu-type: V100
+
+  strategy: time-slicing
+
+  timeSlicing:
+    enabled: true
+    maxPodsPerGPU: 4  # 4 pods can share each GPU
+    sliceDuration: 100ms
+    memoryLimitPercent: 25  # Each pod gets 25% memory
+    enforcement: soft
+
+  qos:
+    guaranteedMemory: true
+    guaranteedCompute: false
+    isolationLevel: memory
+
+---
+# Example: Fractional T4 GPUs
+apiVersion: kubefabric.io/v1
+kind: FabricGPUSharingPolicy
+metadata:
+  name: t4-fractional
+spec:
+  nodeSelector:
+    kubefabric.io/gpu-type: T4
+
+  strategy: fractional
+
+  fractionalGPU:
+    enabled: true
+    granularity: "1/8"  # Support 1/8, 1/4, 1/2, 1 GPU
+    oversubscription:
+      enabled: true
+      maxRatio: 1.25  # Allow 125% allocation
+
+  qos:
+    guaranteedMemory: true
+    isolationLevel: memory
+
+---
+# Example: MIG Profiles for A100
+apiVersion: kubefabric.io/v1
+kind: FabricGPUSharingPolicy
+metadata:
+  name: a100-mig-mixed
+spec:
+  nodeSelector:
+    kubefabric.io/gpu-type: A100-80G
+
+  strategy: mig
+
+  mig:
+    enabled: true
+    profiles:
+      - name: 1g.10gb
+        count: 4  # 4x 1g.10gb per GPU
+      - name: 3g.40gb
+        count: 2  # 2x 3g.40gb per GPU
+      # Total: 6 instances per GPU (4+2)
+
+---
+# Example: Priority-Based Sharing
+apiVersion: kubefabric.io/v1
+kind: FabricGPUSharingPolicy
+metadata:
+  name: priority-based-sharing
+spec:
+  nodeSelector:
+    kubefabric.io/node-pool: shared
+
+  strategy: time-slicing
+
+  timeSlicing:
+    enabled: true
+    maxPodsPerGPU: 8
+
+  priority:
+    enabled: true
+    highPriorityShare: 60  # High priority gets 60% of GPU time
+    preemptLowPriority: true
+
+---
+# Example: Job Requesting Fractional GPU
+apiVersion: kubefabric.io/v1
+kind: FabricAIJob
+metadata:
+  name: inference-fractional
+spec:
+  framework: pytorch
+
+  resources:
+    # Request fractional GPU
+    fractionalGPU:
+      fraction: "1/4"  # Request 1/4 of a GPU
+      memoryGB: 4      # 4GB GPU memory
+    memory: 8Gi
+    cpu: 4
+
+  image: nvcr.io/nvidia/pytorch:24.01-py3
+  command: ["python", "inference.py"]
+
+---
+# Example: Job with Time-Sliced GPU
+apiVersion: kubefabric.io/v1
+kind: FabricAIJob
+metadata:
+  name: dev-environment
+spec:
+  framework: jupyter
+
+  resources:
+    # Request shared GPU access
+    sharedGPU:
+      enabled: true
+      memoryGB: 8  # Request 8GB from shared pool
+    memory: 16Gi
+    cpu: 8
+
+  image: jupyter/tensorflow-notebook:latest
+
+---
+# GPU Sharing Status Example
+apiVersion: kubefabric.io/v1
+kind: FabricGPUSharingPolicy
+metadata:
+  name: t4-fractional
+status:
+  affectedNodes:
+    - gpu-node-10
+    - gpu-node-11
+    - gpu-node-12
+
+  totalGPUs: 12  # 4 GPUs per node × 3 nodes
+
+  effectiveGPUs: 96  # 12 × 8 (1/8 granularity)
+
+  currentAllocations:
+    physical: 12
+    fractional: 45  # 45 fractional allocations active
+    utilization: 0.625  # 62.5% average utilization
+
+---
+# Resource Advertisement Example
+# After applying sharing policy, nodes advertise:
+#
+# apiVersion: v1
+# kind: Node
+# metadata:
+#   name: gpu-node-10
+# status:
+#   allocatable:
+#     nvidia.com/gpu: 4  # Physical GPUs
+#     kubefabric.io/gpu-1-8: 32  # 4 GPUs × 8 fractions
+#     kubefabric.io/gpu-1-4: 16  # 4 GPUs × 4 fractions
+#     kubefabric.io/gpu-1-2: 8   # 4 GPUs × 2 fractions
+#     kubefabric.io/gpu-memory: 65536  # MB, shared pool
+
+---
+# Multi-Tenant Sharing Example
+apiVersion: kubefabric.io/v1
+kind: FabricGPUSharingPolicy
+metadata:
+  name: multi-tenant-sharing
+spec:
+  strategy: fractional
+
+  fractionalGPU:
+    enabled: true
+    granularity: "1/4"
+
+  qos:
+    guaranteedMemory: true
+    guaranteedCompute: false
+    isolationLevel: full  # Full isolation between tenants
+
+  # Per-tenant quotas
+  tenantQuotas:
+    - tenant: ml-research
+      maxFractionalGPUs: 32
+      maxMemoryGB: 256
+    - tenant: dev-team
+      maxFractionalGPUs: 16
+      maxMemoryGB: 128
+
+---
+# CLI Usage Examples
+#
+# List GPU sharing policies:
+#   kfctl gpu-sharing list
+#
+# Output:
+# NAME                 STRATEGY       PHYSICAL  EFFECTIVE  UTILIZATION
+# v100-time-slicing    time-slicing   16        64         75%
+# t4-fractional        fractional     12        96         62.5%
+# a100-mig-mixed       mig            8         48         88%
+#
+# View sharing policy:
+#   kfctl gpu-sharing describe t4-fractional
+#
+# Output:
+# GPU Sharing Policy: t4-fractional
+#
+# Strategy: Fractional GPU
+# Granularity: 1/8 GPU
+# Oversubscription: Enabled (max 125%)
+#
+# Affected Nodes: 3
+#   - gpu-node-10 (4 T4 GPUs)
+#   - gpu-node-11 (4 T4 GPUs)
+#   - gpu-node-12 (4 T4 GPUs)
+#
+# Capacity:
+#   Physical GPUs: 12
+#   Effective GPUs: 96 (8× multiplier)
+#
+# Current Allocations:
+#   1/8 GPU: 28 allocations
+#   1/4 GPU: 12 allocations
+#   1/2 GPU: 3 allocations
+#   1 GPU: 2 allocations
+#   Total: 45 allocations (62.5% utilized)
+#
+# Available:
+#   1/8 GPU: 51
+#   1/4 GPU: 12
+#   1/2 GPU: 5
+#   1 GPU: 1
+#
+# Request fractional GPU:
+#   kfctl submit job.yaml --fractional-gpu 1/4
+#
+# View GPU allocation:
+#   kfctl gpu allocation
+#
+# Output:
+# GPU Allocations
+#
+# Node          GPU  Type  Allocations                    Utilization
+# gpu-node-10   0    T4    inference-1(1/4), dev-1(1/8)   37.5%
+# gpu-node-10   1    T4    inference-2(1/4), dev-2(1/8)   37.5%
+# gpu-node-10   2    T4    training-small(1/2)            50%
+# gpu-node-10   3    T4    batch-job(1)                   100%
+#
+# Monitor sharing metrics:
+#   kfctl gpu-sharing metrics t4-fractional
+#
+# Output:
+# GPU Sharing Metrics: t4-fractional
+#
+# Time Period: Last 24 hours
+#
+# Average Utilization: 62.5%
+# Peak Utilization: 95%
+# Minimum Utilization: 28%
+#
+# Jobs Run: 342
+# Fractional Jobs: 298 (87%)
+# Full GPU Jobs: 44 (13%)
+#
+# Cost Savings: $12,450 (vs. dedicated GPUs)
+#
+# Most Common Fractions:
+#   1/8 GPU: 45%
+#   1/4 GPU: 38%
+#   1/2 GPU: 12%
+#   1 GPU: 5%

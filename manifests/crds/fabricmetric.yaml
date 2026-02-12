@@ -1,0 +1,520 @@
+---
+# Custom Metrics and KPI Tracking
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: fabricmetrics.kubefabric.io
+spec:
+  group: kubefabric.io
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                # Metric definition
+                name:
+                  type: string
+                  description: "Metric name (e.g., model-accuracy, throughput)"
+
+                description:
+                  type: string
+
+                type:
+                  type: string
+                  enum: [gauge, counter, histogram, summary]
+                  default: gauge
+
+                unit:
+                  type: string
+                  description: "Unit of measurement (e.g., percent, seconds, tokens/sec)"
+
+                # How to collect this metric
+                source:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                      enum: [prometheus, job-output, webhook, script, log-parser]
+
+                    # Prometheus query
+                    prometheus:
+                      type: object
+                      properties:
+                        query:
+                          type: string
+                        interval:
+                          type: string
+                          default: "1m"
+
+                    # Parse from job output
+                    jobOutput:
+                      type: object
+                      properties:
+                        pattern:
+                          type: string
+                          description: "Regex to extract metric"
+                        file:
+                          type: string
+                          description: "File to parse (e.g., metrics.json)"
+                        jsonPath:
+                          type: string
+
+                    # Webhook callback
+                    webhook:
+                      type: object
+                      properties:
+                        url:
+                          type: string
+                        interval:
+                          type: string
+
+                    # Custom script
+                    script:
+                      type: object
+                      properties:
+                        command:
+                          type: array
+                          items:
+                            type: string
+                        interval:
+                          type: string
+
+                # Thresholds and alerts
+                thresholds:
+                  type: object
+                  properties:
+                    warning:
+                      type: object
+                      properties:
+                        min:
+                          type: number
+                        max:
+                          type: number
+
+                    critical:
+                      type: object
+                      properties:
+                        min:
+                          type: number
+                        max:
+                          type: number
+
+                    actions:
+                      type: array
+                      items:
+                        type: string
+                        enum: [alert, abort-job, scale-resources, notify]
+
+                # Visualization
+                visualization:
+                  type: object
+                  properties:
+                    dashboard:
+                      type: string
+                      description: "Grafana dashboard to display"
+                    panel:
+                      type: string
+                    format:
+                      type: string
+                      enum: [line, bar, gauge, table]
+                      default: line
+
+                # Retention
+                retention:
+                  type: string
+                  default: "30d"
+
+                # Labels for grouping
+                labels:
+                  type: object
+                  additionalProperties:
+                    type: string
+
+            status:
+              type: object
+              properties:
+                currentValue:
+                  type: number
+
+                lastUpdate:
+                  type: string
+                  format: date-time
+
+                state:
+                  type: string
+                  enum: [normal, warning, critical]
+
+                history:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      timestamp:
+                        type: string
+                        format: date-time
+                      value:
+                        type: number
+                      job:
+                        type: string
+
+      additionalPrinterColumns:
+        - name: Type
+          type: string
+          jsonPath: .spec.type
+        - name: Current-Value
+          type: string
+          jsonPath: .status.currentValue
+        - name: Unit
+          type: string
+          jsonPath: .spec.unit
+        - name: State
+          type: string
+          jsonPath: .status.state
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+
+  scope: Cluster
+  names:
+    plural: fabricmetrics
+    singular: fabricmetric
+    kind: FabricMetric
+    shortNames:
+      - fmetric
+
+---
+# Example: Model Accuracy Metric
+apiVersion: kubefabric.io/v1
+kind: FabricMetric
+metadata:
+  name: model-accuracy
+spec:
+  name: model-accuracy
+  description: "Model accuracy on validation set"
+  type: gauge
+  unit: "percent"
+
+  source:
+    type: job-output
+    jobOutput:
+      file: metrics.json
+      jsonPath: $.validation.accuracy
+
+  thresholds:
+    warning:
+      min: 85.0  # Warn if accuracy < 85%
+    critical:
+      min: 80.0  # Critical if < 80%
+    actions:
+      - alert
+      - notify
+
+  visualization:
+    format: line
+
+  labels:
+    category: performance
+    framework: pytorch
+
+---
+# Example: Throughput Metric
+apiVersion: kubefabric.io/v1
+kind: FabricMetric
+metadata:
+  name: inference-throughput
+spec:
+  name: inference-throughput
+  description: "Inference throughput"
+  type: gauge
+  unit: "requests/sec"
+
+  source:
+    type: prometheus
+    prometheus:
+      query: rate(http_requests_total[5m])
+      interval: 30s
+
+  thresholds:
+    warning:
+      min: 1000  # Warn if < 1000 req/s
+    critical:
+      min: 500
+    actions:
+      - alert
+      - scale-resources
+
+  visualization:
+    format: line
+
+---
+# Example: GPU Memory Usage
+apiVersion: kubefabric.io/v1
+kind: FabricMetric
+metadata:
+  name: gpu-memory-utilization
+spec:
+  name: gpu-memory-utilization
+  description: "GPU memory usage"
+  type: gauge
+  unit: "percent"
+
+  source:
+    type: prometheus
+    prometheus:
+      query: nvidia_gpu_memory_used_bytes / nvidia_gpu_memory_total_bytes * 100
+      interval: 10s
+
+  thresholds:
+    warning:
+      max: 95  # Warn if > 95%
+    critical:
+      max: 98
+    actions:
+      - alert
+
+  visualization:
+    format: gauge
+
+---
+# Example: Training Loss
+apiVersion: kubefabric.io/v1
+kind: FabricMetric
+metadata:
+  name: training-loss
+spec:
+  name: training-loss
+  description: "Training loss"
+  type: gauge
+  unit: "loss"
+
+  source:
+    type: job-output
+    jobOutput:
+      pattern: "Loss: (\\d+\\.\\d+)"  # Regex to extract from logs
+
+  thresholds:
+    warning:
+      max: 1.0  # Warn if loss > 1.0 (not converging)
+
+  visualization:
+    format: line
+
+  retention: "90d"  # Keep for 90 days
+
+---
+# Example: Custom Script Metric
+apiVersion: kubefabric.io/v1
+kind: FabricMetric
+metadata:
+  name: data-freshness
+spec:
+  name: data-freshness
+  description: "Age of training data"
+  type: gauge
+  unit: "hours"
+
+  source:
+    type: script
+    script:
+      command:
+        - bash
+        - -c
+        - |
+          # Calculate hours since data was updated
+          stat -c %Y /data/latest | xargs -I {} echo $(( ($(date +%s) - {}) / 3600 ))
+      interval: 1h
+
+  thresholds:
+    warning:
+      max: 24  # Warn if data > 24 hours old
+    critical:
+      max: 48
+    actions:
+      - alert
+      - notify
+
+---
+# Example: Using Metrics in Job
+apiVersion: kubefabric.io/v1
+kind: FabricAIJob
+metadata:
+  name: training-with-metrics
+spec:
+  framework: pytorch
+
+  # Define job-specific metrics
+  metrics:
+    - metricRef: model-accuracy
+      target: 95.0  # Job succeeds if accuracy >= 95%
+
+    - metricRef: training-loss
+      target: 0.1  # Target loss < 0.1
+
+    # Inline metric definition
+    - name: samples-per-second
+      type: gauge
+      unit: "samples/sec"
+      source:
+        type: job-output
+        jobOutput:
+          pattern: "Throughput: (\\d+) samples/sec"
+
+  # Abort job if metrics not met
+  abortOnMetrics:
+    enabled: true
+    conditions:
+      - metric: training-loss
+        operator: ">"
+        value: 5.0
+        duration: 1h  # Abort if loss > 5.0 for 1 hour
+
+  resources:
+    gpuType: A100-80G
+    gpuCount: 8
+
+  image: nvcr.io/nvidia/pytorch:24.01-py3
+  command: ["python", "train.py"]
+
+---
+# Metric Dashboard Definition
+apiVersion: kubefabric.io/v1
+kind: FabricMetricDashboard
+metadata:
+  name: training-overview
+spec:
+  title: "Training Metrics Overview"
+
+  panels:
+    - title: "Model Accuracy"
+      metrics:
+        - model-accuracy
+      visualization: line
+      timeRange: 7d
+
+    - title: "Training Loss"
+      metrics:
+        - training-loss
+      visualization: line
+      timeRange: 7d
+
+    - title: "GPU Utilization"
+      metrics:
+        - gpu-memory-utilization
+      visualization: gauge
+
+    - title: "Throughput"
+      metrics:
+        - samples-per-second
+      visualization: line
+
+  refresh: 30s
+
+---
+# Metric Aggregation
+apiVersion: kubefabric.io/v1
+kind: FabricMetricAggregation
+metadata:
+  name: team-performance
+spec:
+  name: team-performance
+  description: "Aggregated team performance metrics"
+
+  aggregations:
+    - metric: model-accuracy
+      aggregation: avg
+      groupBy: [team, model]
+      timeWindow: 7d
+
+    - metric: training-loss
+      aggregation: min
+      groupBy: [team]
+      timeWindow: 7d
+
+    - metric: gpu-memory-utilization
+      aggregation: p95
+      groupBy: [gpu-type]
+      timeWindow: 24h
+
+---
+# CLI Usage Examples
+#
+# List metrics:
+#   kfctl metrics list
+#
+# Output:
+# NAME                      TYPE    VALUE   UNIT          STATE   AGE
+# model-accuracy            gauge   92.5    percent       normal  5d
+# inference-throughput      gauge   1250    requests/sec  normal  3d
+# gpu-memory-utilization    gauge   78.5    percent       normal  1d
+# training-loss             gauge   0.234   loss          normal  2h
+#
+# View metric details:
+#   kfctl metrics describe model-accuracy
+#
+# Output:
+# Metric: model-accuracy
+#
+# Current Value: 92.5%
+# State: Normal
+# Last Updated: 2 hours ago
+#
+# Thresholds:
+#   Warning: < 85%
+#   Critical: < 80%
+#
+# Recent History:
+# TIME                VALUE   JOB
+# 2024-01-21 14:00   92.5%   training-job-45
+# 2024-01-21 12:00   91.8%   training-job-44
+# 2024-01-21 10:00   93.2%   training-job-43
+#
+# Query metric:
+#   kfctl metrics query model-accuracy --last 7d
+#
+# Export metrics:
+#   kfctl metrics export --team ml-research --format csv --output metrics.csv
+#
+# View metrics for job:
+#   kfctl metrics job training-job-45
+#
+# Output:
+# Metrics: training-job-45
+#
+# model-accuracy: 92.5%
+# training-loss: 0.234
+# samples-per-second: 1,250
+# gpu-memory-utilization: 78.5%
+#
+# Create alert:
+#   kfctl metrics alert create accuracy-alert \
+#     --metric model-accuracy \
+#     --threshold "<85" \
+#     --notify ml-team@company.com
+#
+# View dashboard:
+#   kfctl metrics dashboard training-overview
+#
+# Generate report:
+#   kfctl metrics report --team ml-research \
+#     --period monthly \
+#     --output report.pdf
+#
+# Compare metrics:
+#   kfctl metrics compare \
+#     --job1 training-job-45 \
+#     --job2 training-job-44 \
+#     --metrics model-accuracy,training-loss
+#
+# Output:
+# Metric Comparison
+#
+# Metric              Job 45   Job 44   Diff
+# model-accuracy      92.5%    91.8%    +0.7%
+# training-loss       0.234    0.287    -18.5%
+# samples-per-second  1,250    1,180    +5.9%
