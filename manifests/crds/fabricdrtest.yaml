@@ -1,0 +1,884 @@
+---
+# Disaster Recovery Testing and Validation
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: fabricdrtests.kubefabric.io
+spec:
+  group: kubefabric.io
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                # Test type
+                type:
+                  type: string
+                  enum: [backup-restore, failover, data-integrity, rpo-rto, full-drill, chaos-engineering]
+                  description: "Type of DR test to perform"
+
+                # Test scope
+                scope:
+                  type: object
+                  properties:
+                    # What to test
+                    components:
+                      type: array
+                      items:
+                        type: string
+                        enum: [control-plane, data-plane, jobs, storage, network, monitoring, all]
+
+                    # Test environment
+                    environment:
+                      type: string
+                      enum: [production, staging, test]
+                      default: staging
+
+                # Backup and Restore Test
+                backupRestore:
+                  type: object
+                  properties:
+                    # What to backup/restore
+                    resources:
+                      type: array
+                      items:
+                        type: string
+                        enum: [crds, jobs, config, secrets, persistent-volumes, monitoring]
+
+                    # Backup location
+                    backupLocation:
+                      type: object
+                      properties:
+                        type:
+                          type: string
+                          enum: [s3, gcs, azure-blob, nfs]
+                        path:
+                          type: string
+                        credentials:
+                          type: object
+                          properties:
+                            secretRef:
+                              type: string
+
+                    # Point-in-time to restore
+                    restorePoint:
+                      type: string
+                      description: "Timestamp or backup ID"
+
+                    # Validation checks
+                    validation:
+                      type: object
+                      properties:
+                        verifyJobsRecovered:
+                          type: boolean
+                          default: true
+                        verifyDataIntegrity:
+                          type: boolean
+                          default: true
+                        verifyCheckpoints:
+                          type: boolean
+                          default: true
+
+                # Failover Test
+                failover:
+                  type: object
+                  properties:
+                    # Failover scenario
+                    scenario:
+                      type: string
+                      enum: [node-failure, az-failure, region-failure, control-plane-failure]
+
+                    # Source and target
+                    source:
+                      type: object
+                      properties:
+                        cluster:
+                          type: string
+                        region:
+                          type: string
+
+                    target:
+                      type: object
+                      properties:
+                        cluster:
+                          type: string
+                        region:
+                          type: string
+
+                    # Automatic vs manual
+                    automatic:
+                      type: boolean
+                      default: true
+
+                    # What to failover
+                    jobs:
+                      type: object
+                      properties:
+                        includeAll:
+                          type: boolean
+                          default: true
+                        priorities:
+                          type: array
+                          items:
+                            type: string
+
+                # Data Integrity Test
+                dataIntegrity:
+                  type: object
+                  properties:
+                    # Storage systems to test
+                    storageSystems:
+                      type: array
+                      items:
+                        type: string
+
+                    # Checksums
+                    verifyChecksums:
+                      type: boolean
+                      default: true
+
+                    # Compare source and replica
+                    compareReplicas:
+                      type: boolean
+                      default: true
+
+                    # Test dataset
+                    testDataset:
+                      type: object
+                      properties:
+                        size:
+                          type: string
+                        path:
+                          type: string
+
+                # RPO/RTO Test
+                rpoRto:
+                  type: object
+                  properties:
+                    # Target metrics
+                    targets:
+                      type: object
+                      properties:
+                        rpoMinutes:
+                          type: integer
+                          description: "Recovery Point Objective in minutes"
+                        rtoMinutes:
+                          type: integer
+                          description: "Recovery Time Objective in minutes"
+
+                    # Simulated scenarios
+                    scenarios:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                          description:
+                            type: string
+                          failureType:
+                            type: string
+
+                    # Measurements
+                    measure:
+                      type: object
+                      properties:
+                        dataLoss:
+                          type: boolean
+                          default: true
+                        recoveryTime:
+                          type: boolean
+                          default: true
+                        jobContinuity:
+                          type: boolean
+                          default: true
+
+                # Full DR Drill
+                fullDrill:
+                  type: object
+                  properties:
+                    # Drill scenario
+                    scenario:
+                      type: string
+                      description: "Description of disaster scenario"
+
+                    # Steps to execute
+                    steps:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                          action:
+                            type: string
+                          timeout:
+                            type: string
+                          validation:
+                            type: string
+
+                    # Success criteria
+                    successCriteria:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          metric:
+                            type: string
+                          operator:
+                            type: string
+                            enum: [lt, lte, gt, gte, eq]
+                          value:
+                            type: number
+
+                    # Rollback plan
+                    rollbackEnabled:
+                      type: boolean
+                      default: true
+
+                # Chaos Engineering
+                chaosEngineering:
+                  type: object
+                  properties:
+                    # Chaos type
+                    experiments:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          type:
+                            type: string
+                            enum: [pod-kill, node-drain, network-partition, cpu-stress, memory-stress, disk-fill]
+
+                          # Target
+                          target:
+                            type: object
+                            properties:
+                              selector:
+                                type: object
+                                additionalProperties:
+                                  type: string
+
+                          # Duration
+                          duration:
+                            type: string
+
+                          # Parameters
+                          parameters:
+                            type: object
+                            additionalProperties:
+                              type: string
+
+                    # Blast radius
+                    blastRadius:
+                      type: string
+                      enum: [minimal, limited, moderate, extensive]
+                      default: minimal
+
+                # Schedule
+                schedule:
+                  type: object
+                  properties:
+                    # Run once or recurring
+                    type:
+                      type: string
+                      enum: [once, recurring]
+                      default: once
+
+                    # Cron for recurring
+                    cron:
+                      type: string
+                      description: "Cron expression for recurring tests"
+
+                    # Next run
+                    nextRun:
+                      type: string
+                      format: date-time
+
+                # Notifications
+                notifications:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                      default: true
+
+                    # When to notify
+                    events:
+                      type: array
+                      items:
+                        type: string
+                        enum: [start, completion, failure, metrics-exceeded]
+
+                    # Recipients
+                    recipients:
+                      type: array
+                      items:
+                        type: string
+
+                    channels:
+                      type: array
+                      items:
+                        type: string
+                        enum: [email, slack, pagerduty, webhook]
+
+                # Approval required
+                approvalRequired:
+                  type: boolean
+                  default: true
+                  description: "Require approval before running test"
+
+            status:
+              type: object
+              properties:
+                # Test state
+                state:
+                  type: string
+                  enum: [pending-approval, approved, running, completed, failed, cancelled]
+
+                # Execution details
+                execution:
+                  type: object
+                  properties:
+                    startTime:
+                      type: string
+                      format: date-time
+                    endTime:
+                      type: string
+                      format: date-time
+                    duration:
+                      type: string
+
+                # Results
+                results:
+                  type: object
+                  properties:
+                    # Overall result
+                    passed:
+                      type: boolean
+
+                    # Metrics
+                    metrics:
+                      type: object
+                      properties:
+                        rpoAchieved:
+                          type: string
+                        rtoAchieved:
+                          type: string
+                        dataIntegrity:
+                          type: string
+                        jobsRecovered:
+                          type: integer
+                        jobsFailed:
+                          type: integer
+
+                    # Detailed results
+                    details:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          step:
+                            type: string
+                          status:
+                            type: string
+                          duration:
+                            type: string
+                          message:
+                            type: string
+
+                    # Issues found
+                    issues:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          severity:
+                            type: string
+                            enum: [critical, high, medium, low]
+                          description:
+                            type: string
+                          recommendation:
+                            type: string
+
+                # Report
+                report:
+                  type: object
+                  properties:
+                    generated:
+                      type: boolean
+                    path:
+                      type: string
+                    format:
+                      type: string
+
+      additionalPrinterColumns:
+        - name: Type
+          type: string
+          jsonPath: .spec.type
+        - name: State
+          type: string
+          jsonPath: .status.state
+        - name: Passed
+          type: boolean
+          jsonPath: .status.results.passed
+        - name: Duration
+          type: string
+          jsonPath: .status.execution.duration
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+
+  scope: Cluster
+  names:
+    plural: fabricdrtests
+    singular: fabricdrtest
+    kind: FabricDRTest
+    shortNames:
+      - fdr
+
+---
+# Example: Backup and Restore Test
+apiVersion: kubefabric.io/v1
+kind: FabricDRTest
+metadata:
+  name: monthly-backup-restore
+spec:
+  type: backup-restore
+
+  scope:
+    components: [jobs, config, persistent-volumes]
+    environment: staging
+
+  backupRestore:
+    resources: [crds, jobs, config, secrets, persistent-volumes]
+    backupLocation:
+      type: s3
+      path: s3://kubefabric-backups/staging
+      credentials:
+        secretRef: aws-backup-credentials
+
+    restorePoint: latest  # or specific timestamp
+
+    validation:
+      verifyJobsRecovered: true
+      verifyDataIntegrity: true
+      verifyCheckpoints: true
+
+  schedule:
+    type: recurring
+    cron: "0 2 1 * *"  # Monthly on 1st at 2 AM
+
+  notifications:
+    enabled: true
+    events: [completion, failure]
+    recipients:
+      - sre-team@company.com
+      - backup-team@company.com
+    channels: [email, slack]
+
+  approvalRequired: false  # Automated monthly test
+
+---
+# Example: Regional Failover Test
+apiVersion: kubefabric.io/v1
+kind: FabricDRTest
+metadata:
+  name: quarterly-failover-drill
+spec:
+  type: failover
+
+  scope:
+    components: [all]
+    environment: staging
+
+  failover:
+    scenario: region-failure
+
+    source:
+      cluster: us-west-prod
+      region: us-west-2
+
+    target:
+      cluster: us-east-prod
+      region: us-east-1
+
+    automatic: true
+
+    jobs:
+      includeAll: false
+      priorities: [critical, high]  # Only failover critical/high priority
+
+  schedule:
+    type: recurring
+    cron: "0 2 1 */3 *"  # Quarterly
+
+  notifications:
+    enabled: true
+    events: [start, completion, failure]
+    recipients:
+      - sre-team@company.com
+      - leadership@company.com
+    channels: [email, slack, pagerduty]
+
+  approvalRequired: true  # Require approval for failover test
+
+---
+# Example: RPO/RTO Validation
+apiVersion: kubefabric.io/v1
+kind: FabricDRTest
+metadata:
+  name: rpo-rto-validation
+spec:
+  type: rpo-rto
+
+  scope:
+    components: [data-plane, jobs, storage]
+    environment: staging
+
+  rpoRto:
+    targets:
+      rpoMinutes: 5
+      rtoMinutes: 15
+
+    scenarios:
+      - name: node-failure
+        description: "Single GPU node failure"
+        failureType: node-failure
+
+      - name: az-failure
+        description: "Entire availability zone failure"
+        failureType: az-failure
+
+      - name: storage-failure
+        description: "Storage system failure"
+        failureType: storage-failure
+
+    measure:
+      dataLoss: true
+      recoveryTime: true
+      jobContinuity: true
+
+  schedule:
+    type: recurring
+    cron: "0 3 15 * *"  # Monthly on 15th
+
+  notifications:
+    enabled: true
+    events: [completion, metrics-exceeded]
+    recipients:
+      - sre-team@company.com
+    channels: [email]
+
+---
+# Example: Full DR Drill
+apiVersion: kubefabric.io/v1
+kind: FabricDRTest
+metadata:
+  name: annual-dr-drill
+spec:
+  type: full-drill
+
+  scope:
+    components: [all]
+    environment: test
+
+  fullDrill:
+    scenario: "Complete datacenter failure with regional failover"
+
+    steps:
+      - name: simulate-failure
+        action: "Shut down all nodes in us-west-2"
+        timeout: 5m
+        validation: "All nodes marked as NotReady"
+
+      - name: detect-failure
+        action: "Wait for monitoring to detect failure"
+        timeout: 2m
+        validation: "Alerts triggered"
+
+      - name: initiate-failover
+        action: "Trigger automated failover to us-east-1"
+        timeout: 10m
+        validation: "Failover process started"
+
+      - name: restore-jobs
+        action: "Recover all critical and high priority jobs"
+        timeout: 15m
+        validation: "All jobs running in target region"
+
+      - name: verify-data
+        action: "Verify data integrity and availability"
+        timeout: 10m
+        validation: "All data accessible, checksums match"
+
+      - name: verify-operations
+        action: "Submit test job and verify completion"
+        timeout: 30m
+        validation: "Test job completes successfully"
+
+    successCriteria:
+      - metric: recovery_time_minutes
+        operator: lte
+        value: 15
+
+      - metric: data_loss_percentage
+        operator: eq
+        value: 0
+
+      - metric: jobs_recovered_percentage
+        operator: gte
+        value: 100
+
+    rollbackEnabled: true
+
+  schedule:
+    type: recurring
+    cron: "0 2 1 1 *"  # Annually on Jan 1
+
+  notifications:
+    enabled: true
+    events: [start, completion, failure]
+    recipients:
+      - sre-team@company.com
+      - leadership@company.com
+      - compliance@company.com
+    channels: [email, slack, pagerduty]
+
+  approvalRequired: true
+
+---
+# Example: Chaos Engineering Test
+apiVersion: kubefabric.io/v1
+kind: FabricDRTest
+metadata:
+  name: weekly-chaos-test
+spec:
+  type: chaos-engineering
+
+  scope:
+    components: [data-plane]
+    environment: staging
+
+  chaosEngineering:
+    experiments:
+      - type: pod-kill
+        target:
+          selector:
+            app: gpu-operator
+        duration: 5m
+
+      - type: node-drain
+        target:
+          selector:
+            node-role: gpu-worker
+        duration: 10m
+
+      - type: network-partition
+        target:
+          selector:
+            component: scheduler
+        duration: 3m
+        parameters:
+          partition: 50%
+
+      - type: cpu-stress
+        target:
+          selector:
+            app: api-gateway
+        duration: 5m
+        parameters:
+          cores: "2"
+          load: "80"
+
+    blastRadius: limited
+
+  schedule:
+    type: recurring
+    cron: "0 3 * * 3"  # Weekly on Wednesday
+
+  notifications:
+    enabled: true
+    events: [completion, failure]
+    recipients:
+      - sre-team@company.com
+    channels: [slack]
+
+---
+# DR Test Report
+apiVersion: kubefabric.io/v1
+kind: FabricDRTest
+metadata:
+  name: q1-2024-failover-drill
+status:
+  state: completed
+
+  execution:
+    startTime: "2024-03-15T02:00:00Z"
+    endTime: "2024-03-15T02:18:30Z"
+    duration: 18m30s
+
+  results:
+    passed: true
+
+    metrics:
+      rpoAchieved: 3m25s
+      rtoAchieved: 12m15s
+      dataIntegrity: 100%
+      jobsRecovered: 145
+      jobsFailed: 0
+
+    details:
+      - step: simulate-failure
+        status: completed
+        duration: 2m30s
+        message: "All 32 nodes in us-west-2 marked NotReady"
+
+      - step: detect-failure
+        status: completed
+        duration: 45s
+        message: "Monitoring detected failure, alerts triggered"
+
+      - step: initiate-failover
+        status: completed
+        duration: 1m20s
+        message: "Failover to us-east-1 initiated"
+
+      - step: restore-jobs
+        status: completed
+        duration: 9m45s
+        message: "145 jobs restored and running"
+
+      - step: verify-data
+        status: completed
+        duration: 3m20s
+        message: "All data verified, checksums match"
+
+      - step: verify-operations
+        status: completed
+        duration: 50s
+        message: "Test job completed successfully"
+
+    issues:
+      - severity: low
+        description: "RTO exceeded target by 2m15s due to slow DNS propagation"
+        recommendation: "Pre-warm DNS cache for failover targets"
+
+      - severity: low
+        description: "3 jobs experienced 30s delay in checkpoint loading"
+        recommendation: "Optimize checkpoint pre-loading strategy"
+
+  report:
+    generated: true
+    path: /reports/dr-tests/q1-2024-failover-drill.pdf
+    format: pdf
+
+---
+# CLI Usage Examples
+#
+# List DR tests:
+#   kfctl dr test list
+#
+# Output:
+# NAME                      TYPE            STATE      PASSED  DURATION  AGE
+# monthly-backup-restore    backup-restore  completed  true    15m       30d
+# quarterly-failover-drill  failover        completed  true    18m       90d
+# rpo-rto-validation        rpo-rto         completed  true    25m       15d
+# weekly-chaos-test         chaos           completed  true    8m        7d
+#
+# Run DR test:
+#   kfctl dr test run monthly-backup-restore
+#
+# View test results:
+#   kfctl dr test results quarterly-failover-drill
+#
+# Output:
+# DR Test Results: quarterly-failover-drill
+#
+# Test Type: Regional Failover
+# Status: PASSED ✓
+# Duration: 18m 30s
+#
+# Metrics:
+#   RPO Achieved: 3m 25s (Target: <5m) ✓
+#   RTO Achieved: 12m 15s (Target: <15m) ✓
+#   Data Integrity: 100% ✓
+#   Jobs Recovered: 145 / 145 (100%) ✓
+#
+# Timeline:
+#   02:00:00 - Test started
+#   02:02:30 - Failure simulated (32 nodes down)
+#   02:03:15 - Failure detected
+#   02:04:35 - Failover initiated
+#   02:14:20 - Jobs restored in target region
+#   02:17:40 - Data verification complete
+#   02:18:30 - Test completed
+#
+# Issues Found: 2 (low severity)
+#   1. DNS propagation delay (+2m15s)
+#   2. Checkpoint loading optimization needed
+#
+# Generate report:
+#   kfctl dr test report quarterly-failover-drill --format pdf
+#
+# Schedule DR test:
+#   kfctl dr test schedule monthly-backup-restore --cron "0 2 1 * *"
+#
+# Approve pending test:
+#   kfctl dr test approve annual-dr-drill
+#
+# View DR readiness score:
+#   kfctl dr readiness
+#
+# Output:
+# DR Readiness Score: 94/100 ✓
+#
+# Components:
+#   Backup System: 98/100 ✓
+#   Failover Capability: 95/100 ✓
+#   Data Replication: 100/100 ✓
+#   Monitoring: 92/100 ✓
+#   Documentation: 88/100 ⚠️
+#
+# Recent Tests:
+#   Backup/Restore: Passed (30 days ago)
+#   Failover: Passed (90 days ago)
+#   RPO/RTO: Passed (15 days ago)
+#
+# Recommendations:
+#   1. Update DR runbooks (last updated 120 days ago)
+#   2. Schedule annual full drill (due in 45 days)
+#   3. Optimize DNS failover (adds 2m to RTO)
+#
+# Run chaos test:
+#   kfctl dr chaos run --experiment pod-kill --target gpu-operator --duration 5m
+#
+# View chaos results:
+#   kfctl dr chaos results
+#
+# Output:
+# Chaos Engineering Results
+#
+# Experiment: pod-kill
+# Target: gpu-operator pods
+# Duration: 5m
+#
+# Impact:
+#   Pods killed: 3
+#   Recovery time: 45s average
+#   Jobs affected: 0
+#   Data loss: None
+#
+# Resilience Score: 95/100 ✓
+#
+# Observations:
+#   - Automatic pod restart working correctly
+#   - No job interruptions
+#   - Monitoring detected failures within 10s
+#   - Load balancer handled failover seamlessly

@@ -1,0 +1,828 @@
+---
+# Advanced Quota Management with Hierarchies
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: fabricquotapolicies.kubefabric.io
+spec:
+  group: kubefabric.io
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                # Scope of quota
+                scope:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                      enum: [organization, division, team, user, namespace]
+                    name:
+                      type: string
+
+                # Hierarchical quota
+                hierarchy:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                      default: false
+
+                    # Parent quota
+                    parentRef:
+                      type: string
+                      description: "Reference to parent quota policy"
+
+                    # Child quotas
+                    allowChildren:
+                      type: boolean
+                      default: true
+
+                    # Inherit from parent
+                    inheritLimits:
+                      type: boolean
+                      default: false
+
+                # Resource limits
+                limits:
+                  type: object
+                  properties:
+                    # GPU quotas
+                    gpu:
+                      type: object
+                      properties:
+                        # Total GPU hours per period
+                        hoursPerMonth:
+                          type: number
+
+                        # Concurrent GPU limit
+                        concurrent:
+                          type: integer
+
+                        # Per GPU type limits
+                        byType:
+                          type: object
+                          additionalProperties:
+                            type: object
+                            properties:
+                              count:
+                                type: integer
+                              hoursPerMonth:
+                                type: number
+
+                        # GPU-memory limit (in GB)
+                        memoryGB:
+                          type: number
+
+                    # Cost limits
+                    cost:
+                      type: object
+                      properties:
+                        # Monthly budget
+                        monthlyBudget:
+                          type: number
+
+                        # Quarterly budget
+                        quarterlyBudget:
+                          type: number
+
+                        # Annual budget
+                        annualBudget:
+                          type: number
+
+                        # Per-job cost limit
+                        perJobLimit:
+                          type: number
+
+                    # Storage limits
+                    storage:
+                      type: object
+                      properties:
+                        totalGB:
+                          type: number
+
+                        # By storage class
+                        byClass:
+                          type: object
+                          additionalProperties:
+                            type: number
+
+                    # Network limits
+                    network:
+                      type: object
+                      properties:
+                        # Egress per month (GB)
+                        egressGB:
+                          type: number
+
+                        # Ingress per month (GB)
+                        ingressGB:
+                          type: number
+
+                    # Job limits
+                    jobs:
+                      type: object
+                      properties:
+                        # Concurrent jobs
+                        concurrent:
+                          type: integer
+
+                        # Jobs per day
+                        perDay:
+                          type: integer
+
+                        # Jobs per month
+                        perMonth:
+                          type: integer
+
+                # Quota allocation
+                allocation:
+                  type: object
+                  properties:
+                    # How to allocate quota among children
+                    strategy:
+                      type: string
+                      enum: [equal, weighted, priority-based, dynamic]
+                      default: weighted
+
+                    # Weights for weighted allocation
+                    weights:
+                      type: object
+                      additionalProperties:
+                        type: integer
+
+                    # Allow borrowing from siblings
+                    borrowingEnabled:
+                      type: boolean
+                      default: false
+
+                    # Max borrowing percentage
+                    maxBorrowPercentage:
+                      type: integer
+                      minimum: 0
+                      maximum: 100
+                      default: 20
+
+                # Priority levels
+                priority:
+                  type: object
+                  properties:
+                    # Default priority
+                    default:
+                      type: string
+                      enum: [critical, high, normal, low, best-effort]
+                      default: normal
+
+                    # Allowed priorities
+                    allowed:
+                      type: array
+                      items:
+                        type: string
+
+                    # Priority quotas
+                    quotas:
+                      type: object
+                      additionalProperties:
+                        type: object
+                        properties:
+                          percentage:
+                            type: number
+                          minGPUs:
+                            type: integer
+
+                # Enforcement policy
+                enforcement:
+                  type: object
+                  properties:
+                    # Hard vs soft limits
+                    type:
+                      type: string
+                      enum: [hard, soft, adaptive]
+                      default: hard
+
+                    # What to do when quota exceeded
+                    onExceeded:
+                      type: string
+                      enum: [block, queue, throttle, notify]
+                      default: block
+
+                    # Grace period before enforcement
+                    gracePeriod:
+                      type: string
+
+                    # Allow bursting
+                    allowBurst:
+                      type: boolean
+                      default: false
+
+                    burstLimit:
+                      type: number
+                      description: "Percentage above quota allowed for bursting"
+
+                # Time-based quotas
+                timeBased:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                      default: false
+
+                    # Different quotas for different times
+                    schedules:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+
+                          # Time window
+                          window:
+                            type: object
+                            properties:
+                              daysOfWeek:
+                                type: array
+                                items:
+                                  type: string
+                              startTime:
+                                type: string
+                              endTime:
+                                type: string
+
+                          # Quota multiplier for this window
+                          multiplier:
+                            type: number
+                            default: 1.0
+
+                # Alerts and notifications
+                alerts:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                      default: true
+
+                    # Alert thresholds (percentage of quota)
+                    thresholds:
+                      type: array
+                      items:
+                        type: integer
+
+                    # Notification channels
+                    channels:
+                      type: array
+                      items:
+                        type: string
+                        enum: [email, slack, pagerduty, webhook]
+
+                    recipients:
+                      type: array
+                      items:
+                        type: string
+
+                # Quota request process
+                requestProcess:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                      default: true
+
+                    # Auto-approval rules
+                    autoApproval:
+                      type: object
+                      properties:
+                        enabled:
+                          type: boolean
+                          default: false
+
+                        # Max increase allowed without approval
+                        maxIncreasePercentage:
+                          type: number
+
+                    # Approval workflow
+                    approvers:
+                      type: array
+                      items:
+                        type: string
+
+                    # SLA for approval
+                    approvalSLA:
+                      type: string
+                      default: 2d
+
+            status:
+              type: object
+              properties:
+                # Current usage
+                usage:
+                  type: object
+                  properties:
+                    # GPU usage
+                    gpu:
+                      type: object
+                      properties:
+                        hoursThisMonth:
+                          type: number
+                        concurrent:
+                          type: integer
+                        byType:
+                          type: object
+                          additionalProperties:
+                            type: number
+
+                    # Cost usage
+                    cost:
+                      type: object
+                      properties:
+                        monthToDate:
+                          type: number
+                        quarterToDate:
+                          type: number
+                        yearToDate:
+                          type: number
+
+                    # Storage usage
+                    storage:
+                      type: object
+                      properties:
+                        totalGB:
+                          type: number
+                        byClass:
+                          type: object
+                          additionalProperties:
+                            type: number
+
+                    # Jobs
+                    jobs:
+                      type: object
+                      properties:
+                        concurrent:
+                          type: integer
+                        today:
+                          type: integer
+                        thisMonth:
+                          type: integer
+
+                # Utilization percentages
+                utilization:
+                  type: object
+                  properties:
+                    gpu:
+                      type: number
+                    cost:
+                      type: number
+                    storage:
+                      type: number
+
+                # Quota state
+                state:
+                  type: string
+                  enum: [under-quota, near-limit, exceeded, blocked]
+
+                # Children quotas (for hierarchical)
+                children:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      allocated:
+                        type: number
+                      used:
+                        type: number
+
+      additionalPrinterColumns:
+        - name: Scope
+          type: string
+          jsonPath: .spec.scope.name
+        - name: GPU-Limit
+          type: integer
+          jsonPath: .spec.limits.gpu.concurrent
+        - name: GPU-Used
+          type: integer
+          jsonPath: .status.usage.gpu.concurrent
+        - name: Cost-Budget
+          type: string
+          jsonPath: .spec.limits.cost.monthlyBudget
+        - name: State
+          type: string
+          jsonPath: .status.state
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+
+  scope: Cluster
+  names:
+    plural: fabricquotapolicies
+    singular: fabricquotapolicy
+    kind: FabricQuotaPolicy
+    shortNames:
+      - fquota
+
+---
+# Example: Organization-Level Quota
+apiVersion: kubefabric.io/v1
+kind: FabricQuotaPolicy
+metadata:
+  name: org-quota
+spec:
+  scope:
+    type: organization
+    name: acme-corp
+
+  hierarchy:
+    enabled: true
+    allowChildren: true
+
+  limits:
+    gpu:
+      hoursPerMonth: 100000
+      concurrent: 512
+      byType:
+        H100:
+          count: 128
+          hoursPerMonth: 25000
+        A100-80G:
+          count: 256
+          hoursPerMonth: 50000
+        V100:
+          count: 128
+          hoursPerMonth: 25000
+
+    cost:
+      monthlyBudget: 500000
+      quarterlyBudget: 1500000
+      annualBudget: 6000000
+
+    storage:
+      totalGB: 500000
+
+    jobs:
+      concurrent: 1000
+      perMonth: 10000
+
+  allocation:
+    strategy: weighted
+    borrowingEnabled: true
+    maxBorrowPercentage: 20
+
+  enforcement:
+    type: hard
+    onExceeded: block
+    allowBurst: true
+    burstLimit: 10
+
+  alerts:
+    enabled: true
+    thresholds: [75, 85, 95, 100]
+    channels: [email, slack]
+    recipients:
+      - cto@company.com
+      - finance@company.com
+
+---
+# Example: Division-Level Quota (Child of Organization)
+apiVersion: kubefabric.io/v1
+kind: FabricQuotaPolicy
+metadata:
+  name: ai-division-quota
+spec:
+  scope:
+    type: division
+    name: ai-division
+
+  hierarchy:
+    enabled: true
+    parentRef: org-quota
+    allowChildren: true
+
+  limits:
+    gpu:
+      hoursPerMonth: 60000  # 60% of org quota
+      concurrent: 300
+      byType:
+        H100:
+          count: 64
+        A100-80G:
+          count: 160
+        V100:
+          count: 76
+
+    cost:
+      monthlyBudget: 300000
+
+  allocation:
+    strategy: weighted
+    weights:
+      ml-research: 40
+      product-ml: 40
+      data-science: 20
+
+  priority:
+    quotas:
+      critical:
+        percentage: 20
+        minGPUs: 32
+      high:
+        percentage: 40
+        minGPUs: 64
+      normal:
+        percentage: 30
+        minGPUs: 48
+      low:
+        percentage: 10
+        minGPUs: 16
+
+---
+# Example: Team-Level Quota (Child of Division)
+apiVersion: kubefabric.io/v1
+kind: FabricQuotaPolicy
+metadata:
+  name: ml-research-quota
+spec:
+  scope:
+    type: team
+    name: ml-research
+
+  hierarchy:
+    enabled: true
+    parentRef: ai-division-quota
+    allowChildren: false
+
+  limits:
+    gpu:
+      hoursPerMonth: 24000  # 40% of division quota
+      concurrent: 120
+      byType:
+        H100:
+          count: 32
+        A100-80G:
+          count: 64
+        V100:
+          count: 24
+
+    cost:
+      monthlyBudget: 120000
+      perJobLimit: 10000
+
+    storage:
+      totalGB: 100000
+      byClass:
+        fast-nvme: 50000
+        standard: 50000
+
+    jobs:
+      concurrent: 50
+      perDay: 200
+      perMonth: 4000
+
+  priority:
+    default: normal
+    allowed: [critical, high, normal, low]
+
+  enforcement:
+    type: hard
+    onExceeded: queue
+    gracePeriod: 2h
+
+  timeBased:
+    enabled: true
+    schedules:
+      - name: business-hours
+        window:
+          daysOfWeek: [Mon, Tue, Wed, Thu, Fri]
+          startTime: "09:00"
+          endTime: "18:00"
+        multiplier: 1.0
+
+      - name: off-hours
+        window:
+          daysOfWeek: [Mon, Tue, Wed, Thu, Fri]
+          startTime: "18:00"
+          endTime: "09:00"
+        multiplier: 1.5  # 50% more quota during off-hours
+
+      - name: weekends
+        window:
+          daysOfWeek: [Sat, Sun]
+          startTime: "00:00"
+          endTime: "23:59"
+        multiplier: 2.0  # Double quota on weekends
+
+  alerts:
+    enabled: true
+    thresholds: [80, 90, 95]
+    channels: [email, slack]
+    recipients:
+      - ml-research-lead@company.com
+
+  requestProcess:
+    enabled: true
+    autoApproval:
+      enabled: true
+      maxIncreasePercentage: 10
+    approvers:
+      - ai-division-head@company.com
+    approvalSLA: 2d
+
+---
+# Example: User-Level Quota
+apiVersion: kubefabric.io/v1
+kind: FabricQuotaPolicy
+metadata:
+  name: alice-quota
+spec:
+  scope:
+    type: user
+    name: alice
+
+  hierarchy:
+    enabled: true
+    parentRef: ml-research-quota
+
+  limits:
+    gpu:
+      hoursPerMonth: 2000
+      concurrent: 16
+      byType:
+        A100-80G:
+          count: 16
+
+    cost:
+      monthlyBudget: 10000
+      perJobLimit: 2000
+
+    storage:
+      totalGB: 10000
+
+    jobs:
+      concurrent: 10
+      perDay: 50
+
+  enforcement:
+    type: soft
+    onExceeded: notify
+    allowBurst: true
+    burstLimit: 20
+
+---
+# Quota Request
+apiVersion: kubefabric.io/v1
+kind: FabricQuotaRequest
+metadata:
+  name: ml-research-q2-increase
+spec:
+  quotaPolicyRef: ml-research-quota
+
+  requestType: increase
+
+  # Requested changes
+  changes:
+    gpu:
+      hoursPerMonth: 36000  # +50% increase
+      concurrent: 180
+    cost:
+      monthlyBudget: 180000
+
+  # Justification
+  justification:
+    reason: "Q2 critical deadlines for 3 major research projects"
+    duration: 3 months
+    projects:
+      - name: "GPT-5 Research"
+        priority: critical
+        gpuHours: 12000
+      - name: "Vision Transformer V2"
+        priority: high
+        gpuHours: 8000
+      - name: "Multimodal Learning"
+        priority: normal
+        gpuHours: 4000
+
+  # ROI analysis
+  roi:
+    expectedPublications: 3
+    expectedPatents: 2
+    businessValue: "High - competitive advantage in LLM space"
+
+  requestedBy: alice@company.com
+  approvalDeadline: "2024-03-15"
+
+status:
+  state: pending-approval
+  submittedAt: "2024-03-01T10:00:00Z"
+  approvers:
+    - name: ai-division-head@company.com
+      status: pending
+    - name: finance@company.com
+      status: pending
+
+---
+# CLI Usage Examples
+#
+# List quota policies:
+#   kfctl quota list
+#
+# Output:
+# NAME               SCOPE        GPU-LIMIT  GPU-USED  COST-BUDGET  STATE        AGE
+# org-quota          acme-corp    512        287       $500,000     under-quota  365d
+# ai-division-quota  ai-division  300        178       $300,000     under-quota  180d
+# ml-research-quota  ml-research  120        84        $120,000     near-limit   90d
+#
+# View quota status:
+#   kfctl quota status ml-research-quota
+#
+# Output:
+# Quota Status: ml-research-quota (ML Research Team)
+#
+# GPU Usage:
+#   Concurrent: 84 / 120 (70%)
+#   Hours This Month: 16,800 / 24,000 (70%)
+#
+#   By Type:
+#     H100: 24 / 32 (75%)
+#     A100-80G: 48 / 64 (75%)
+#     V100: 12 / 24 (50%)
+#
+# Cost:
+#   Month-to-Date: $84,000 / $120,000 (70%)
+#   Quarter-to-Date: $245,000 / $360,000 (68%)
+#   Year-to-Date: $845,000 / $1,440,000 (59%)
+#
+# Storage:
+#   Total: 78,500 GB / 100,000 GB (79%)
+#   Fast NVMe: 42,000 GB / 50,000 GB (84%)
+#   Standard: 36,500 GB / 50,000 GB (73%)
+#
+# Jobs:
+#   Concurrent: 42 / 50 (84%)
+#   Today: 156 / 200 (78%)
+#   This Month: 2,845 / 4,000 (71%)
+#
+# State: near-limit ⚠️
+#
+# View hierarchical quotas:
+#   kfctl quota tree org-quota
+#
+# Output:
+# org-quota (Organization: acme-corp)
+# ├── 512 GPUs, $500k/month
+# │
+# ├── ai-division-quota (60% allocated)
+# │   ├── 300 GPUs, $300k/month
+# │   │
+# │   ├── ml-research-quota (40% of division)
+# │   │   └── 120 GPUs, $120k/month
+# │   │
+# │   ├── product-ml-quota (40% of division)
+# │   │   └── 120 GPUs, $120k/month
+# │   │
+# │   └── data-science-quota (20% of division)
+# │       └── 60 GPUs, $60k/month
+# │
+# └── infrastructure-division-quota (40% allocated)
+#     └── 200 GPUs, $200k/month
+#
+# Request quota increase:
+#   kfctl quota request-increase ml-research-quota \
+#     --gpu-hours 36000 \
+#     --budget 180000 \
+#     --reason "Q2 critical deadlines" \
+#     --duration 3months
+#
+# View quota requests:
+#   kfctl quota requests list
+#
+# Output:
+# NAME                     QUOTA            STATUS            REQUESTED      AGE
+# ml-research-q2-increase  ml-research-quota pending-approval  +50% GPU hours 5d
+#
+# Approve quota request:
+#   kfctl quota requests approve ml-research-q2-increase
+#
+# Check borrowing:
+#   kfctl quota borrowing ml-research-quota
+#
+# Output:
+# Quota Borrowing: ml-research-quota
+#
+# Borrowing Enabled: Yes
+# Max Borrow: 20%
+#
+# Current Borrowing:
+#   From product-ml-quota: 12 GPUs (10% of allocation)
+#   Borrowed Since: 2024-03-10 14:30
+#   Must Return By: 2024-03-12 14:30
+#
+# Available to Borrow:
+#   From product-ml-quota: 12 more GPUs
+#   From data-science-quota: 8 GPUs
