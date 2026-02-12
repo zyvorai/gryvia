@@ -1,0 +1,55 @@
+apiVersion: kubefabric.io/v1
+kind: FabricAIJob
+metadata:
+  name: jax-stable-diffusion-inference
+  namespace: default
+  labels:
+    team: research
+    project: image-generation
+    workload-type: inference
+spec:
+  framework: jax
+
+  resources:
+    gpuType: L40
+    gpuCount: 1
+    memory: 64Gi
+    cpu: 16
+
+  image: nvcr.io/nvidia/jax:24.01-py3
+
+  command:
+    - python
+    - inference_server.py
+    - --model=stable-diffusion-xl
+    - --port=8000
+    - --batch_size=8
+    - --max_concurrent_requests=32
+
+  env:
+    - name: JAX_PLATFORMS
+      value: cuda
+    - name: XLA_PYTHON_CLIENT_PREALLOCATE
+      value: "false"
+    - name: XLA_PYTHON_CLIENT_ALLOCATOR
+      value: platform
+
+  # Service exposure for inference
+  service:
+    type: LoadBalancer
+    ports:
+      - name: http
+        port: 8000
+        targetPort: 8000
+        protocol: TCP
+
+  volumeMounts:
+    - name: models
+      mountPath: /models
+      readOnly: true
+
+  volumes:
+    - name: models
+      persistentVolumeClaim:
+        claimName: sd-models-pvc
+        readOnly: true

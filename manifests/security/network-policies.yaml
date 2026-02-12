@@ -1,0 +1,220 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kubefabric-operators-policy
+  namespace: kubefabric
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: operator
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow metrics scraping
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: kubefabric
+        - podSelector:
+            matchLabels:
+              app: prometheus
+      ports:
+        - protocol: TCP
+          port: 8080  # Metrics port
+    # Allow webhook traffic
+    - from:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 9443  # Webhook port
+  egress:
+    # Allow Kubernetes API access
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              component: apiserver
+      ports:
+        - protocol: TCP
+          port: 443
+    # Allow DNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: kube-system
+        - podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+    # Allow Prometheus access
+    - to:
+        - podSelector:
+            matchLabels:
+              app: prometheus
+      ports:
+        - protocol: TCP
+          port: 9090
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kubefabric-web-ui-policy
+  namespace: kubefabric
+spec:
+  podSelector:
+    matchLabels:
+      app: kubefabric-ui
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow ingress traffic
+    - from:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 80
+  egress:
+    # Allow API Gateway access
+    - to:
+        - podSelector:
+            matchLabels:
+              app: kubefabric-api-gateway
+      ports:
+        - protocol: TCP
+          port: 8080
+    # Allow Kubernetes API access
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 443
+    # Allow DNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kubefabric-api-gateway-policy
+  namespace: kubefabric
+spec:
+  podSelector:
+    matchLabels:
+      app: kubefabric-api-gateway
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow Web UI traffic
+    - from:
+        - podSelector:
+            matchLabels:
+              app: kubefabric-ui
+      ports:
+        - protocol: TCP
+          port: 8080
+    # Allow external traffic (if exposed)
+    - from:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    # Allow Kubernetes API access
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 443
+    # Allow Prometheus access
+    - to:
+        - podSelector:
+            matchLabels:
+              app: prometheus
+      ports:
+        - protocol: TCP
+          port: 9090
+    # Allow DNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kubefabric-gpu-jobs-policy
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      kubefabric.io/job-type: ai-training
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow intra-job communication for distributed training
+    - from:
+        - podSelector:
+            matchLabels:
+              kubefabric.io/job-type: ai-training
+      ports:
+        - protocol: TCP
+          port: 29400  # PyTorch DDP
+        - protocol: TCP
+          port: 2222   # TensorFlow
+  egress:
+    # Allow intra-job communication
+    - to:
+        - podSelector:
+            matchLabels:
+              kubefabric.io/job-type: ai-training
+    # Allow storage access
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 111   # NFS
+        - protocol: TCP
+          port: 2049  # NFS
+        - protocol: TCP
+          port: 9000  # Object storage
+    # Allow DNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+    # Allow egress to external services (model registries, etc.)
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: kubefabric
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  # Empty ingress rules = deny all by default

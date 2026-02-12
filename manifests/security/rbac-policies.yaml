@@ -1,0 +1,152 @@
+---
+# Team Admin Role - Full access to team resources
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubefabric:team-admin
+rules:
+# Full access to FabricAIJobs
+- apiGroups: ["kubefabric.io"]
+  resources: ["fabricaijobs"]
+  verbs: ["*"]
+# Read access to quotas
+- apiGroups: ["kubefabric.io"]
+  resources: ["fabricquotas"]
+  verbs: ["get", "list", "watch"]
+# Read access to nodes
+- apiGroups: ["kubefabric.io"]
+  resources: ["fabricgpunodes"]
+  verbs: ["get", "list", "watch"]
+# Pod logs access
+- apiGroups: [""]
+  resources: ["pods", "pods/log"]
+  verbs: ["get", "list", "watch"]
+# PVC management
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims"]
+  verbs: ["get", "list", "create", "delete"]
+---
+# Team User Role - Submit and manage own jobs
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubefabric:team-user
+rules:
+# Create and manage own jobs
+- apiGroups: ["kubefabric.io"]
+  resources: ["fabricaijobs"]
+  verbs: ["get", "list", "watch", "create", "delete"]
+# Read quotas
+- apiGroups: ["kubefabric.io"]
+  resources: ["fabricquotas"]
+  verbs: ["get", "list", "watch"]
+# Read nodes
+- apiGroups: ["kubefabric.io"]
+  resources: ["fabricgpunodes"]
+  verbs: ["get", "list", "watch"]
+# View own pods
+- apiGroups: [""]
+  resources: ["pods", "pods/log"]
+  verbs: ["get", "list", "watch"]
+---
+# Team Viewer Role - Read-only access
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubefabric:team-viewer
+rules:
+# Read jobs
+- apiGroups: ["kubefabric.io"]
+  resources: ["fabricaijobs"]
+  verbs: ["get", "list", "watch"]
+# Read quotas
+- apiGroups: ["kubefabric.io"]
+  resources: ["fabricquotas"]
+  verbs: ["get", "list", "watch"]
+# Read nodes
+- apiGroups: ["kubefabric.io"]
+  resources: ["fabricgpunodes"]
+  verbs: ["get", "list", "watch"]
+# Read pods
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch"]
+---
+# Platform Admin Role - Full cluster management
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubefabric:platform-admin
+rules:
+# Full access to all KubeFabric resources
+- apiGroups: ["kubefabric.io"]
+  resources: ["*"]
+  verbs: ["*"]
+# Manage nodes
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "list", "watch", "update", "patch"]
+# Manage all pods
+- apiGroups: [""]
+  resources: ["pods", "pods/log", "pods/exec"]
+  verbs: ["*"]
+# Manage storage
+- apiGroups: [""]
+  resources: ["persistentvolumes", "persistentvolumeclaims", "storageclasses"]
+  verbs: ["*"]
+# Manage RBAC
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
+  verbs: ["*"]
+---
+# Example: Bind team-admin role to ml-research team
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ml-research-admins
+  namespace: default
+subjects:
+- kind: Group
+  name: ml-research-admins
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: kubefabric:team-admin
+  apiGroup: rbac.authorization.k8s.io
+---
+# Example: Bind team-user role to ml-research users
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ml-research-users
+  namespace: default
+subjects:
+- kind: Group
+  name: ml-research-users
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: kubefabric:team-user
+  apiGroup: rbac.authorization.k8s.io
+---
+# ServiceAccount for GPU jobs
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kubefabric-job-runner
+  namespace: default
+---
+# RoleBinding for job runner
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kubefabric-job-runner
+  namespace: default
+subjects:
+- kind: ServiceAccount
+  name: kubefabric-job-runner
+  namespace: default
+roleRef:
+  kind: ClusterRole
+  name: kubefabric:team-user
+  apiGroup: rbac.authorization.k8s.io
