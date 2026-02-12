@@ -1,0 +1,494 @@
+---
+# Resource Reservation System
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: fabricreservations.kubefabric.io
+spec:
+  group: kubefabric.io
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                # Who can use this reservation
+                owner:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                      enum: [user, team, project, namespace]
+                    name:
+                      type: string
+                  required: [type, name]
+
+                # Resources to reserve
+                resources:
+                  type: object
+                  properties:
+                    gpuType:
+                      type: string
+                    gpuCount:
+                      type: integer
+                      minimum: 1
+                    nodes:
+                      type: array
+                      items:
+                        type: string
+                      description: "Specific nodes to reserve"
+
+                # Reservation time window
+                schedule:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                      enum: [immediate, scheduled, recurring]
+
+                    # For scheduled reservations
+                    startTime:
+                      type: string
+                      format: date-time
+
+                    endTime:
+                      type: string
+                      format: date-time
+
+                    # For recurring reservations
+                    recurrence:
+                      type: object
+                      properties:
+                        cron:
+                          type: string
+                        duration:
+                          type: string
+                          description: "How long each reservation lasts"
+
+                    # Auto-extend if jobs still running
+                    autoExtend:
+                      type: boolean
+                      default: false
+
+                # Reservation guarantees
+                guarantees:
+                  type: object
+                  properties:
+                    exclusive:
+                      type: boolean
+                      default: false
+                      description: "Reserved resources are exclusive to owner"
+
+                    preemptible:
+                      type: boolean
+                      default: false
+                      description: "Can be preempted by higher priority"
+
+                    sla:
+                      type: object
+                      properties:
+                        availability:
+                          type: number
+                          description: "Guaranteed availability percentage"
+                        maxQueueTime:
+                          type: string
+                          description: "Max time to wait for reserved resources"
+
+                # Cost and billing
+                billing:
+                  type: object
+                  properties:
+                    chargeWhenIdle:
+                      type: boolean
+                      default: true
+                      description: "Charge for reserved time even if not used"
+
+                    discount:
+                      type: number
+                      minimum: 0
+                      maximum: 100
+                      description: "Discount percentage for reservations"
+
+                    prepaid:
+                      type: boolean
+                      default: false
+
+                # Notification settings
+                notifications:
+                  type: object
+                  properties:
+                    beforeExpiry:
+                      type: string
+                      description: "Notify this long before expiry (e.g., 1h)"
+
+                    onExpiry:
+                      type: boolean
+                      default: true
+
+                    onJobsFinish:
+                      type: boolean
+                      default: false
+
+            status:
+              type: object
+              properties:
+                state:
+                  type: string
+                  enum: [pending, active, expired, cancelled]
+
+                actualStartTime:
+                  type: string
+                  format: date-time
+
+                actualEndTime:
+                  type: string
+                  format: date-time
+
+                allocatedNodes:
+                  type: array
+                  items:
+                    type: string
+
+                allocatedGPUs:
+                  type: integer
+
+                utilizationMetrics:
+                  type: object
+                  properties:
+                    totalReservedTime:
+                      type: string
+                    totalUsedTime:
+                      type: string
+                    utilizationPercent:
+                      type: number
+                    jobsRun:
+                      type: integer
+
+                cost:
+                  type: object
+                  properties:
+                    totalCost:
+                      type: number
+                    usedCost:
+                      type: number
+                    wastedCost:
+                      type: number
+
+      additionalPrinterColumns:
+        - name: Owner
+          type: string
+          jsonPath: .spec.owner.name
+        - name: GPUs
+          type: string
+          jsonPath: .spec.resources.gpuCount
+        - name: GPU-Type
+          type: string
+          jsonPath: .spec.resources.gpuType
+        - name: State
+          type: string
+          jsonPath: .status.state
+        - name: Start
+          type: string
+          jsonPath: .status.actualStartTime
+        - name: End
+          type: string
+          jsonPath: .spec.schedule.endTime
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+
+  scope: Cluster
+  names:
+    plural: fabricreservations
+    singular: fabricreservation
+    kind: FabricReservation
+    shortNames:
+      - fres
+
+---
+# Example: Immediate Exclusive Reservation
+apiVersion: kubefabric.io/v1
+kind: FabricReservation
+metadata:
+  name: ml-research-reservation
+spec:
+  owner:
+    type: team
+    name: ml-research
+
+  resources:
+    gpuType: A100-80G
+    gpuCount: 32  # Reserve 32 GPUs
+
+  schedule:
+    type: immediate
+    endTime: "2024-01-25T18:00:00Z"  # 4 days
+
+  guarantees:
+    exclusive: true  # No other teams can use these GPUs
+    preemptible: false
+    sla:
+      availability: 99.9
+      maxQueueTime: 0s
+
+  billing:
+    chargeWhenIdle: true
+    discount: 15  # 15% discount for reservation
+
+  notifications:
+    beforeExpiry: 4h
+    onExpiry: true
+
+---
+# Example: Scheduled Reservation (Future)
+apiVersion: kubefabric.io/v1
+kind: FabricReservation
+metadata:
+  name: paper-deadline-reservation
+spec:
+  owner:
+    type: team
+    name: vision-team
+
+  resources:
+    gpuType: H100
+    gpuCount: 64  # Large reservation for deadline
+
+  schedule:
+    type: scheduled
+    startTime: "2024-02-01T00:00:00Z"
+    endTime: "2024-02-05T23:59:59Z"  # 5 days for deadline
+
+  guarantees:
+    exclusive: true
+    preemptible: false
+    sla:
+      availability: 99.99
+
+  billing:
+    chargeWhenIdle: true
+    discount: 20  # 20% discount for advance reservation
+    prepaid: true  # Pay upfront
+
+  notifications:
+    beforeExpiry: 12h
+
+---
+# Example: Recurring Weekly Reservation
+apiVersion: kubefabric.io/v1
+kind: FabricReservation
+metadata:
+  name: weekly-training-slot
+spec:
+  owner:
+    type: user
+    name: alice
+
+  resources:
+    gpuType: A100-80G
+    gpuCount: 8
+
+  schedule:
+    type: recurring
+    recurrence:
+      cron: "0 9 * * 1"  # Every Monday at 9 AM
+      duration: 8h  # 8-hour slots
+    autoExtend: true  # Extend if job still running
+
+  guarantees:
+    exclusive: false  # Can share if not using
+    preemptible: true  # Can be preempted for critical jobs
+
+  billing:
+    chargeWhenIdle: false  # Only charge when actually using
+    discount: 10
+
+---
+# Example: Node-Specific Reservation
+apiVersion: kubefabric.io/v1
+kind: FabricReservation
+metadata:
+  name: dgx-node-reservation
+spec:
+  owner:
+    type: project
+    name: llm-training
+
+  resources:
+    nodes:
+      - dgx-a100-1
+      - dgx-a100-2
+    # Reserves all GPUs on these specific nodes
+
+  schedule:
+    type: immediate
+    endTime: "2024-01-30T00:00:00Z"
+
+  guarantees:
+    exclusive: true
+    preemptible: false
+
+  billing:
+    chargeWhenIdle: true
+    discount: 25  # Higher discount for whole-node reservation
+
+---
+# Example: Development Reservation (Non-Exclusive)
+apiVersion: kubefabric.io/v1
+kind: FabricReservation
+metadata:
+  name: dev-team-reservation
+spec:
+  owner:
+    type: team
+    name: dev-team
+
+  resources:
+    gpuType: T4
+    gpuCount: 16
+
+  schedule:
+    type: immediate
+    endTime: "2024-02-01T00:00:00Z"
+
+  guarantees:
+    exclusive: false  # Others can use if idle
+    preemptible: true  # Can be preempted
+    sla:
+      availability: 80  # Lower SLA, lower cost
+      maxQueueTime: 15m
+
+  billing:
+    chargeWhenIdle: false
+    discount: 5
+
+---
+# Reservation Status Example
+apiVersion: kubefabric.io/v1
+kind: FabricReservation
+metadata:
+  name: ml-research-reservation
+status:
+  state: active
+
+  actualStartTime: "2024-01-21T12:00:00Z"
+  actualEndTime: null  # Still active
+
+  allocatedNodes:
+    - gpu-node-01
+    - gpu-node-02
+    - gpu-node-03
+    - gpu-node-04
+
+  allocatedGPUs: 32
+
+  utilizationMetrics:
+    totalReservedTime: 72h
+    totalUsedTime: 54h
+    utilizationPercent: 75.0
+    jobsRun: 24
+
+  cost:
+    totalCost: 51840.00  # $720/hour * 72 hours
+    usedCost: 38880.00   # $720/hour * 54 hours
+    wastedCost: 12960.00 # 25% idle time
+
+---
+# Using Reservation in Job
+apiVersion: kubefabric.io/v1
+kind: FabricAIJob
+metadata:
+  name: reserved-training
+spec:
+  framework: pytorch
+
+  # Use reservation
+  reservationRef: ml-research-reservation
+
+  resources:
+    gpuType: A100-80G
+    gpuCount: 8  # Must be within reserved amount
+
+  image: nvcr.io/nvidia/pytorch:24.01-py3
+  command: ["python", "train.py"]
+
+---
+# CLI Usage Examples
+#
+# Create reservation:
+#   kfctl reservation create my-reservation \
+#     --team ml-research \
+#     --gpu-type A100-80G \
+#     --gpu-count 32 \
+#     --duration 4d \
+#     --exclusive
+#
+# List reservations:
+#   kfctl reservation list
+#
+# Output:
+# NAME                      OWNER         GPUS  TYPE       STATE    START                END
+# ml-research-reservation   ml-research   32    A100-80G   active   2024-01-21 12:00     2024-01-25 18:00
+# paper-deadline-res        vision-team   64    H100       pending  2024-02-01 00:00     2024-02-05 23:59
+# weekly-training-slot      alice         8     A100-80G   active   2024-01-21 09:00     2024-01-21 17:00
+#
+# View reservation details:
+#   kfctl reservation describe ml-research-reservation
+#
+# Output:
+# Reservation: ml-research-reservation
+# Owner: team/ml-research
+# Status: Active
+#
+# Resources:
+#   Type: A100-80G
+#   Count: 32 GPUs
+#   Nodes: gpu-node-01, gpu-node-02, gpu-node-03, gpu-node-04
+#
+# Schedule:
+#   Type: Immediate
+#   Start: 2024-01-21 12:00:00 UTC
+#   End: 2024-01-25 18:00:00 UTC
+#   Duration: 4 days 6 hours
+#   Remaining: 3 days 2 hours
+#
+# Guarantees:
+#   Exclusive: Yes
+#   Preemptible: No
+#   SLA Availability: 99.9%
+#
+# Utilization:
+#   Reserved Time: 72 hours
+#   Used Time: 54 hours (75%)
+#   Idle Time: 18 hours (25%)
+#   Jobs Run: 24
+#
+# Cost:
+#   Total: $51,840.00
+#   Used: $38,880.00
+#   Wasted: $12,960.00
+#   Discount: 15%
+#
+# Extend reservation:
+#   kfctl reservation extend ml-research-reservation --duration 2d
+#
+# Cancel reservation:
+#   kfctl reservation cancel ml-research-reservation
+#
+# Get reservation usage report:
+#   kfctl reservation usage ml-research-reservation
+#
+# Schedule future reservation:
+#   kfctl reservation create paper-deadline \
+#     --team vision-team \
+#     --gpu-type H100 \
+#     --gpu-count 64 \
+#     --start "2024-02-01 00:00" \
+#     --end "2024-02-05 23:59" \
+#     --exclusive \
+#     --prepaid
