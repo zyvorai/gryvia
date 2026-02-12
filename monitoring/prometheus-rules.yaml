@@ -1,0 +1,276 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kubefabric-prometheus-rules
+  namespace: monitoring
+  labels:
+    app: prometheus
+data:
+  kubefabric-alerts.yaml: |
+    groups:
+    - name: kubefabric_gpu_alerts
+      interval: 30s
+      rules:
+      # GPU Temperature Alerts
+      - alert: GPUHighTemperature
+        expr: kubefabric_gpu_temperature_celsius > 85
+        for: 5m
+        labels:
+          severity: warning
+          component: gpu
+        annotations:
+          summary: "GPU {{ $labels.gpu_id }} temperature high on {{ $labels.node }}"
+          description: "GPU temperature is {{ $value }}°C (threshold: 85°C)"
+
+      - alert: GPUCriticalTemperature
+        expr: kubefabric_gpu_temperature_celsius > 90
+        for: 2m
+        labels:
+          severity: critical
+          component: gpu
+        annotations:
+          summary: "GPU {{ $labels.gpu_id }} critical temperature on {{ $labels.node }}"
+          description: "GPU temperature is {{ $value }}°C (critical threshold: 90°C)"
+
+      # GPU Utilization Alerts
+      - alert: GPULowUtilization
+        expr: kubefabric_gpu_utilization_percent < 20 and kubefabric_job_running == 1
+        for: 30m
+        labels:
+          severity: info
+          component: gpu
+        annotations:
+          summary: "Low GPU utilization on {{ $labels.node }}"
+          description: "GPU {{ $labels.gpu_id }} utilization is {{ $value }}% for 30 minutes"
+
+      - alert: GPUMemoryHigh
+        expr: (kubefabric_gpu_memory_used_bytes / kubefabric_gpu_memory_total_bytes) > 0.95
+        for: 5m
+        labels:
+          severity: warning
+          component: gpu
+        annotations:
+          summary: "GPU memory usage high on {{ $labels.node }}"
+          description: "GPU {{ $labels.gpu_id }} memory is {{ $value | humanizePercentage }} full"
+
+      # GPU Health Alerts
+      - alert: GPUUnhealthy
+        expr: kubefabric_gpu_health_status != 1
+        for: 2m
+        labels:
+          severity: critical
+          component: gpu
+        annotations:
+          summary: "GPU unhealthy on {{ $labels.node }}"
+          description: "GPU {{ $labels.gpu_id }} health check failed"
+
+      - alert: GPUNodeDown
+        expr: up{job="kubefabric-gpu-metrics"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: node
+        annotations:
+          summary: "GPU node {{ $labels.node }} is down"
+          description: "Cannot scrape GPU metrics from {{ $labels.node }}"
+
+    - name: kubefabric_job_alerts
+      interval: 30s
+      rules:
+      # Job Alerts
+      - alert: JobFailed
+        expr: kubefabric_job_failed_total > 0
+        for: 1m
+        labels:
+          severity: warning
+          component: jobs
+        annotations:
+          summary: "Job {{ $labels.job_name }} failed in namespace {{ $labels.namespace }}"
+          description: "Job has failed - check logs for details"
+
+      - alert: JobStuckPending
+        expr: kubefabric_job_pending_duration_seconds > 1800
+        for: 5m
+        labels:
+          severity: warning
+          component: jobs
+        annotations:
+          summary: "Job {{ $labels.job_name }} stuck in pending state"
+          description: "Job pending for {{ $value | humanizeDuration }}"
+
+      - alert: HighJobQueueDepth
+        expr: kubefabric_queue_depth > 10
+        for: 15m
+        labels:
+          severity: info
+          component: scheduler
+        annotations:
+          summary: "High job queue depth"
+          description: "{{ $value }} jobs queued for more than 15 minutes"
+
+      - alert: JobCompletionRatelow
+        expr: rate(kubefabric_job_completed_total[1h]) < 0.1
+        for: 30m
+        labels:
+          severity: info
+          component: jobs
+        annotations:
+          summary: "Low job completion rate"
+          description: "Only {{ $value }} jobs completed per second in the last hour"
+
+    - name: kubefabric_quota_alerts
+      interval: 60s
+      rules:
+      # Quota Alerts
+      - alert: QuotaAlmostExceeded
+        expr: (kubefabric_quota_gpus_allocated / kubefabric_quota_gpus_max) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          component: quota
+        annotations:
+          summary: "Team {{ $labels.team }} approaching GPU quota"
+          description: "{{ $value | humanizePercentage }} of GPU quota used"
+
+      - alert: QuotaExceeded
+        expr: kubefabric_quota_gpus_allocated > kubefabric_quota_gpus_max
+        for: 1m
+        labels:
+          severity: critical
+          component: quota
+        annotations:
+          summary: "Team {{ $labels.team }} exceeded GPU quota"
+          description: "Allocated {{ $labels.allocated }} GPUs, max {{ $labels.max }}"
+
+      # Budget Alerts
+      - alert: BudgetAlertThreshold
+        expr: kubefabric_budget_percent_used > kubefabric_budget_alert_threshold
+        for: 5m
+        labels:
+          severity: warning
+          component: budget
+        annotations:
+          summary: "Team {{ $labels.team }} reached budget alert threshold"
+          description: "{{ $value }}% of monthly budget used (threshold: {{ $labels.threshold }}%)"
+
+      - alert: BudgetExceeded
+        expr: kubefabric_budget_percent_used > 100
+        for: 1m
+        labels:
+          severity: critical
+          component: budget
+        annotations:
+          summary: "Team {{ $labels.team }} exceeded budget"
+          description: "Spent ${{ $labels.spent }} of ${{ $labels.budget }} budget"
+
+      - alert: BudgetProjectedOverrun
+        expr: kubefabric_budget_projected_spend > kubefabric_budget_monthly_limit
+        for: 1h
+        labels:
+          severity: warning
+          component: budget
+        annotations:
+          summary: "Team {{ $labels.team }} projected to exceed budget"
+          description: "Projected spend: ${{ $value }}, Budget: ${{ $labels.budget }}"
+
+    - name: kubefabric_storage_alerts
+      interval: 60s
+      rules:
+      # Storage Alerts
+      - alert: StorageBackendUnhealthy
+        expr: kubefabric_storage_health_status != 1
+        for: 2m
+        labels:
+          severity: critical
+          component: storage
+        annotations:
+          summary: "Storage backend {{ $labels.backend_name }} unhealthy"
+          description: "Health check failed for {{ $labels.backend_type }}"
+
+      - alert: StorageHighLatency
+        expr: kubefabric_storage_latency_ms > 100
+        for: 10m
+        labels:
+          severity: warning
+          component: storage
+        annotations:
+          summary: "High storage latency on {{ $labels.backend_name }}"
+          description: "Latency is {{ $value }}ms (threshold: 100ms)"
+
+      - alert: StorageLowThroughput
+        expr: kubefabric_storage_throughput_mbps < 1000
+        for: 15m
+        labels:
+          severity: warning
+          component: storage
+        annotations:
+          summary: "Low storage throughput on {{ $labels.backend_name }}"
+          description: "Throughput is {{ $value }}MB/s (expected: >1000MB/s)"
+
+    - name: kubefabric_network_alerts
+      interval: 60s
+      rules:
+      # Network Alerts
+      - alert: RDMADeviceDown
+        expr: kubefabric_rdma_device_status != 1
+        for: 2m
+        labels:
+          severity: critical
+          component: network
+        annotations:
+          summary: "RDMA device {{ $labels.device }} down on {{ $labels.node }}"
+          description: "RDMA device is not operational"
+
+      - alert: HighNetworkErrors
+        expr: rate(kubefabric_network_errors_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          component: network
+        annotations:
+          summary: "High network error rate on {{ $labels.node }}"
+          description: "{{ $value }} errors/second on interface {{ $labels.interface }}"
+
+      - alert: SRIOVVFExhausted
+        expr: kubefabric_sriov_vf_available == 0
+        for: 5m
+        labels:
+          severity: warning
+          component: network
+        annotations:
+          summary: "SR-IOV VFs exhausted on {{ $labels.node }}"
+          description: "No available VFs on interface {{ $labels.interface }}"
+
+    - name: kubefabric_operator_alerts
+      interval: 60s
+      rules:
+      # Operator Health
+      - alert: OperatorDown
+        expr: up{job=~"kubefabric-.*-operator"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: operator
+        annotations:
+          summary: "KubeFabric operator {{ $labels.job }} is down"
+          description: "Operator pod is not responding"
+
+      - alert: OperatorHighErrorRate
+        expr: rate(kubefabric_operator_errors_total[5m]) > 1
+        for: 5m
+        labels:
+          severity: warning
+          component: operator
+        annotations:
+          summary: "High error rate in {{ $labels.operator }} operator"
+          description: "{{ $value }} errors/second in reconciliation loop"
+
+      - alert: OperatorReconcileSlowdown
+        expr: kubefabric_operator_reconcile_duration_seconds > 10
+        for: 5m
+        labels:
+          severity: warning
+          component: operator
+        annotations:
+          summary: "Slow reconciliation in {{ $labels.operator }} operator"
+          description: "Reconciliation taking {{ $value }}s (threshold: 10s)"

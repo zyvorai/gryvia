@@ -1,0 +1,140 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kubefabric-ui
+  namespace: kubefabric
+  labels:
+    app: kubefabric-ui
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: kubefabric-ui
+  template:
+    metadata:
+      labels:
+        app: kubefabric-ui
+    spec:
+      serviceAccountName: kubefabric-ui
+      containers:
+      - name: ui
+        image: kubefabric/ui:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 80
+          name: http
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+        livenessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 101
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: nginx-cache
+          mountPath: /var/cache/nginx
+        - name: nginx-run
+          mountPath: /var/run
+        - name: nginx-tmp
+          mountPath: /tmp
+      volumes:
+      - name: nginx-cache
+        emptyDir: {}
+      - name: nginx-run
+        emptyDir: {}
+      - name: nginx-tmp
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kubefabric-ui
+  namespace: kubefabric
+  labels:
+    app: kubefabric-ui
+spec:
+  type: ClusterIP
+  selector:
+    app: kubefabric-ui
+  ports:
+  - port: 80
+    targetPort: http
+    protocol: TCP
+    name: http
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kubefabric-ui
+  namespace: kubefabric
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubefabric-ui
+rules:
+- apiGroups: ["kubefabric.io"]
+  resources: ["fabricaijobs", "fabricquotas", "fabricgpunodes", "fabricstorages", "fabricnetworks"]
+  verbs: ["get", "list", "watch", "create", "delete"]
+- apiGroups: [""]
+  resources: ["nodes", "pods"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kubefabric-ui
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kubefabric-ui
+subjects:
+- kind: ServiceAccount
+  name: kubefabric-ui
+  namespace: kubefabric
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kubefabric-ui
+  namespace: kubefabric
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - kubefabric.example.com
+    secretName: kubefabric-ui-tls
+  rules:
+  - host: kubefabric.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: kubefabric-ui
+            port:
+              number: 80

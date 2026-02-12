@@ -1,0 +1,117 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kubefabric-operators
+  namespace: monitoring
+  labels:
+    app: kubefabric
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/part-of: kubefabric
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics
+  namespaceSelector:
+    matchNames:
+    - kubefabric-system
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kubefabric-gpu-metrics
+  namespace: monitoring
+  labels:
+    app: kubefabric
+spec:
+  selector:
+    matchLabels:
+      app: dcgm-exporter
+  endpoints:
+  - port: metrics
+    interval: 15s
+    path: /metrics
+  namespaceSelector:
+    matchNames:
+    - kube-system
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gpu-operator-metrics
+  namespace: kubefabric-system
+  labels:
+    app: gpu-operator
+    app.kubernetes.io/part-of: kubefabric
+spec:
+  selector:
+    app: gpu-operator
+  ports:
+  - name: metrics
+    port: 8080
+    targetPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-operator-metrics
+  namespace: kubefabric-system
+  labels:
+    app: ai-operator
+    app.kubernetes.io/part-of: kubefabric
+spec:
+  selector:
+    app: ai-operator
+  ports:
+  - name: metrics
+    port: 8080
+    targetPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: storage-operator-metrics
+  namespace: kubefabric-system
+  labels:
+    app: storage-operator
+    app.kubernetes.io/part-of: kubefabric
+spec:
+  selector:
+    app: storage-operator
+  ports:
+  - name: metrics
+    port: 8080
+    targetPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: network-operator-metrics
+  namespace: kubefabric-system
+  labels:
+    app: network-operator
+    app.kubernetes.io/part-of: kubefabric
+spec:
+  selector:
+    app: network-operator
+  ports:
+  - name: metrics
+    port: 8080
+    targetPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: quota-operator-metrics
+  namespace: kubefabric-system
+  labels:
+    app: quota-operator
+    app.kubernetes.io/part-of: kubefabric
+spec:
+  selector:
+    app: quota-operator
+  ports:
+  - name: metrics
+    port: 8080
+    targetPort: 8080

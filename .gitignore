@@ -1,41 +1,73 @@
 # Binaries
+bin/
 *.exe
+*.exe~
 *.dll
 *.so
 *.dylib
-bin/
+
+# Test binary
 *.test
 *.out
+coverage.html
+coverage.xml
 
 # Go
-vendor/
 go.work
+vendor/
+
+# Rust
+target/
+Cargo.lock
+**/*.rs.bk
+
+# Node
+node_modules/
+dist/
+*.log
+npm-debug.log*
+.npm
+.eslintcache
+
+# Python
+__pycache__/
+*.py[cod]
+.Python
+venv/
+*.egg-info/
+.pytest_cache/
+.coverage
+
+# Terraform
+.terraform/
+*.tfstate*
+terraform.tfvars
+.terraform.lock.hcl
 
 # IDE
-.idea/
 .vscode/
+.idea/
 *.swp
-*.swo
 *~
 
 # OS
 .DS_Store
-Thumbs.db
 
 # Kubernetes
+kubeconfig
 *.kubeconfig
 
-# Terraform
-.terraform/
-*.tfstate
-*.tfstate.backup
-.terraform.lock.hcl
+# Temporary
+tmp/
+*.tmp
 
-# Build artifacts
-dist/
+# Build
 build/
 _output/
 
-# Helm
-*.tgz
-charts/*/charts/
+# Secrets
+*.key
+*.pem
+*.crt
+secrets/
+.env

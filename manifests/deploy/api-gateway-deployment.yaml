@@ -1,0 +1,116 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kubefabric-api-gateway
+  namespace: kubefabric
+  labels:
+    app: kubefabric-api-gateway
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: kubefabric-api-gateway
+  template:
+    metadata:
+      labels:
+        app: kubefabric-api-gateway
+    spec:
+      serviceAccountName: kubefabric-api-gateway
+      containers:
+      - name: api-gateway
+        image: kubefabric/api-gateway:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: PROMETHEUS_URL
+          value: "http://prometheus-operated.kubefabric:9090"
+        - name: KUBERNETES_NAMESPACE
+          value: "default"
+        - name: LOG_LEVEL
+          value: "INFO"
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kubefabric-api-gateway
+  namespace: kubefabric
+  labels:
+    app: kubefabric-api-gateway
+spec:
+  type: ClusterIP
+  selector:
+    app: kubefabric-api-gateway
+  ports:
+  - port: 8080
+    targetPort: http
+    protocol: TCP
+    name: http
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kubefabric-api-gateway
+  namespace: kubefabric
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubefabric-api-gateway
+rules:
+- apiGroups: ["kubefabric.io"]
+  resources: ["fabricaijobs", "fabricquotas", "fabricgpunodes", "fabricstorages", "fabricnetworks"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["nodes", "pods", "namespaces"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["services", "endpoints"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kubefabric-api-gateway
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kubefabric-api-gateway
+subjects:
+- kind: ServiceAccount
+  name: kubefabric-api-gateway
+  namespace: kubefabric

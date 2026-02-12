@@ -1,0 +1,267 @@
+{
+  "dashboard": {
+    "title": "KubeFabric - Team Quotas & Budgets",
+    "tags": ["kubefabric", "quotas", "budgets"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 1,
+    "refresh": "1m",
+    "panels": [
+      {
+        "title": "GPU Quota Usage by Team",
+        "type": "bargauge",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+        "targets": [
+          {
+            "expr": "(kubefabric_quota_gpus_allocated / kubefabric_quota_gpus_max) * 100",
+            "legendFormat": "{{team}}"
+          }
+        ],
+        "options": {
+          "orientation": "horizontal",
+          "displayMode": "gradient",
+          "showUnfilled": true
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "min": 0,
+            "max": 100,
+            "thresholds": {
+              "mode": "percentage",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 70, "color": "yellow"},
+                {"value": 90, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "title": "Budget Usage by Team",
+        "type": "bargauge",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+        "targets": [
+          {
+            "expr": "kubefabric_budget_percent_used",
+            "legendFormat": "{{team}}"
+          }
+        ],
+        "options": {
+          "orientation": "horizontal",
+          "displayMode": "gradient",
+          "showUnfilled": true
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "min": 0,
+            "max": 100,
+            "thresholds": {
+              "mode": "percentage",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 75, "color": "yellow"},
+                {"value": 90, "color": "orange"},
+                {"value": 100, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "title": "GPU Allocation Details",
+        "type": "table",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+        "targets": [
+          {
+            "expr": "kubefabric_quota_gpus_allocated",
+            "format": "table",
+            "instant": true
+          },
+          {
+            "expr": "kubefabric_quota_gpus_max",
+            "format": "table",
+            "instant": true
+          },
+          {
+            "expr": "kubefabric_quota_running_jobs",
+            "format": "table",
+            "instant": true
+          },
+          {
+            "expr": "kubefabric_quota_queued_jobs",
+            "format": "table",
+            "instant": true
+          }
+        ],
+        "transformations": [
+          {
+            "id": "merge"
+          },
+          {
+            "id": "organize",
+            "options": {
+              "renameByName": {
+                "team": "Team",
+                "Value #A": "Allocated GPUs",
+                "Value #B": "Max GPUs",
+                "Value #C": "Running Jobs",
+                "Value #D": "Queued Jobs"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "title": "Budget Status",
+        "type": "table",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+        "targets": [
+          {
+            "expr": "kubefabric_budget_spent_month",
+            "format": "table",
+            "instant": true
+          },
+          {
+            "expr": "kubefabric_budget_monthly_limit",
+            "format": "table",
+            "instant": true
+          },
+          {
+            "expr": "kubefabric_budget_remaining",
+            "format": "table",
+            "instant": true
+          },
+          {
+            "expr": "kubefabric_budget_projected_spend",
+            "format": "table",
+            "instant": true
+          }
+        ],
+        "transformations": [
+          {
+            "id": "merge"
+          },
+          {
+            "id": "organize",
+            "options": {
+              "renameByName": {
+                "team": "Team",
+                "Value #A": "Spent ($)",
+                "Value #B": "Budget ($)",
+                "Value #C": "Remaining ($)",
+                "Value #D": "Projected ($)"
+              }
+            }
+          }
+        ],
+        "fieldConfig": {
+          "overrides": [
+            {
+              "matcher": {"id": "byName", "options": "Spent ($)"},
+              "properties": [{"id": "unit", "value": "currencyUSD"}]
+            },
+            {
+              "matcher": {"id": "byName", "options": "Budget ($)"},
+              "properties": [{"id": "unit", "value": "currencyUSD"}]
+            },
+            {
+              "matcher": {"id": "byName", "options": "Remaining ($)"},
+              "properties": [{"id": "unit", "value": "currencyUSD"}]
+            },
+            {
+              "matcher": {"id": "byName", "options": "Projected ($)"},
+              "properties": [{"id": "unit", "value": "currencyUSD"}]
+            }
+          ]
+        }
+      },
+      {
+        "title": "GPU Hours by Team",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+        "targets": [
+          {
+            "expr": "kubefabric_quota_gpu_hours",
+            "legendFormat": "{{team}}"
+          }
+        ],
+        "yaxes": [
+          {"format": "short", "label": "GPU Hours", "min": 0},
+          {"format": "short"}
+        ],
+        "lines": true,
+        "fill": 1,
+        "stack": false
+      },
+      {
+        "title": "Budget Burn Rate",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+        "targets": [
+          {
+            "expr": "rate(kubefabric_budget_spent_month[1h]) * 3600",
+            "legendFormat": "{{team}} - $/hour"
+          }
+        ],
+        "yaxes": [
+          {"format": "currencyUSD", "label": "$/hour", "min": 0},
+          {"format": "short"}
+        ],
+        "lines": true,
+        "fill": 1
+      },
+      {
+        "title": "Running Jobs by Team",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+        "targets": [
+          {
+            "expr": "kubefabric_quota_running_jobs",
+            "legendFormat": "{{team}}"
+          }
+        ],
+        "yaxes": [
+          {"format": "short", "label": "Jobs", "min": 0},
+          {"format": "short"}
+        ],
+        "lines": true,
+        "fill": 1,
+        "stack": true
+      },
+      {
+        "title": "Queue Depth by Team",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
+        "targets": [
+          {
+            "expr": "kubefabric_quota_queued_jobs",
+            "legendFormat": "{{team}}"
+          }
+        ],
+        "yaxes": [
+          {"format": "short", "label": "Queued Jobs", "min": 0},
+          {"format": "short"}
+        ],
+        "lines": true,
+        "fill": 1,
+        "stack": true,
+        "alert": {
+          "conditions": [
+            {
+              "evaluator": {"params": [10], "type": "gt"},
+              "operator": {"type": "and"},
+              "query": {"params": ["A", "5m", "now"]},
+              "reducer": {"params": [], "type": "avg"},
+              "type": "query"
+            }
+          ],
+          "name": "High Queue Depth",
+          "message": "Queue depth exceeds 10 jobs"
+        }
+      }
+    ]
+  }
+}

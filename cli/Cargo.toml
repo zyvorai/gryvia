@@ -1,0 +1,42 @@
+[package]
+name = "kubefabric"
+version = "1.0.0"
+edition = "2021"
+authors = ["KubeFabric Contributors"]
+description = "CLI for managing KubeFabric GPU clusters"
+license = "Apache-2.0"
+repository = "https://github.com/ssahani/kube-fabric"
+
+[[bin]]
+name = "kubefabric"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.4", features = ["derive", "color", "suggestions"] }
+tokio = { version = "1.35", features = ["full"] }
+kube = { version = "0.87", features = ["runtime", "derive"] }
+k8s-openapi = { version = "0.20", features = ["v1_28"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+anyhow = "1.0"
+thiserror = "1.0"
+colored = "2.1"
+prettytable-rs = "0.10"
+chrono = { version = "0.4", features = ["serde"] }
+indicatif = "0.17"
+dialoguer = "0.11"
+reqwest = { version = "0.11", features = ["json"] }
+futures = "0.3"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+assert_cmd = "2.0"
+predicates = "3.0"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

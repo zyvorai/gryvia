@@ -1,0 +1,69 @@
+name: Helm Charts
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'helm/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'helm/**'
+
+jobs:
+  lint-test:
+    name: Lint and Test Helm Charts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: 'latest'
+
+      - name: Set up chart-testing
+        uses: helm/chart-testing-action@v2
+
+      - name: Run chart-testing (lint)
+        run: ct lint --config .github/ct.yaml --all
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+
+      - name: Run chart-testing (install)
+        run: ct install --config .github/ct.yaml --all
+
+  package:
+    name: Package Helm Charts
+    runs-on: ubuntu-latest
+    needs: lint-test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: 'latest'
+
+      - name: Package charts
+        run: |
+          mkdir -p .helm-repo
+          for chart in helm/*/; do
+            helm package "$chart" -d .helm-repo
+          done
+
+      - name: Generate index
+        run: |
+          helm repo index .helm-repo --url https://${{ github.repository_owner }}.github.io/kube-fabric
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: .helm-repo
