@@ -71,6 +71,31 @@ networkOperator:
       cpu: 50m
       memory: 64Mi
 
+# Quota Operator configuration
+quotaOperator:
+  enabled: true
+  image:
+    repository: kubefabric/quota-operator
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  replicas: 1
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  # Default GPU pricing (USD per hour)
+  pricing:
+    H100: 8.00
+    A100-80G: 4.00
+    A100-40G: 3.00
+    L40: 2.50
+    A10: 1.50
+    V100: 2.00
+    T4: 0.75
+
 # NVIDIA GPU device plugin
 nvidiaDevicePlugin:
   enabled: true

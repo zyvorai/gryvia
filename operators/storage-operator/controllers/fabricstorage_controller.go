@@ -1,0 +1,315 @@
+package controllers
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/go-logr/logr"
+	storagev1 "k8s.io/api/storage/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+
+	kubefabricv1 "github.com/yourusername/kubefabric/operators/storage-operator/api/v1"
+	"github.com/yourusername/kubefabric/operators/storage-operator/pkg/vast"
+	"github.com/yourusername/kubefabric/operators/storage-operator/pkg/weka"
+	"github.com/yourusername/kubefabric/operators/storage-operator/pkg/ddn"
+)
+
+const (
+	storageFinalizer = "kubefabric.ai/storage-finalizer"
+
+	PhasePending     = "Pending"
+	PhaseConfiguring = "Configuring"
+	PhaseReady       = "Ready"
+	PhaseDegraded    = "Degraded"
+	PhaseFailed      = "Failed"
+
+	ConditionCSIInstalled      = "CSIInstalled"
+	ConditionStorageClassReady = "StorageClassReady"
+	ConditionHealthy           = "Healthy"
+)
+
+type FabricStorageReconciler struct {
+	client.Client
+	Scheme *runtime.Scheme
+	Log    logr.Logger
+}
+
+//+kubebuilder:rbac:groups=kubefabric.ai,resources=fabricstorages,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=kubefabric.ai,resources=fabricstorages/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=kubefabric.ai,resources=fabricstorages/finalizers,verbs=update
+//+kubebuilder:rbac:groups=storage.k8s.io,resources=storageclasses,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups="",resources=persistentvolumes,verbs=get;list;watch;create;update;patch;delete
+
+func (r *FabricStorageReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := r.Log.WithValues("fabricstorage", req.NamespacedName)
+
+	storage := &kubefabricv1.FabricStorage{}
+	err := r.Get(ctx, req.NamespacedName, storage)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			log.Info("FabricStorage resource not found")
+			return ctrl.Result{}, nil
+		}
+		log.Error(err, "Failed to get FabricStorage")
+		return ctrl.Result{}, err
+	}
+
+	// Handle deletion
+	if !storage.ObjectMeta.DeletionTimestamp.IsZero() {
+		return r.handleDeletion(ctx, storage)
+	}
+
+	// Add finalizer
+	if !controllerutil.ContainsFinalizer(storage, storageFinalizer) {
+		controllerutil.AddFinalizer(storage, storageFinalizer)
+		if err := r.Update(ctx, storage); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
+	// Initialize status
+	if storage.Status.Phase == "" {
+		storage.Status.Phase = PhasePending
+		if err := r.Status().Update(ctx, storage); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
+	// Reconcile storage
+	result, err := r.reconcileStorage(ctx, storage)
+	if err != nil {
+		log.Error(err, "Failed to reconcile storage")
+		return result, err
+	}
+
+	return ctrl.Result{RequeueAfter: 60 * time.Second}, nil
+}
+
+func (r *FabricStorageReconciler) reconcileStorage(ctx context.Context, storage *kubefabricv1.FabricStorage) (ctrl.Result, error) {
+	log := r.Log.WithValues("fabricstorage", storage.Name)
+
+	storage.Status.Phase = PhaseConfiguring
+
+	// Step 1: Install CSI Driver based on backend
+	if err := r.ensureCSIDriver(ctx, storage); err != nil {
+		log.Error(err, "Failed to ensure CSI driver")
+		r.updateCondition(storage, ConditionCSIInstalled, metav1.ConditionFalse, "InstallFailed", err.Error())
+		storage.Status.Phase = PhaseFailed
+		r.Status().Update(ctx, storage)
+		return ctrl.Result{RequeueAfter: 5 * time.Minute}, err
+	}
+
+	storage.Status.CSIDriverInstalled = true
+	r.updateCondition(storage, ConditionCSIInstalled, metav1.ConditionTrue, "Installed", "CSI driver installed successfully")
+
+	// Step 2: Create StorageClass
+	if err := r.ensureStorageClass(ctx, storage); err != nil {
+		log.Error(err, "Failed to ensure StorageClass")
+		r.updateCondition(storage, ConditionStorageClassReady, metav1.ConditionFalse, "CreateFailed", err.Error())
+		storage.Status.Phase = PhaseDegraded
+		r.Status().Update(ctx, storage)
+		return ctrl.Result{RequeueAfter: 1 * time.Minute}, err
+	}
+
+	storage.Status.StorageClassCreated = true
+	r.updateCondition(storage, ConditionStorageClassReady, metav1.ConditionTrue, "Created", "StorageClass created successfully")
+
+	// Step 3: Health check storage backend
+	if err := r.healthCheckStorage(ctx, storage); err != nil {
+		log.Error(err, "Storage health check failed")
+		r.updateCondition(storage, ConditionHealthy, metav1.ConditionFalse, "Unhealthy", err.Error())
+		storage.Status.Phase = PhaseDegraded
+	} else {
+		r.updateCondition(storage, ConditionHealthy, metav1.ConditionTrue, "Healthy", "Storage is healthy")
+		storage.Status.Phase = PhaseReady
+	}
+
+	// Update last health check time
+	now := metav1.Now()
+	storage.Status.LastHealthCheck = &now
+
+	// Update status
+	if err := r.Status().Update(ctx, storage); err != nil {
+		log.Error(err, "Failed to update status")
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{}, nil
+}
+
+func (r *FabricStorageReconciler) ensureCSIDriver(ctx context.Context, storage *kubefabricv1.FabricStorage) error {
+	log := r.Log.WithValues("backend", storage.Spec.Backend)
+
+	switch storage.Spec.Backend {
+	case "vast":
+		return vast.InstallCSIDriver(ctx, r.Client, storage)
+	case "weka":
+		return weka.InstallCSIDriver(ctx, r.Client, storage)
+	case "ddn":
+		return ddn.InstallCSIDriver(ctx, r.Client, storage)
+	case "lustre":
+		log.Info("Lustre CSI driver installation not yet implemented")
+		return nil
+	case "ceph":
+		log.Info("Ceph CSI driver installation not yet implemented")
+		return nil
+	default:
+		return fmt.Errorf("unsupported storage backend: %s", storage.Spec.Backend)
+	}
+}
+
+func (r *FabricStorageReconciler) ensureStorageClass(ctx context.Context, storage *kubefabricv1.FabricStorage) error {
+	scName := storage.Spec.StorageClass.Name
+	if scName == "" {
+		scName = fmt.Sprintf("%s-%s", storage.Spec.Backend, storage.Name)
+	}
+
+	sc := &storagev1.StorageClass{}
+	err := r.Get(ctx, types.NamespacedName{Name: scName}, sc)
+	if err != nil && errors.IsNotFound(err) {
+		// Create StorageClass
+		sc = r.buildStorageClass(storage, scName)
+		if err := r.Create(ctx, sc); err != nil {
+			return err
+		}
+		r.Log.Info("Created StorageClass", "name", scName)
+	}
+
+	return nil
+}
+
+func (r *FabricStorageReconciler) buildStorageClass(storage *kubefabricv1.FabricStorage, name string) *storagev1.StorageClass {
+	reclaimPolicy := storagev1.PersistentVolumeReclaimDelete
+	if storage.Spec.StorageClass.ReclaimPolicy == "Retain" {
+		reclaimPolicy = storagev1.PersistentVolumeReclaimRetain
+	}
+
+	volumeBindingMode := storagev1.VolumeBindingWaitForFirstConsumer
+	if storage.Spec.StorageClass.VolumeBindingMode == "Immediate" {
+		volumeBindingMode = storagev1.VolumeBindingImmediate
+	}
+
+	allowExpansion := true
+	if storage.Spec.StorageClass != nil {
+		allowExpansion = storage.Spec.StorageClass.AllowVolumeExpansion
+	}
+
+	provisioner := r.getProvisioner(storage.Spec.Backend)
+
+	parameters := make(map[string]string)
+	if storage.Spec.StorageClass != nil && storage.Spec.StorageClass.Parameters != nil {
+		parameters = storage.Spec.StorageClass.Parameters
+	}
+
+	// Add backend-specific parameters
+	parameters["backend"] = storage.Spec.Backend
+	parameters["endpoint"] = storage.Spec.Endpoint
+	if storage.Spec.RDMA {
+		parameters["rdma"] = "true"
+	}
+
+	return &storagev1.StorageClass{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+			Labels: map[string]string{
+				"kubefabric.ai/storage": storage.Name,
+				"kubefabric.ai/backend": storage.Spec.Backend,
+			},
+		},
+		Provisioner:          provisioner,
+		ReclaimPolicy:        &reclaimPolicy,
+		VolumeBindingMode:    &volumeBindingMode,
+		AllowVolumeExpansion: &allowExpansion,
+		Parameters:           parameters,
+	}
+}
+
+func (r *FabricStorageReconciler) getProvisioner(backend string) string {
+	switch backend {
+	case "vast":
+		return "csi.vastdata.com"
+	case "weka":
+		return "csi.weka.io"
+	case "ddn":
+		return "csi.ddn.com"
+	case "lustre":
+		return "csi.lustre.org"
+	case "ceph":
+		return "rook-ceph.cephfs.csi.ceph.com"
+	default:
+		return "kubernetes.io/no-provisioner"
+	}
+}
+
+func (r *FabricStorageReconciler) healthCheckStorage(ctx context.Context, storage *kubefabricv1.FabricStorage) error {
+	switch storage.Spec.Backend {
+	case "vast":
+		return vast.HealthCheck(storage.Spec.Endpoint)
+	case "weka":
+		return weka.HealthCheck(storage.Spec.Endpoint)
+	case "ddn":
+		return ddn.HealthCheck(storage.Spec.Endpoint)
+	default:
+		r.Log.Info("Health check not implemented for backend", "backend", storage.Spec.Backend)
+		return nil
+	}
+}
+
+func (r *FabricStorageReconciler) handleDeletion(ctx context.Context, storage *kubefabricv1.FabricStorage) (ctrl.Result, error) {
+	if controllerutil.ContainsFinalizer(storage, storageFinalizer) {
+		// Cleanup: delete StorageClass
+		scName := storage.Spec.StorageClass.Name
+		if scName == "" {
+			scName = fmt.Sprintf("%s-%s", storage.Spec.Backend, storage.Name)
+		}
+
+		sc := &storagev1.StorageClass{}
+		err := r.Get(ctx, types.NamespacedName{Name: scName}, sc)
+		if err == nil {
+			r.Delete(ctx, sc)
+		}
+
+		// Remove finalizer
+		controllerutil.RemoveFinalizer(storage, storageFinalizer)
+		if err := r.Update(ctx, storage); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+	return ctrl.Result{}, nil
+}
+
+func (r *FabricStorageReconciler) updateCondition(storage *kubefabricv1.FabricStorage, condType string, status metav1.ConditionStatus, reason, message string) {
+	condition := metav1.Condition{
+		Type:               condType,
+		Status:             status,
+		Reason:             reason,
+		Message:            message,
+		LastTransitionTime: metav1.Now(),
+	}
+
+	found := false
+	for i, cond := range storage.Status.Conditions {
+		if cond.Type == condType {
+			storage.Status.Conditions[i] = condition
+			found = true
+			break
+		}
+	}
+	if !found {
+		storage.Status.Conditions = append(storage.Status.Conditions, condition)
+	}
+}
+
+func (r *FabricStorageReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&kubefabricv1.FabricStorage{}).
+		Owns(&storagev1.StorageClass{}).
+		Complete(r)
+}

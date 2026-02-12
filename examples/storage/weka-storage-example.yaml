@@ -1,0 +1,30 @@
+apiVersion: kubefabric.io/v1
+kind: FabricStorage
+metadata:
+  name: weka-cluster
+spec:
+  backendType: weka
+  endpoint: weka-api.example.com
+  capacity: 500Ti
+  nodeSelector:
+    kubefabric.io/storage: "true"
+  credentials:
+    secretName: weka-credentials
+    secretNamespace: kubefabric-system
+  config:
+    filesystemName: default
+    mountOptions:
+      - "rw"
+      - "noatime"
+    csiDriverVersion: "latest"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: weka-credentials
+  namespace: kubefabric-system
+type: Opaque
+stringData:
+  username: admin
+  password: changeme
+  organization: default

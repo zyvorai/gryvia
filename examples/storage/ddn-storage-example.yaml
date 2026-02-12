@@ -1,0 +1,30 @@
+apiVersion: kubefabric.io/v1
+kind: FabricStorage
+metadata:
+  name: ddn-exascaler
+spec:
+  backendType: ddn
+  endpoint: ddn-mgmt.example.com
+  capacity: 1Pi
+  nodeSelector:
+    kubefabric.io/storage: "true"
+  credentials:
+    secretName: ddn-credentials
+    secretNamespace: kubefabric-system
+  config:
+    filesystemName: lustre-fs1
+    mgsNodes: mgs1.example.com,mgs2.example.com
+    mountOptions:
+      - "rw"
+      - "flock"
+      - "localflock"
+    csiDriverVersion: "latest"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ddn-credentials
+  namespace: kubefabric-system
+type: Opaque
+stringData:
+  api-key: your-api-key-here
