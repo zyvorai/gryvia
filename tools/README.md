@@ -162,6 +162,122 @@ Safe KubeFabric version upgrades with automatic backup.
 - Zero-downtime upgrades
 - Automatic rollback on failure
 
+### 5. GPU Profiler (profiler.py)
+
+Analyzes GPU utilization and provides optimization recommendations.
+
+**Usage:**
+```bash
+# Upgrade to latest version
+./tools/upgrade.sh
+
+# Upgrade to specific version
+./tools/upgrade.sh --version 1.1.0
+
+# Upgrade specific namespace
+./tools/upgrade.sh --version 1.1.0 --namespace production
+
+# Skip backup (not recommended)
+./tools/upgrade.sh --skip-backup
+
+# Dry run (show what would be upgraded)
+./tools/upgrade.sh --dry-run
+```
+
+**Upgrade Process:**
+1. Pre-upgrade checks (running jobs, pod health)
+2. Automatic backup
+3. CRD upgrades
+4. Operator upgrades (rolling deployment)
+5. Web UI/API Gateway upgrades
+6. Post-upgrade verification
+
+**Supports:**
+- Helm deployments
+- Manual deployments
+- Zero-downtime upgrades
+- Automatic rollback on failure
+
+### 5. GPU Profiler (profiler.py)
+
+Analyzes GPU utilization and provides optimization recommendations.
+
+**Usage:**
+```bash
+# Profile specific job
+python3 tools/profiler.py --job pytorch-training \
+  --gpu-type A100-80G \
+  --gpu-count 8
+
+# Profile all jobs
+python3 tools/profiler.py --all
+
+# Profile jobs in specific namespace
+python3 tools/profiler.py --all --namespace ml-research
+
+# Save results to JSON
+python3 tools/profiler.py --job my-job --output report.json
+```
+
+**Analysis:**
+- GPU utilization patterns
+- Memory usage efficiency
+- Compute vs memory bottlenecks
+- Cost optimization opportunities
+- Performance recommendations
+
+**Recommendations:**
+- Batch size adjustments
+- GPU type optimization
+- Data loading improvements
+- Memory optimization techniques
+- Cost-saving opportunities
+
+**Example Output:**
+```
+╔════════════════════════════════════════════════════════════════╗
+║          KubeFabric GPU Profiler                              ║
+╚════════════════════════════════════════════════════════════════╝
+
+📊 UTILIZATION SUMMARY
+──────────────────────────────────────────────────────────────────
+Efficiency Score:       45.5/100
+GPU Utilization:        42.3%
+GPU Memory Usage:       28.7%
+Runtime:                4.25 hours
+
+⚠️  ISSUES DETECTED
+──────────────────────────────────────────────────────────────────
+[HIGH] Low GPU utilization: 42.3%
+[MEDIUM] Low GPU memory usage: 28.7%
+
+💡 RECOMMENDATIONS
+──────────────────────────────────────────────────────────────────
+[HIGH] Increase Batch Size
+  Category: performance
+  Low GPU utilization indicates underutilization. Increase batch size.
+  Action: Try increasing batch size by 50-100%
+  Expected Impact: 30-50% improvement in GPU utilization
+
+[MEDIUM] Use Smaller GPU Type
+  Category: cost
+  Memory usage is only 28.7%. You may be overpaying for GPU capacity.
+  Action: Consider switching to A100-40G instead of A100-80G
+  Expected Impact: 40-50% cost reduction
+
+💰 COST ANALYSIS
+──────────────────────────────────────────────────────────────────
+Current Cost:           $816.00
+
+Potential Savings:
+  • Use Smaller GPU Type
+    $408.00 (50.0%)
+  • Improve GPU utilization to 80%+
+    $204.00 (25.0%)
+
+Total Potential Savings: $612.00
+```
+
 ## Installation
 
 ### Local Installation

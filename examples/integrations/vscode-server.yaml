@@ -1,0 +1,139 @@
+---
+# VSCode Server with GPU Access
+apiVersion: kubefabric.io/v1
+kind: FabricAIJob
+metadata:
+  name: vscode-gpu
+  namespace: default
+  labels:
+    app: vscode-server
+    team: ml-research
+spec:
+  framework: pytorch
+  resources:
+    gpuType: A100-80G
+    gpuCount: 1
+    memory: 64Gi
+    cpu: 16
+  image: codercom/code-server:4.20.0
+  command:
+    - /bin/sh
+    - -c
+    - |
+      # Install CUDA toolkit awareness
+      pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+      pip install transformers accelerate bitsandbytes
+      pip install jupyter ipykernel
+      pip install mlflow
+
+      # Start code-server
+      code-server \
+        --bind-addr=0.0.0.0:8080 \
+        --auth=password \
+        --disable-telemetry \
+        --disable-update-check \
+        /workspace
+  env:
+    - name: PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: vscode-secret
+          key: password
+    - name: MLFLOW_TRACKING_URI
+      value: "http://mlflow.kubefabric.svc.cluster.local:5000"
+    - name: CUDA_VISIBLE_DEVICES
+      value: "0"
+  ports:
+    - containerPort: 8080
+      name: http
+  volumeMounts:
+    - name: workspace
+      mountPath: /workspace
+    - name: config
+      mountPath: /home/coder/.config/code-server
+  volumes:
+    - name: workspace
+      persistentVolumeClaim:
+        claimName: vscode-workspace
+    - name: config
+      emptyDir: {}
+  livenessProbe:
+    httpGet:
+      path: /healthz
+      port: 8080
+    initialDelaySeconds: 60
+    periodSeconds: 30
+  readinessProbe:
+    httpGet:
+      path: /healthz
+      port: 8080
+    initialDelaySeconds: 30
+    periodSeconds: 10
+
+---
+# VSCode Workspace PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: vscode-workspace
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: vast-sc
+  resources:
+    requests:
+      storage: 200Gi
+
+---
+# VSCode Secret
+apiVersion: v1
+kind: Secret
+metadata:
+  name: vscode-secret
+  namespace: default
+type: Opaque
+stringData:
+  password: "changeme123"  # Change in production
+
+---
+# VSCode Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: vscode-gpu
+  namespace: default
+spec:
+  type: ClusterIP
+  selector:
+    job-name: vscode-gpu
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: http
+
+---
+# VSCode Ingress (optional)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: vscode-gpu
+  namespace: default
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/websocket-services: vscode-gpu
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: vscode.kubefabric.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: vscode-gpu
+                port:
+                  number: 8080
