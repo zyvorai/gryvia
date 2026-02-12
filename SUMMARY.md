@@ -2,12 +2,12 @@
 
 ## 🎯 Project Overview
 
-**KubeFabric** is an enterprise-grade GPU compute platform for AI infrastructure, built from scratch over 16 development iterations.
+**KubeFabric** is an enterprise-grade GPU compute platform for AI infrastructure, built from scratch over 18 development iterations.
 
 ### Stats
-- **Total Commits**: 16
-- **Total Files**: 215+
-- **Lines of Code**: ~53,000+
+- **Total Commits**: 18
+- **Total Files**: 220+
+- **Lines of Code**: ~56,000+
 - **Development Time**: Progressive iterations
 - **License**: Apache 2.0
 
@@ -389,6 +389,16 @@ RESTful API (~2,000 LOC):
 - Compliance and governance features
 - Advanced features documentation guide
 
+### Iteration 17 (Commit 17)
+- SUMMARY.md update for iteration 16
+
+### Iteration 18 (Commit 18)
+- Job lifecycle hooks system (11 triggers)
+- Dataset management and versioning
+- Advanced GPU sharing (time-slicing, fractional, MIG)
+- Custom metrics framework
+- External integrations guide (W&B, MLflow, Neptune, etc.)
+
 ## 🎯 Production Readiness
 
 ### Checklist
@@ -426,4 +436,4 @@ KubeFabric is a complete, production-ready platform for managing GPU compute inf
 
 ---
 
-Built with ❤️ over 16 development iterations
+Built with ❤️ over 18 development iterations
