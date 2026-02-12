@@ -1,0 +1,75 @@
+{{- if .Values.gpuOperator.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kubefabric.fullname" . }}-gpu-operator
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kubefabric.gpuOperator.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.gpuOperator.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "kubefabric.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: gpu-operator
+  template:
+    metadata:
+      labels:
+        {{- include "kubefabric.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: gpu-operator
+    spec:
+      {{- include "kubefabric.imagePullSecrets" . | nindent 6 }}
+      serviceAccountName: {{ include "kubefabric.fullname" . }}-gpu-operator
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+      containers:
+      - name: manager
+        image: "{{ .Values.global.imageRegistry }}/{{ .Values.gpuOperator.image.repository }}:{{ .Values.gpuOperator.image.tag }}"
+        imagePullPolicy: {{ .Values.gpuOperator.image.pullPolicy }}
+        command:
+          - /manager
+        args:
+          - --leader-elect={{ .Values.highAvailability.enabled }}
+          - --metrics-bind-address=:8080
+          - --health-probe-bind-address=:8081
+          - --log-level={{ .Values.logging.level }}
+        ports:
+          - name: metrics
+            containerPort: 8080
+            protocol: TCP
+          - name: health
+            containerPort: 8081
+            protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: health
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: health
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          {{- toYaml .Values.gpuOperator.resources | nindent 10 }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+      {{- with .Values.gpuOperator.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.gpuOperator.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.gpuOperator.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

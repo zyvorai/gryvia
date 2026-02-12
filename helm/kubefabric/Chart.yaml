@@ -1,0 +1,46 @@
+apiVersion: v2
+name: kubefabric
+description: Enterprise GPU Compute Platform for AI Infrastructure
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+kubeVersion: ">=1.28.0"
+
+keywords:
+  - gpu
+  - ai
+  - ml
+  - nvidia
+  - kubernetes
+  - distributed-training
+  - bare-metal
+
+home: https://github.com/ssahani/kube-fabric
+sources:
+  - https://github.com/ssahani/kube-fabric
+
+maintainers:
+  - name: KubeFabric Team
+    email: team@kubefabric.io
+    url: https://github.com/ssahani/kube-fabric
+
+icon: https://raw.githubusercontent.com/ssahani/kube-fabric/main/docs/assets/logo.png
+
+dependencies:
+  - name: prometheus
+    version: "25.8.0"
+    repository: https://prometheus-community.github.io/helm-charts
+    condition: prometheus.enabled
+    tags:
+      - monitoring
+
+  - name: grafana
+    version: "7.0.8"
+    repository: https://grafana.github.io/helm-charts
+    condition: grafana.enabled
+    tags:
+      - monitoring
+
+annotations:
+  category: Infrastructure
+  licenses: Apache-2.0

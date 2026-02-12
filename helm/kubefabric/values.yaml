@@ -1,0 +1,302 @@
+# Default values for KubeFabric
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Global settings
+global:
+  imageRegistry: ghcr.io
+  imagePullSecrets: []
+  storageClass: ""
+
+# Namespace to deploy to
+namespace: kubefabric
+
+# GPU Operator
+gpuOperator:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: ssahani/kubefabric-gpu-operator
+    tag: latest
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+  nodeSelector: {}
+  tolerations: []
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                    - kubefabric-gpu-operator
+            topologyKey: kubernetes.io/hostname
+
+# AI Workload Operator
+aiOperator:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: ssahani/kubefabric-ai-operator
+    tag: latest
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+  webhook:
+    enabled: true
+    port: 9443
+    certManager:
+      enabled: true
+
+# Storage Operator
+storageOperator:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: ssahani/kubefabric-storage-operator
+    tag: latest
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+
+# Network Operator
+networkOperator:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: ssahani/kubefabric-network-operator
+    tag: latest
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+
+# Quota Operator
+quotaOperator:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: ssahani/kubefabric-quota-operator
+    tag: latest
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+
+# Web UI
+webUI:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: ssahani/kubefabric-ui
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 80
+  ingress:
+    enabled: false
+    className: nginx
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+    hosts:
+      - host: kubefabric.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: kubefabric-ui-tls
+        hosts:
+          - kubefabric.example.com
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+# API Gateway
+apiGateway:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: ssahani/kubefabric-api-gateway
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8080
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+  prometheus:
+    url: http://prometheus-operated.kubefabric:9090
+
+# CRD Installation
+crds:
+  install: true
+  # Set to false to skip CRD installation (for upgrades)
+  keep: true
+
+# RBAC
+rbac:
+  create: true
+  # Additional cluster role rules
+  additionalRules: []
+
+# Service Accounts
+serviceAccounts:
+  create: true
+  annotations: {}
+
+# Security
+podSecurityPolicy:
+  enabled: false
+  # Enable PSP (deprecated in K8s 1.25+)
+
+networkPolicy:
+  enabled: true
+  # Enable network policies for security
+
+# Monitoring
+prometheus:
+  enabled: true
+  server:
+    persistentVolume:
+      enabled: true
+      size: 50Gi
+  alertmanager:
+    enabled: true
+    persistentVolume:
+      enabled: true
+      size: 10Gi
+
+grafana:
+  enabled: true
+  adminPassword: admin
+  persistence:
+    enabled: true
+    size: 10Gi
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: 'kubefabric'
+          orgId: 1
+          folder: 'KubeFabric'
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/kubefabric
+  dashboards:
+    kubefabric:
+      kubefabric-overview:
+        gnetId: 0
+        datasource: Prometheus
+      kubefabric-gpus:
+        gnetId: 0
+        datasource: Prometheus
+      kubefabric-costs:
+        gnetId: 0
+        datasource: Prometheus
+
+# DCGM Exporter for GPU metrics
+dcgmExporter:
+  enabled: true
+  image:
+    repository: nvcr.io/nvidia/k8s/dcgm-exporter
+    tag: 3.3.0-3.2.0-ubuntu22.04
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+
+# GPU Pricing (for cost calculations)
+gpuPricing:
+  H100: 8.00
+  A100-80G: 4.00
+  A100-40G: 3.50
+  L40: 2.50
+  V100: 2.00
+  T4: 1.00
+
+# Default quotas (optional initial setup)
+defaultQuotas:
+  enabled: false
+  quotas:
+    - name: default-quota
+      team: default
+      namespaces:
+        - default
+      gpuQuota:
+        maxGPUs: 8
+        maxGPUsPerJob: 4
+        allowedGPUTypes:
+          - H100
+          - A100-80G
+          - L40
+        maxRunningJobs: 10
+      priority: 100
+
+# Example jobs (for testing)
+exampleJobs:
+  enabled: false
+  # Deploy example jobs for testing
+
+# High Availability
+highAvailability:
+  enabled: true
+  # Enable leader election for operators
+
+# Metrics
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+    scrapeTimeout: 10s
+
+# Logging
+logging:
+  level: info
+  # Options: debug, info, warn, error

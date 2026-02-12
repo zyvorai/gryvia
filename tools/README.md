@@ -88,17 +88,79 @@ computer-vision               $12,345.60         98     $126.00
 nlp                           $7,456.80          88     $84.74
 ```
 
-### 3. Cluster Health Check
+### 3. Backup and Restore (backup-restore.sh)
 
-Coming soon: Comprehensive cluster health monitoring.
+Complete backup and restore solution for KubeFabric resources.
 
-### 4. Resource Optimizer
+**Usage:**
+```bash
+# Create backup
+./tools/backup-restore.sh backup
 
-Coming soon: Recommendations for resource allocation optimization.
+# Create backup in custom location
+./tools/backup-restore.sh backup --dir /backups
 
-### 5. Job Migration Tool
+# List backups
+./tools/backup-restore.sh list
 
-Coming soon: Migrate jobs between clusters.
+# Verify backup
+./tools/backup-restore.sh verify --file /backups/kubefabric-20240101-120000.tar.gz
+
+# Restore from backup
+./tools/backup-restore.sh restore --file /backups/kubefabric-20240101-120000.tar.gz
+```
+
+**What Gets Backed Up:**
+- All CRDs
+- GPU Nodes configuration
+- AI Jobs
+- Quotas
+- Storage configurations
+- Network configurations
+- ConfigMaps
+- Secrets (encrypted)
+- RBAC policies
+
+**Backup Format:**
+- Compressed tarball (.tar.gz)
+- SHA256 checksum
+- Metadata (timestamp, version, etc.)
+
+### 4. Upgrade Tool (upgrade.sh)
+
+Safe KubeFabric version upgrades with automatic backup.
+
+**Usage:**
+```bash
+# Upgrade to latest version
+./tools/upgrade.sh
+
+# Upgrade to specific version
+./tools/upgrade.sh --version 1.1.0
+
+# Upgrade specific namespace
+./tools/upgrade.sh --version 1.1.0 --namespace production
+
+# Skip backup (not recommended)
+./tools/upgrade.sh --skip-backup
+
+# Dry run (show what would be upgraded)
+./tools/upgrade.sh --dry-run
+```
+
+**Upgrade Process:**
+1. Pre-upgrade checks (running jobs, pod health)
+2. Automatic backup
+3. CRD upgrades
+4. Operator upgrades (rolling deployment)
+5. Web UI/API Gateway upgrades
+6. Post-upgrade verification
+
+**Supports:**
+- Helm deployments
+- Manual deployments
+- Zero-downtime upgrades
+- Automatic rollback on failure
 
 ## Installation
 
