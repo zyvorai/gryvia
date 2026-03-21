@@ -14,7 +14,7 @@ func CalculateUsage(ctx context.Context, k8sClient client.Client, quota *kubefab
 	usage := &kubefabricv1.QuotaUsage{}
 
 	// Get all AI jobs in quota namespaces
-	totalGPUs := 0
+	totalGPUs := int32(0)
 	runningJobs := 0
 	queuedJobs := 0
 	gpuHours := 0.0
@@ -28,14 +28,14 @@ func CalculateUsage(ctx context.Context, k8sClient client.Client, quota *kubefab
 		for _, job := range jobs.Items {
 			switch job.Status.Phase {
 			case "Running":
-				totalGPUs += job.Spec.Resources.GpuCount
+				totalGPUs += job.Spec.GPUs
 				runningJobs++
 
 				// Calculate GPU hours
 				if !job.Status.StartTime.IsZero() {
 					duration := time.Since(job.Status.StartTime.Time)
 					hours := duration.Hours()
-					gpuHours += hours * float64(job.Spec.Resources.GpuCount)
+					gpuHours += hours * float64(job.Spec.GPUs)
 				}
 
 			case "Pending", "Queued":
@@ -44,7 +44,7 @@ func CalculateUsage(ctx context.Context, k8sClient client.Client, quota *kubefab
 		}
 	}
 
-	usage.AllocatedGPUs = totalGPUs
+	usage.AllocatedGPUs = int(totalGPUs)
 	usage.RunningJobs = runningJobs
 	usage.QueuedJobs = queuedJobs
 	usage.GPUHours = gpuHours
@@ -83,7 +83,7 @@ func GetMonthlyGPUHours(ctx context.Context, k8sClient client.Client, quota *kub
 			}
 
 			hours := duration.Hours()
-			totalHours += hours * float64(job.Spec.Resources.GpuCount)
+			totalHours += hours * float64(job.Spec.GPUs)
 		}
 	}
 

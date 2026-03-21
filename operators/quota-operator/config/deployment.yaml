@@ -22,7 +22,7 @@ spec:
           type: RuntimeDefault
       containers:
       - name: manager
-        image: kubefabric/quota-operator:latest
+        image: kubefabric/quota-operator:1.0.0
         imagePullPolicy: IfNotPresent
         command:
         - /manager

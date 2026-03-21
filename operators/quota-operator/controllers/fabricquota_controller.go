@@ -179,22 +179,32 @@ func (r *FabricQuotaReconciler) enforceQuota(ctx context.Context, quota *kubefab
 
 	// Reject jobs that exceed quota
 	for _, job := range pendingJobs {
+		rejected := false
+		reason := ""
+
 		if quota.Status.Phase == "BudgetExceeded" && quota.Spec.Budget.HardLimit {
-			job.Status.Phase = "Rejected"
-			job.Status.Message = fmt.Sprintf("Budget exceeded for team %s", quota.Spec.Team)
-			if err := r.Status().Update(ctx, &job); err != nil {
-				logger.Error(err, "Failed to update job status", "job", job.Name)
-			}
-			logger.Info("Rejected job due to budget", "job", job.Name, "team", quota.Spec.Team)
+			rejected = true
+			reason = fmt.Sprintf("Budget exceeded for team %s", quota.Spec.Team)
 		}
 
-		if job.Spec.Resources != nil && job.Spec.Resources.GpuCount > quota.Spec.GPUQuota.MaxGPUsPerJob {
+		if int(job.Spec.GPUs) > quota.Spec.GPUQuota.MaxGPUsPerJob {
+			rejected = true
+			reason = fmt.Sprintf("Job requests %d GPUs, exceeds max %d per job", job.Spec.GPUs, quota.Spec.GPUQuota.MaxGPUsPerJob)
+		}
+
+		if rejected {
 			job.Status.Phase = "Rejected"
-			job.Status.Message = fmt.Sprintf("Job requests %d GPUs, exceeds max %d per job", job.Spec.Resources.GpuCount, quota.Spec.GPUQuota.MaxGPUsPerJob)
+			meta.SetStatusCondition(&job.Status.Conditions, metav1.Condition{
+				Type:               "Rejected",
+				Status:             metav1.ConditionTrue,
+				Reason:             "QuotaExceeded",
+				Message:            reason,
+				LastTransitionTime: metav1.Now(),
+			})
 			if err := r.Status().Update(ctx, &job); err != nil {
 				logger.Error(err, "Failed to update job status", "job", job.Name)
 			}
-			logger.Info("Rejected job due to GPU limit", "job", job.Name, "requested", job.Spec.Resources.GpuCount)
+			logger.Info("Rejected job", "job", job.Name, "reason", reason)
 		}
 	}
 
