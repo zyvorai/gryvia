@@ -1,120 +1,62 @@
-apiVersion: policy/v1beta1
-kind: PodSecurityPolicy
+---
+# Pod Security Standards (replaces deprecated PodSecurityPolicy)
+# These are applied as namespace labels per the Pod Security Admission controller
+# https://kubernetes.io/docs/concepts/security/pod-security-standards/
+
+# Restricted profile for operator namespace
+apiVersion: v1
+kind: Namespace
 metadata:
-  name: kubefabric-restricted
-  annotations:
-    seccomp.security.alpha.kubernetes.io/allowedProfileNames: 'runtime/default'
-    apparmor.security.beta.kubernetes.io/allowedProfileNames: 'runtime/default'
-    seccomp.security.alpha.kubernetes.io/defaultProfileName:  'runtime/default'
-    apparmor.security.beta.kubernetes.io/defaultProfileName:  'runtime/default'
+  name: kubefabric-system
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
+---
+# Baseline profile for kubefabric namespace (UI, API gateway)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kubefabric
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
+---
+# Privileged profile for GPU workload namespaces (required for GPU device access)
+# GPU workloads need hostIPC for shared memory and device access
+# Apply this label to namespaces that run GPU training jobs
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gpu-workloads
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: baseline
+    pod-security.kubernetes.io/audit-version: latest
+    pod-security.kubernetes.io/warn: baseline
+    pod-security.kubernetes.io/warn-version: latest
+    kubefabric.io/gpu-workloads: "true"
+---
+# ResourceQuota to limit privileged workloads in GPU namespace
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: gpu-workload-limits
+  namespace: gpu-workloads
 spec:
-  privileged: false
-  allowPrivilegeEscalation: false
-  requiredDropCapabilities:
-    - ALL
-  volumes:
-    - 'configMap'
-    - 'emptyDir'
-    - 'projected'
-    - 'secret'
-    - 'downwardAPI'
-    - 'persistentVolumeClaim'
-  hostNetwork: false
-  hostIPC: false
-  hostPID: false
-  runAsUser:
-    rule: 'MustRunAsNonRoot'
-  seLinux:
-    rule: 'RunAsAny'
-  supplementalGroups:
-    rule: 'RunAsAny'
-  fsGroup:
-    rule: 'RunAsAny'
-  readOnlyRootFilesystem: false
----
-apiVersion: policy/v1beta1
-kind: PodSecurityPolicy
-metadata:
-  name: kubefabric-gpu-workload
-  annotations:
-    seccomp.security.alpha.kubernetes.io/allowedProfileNames: 'runtime/default'
-spec:
-  privileged: false
-  allowPrivilegeEscalation: true  # Required for GPU access
-  requiredDropCapabilities:
-    - ALL
-  allowedCapabilities:
-    - SYS_ADMIN  # Required for NVIDIA drivers
-  volumes:
-    - 'configMap'
-    - 'emptyDir'
-    - 'projected'
-    - 'secret'
-    - 'downwardAPI'
-    - 'persistentVolumeClaim'
-    - 'hostPath'  # Required for GPU device access
-  allowedHostPaths:
-    - pathPrefix: "/dev/nvidia"
-      readOnly: false
-    - pathPrefix: "/usr/lib/x86_64-linux-gnu"
-      readOnly: true
-  hostNetwork: false
-  hostIPC: true   # Required for shared memory
-  hostPID: false
-  runAsUser:
-    rule: 'RunAsAny'
-  seLinux:
-    rule: 'RunAsAny'
-  supplementalGroups:
-    rule: 'RunAsAny'
-  fsGroup:
-    rule: 'RunAsAny'
-  readOnlyRootFilesystem: false
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: kubefabric:psp:restricted
-rules:
-- apiGroups: ['policy']
-  resources: ['podsecuritypolicies']
-  verbs:     ['use']
-  resourceNames:
-  - kubefabric-restricted
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: kubefabric:psp:gpu-workload
-rules:
-- apiGroups: ['policy']
-  resources: ['podsecuritypolicies']
-  verbs:     ['use']
-  resourceNames:
-  - kubefabric-gpu-workload
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: kubefabric:psp:restricted
-roleRef:
-  kind: ClusterRole
-  name: kubefabric:psp:restricted
-  apiGroup: rbac.authorization.k8s.io
-subjects:
-- kind: Group
-  name: system:serviceaccounts:kubefabric
-  apiGroup: rbac.authorization.k8s.io
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: kubefabric:psp:gpu-workload
-roleRef:
-  kind: ClusterRole
-  name: kubefabric:psp:gpu-workload
-  apiGroup: rbac.authorization.k8s.io
-subjects:
-- kind: ServiceAccount
-  name: kubefabric-job-runner
-  namespace: default
+  hard:
+    pods: "100"
+    requests.cpu: "400"
+    requests.memory: 2Ti
+    requests.nvidia.com/gpu: "64"
+    limits.cpu: "800"
+    limits.memory: 4Ti
+    limits.nvidia.com/gpu: "64"

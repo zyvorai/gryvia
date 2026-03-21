@@ -6,21 +6,28 @@ import asyncio
 import os
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
-from fastapi import FastAPI, HTTPException, Query, Depends, Header
+from fastapi import FastAPI, HTTPException, Query, Depends, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from kubernetes import client, config
 from prometheus_api_client import PrometheusConnect
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 import logging
 from collections import defaultdict
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+limiter = Limiter(key_func=get_remote_address)
+
 app = FastAPI(
     title="KubeFabric API Gateway",
     description="REST API for KubeFabric Web UI",
     version="1.0.0"
 )
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS middleware - restrict origins via environment variable
 ALLOWED_ORIGINS = os.environ.get("CORS_ALLOWED_ORIGINS", "").split(",")
@@ -95,7 +102,8 @@ async def health():
 
 
 @app.get("/api/cluster/stats")
-async def get_cluster_stats(_=Depends(verify_auth)):
+@limiter.limit("30/minute")
+async def get_cluster_stats(request: Request, _=Depends(verify_auth)):
     """Get overall cluster statistics"""
     try:
         # Get all GPU nodes
@@ -163,7 +171,9 @@ async def get_cluster_stats(_=Depends(verify_auth)):
 
 
 @app.get("/api/metrics/gpu")
+@limiter.limit("30/minute")
 async def get_gpu_metrics(
+    request: Request,
     time_range: str = Query("1h", description="Time range (1h, 6h, 24h, 7d)"),
     _=Depends(verify_auth),
 ):
@@ -209,7 +219,8 @@ async def get_gpu_metrics(
 
 
 @app.get("/api/metrics/costs")
-async def get_cost_metrics(_=Depends(verify_auth)):
+@limiter.limit("30/minute")
+async def get_cost_metrics(request: Request, _=Depends(verify_auth)):
     """Get cost metrics and analysis"""
     try:
         # Get all quotas with budget info
@@ -298,7 +309,9 @@ async def get_cost_metrics(_=Depends(verify_auth)):
 
 
 @app.get("/api/metrics/jobs")
+@limiter.limit("30/minute")
 async def get_job_metrics(
+    request: Request,
     time_range: str = Query("24h", description="Time range"),
     _=Depends(verify_auth),
 ):
@@ -351,7 +364,8 @@ async def get_job_metrics(
 
 
 @app.get("/api/quota/usage")
-async def get_quota_usage(_=Depends(verify_auth)):
+@limiter.limit("30/minute")
+async def get_quota_usage(request: Request, _=Depends(verify_auth)):
     """Get quota usage across all teams"""
     try:
         quotas = k8s_custom.list_cluster_custom_object(
@@ -391,7 +405,8 @@ async def get_quota_usage(_=Depends(verify_auth)):
 
 
 @app.get("/api/nodes/health")
-async def get_node_health(_=Depends(verify_auth)):
+@limiter.limit("30/minute")
+async def get_node_health(request: Request, _=Depends(verify_auth)):
     """Get GPU node health status"""
     try:
         nodes = k8s_custom.list_cluster_custom_object(

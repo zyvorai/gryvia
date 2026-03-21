@@ -26,7 +26,7 @@ class CostCalculator:
     def __init__(self):
         try:
             config.load_incluster_config()
-        except:
+        except config.ConfigException:
             config.load_kube_config()
 
         self.api = client.CustomObjectsApi()

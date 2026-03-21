@@ -17,7 +17,7 @@ gpuOperator:
   replicaCount: 2
   image:
     repository: ssahani/kubefabric-gpu-operator
-    tag: latest
+    tag: "1.0.0"
     pullPolicy: IfNotPresent
   resources:
     limits:
@@ -47,7 +47,7 @@ aiOperator:
   replicaCount: 2
   image:
     repository: ssahani/kubefabric-ai-operator
-    tag: latest
+    tag: "1.0.0"
     pullPolicy: IfNotPresent
   resources:
     limits:
@@ -68,7 +68,7 @@ storageOperator:
   replicaCount: 2
   image:
     repository: ssahani/kubefabric-storage-operator
-    tag: latest
+    tag: "1.0.0"
     pullPolicy: IfNotPresent
   resources:
     limits:
@@ -84,7 +84,7 @@ networkOperator:
   replicaCount: 2
   image:
     repository: ssahani/kubefabric-network-operator
-    tag: latest
+    tag: "1.0.0"
     pullPolicy: IfNotPresent
   resources:
     limits:
@@ -100,7 +100,7 @@ quotaOperator:
   replicaCount: 2
   image:
     repository: ssahani/kubefabric-quota-operator
-    tag: latest
+    tag: "1.0.0"
     pullPolicy: IfNotPresent
   resources:
     limits:
@@ -116,7 +116,7 @@ webUI:
   replicaCount: 2
   image:
     repository: ssahani/kubefabric-ui
-    tag: latest
+    tag: "1.0.0"
     pullPolicy: IfNotPresent
   service:
     type: ClusterIP
@@ -150,7 +150,7 @@ apiGateway:
   replicaCount: 2
   image:
     repository: ssahani/kubefabric-api-gateway
-    tag: latest
+    tag: "1.0.0"
     pullPolicy: IfNotPresent
   service:
     type: ClusterIP
@@ -206,7 +206,9 @@ prometheus:
 
 grafana:
   enabled: true
-  adminPassword: admin
+  # adminPassword must be set explicitly via --set or a secret
+  # adminPassword: ""
+  existingSecret: ""
   persistence:
     enabled: true
     size: 10Gi

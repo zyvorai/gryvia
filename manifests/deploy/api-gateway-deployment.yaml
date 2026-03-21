@@ -18,16 +18,22 @@ spec:
       serviceAccountName: kubefabric-api-gateway
       containers:
       - name: api-gateway
-        image: kubefabric/api-gateway:latest
-        imagePullPolicy: Always
+        image: kubefabric/api-gateway:1.0.0
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8080
           name: http
         env:
         - name: PROMETHEUS_URL
-          value: "http://prometheus-operated.kubefabric:9090"
-        - name: KUBERNETES_NAMESPACE
-          value: "default"
+          valueFrom:
+            configMapKeyRef:
+              name: kubefabric-api-gateway-config
+              key: prometheus-url
+              optional: true
+        - name: KUBEFABRIC_JOB_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
         - name: LOG_LEVEL
           value: "INFO"
         resources:

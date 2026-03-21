@@ -22,9 +22,11 @@ spec:
       ports:
         - protocol: TCP
           port: 8080  # Metrics port
-    # Allow webhook traffic
+    # Allow webhook traffic from kube-apiserver
     - from:
-        - namespaceSelector: {}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
       ports:
         - protocol: TCP
           port: 9443  # Webhook port
@@ -71,9 +73,17 @@ spec:
     - Ingress
     - Egress
   ingress:
-    # Allow ingress traffic
+    # Allow ingress traffic from ingress controller namespace
     - from:
-        - namespaceSelector: {}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 80
+    # Allow traffic from within kubefabric namespace
+    - from:
+        - podSelector: {}
       ports:
         - protocol: TCP
           port: 80
@@ -86,12 +96,6 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
-    # Allow Kubernetes API access
-    - to:
-        - namespaceSelector: {}
-      ports:
-        - protocol: TCP
-          port: 443
     # Allow DNS
     - to:
         - namespaceSelector:
@@ -122,9 +126,9 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
-    # Allow external traffic (if exposed)
+    # Allow traffic from within kubefabric namespace
     - from:
-        - namespaceSelector: {}
+        - podSelector: {}
       ports:
         - protocol: TCP
           port: 8080
@@ -181,12 +185,10 @@ spec:
         - podSelector:
             matchLabels:
               kubefabric.io/job-type: ai-training
-    # Allow storage access
-    - to:
-        - namespaceSelector: {}
-      ports:
+    # Allow storage access (NFS/object storage)
+    - ports:
         - protocol: TCP
-          port: 111   # NFS
+          port: 111   # NFS portmap
         - protocol: TCP
           port: 2049  # NFS
         - protocol: TCP
@@ -199,14 +201,10 @@ spec:
       ports:
         - protocol: UDP
           port: 53
-    # Allow egress to external services (model registries, etc.)
-    - to:
-        - namespaceSelector: {}
-      ports:
+    # Allow egress to external HTTPS services (model registries, etc.)
+    - ports:
         - protocol: TCP
           port: 443
-        - protocol: TCP
-          port: 80
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

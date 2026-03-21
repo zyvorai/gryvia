@@ -4,6 +4,7 @@ description: KubeFabric - Kubernetes-native GPU Compute Fabric for AI
 type: application
 version: 1.0.0
 appVersion: "1.0.0"
+kubeVersion: ">=1.28.0"
 keywords:
   - gpu
   - ai

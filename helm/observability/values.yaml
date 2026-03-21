@@ -5,7 +5,9 @@ prometheus:
 
 grafana:
   enabled: true
-  adminPassword: "kubefabric-admin"
+  # adminPassword must be set explicitly via --set or an existing secret
+  # adminPassword: ""
+  existingSecret: ""
   dashboardProviders:
     dashboardproviders.yaml:
       apiVersion: 1
@@ -45,7 +47,8 @@ kube-prometheus-stack:
 
   grafana:
     enabled: true
-    adminPassword: kubefabric-admin
+    # adminPassword must be set via --set grafana.adminPassword=<value>
+    existingSecret: ""
     dashboardProviders:
       dashboardproviders.yaml:
         apiVersion: 1

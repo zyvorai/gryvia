@@ -8,7 +8,7 @@ rules:
 # Full access to FabricAIJobs
 - apiGroups: ["kubefabric.io"]
   resources: ["fabricaijobs"]
-  verbs: ["*"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 # Read access to quotas
 - apiGroups: ["kubefabric.io"]
   resources: ["fabricquotas"]
@@ -80,24 +80,30 @@ metadata:
 rules:
 # Full access to all KubeFabric resources
 - apiGroups: ["kubefabric.io"]
-  resources: ["*"]
-  verbs: ["*"]
+  resources: ["fabricaijobs", "fabricquotas", "fabricgpunodes", "fabricstorages", "fabricnetworks"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["kubefabric.io"]
+  resources: ["fabricaijobs/status", "fabricquotas/status", "fabricgpunodes/status", "fabricstorages/status", "fabricnetworks/status"]
+  verbs: ["get", "update", "patch"]
 # Manage nodes
 - apiGroups: [""]
   resources: ["nodes"]
   verbs: ["get", "list", "watch", "update", "patch"]
-# Manage all pods
+# Manage pods (no exec for safety)
 - apiGroups: [""]
-  resources: ["pods", "pods/log", "pods/exec"]
-  verbs: ["*"]
+  resources: ["pods", "pods/log"]
+  verbs: ["get", "list", "watch", "delete"]
 # Manage storage
 - apiGroups: [""]
-  resources: ["persistentvolumes", "persistentvolumeclaims", "storageclasses"]
-  verbs: ["*"]
-# Manage RBAC
+  resources: ["persistentvolumes", "persistentvolumeclaims"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["storage.k8s.io"]
+  resources: ["storageclasses"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# Read RBAC (no write to prevent privilege escalation)
 - apiGroups: ["rbac.authorization.k8s.io"]
   resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
-  verbs: ["*"]
+  verbs: ["get", "list", "watch"]
 ---
 # Example: Bind team-admin role to ml-research team
 apiVersion: rbac.authorization.k8s.io/v1

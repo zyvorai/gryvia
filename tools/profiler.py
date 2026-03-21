@@ -25,7 +25,7 @@ class GPUProfiler:
     def __init__(self, namespace: str = "default"):
         try:
             config.load_kube_config()
-        except:
+        except config.ConfigException:
             config.load_incluster_config()
 
         self.api = client.CustomObjectsApi()

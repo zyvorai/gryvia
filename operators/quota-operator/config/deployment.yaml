@@ -16,6 +16,10 @@ spec:
         app: quota-operator
     spec:
       serviceAccountName: quota-operator
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: manager
         image: kubefabric/quota-operator:latest
@@ -24,6 +28,13 @@ spec:
         - /manager
         args:
         - --leader-elect
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsUser: 65532
+          capabilities:
+            drop:
+            - ALL
         livenessProbe:
           httpGet:
             path: /healthz

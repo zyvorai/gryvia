@@ -16,6 +16,10 @@ spec:
         app: storage-operator
     spec:
       serviceAccountName: storage-operator
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: manager
         image: kubefabric/storage-operator:latest
@@ -24,6 +28,13 @@ spec:
         - /manager
         args:
         - --leader-elect
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsUser: 65532
+          capabilities:
+            drop:
+            - ALL
         livenessProbe:
           httpGet:
             path: /healthz
@@ -74,8 +85,8 @@ rules:
   resources: ["storageclasses", "csinodes", "csidrivers"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 - apiGroups: ["rbac.authorization.k8s.io"]
-  resources: ["clusterroles", "clusterrolebindings", "roles", "rolebindings"]
-  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  resources: ["clusterroles", "clusterrolebindings"]
+  verbs: ["get", "list", "watch", "create", "update"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
