@@ -112,7 +112,9 @@ func (r *FabricGpuNodeReconciler) reconcileGpuNode(ctx context.Context, fabricNo
 		log.Error(err, "Failed to get Kubernetes node")
 		r.updateCondition(fabricNode, ConditionNodeLabeled, metav1.ConditionFalse, "NodeNotFound", err.Error())
 		fabricNode.Status.Phase = PhaseFailed
-		r.Status().Update(ctx, fabricNode)
+		if updateErr := r.Status().Update(ctx, fabricNode); updateErr != nil {
+			log.Error(updateErr, "Failed to update status after node not found")
+		}
 		return ctrl.Result{}, err
 	}
 
@@ -121,7 +123,9 @@ func (r *FabricGpuNodeReconciler) reconcileGpuNode(ctx context.Context, fabricNo
 		log.Error(err, "Failed to ensure drivers")
 		r.updateCondition(fabricNode, ConditionDriversInstalled, metav1.ConditionFalse, "DriverInstallFailed", err.Error())
 		fabricNode.Status.Phase = PhaseDegraded
-		r.Status().Update(ctx, fabricNode)
+		if updateErr := r.Status().Update(ctx, fabricNode); updateErr != nil {
+			log.Error(updateErr, "Failed to update status after driver install failure")
+		}
 		return ctrl.Result{RequeueAfter: 5 * time.Minute}, err
 	}
 
@@ -251,7 +255,12 @@ func (r *FabricGpuNodeReconciler) handleDeletion(ctx context.Context, fabricNode
 			delete(node.Labels, "kubefabric.ai/rdma")
 			delete(node.Labels, "kubefabric.ai/sriov")
 			delete(node.Labels, "kubefabric.ai/interconnect")
-			r.Update(ctx, node)
+			if err := r.Update(ctx, node); err != nil {
+				r.Log.Error(err, "Failed to remove labels from node during cleanup", "node", fabricNode.Spec.NodeName)
+				return ctrl.Result{}, err
+			}
+		} else if !errors.IsNotFound(err) {
+			return ctrl.Result{}, fmt.Errorf("failed to get node %s during cleanup: %w", fabricNode.Spec.NodeName, err)
 		}
 
 		// Remove finalizer

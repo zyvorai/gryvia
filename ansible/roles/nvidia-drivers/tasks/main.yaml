@@ -51,11 +51,16 @@
       shell: nvidia-smi -pm 1
       changed_when: false
 
+    - name: Get max GPU clock speeds
+      command: nvidia-smi --query-gpu=clocks.max.memory,clocks.max.sm --format=csv,noheader,nounits
+      register: gpu_max_clocks
+      changed_when: false
+
     - name: Set GPU clocks to max for performance
-      shell: |
-        nvidia-smi -ac $(nvidia-smi --query-gpu=clocks.max.memory,clocks.max.sm --format=csv,noheader,nounits | head -1 | sed 's/,/,/')
+      command: "nvidia-smi -ac {{ gpu_max_clocks.stdout_lines[0] | trim }}"
       changed_when: false
       ignore_errors: yes
+      when: gpu_max_clocks.rc == 0 and gpu_max_clocks.stdout_lines | length > 0
 
     - name: Disable GPU Auto Boost
       shell: nvidia-smi --auto-boost-default=0

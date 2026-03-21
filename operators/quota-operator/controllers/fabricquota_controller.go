@@ -188,7 +188,7 @@ func (r *FabricQuotaReconciler) enforceQuota(ctx context.Context, quota *kubefab
 			logger.Info("Rejected job due to budget", "job", job.Name, "team", quota.Spec.Team)
 		}
 
-		if job.Spec.Resources.GpuCount > quota.Spec.GPUQuota.MaxGPUsPerJob {
+		if job.Spec.Resources != nil && job.Spec.Resources.GpuCount > quota.Spec.GPUQuota.MaxGPUsPerJob {
 			job.Status.Phase = "Rejected"
 			job.Status.Message = fmt.Sprintf("Job requests %d GPUs, exceeds max %d per job", job.Spec.Resources.GpuCount, quota.Spec.GPUQuota.MaxGPUsPerJob)
 			if err := r.Status().Update(ctx, &job); err != nil {

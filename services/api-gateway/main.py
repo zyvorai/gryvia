@@ -3,9 +3,10 @@ KubeFabric API Gateway
 Provides REST API for Web UI with aggregated metrics and cluster data
 """
 import asyncio
+import os
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from kubernetes import client, config
 from prometheus_api_client import PrometheusConnect
@@ -21,26 +22,56 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS middleware for development
+# CORS middleware - restrict origins via environment variable
+ALLOWED_ORIGINS = os.environ.get("CORS_ALLOWED_ORIGINS", "").split(",")
+if ALLOWED_ORIGINS == [""]:
+    ALLOWED_ORIGINS = []
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=len(ALLOWED_ORIGINS) > 0,
+    allow_methods=["GET"],
+    allow_headers=["Authorization", "Content-Type"],
 )
+
+# API key for authentication (from environment or mounted secret)
+API_KEY = os.environ.get("KUBEFABRIC_API_KEY", "")
+
+async def verify_auth(authorization: Optional[str] = Header(None)):
+    """Verify API key or Bearer token for all protected endpoints."""
+    if not API_KEY:
+        # If no API key configured, log warning but allow (for migration)
+        logger.warning("KUBEFABRIC_API_KEY not configured - API is unauthenticated")
+        return
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header required")
+    # Support both "Bearer <token>" and raw key
+    token = authorization.removeprefix("Bearer ").strip()
+    if token != API_KEY:
+        raise HTTPException(status_code=403, detail="Invalid credentials")
 
 # Initialize Kubernetes client
 try:
     config.load_incluster_config()
-except:
-    config.load_kube_config()
+    logger.info("Loaded in-cluster Kubernetes config")
+except config.ConfigException:
+    try:
+        config.load_kube_config()
+        logger.info("Loaded local kubeconfig")
+    except config.ConfigException as e:
+        logger.error("Failed to load Kubernetes config: %s", e)
+        raise
 
 k8s_custom = client.CustomObjectsApi()
 k8s_core = client.CoreV1Api()
 
 # Prometheus client
-prom = PrometheusConnect(url="http://prometheus-operated.kubefabric:9090", disable_ssl=True)
+PROMETHEUS_URL = os.environ.get("PROMETHEUS_URL", "http://prometheus-operated.kubefabric:9090")
+prom = PrometheusConnect(url=PROMETHEUS_URL, disable_ssl=False)
+
+# Namespace for job queries (configurable)
+JOB_NAMESPACE = os.environ.get("KUBEFABRIC_JOB_NAMESPACE", "default")
 
 # GPU pricing (same as quota operator)
 GPU_PRICING = {
@@ -64,7 +95,7 @@ async def health():
 
 
 @app.get("/api/cluster/stats")
-async def get_cluster_stats():
+async def get_cluster_stats(_=Depends(verify_auth)):
     """Get overall cluster statistics"""
     try:
         # Get all GPU nodes
@@ -78,7 +109,7 @@ async def get_cluster_stats():
         jobs = k8s_custom.list_namespaced_custom_object(
             group="kubefabric.io",
             version="v1",
-            namespace="default",
+            namespace=JOB_NAMESPACE,
             plural="fabricaijobs"
         )
 
@@ -127,13 +158,14 @@ async def get_cluster_stats():
             "timestamp": datetime.utcnow().isoformat()
         }
     except Exception as e:
-        logger.error(f"Error getting cluster stats: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Error getting cluster stats: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to retrieve cluster stats")
 
 
 @app.get("/api/metrics/gpu")
 async def get_gpu_metrics(
-    time_range: str = Query("1h", description="Time range (1h, 6h, 24h, 7d)")
+    time_range: str = Query("1h", description="Time range (1h, 6h, 24h, 7d)"),
+    _=Depends(verify_auth),
 ):
     """Get GPU utilization metrics over time"""
     try:
@@ -147,7 +179,6 @@ async def get_gpu_metrics(
         prom_range = range_map.get(time_range, "1h")
 
         # Query Prometheus for GPU metrics
-        # This is a simplified version - in production, query actual DCGM metrics
         nodes = k8s_custom.list_cluster_custom_object(
             group="kubefabric.io",
             version="v1",
@@ -173,12 +204,12 @@ async def get_gpu_metrics(
             "metrics": metrics
         }
     except Exception as e:
-        logger.error(f"Error getting GPU metrics: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Error getting GPU metrics: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to retrieve GPU metrics")
 
 
 @app.get("/api/metrics/costs")
-async def get_cost_metrics():
+async def get_cost_metrics(_=Depends(verify_auth)):
     """Get cost metrics and analysis"""
     try:
         # Get all quotas with budget info
@@ -192,7 +223,7 @@ async def get_cost_metrics():
         jobs = k8s_custom.list_namespaced_custom_object(
             group="kubefabric.io",
             version="v1",
-            namespace="default",
+            namespace=JOB_NAMESPACE,
             plural="fabricaijobs"
         )
 
@@ -262,20 +293,21 @@ async def get_cost_metrics():
             "timestamp": datetime.utcnow().isoformat()
         }
     except Exception as e:
-        logger.error(f"Error getting cost metrics: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Error getting cost metrics: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to retrieve cost metrics")
 
 
 @app.get("/api/metrics/jobs")
 async def get_job_metrics(
-    time_range: str = Query("24h", description="Time range")
+    time_range: str = Query("24h", description="Time range"),
+    _=Depends(verify_auth),
 ):
     """Get job metrics over time"""
     try:
         jobs = k8s_custom.list_namespaced_custom_object(
             group="kubefabric.io",
             version="v1",
-            namespace="default",
+            namespace=JOB_NAMESPACE,
             plural="fabricaijobs"
         )
 
@@ -314,12 +346,12 @@ async def get_job_metrics(
             "timestamp": datetime.utcnow().isoformat()
         }
     except Exception as e:
-        logger.error(f"Error getting job metrics: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Error getting job metrics: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to retrieve job metrics")
 
 
 @app.get("/api/quota/usage")
-async def get_quota_usage():
+async def get_quota_usage(_=Depends(verify_auth)):
     """Get quota usage across all teams"""
     try:
         quotas = k8s_custom.list_cluster_custom_object(
@@ -354,12 +386,12 @@ async def get_quota_usage():
             "timestamp": datetime.utcnow().isoformat()
         }
     except Exception as e:
-        logger.error(f"Error getting quota usage: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Error getting quota usage: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to retrieve quota usage")
 
 
 @app.get("/api/nodes/health")
-async def get_node_health():
+async def get_node_health(_=Depends(verify_auth)):
     """Get GPU node health status"""
     try:
         nodes = k8s_custom.list_cluster_custom_object(
@@ -380,11 +412,12 @@ async def get_node_health():
             if "gpus" in status:
                 for gpu in status["gpus"]:
                     temp = gpu.get("temperature", 0)
-                    if temp > 85:
-                        gpu_health = "Warning"
-                        issues.append(f"GPU {gpu['index']} high temperature: {temp}°C")
-                    elif temp > 90:
+                    if temp > 90:
                         gpu_health = "Critical"
+                        issues.append(f"GPU {gpu['index']} critical temperature: {temp}C")
+                    elif temp > 85:
+                        gpu_health = "Warning"
+                        issues.append(f"GPU {gpu['index']} high temperature: {temp}C")
 
             health_data.append({
                 "nodeName": spec["nodeName"],
@@ -401,8 +434,8 @@ async def get_node_health():
             "timestamp": datetime.utcnow().isoformat()
         }
     except Exception as e:
-        logger.error(f"Error getting node health: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Error getting node health: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to retrieve node health")
 
 
 if __name__ == "__main__":

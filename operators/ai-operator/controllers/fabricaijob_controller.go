@@ -181,6 +181,11 @@ func (r *FabricAIJobReconciler) reconcileAIJob(ctx context.Context, job *kubefab
 		return ctrl.Result{}, err
 	}
 
+	// Only requeue if job is still active (not completed or failed)
+	if job.Status.Phase == PhaseSucceeded || job.Status.Phase == PhaseFailed {
+		return ctrl.Result{}, nil
+	}
+
 	return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 }
 

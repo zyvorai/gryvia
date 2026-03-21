@@ -2,6 +2,7 @@ package budget
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -10,8 +11,11 @@ import (
 	"github.com/yourusername/kubefabric/operators/quota-operator/pkg/usage"
 )
 
-// GPU hourly rates in USD (example pricing)
-var GPUPricing = map[string]float64{
+// gpuPricingMu protects concurrent access to gpuPricing
+var gpuPricingMu sync.RWMutex
+
+// gpuPricing contains GPU hourly rates in USD
+var gpuPricing = map[string]float64{
 	"H100":     8.00, // $8/hour
 	"A100-80G": 4.00, // $4/hour
 	"A100-40G": 3.00, // $3/hour
@@ -37,7 +41,6 @@ func CalculateBudget(ctx context.Context, k8sClient client.Client, quota *kubefa
 	}
 
 	// Calculate cost based on GPU types used
-	// For simplicity, using average rate across all GPU types
 	avgRate := calculateAverageRate(quota)
 	spentThisMonth := monthlyGPUHours * avgRate
 
@@ -56,21 +59,24 @@ func CalculateBudget(ctx context.Context, k8sClient client.Client, quota *kubefa
 }
 
 func calculateAverageRate(quota *kubefabricv1.FabricQuota) float64 {
+	gpuPricingMu.RLock()
+	defer gpuPricingMu.RUnlock()
+
 	if len(quota.Spec.GPUQuota.AllowedGPUTypes) == 0 {
-		return GPUPricing["default"]
+		return gpuPricing["default"]
 	}
 
 	totalRate := 0.0
 	count := 0
 	for _, gpuType := range quota.Spec.GPUQuota.AllowedGPUTypes {
-		if rate, exists := GPUPricing[gpuType]; exists {
+		if rate, exists := gpuPricing[gpuType]; exists {
 			totalRate += rate
 			count++
 		}
 	}
 
 	if count == 0 {
-		return GPUPricing["default"]
+		return gpuPricing["default"]
 	}
 
 	return totalRate / float64(count)
@@ -87,13 +93,18 @@ func daysInCurrentMonth() int {
 
 // GetGPURate returns the hourly rate for a GPU type
 func GetGPURate(gpuType string) float64 {
-	if rate, exists := GPUPricing[gpuType]; exists {
+	gpuPricingMu.RLock()
+	defer gpuPricingMu.RUnlock()
+
+	if rate, exists := gpuPricing[gpuType]; exists {
 		return rate
 	}
-	return GPUPricing["default"]
+	return gpuPricing["default"]
 }
 
 // UpdatePricing allows updating GPU pricing (useful for custom on-prem pricing)
 func UpdatePricing(gpuType string, hourlyRate float64) {
-	GPUPricing[gpuType] = hourlyRate
+	gpuPricingMu.Lock()
+	defer gpuPricingMu.Unlock()
+	gpuPricing[gpuType] = hourlyRate
 }

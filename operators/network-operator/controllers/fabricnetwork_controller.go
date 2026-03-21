@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -12,12 +13,17 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	kubefabricv1 "github.com/yourusername/kubefabric/operators/network-operator/api/v1"
 	"github.com/yourusername/kubefabric/operators/network-operator/pkg/multus"
 	"github.com/yourusername/kubefabric/operators/network-operator/pkg/rdma"
 	"github.com/yourusername/kubefabric/operators/network-operator/pkg/sriov"
+)
+
+const (
+	fabricNetworkFinalizer = "kubefabric.io/network-finalizer"
 )
 
 // FabricNetworkReconciler reconciles a FabricNetwork object
@@ -47,6 +53,19 @@ func (r *FabricNetworkReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		}
 		logger.Error(err, "Failed to get FabricNetwork")
 		return ctrl.Result{}, err
+	}
+
+	// Handle deletion
+	if !network.ObjectMeta.DeletionTimestamp.IsZero() {
+		return r.handleDeletion(ctx, network)
+	}
+
+	// Add finalizer if it doesn't exist
+	if !controllerutil.ContainsFinalizer(network, fabricNetworkFinalizer) {
+		controllerutil.AddFinalizer(network, fabricNetworkFinalizer)
+		if err := r.Update(ctx, network); err != nil {
+			return ctrl.Result{}, err
+		}
 	}
 
 	logger.Info("Reconciling FabricNetwork", "name", network.Name, "type", network.Spec.NetworkType)
@@ -135,7 +154,7 @@ func (r *FabricNetworkReconciler) configureRDMA(ctx context.Context, network *ku
 	logger.Info("Configuring RDMA network", "mode", network.Spec.RDMA.Mode)
 
 	// Install RDMA device plugin
-	if err := rdma.InstallDevicePlugin(ctx, r.Client); err != nil {
+	if err := rdma.InstallDevicePlugin(ctx, r.Client, network, r.Scheme); err != nil {
 		return fmt.Errorf("failed to install RDMA device plugin: %w", err)
 	}
 
@@ -189,6 +208,37 @@ func (r *FabricNetworkReconciler) ensureNetworkAttachment(ctx context.Context, n
 	return nil
 }
 
+func (r *FabricNetworkReconciler) handleDeletion(ctx context.Context, network *kubefabricv1.FabricNetwork) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+
+	if controllerutil.ContainsFinalizer(network, fabricNetworkFinalizer) {
+		logger.Info("Running cleanup for FabricNetwork", "name", network.Name)
+
+		// Cleanup: owned DaemonSets and ConfigMaps are garbage collected via owner references.
+		// Remove node labels applied by this network.
+		nodes, err := r.getMatchingNodes(ctx, network)
+		if err != nil {
+			logger.Error(err, "Failed to list nodes during cleanup")
+		} else {
+			for _, node := range nodes {
+				delete(node.Labels, "kubefabric.io/rdma")
+				delete(node.Labels, "kubefabric.io/rdma-mode")
+				delete(node.Annotations, "kubefabric.io/rdma-devices")
+				if updateErr := r.Update(ctx, &node); updateErr != nil {
+					logger.Error(updateErr, "Failed to remove labels from node", "node", node.Name)
+				}
+			}
+		}
+
+		// Remove finalizer
+		controllerutil.RemoveFinalizer(network, fabricNetworkFinalizer)
+		if err := r.Update(ctx, network); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+	return ctrl.Result{}, nil
+}
+
 func (r *FabricNetworkReconciler) updateStatus(ctx context.Context, network *kubefabricv1.FabricNetwork, phase, message string) {
 	network.Status.Phase = phase
 	network.Status.LastUpdated = metav1.Now()
@@ -216,5 +266,7 @@ func (r *FabricNetworkReconciler) updateStatus(ctx context.Context, network *kub
 func (r *FabricNetworkReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&kubefabricv1.FabricNetwork{}).
+		Owns(&appsv1.DaemonSet{}).
+		Owns(&corev1.ConfigMap{}).
 		Complete(r)
 }

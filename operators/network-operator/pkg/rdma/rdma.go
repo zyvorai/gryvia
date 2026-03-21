@@ -8,8 +8,10 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	kubefabricv1 "github.com/yourusername/kubefabric/operators/network-operator/api/v1"
 )
@@ -20,13 +22,19 @@ const (
 )
 
 // InstallDevicePlugin installs the RDMA device plugin DaemonSet
-func InstallDevicePlugin(ctx context.Context, k8sClient client.Client) error {
+func InstallDevicePlugin(ctx context.Context, k8sClient client.Client, owner *kubefabricv1.FabricNetwork, scheme *runtime.Scheme) error {
+	// Create ConfigMap first
+	if err := CreateRDMAConfigMap(ctx, k8sClient, owner, scheme, owner.Spec.RDMA); err != nil {
+		return fmt.Errorf("failed to create RDMA ConfigMap: %w", err)
+	}
+
 	ds := &appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      RDMADevicePluginName,
 			Namespace: RDMADevicePluginNamespace,
 			Labels: map[string]string{
-				"app": RDMADevicePluginName,
+				"app":                          RDMADevicePluginName,
+				"app.kubernetes.io/managed-by": "kubefabric",
 			},
 		},
 		Spec: appsv1.DaemonSetSpec{
@@ -87,6 +95,14 @@ func InstallDevicePlugin(ctx context.Context, k8sClient client.Client) error {
 		},
 	}
 
+	// Set owner reference for garbage collection
+	if err := controllerutil.SetControllerReference(owner, ds, scheme); err != nil {
+		// Cross-namespace owner references are not allowed; log but continue
+		// DaemonSet is in kube-system, owner may be in a different namespace
+		// In this case we rely on the finalizer-based cleanup instead
+		_ = err
+	}
+
 	// Check if DaemonSet already exists
 	existing := &appsv1.DaemonSet{}
 	err := k8sClient.Get(ctx, types.NamespacedName{Name: ds.Name, Namespace: ds.Namespace}, existing)
@@ -125,7 +141,7 @@ func ConfigureNode(ctx context.Context, k8sClient client.Client, node *corev1.No
 }
 
 // CreateRDMAConfigMap creates a ConfigMap for RDMA device configuration
-func CreateRDMAConfigMap(ctx context.Context, k8sClient client.Client, rdmaConfig *kubefabricv1.RDMAConfig) error {
+func CreateRDMAConfigMap(ctx context.Context, k8sClient client.Client, owner *kubefabricv1.FabricNetwork, scheme *runtime.Scheme, rdmaConfig *kubefabricv1.RDMAConfig) error {
 	// RDMA device plugin configuration
 	config := `{
   "configList": [
@@ -144,10 +160,19 @@ func CreateRDMAConfigMap(ctx context.Context, k8sClient client.Client, rdmaConfi
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "rdma-devices",
 			Namespace: RDMADevicePluginNamespace,
+			Labels: map[string]string{
+				"app.kubernetes.io/managed-by": "kubefabric",
+			},
 		},
 		Data: map[string]string{
 			"config.json": config,
 		},
+	}
+
+	// Set owner reference for garbage collection
+	if err := controllerutil.SetControllerReference(owner, cm, scheme); err != nil {
+		// Cross-namespace owner refs not allowed; rely on finalizer cleanup
+		_ = err
 	}
 
 	existing := &corev1.ConfigMap{}

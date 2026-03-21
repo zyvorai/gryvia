@@ -138,9 +138,26 @@ upgrade_crds() {
         crd_url="https://raw.githubusercontent.com/ssahani/kube-fabric/main/crds"
     fi
 
+    local crd_tmpdir
+    crd_tmpdir=$(mktemp -d)
+    trap "rm -rf ${crd_tmpdir}" RETURN
+
     for crd in fabricgpunode fabricaijob fabricstorage fabricnetwork fabricquota; do
-        log_info "  Upgrading ${crd}..."
-        kubectl apply -f "${crd_url}/${crd}.yaml" 2>/dev/null || log_warn "  Failed to upgrade ${crd}"
+        log_info "  Downloading ${crd}..."
+        local crd_file="${crd_tmpdir}/${crd}.yaml"
+        if ! curl -sSfL "${crd_url}/${crd}.yaml" -o "${crd_file}"; then
+            log_warn "  Failed to download ${crd}"
+            continue
+        fi
+
+        # Verify it's valid YAML and a CRD
+        if ! kubectl apply --dry-run=client -f "${crd_file}" > /dev/null 2>&1; then
+            log_error "  Downloaded CRD ${crd} failed validation, skipping"
+            continue
+        fi
+
+        log_info "  Applying ${crd}..."
+        kubectl apply -f "${crd_file}" || log_warn "  Failed to apply ${crd}"
     done
 
     log_info "✓ CRDs upgraded"

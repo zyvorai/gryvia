@@ -144,6 +144,7 @@ func benchmarkBurstSubmission(count int) BenchmarkResult {
 
 	startTime := time.Now()
 	metrics := []JobMetrics{}
+	metricsMu := sync.Mutex{}
 	wg := sync.WaitGroup{}
 
 	// Submit all jobs as fast as possible
@@ -153,7 +154,10 @@ func benchmarkBurstSubmission(count int) BenchmarkResult {
 			defer wg.Done()
 			jobName := fmt.Sprintf("burst-bench-%d", index)
 			metric := submitAndTrackJob(ctx, namespace, jobName)
+
+			metricsMu.Lock()
 			metrics = append(metrics, metric)
+			metricsMu.Unlock()
 		}(i)
 	}
 

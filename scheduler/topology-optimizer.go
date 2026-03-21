@@ -219,8 +219,8 @@ func (to *TopologyOptimizer) scoreNVLinkTopology(node *GPUNode, gpuCount int) fl
 
 	// Count actual NVLinks (assume we take first N GPUs)
 	actualLinks := 0
-	for i := 0; i < gpuCount; i++ {
-		for j := i + 1; j < gpuCount; j++ {
+	for i := 0; i < gpuCount && i < len(node.GPUs); i++ {
+		for j := i + 1; j < gpuCount && j < len(node.GPUs); j++ {
 			// Check if GPU i and GPU j are NVLink connected
 			if contains(node.GPUs[i].NVLinkPeers, j) {
 				actualLinks++
@@ -283,7 +283,7 @@ func (to *TopologyOptimizer) describeTopology(node *GPUNode, gpuCount int) strin
 
 	// Check if full mesh NVLink
 	fullMesh := true
-	for i := 0; i < gpuCount; i++ {
+	for i := 0; i < gpuCount && i < len(node.GPUs); i++ {
 		if len(node.GPUs[i].NVLinkPeers) < gpuCount-1 {
 			fullMesh = false
 			break

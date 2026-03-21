@@ -3,11 +3,13 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -33,7 +35,7 @@ func setupTestCluster(t *testing.T) {
 	require.NoError(t, err, "Failed to create clientset")
 
 	// Create test namespace
-	_, err = clientset.CoreV1().Namespaces().Create(context.TODO(), &v1.Namespace{
+	_, err = clientset.CoreV1().Namespaces().Create(context.TODO(), &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{Name: namespace},
 	}, metav1.CreateOptions{})
 	if err != nil && !strings.Contains(err.Error(), "already exists") {

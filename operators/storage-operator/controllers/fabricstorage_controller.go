@@ -102,7 +102,9 @@ func (r *FabricStorageReconciler) reconcileStorage(ctx context.Context, storage 
 		log.Error(err, "Failed to ensure CSI driver")
 		r.updateCondition(storage, ConditionCSIInstalled, metav1.ConditionFalse, "InstallFailed", err.Error())
 		storage.Status.Phase = PhaseFailed
-		r.Status().Update(ctx, storage)
+		if updateErr := r.Status().Update(ctx, storage); updateErr != nil {
+			log.Error(updateErr, "Failed to update status after CSI driver install failure")
+		}
 		return ctrl.Result{RequeueAfter: 5 * time.Minute}, err
 	}
 
@@ -114,7 +116,9 @@ func (r *FabricStorageReconciler) reconcileStorage(ctx context.Context, storage 
 		log.Error(err, "Failed to ensure StorageClass")
 		r.updateCondition(storage, ConditionStorageClassReady, metav1.ConditionFalse, "CreateFailed", err.Error())
 		storage.Status.Phase = PhaseDegraded
-		r.Status().Update(ctx, storage)
+		if updateErr := r.Status().Update(ctx, storage); updateErr != nil {
+			log.Error(updateErr, "Failed to update status after StorageClass create failure")
+		}
 		return ctrl.Result{RequeueAfter: 1 * time.Minute}, err
 	}
 
@@ -273,7 +277,12 @@ func (r *FabricStorageReconciler) handleDeletion(ctx context.Context, storage *k
 		sc := &storagev1.StorageClass{}
 		err := r.Get(ctx, types.NamespacedName{Name: scName}, sc)
 		if err == nil {
-			r.Delete(ctx, sc)
+			if delErr := r.Delete(ctx, sc); delErr != nil {
+				r.Log.Error(delErr, "Failed to delete StorageClass during cleanup", "storageclass", scName)
+				return ctrl.Result{}, fmt.Errorf("failed to delete StorageClass %s: %w", scName, delErr)
+			}
+		} else if !errors.IsNotFound(err) {
+			return ctrl.Result{}, fmt.Errorf("failed to get StorageClass %s during cleanup: %w", scName, err)
 		}
 
 		// Remove finalizer

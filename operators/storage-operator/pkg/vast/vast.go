@@ -128,6 +128,12 @@ func ensureRBAC(ctx context.Context, k8sClient client.Client) error {
 }
 
 func ensureController(ctx context.Context, k8sClient client.Client, storage *kubefabricv1.FabricStorage) error {
+	// Ensure the endpoint secret exists
+	secretName := fmt.Sprintf("%s-endpoint", storage.Name)
+	if err := ensureEndpointSecret(ctx, k8sClient, secretName, storage.Spec.Endpoint); err != nil {
+		return fmt.Errorf("failed to create endpoint secret: %w", err)
+	}
+
 	replicas := int32(1)
 
 	deployment := &appsv1.Deployment{
@@ -159,13 +165,24 @@ func ensureController(ctx context.Context, k8sClient client.Client, storage *kub
 							Image: "vastdataorg/csi:latest",
 							Args: []string{
 								"--endpoint=$(CSI_ENDPOINT)",
-								"--vast-mgmt-endpoint=" + storage.Spec.Endpoint,
+								"--vast-mgmt-endpoint=$(VAST_MGMT_ENDPOINT)",
 								"--node-id=$(NODE_ID)",
 							},
 							Env: []corev1.EnvVar{
 								{
 									Name:  "CSI_ENDPOINT",
 									Value: "unix:///var/lib/csi/sockets/pluginproxy/csi.sock",
+								},
+								{
+									Name: "VAST_MGMT_ENDPOINT",
+									ValueFrom: &corev1.EnvVarSource{
+										SecretKeyRef: &corev1.SecretKeySelector{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: secretName,
+											},
+											Key: "endpoint",
+										},
+									},
 								},
 								{
 									Name: "NODE_ID",
@@ -204,7 +221,37 @@ func ensureController(ctx context.Context, k8sClient client.Client, storage *kub
 	return err
 }
 
+func ensureEndpointSecret(ctx context.Context, k8sClient client.Client, secretName, endpoint string) error {
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      secretName,
+			Namespace: VASTCSINamespace,
+			Labels: map[string]string{
+				"app.kubernetes.io/managed-by": "kubefabric",
+			},
+		},
+		Type: corev1.SecretTypeOpaque,
+		StringData: map[string]string{
+			"endpoint": endpoint,
+		},
+	}
+
+	existing := &corev1.Secret{}
+	err := k8sClient.Get(ctx, types.NamespacedName{Name: secretName, Namespace: VASTCSINamespace}, existing)
+	if errors.IsNotFound(err) {
+		return k8sClient.Create(ctx, secret)
+	}
+	if err != nil {
+		return err
+	}
+	// Update if endpoint changed
+	existing.StringData = secret.StringData
+	return k8sClient.Update(ctx, existing)
+}
+
 func ensureNodeDaemonSet(ctx context.Context, k8sClient client.Client, storage *kubefabricv1.FabricStorage) error {
+	secretName := fmt.Sprintf("%s-endpoint", storage.Name)
+
 	ds := &appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      VASTCSINodeName,
@@ -236,13 +283,24 @@ func ensureNodeDaemonSet(ctx context.Context, k8sClient client.Client, storage *
 							},
 							Args: []string{
 								"--endpoint=$(CSI_ENDPOINT)",
-								"--vast-mgmt-endpoint=" + storage.Spec.Endpoint,
+								"--vast-mgmt-endpoint=$(VAST_MGMT_ENDPOINT)",
 								"--node-id=$(NODE_ID)",
 							},
 							Env: []corev1.EnvVar{
 								{
 									Name:  "CSI_ENDPOINT",
 									Value: "unix:///csi/csi.sock",
+								},
+								{
+									Name: "VAST_MGMT_ENDPOINT",
+									ValueFrom: &corev1.EnvVarSource{
+										SecretKeyRef: &corev1.SecretKeySelector{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: secretName,
+											},
+											Key: "endpoint",
+										},
+									},
 								},
 								{
 									Name: "NODE_ID",

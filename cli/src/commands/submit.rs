@@ -74,10 +74,11 @@ async fn wait_for_completion(client: &KubeFabricClient, job_name: &str) -> Resul
                     }
                     "Failed" => {
                         spinner.finish_with_message(format!("✗ Job {} failed", job_name));
-                        if let Some(msg) = status.get("message") {
-                            display::print_error(&format!("Error: {}", msg.as_str().unwrap_or("")));
-                        }
-                        return Ok(());
+                        let error_msg = status.get("message")
+                            .and_then(|m| m.as_str())
+                            .unwrap_or("unknown error");
+                        display::print_error(&format!("Error: {}", error_msg));
+                        return Err(anyhow::anyhow!("Job {} failed: {}", job_name, error_msg));
                     }
                     _ => {
                         spinner.set_message(format!("Job status: {}", phase_str));

@@ -10,7 +10,7 @@ RED='\033[0;31m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-BACKUP_DIR="${BACKUP_DIR:-/tmp/kubefabric-backup}"
+BACKUP_DIR="${BACKUP_DIR:-${HOME}/.kubefabric/backups}"
 NAMESPACE="${NAMESPACE:-default}"
 TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
 
@@ -76,8 +76,10 @@ backup() {
 
     log_info "Starting backup: ${backup_name}"
 
-    # Create backup directory
+    # Create backup directory with restrictive permissions
     mkdir -p "${backup_path}"
+    chmod 700 "${BACKUP_DIR}"
+    chmod 700 "${backup_path}"
 
     # Backup CRDs
     log_info "Backing up CRDs..."

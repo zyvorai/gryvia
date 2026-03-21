@@ -211,12 +211,18 @@ export default function JobDetails() {
               <h3 className="text-lg font-medium text-gray-900 mb-4">Environment Variables</h3>
               <div className="bg-gray-50 rounded-lg p-4">
                 <dl className="space-y-2">
-                  {job.spec.env.map((env, idx) => (
-                    <div key={idx} className="flex items-start">
-                      <dt className="text-sm font-medium text-gray-700 w-1/3">{env.name}</dt>
-                      <dd className="text-sm text-gray-900 font-mono w-2/3">{env.value}</dd>
-                    </div>
-                  ))}
+                  {job.spec.env.map((env, idx) => {
+                    const sensitivePatterns = /SECRET|PASSWORD|TOKEN|KEY|CREDENTIAL|API_KEY/i
+                    const isSensitive = sensitivePatterns.test(env.name)
+                    return (
+                      <div key={idx} className="flex items-start">
+                        <dt className="text-sm font-medium text-gray-700 w-1/3">{env.name}</dt>
+                        <dd className="text-sm text-gray-900 font-mono w-2/3">
+                          {isSensitive ? '********' : (env.value ?? (env.valueFrom ? '[from secret/configmap]' : ''))}
+                        </dd>
+                      </div>
+                    )
+                  })}
                 </dl>
               </div>
             </div>
