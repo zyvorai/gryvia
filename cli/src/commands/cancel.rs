@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use kube::api::{Api, Patch, PatchParams};
 use dialoguer::Confirm;
 

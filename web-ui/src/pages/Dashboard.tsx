@@ -5,7 +5,6 @@ import {
   Clock, Loader2, BarChart3, Gauge, AlertCircle, Briefcase,
 } from 'lucide-react'
 import { api } from '@/lib/api'
-import type { ClusterStats } from '@/lib/api'
 import type { FabricAIJob } from '@/types'
 import StatCard from '@/components/StatCard'
 import GPUChart from '@/components/GPUChart'
@@ -342,7 +341,7 @@ function JobRow({ job }: { job: FabricAIJob }) {
       <div className="flex-1 min-w-0">
         <div className="text-xs font-medium text-white truncate">{job.metadata?.name}</div>
         <div className="text-[10px] text-slate-500">
-          {job.spec?.framework || job.spec?.type || 'job'} · {job.spec?.resources?.gpuType || 'GPU'} x{job.spec?.resources?.gpuCount || job.spec?.gpus || '?'}
+          {job.spec?.framework || 'job'} · {job.spec?.resources?.gpuType || 'GPU'} x{job.spec?.resources?.gpuCount || '?'}
         </div>
       </div>
       <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${c.bg} ${c.color}`}>{phase}</span>

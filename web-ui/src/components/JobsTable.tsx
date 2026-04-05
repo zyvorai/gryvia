@@ -57,7 +57,7 @@ export default function JobsTable({ jobs, compact = false }: JobsTableProps) {
                 </td>
                 <td className="px-4 py-3 whitespace-nowrap">
                   <span className={`px-2 py-0.5 text-[10px] font-medium rounded-full ${
-                    statusColors[job.status?.phase] || 'bg-slate-500/10 text-slate-400'
+                    statusColors[job.status?.phase ?? ''] || 'bg-slate-500/10 text-slate-400'
                   }`}>
                     {job.status?.phase || 'Unknown'}
                   </span>

@@ -51,7 +51,8 @@ pub async fn execute(
     let mut total_budget = 0.0;
 
     for quota in filtered {
-        if let Some(ref budget_status) = quota.status.budget_status {
+        let quota_status = quota.status.clone().unwrap_or_default();
+        if let Some(ref budget_status) = quota_status.budget_status {
             let team = &quota.spec.team;
             let spent = budget_status.spent_this_month;
             let budget = quota.spec.budget.as_ref().map(|b| b.monthly_budget).unwrap_or(0.0);

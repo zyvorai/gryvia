@@ -25,7 +25,7 @@ export interface FabricAIJob {
     env?: Array<{ name: string; value: string }>
   }
   status?: {
-    phase: 'Pending' | 'Running' | 'Completed' | 'Failed' | 'Queued'
+    phase: 'Pending' | 'Running' | 'Completed' | 'Succeeded' | 'Failed' | 'Queued'
     message?: string
     startTime?: string
     completionTime?: string

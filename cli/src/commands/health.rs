@@ -45,10 +45,11 @@ async fn check_gpu_health(client: &KubeFabricClient) -> Result<()> {
 
     for node in nodes.items {
         let name = &node.spec.node_name;
-        let status = match node.status.phase.as_str() {
-            "Healthy" | "Ready" => node.status.phase.green().to_string(),
-            "Degraded" => node.status.phase.yellow().to_string(),
-            _ => node.status.phase.red().to_string(),
+        let node_status = node.status.clone().unwrap_or_default();
+        let status = match node_status.phase.as_str() {
+            "Healthy" | "Ready" => node_status.phase.green().to_string(),
+            "Degraded" => node_status.phase.yellow().to_string(),
+            _ => node_status.phase.red().to_string(),
         };
         let gpus = format!("{} x {}", node.spec.gpu_count, node.spec.gpu_type);
 

@@ -45,8 +45,10 @@ fn print_job_status(job: &FabricAIJob) {
         println!();
     }
 
+    let status = job.status.clone().unwrap_or_default();
+
     println!("{}", "Status:".bold().underline());
-    let phase = &job.status.phase;
+    let phase = &status.phase;
     let colored_phase = match phase.as_str() {
         "Running" => phase.green(),
         "Completed" => phase.cyan(),
@@ -56,14 +58,14 @@ fn print_job_status(job: &FabricAIJob) {
     };
     println!("  Phase: {}", colored_phase.bold());
 
-    if !job.status.message.is_empty() {
-        println!("  Message: {}", job.status.message);
+    if !status.message.is_empty() {
+        println!("  Message: {}", status.message);
     }
 
-    if let Some(start) = job.status.start_time {
+    if let Some(start) = status.start_time {
         println!("  Started: {}", start);
 
-        if let Some(completion) = job.status.completion_time {
+        if let Some(completion) = status.completion_time {
             println!("  Completed: {}", completion);
             let duration = completion.signed_duration_since(start);
             println!("  Duration: {}h {}m {}s",

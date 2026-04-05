@@ -7,13 +7,15 @@
 #   2. Install CRDs
 #   3. Build and deploy operators
 #   4. Deploy API gateway + Web UI
-#   5. Verify everything works
+#   5. Optionally configure HTTPS with auto self-signed cert
+#   6. Verify everything works
 #
 # Usage:
 #   ./scripts/deploy-remote.sh <host> [user] [password]
 #   ./scripts/deploy-remote.sh 185.165.240.5 root mypassword
 #   ./scripts/deploy-remote.sh 10.0.0.1 root                  # SSH key auth
 #   ./scripts/deploy-remote.sh 10.0.0.1 root pass --quick     # skip build
+#   ./scripts/deploy-remote.sh 10.0.0.1 root pass --https     # enable HTTPS
 #   ./scripts/deploy-remote.sh 10.0.0.1 root pass --uninstall # remove kubefabric
 #
 # Environment variables:
@@ -21,6 +23,7 @@
 #   DEPLOY_USER=root
 #   DEPLOY_PASS=mypassword
 #   DEPLOY_DIR=/root/kube-fabric
+#   KUBEFABRIC_HTTPS_PORT=30443
 # ============================================================================
 
 set -euo pipefail
@@ -33,16 +36,19 @@ step()  { echo ""; echo "  🔧 $*"; }
 # ── Parse args ──
 QUICK_MODE=false
 UNINSTALL_MODE=false
+HTTPS_MODE=false
 POSITIONAL=()
 for arg in "$@"; do
     case "$arg" in
         --quick)     QUICK_MODE=true ;;
         --uninstall) UNINSTALL_MODE=true ;;
+        --https)     HTTPS_MODE=true ;;
         --help|-h)
-            echo "Usage: $0 <host> [user] [password] [--quick|--uninstall]"
+            echo "Usage: $0 <host> [user] [password] [--quick|--uninstall|--https]"
             echo ""
             echo "  --quick      Skip builds (only rsync + kubectl apply)"
             echo "  --uninstall  Remove KubeFabric from remote server"
+            echo "  --https      Enable HTTPS with auto self-signed TLS certificate"
             echo ""
             echo "Full mode: rsync, install CRDs, build operators, deploy all."
             exit 0
@@ -55,8 +61,9 @@ HOST="${POSITIONAL[0]:-${DEPLOY_HOST:-}}"
 USER="${POSITIONAL[1]:-${DEPLOY_USER:-root}}"
 PASS="${POSITIONAL[2]:-${DEPLOY_PASS:-}}"
 REMOTE_DIR="${DEPLOY_DIR:-/root/kube-fabric}"
+HTTPS_PORT="${KUBEFABRIC_HTTPS_PORT:-30443}"
 
-[ -z "$HOST" ] && error "Usage: $0 <host> [user] [password] [--quick]"
+[ -z "$HOST" ] && error "Usage: $0 <host> [user] [password] [--quick|--https]"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -106,7 +113,9 @@ if $UNINSTALL_MODE; then
         kubectl delete crd fabricaijobs.kubefabric.ai fabricgpunodes.kubefabric.ai \
             fabricstorages.kubefabric.ai fabricnetworks.kubefabric.ai \
             fabricquotas.kubefabric.ai --ignore-not-found 2>/dev/null || true
+        kubectl delete secret kubefabric-tls -n kubefabric --ignore-not-found 2>/dev/null || true
         rm -rf $REMOTE_DIR
+        rm -f /etc/kubefabric/tls.*
         echo 'Done'
     " 2>&1 | grep -v "^Warning" || true
 
@@ -116,6 +125,7 @@ fi
 
 TOTAL_STEPS=6
 $QUICK_MODE && TOTAL_STEPS=4
+$HTTPS_MODE && ((TOTAL_STEPS++))
 
 echo ""
 echo "  ╔══════════════════════════════════════════════════╗"
@@ -126,6 +136,7 @@ echo "  Host:     ${USER}@${HOST}"
 echo "  Auth:     $([ -n "$PASS" ] && echo "🔑 password" || echo "🔐 SSH key")"
 echo "  Local:    $REPO_DIR"
 echo "  Remote:   $REMOTE_DIR"
+echo "  HTTPS:    $($HTTPS_MODE && echo "🔒 enabled (port $HTTPS_PORT)" || echo "❌ disabled")"
 echo "  Mode:     $($QUICK_MODE && echo "⚡ quick (rsync + apply only)" || echo "📦 full (build + deploy)")"
 echo ""
 
@@ -139,7 +150,7 @@ step "Step 2/${TOTAL_STEPS}: 🔍 Checking prerequisites"
 _ssh "
     # Check kubectl
     if command -v kubectl &>/dev/null; then
-        KVER=\$(kubectl version --client --short 2>/dev/null | head -1 || kubectl version --client -o json 2>/dev/null | grep gitVersion | head -1)
+        KVER=\$(kubectl version --client -o json 2>/dev/null | python3 -c 'import sys,json; print(json.load(sys.stdin)[\"clientVersion\"][\"gitVersion\"])' 2>/dev/null || echo 'unknown')
         echo \"kubectl: \$KVER\"
     else
         echo 'MISSING: kubectl'
@@ -150,7 +161,7 @@ _ssh "
     if command -v helm &>/dev/null; then
         echo \"helm: \$(helm version --short 2>/dev/null)\"
     else
-        echo 'MISSING: helm'
+        echo 'helm: not found (optional)'
     fi
 
     # Check cluster
@@ -160,13 +171,6 @@ _ssh "
     else
         echo 'MISSING: no cluster access'
         exit 1
-    fi
-
-    # Check Go (for building)
-    if command -v go &>/dev/null; then
-        echo \"go: \$(go version 2>/dev/null | awk '{print \$3}')\"
-    else
-        echo 'go: not installed (will skip operator builds)'
     fi
 " 2>&1
 info "Prerequisites checked"
@@ -225,11 +229,174 @@ else
     info "Resources applied"
 fi
 
+# ── HTTPS auto setup ──
+if $HTTPS_MODE; then
+    if $QUICK_MODE; then
+        HTTPS_STEP=4
+    else
+        HTTPS_STEP=6
+    fi
+    step "Step ${HTTPS_STEP}/${TOTAL_STEPS}: 🔒 Configuring HTTPS with auto self-signed certificate"
+
+    _ssh "
+        set -e
+        CERT_DIR=/etc/kubefabric
+        mkdir -p \$CERT_DIR
+
+        # Generate self-signed certificate if not present or expired
+        REGEN=false
+        if [ ! -f \$CERT_DIR/tls.crt ] || [ ! -f \$CERT_DIR/tls.key ]; then
+            REGEN=true
+        else
+            # Check if cert expires within 30 days
+            if ! openssl x509 -checkend 2592000 -noout -in \$CERT_DIR/tls.crt 2>/dev/null; then
+                REGEN=true
+            fi
+        fi
+
+        if \$REGEN; then
+            echo '  Generating self-signed TLS certificate...'
+            openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+                -keyout \$CERT_DIR/tls.key \
+                -out \$CERT_DIR/tls.crt \
+                -subj '/CN=${HOST}/O=KubeFabric' \
+                -addext 'subjectAltName=IP:${HOST},DNS:kubefabric.local' \
+                2>/dev/null
+            chmod 600 \$CERT_DIR/tls.key
+            echo '  ✅ Certificate generated (365 days)'
+        else
+            echo '  ✅ Existing certificate still valid'
+        fi
+
+        # Create/update TLS secret in kubernetes
+        kubectl -n kubefabric delete secret kubefabric-tls --ignore-not-found 2>/dev/null || true
+        kubectl -n kubefabric create secret tls kubefabric-tls \
+            --cert=\$CERT_DIR/tls.crt \
+            --key=\$CERT_DIR/tls.key 2>/dev/null
+        echo '  ✅ TLS secret created in kubefabric namespace'
+
+        # Patch UI service to add HTTPS NodePort
+        kubectl -n kubefabric apply -f - <<SVCEOF
+apiVersion: v1
+kind: Service
+metadata:
+  name: kubefabric-ui-https
+  namespace: kubefabric
+spec:
+  type: NodePort
+  ports:
+    - port: 443
+      targetPort: 443
+      nodePort: ${HTTPS_PORT}
+      protocol: TCP
+      name: https
+  selector:
+    app: kubefabric-ui
+SVCEOF
+
+        # Deploy nginx TLS termination sidecar as a separate pod
+        kubectl -n kubefabric apply -f - <<TLSEOF
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kubefabric-tls-nginx
+  namespace: kubefabric
+data:
+  nginx.conf: |
+    events { worker_connections 128; }
+    http {
+      server {
+        listen 443 ssl;
+        ssl_certificate /etc/tls/tls.crt;
+        ssl_certificate_key /etc/tls/tls.key;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_ciphers HIGH:!aNULL:!MD5;
+
+        location / {
+          proxy_pass http://kubefabric-ui.kubefabric.svc:80;
+          proxy_set_header Host \\\$host;
+          proxy_set_header X-Real-IP \\\$remote_addr;
+          proxy_set_header X-Forwarded-For \\\$proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto https;
+        }
+
+        location /api/ {
+          proxy_pass http://kubefabric-api-gateway.kubefabric.svc:8080/api/;
+          proxy_set_header Host \\\$host;
+          proxy_set_header X-Real-IP \\\$remote_addr;
+          proxy_set_header X-Forwarded-For \\\$proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto https;
+        }
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kubefabric-tls-proxy
+  namespace: kubefabric
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kubefabric-tls-proxy
+  template:
+    metadata:
+      labels:
+        app: kubefabric-tls-proxy
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27-alpine
+          ports:
+            - containerPort: 443
+          volumeMounts:
+            - name: tls
+              mountPath: /etc/tls
+              readOnly: true
+            - name: nginx-conf
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+              readOnly: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 64Mi
+          securityContext:
+            readOnlyRootFilesystem: false
+            allowPrivilegeEscalation: false
+      volumes:
+        - name: tls
+          secret:
+            secretName: kubefabric-tls
+        - name: nginx-conf
+          configMap:
+            name: kubefabric-tls-nginx
+TLSEOF
+
+        # Patch the HTTPS service selector to point to TLS proxy
+        kubectl -n kubefabric patch svc kubefabric-ui-https \
+            -p '{\"spec\":{\"selector\":{\"app\":\"kubefabric-tls-proxy\"}}}' 2>/dev/null
+
+        echo '  ✅ TLS proxy deployed'
+
+        # Wait for TLS proxy to be ready
+        echo '  Waiting for TLS proxy...'
+        kubectl -n kubefabric rollout status deployment kubefabric-tls-proxy --timeout=60s 2>/dev/null || true
+
+        echo '  ✅ HTTPS configured on port ${HTTPS_PORT}'
+    " 2>&1
+    info "HTTPS auto-configured with self-signed certificate"
+fi
+
 # ── Verify ──
 if $QUICK_MODE; then
-    VERIFY_STEP=4
+    VERIFY_STEP=$((TOTAL_STEPS))
 else
-    VERIFY_STEP=6
+    VERIFY_STEP=$((TOTAL_STEPS))
 fi
 step "Step ${VERIFY_STEP}/${TOTAL_STEPS}: ✅ Verifying deployment"
 
@@ -240,19 +407,11 @@ _ssh "
 
     echo ''
     echo '📦 Pods:'
-    kubectl get pods -n kubefabric --no-headers 2>/dev/null | head -10 || echo '  (none running)'
+    kubectl get pods -n kubefabric --no-headers 2>/dev/null | head -15 || echo '  (none running)'
 
     echo ''
-    echo '🖥️  GPU Nodes:'
-    kubectl get fabricgpunodes --no-headers 2>/dev/null | head -5 || echo '  (none registered)'
-
-    echo ''
-    echo '📊 Jobs:'
-    kubectl get fabricaijobs --all-namespaces --no-headers 2>/dev/null | head -5 || echo '  (none submitted)'
-
-    echo ''
-    echo '🔑 Quotas:'
-    kubectl get fabricquotas --all-namespaces --no-headers 2>/dev/null | head -5 || echo '  (none configured)'
+    echo '🌐 Services:'
+    kubectl get svc -n kubefabric --no-headers 2>/dev/null || echo '  (none)'
 " 2>&1
 
 info "Deployment verified"
@@ -265,9 +424,22 @@ echo ""
 echo "  🔗 Connect:"
 echo "    ssh ${USER}@${HOST}"
 echo ""
+
+# Get service ports
+UI_PORT=$(_ssh "kubectl get svc -n kubefabric kubefabric-ui -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null" || echo "30081")
+API_PORT=$(_ssh "kubectl get svc -n kubefabric kubefabric-api-gateway -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null" || echo "30088")
+
 echo "  🌐 Web Dashboard:"
-echo "    kubectl port-forward -n kubefabric svc/kubefabric-ui 8080:80"
-echo "    Then open: http://localhost:8080"
+echo "    http://${HOST}:${UI_PORT}"
+if $HTTPS_MODE; then
+    echo "    https://${HOST}:${HTTPS_PORT}  (self-signed cert)"
+fi
+echo ""
+echo "  📡 API Gateway:"
+echo "    http://${HOST}:${API_PORT}"
+if $HTTPS_MODE; then
+    echo "    https://${HOST}:${HTTPS_PORT}/api/"
+fi
 echo ""
 echo "  🚀 Submit a job:"
 echo "    kubectl apply -f examples/training/simple-pytorch-training.yaml"

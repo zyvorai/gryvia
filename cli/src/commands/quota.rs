@@ -44,7 +44,8 @@ fn print_quota_details(quota: &FabricQuota, show_budget: bool) {
 
     // GPU Quota
     println!("{}", "GPU Quota:".bold().underline());
-    let usage = &quota.status.current_usage;
+    let quota_status = quota.status.clone().unwrap_or_default();
+    let usage = &quota_status.current_usage;
     let spec = &quota.spec.gpu_quota;
 
     println!("  Allocated GPUs: {}/{} ({}%)",
@@ -65,7 +66,7 @@ fn print_quota_details(quota: &FabricQuota, show_budget: bool) {
 
     // Budget Status
     if show_budget {
-        if let Some(ref budget_status) = quota.status.budget_status {
+        if let Some(ref budget_status) = quota_status.budget_status {
             println!();
             println!("{}", "Budget Status:".bold().underline());
 
@@ -106,6 +107,6 @@ fn print_quota_details(quota: &FabricQuota, show_budget: bool) {
 
     // Status
     println!();
-    println!("{} {}", "Status:".bold(), display::colorize_status(&quota.status.phase));
+    println!("{} {}", "Status:".bold(), display::colorize_status(&quota_status.phase));
 }
 

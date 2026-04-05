@@ -21,7 +21,8 @@ pub fn print_jobs_table(jobs: &[FabricAIJob]) {
         let framework = &job.spec.framework;
         let gpus = job.spec.resources.gpu_count.to_string();
         let gpu_type = &job.spec.resources.gpu_type;
-        let status = colorize_status(&job.status.phase);
+        let job_status = job.status.clone().unwrap_or_default();
+        let status = colorize_status(&job_status.phase);
         let age = format_age(job.metadata.creation_timestamp.as_ref());
 
         table.add_row(Row::new(vec![
@@ -53,19 +54,20 @@ pub fn print_quotas_table(quotas: &[FabricQuota]) {
 
     for quota in quotas {
         let team = &quota.spec.team;
-        let allocated = quota.status.current_usage.allocated_gpus;
+        let quota_status = quota.status.clone().unwrap_or_default();
+        let allocated = quota_status.current_usage.allocated_gpus;
         let max = quota.spec.gpu_quota.max_gpus;
         let allocated_str = format!("{}/{}", allocated, max);
-        let running = quota.status.current_usage.running_jobs.to_string();
-        let queued = quota.status.current_usage.queued_jobs.to_string();
+        let running = quota_status.current_usage.running_jobs.to_string();
+        let queued = quota_status.current_usage.queued_jobs.to_string();
 
-        let budget = if let Some(ref budget_status) = quota.status.budget_status {
+        let budget = if let Some(ref budget_status) = quota_status.budget_status {
             format!("${:.0}/{:.0}", budget_status.spent_this_month, quota.spec.budget.as_ref().map(|b| b.monthly_budget).unwrap_or(0.0))
         } else {
             "N/A".to_string()
         };
 
-        let status = colorize_status(&quota.status.phase);
+        let status = colorize_status(&quota_status.phase);
 
         table.add_row(Row::new(vec![
             Cell::new(team),
@@ -100,7 +102,8 @@ pub fn print_nodes_table(nodes: &[FabricGpuNode]) {
         let gpu_count = node.spec.gpu_count.to_string();
         let memory = &node.spec.memory;
         let rdma = if node.spec.rdma_enabled { "✓" } else { "✗" };
-        let status = colorize_status(&node.status.phase);
+        let node_status = node.status.clone().unwrap_or_default();
+        let status = colorize_status(&node_status.phase);
 
         table.add_row(Row::new(vec![
             Cell::new(name),
@@ -130,7 +133,8 @@ pub fn print_cluster_overview(nodes: &[FabricGpuNode], jobs: &[FabricAIJob]) {
     }
 
     for job in jobs {
-        if job.status.phase == "Running" {
+        let job_status = job.status.clone().unwrap_or_default();
+        if job_status.phase == "Running" {
             allocated_gpus += job.spec.resources.gpu_count;
         }
     }
@@ -148,10 +152,10 @@ pub fn print_cluster_overview(nodes: &[FabricGpuNode], jobs: &[FabricAIJob]) {
     println!();
 
     // Job stats
-    let running = jobs.iter().filter(|j| j.status.phase == "Running").count();
-    let pending = jobs.iter().filter(|j| j.status.phase == "Pending" || j.status.phase == "Queued").count();
-    let completed = jobs.iter().filter(|j| j.status.phase == "Completed").count();
-    let failed = jobs.iter().filter(|j| j.status.phase == "Failed").count();
+    let running = jobs.iter().filter(|j| j.status.as_ref().map_or(false, |s| s.phase == "Running")).count();
+    let pending = jobs.iter().filter(|j| j.status.as_ref().map_or(false, |s| s.phase == "Pending" || s.phase == "Queued")).count();
+    let completed = jobs.iter().filter(|j| j.status.as_ref().map_or(false, |s| s.phase == "Completed")).count();
+    let failed = jobs.iter().filter(|j| j.status.as_ref().map_or(false, |s| s.phase == "Failed")).count();
 
     println!("{}", "Jobs:".bold());
     println!("  • Running: {}", running.to_string().green());
