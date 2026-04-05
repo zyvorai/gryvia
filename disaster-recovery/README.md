@@ -39,7 +39,7 @@ Comprehensive disaster recovery and business continuity for KubeFabric.
 ### 1. Continuous Backup
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: BackupPolicy
 metadata:
   name: production-backup
@@ -84,7 +84,7 @@ spec:
 ### 2. Data Replication
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: DataReplication
 metadata:
   name: primary-to-secondary
@@ -124,7 +124,7 @@ spec:
 ### 3. Multi-Region Setup
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: MultiRegionConfig
 metadata:
   name: dr-config
@@ -390,7 +390,7 @@ kubectl get fabricaijob critical-training
 ### Regular DR Drills
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: DRDrill
 metadata:
   name: quarterly-dr-drill

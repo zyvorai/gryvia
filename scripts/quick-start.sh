@@ -2,7 +2,7 @@
 # Quick start script for KubeFabric
 # Deploys a minimal KubeFabric setup for development/testing
 
-set -e
+set -euo pipefail
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'

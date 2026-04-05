@@ -75,11 +75,11 @@ rules:
       - update
       - patch
 
-  # Manage pods
+  # Manage FabricQuota resources
   - apiGroups:
-      - ""
+      - kubefabric.ai
     resources:
-      - pods
+      - fabricquotas
     verbs:
       - create
       - delete
@@ -88,6 +88,88 @@ rules:
       - patch
       - update
       - watch
+  - apiGroups:
+      - kubefabric.ai
+    resources:
+      - fabricquotas/status
+    verbs:
+      - get
+      - patch
+      - update
+  - apiGroups:
+      - kubefabric.ai
+    resources:
+      - fabricquotas/finalizers
+    verbs:
+      - update
+
+  # Manage FabricNetwork resources
+  - apiGroups:
+      - kubefabric.ai
+    resources:
+      - fabricnetworks
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - kubefabric.ai
+    resources:
+      - fabricnetworks/status
+    verbs:
+      - get
+      - patch
+      - update
+  - apiGroups:
+      - kubefabric.ai
+    resources:
+      - fabricnetworks/finalizers
+    verbs:
+      - update
+
+  # Manage FabricStorage resources
+  - apiGroups:
+      - kubefabric.ai
+    resources:
+      - fabricstorages
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - kubefabric.ai
+    resources:
+      - fabricstorages/status
+    verbs:
+      - get
+      - patch
+      - update
+  - apiGroups:
+      - kubefabric.ai
+    resources:
+      - fabricstorages/finalizers
+    verbs:
+      - update
+
+  # Manage pods (scoped to kubefabric-managed pods)
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - delete
 
   # Manage StatefulSets
   - apiGroups:
@@ -95,13 +177,12 @@ rules:
     resources:
       - statefulsets
     verbs:
-      - create
-      - delete
       - get
       - list
-      - patch
-      - update
       - watch
+      - create
+      - update
+      - delete
 
   # Manage Services
   - apiGroups:
@@ -109,13 +190,12 @@ rules:
     resources:
       - services
     verbs:
-      - create
-      - delete
       - get
       - list
-      - patch
-      - update
       - watch
+      - create
+      - update
+      - delete
 
   # Manage PVCs
   - apiGroups:
@@ -123,13 +203,12 @@ rules:
     resources:
       - persistentvolumeclaims
     verbs:
-      - create
-      - delete
       - get
       - list
-      - patch
-      - update
       - watch
+      - create
+      - update
+      - delete
 
   # Leader election
   - apiGroups:

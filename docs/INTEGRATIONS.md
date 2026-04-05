@@ -7,7 +7,7 @@ KubeFabric integrates seamlessly with popular ML platforms and tools.
 ### Weights & Biases
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: training-with-wandb
@@ -81,7 +81,7 @@ Access: `http://<external-ip>:6006`
 ### HuggingFace Hub
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricJobHook
 metadata:
   name: push-to-huggingface
@@ -134,7 +134,7 @@ spec:
 ### DVC (Data Version Control)
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricDataset
 metadata:
   name: my-dataset
@@ -308,7 +308,7 @@ pipeline {
 ### Job Notifications
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricJobHook
 metadata:
   name: slack-notifications
@@ -426,7 +426,7 @@ spec:
 ### S3 Backup
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricJobHook
 metadata:
   name: backup-checkpoints

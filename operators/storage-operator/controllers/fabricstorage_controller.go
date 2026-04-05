@@ -15,10 +15,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	kubefabricv1 "github.com/yourusername/kubefabric/operators/storage-operator/api/v1"
-	"github.com/yourusername/kubefabric/operators/storage-operator/pkg/vast"
-	"github.com/yourusername/kubefabric/operators/storage-operator/pkg/weka"
-	"github.com/yourusername/kubefabric/operators/storage-operator/pkg/ddn"
+	kubefabricv1 "github.com/ssahani/kube-fabric/operators/storage-operator/api/v1"
+	"github.com/ssahani/kube-fabric/operators/storage-operator/pkg/vast"
+	"github.com/ssahani/kube-fabric/operators/storage-operator/pkg/weka"
+	"github.com/ssahani/kube-fabric/operators/storage-operator/pkg/ddn"
 )
 
 const (
@@ -72,6 +72,7 @@ func (r *FabricStorageReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		if err := r.Update(ctx, storage); err != nil {
 			return ctrl.Result{}, err
 		}
+		return ctrl.Result{Requeue: true}, nil
 	}
 
 	// Initialize status
@@ -80,6 +81,7 @@ func (r *FabricStorageReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		if err := r.Status().Update(ctx, storage); err != nil {
 			return ctrl.Result{}, err
 		}
+		return ctrl.Result{Requeue: true}, nil
 	}
 
 	// Reconcile storage
@@ -89,6 +91,10 @@ func (r *FabricStorageReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return result, err
 	}
 
+	// Use the result from reconcileStorage if it specifies a requeue, otherwise default
+	if result.RequeueAfter > 0 || result.Requeue {
+		return result, nil
+	}
 	return ctrl.Result{RequeueAfter: 60 * time.Second}, nil
 }
 
@@ -170,7 +176,10 @@ func (r *FabricStorageReconciler) ensureCSIDriver(ctx context.Context, storage *
 }
 
 func (r *FabricStorageReconciler) ensureStorageClass(ctx context.Context, storage *kubefabricv1.FabricStorage) error {
-	scName := storage.Spec.StorageClass.Name
+	var scName string
+	if storage.Spec.StorageClass != nil {
+		scName = storage.Spec.StorageClass.Name
+	}
 	if scName == "" {
 		scName = fmt.Sprintf("%s-%s", storage.Spec.Backend, storage.Name)
 	}
@@ -180,6 +189,10 @@ func (r *FabricStorageReconciler) ensureStorageClass(ctx context.Context, storag
 	if err != nil && errors.IsNotFound(err) {
 		// Create StorageClass
 		sc = r.buildStorageClass(storage, scName)
+		// Set owner reference for garbage collection (both are cluster-scoped)
+		if err := controllerutil.SetControllerReference(storage, sc, r.Scheme); err != nil {
+			r.Log.Error(err, "Failed to set owner reference on StorageClass", "name", scName)
+		}
 		if err := r.Create(ctx, sc); err != nil {
 			return err
 		}
@@ -191,19 +204,17 @@ func (r *FabricStorageReconciler) ensureStorageClass(ctx context.Context, storag
 
 func (r *FabricStorageReconciler) buildStorageClass(storage *kubefabricv1.FabricStorage, name string) *storagev1.StorageClass {
 	reclaimPolicy := storagev1.PersistentVolumeReclaimDelete
-	if storage.Spec.StorageClass.ReclaimPolicy == "Retain" {
+	if storage.Spec.StorageClass != nil && storage.Spec.StorageClass.ReclaimPolicy == "Retain" {
 		reclaimPolicy = storagev1.PersistentVolumeReclaimRetain
 	}
 
 	volumeBindingMode := storagev1.VolumeBindingWaitForFirstConsumer
-	if storage.Spec.StorageClass.VolumeBindingMode == "Immediate" {
+	if storage.Spec.StorageClass != nil && storage.Spec.StorageClass.VolumeBindingMode == "Immediate" {
 		volumeBindingMode = storagev1.VolumeBindingImmediate
 	}
 
+	// Default to allowing volume expansion
 	allowExpansion := true
-	if storage.Spec.StorageClass != nil {
-		allowExpansion = storage.Spec.StorageClass.AllowVolumeExpansion
-	}
 
 	provisioner := r.getProvisioner(storage.Spec.Backend)
 
@@ -269,7 +280,10 @@ func (r *FabricStorageReconciler) healthCheckStorage(ctx context.Context, storag
 func (r *FabricStorageReconciler) handleDeletion(ctx context.Context, storage *kubefabricv1.FabricStorage) (ctrl.Result, error) {
 	if controllerutil.ContainsFinalizer(storage, storageFinalizer) {
 		// Cleanup: delete StorageClass
-		scName := storage.Spec.StorageClass.Name
+		var scName string
+		if storage.Spec.StorageClass != nil {
+			scName = storage.Spec.StorageClass.Name
+		}
 		if scName == "" {
 			scName = fmt.Sprintf("%s-%s", storage.Spec.Backend, storage.Name)
 		}
@@ -301,6 +315,14 @@ func (r *FabricStorageReconciler) updateCondition(storage *kubefabricv1.FabricSt
 		Reason:             reason,
 		Message:            message,
 		LastTransitionTime: metav1.Now(),
+	}
+
+	// Only update LastTransitionTime when status actually changes
+	for _, cond := range storage.Status.Conditions {
+		if cond.Type == condType && cond.Status == status {
+			condition.LastTransitionTime = cond.LastTransitionTime
+			break
+		}
 	}
 
 	found := false

@@ -91,7 +91,7 @@ preprocess = KubernetesPodOperator(
     resources={
         'limit_nvidia.com/gpu': '1'
     },
-    node_selector={'kubefabric.io/gpu-type': 'T4'},
+    node_selector={'kubefabric.ai/gpu-type': 'T4'},
     dag=dag,
 )
 
@@ -105,7 +105,7 @@ train = KubernetesPodOperator(
     resources={
         'limit_nvidia.com/gpu': '8'
     },
-    node_selector={'kubefabric.io/gpu-type': 'A100-80G'},
+    node_selector={'kubefabric.ai/gpu-type': 'A100-80G'},
     dag=dag,
 )
 
@@ -199,7 +199,7 @@ def submit_kubefabric_job(**context):
     config.load_incluster_config()
 
     job_spec = {
-        'apiVersion': 'kubefabric.io/v1',
+        'apiVersion': 'kubefabric.ai/v1',
         'kind': 'FabricAIJob',
         'metadata': {
             'name': 'airflow-training',
@@ -218,7 +218,7 @@ def submit_kubefabric_job(**context):
 
     api = client.CustomObjectsApi()
     api.create_namespaced_custom_object(
-        group='kubefabric.io',
+        group='kubefabric.ai',
         version='v1',
         namespace='default',
         plural='fabricaijobs',
@@ -244,7 +244,7 @@ def check_job_status(**context):
     api = client.CustomObjectsApi()
 
     job = api.get_namespaced_custom_object(
-        group='kubefabric.io',
+        group='kubefabric.ai',
         version='v1',
         namespace='default',
         plural='fabricaijobs',
@@ -276,7 +276,7 @@ def calculate_cost(**context):
     # Get job metrics
     api = client.CustomObjectsApi()
     job = api.get_namespaced_custom_object(
-        group='kubefabric.io',
+        group='kubefabric.ai',
         version='v1',
         namespace='default',
         plural='fabricaijobs',

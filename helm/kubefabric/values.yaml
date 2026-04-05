@@ -182,11 +182,6 @@ serviceAccounts:
   create: true
   annotations: {}
 
-# Security
-podSecurityPolicy:
-  enabled: false
-  # Enable PSP (deprecated in K8s 1.25+)
-
 networkPolicy:
   enabled: true
   # Enable network policies for security
@@ -208,7 +203,7 @@ grafana:
   enabled: true
   # adminPassword must be set explicitly via --set or a secret
   # adminPassword: ""
-  existingSecret: ""
+  # existingSecret: my-grafana-secret
   persistence:
     enabled: true
     size: 10Gi

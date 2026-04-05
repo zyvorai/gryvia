@@ -89,7 +89,7 @@ data:
           'cpu_limit': 32,
           'mem_limit': '256G',
           'extra_resource_limits': {'nvidia.com/gpu': '1'},
-          'node_selector': {'kubefabric.io/gpu-type': 'H100'}
+          'node_selector': {'kubefabric.ai/gpu-type': 'H100'}
         }
       }
     ]
@@ -102,7 +102,7 @@ Browser-based VS Code with GPU access.
 ### Deployment
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: vscode-server
@@ -194,7 +194,7 @@ spec:
                   memory: 64Gi
                   nvidia.com/gpu: 2
           nodeSelector:
-            kubefabric.io/gpu-type: A100-80G
+            kubefabric.ai/gpu-type: A100-80G
 ```
 
 ### Usage
@@ -238,7 +238,7 @@ def kubefabric_training_op(
     import subprocess
 
     job_yaml = f"""
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: kfp-training
@@ -297,7 +297,7 @@ gateway:
         limit: 64G
       extraPodConfig:
         nodeSelector:
-          kubefabric.io/gpu: "true"
+          kubefabric.ai/gpu: "true"
 ```
 
 ### Usage
@@ -325,7 +325,7 @@ R development environment with GPU support.
 ### Deployment
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: rstudio-server

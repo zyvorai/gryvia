@@ -34,14 +34,14 @@ Optimize costs with spot/preemptible GPU instances while maintaining reliability
 ### Enable Spot Instances
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: training-spot
   annotations:
-    kubefabric.io/spot-enabled: "true"
-    kubefabric.io/spot-max-price: "15.00"  # Max $/hour per GPU
-    kubefabric.io/spot-fallback: "on-demand"
+    kubefabric.ai/spot-enabled: "true"
+    kubefabric.ai/spot-max-price: "15.00"  # Max $/hour per GPU
+    kubefabric.ai/spot-fallback: "on-demand"
 spec:
   framework: pytorch
   resources:
@@ -93,13 +93,13 @@ data:
 ### Cost-Optimized Training
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: llama-training-spot
   annotations:
-    kubefabric.io/spot-enabled: "true"
-    kubefabric.io/spot-max-price: "15.00"
+    kubefabric.ai/spot-enabled: "true"
+    kubefabric.ai/spot-max-price: "15.00"
 spec:
   framework: pytorch
   distributed:
@@ -129,7 +129,7 @@ spec:
 Mix spot and on-demand for optimal cost/reliability:
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: hybrid-training
@@ -318,7 +318,7 @@ kfctl spot prices --gpu-type A100-80G --days 7
 
 # Adjust max price
 kubectl annotate fabricaijob my-job \
-  kubefabric.io/spot-max-price=18.00 --overwrite
+  kubefabric.ai/spot-max-price=18.00 --overwrite
 
 # Or switch to different GPU type
 # T4 often has lower interruption rate

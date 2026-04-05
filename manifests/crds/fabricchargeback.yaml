@@ -3,9 +3,9 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: fabricchargebacks.kubefabric.io
+  name: fabricchargebacks.kubefabric.ai
 spec:
-  group: kubefabric.io
+  group: kubefabric.ai
   versions:
     - name: v1
       served: true
@@ -358,7 +358,7 @@ spec:
 
 ---
 # Example: Monthly Chargeback Configuration
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricChargeback
 metadata:
   name: monthly-chargeback
@@ -492,7 +492,7 @@ spec:
 
 ---
 # Example: Cost Center Report
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricChargebackReport
 metadata:
   name: jan-2024-chargeback

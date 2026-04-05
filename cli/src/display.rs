@@ -15,8 +15,9 @@ pub fn print_jobs_table(jobs: &[FabricAIJob]) {
         Cell::new("AGE").style_spec("Fb"),
     ]));
 
+    let unknown = "<unknown>".to_string();
     for job in jobs {
-        let name = job.metadata.name.as_ref().unwrap_or(&"<unknown>".to_string());
+        let name = job.metadata.name.as_ref().unwrap_or(&unknown);
         let framework = &job.spec.framework;
         let gpus = job.spec.resources.gpu_count.to_string();
         let gpu_type = &job.spec.resources.gpu_type;
@@ -137,7 +138,7 @@ pub fn print_cluster_overview(nodes: &[FabricGpuNode], jobs: &[FabricAIJob]) {
     println!("  {} Nodes", nodes.len().to_string().bold());
     println!("  {} Total GPUs", total_gpus.to_string().bold());
     println!("  {} Allocated GPUs", allocated_gpus.to_string().green().bold());
-    println!("  {} Available GPUs", (total_gpus - allocated_gpus).to_string().yellow().bold());
+    println!("  {} Available GPUs", (total_gpus.saturating_sub(allocated_gpus)).to_string().yellow().bold());
     println!();
 
     println!("{}", "GPU Distribution:".bold());
@@ -160,7 +161,7 @@ pub fn print_cluster_overview(nodes: &[FabricGpuNode], jobs: &[FabricAIJob]) {
     println!();
 }
 
-fn colorize_status(status: &str) -> String {
+pub fn colorize_status(status: &str) -> String {
     match status {
         "Running" | "Active" | "Ready" | "Healthy" => status.green().to_string(),
         "Pending" | "Queued" => status.yellow().to_string(),
@@ -174,7 +175,9 @@ fn format_age(timestamp: Option<&k8s_openapi::apimachinery::pkg::apis::meta::v1:
     if let Some(ts) = timestamp {
         let age = chrono::Utc::now().signed_duration_since(ts.0);
 
-        if age.num_days() > 0 {
+        if age.num_seconds() < 0 {
+            "just now".to_string()
+        } else if age.num_days() > 0 {
             format!("{}d", age.num_days())
         } else if age.num_hours() > 0 {
             format!("{}h", age.num_hours())

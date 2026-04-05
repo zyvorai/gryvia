@@ -72,7 +72,7 @@ spec:
                 - name: ray-logs
                   mountPath: /tmp/ray
           nodeSelector:
-            kubefabric.io/gpu-type: T4
+            kubefabric.ai/gpu-type: T4
           volumes:
             - name: ray-logs
               emptyDir: {}
@@ -108,7 +108,7 @@ spec:
                 - name: NCCL_DEBUG
                   value: "INFO"
           nodeSelector:
-            kubefabric.io/gpu-type: A100-80G
+            kubefabric.ai/gpu-type: A100-80G
           volumes:
             - name: ray-logs
               emptyDir: {}
@@ -246,7 +246,7 @@ data:
 
 ---
 # KubeFabric Quota for Ray cluster
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricQuota
 metadata:
   name: ray-cluster-quota

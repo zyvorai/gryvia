@@ -50,7 +50,7 @@ kubectl get pods -n kubefabric-system -l app=storage-operator
 ### VAST Data Example
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricStorage
 metadata:
   name: vast-production
@@ -59,7 +59,7 @@ spec:
   endpoint: vast-mgmt.example.com
   capacity: 100Ti
   nodeSelector:
-    kubefabric.io/storage: "true"
+    kubefabric.ai/storage: "true"
   credentials:
     secretName: vast-credentials
     secretNamespace: kubefabric-system

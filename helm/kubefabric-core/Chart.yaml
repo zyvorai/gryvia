@@ -13,9 +13,9 @@ keywords:
   - nvidia
   - rdma
   - distributed-training
-home: https://github.com/yourusername/kubefabric
+home: https://github.com/ssahani/kube-fabric
 sources:
-  - https://github.com/yourusername/kubefabric
+  - https://github.com/ssahani/kube-fabric
 maintainers:
   - name: KubeFabric Team
     email: team@kubefabric.ai

@@ -14,14 +14,14 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kubefabricv1 "github.com/yourusername/kubefabric/operators/storage-operator/api/v1"
+	kubefabricv1 "github.com/ssahani/kube-fabric/operators/storage-operator/api/v1"
 )
 
 const (
 	VASTCSINamespace     = "kube-system"
 	VASTCSIDriverName    = "csi.vastdata.com"
 	VASTCSIControllerName = "vast-csi-controller"
-	VASTCSI NodeName      = "vast-csi-node"
+	VASTCSINodeName       = "vast-csi-node"
 )
 
 // InstallCSIDriver installs the VAST CSI driver
@@ -99,6 +99,8 @@ func ensureRBAC(ctx context.Context, k8sClient client.Client) error {
 		if err := k8sClient.Create(ctx, cr); err != nil {
 			return err
 		}
+	} else if err != nil {
+		return fmt.Errorf("failed to check ClusterRole: %w", err)
 	}
 
 	// ClusterRoleBinding
@@ -162,7 +164,7 @@ func ensureController(ctx context.Context, k8sClient client.Client, storage *kub
 					Containers: []corev1.Container{
 						{
 							Name:  "vast-csi-controller",
-							Image: "vastdataorg/csi:latest",
+							Image: "vastdataorg/csi:v2.5.0",
 							Args: []string{
 								"--endpoint=$(CSI_ENDPOINT)",
 								"--vast-mgmt-endpoint=$(VAST_MGMT_ENDPOINT)",
@@ -277,7 +279,7 @@ func ensureNodeDaemonSet(ctx context.Context, k8sClient client.Client, storage *
 					Containers: []corev1.Container{
 						{
 							Name:  "vast-csi-node",
-							Image: "vastdataorg/csi:latest",
+							Image: "vastdataorg/csi:v2.5.0",
 							SecurityContext: &corev1.SecurityContext{
 								Privileged: func() *bool { b := true; return &b }(),
 							},
@@ -367,14 +369,14 @@ func ensureNodeDaemonSet(ctx context.Context, k8sClient client.Client, storage *
 
 // HealthCheck checks VAST cluster health
 func HealthCheck(endpoint string) error {
-	client := &http.Client{
-		Timeout: 5 * time.Second,
+	httpClient := &http.Client{
+		Timeout: 10 * time.Second,
 	}
 
 	// VAST management API health endpoint
-	url := fmt.Sprintf("https://%s/api/health", endpoint)
+	healthURL := fmt.Sprintf("https://%s/api/health", endpoint)
 
-	resp, err := client.Get(url)
+	resp, err := httpClient.Get(healthURL)
 	if err != nil {
 		return fmt.Errorf("VAST health check failed: %w", err)
 	}

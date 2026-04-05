@@ -131,20 +131,12 @@ imagePullSecrets:
 Return the appropriate apiVersion for RBAC
 */}}
 {{- define "kubefabric.rbac.apiVersion" -}}
-{{- if .Capabilities.APIVersions.Has "rbac.authorization.k8s.io/v1" }}
 {{- print "rbac.authorization.k8s.io/v1" }}
-{{- else }}
-{{- print "rbac.authorization.k8s.io/v1beta1" }}
-{{- end }}
 {{- end }}
 
 {{/*
 Return the appropriate apiVersion for NetworkPolicy
 */}}
 {{- define "kubefabric.networkPolicy.apiVersion" -}}
-{{- if .Capabilities.APIVersions.Has "networking.k8s.io/v1" }}
 {{- print "networking.k8s.io/v1" }}
-{{- else }}
-{{- print "networking.k8s.io/v1beta1" }}
-{{- end }}
 {{- end }}

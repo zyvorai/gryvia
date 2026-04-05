@@ -36,7 +36,7 @@ class GPUProfiler:
         """Get GPU metrics for a specific job"""
         try:
             job = self.api.get_namespaced_custom_object(
-                group="kubefabric.io",
+                group="kubefabric.ai",
                 version="v1",
                 namespace=self.namespace,
                 plural="fabricaijobs",
@@ -187,15 +187,17 @@ class GPUProfiler:
         """Estimate potential cost savings"""
         # GPU pricing ($/hour)
         pricing = {
-            "H100": 30.0,
-            "A100-80G": 24.0,
-            "A100-40G": 12.0,
-            "A100": 12.0,
-            "V100": 8.0,
-            "T4": 3.0
+            "H100": 8.0,
+            "A100-80G": 4.0,
+            "A100-40G": 3.0,
+            "A100": 3.0,
+            "L40": 2.5,
+            "A10": 1.5,
+            "V100": 2.0,
+            "T4": 0.75,
         }
 
-        current_price = pricing.get(gpu_type, 12.0) * gpu_count
+        current_price = pricing.get(gpu_type, 2.0) * gpu_count
         duration_hours = analysis["duration_hours"]
         current_cost = current_price * duration_hours
 
@@ -314,7 +316,7 @@ class GPUProfiler:
         """Profile all running jobs"""
         try:
             jobs = self.api.list_namespaced_custom_object(
-                group="kubefabric.io",
+                group="kubefabric.ai",
                 version="v1",
                 namespace=self.namespace,
                 plural="fabricaijobs"

@@ -35,7 +35,7 @@ class CostCalculator:
         """Get all jobs from the last N days"""
         try:
             jobs = self.api.list_namespaced_custom_object(
-                group="kubefabric.io",
+                group="kubefabric.ai",
                 version="v1",
                 namespace=namespace,
                 plural="fabricaijobs"
@@ -136,7 +136,9 @@ class CostCalculator:
     def project_monthly_cost(self, namespace="default"):
         """Project cost for current month"""
         now = datetime.now()
-        days_in_month = (datetime(now.year, now.month + 1, 1) - timedelta(days=1)).day
+        next_month = now.month % 12 + 1
+        next_year = now.year + (1 if now.month == 12 else 0)
+        days_in_month = (datetime(next_year, next_month, 1) - timedelta(days=1)).day
         days_elapsed = now.day
 
         analysis = self.analyze_costs(namespace, days=days_elapsed)

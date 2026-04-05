@@ -34,11 +34,12 @@ data:
             action: upsert
 
     exporters:
-      # Jaeger
-      jaeger:
+      # Jaeger (use TLS in production with proper certificates)
+      otlp/jaeger:
         endpoint: jaeger-collector:14250
         tls:
-          insecure: true
+          insecure: false
+          insecure_skip_verify: true
 
       # Prometheus
       prometheus:
@@ -54,7 +55,7 @@ data:
         traces:
           receivers: [otlp]
           processors: [memory_limiter, batch, resource]
-          exporters: [jaeger, logging]
+          exporters: [otlp/jaeger, logging]
 
         metrics:
           receivers: [otlp]
@@ -177,7 +178,7 @@ metadata:
   name: jaeger-query
   namespace: kubefabric
 spec:
-  type: LoadBalancer
+  type: ClusterIP
   selector:
     app: jaeger
   ports:
@@ -229,7 +230,7 @@ spec:
             - name: SPAN_STORAGE_TYPE
               value: elasticsearch
             - name: ES_SERVER_URLS
-              value: http://elasticsearch:9200
+              value: https://elasticsearch:9200
             - name: ES_INDEX_PREFIX
               value: jaeger
             - name: COLLECTOR_QUEUE_SIZE
@@ -270,7 +271,7 @@ spec:
             - name: SPAN_STORAGE_TYPE
               value: elasticsearch
             - name: ES_SERVER_URLS
-              value: http://elasticsearch:9200
+              value: https://elasticsearch:9200
             - name: ES_INDEX_PREFIX
               value: jaeger
           ports:
@@ -282,13 +283,13 @@ spec:
 
 ---
 # Example: Instrumented Job
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: traced-training
   namespace: default
   annotations:
-    kubefabric.io/tracing: enabled
+    kubefabric.ai/tracing: enabled
 spec:
   framework: pytorch
   resources:

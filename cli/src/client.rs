@@ -22,12 +22,7 @@ impl KubeFabricClient {
                 .context("Failed to infer Kubernetes config")?
         };
 
-        let namespace = namespace.unwrap_or_else(|| {
-            config
-                .default_namespace
-                .clone()
-                .unwrap_or_else(|| "default".to_string())
-        });
+        let namespace = namespace.unwrap_or_else(|| config.default_namespace.clone());
 
         let kube_client = Client::try_from(config).context("Failed to create Kubernetes client")?;
 

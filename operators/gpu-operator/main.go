@@ -13,8 +13,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	kubefabricv1 "github.com/yourusername/kubefabric/operators/gpu-operator/api/v1"
-	"github.com/yourusername/kubefabric/operators/gpu-operator/controllers"
+	kubefabricv1 "github.com/ssahani/kube-fabric/operators/gpu-operator/api/v1"
+	"github.com/ssahani/kube-fabric/operators/gpu-operator/controllers"
 )
 
 var (

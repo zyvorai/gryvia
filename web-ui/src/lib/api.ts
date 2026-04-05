@@ -17,43 +17,43 @@ export const api = {
 
   // Jobs
   getJobs: async (): Promise<FabricAIJob[]> => {
-    const { data } = await apiClient.get('/apis/kubefabric.io/v1/namespaces/default/fabricaijobs')
+    const { data } = await apiClient.get('/apis/kubefabric.ai/v1/namespaces/default/fabricaijobs')
     return data.items || []
   },
 
   getJob: async (name: string): Promise<FabricAIJob> => {
-    const { data } = await apiClient.get(`/apis/kubefabric.io/v1/namespaces/default/fabricaijobs/${name}`)
+    const { data } = await apiClient.get(`/apis/kubefabric.ai/v1/namespaces/default/fabricaijobs/${name}`)
     return data
   },
 
   createJob: async (job: Partial<FabricAIJob>): Promise<FabricAIJob> => {
-    const { data } = await apiClient.post('/apis/kubefabric.io/v1/namespaces/default/fabricaijobs', job)
+    const { data } = await apiClient.post('/apis/kubefabric.ai/v1/namespaces/default/fabricaijobs', job)
     return data
   },
 
   deleteJob: async (name: string): Promise<void> => {
-    await apiClient.delete(`/apis/kubefabric.io/v1/namespaces/default/fabricaijobs/${name}`)
+    await apiClient.delete(`/apis/kubefabric.ai/v1/namespaces/default/fabricaijobs/${name}`)
   },
 
   // Quotas
   getQuotas: async (): Promise<FabricQuota[]> => {
-    const { data } = await apiClient.get('/apis/kubefabric.io/v1/fabricquotas')
+    const { data } = await apiClient.get('/apis/kubefabric.ai/v1/fabricquotas')
     return data.items || []
   },
 
   getQuota: async (name: string): Promise<FabricQuota> => {
-    const { data } = await apiClient.get(`/apis/kubefabric.io/v1/fabricquotas/${name}`)
+    const { data } = await apiClient.get(`/apis/kubefabric.ai/v1/fabricquotas/${name}`)
     return data
   },
 
   // Nodes
   getNodes: async (): Promise<FabricGpuNode[]> => {
-    const { data } = await apiClient.get('/apis/kubefabric.io/v1/fabricgpunodes')
+    const { data } = await apiClient.get('/apis/kubefabric.ai/v1/fabricgpunodes')
     return data.items || []
   },
 
   getNode: async (name: string): Promise<FabricGpuNode> => {
-    const { data } = await apiClient.get(`/apis/kubefabric.io/v1/fabricgpunodes/${name}`)
+    const { data } = await apiClient.get(`/apis/kubefabric.ai/v1/fabricgpunodes/${name}`)
     return data
   },
 

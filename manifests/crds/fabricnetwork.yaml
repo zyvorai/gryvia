@@ -3,9 +3,9 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: fabricnetworkpolicies.kubefabric.io
+  name: fabricnetworkpolicies.kubefabric.ai
 spec:
-  group: kubefabric.io
+  group: kubefabric.ai
   versions:
     - name: v1
       served: true
@@ -268,7 +268,7 @@ spec:
 
 ---
 # Example: InfiniBand HDR200 Configuration
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricNetworkPolicy
 metadata:
   name: infiniband-hdr200
@@ -303,7 +303,7 @@ spec:
 
 ---
 # Example: RoCEv2 Configuration
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricNetworkPolicy
 metadata:
   name: roce-v2
@@ -334,7 +334,7 @@ spec:
 
 ---
 # Example: Multi-Rail Network
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricNetworkPolicy
 metadata:
   name: multi-rail
@@ -364,7 +364,7 @@ spec:
 
 ---
 # Example: Job with Network Requirements
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: distributed-training-ib
@@ -408,7 +408,7 @@ spec:
 
 ---
 # Network Performance Test
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricNetworkTest
 metadata:
   name: ib-bandwidth-test

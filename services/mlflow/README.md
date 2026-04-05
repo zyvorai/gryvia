@@ -109,7 +109,7 @@ with mlflow.start_run(run_name="run-001"):
 ### Using in AI Jobs
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: mlflow-training

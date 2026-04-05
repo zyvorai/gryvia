@@ -66,11 +66,11 @@ To remove CRDs:
 
 ```bash
 kubectl delete crds \
-  fabricgpunodes.kubefabric.io \
-  fabricaijobs.kubefabric.io \
-  fabricstorages.kubefabric.io \
-  fabricnetworks.kubefabric.io \
-  fabricquotas.kubefabric.io
+  fabricgpunodes.kubefabric.ai \
+  fabricaijobs.kubefabric.ai \
+  fabricstorages.kubefabric.ai \
+  fabricnetworks.kubefabric.ai \
+  fabricquotas.kubefabric.ai
 ```
 
 ## Configuration

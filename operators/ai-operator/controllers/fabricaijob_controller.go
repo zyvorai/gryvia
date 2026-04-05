@@ -17,8 +17,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	kubefabricv1 "github.com/yourusername/kubefabric/operators/ai-operator/api/v1"
-	"github.com/yourusername/kubefabric/operators/ai-operator/pkg/scheduler"
+	kubefabricv1 "github.com/ssahani/kube-fabric/operators/ai-operator/api/v1"
+	"github.com/ssahani/kube-fabric/operators/ai-operator/pkg/scheduler"
 )
 
 const (
@@ -79,17 +79,17 @@ func (r *FabricAIJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		if err := r.Update(ctx, job); err != nil {
 			return ctrl.Result{}, err
 		}
+		return ctrl.Result{Requeue: true}, nil
 	}
 
 	// Initialize status if needed
 	if job.Status.Phase == "" {
 		job.Status.Phase = PhasePending
-		now := metav1.Now()
-		job.Status.StartTime = &now
 		if err := r.Status().Update(ctx, job); err != nil {
 			log.Error(err, "Failed to update FabricAIJob status")
 			return ctrl.Result{}, err
 		}
+		return ctrl.Result{Requeue: true}, nil
 	}
 
 	// Reconcile the AI job
@@ -116,7 +116,9 @@ func (r *FabricAIJobReconciler) reconcileAIJob(ctx context.Context, job *kubefab
 			log.Error(err, "Failed to schedule job")
 			r.updateCondition(job, ConditionScheduled, metav1.ConditionFalse, "SchedulingFailed", err.Error())
 			job.Status.Phase = PhasePending
-			r.Status().Update(ctx, job)
+			if updateErr := r.Status().Update(ctx, job); updateErr != nil {
+				log.Error(updateErr, "Failed to update status after scheduling failure")
+			}
 			return ctrl.Result{RequeueAfter: 30 * time.Second}, err
 		}
 
@@ -166,15 +168,26 @@ func (r *FabricAIJobReconciler) reconcileAIJob(ctx context.Context, job *kubefab
 	// Update phase based on replicas
 	desiredReplicas := r.getReplicaCount(job)
 	if sts.Status.ReadyReplicas == desiredReplicas {
+		if job.Status.Phase != PhaseRunning && job.Status.StartTime == nil {
+			now := metav1.Now()
+			job.Status.StartTime = &now
+		}
 		job.Status.Phase = PhaseRunning
 		r.updateCondition(job, ConditionReady, metav1.ConditionTrue, "Ready", "All replicas are ready")
 	} else if sts.Status.ReadyReplicas > 0 {
+		if job.Status.Phase != PhaseRunning && job.Status.StartTime == nil {
+			now := metav1.Now()
+			job.Status.StartTime = &now
+		}
 		job.Status.Phase = PhaseRunning
 		r.updateCondition(job, ConditionReady, metav1.ConditionFalse, "PartiallyReady", "Some replicas are ready")
 	}
 
-	// Check if job has completed (this is simplified, real implementation would check actual job completion)
-	// In production, you'd watch pod status, check for completion signals, etc.
+	// Set CompletionTime when job transitions to terminal state
+	if (job.Status.Phase == PhaseSucceeded || job.Status.Phase == PhaseFailed) && job.Status.CompletionTime == nil {
+		now := metav1.Now()
+		job.Status.CompletionTime = &now
+	}
 
 	if err := r.Status().Update(ctx, job); err != nil {
 		log.Error(err, "Failed to update status")
@@ -215,7 +228,7 @@ func (r *FabricAIJobReconciler) ensurePVC(ctx context.Context, job *kubefabricv1
 				StorageClassName: &job.Spec.Storage,
 				Resources: corev1.ResourceRequirements{
 					Requests: corev1.ResourceList{
-						corev1.ResourceStorage: resource.MustParse("100Gi"),
+						corev1.ResourceStorage: resource.MustParse(job.Spec.StorageSize()),
 					},
 				},
 			},
@@ -378,12 +391,14 @@ func (r *FabricAIJobReconciler) buildPodTemplate(job *kubefabricv1.FabricAIJob, 
 }
 
 func (r *FabricAIJobReconciler) buildEnvVars(job *kubefabricv1.FabricAIJob) []corev1.EnvVar {
-	envVars := job.Spec.Env
+	// Copy to avoid mutating the spec
+	envVars := make([]corev1.EnvVar, len(job.Spec.Env))
+	copy(envVars, job.Spec.Env)
 
 	// Add distributed training env vars if enabled
 	if job.Spec.Distributed != nil && job.Spec.Distributed.Enabled {
 		envVars = append(envVars,
-			corev1.EnvVar{Name: "MASTER_ADDR", Value: fmt.Sprintf("%s-headless-0.%s-headless", job.Name, job.Name)},
+			corev1.EnvVar{Name: "MASTER_ADDR", Value: fmt.Sprintf("%s-training-0.%s-headless", job.Name, job.Name)},
 			corev1.EnvVar{Name: "MASTER_PORT", Value: "29500"},
 			corev1.EnvVar{Name: "WORLD_SIZE", Value: fmt.Sprintf("%d", job.Spec.GPUs)},
 			corev1.EnvVar{Name: "NCCL_DEBUG", Value: "INFO"},
@@ -401,7 +416,9 @@ func (r *FabricAIJobReconciler) buildEnvVars(job *kubefabricv1.FabricAIJob) []co
 }
 
 func (r *FabricAIJobReconciler) buildVolumeMounts(job *kubefabricv1.FabricAIJob) []corev1.VolumeMount {
-	volumeMounts := job.Spec.VolumeMounts
+	// Copy to avoid mutating the spec
+	volumeMounts := make([]corev1.VolumeMount, len(job.Spec.VolumeMounts))
+	copy(volumeMounts, job.Spec.VolumeMounts)
 
 	// Add data volume if storage is specified
 	if job.Spec.Storage != "" {
@@ -423,7 +440,9 @@ func (r *FabricAIJobReconciler) buildVolumeMounts(job *kubefabricv1.FabricAIJob)
 }
 
 func (r *FabricAIJobReconciler) buildVolumes(job *kubefabricv1.FabricAIJob) []corev1.Volume {
-	volumes := job.Spec.Volumes
+	// Copy to avoid mutating the spec
+	volumes := make([]corev1.Volume, len(job.Spec.Volumes))
+	copy(volumes, job.Spec.Volumes)
 
 	// Add PVC volume if storage is specified
 	if job.Spec.Storage != "" {
@@ -465,9 +484,10 @@ func (r *FabricAIJobReconciler) buildResources(job *kubefabricv1.FabricAIJob, gp
 }
 
 func (r *FabricAIJobReconciler) buildNodeSelector(job *kubefabricv1.FabricAIJob) map[string]string {
-	nodeSelector := job.Spec.NodeSelector
-	if nodeSelector == nil {
-		nodeSelector = make(map[string]string)
+	// Copy to avoid mutating the spec
+	nodeSelector := make(map[string]string)
+	for k, v := range job.Spec.NodeSelector {
+		nodeSelector[k] = v
 	}
 
 	// Add GPU type selector if specified
@@ -522,6 +542,14 @@ func (r *FabricAIJobReconciler) updateCondition(job *kubefabricv1.FabricAIJob, c
 		Reason:             reason,
 		Message:            message,
 		LastTransitionTime: metav1.Now(),
+	}
+
+	// Only update LastTransitionTime when status actually changes
+	for _, cond := range job.Status.Conditions {
+		if cond.Type == condType && cond.Status == status {
+			condition.LastTransitionTime = cond.LastTransitionTime
+			break
+		}
 	}
 
 	// Find and update existing condition or append new one

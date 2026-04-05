@@ -13,7 +13,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	kubefabricv1 "github.com/yourusername/kubefabric/operators/network-operator/api/v1"
+	kubefabricv1 "github.com/ssahani/kube-fabric/operators/network-operator/api/v1"
 )
 
 const (
@@ -54,7 +54,7 @@ func InstallDevicePlugin(ctx context.Context, k8sClient client.Client, owner *ku
 					Containers: []corev1.Container{
 						{
 							Name:  "rdma-device-plugin",
-							Image: "ghcr.io/mellanox/k8s-rdma-shared-dev-plugin:latest",
+							Image: "ghcr.io/mellanox/k8s-rdma-shared-dev-plugin:v1.5.1",
 							SecurityContext: &corev1.SecurityContext{
 								Privileged: func() *bool { b := true; return &b }(),
 							},
@@ -96,12 +96,9 @@ func InstallDevicePlugin(ctx context.Context, k8sClient client.Client, owner *ku
 	}
 
 	// Set owner reference for garbage collection
-	if err := controllerutil.SetControllerReference(owner, ds, scheme); err != nil {
-		// Cross-namespace owner references are not allowed; log but continue
-		// DaemonSet is in kube-system, owner may be in a different namespace
-		// In this case we rely on the finalizer-based cleanup instead
-		_ = err
-	}
+	// Cross-namespace owner references are not allowed (DaemonSet in kube-system, owner may be cluster-scoped)
+	// so we rely on finalizer-based cleanup instead
+	_ = controllerutil.SetControllerReference(owner, ds, scheme)
 
 	// Check if DaemonSet already exists
 	existing := &appsv1.DaemonSet{}
@@ -125,8 +122,8 @@ func ConfigureNode(ctx context.Context, k8sClient client.Client, node *corev1.No
 		node.Labels = make(map[string]string)
 	}
 
-	node.Labels["kubefabric.io/rdma"] = "enabled"
-	node.Labels["kubefabric.io/rdma-mode"] = rdmaConfig.Mode
+	node.Labels["kubefabric.ai/rdma"] = "true"
+	node.Labels["kubefabric.ai/rdma-mode"] = rdmaConfig.Mode
 
 	// Add device annotations
 	if node.Annotations == nil {
@@ -134,7 +131,7 @@ func ConfigureNode(ctx context.Context, k8sClient client.Client, node *corev1.No
 	}
 
 	if len(rdmaConfig.Devices) > 0 {
-		node.Annotations["kubefabric.io/rdma-devices"] = fmt.Sprintf("%v", rdmaConfig.Devices)
+		node.Annotations["kubefabric.ai/rdma-devices"] = fmt.Sprintf("%v", rdmaConfig.Devices)
 	}
 
 	return k8sClient.Update(ctx, node)
@@ -169,11 +166,8 @@ func CreateRDMAConfigMap(ctx context.Context, k8sClient client.Client, owner *ku
 		},
 	}
 
-	// Set owner reference for garbage collection
-	if err := controllerutil.SetControllerReference(owner, cm, scheme); err != nil {
-		// Cross-namespace owner refs not allowed; rely on finalizer cleanup
-		_ = err
-	}
+	// Cross-namespace owner refs not allowed; rely on finalizer cleanup
+	_ = controllerutil.SetControllerReference(owner, cm, scheme)
 
 	existing := &corev1.ConfigMap{}
 	err := k8sClient.Get(ctx, types.NamespacedName{Name: cm.Name, Namespace: cm.Namespace}, existing)

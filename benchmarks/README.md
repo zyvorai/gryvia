@@ -63,7 +63,7 @@ spec:
           limits:
             nvidia.com/gpu: "8"
       nodeSelector:
-        kubefabric.io/gpu-type: A100-80G
+        kubefabric.ai/gpu-type: A100-80G
       restartPolicy: Never
 EOF
 ```
@@ -406,7 +406,7 @@ nvidia-smi -lgc 1410
 ### Add Custom Benchmark
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: custom-benchmark

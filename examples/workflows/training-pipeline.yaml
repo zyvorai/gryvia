@@ -58,7 +58,7 @@ spec:
       resource:
         action: create
         manifest: |
-          apiVersion: kubefabric.io/v1
+          apiVersion: kubefabric.ai/v1
           kind: FabricAIJob
           metadata:
             name: data-prep-{{workflow.name}}
@@ -85,7 +85,7 @@ spec:
       resource:
         action: create
         manifest: |
-          apiVersion: kubefabric.io/v1
+          apiVersion: kubefabric.ai/v1
           kind: FabricAIJob
           metadata:
             name: training-{{workflow.name}}
@@ -120,7 +120,7 @@ spec:
       resource:
         action: create
         manifest: |
-          apiVersion: kubefabric.io/v1
+          apiVersion: kubefabric.ai/v1
           kind: FabricAIJob
           metadata:
             name: eval-{{workflow.name}}
@@ -148,7 +148,7 @@ spec:
       resource:
         action: create
         manifest: |
-          apiVersion: kubefabric.io/v1
+          apiVersion: kubefabric.ai/v1
           kind: FabricAIJob
           metadata:
             name: export-{{workflow.name}}

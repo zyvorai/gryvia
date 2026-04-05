@@ -7,7 +7,7 @@ grafana:
   enabled: true
   # adminPassword must be set explicitly via --set or an existing secret
   # adminPassword: ""
-  existingSecret: ""
+  # existingSecret: my-grafana-secret
   dashboardProviders:
     dashboardproviders.yaml:
       apiVersion: 1
@@ -48,7 +48,7 @@ kube-prometheus-stack:
   grafana:
     enabled: true
     # adminPassword must be set via --set grafana.adminPassword=<value>
-    existingSecret: ""
+    # existingSecret: my-grafana-secret
     dashboardProviders:
       dashboardproviders.yaml:
         apiVersion: 1
@@ -81,3 +81,11 @@ kube-prometheus-stack:
         receiver: 'default'
       receivers:
         - name: 'default'
+          # Configure at least one receiver (email, Slack, PagerDuty, etc.)
+          # Example:
+          # slack_configs:
+          #   - api_url: '<webhook-url>'
+          #     channel: '#kubefabric-alerts'
+          webhook_configs:
+            - url: 'http://localhost:9093/api/v1/alerts'
+              send_resolved: true

@@ -35,7 +35,8 @@ pub async fn execute(client: &KubeFabricClient, team: Option<String>, budget: bo
 
 fn print_quota_details(quota: &FabricQuota, show_budget: bool) {
     let team = &quota.spec.team;
-    let quota_name = quota.metadata.name.as_ref().unwrap();
+    let unknown = "<unknown>".to_string();
+    let quota_name = quota.metadata.name.as_ref().unwrap_or(&unknown);
 
     println!("{} {}", "Team:".bold(), team.cyan().bold());
     println!("{} {}", "Quota:".bold(), quota_name);
@@ -49,7 +50,7 @@ fn print_quota_details(quota: &FabricQuota, show_budget: bool) {
     println!("  Allocated GPUs: {}/{} ({}%)",
         usage.allocated_gpus.to_string().yellow(),
         spec.max_gpus,
-        ((usage.allocated_gpus as f64 / spec.max_gpus as f64) * 100.0) as i32
+        if spec.max_gpus > 0 { ((usage.allocated_gpus as f64 / spec.max_gpus as f64) * 100.0) as i32 } else { 0 }
     );
 
     println!("  Max GPUs per Job: {}", spec.max_gpus_per_job);
@@ -108,12 +109,3 @@ fn print_quota_details(quota: &FabricQuota, show_budget: bool) {
     println!("{} {}", "Status:".bold(), display::colorize_status(&quota.status.phase));
 }
 
-impl display {
-    pub fn colorize_status(status: &str) -> ColoredString {
-        match status {
-            "Active" => status.green(),
-            "QuotaExceeded" | "BudgetExceeded" => status.red(),
-            _ => status.normal(),
-        }
-    }
-}

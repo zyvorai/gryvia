@@ -58,7 +58,15 @@ async fn wait_for_completion(client: &KubeFabricClient, job_name: &str) -> Resul
         client.namespace(),
     );
 
+    let timeout = Duration::from_secs(24 * 60 * 60); // 24 hour timeout
+    let start = tokio::time::Instant::now();
+
     loop {
+        if start.elapsed() > timeout {
+            spinner.finish_with_message(format!("✗ Job {} timed out waiting for completion", job_name));
+            return Err(anyhow::anyhow!("Timed out waiting for job {} to complete after 24h", job_name));
+        }
+
         spinner.set_message(format!("Checking status of {}", job_name));
 
         let job = api.get(job_name).await?;
@@ -68,7 +76,7 @@ async fn wait_for_completion(client: &KubeFabricClient, job_name: &str) -> Resul
                 let phase_str = phase.as_str().unwrap_or("Unknown");
 
                 match phase_str {
-                    "Completed" => {
+                    "Completed" | "Succeeded" => {
                         spinner.finish_with_message(format!("✓ Job {} completed", job_name));
                         return Ok(());
                     }

@@ -6,7 +6,6 @@ import (
 	"log"
 	"sort"
 
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -118,7 +117,7 @@ func (to *TopologyOptimizer) OptimizePlacement(gpuCount int, gpuType string, wor
 
 	// Get all GPU nodes
 	nodes, err := to.clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{
-		LabelSelector: "kubefabric.io/gpu=true",
+		LabelSelector: "kubefabric.ai/gpu",
 	})
 	if err != nil {
 		return nil, err
@@ -295,7 +294,7 @@ func (to *TopologyOptimizer) describeTopology(node *GPUNode, gpuCount int) strin
 	}
 
 	// Check if paired
-	if gpuCount == 2 && len(node.GPUs[0].NVLinkPeers) >= 1 {
+	if gpuCount == 2 && len(node.GPUs) > 0 && len(node.GPUs[0].NVLinkPeers) >= 1 {
 		return "nvlink-pair"
 	}
 

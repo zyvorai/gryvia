@@ -175,7 +175,7 @@ kubectl get secret -n kubefabric prometheus-grafana -o jsonpath="{.data.admin-pa
 ### Submit a Training Job
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: llama-training

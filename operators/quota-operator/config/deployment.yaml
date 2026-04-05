@@ -66,13 +66,13 @@ kind: ClusterRole
 metadata:
   name: quota-operator-role
 rules:
-- apiGroups: ["kubefabric.io"]
+- apiGroups: ["kubefabric.ai"]
   resources: ["fabricquotas"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-- apiGroups: ["kubefabric.io"]
+- apiGroups: ["kubefabric.ai"]
   resources: ["fabricquotas/status"]
   verbs: ["get", "update", "patch"]
-- apiGroups: ["kubefabric.io"]
+- apiGroups: ["kubefabric.ai"]
   resources: ["fabricaijobs"]
   verbs: ["get", "list", "watch", "update", "patch"]
 - apiGroups: [""]

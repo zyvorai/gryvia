@@ -1,3 +1,3 @@
-module github.com/yourusername/kubefabric/operators/gpu-operator
+module github.com/ssahani/kube-fabric/operators/gpu-operator
 
 go 1.25.6

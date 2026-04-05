@@ -70,7 +70,7 @@ Grafana Dashboards:
 
   Then open: http://localhost:3000
   Username: admin
-  Password: {{ .Values.grafana.adminPassword }}
+  Password: Run 'kubectl get secret {{ .Release.Name }}-grafana -o jsonpath="{.data.admin-password}" | base64 -d' to retrieve
 {{- end }}
 
 {{- if .Values.prometheus.enabled }}
@@ -143,7 +143,7 @@ If you encounter issues:
    kubectl get events -n {{ .Release.Namespace }} --sort-by='.lastTimestamp'
 
 3. Check CRDs:
-   kubectl get crds | grep kubefabric.io
+   kubectl get crds | grep kubefabric.ai
 
 4. Run diagnostics:
    kubectl exec -it <gpu-pod> -- /tools/gpu-diagnostics.sh

@@ -11,19 +11,20 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	kubefabricv1 "github.com/yourusername/kubefabric/operators/network-operator/api/v1"
-	"github.com/yourusername/kubefabric/operators/network-operator/pkg/multus"
-	"github.com/yourusername/kubefabric/operators/network-operator/pkg/rdma"
-	"github.com/yourusername/kubefabric/operators/network-operator/pkg/sriov"
+	kubefabricv1 "github.com/ssahani/kube-fabric/operators/network-operator/api/v1"
+	"github.com/ssahani/kube-fabric/operators/network-operator/pkg/multus"
+	"github.com/ssahani/kube-fabric/operators/network-operator/pkg/rdma"
+	"github.com/ssahani/kube-fabric/operators/network-operator/pkg/sriov"
 )
 
 const (
-	fabricNetworkFinalizer = "kubefabric.io/network-finalizer"
+	fabricNetworkFinalizer = "kubefabric.ai/network-finalizer"
 )
 
 // FabricNetworkReconciler reconciles a FabricNetwork object
@@ -32,9 +33,9 @@ type FabricNetworkReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=kubefabric.io,resources=fabricnetworks,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=kubefabric.io,resources=fabricnetworks/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=kubefabric.io,resources=fabricnetworks/finalizers,verbs=update
+//+kubebuilder:rbac:groups=kubefabric.ai,resources=fabricnetworks,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=kubefabric.ai,resources=fabricnetworks/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=kubefabric.ai,resources=fabricnetworks/finalizers,verbs=update
 //+kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch;update;patch
 //+kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=apps,resources=daemonsets,verbs=get;list;watch;create;update;patch;delete
@@ -66,6 +67,7 @@ func (r *FabricNetworkReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		if err := r.Update(ctx, network); err != nil {
 			return ctrl.Result{}, err
 		}
+		return ctrl.Result{Requeue: true}, nil
 	}
 
 	logger.Info("Reconciling FabricNetwork", "name", network.Name, "type", network.Spec.NetworkType)
@@ -214,16 +216,47 @@ func (r *FabricNetworkReconciler) handleDeletion(ctx context.Context, network *k
 	if controllerutil.ContainsFinalizer(network, fabricNetworkFinalizer) {
 		logger.Info("Running cleanup for FabricNetwork", "name", network.Name)
 
-		// Cleanup: owned DaemonSets and ConfigMaps are garbage collected via owner references.
+		// Explicitly clean up DaemonSets and ConfigMaps since cross-namespace owner
+		// references don't work (resources are in kube-system, owner is cluster-scoped).
+		for _, name := range []string{"rdma-device-plugin", "sriov-device-plugin", "sriov-cni"} {
+			ds := &appsv1.DaemonSet{}
+			if err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: "kube-system"}, ds); err == nil {
+				if delErr := r.Delete(ctx, ds); delErr != nil {
+					logger.Error(delErr, "Failed to delete DaemonSet during cleanup", "daemonset", name)
+				} else {
+					logger.Info("Deleted DaemonSet during cleanup", "daemonset", name)
+				}
+			}
+		}
+		for _, name := range []string{"rdma-devices", "sriov-config"} {
+			cm := &corev1.ConfigMap{}
+			if err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: "kube-system"}, cm); err == nil {
+				if delErr := r.Delete(ctx, cm); delErr != nil {
+					logger.Error(delErr, "Failed to delete ConfigMap during cleanup", "configmap", name)
+				}
+			}
+		}
+
 		// Remove node labels applied by this network.
 		nodes, err := r.getMatchingNodes(ctx, network)
 		if err != nil {
 			logger.Error(err, "Failed to list nodes during cleanup")
 		} else {
 			for _, node := range nodes {
-				delete(node.Labels, "kubefabric.io/rdma")
-				delete(node.Labels, "kubefabric.io/rdma-mode")
-				delete(node.Annotations, "kubefabric.io/rdma-devices")
+				// Clean up RDMA labels/annotations
+				delete(node.Labels, "kubefabric.ai/rdma")
+				delete(node.Labels, "kubefabric.ai/rdma-mode")
+				delete(node.Annotations, "kubefabric.ai/rdma-devices")
+				// Clean up SR-IOV labels/annotations
+				delete(node.Labels, "kubefabric.ai/sriov")
+				delete(node.Annotations, "kubefabric.ai/sriov-interface")
+				delete(node.Annotations, "kubefabric.ai/sriov-numvfs")
+				// Remove any kubefabric.ai/sriov-* labels
+				for k := range node.Labels {
+					if len(k) > 19 && k[:19] == "kubefabric.ai/sriov" {
+						delete(node.Labels, k)
+					}
+				}
 				if updateErr := r.Update(ctx, &node); updateErr != nil {
 					logger.Error(updateErr, "Failed to remove labels from node", "node", node.Name)
 				}

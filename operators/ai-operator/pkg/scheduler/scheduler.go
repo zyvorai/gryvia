@@ -8,7 +8,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kubefabricv1 "github.com/yourusername/kubefabric/operators/ai-operator/api/v1"
+	kubefabricv1 "github.com/ssahani/kube-fabric/operators/ai-operator/api/v1"
 )
 
 // NodeScore represents a node with its scheduling score

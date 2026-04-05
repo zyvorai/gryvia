@@ -20,7 +20,8 @@ pub async fn execute(client: &KubeFabricClient, job: &str, _follow: bool) -> Res
 }
 
 fn print_job_status(job: &FabricAIJob) {
-    let name = job.metadata.name.as_ref().unwrap();
+    let unknown = "<unknown>".to_string();
+    let name = job.metadata.name.as_ref().unwrap_or(&unknown);
 
     println!("{}", format!("━━━ Job: {} ━━━", name).bold().cyan());
     println!();

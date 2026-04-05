@@ -153,15 +153,27 @@ ha:
   enabled: false
   leaderElection: true
 
-# Security
+# Container-level security context
 securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 65532
+  capabilities:
+    drop:
+      - ALL
+
+# Pod-level security context
+podSecurityContext:
   runAsNonRoot: true
   runAsUser: 65532
   fsGroup: 65532
-
-podSecurityContext:
   seccompProfile:
     type: RuntimeDefault
+
+# Name overrides
+nameOverride: ""
+fullnameOverride: ""
 
 # Image pull secrets
 imagePullSecrets: []

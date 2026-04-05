@@ -1,4 +1,4 @@
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricStorage
 metadata:
   name: ddn-exascaler
@@ -7,7 +7,7 @@ spec:
   endpoint: ddn-mgmt.example.com
   capacity: 1Pi
   nodeSelector:
-    kubefabric.io/storage: "true"
+    kubefabric.ai/storage: "true"
   credentials:
     secretName: ddn-credentials
     secretNamespace: kubefabric-system

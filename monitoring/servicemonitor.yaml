@@ -34,7 +34,7 @@ spec:
     path: /metrics
   namespaceSelector:
     matchNames:
-    - kube-system
+    - kubefabric-system
 ---
 apiVersion: v1
 kind: Service

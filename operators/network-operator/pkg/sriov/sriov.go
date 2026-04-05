@@ -2,6 +2,7 @@ package sriov
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -11,7 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kubefabricv1 "github.com/yourusername/kubefabric/operators/network-operator/api/v1"
+	kubefabricv1 "github.com/ssahani/kube-fabric/operators/network-operator/api/v1"
 )
 
 const (
@@ -58,7 +59,7 @@ func InstallDevicePlugin(ctx context.Context, k8sClient client.Client, sriovConf
 					Containers: []corev1.Container{
 						{
 							Name:  "sriov-device-plugin",
-							Image: "ghcr.io/k8snetworkplumbingwg/sriov-network-device-plugin:latest",
+							Image: "ghcr.io/k8snetworkplumbingwg/sriov-network-device-plugin:v3.7.0",
 							Args: []string{
 								"--log-level=10",
 							},
@@ -142,7 +143,7 @@ func installSRIOVCNI(ctx context.Context, k8sClient client.Client) error {
 					Containers: []corev1.Container{
 						{
 							Name:  "sriov-cni",
-							Image: "ghcr.io/k8snetworkplumbingwg/sriov-cni:latest",
+							Image: "ghcr.io/k8snetworkplumbingwg/sriov-cni:v2.8.0",
 							SecurityContext: &corev1.SecurityContext{
 								Privileged: func() *bool { b := true; return &b }(),
 							},
@@ -187,16 +188,21 @@ func createSRIOVConfigMap(ctx context.Context, k8sClient client.Client, sriovCon
 		resourceName = "intel_sriov_netdevice"
 	}
 
-	config := fmt.Sprintf(`{
-  "resourceList": [
-    {
-      "resourceName": "%s",
-      "selectors": {
-        "pfNames": ["%s"]
-      }
-    }
-  ]
-}`, resourceName, sriovConfig.PhysicalInterface)
+	configObj := map[string]interface{}{
+		"resourceList": []map[string]interface{}{
+			{
+				"resourceName": resourceName,
+				"selectors": map[string]interface{}{
+					"pfNames": []string{sriovConfig.PhysicalInterface},
+				},
+			},
+		},
+	}
+	configBytes, err := json.MarshalIndent(configObj, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal SR-IOV config: %w", err)
+	}
+	config := string(configBytes)
 
 	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
@@ -209,7 +215,7 @@ func createSRIOVConfigMap(ctx context.Context, k8sClient client.Client, sriovCon
 	}
 
 	existing := &corev1.ConfigMap{}
-	err := k8sClient.Get(ctx, types.NamespacedName{Name: cm.Name, Namespace: cm.Namespace}, existing)
+	err = k8sClient.Get(ctx, types.NamespacedName{Name: cm.Name, Namespace: cm.Namespace}, existing)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return k8sClient.Create(ctx, cm)
@@ -227,15 +233,15 @@ func ConfigureNode(ctx context.Context, k8sClient client.Client, node *corev1.No
 		node.Labels = make(map[string]string)
 	}
 
-	node.Labels["kubefabric.io/sriov"] = "enabled"
-	node.Labels[fmt.Sprintf("kubefabric.io/sriov-%s", sriovConfig.ResourceName)] = "true"
+	node.Labels["kubefabric.ai/sriov"] = "true"
+	node.Labels[fmt.Sprintf("kubefabric.ai/sriov-%s", sriovConfig.ResourceName)] = "true"
 
 	if node.Annotations == nil {
 		node.Annotations = make(map[string]string)
 	}
 
-	node.Annotations["kubefabric.io/sriov-interface"] = sriovConfig.PhysicalInterface
-	node.Annotations["kubefabric.io/sriov-numvfs"] = fmt.Sprintf("%d", sriovConfig.NumVFs)
+	node.Annotations["kubefabric.ai/sriov-interface"] = sriovConfig.PhysicalInterface
+	node.Annotations["kubefabric.ai/sriov-numvfs"] = fmt.Sprintf("%d", sriovConfig.NumVFs)
 
 	return k8sClient.Update(ctx, node)
 }

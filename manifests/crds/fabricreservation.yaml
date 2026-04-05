@@ -3,9 +3,9 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: fabricreservations.kubefabric.io
+  name: fabricreservations.kubefabric.ai
 spec:
-  group: kubefabric.io
+  group: kubefabric.ai
   versions:
     - name: v1
       served: true
@@ -212,7 +212,7 @@ spec:
 
 ---
 # Example: Immediate Exclusive Reservation
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricReservation
 metadata:
   name: ml-research-reservation
@@ -246,7 +246,7 @@ spec:
 
 ---
 # Example: Scheduled Reservation (Future)
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricReservation
 metadata:
   name: paper-deadline-reservation
@@ -280,7 +280,7 @@ spec:
 
 ---
 # Example: Recurring Weekly Reservation
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricReservation
 metadata:
   name: weekly-training-slot
@@ -310,7 +310,7 @@ spec:
 
 ---
 # Example: Node-Specific Reservation
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricReservation
 metadata:
   name: dgx-node-reservation
@@ -339,7 +339,7 @@ spec:
 
 ---
 # Example: Development Reservation (Non-Exclusive)
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricReservation
 metadata:
   name: dev-team-reservation
@@ -369,7 +369,7 @@ spec:
 
 ---
 # Reservation Status Example
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricReservation
 metadata:
   name: ml-research-reservation
@@ -400,7 +400,7 @@ status:
 
 ---
 # Using Reservation in Job
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: reserved-training

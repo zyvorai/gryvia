@@ -21,7 +21,7 @@ sources:
 
 maintainers:
   - name: KubeFabric Team
-    email: team@kubefabric.io
+    email: team@kubefabric.ai
     url: https://github.com/ssahani/kube-fabric
 
 icon: https://raw.githubusercontent.com/ssahani/kube-fabric/main/docs/assets/logo.png

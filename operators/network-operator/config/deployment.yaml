@@ -66,10 +66,10 @@ kind: ClusterRole
 metadata:
   name: network-operator-role
 rules:
-- apiGroups: ["kubefabric.io"]
+- apiGroups: ["kubefabric.ai"]
   resources: ["fabricnetworks"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-- apiGroups: ["kubefabric.io"]
+- apiGroups: ["kubefabric.ai"]
   resources: ["fabricnetworks/status"]
   verbs: ["get", "update", "patch"]
 - apiGroups: [""]

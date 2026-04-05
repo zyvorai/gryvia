@@ -29,11 +29,21 @@ export default function SubmitJob() {
     },
   })
 
+  const [error, setError] = useState<string | null>(null)
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    setError(null)
+
+    // Validate Kubernetes resource name
+    const k8sNameRegex = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/
+    if (!k8sNameRegex.test(formData.name)) {
+      setError('Job name must consist of lowercase alphanumeric characters or hyphens, and must start and end with an alphanumeric character')
+      return
+    }
 
     const job: Partial<FabricAIJob> = {
-      apiVersion: 'kubefabric.io/v1',
+      apiVersion: 'kubefabric.ai/v1',
       kind: 'FabricAIJob',
       metadata: {
         name: formData.name,
@@ -171,10 +181,10 @@ export default function SubmitJob() {
                 <input
                   type="number"
                   min="1"
-                  max="8"
+                  max="512"
                   required
                   value={formData.gpuCount}
-                  onChange={(e) => setFormData({ ...formData, gpuCount: parseInt(e.target.value) })}
+                  onChange={(e) => setFormData({ ...formData, gpuCount: parseInt(e.target.value) || 1 })}
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                 />
               </div>
@@ -199,7 +209,7 @@ export default function SubmitJob() {
                   max="128"
                   required
                   value={formData.cpu}
-                  onChange={(e) => setFormData({ ...formData, cpu: parseInt(e.target.value) })}
+                  onChange={(e) => setFormData({ ...formData, cpu: parseInt(e.target.value) || 1 })}
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                 />
               </div>
@@ -245,7 +255,7 @@ export default function SubmitJob() {
                       min="1"
                       max="64"
                       value={formData.worldSize}
-                      onChange={(e) => setFormData({ ...formData, worldSize: parseInt(e.target.value) })}
+                      onChange={(e) => setFormData({ ...formData, worldSize: parseInt(e.target.value) || 1 })}
                       className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                     />
                   </div>
@@ -326,6 +336,12 @@ export default function SubmitJob() {
               {createJobMutation.isPending ? 'Submitting...' : 'Submit Job'}
             </button>
           </div>
+
+          {error && (
+            <div className="rounded-md bg-yellow-50 p-4">
+              <p className="text-sm text-yellow-800">{error}</p>
+            </div>
+          )}
 
           {createJobMutation.isError && (
             <div className="rounded-md bg-red-50 p-4">

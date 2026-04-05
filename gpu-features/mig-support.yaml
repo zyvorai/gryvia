@@ -82,7 +82,7 @@ spec:
         name: nvidia-mig-manager
     spec:
       nodeSelector:
-        kubefabric.io/mig-capable: "true"
+        kubefabric.ai/mig-capable: "true"
       hostPID: true
       containers:
         - name: nvidia-mig-manager
@@ -149,7 +149,7 @@ data:
 
 ---
 # Example Job using MIG
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: inference-mig
@@ -170,7 +170,7 @@ spec:
 
 ---
 # Job Template for Development (1g.10gb)
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricJobTemplate
 metadata:
   name: mig-development
@@ -190,7 +190,7 @@ spec:
 
 ---
 # Job Template for Fine-Tuning (2g.20gb)
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricJobTemplate
 metadata:
   name: mig-fine-tuning
@@ -207,7 +207,7 @@ spec:
 
 ---
 # Scheduling Policy for MIG
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: SchedulingPolicy
 metadata:
   name: mig-bin-packing
@@ -233,8 +233,8 @@ spec:
 # MIG Node Labels
 # Apply these labels to MIG-capable nodes:
 #
-# kubectl label nodes gpu-node-1 kubefabric.io/mig-capable=true
-# kubectl label nodes gpu-node-1 kubefabric.io/mig-strategy=mixed
+# kubectl label nodes gpu-node-1 kubefabric.ai/mig-capable=true
+# kubectl label nodes gpu-node-1 kubefabric.ai/mig-strategy=mixed
 # kubectl label nodes gpu-node-1 nvidia.com/mig.config=all-1g.10gb
 
 ---
@@ -256,7 +256,7 @@ data:
 
 ---
 # GPU Node with MIG Configuration
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricGPUNode
 metadata:
   name: gpu-node-1-mig
@@ -288,7 +288,7 @@ spec:
 
 ---
 # Cost Optimization with MIG
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: SchedulingPolicy
 metadata:
   name: cost-optimized-mig

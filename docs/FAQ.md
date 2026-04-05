@@ -40,7 +40,7 @@ KubeFabric is an enterprise-grade GPU compute platform for AI/ML infrastructure.
 
 ```bash
 # Install CLI
-curl -sSL https://kubefabric.io/install.sh | bash
+curl -sSL https://kubefabric.ai/install.sh | bash
 
 # Submit job
 kfctl submit job.yaml --gpu-type A100-80G --gpu-count 8
@@ -67,7 +67,7 @@ Yes! KubeFabric is deployed on Kubernetes:
 
 ```bash
 # Add Helm repo
-helm repo add kubefabric https://charts.kubefabric.io
+helm repo add kubefabric https://charts.kubefabric.ai
 
 # Install
 helm install kubefabric kubefabric/kubefabric \
@@ -352,7 +352,7 @@ spec:
 Yes, with audit trail enabled:
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAudit
 spec:
   compliance:
@@ -404,7 +404,7 @@ Requirements:
 Hooks execute actions at job lifecycle events:
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricJobHook
 spec:
   trigger: post-completion
@@ -498,10 +498,10 @@ kubectl describe fabricaijob my-job
 
 ### How do I get support?
 
-1. **Documentation**: https://kubefabric.io/docs
+1. **Documentation**: https://kubefabric.ai/docs
 2. **GitHub Issues**: https://github.com/ssahani/kube-fabric/issues
 3. **Slack**: #kubefabric-users
-4. **Email**: support@kubefabric.io (Enterprise only)
+4. **Email**: support@kubefabric.ai (Enterprise only)
 
 ---
 

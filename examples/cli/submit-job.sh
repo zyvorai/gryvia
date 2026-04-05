@@ -6,7 +6,7 @@ set -e
 echo "Submitting LLM training job..."
 
 kubefabric submit -f - <<EOF
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: llm-training

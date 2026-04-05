@@ -122,6 +122,41 @@ type FabricQuotaList struct {
 	Items           []FabricQuota `json:"items"`
 }
 
+// FabricAIJobSpec defines the spec fields needed by the quota operator
+type FabricAIJobSpec struct {
+	GPUs    int32  `json:"gpus"`
+	GpuType string `json:"gpuType,omitempty"`
+}
+
+// FabricAIJobStatus defines the status fields needed by the quota operator
+type FabricAIJobStatus struct {
+	Phase          string      `json:"phase,omitempty"`
+	StartTime      *metav1.Time `json:"startTime,omitempty"`
+	CompletionTime *metav1.Time `json:"completionTime,omitempty"`
+	Conditions     []metav1.Condition `json:"conditions,omitempty"`
+}
+
+//+kubebuilder:object:root=true
+//+kubebuilder:resource:scope=Namespaced
+
+// FabricAIJob is used by the quota operator to track AI job resources
+type FabricAIJob struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   FabricAIJobSpec   `json:"spec,omitempty"`
+	Status FabricAIJobStatus `json:"status,omitempty"`
+}
+
+//+kubebuilder:object:root=true
+
+// FabricAIJobList contains a list of FabricAIJob
+type FabricAIJobList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []FabricAIJob `json:"items"`
+}
+
 func init() {
-	SchemeBuilder.Register(&FabricQuota{}, &FabricQuotaList{})
+	SchemeBuilder.Register(&FabricQuota{}, &FabricQuotaList{}, &FabricAIJob{}, &FabricAIJobList{})
 }

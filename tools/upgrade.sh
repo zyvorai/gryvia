@@ -14,6 +14,7 @@ NAMESPACE="${NAMESPACE:-kubefabric}"
 CURRENT_VERSION=""
 TARGET_VERSION="${TARGET_VERSION:-latest}"
 BACKUP_ENABLED="${BACKUP_ENABLED:-true}"
+DRY_RUN="${DRY_RUN:-false}"
 
 log_info() {
     echo -e "${GREEN}[INFO]${NC} $1"
@@ -223,7 +224,7 @@ post_upgrade_checks() {
 
     # Verify CRDs
     log_info "Verifying CRDs..."
-    kubectl get crds | grep kubefabric.io
+    kubectl get crds | grep kubefabric.ai
 
     log_info "✓ Post-upgrade checks completed"
 }
@@ -246,12 +247,23 @@ main() {
     echo -e "${BLUE}╚════════════════════════════════════════════════════════════════╝${NC}"
     echo ""
 
+    if [[ "${DRY_RUN}" == "true" ]]; then
+        log_info "DRY RUN MODE - no changes will be made"
+    fi
+
     check_prerequisites
     get_current_version
 
     log_info "Upgrading from ${CURRENT_VERSION} to ${TARGET_VERSION}"
 
     pre_upgrade_checks
+
+    if [[ "${DRY_RUN}" == "true" ]]; then
+        log_info "[DRY RUN] Would back up resources, upgrade CRDs, and update operators"
+        log_info "[DRY RUN] Upgrade plan validated successfully"
+        return 0
+    fi
+
     backup_resources
 
     # Check if Helm release exists

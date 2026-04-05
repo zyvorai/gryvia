@@ -32,7 +32,28 @@ spec:
               containerPort: 9400
               protocol: TCP
           securityContext:
-            privileged: true
+            capabilities:
+              add:
+                - SYS_ADMIN
+          resources:
+            limits:
+              cpu: 200m
+              memory: 256Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: metrics
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: metrics
+            initialDelaySeconds: 5
+            periodSeconds: 10
           volumeMounts:
             - name: pod-gpu-resources
               mountPath: /var/lib/kubelet/pod-resources

@@ -18,7 +18,7 @@ Build complex ML workflows with job dependencies and conditional execution.
 ### Simple Linear Workflow
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricWorkflow
 metadata:
   name: training-pipeline
@@ -107,7 +107,7 @@ jobs:
 ### Scheduled Workflows
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricWorkflow
 metadata:
   name: daily-retraining

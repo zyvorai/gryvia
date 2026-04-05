@@ -8,7 +8,7 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kubefabricv1 "github.com/yourusername/kubefabric/operators/storage-operator/api/v1"
+	kubefabricv1 "github.com/ssahani/kube-fabric/operators/storage-operator/api/v1"
 )
 
 // InstallCSIDriver installs the DDN CSI driver

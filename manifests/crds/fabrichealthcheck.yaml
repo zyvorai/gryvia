@@ -3,9 +3,9 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: fabrichealthchecks.kubefabric.io
+  name: fabrichealthchecks.kubefabric.ai
 spec:
-  group: kubefabric.io
+  group: kubefabric.ai
   versions:
     - name: v1
       served: true
@@ -187,7 +187,7 @@ spec:
 
 ---
 # Example: Cluster-Wide GPU Health Monitoring
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricHealthCheck
 metadata:
   name: cluster-gpu-health
@@ -274,7 +274,7 @@ spec:
 
 ---
 # Example: Per-Node Health Check
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricHealthCheck
 metadata:
   name: dgx-node-health
@@ -282,7 +282,7 @@ spec:
   target:
     type: node
     selector:
-      kubefabric.io/node-type: dgx-a100
+      kubefabric.ai/node-type: dgx-a100
 
   schedule: "*/2 * * * *"  # Every 2 minutes (more frequent)
 
@@ -312,7 +312,7 @@ spec:
 
 ---
 # Example: Job-Level Health Monitoring
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricHealthCheck
 metadata:
   name: job-gpu-health
@@ -342,7 +342,7 @@ spec:
 
 ---
 # Health Check Status Example
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricHealthCheck
 metadata:
   name: cluster-gpu-health

@@ -3,9 +3,9 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: fabricgpusharingpolicies.kubefabric.io
+  name: fabricgpusharingpolicies.kubefabric.ai
 spec:
-  group: kubefabric.io
+  group: kubefabric.ai
   versions:
     - name: v1
       served: true
@@ -192,13 +192,13 @@ spec:
 
 ---
 # Example: Time-Slicing for V100 GPUs
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricGPUSharingPolicy
 metadata:
   name: v100-time-slicing
 spec:
   nodeSelector:
-    kubefabric.io/gpu-type: V100
+    kubefabric.ai/gpu-type: V100
 
   strategy: time-slicing
 
@@ -216,13 +216,13 @@ spec:
 
 ---
 # Example: Fractional T4 GPUs
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricGPUSharingPolicy
 metadata:
   name: t4-fractional
 spec:
   nodeSelector:
-    kubefabric.io/gpu-type: T4
+    kubefabric.ai/gpu-type: T4
 
   strategy: fractional
 
@@ -239,13 +239,13 @@ spec:
 
 ---
 # Example: MIG Profiles for A100
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricGPUSharingPolicy
 metadata:
   name: a100-mig-mixed
 spec:
   nodeSelector:
-    kubefabric.io/gpu-type: A100-80G
+    kubefabric.ai/gpu-type: A100-80G
 
   strategy: mig
 
@@ -260,13 +260,13 @@ spec:
 
 ---
 # Example: Priority-Based Sharing
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricGPUSharingPolicy
 metadata:
   name: priority-based-sharing
 spec:
   nodeSelector:
-    kubefabric.io/node-pool: shared
+    kubefabric.ai/node-pool: shared
 
   strategy: time-slicing
 
@@ -281,7 +281,7 @@ spec:
 
 ---
 # Example: Job Requesting Fractional GPU
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: inference-fractional
@@ -301,7 +301,7 @@ spec:
 
 ---
 # Example: Job with Time-Sliced GPU
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: dev-environment
@@ -320,7 +320,7 @@ spec:
 
 ---
 # GPU Sharing Status Example
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricGPUSharingPolicy
 metadata:
   name: t4-fractional
@@ -350,14 +350,14 @@ status:
 # status:
 #   allocatable:
 #     nvidia.com/gpu: 4  # Physical GPUs
-#     kubefabric.io/gpu-1-8: 32  # 4 GPUs × 8 fractions
-#     kubefabric.io/gpu-1-4: 16  # 4 GPUs × 4 fractions
-#     kubefabric.io/gpu-1-2: 8   # 4 GPUs × 2 fractions
-#     kubefabric.io/gpu-memory: 65536  # MB, shared pool
+#     kubefabric.ai/gpu-1-8: 32  # 4 GPUs × 8 fractions
+#     kubefabric.ai/gpu-1-4: 16  # 4 GPUs × 4 fractions
+#     kubefabric.ai/gpu-1-2: 8   # 4 GPUs × 2 fractions
+#     kubefabric.ai/gpu-memory: 65536  # MB, shared pool
 
 ---
 # Multi-Tenant Sharing Example
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricGPUSharingPolicy
 metadata:
   name: multi-tenant-sharing

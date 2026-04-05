@@ -26,7 +26,7 @@ class CapacityPlanner:
     def __init__(self):
         try:
             config.load_kube_config()
-        except:
+        except Exception:
             config.load_incluster_config()
 
         self.api = client.CustomObjectsApi()
@@ -88,7 +88,7 @@ class CapacityPlanner:
 
                 # Determine GPU type from label
                 labels = node.metadata.labels or {}
-                gpu_type = labels.get("kubefabric.io/gpu-type", "unknown")
+                gpu_type = labels.get("kubefabric.ai/gpu-type", "unknown")
 
                 if gpu_type not in capacity["gpus_by_type"]:
                     capacity["gpus_by_type"][gpu_type] = 0
@@ -104,9 +104,19 @@ class CapacityPlanner:
 
             # Memory and CPU
             if "memory" in allocatable:
-                memory_str = allocatable["memory"]
-                # Convert Ki to GB
-                memory_gb = int(memory_str.replace("Ki", "")) / (1024 * 1024)
+                memory_str = str(allocatable["memory"])
+                # Convert Kubernetes memory units to GB
+                if memory_str.endswith("Ki"):
+                    memory_gb = int(memory_str[:-2]) / (1024 * 1024)
+                elif memory_str.endswith("Mi"):
+                    memory_gb = int(memory_str[:-2]) / 1024
+                elif memory_str.endswith("Gi"):
+                    memory_gb = int(memory_str[:-2])
+                elif memory_str.endswith("Ti"):
+                    memory_gb = int(memory_str[:-2]) * 1024
+                else:
+                    # Bare bytes
+                    memory_gb = int(memory_str) / (1024 ** 3)
                 capacity["total_memory_gb"] += memory_gb
 
             if "cpu" in allocatable:
@@ -118,7 +128,7 @@ class CapacityPlanner:
         """Get current resource usage"""
         try:
             jobs = self.api.list_cluster_custom_object(
-                group="kubefabric.io",
+                group="kubefabric.ai",
                 version="v1",
                 plural="fabricaijobs"
             )

@@ -128,7 +128,7 @@ export default function Nodes() {
                               className={`h-1.5 rounded-full ${
                                 gpu.temperature > 80 ? 'bg-red-600' : gpu.temperature > 70 ? 'bg-yellow-500' : 'bg-green-500'
                               }`}
-                              style={{ width: `${(gpu.temperature / 100) * 100}%` }}
+                              style={{ width: `${Math.min(gpu.temperature, 100)}%` }}
                             />
                           </div>
                         </div>
@@ -164,7 +164,7 @@ export default function Nodes() {
                           <div className="w-full bg-gray-200 rounded-full h-1.5">
                             <div
                               className="h-1.5 rounded-full bg-purple-600"
-                              style={{ width: `${(gpu.memoryUsed / gpu.memoryTotal) * 100}%` }}
+                              style={{ width: `${gpu.memoryTotal > 0 ? (gpu.memoryUsed / gpu.memoryTotal) * 100 : 0}%` }}
                             />
                           </div>
                         </div>

@@ -1,6 +1,6 @@
 ---
 # VSCode Server with GPU Access
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: vscode-gpu

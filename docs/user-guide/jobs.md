@@ -7,7 +7,7 @@ Complete guide to submitting and managing AI workloads with KubeFabric.
 ### Creating a Job
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: my-training-job
@@ -320,8 +320,8 @@ kfctl cost --job my-training-job
 ```yaml
 metadata:
   annotations:
-    kubefabric.io/budget-alert: "100.00"
-    kubefabric.io/alert-email: "team@company.com"
+    kubefabric.ai/budget-alert: "100.00"
+    kubefabric.ai/alert-email: "team@company.com"
 ```
 
 ## Performance Optimization

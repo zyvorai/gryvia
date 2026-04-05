@@ -40,9 +40,11 @@ export default function Costs() {
     { type: 'L40', cost: 1600, hours: 640 },
   ]
 
-  const currentMonth = monthlyData[monthlyData.length - 1]
-  const previousMonth = monthlyData[monthlyData.length - 2]
-  const monthOverMonth = ((currentMonth.cost - previousMonth.cost) / previousMonth.cost) * 100
+  const currentMonth = monthlyData[monthlyData.length - 1] || { month: '', cost: 0, gpuHours: 0 }
+  const previousMonth = monthlyData[monthlyData.length - 2] || { month: '', cost: 0, gpuHours: 0 }
+  const monthOverMonth = previousMonth.cost > 0
+    ? ((currentMonth.cost - previousMonth.cost) / previousMonth.cost) * 100
+    : 0
 
   return (
     <div className="space-y-6">
@@ -208,7 +210,7 @@ export default function Costs() {
                     <tr key={gpu.type}>
                       <td className="px-3 py-2 text-sm text-gray-900">{gpu.type}</td>
                       <td className="px-3 py-2 text-sm text-gray-900 text-right">
-                        ${(gpu.cost / gpu.hours).toFixed(2)}
+                        ${gpu.hours > 0 ? (gpu.cost / gpu.hours).toFixed(2) : '0.00'}
                       </td>
                       <td className="px-3 py-2 text-sm text-gray-900 text-right">{gpu.hours}</td>
                     </tr>

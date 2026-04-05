@@ -2,7 +2,7 @@
 # Job Dependencies and DAG Workflows
 # Define complex job workflows with dependencies
 
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricWorkflow
 metadata:
   name: ml-training-workflow
@@ -157,7 +157,7 @@ spec:
 
 ---
 # Fan-out/Fan-in Pattern
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricWorkflow
 metadata:
   name: hyperparameter-sweep-workflow
@@ -206,7 +206,7 @@ spec:
 
 ---
 # Conditional Workflows
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricWorkflow
 metadata:
   name: conditional-workflow
@@ -240,7 +240,7 @@ spec:
 
 ---
 # Retry with Different Resources
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricWorkflow
 metadata:
   name: adaptive-retry-workflow
@@ -270,7 +270,7 @@ spec:
 
 ---
 # Scheduled Workflow
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricWorkflow
 metadata:
   name: daily-retraining
@@ -307,7 +307,7 @@ spec:
 
 ---
 # Dynamic DAG Generation
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricWorkflow
 metadata:
   name: dynamic-dag
@@ -336,7 +336,7 @@ spec:
 
 ---
 # Cross-Workflow Dependencies
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricWorkflow
 metadata:
   name: workflow-b
@@ -352,7 +352,7 @@ spec:
 
 ---
 # Workflow Status CRD
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricWorkflow
 metadata:
   name: example-workflow

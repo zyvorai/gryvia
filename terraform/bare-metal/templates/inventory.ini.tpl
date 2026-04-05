@@ -3,12 +3,12 @@
 
 [control_plane]
 %{ for name, node in control_nodes ~}
-${name} ansible_host=${node.ip} ansible_user=root
+${name} ansible_host=${node.ip} ansible_user=${ssh_user}
 %{ endfor ~}
 
 [gpu_nodes]
 %{ for name, node in gpu_nodes ~}
-${name} ansible_host=${node.ip} ansible_user=root gpu_type=${node.gpu_type} gpu_count=${node.gpu_count} rdma_enabled=${node.rdma_enabled}
+${name} ansible_host=${node.ip} ansible_user=${ssh_user} gpu_type=${node.gpu_type} gpu_count=${node.gpu_count} rdma_enabled=${node.rdma_enabled}
 %{ endfor ~}
 
 [all:vars]

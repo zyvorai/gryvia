@@ -19,7 +19,7 @@ KubeFabric provides a priority-based scheduling system that:
 For system and infrastructure jobs.
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: system-job
@@ -142,7 +142,7 @@ spec:
 ### Basic Priority Assignment
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: my-job
@@ -267,7 +267,7 @@ High-priority jobs can exceed team quotas:
 
 ```yaml
 # Priority class configuration
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricPriority
 metadata:
   name: high
@@ -425,7 +425,7 @@ spec:
 ### Custom Priority Classes
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricPriority
 metadata:
   name: paper-deadline

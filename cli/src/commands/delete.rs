@@ -22,8 +22,7 @@ pub async fn execute(client: &KubeFabricClient, resource: &str, name: &str, yes:
         "job" => delete_job(client, name).await?,
         "quota" => delete_quota(client, name).await?,
         _ => {
-            display::print_error(&format!("Unknown resource type: {}", resource));
-            return Ok(());
+            anyhow::bail!("Unknown resource type: {}. Valid types: job, quota", resource);
         }
     }
 

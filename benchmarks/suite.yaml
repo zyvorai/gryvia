@@ -78,7 +78,7 @@ data:
 
 ---
 # ResNet50 Benchmark Job
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: bench-resnet50-8gpu
@@ -151,7 +151,7 @@ spec:
             - name: results
               mountPath: /results
       nodeSelector:
-        kubefabric.io/gpu-type: A100-80G
+        kubefabric.ai/gpu-type: A100-80G
       volumes:
         - name: results
           emptyDir: {}
@@ -186,14 +186,14 @@ spec:
             - name: results
               mountPath: /results
       nodeSelector:
-        kubefabric.io/gpu-type: H100
+        kubefabric.ai/gpu-type: H100
       volumes:
         - name: results
           emptyDir: {}
 
 ---
 # Multi-Node Scaling Benchmark
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: bench-scaling-4node

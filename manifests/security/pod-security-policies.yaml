@@ -43,7 +43,7 @@ metadata:
     pod-security.kubernetes.io/audit-version: latest
     pod-security.kubernetes.io/warn: baseline
     pod-security.kubernetes.io/warn-version: latest
-    kubefabric.io/gpu-workloads: "true"
+    kubefabric.ai/gpu-workloads: "true"
 ---
 # ResourceQuota to limit privileged workloads in GPU namespace
 apiVersion: v1

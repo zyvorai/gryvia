@@ -10,7 +10,9 @@ pub async fn execute(client: &KubeFabricClient, detailed: bool, watch: Option<u6
     if let Some(interval) = watch {
         loop {
             print!("\x1B[2J\x1B[1;1H"); // Clear screen
-            show_cluster_overview(client, detailed).await?;
+            if let Err(e) = show_cluster_overview(client, detailed).await {
+                eprintln!("Error refreshing cluster overview: {}", e);
+            }
             sleep(Duration::from_secs(interval)).await;
         }
     } else {

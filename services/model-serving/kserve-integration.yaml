@@ -13,9 +13,9 @@ metadata:
   name: llama-7b
   namespace: default
   annotations:
-    kubefabric.io/model-source: "mlflow"
-    kubefabric.io/model-version: "production"
-    kubefabric.io/team: "ml-research"
+    kubefabric.ai/model-source: "mlflow"
+    kubefabric.ai/model-version: "production"
+    kubefabric.ai/team: "ml-research"
 spec:
   predictor:
     serviceAccountName: kserve-sa
@@ -28,7 +28,7 @@ spec:
     # vLLM predictor for LLMs
     containers:
       - name: kserve-container
-        image: vllm/vllm-openai:latest
+        image: vllm/vllm-openai:v0.4.0
         command:
           - python3
           - -m
@@ -60,7 +60,7 @@ spec:
           claimName: llama-7b-model
 
     nodeSelector:
-      kubefabric.io/gpu-type: A100-80G
+      kubefabric.ai/gpu-type: A100-80G
 
 ---
 # Model Storage PVC (copy from MLflow)
@@ -144,7 +144,7 @@ spec:
         - --strict-model-config=false
         - --log-verbose=1
     nodeSelector:
-      kubefabric.io/gpu-type: T4
+      kubefabric.ai/gpu-type: T4
 
 ---
 # TensorRT-LLM Inference
@@ -179,7 +179,7 @@ spec:
         persistentVolumeClaim:
           claimName: tensorrt-models
     nodeSelector:
-      kubefabric.io/gpu-type: A100-80G
+      kubefabric.ai/gpu-type: A100-80G
 
 ---
 # Auto-scaling configuration
@@ -237,22 +237,21 @@ spec:
 
 ---
 # Cost tracking for inference
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricQuota
 metadata:
   name: inference-quota
 spec:
   team: ml-platform
-  limits:
+  namespaces:
+    - default
+  gpuQuota:
     maxGPUs: 20
-    gpuHours: 14400  # 20 GPUs * 30 days * 24 hours
+    maxRunningJobs: 50
   budget:
-    monthly: 200000
-  notifications:
-    - type: email
-      threshold: 80
-      recipients:
-        - platform-team@company.com
+    monthlyBudget: 200000
+    alertThreshold: 80
+    hardLimit: false
 
 ---
 # Network Policy for inference services
@@ -300,12 +299,13 @@ spec:
   minReplicas: 1
   maxReplicas: 10
   metrics:
-    - type: Resource
-      resource:
-        name: nvidia.com/gpu
+    - type: Pods
+      pods:
+        metric:
+          name: DCGM_FI_DEV_GPU_UTIL
         target:
-          type: Utilization
-          averageUtilization: 80
+          type: AverageValue
+          averageValue: "80"
     - type: Pods
       pods:
         metric:

@@ -305,6 +305,6 @@ kubectl describe node <gpu-node-name>
 ## Support
 
 For issues and questions:
-- GitHub Issues: https://github.com/yourusername/kubefabric/issues
+- GitHub Issues: https://github.com/ssahani/kubefabric/issues
 - Documentation: https://kubefabric.ai/docs
 - Community: https://kubefabric.ai/community

@@ -8,6 +8,20 @@ metadata:
   name: airflow
 
 ---
+# IMPORTANT: Change these credentials before deploying to production
+apiVersion: v1
+kind: Secret
+metadata:
+  name: airflow-credentials
+  namespace: airflow
+type: Opaque
+data:
+  # IMPORTANT: Replace with base64-encoded secure passwords before deploying
+  # Generate with: echo -n 'your-secure-password' | base64
+  POSTGRES_PASSWORD: "Q0hBTkdFLU1FLWJlZm9yZS1kZXBsb3k="
+  ADMIN_PASSWORD: "Q0hBTkdFLU1FLWJlZm9yZS1kZXBsb3k="
+
+---
 # Airflow PostgreSQL
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -45,7 +59,10 @@ spec:
             - name: POSTGRES_USER
               value: airflow
             - name: POSTGRES_PASSWORD
-              value: airflow
+              valueFrom:
+                secretKeyRef:
+                  name: airflow-credentials
+                  key: POSTGRES_PASSWORD
             - name: POSTGRES_DB
               value: airflow
           ports:
@@ -101,14 +118,24 @@ spec:
               airflow db init
               airflow users create \
                 --username admin \
-                --password admin \
+                --password "${ADMIN_PASSWORD}" \
                 --firstname Admin \
                 --lastname User \
                 --role Admin \
                 --email admin@example.com || true
           env:
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: airflow-credentials
+                  key: ADMIN_PASSWORD
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: airflow-credentials
+                  key: POSTGRES_PASSWORD
             - name: AIRFLOW__CORE__SQL_ALCHEMY_CONN
-              value: postgresql+psycopg2://airflow:airflow@airflow-postgres:5432/airflow
+              value: postgresql+psycopg2://airflow:$(POSTGRES_PASSWORD)@airflow-postgres:5432/airflow
             - name: AIRFLOW__CORE__EXECUTOR
               value: KubernetesExecutor
       containers:
@@ -118,8 +145,13 @@ spec:
           ports:
             - containerPort: 8080
           env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: airflow-credentials
+                  key: POSTGRES_PASSWORD
             - name: AIRFLOW__CORE__SQL_ALCHEMY_CONN
-              value: postgresql+psycopg2://airflow:airflow@airflow-postgres:5432/airflow
+              value: postgresql+psycopg2://airflow:$(POSTGRES_PASSWORD)@airflow-postgres:5432/airflow
             - name: AIRFLOW__CORE__EXECUTOR
               value: KubernetesExecutor
             - name: AIRFLOW__KUBERNETES__NAMESPACE
@@ -163,8 +195,13 @@ spec:
           image: apache/airflow:2.8.0
           command: ["airflow", "scheduler"]
           env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: airflow-credentials
+                  key: POSTGRES_PASSWORD
             - name: AIRFLOW__CORE__SQL_ALCHEMY_CONN
-              value: postgresql+psycopg2://airflow:airflow@airflow-postgres:5432/airflow
+              value: postgresql+psycopg2://airflow:$(POSTGRES_PASSWORD)@airflow-postgres:5432/airflow
             - name: AIRFLOW__CORE__EXECUTOR
               value: KubernetesExecutor
             - name: AIRFLOW__KUBERNETES__NAMESPACE
@@ -204,7 +241,7 @@ metadata:
   name: airflow-webserver
   namespace: airflow
 spec:
-  type: LoadBalancer
+  type: ClusterIP
   selector:
     app: airflow-webserver
   ports:
@@ -230,7 +267,7 @@ rules:
   - apiGroups: [""]
     resources: ["pods", "pods/log"]
     verbs: ["create", "get", "list", "watch", "delete"]
-  - apiGroups: ["kubefabric.io"]
+  - apiGroups: ["kubefabric.ai"]
     resources: ["fabricaijobs"]
     verbs: ["create", "get", "list", "watch", "delete"]
 
@@ -301,7 +338,7 @@ data:
     # Task 2: Data Preprocessing (GPU)
     def create_preprocessing_job():
         job_yaml = {
-            'apiVersion': 'kubefabric.io/v1',
+            'apiVersion': 'kubefabric.ai/v1',
             'kind': 'FabricAIJob',
             'metadata': {
                 'name': 'data-preprocessing',
@@ -342,7 +379,7 @@ data:
             'limit_cpu': '64',
             'limit_nvidia.com/gpu': '8'
         },
-        node_selector={'kubefabric.io/gpu-type': 'A100-80G'},
+        node_selector={'kubefabric.ai/gpu-type': 'A100-80G'},
         dag=dag,
     )
 

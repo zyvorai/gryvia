@@ -3,9 +3,9 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: fabricautoscalers.kubefabric.io
+  name: fabricautoscalers.kubefabric.ai
 spec:
-  group: kubefabric.io
+  group: kubefabric.ai
   versions:
     - name: v1
       served: true
@@ -214,7 +214,7 @@ spec:
 
 ---
 # Example: A100 Queue Auto-Scaler
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAutoScaler
 metadata:
   name: a100-autoscaler
@@ -255,7 +255,7 @@ spec:
 
 ---
 # Example: Cloud-Based Auto-Scaler with Spot Instances
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAutoScaler
 metadata:
   name: t4-spot-autoscaler
@@ -297,7 +297,7 @@ spec:
 
 ---
 # Example: Predictive Auto-Scaler
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAutoScaler
 metadata:
   name: h100-predictive-autoscaler
@@ -329,7 +329,7 @@ spec:
 
 ---
 # Auto-Scaler Status Example
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAutoScaler
 metadata:
   name: a100-autoscaler

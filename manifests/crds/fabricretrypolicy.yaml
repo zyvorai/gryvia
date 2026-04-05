@@ -3,9 +3,9 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: fabricretrypolicies.kubefabric.io
+  name: fabricretrypolicies.kubefabric.ai
 spec:
-  group: kubefabric.io
+  group: kubefabric.ai
   versions:
     - name: v1
       served: true
@@ -183,7 +183,7 @@ spec:
 
 ---
 # Example: Standard Retry Policy
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricRetryPolicy
 metadata:
   name: standard-retry
@@ -215,7 +215,7 @@ spec:
 
 ---
 # Example: Aggressive Retry with Resource Adjustment
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricRetryPolicy
 metadata:
   name: adaptive-retry
@@ -256,7 +256,7 @@ spec:
 
 ---
 # Example: Spot Instance Retry Policy
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricRetryPolicy
 metadata:
   name: spot-retry
@@ -279,7 +279,7 @@ spec:
 
 ---
 # Example: Job Using Retry Policy
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: resilient-training
@@ -353,7 +353,7 @@ message: |
 
 ---
 # Retry with Different Resources
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricRetryPolicy
 metadata:
   name: escalating-resources
@@ -384,7 +384,7 @@ spec:
 
 ---
 # Fibonacci Backoff Example
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricRetryPolicy
 metadata:
   name: fibonacci-retry

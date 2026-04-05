@@ -1,4 +1,4 @@
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: pytorch-distributed-training
@@ -88,8 +88,8 @@ spec:
 
   # Node selection
   nodeSelector:
-    kubefabric.io/gpu-type: H100
-    kubefabric.io/rdma-enabled: "true"
+    kubefabric.ai/gpu-type: H100
+    kubefabric.ai/rdma-enabled: "true"
 
   # Tolerations
   tolerations:

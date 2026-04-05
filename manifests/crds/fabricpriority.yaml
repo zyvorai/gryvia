@@ -3,9 +3,9 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: fabricpriorities.kubefabric.io
+  name: fabricpriorities.kubefabric.ai
 spec:
-  group: kubefabric.io
+  group: kubefabric.ai
   versions:
     - name: v1
       served: true
@@ -81,7 +81,7 @@ spec:
 
 ---
 # System-Critical Priority (highest)
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricPriority
 metadata:
   name: system-critical
@@ -98,7 +98,7 @@ spec:
 
 ---
 # Production Priority (very high)
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricPriority
 metadata:
   name: production
@@ -115,7 +115,7 @@ spec:
 
 ---
 # High Priority
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricPriority
 metadata:
   name: high
@@ -132,7 +132,7 @@ spec:
 
 ---
 # Normal Priority (default)
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricPriority
 metadata:
   name: normal
@@ -148,7 +148,7 @@ spec:
 
 ---
 # Low Priority
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricPriority
 metadata:
   name: low
@@ -164,7 +164,7 @@ spec:
 
 ---
 # Best-Effort Priority (lowest)
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricPriority
 metadata:
   name: best-effort
@@ -180,7 +180,7 @@ spec:
 
 ---
 # Spot Priority (for spot instance jobs)
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricPriority
 metadata:
   name: spot
@@ -196,7 +196,7 @@ spec:
 
 ---
 # Example Job with Priority
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: critical-training
@@ -214,7 +214,7 @@ spec:
 
 ---
 # Example: Preemptible Job
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: batch-job
@@ -238,7 +238,7 @@ spec:
 
 ---
 # Example: Production Serving (highest priority)
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: llm-serving
@@ -288,7 +288,7 @@ message: |
 
 ---
 # Priority Queue Status
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricQueue
 metadata:
   name: default

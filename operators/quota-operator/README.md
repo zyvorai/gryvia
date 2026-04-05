@@ -46,7 +46,7 @@ kubectl get pods -n kubefabric-system -l app=quota-operator
 ### Create Team Quota
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricQuota
 metadata:
   name: team-ml
@@ -148,7 +148,7 @@ When quota is exceeded:
 ### High-Priority LLM Team
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricQuota
 metadata:
   name: team-nlp
@@ -170,7 +170,7 @@ spec:
 ### Development Team with Soft Limits
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricQuota
 metadata:
   name: team-dev
@@ -254,7 +254,7 @@ status:
 Update GPU pricing for your infrastructure:
 
 ```go
-import "github.com/yourusername/kubefabric/operators/quota-operator/pkg/budget"
+import "github.com/ssahani/kubefabric/operators/quota-operator/pkg/budget"
 
 // Set custom H100 pricing
 budget.UpdatePricing("H100", 10.00)  // $10/hour
@@ -282,7 +282,7 @@ kubectl logs -n kubefabric-system -l app=quota-operator
 kubectl get fabricquota
 
 # Check namespace labels
-kubectl get namespace ml-training -o yaml | grep kubefabric.io/team
+kubectl get namespace ml-training -o yaml | grep kubefabric.ai/team
 ```
 
 **Incorrect Budget Calculation**
@@ -350,7 +350,7 @@ kubectl get fabricquotas
 
 # Launch a training job
 kubectl apply -f - <<EOF
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: llm-training

@@ -69,7 +69,7 @@ spec:
         action: create
         setOwnerReference: true
         manifest: |
-          apiVersion: kubefabric.io/v1
+          apiVersion: kubefabric.ai/v1
           kind: FabricAIJob
           metadata:
             name: trial-{{inputs.parameters.trial-id}}

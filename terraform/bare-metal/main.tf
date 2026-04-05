@@ -54,6 +54,7 @@ resource "local_file" "ansible_inventory" {
     control_nodes = local.control_nodes
     gpu_nodes     = local.gpu_nodes
     cluster_name  = local.cluster_name
+    ssh_user      = var.ssh_user
   })
 }
 

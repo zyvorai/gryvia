@@ -9,12 +9,12 @@ Advanced scheduling policies for optimizing GPU resource allocation in KubeFabri
 Schedule jobs based on priority levels (critical, high, medium, low).
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: critical-training
   annotations:
-    kubefabric.io/priority: critical
+    kubefabric.ai/priority: critical
 spec:
   # ... job spec
 ```
@@ -239,11 +239,11 @@ kubectl patch configmap kubefabric-config -n kubefabric \
 ### Per-Job Policy
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   annotations:
-    kubefabric.io/scheduling-policy: cost-optimized
+    kubefabric.ai/scheduling-policy: cost-optimized
 spec:
   # ... job spec
 ```
@@ -251,7 +251,7 @@ spec:
 ### Per-Team Policy
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricQuota
 metadata:
   name: ml-research
@@ -387,7 +387,7 @@ kfctl policy test <policy-name>
 Create custom scheduling policies:
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: SchedulingPolicy
 metadata:
   name: custom-ml-policy

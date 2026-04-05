@@ -145,7 +145,7 @@ POST /api/v1/jobs/{namespace}
 
 ```json
 {
-  "apiVersion": "kubefabric.io/v1",
+  "apiVersion": "kubefabric.ai/v1",
   "kind": "FabricAIJob",
   "metadata": {
     "name": "new-training-job",
@@ -288,8 +288,8 @@ GET /api/v1/cluster/nodes/{name}
 {
   "name": "gpu-node-1",
   "labels": {
-    "kubefabric.io/gpu-type": "A100-80G",
-    "kubefabric.io/gpu-count": "8"
+    "kubefabric.ai/gpu-type": "A100-80G",
+    "kubefabric.ai/gpu-count": "8"
   },
   "spec": {
     "gpuType": "A100-80G",
@@ -395,7 +395,7 @@ POST /api/v1/quotas
 
 ```json
 {
-  "apiVersion": "kubefabric.io/v1",
+  "apiVersion": "kubefabric.ai/v1",
   "kind": "FabricQuota",
   "metadata": {
     "name": "new-team"

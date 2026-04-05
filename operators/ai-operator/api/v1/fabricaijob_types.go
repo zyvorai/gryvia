@@ -22,6 +22,9 @@ type FabricAIJobSpec struct {
 	// Storage backend name
 	Storage string `json:"storage,omitempty"`
 
+	// StorageRequest is the PVC size to request (e.g., "100Gi")
+	StorageRequest string `json:"storageRequest,omitempty"`
+
 	// Network type (rdma, sriov, standard)
 	Network string `json:"network,omitempty"`
 
@@ -164,6 +167,14 @@ type FabricAIJobList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []FabricAIJob `json:"items"`
+}
+
+// StorageSize returns the storage request size, defaulting to 100Gi
+func (s *FabricAIJobSpec) StorageSize() string {
+	if s.StorageRequest != "" {
+		return s.StorageRequest
+	}
+	return "100Gi"
 }
 
 func init() {

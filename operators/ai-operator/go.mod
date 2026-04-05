@@ -1,4 +1,4 @@
-module github.com/yourusername/kubefabric/operators/ai-operator
+module github.com/ssahani/kube-fabric/operators/ai-operator
 
 go 1.21
 

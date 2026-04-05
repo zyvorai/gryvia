@@ -66,10 +66,10 @@ kind: ClusterRole
 metadata:
   name: storage-operator-role
 rules:
-- apiGroups: ["kubefabric.io"]
+- apiGroups: ["kubefabric.ai"]
   resources: ["fabricstorages"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-- apiGroups: ["kubefabric.io"]
+- apiGroups: ["kubefabric.ai"]
   resources: ["fabricstorages/status"]
   verbs: ["get", "update", "patch"]
 - apiGroups: [""]
@@ -86,7 +86,7 @@ rules:
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 - apiGroups: ["rbac.authorization.k8s.io"]
   resources: ["clusterroles", "clusterrolebindings"]
-  verbs: ["get", "list", "watch", "create", "update"]
+  verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

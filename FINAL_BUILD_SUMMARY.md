@@ -481,7 +481,7 @@ You now have:
 git init
 git add .
 git commit -m "🚀 Initial commit: KubeFabric v1.0.0"
-git remote add origin git@github.com:yourusername/kubefabric.git
+git remote add origin git@github.com:ssahani/kubefabric.git
 git push -u origin main
 ```
 

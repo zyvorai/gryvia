@@ -135,7 +135,7 @@ kubefabric cancel pytorch-distributed-training
 Create job chains using dependencies:
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: inference-job
@@ -150,7 +150,7 @@ spec:
 Set job priorities:
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: urgent-job
@@ -164,7 +164,7 @@ spec:
 Allow job preemption for higher priority work:
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: preemptible-job
@@ -213,8 +213,8 @@ env:
 Use node selectors for specific hardware:
 ```yaml
 nodeSelector:
-  kubefabric.io/gpu-type: H100
-  kubefabric.io/rdma-enabled: "true"
+  kubefabric.ai/gpu-type: H100
+  kubefabric.ai/rdma-enabled: "true"
 ```
 
 ### 5. Checkpointing
@@ -330,9 +330,9 @@ labels:
 Use spot instances:
 ```yaml
 nodeSelector:
-  kubefabric.io/spot: "true"
+  kubefabric.ai/spot: "true"
 tolerations:
-  - key: kubefabric.io/spot
+  - key: kubefabric.ai/spot
     operator: Exists
 ```
 

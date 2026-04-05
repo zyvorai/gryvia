@@ -2,7 +2,7 @@
 # Set up a local development environment using kind
 # Creates a kind cluster with GPU simulation for testing
 
-set -e
+set -euo pipefail
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -36,19 +36,19 @@ nodes:
     protocol: TCP
 - role: worker
   labels:
-    kubefabric.io/gpu: "true"
-    kubefabric.io/gpu-type: "H100"
-    kubefabric.io/gpu-count: "8"
+    kubefabric.ai/gpu: "true"
+    kubefabric.ai/gpu-type: "H100"
+    kubefabric.ai/gpu-count: "8"
 - role: worker
   labels:
-    kubefabric.io/gpu: "true"
-    kubefabric.io/gpu-type: "A100-80G"
-    kubefabric.io/gpu-count: "8"
+    kubefabric.ai/gpu: "true"
+    kubefabric.ai/gpu-type: "A100-80G"
+    kubefabric.ai/gpu-count: "8"
 - role: worker
   labels:
-    kubefabric.io/gpu: "true"
-    kubefabric.io/gpu-type: "L40"
-    kubefabric.io/gpu-count: "4"
+    kubefabric.ai/gpu: "true"
+    kubefabric.ai/gpu-type: "L40"
+    kubefabric.ai/gpu-count: "4"
 EOF
 
 echo -e "${GREEN}✓ Kind cluster created${NC}"

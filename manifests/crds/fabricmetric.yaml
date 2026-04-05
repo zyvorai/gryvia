@@ -3,9 +3,9 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: fabricmetrics.kubefabric.io
+  name: fabricmetrics.kubefabric.ai
 spec:
-  group: kubefabric.io
+  group: kubefabric.ai
   versions:
     - name: v1
       served: true
@@ -190,7 +190,7 @@ spec:
 
 ---
 # Example: Model Accuracy Metric
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricMetric
 metadata:
   name: model-accuracy
@@ -224,7 +224,7 @@ spec:
 
 ---
 # Example: Throughput Metric
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricMetric
 metadata:
   name: inference-throughput
@@ -254,7 +254,7 @@ spec:
 
 ---
 # Example: GPU Memory Usage
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricMetric
 metadata:
   name: gpu-memory-utilization
@@ -283,7 +283,7 @@ spec:
 
 ---
 # Example: Training Loss
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricMetric
 metadata:
   name: training-loss
@@ -309,7 +309,7 @@ spec:
 
 ---
 # Example: Custom Script Metric
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricMetric
 metadata:
   name: data-freshness
@@ -341,7 +341,7 @@ spec:
 
 ---
 # Example: Using Metrics in Job
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: training-with-metrics
@@ -383,7 +383,7 @@ spec:
 
 ---
 # Metric Dashboard Definition
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricMetricDashboard
 metadata:
   name: training-overview
@@ -417,7 +417,7 @@ spec:
 
 ---
 # Metric Aggregation
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricMetricAggregation
 metadata:
   name: team-performance

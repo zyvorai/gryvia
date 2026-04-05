@@ -1,4 +1,4 @@
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricQuota
 metadata:
   name: team-nlp
@@ -27,5 +27,5 @@ kind: Namespace
 metadata:
   name: nlp-training
   labels:
-    kubefabric.io/team: nlp
-    kubefabric.io/quota: team-nlp
+    kubefabric.ai/team: nlp
+    kubefabric.ai/quota: team-nlp

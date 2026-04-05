@@ -3,9 +3,9 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: fabricfederations.kubefabric.io
+  name: fabricfederations.kubefabric.ai
 spec:
-  group: kubefabric.io
+  group: kubefabric.ai
   versions:
     - name: v1
       served: true
@@ -292,7 +292,7 @@ spec:
 
 ---
 # Example: Multi-Region Federation
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricFederation
 metadata:
   name: global-federation
@@ -405,7 +405,7 @@ spec:
 
 ---
 # Example: Federated Job
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: federated-training
@@ -439,7 +439,7 @@ spec:
 
 ---
 # Federated Job Status
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: federated-training
@@ -464,7 +464,7 @@ status:
 
 ---
 # Example: Burst Configuration
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricBurstPolicy
 metadata:
   name: burst-to-cloud

@@ -137,7 +137,7 @@ kubectl create secret generic vast-credentials \
 
 # Deploy VAST storage
 kubectl apply -f - <<EOF
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricStorage
 metadata:
   name: vast-production
@@ -146,7 +146,7 @@ spec:
   endpoint: vast-mgmt.example.com
   capacity: 500Ti
   nodeSelector:
-    kubefabric.io/storage: "true"
+    kubefabric.ai/storage: "true"
   credentials:
     secretName: vast-credentials
     secretNamespace: kubefabric-system
@@ -164,11 +164,11 @@ kubectl get storageclass vast-production
 
 ```bash
 # Label nodes with RDMA capability
-kubectl label nodes gpu-worker-{01..04} kubefabric.io/rdma=true
+kubectl label nodes gpu-worker-{01..04} kubefabric.ai/rdma=true
 
 # Deploy RDMA network
 kubectl apply -f - <<EOF
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricNetwork
 metadata:
   name: rdma-training
@@ -176,7 +176,7 @@ spec:
   networkType: rdma
   mtu: 9000
   nodeSelector:
-    kubefabric.io/rdma: "true"
+    kubefabric.ai/rdma: "true"
   rdma:
     mode: infiniband
     devices: [mlx5_0, mlx5_1]
@@ -250,7 +250,7 @@ kubectl port-forward -n monitoring svc/monitoring-grafana 3000:80
 ```bash
 # Submit distributed training job
 kubectl apply -f - <<EOF
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: test-training

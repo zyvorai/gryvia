@@ -20,7 +20,7 @@ pub async fn execute(client: &KubeFabricClient, component: &str) -> Result<()> {
         "storage" => check_storage_health(client).await?,
         "network" => check_network_health(client).await?,
         _ => {
-            eprintln!("Unknown component: {}", component);
+            anyhow::bail!("Unknown component: {}. Valid components: all, gpu, storage, network", component);
         }
     }
 

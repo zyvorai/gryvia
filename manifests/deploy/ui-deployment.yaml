@@ -18,8 +18,8 @@ spec:
       serviceAccountName: kubefabric-ui
       containers:
       - name: ui
-        image: kubefabric/ui:latest
-        imagePullPolicy: Always
+        image: kubefabric/ui:1.0.0
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 80
           name: http
@@ -93,9 +93,9 @@ kind: ClusterRole
 metadata:
   name: kubefabric-ui
 rules:
-- apiGroups: ["kubefabric.io"]
+- apiGroups: ["kubefabric.ai"]
   resources: ["fabricaijobs", "fabricquotas", "fabricgpunodes", "fabricstorages", "fabricnetworks"]
-  verbs: ["get", "list", "watch", "create", "delete"]
+  verbs: ["get", "list", "watch"]
 - apiGroups: [""]
   resources: ["nodes", "pods"]
   verbs: ["get", "list", "watch"]

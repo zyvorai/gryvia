@@ -83,11 +83,11 @@ For production, you'll need to configure nginx or similar to proxy `/api` to the
 
 The web UI accesses the Kubernetes API through the following endpoints:
 
-- `GET /api/apis/kubefabric.io/v1/namespaces/default/fabricaijobs` - List jobs
-- `GET /api/apis/kubefabric.io/v1/fabricquotas` - List quotas
-- `GET /api/apis/kubefabric.io/v1/fabricgpunodes` - List GPU nodes
-- `POST /api/apis/kubefabric.io/v1/namespaces/default/fabricaijobs` - Create job
-- `DELETE /api/apis/kubefabric.io/v1/namespaces/default/fabricaijobs/{name}` - Delete job
+- `GET /api/apis/kubefabric.ai/v1/namespaces/default/fabricaijobs` - List jobs
+- `GET /api/apis/kubefabric.ai/v1/fabricquotas` - List quotas
+- `GET /api/apis/kubefabric.ai/v1/fabricgpunodes` - List GPU nodes
+- `POST /api/apis/kubefabric.ai/v1/namespaces/default/fabricaijobs` - Create job
+- `DELETE /api/apis/kubefabric.ai/v1/namespaces/default/fabricaijobs/{name}` - Delete job
 
 ## Deployment
 

@@ -3,9 +3,9 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: fabricjobhooks.kubefabric.io
+  name: fabricjobhooks.kubefabric.ai
 spec:
-  group: kubefabric.io
+  group: kubefabric.ai
   versions:
     - name: v1
       served: true
@@ -169,7 +169,7 @@ spec:
 
 ---
 # Example: Pre-Start Data Validation Hook
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricJobHook
 metadata:
   name: validate-data-pre-start
@@ -193,7 +193,7 @@ spec:
 
 ---
 # Example: Post-Completion Model Upload
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricJobHook
 metadata:
   name: upload-model-post-completion
@@ -227,7 +227,7 @@ spec:
 
 ---
 # Example: On-Failure Notification
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricJobHook
 metadata:
   name: notify-on-failure
@@ -262,7 +262,7 @@ spec:
 
 ---
 # Example: Pre-Checkpoint Hook
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricJobHook
 metadata:
   name: optimize-checkpoint
@@ -282,7 +282,7 @@ spec:
 
 ---
 # Example: Webhook Integration (Weights & Biases)
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricJobHook
 metadata:
   name: wandb-integration
@@ -313,7 +313,7 @@ spec:
 
 ---
 # Example: Pre-Retry Resource Adjustment
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricJobHook
 metadata:
   name: adjust-resources-pre-retry
@@ -340,7 +340,7 @@ spec:
 
 ---
 # Example: Cost Tracking Hook
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricJobHook
 metadata:
   name: track-job-cost
@@ -363,7 +363,7 @@ spec:
 
 ---
 # Example: Model Registry Hook
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricJobHook
 metadata:
   name: register-model
@@ -393,7 +393,7 @@ spec:
 
 ---
 # Example: Slack Notification with Rich Format
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricJobHook
 metadata:
   name: slack-job-completion
@@ -432,7 +432,7 @@ spec:
 
 ---
 # Example: Auto-Cleanup Hook
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricJobHook
 metadata:
   name: cleanup-scratch

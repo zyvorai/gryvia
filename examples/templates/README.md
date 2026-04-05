@@ -59,7 +59,7 @@ Distributed data parallel training with PyTorch.
 **Template:** `pytorch-ddp.yaml`
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: pytorch-ddp-template
@@ -116,7 +116,7 @@ Multi-worker distributed training with TensorFlow.
 **Template:** `tensorflow-distributed.yaml`
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: tensorflow-distributed-template
@@ -148,7 +148,7 @@ Large model training with DeepSpeed ZeRO optimization.
 **Template:** `deepspeed-training.yaml`
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: deepspeed-training-template
@@ -225,7 +225,7 @@ Parameter-efficient fine-tuning with LoRA.
 **Template:** `lora-finetuning.yaml`
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: lora-finetuning-template
@@ -268,7 +268,7 @@ High-throughput LLM inference server with vLLM.
 **Template:** `vllm-inference.yaml`
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: vllm-inference-template
@@ -345,7 +345,7 @@ Large-scale data preprocessing job.
 **Template:** `dataset-preprocessing.yaml`
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: dataset-preprocessing-template
@@ -377,7 +377,7 @@ spec:
 
 ```yaml
 # my-template.yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricJobTemplate
 metadata:
   name: my-custom-template

@@ -109,9 +109,10 @@ backup() {
     log_info "Backing up ConfigMaps..."
     kubectl get configmaps -n kubefabric -o yaml > "${backup_path}/configmaps.yaml" 2>/dev/null || true
 
-    # Backup Secrets (encrypted)
-    log_info "Backing up Secrets..."
-    kubectl get secrets -n kubefabric -o yaml > "${backup_path}/secrets.yaml" 2>/dev/null || true
+    # Skip secrets by default to avoid storing sensitive data in plaintext backups
+    # To include secrets, create them separately using: kubectl get secrets -n kubefabric -o yaml | kubeseal > sealed-secrets.yaml
+    log_info "Skipping secrets backup (use sealed-secrets for secret backup)"
+    echo "Secrets excluded from backup for security. Use 'kubeseal' for encrypted secret backups." > "${backup_path}/secrets-skipped.txt"
 
     # Backup RBAC
     log_info "Backing up RBAC..."

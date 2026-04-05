@@ -1,4 +1,4 @@
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricStorage
 metadata:
   name: weka-cluster
@@ -7,7 +7,7 @@ spec:
   endpoint: weka-api.example.com
   capacity: 500Ti
   nodeSelector:
-    kubefabric.io/storage: "true"
+    kubefabric.ai/storage: "true"
   credentials:
     secretName: weka-credentials
     secretNamespace: kubefabric-system

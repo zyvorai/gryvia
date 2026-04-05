@@ -412,7 +412,7 @@ GET /docs                      # Swagger UI
 
 ### FabricGpuNode
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricGpuNode
 spec:
   nodeName: gpu-worker-01
@@ -424,7 +424,7 @@ spec:
 
 ### FabricAIJob
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 spec:
   framework: pytorch
@@ -438,7 +438,7 @@ spec:
 
 ### FabricStorage
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricStorage
 spec:
   backendType: vast
@@ -448,7 +448,7 @@ spec:
 
 ### FabricNetwork
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricNetwork
 spec:
   networkType: rdma
@@ -459,7 +459,7 @@ spec:
 
 ### FabricQuota
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricQuota
 spec:
   team: ml-research

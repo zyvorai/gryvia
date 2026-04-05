@@ -4,7 +4,7 @@ Provides REST API for Web UI with aggregated metrics and cluster data
 """
 import asyncio
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Dict, List, Optional
 from fastapi import FastAPI, HTTPException, Query, Depends, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -38,7 +38,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=len(ALLOWED_ORIGINS) > 0,
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["Authorization", "Content-Type"],
 )
 
@@ -48,14 +48,16 @@ API_KEY = os.environ.get("KUBEFABRIC_API_KEY", "")
 async def verify_auth(authorization: Optional[str] = Header(None)):
     """Verify API key or Bearer token for all protected endpoints."""
     if not API_KEY:
-        # If no API key configured, log warning but allow (for migration)
-        logger.warning("KUBEFABRIC_API_KEY not configured - API is unauthenticated")
-        return
+        raise HTTPException(
+            status_code=500,
+            detail="KUBEFABRIC_API_KEY not configured. Set the environment variable to enable API access."
+        )
     if not authorization:
         raise HTTPException(status_code=401, detail="Authorization header required")
     # Support both "Bearer <token>" and raw key
     token = authorization.removeprefix("Bearer ").strip()
-    if token != API_KEY:
+    import hmac
+    if not hmac.compare_digest(token, API_KEY):
         raise HTTPException(status_code=403, detail="Invalid credentials")
 
 # Initialize Kubernetes client
@@ -75,7 +77,7 @@ k8s_core = client.CoreV1Api()
 
 # Prometheus client
 PROMETHEUS_URL = os.environ.get("PROMETHEUS_URL", "http://prometheus-operated.kubefabric:9090")
-prom = PrometheusConnect(url=PROMETHEUS_URL, disable_ssl=False)
+prom = PrometheusConnect(url=PROMETHEUS_URL, disable_ssl=PROMETHEUS_URL.startswith("http://"))
 
 # Namespace for job queries (configurable)
 JOB_NAMESPACE = os.environ.get("KUBEFABRIC_JOB_NAMESPACE", "default")
@@ -108,14 +110,14 @@ async def get_cluster_stats(request: Request, _=Depends(verify_auth)):
     try:
         # Get all GPU nodes
         nodes = k8s_custom.list_cluster_custom_object(
-            group="kubefabric.io",
+            group="kubefabric.ai",
             version="v1",
             plural="fabricgpunodes"
         )
 
         # Get all jobs
         jobs = k8s_custom.list_namespaced_custom_object(
-            group="kubefabric.io",
+            group="kubefabric.ai",
             version="v1",
             namespace=JOB_NAMESPACE,
             plural="fabricaijobs"
@@ -190,7 +192,7 @@ async def get_gpu_metrics(
 
         # Query Prometheus for GPU metrics
         nodes = k8s_custom.list_cluster_custom_object(
-            group="kubefabric.io",
+            group="kubefabric.ai",
             version="v1",
             plural="fabricgpunodes"
         )
@@ -225,14 +227,14 @@ async def get_cost_metrics(request: Request, _=Depends(verify_auth)):
     try:
         # Get all quotas with budget info
         quotas = k8s_custom.list_cluster_custom_object(
-            group="kubefabric.io",
+            group="kubefabric.ai",
             version="v1",
             plural="fabricquotas"
         )
 
         # Get all jobs to calculate costs
         jobs = k8s_custom.list_namespaced_custom_object(
-            group="kubefabric.io",
+            group="kubefabric.ai",
             version="v1",
             namespace=JOB_NAMESPACE,
             plural="fabricaijobs"
@@ -318,7 +320,7 @@ async def get_job_metrics(
     """Get job metrics over time"""
     try:
         jobs = k8s_custom.list_namespaced_custom_object(
-            group="kubefabric.io",
+            group="kubefabric.ai",
             version="v1",
             namespace=JOB_NAMESPACE,
             plural="fabricaijobs"
@@ -369,7 +371,7 @@ async def get_quota_usage(request: Request, _=Depends(verify_auth)):
     """Get quota usage across all teams"""
     try:
         quotas = k8s_custom.list_cluster_custom_object(
-            group="kubefabric.io",
+            group="kubefabric.ai",
             version="v1",
             plural="fabricquotas"
         )
@@ -410,7 +412,7 @@ async def get_node_health(request: Request, _=Depends(verify_auth)):
     """Get GPU node health status"""
     try:
         nodes = k8s_custom.list_cluster_custom_object(
-            group="kubefabric.io",
+            group="kubefabric.ai",
             version="v1",
             plural="fabricgpunodes"
         )

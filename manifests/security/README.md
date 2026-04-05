@@ -134,7 +134,7 @@ kubectl create rolebinding ml-research-users \
 ### Use service account in jobs
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: my-job
@@ -208,7 +208,7 @@ kind: Policy
 rules:
   - level: RequestResponse
     resources:
-      - group: kubefabric.io
+      - group: kubefabric.ai
         resources: ["fabricaijobs", "fabricquotas"]
 ```
 
@@ -356,6 +356,6 @@ kubectl label pod <pod-name> network-policy=deny
 ## Support
 
 For security issues:
-- Report to: security@kubefabric.io
+- Report to: security@kubefabric.ai
 - Include: Description, impact, reproduction steps
 - Response time: Critical issues within 4 hours

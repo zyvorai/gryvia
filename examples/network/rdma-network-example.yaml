@@ -1,4 +1,4 @@
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricNetwork
 metadata:
   name: rdma-infiniband
@@ -6,7 +6,7 @@ spec:
   networkType: rdma
   mtu: 9000
   nodeSelector:
-    kubefabric.io/rdma: "true"
+    kubefabric.ai/rdma: "true"
   rdma:
     mode: infiniband
     devices:

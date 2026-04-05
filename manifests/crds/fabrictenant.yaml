@@ -3,9 +3,9 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: fabrictenants.kubefabric.io
+  name: fabrictenants.kubefabric.ai
 spec:
-  group: kubefabric.io
+  group: kubefabric.ai
   versions:
     - name: v1
       served: true
@@ -248,7 +248,7 @@ spec:
 
 ---
 # Example: ML Research Team
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricTenant
 metadata:
   name: ml-research
@@ -327,7 +327,7 @@ spec:
 
 ---
 # Example: Production Inference Team
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricTenant
 metadata:
   name: production-inference
@@ -373,7 +373,7 @@ spec:
 
 ---
 # Example: Sub-Team (Hierarchical)
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricTenant
 metadata:
   name: ml-research-cv
@@ -401,7 +401,7 @@ spec:
 
 ---
 # Example: External Collaborator Tenant
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricTenant
 metadata:
   name: university-collab
@@ -448,7 +448,7 @@ spec:
 
 ---
 # Tenant Status Example
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricTenant
 metadata:
   name: ml-research

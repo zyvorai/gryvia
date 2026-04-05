@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -15,8 +16,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	kubefabricv1 "github.com/yourusername/kubefabric/operators/gpu-operator/api/v1"
-	"github.com/yourusername/kubefabric/operators/gpu-operator/pkg/gpu"
+	kubefabricv1 "github.com/ssahani/kube-fabric/operators/gpu-operator/api/v1"
+	"github.com/ssahani/kube-fabric/operators/gpu-operator/pkg/gpu"
 )
 
 const (
@@ -73,6 +74,8 @@ func (r *FabricGpuNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		if err := r.Update(ctx, fabricNode); err != nil {
 			return ctrl.Result{}, err
 		}
+		// Requeue to avoid working with a stale object after update
+		return ctrl.Result{Requeue: true}, nil
 	}
 
 	// Initialize status if needed
@@ -82,6 +85,7 @@ func (r *FabricGpuNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			log.Error(err, "Failed to update FabricGpuNode status")
 			return ctrl.Result{}, err
 		}
+		return ctrl.Result{Requeue: true}, nil
 	}
 
 	// Reconcile the GPU node
@@ -174,17 +178,16 @@ func (r *FabricGpuNodeReconciler) ensureDrivers(ctx context.Context, fabricNode 
 	// Check if NVIDIA drivers are installed
 	driverVersion, cudaVersion, err := gpu.GetDriverInfo()
 	if err != nil {
-		// Drivers not installed, attempt installation
-		r.Log.Info("NVIDIA drivers not found, installing...", "node", fabricNode.Spec.NodeName)
+		r.Log.Info("NVIDIA drivers not detected, triggering installation", "node", fabricNode.Spec.NodeName, "error", err)
 
 		// In a real implementation, this would:
 		// 1. Create a DaemonSet to install drivers on the node
 		// 2. Use the NVIDIA GPU Operator or custom installation logic
 		// 3. Wait for installation to complete
 
-		// For now, we'll simulate this
-		driverVersion = "535.129.03"
-		cudaVersion = "12.2"
+		fabricNode.Status.DriverVersion = "pending"
+		fabricNode.Status.CudaVersion = "pending"
+		return fmt.Errorf("NVIDIA drivers not yet installed on node %s: %w", fabricNode.Spec.NodeName, err)
 	}
 
 	fabricNode.Status.DriverVersion = driverVersion
@@ -234,9 +237,11 @@ func (r *FabricGpuNodeReconciler) labelNode(ctx context.Context, fabricNode *kub
 		node.Labels["kubefabric.ai/interconnect"] = fabricNode.Spec.Interconnect
 	}
 
-	// Apply custom labels from spec
+	// Apply custom labels from spec (only allow kubefabric.ai/ prefix)
 	for k, v := range fabricNode.Spec.Labels {
-		node.Labels[k] = v
+		if strings.HasPrefix(k, "kubefabric.ai/") {
+			node.Labels[k] = v
+		}
 	}
 
 	// Update the node
@@ -279,6 +284,14 @@ func (r *FabricGpuNodeReconciler) updateCondition(fabricNode *kubefabricv1.Fabri
 		Reason:             reason,
 		Message:            message,
 		LastTransitionTime: metav1.Now(),
+	}
+
+	// Only update LastTransitionTime when status actually changes
+	for _, cond := range fabricNode.Status.Conditions {
+		if cond.Type == condType && cond.Status == status {
+			condition.LastTransitionTime = cond.LastTransitionTime
+			break
+		}
 	}
 
 	// Find and update existing condition or append new one

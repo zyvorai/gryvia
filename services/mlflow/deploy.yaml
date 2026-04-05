@@ -30,8 +30,10 @@ metadata:
   name: mlflow-postgres-secret
   namespace: kubefabric
 type: Opaque
-stringData:
-  POSTGRES_PASSWORD: "mlflow-secret-password-change-in-production"
+data:
+  # IMPORTANT: Replace with a base64-encoded secure password before deploying
+  # Generate with: echo -n 'your-secure-password' | base64
+  POSTGRES_PASSWORD: "Q0hBTkdFLU1FLWJlZm9yZS1kZXBsb3k="
 
 ---
 apiVersion: apps/v1
@@ -151,13 +153,13 @@ spec:
             - containerPort: 5000
               name: http
           env:
-            - name: BACKEND_STORE_URI
-              value: "postgresql://mlflow:$(POSTGRES_PASSWORD)@mlflow-postgres:5432/mlflow"
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: mlflow-postgres-secret
                   key: POSTGRES_PASSWORD
+            - name: BACKEND_STORE_URI
+              value: "postgresql://mlflow:$(POSTGRES_PASSWORD)@mlflow-postgres:5432/mlflow"
             - name: ARTIFACT_ROOT
               value: "/mlflow/artifacts"
             - name: WORKERS
@@ -227,6 +229,10 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
 spec:
   ingressClassName: nginx
+  tls:
+    - hosts:
+        - mlflow.kubefabric.local
+      secretName: mlflow-tls
   rules:
     - host: mlflow.kubefabric.local
       http:

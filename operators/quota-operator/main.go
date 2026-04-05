@@ -10,9 +10,12 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	kubefabricv1 "github.com/yourusername/kubefabric/operators/quota-operator/api/v1"
-	"github.com/yourusername/kubefabric/operators/quota-operator/controllers"
+	_ "k8s.io/client-go/plugin/pkg/client/auth"
+
+	kubefabricv1 "github.com/ssahani/kube-fabric/operators/quota-operator/api/v1"
+	"github.com/ssahani/kube-fabric/operators/quota-operator/controllers"
 )
 
 var (
@@ -45,11 +48,10 @@ func main() {
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
-		MetricsBindAddress:     metricsAddr,
-		Port:                   9443,
+		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "quota-operator.kubefabric.io",
+		LeaderElectionID:       "quota-operator.kubefabric.ai",
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")

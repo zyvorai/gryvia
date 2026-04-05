@@ -12,6 +12,9 @@ spec:
     shortNames:
       - fquota
       - quota
+    categories:
+      - kubefabric
+      - all
   scope: Namespaced
   versions:
     - name: v1
@@ -19,12 +22,14 @@ spec:
       storage: true
       schema:
         openAPIV3Schema:
+          description: FabricQuota is the Schema for the fabricquotas API
           type: object
           properties:
             spec:
               type: object
               required:
                 - team
+                - maxGpus
               properties:
                 team:
                   type: string

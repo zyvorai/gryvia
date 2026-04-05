@@ -2,7 +2,7 @@
 # Build all KubeFabric components
 # Compiles operators, CLI, web UI, and creates Docker images
 
-set -e
+set -euo pipefail
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -18,13 +18,13 @@ echo "=================================="
 # Build operators
 echo -e "\n${YELLOW}Building operators...${NC}"
 for operator in operators/*-operator; do
-    op_name=$(basename $operator)
+    op_name=$(basename "$operator")
     echo "  Building $op_name..."
-    (cd $operator && go build -o bin/manager main.go)
+    (cd "$operator" && go build -o bin/manager main.go)
 
     echo "  Building Docker image for $op_name..."
-    docker build -t ${REGISTRY}/kubefabric-${op_name}:${VERSION} $operator
-    docker tag ${REGISTRY}/kubefabric-${op_name}:${VERSION} ${REGISTRY}/kubefabric-${op_name}:latest
+    docker build -t "${REGISTRY}/kubefabric-${op_name}:${VERSION}" "$operator"
+    docker tag "${REGISTRY}/kubefabric-${op_name}:${VERSION}" "${REGISTRY}/kubefabric-${op_name}:latest"
 done
 echo -e "${GREEN}✓ Operators built${NC}"
 

@@ -359,7 +359,7 @@ spec:
         app: gpu-diagnostics
     spec:
       nodeSelector:
-        kubefabric.io/gpu: "true"
+        kubefabric.ai/gpu: "true"
       hostPID: true
       containers:
       - name: diagnostics

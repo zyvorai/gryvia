@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -18,58 +19,73 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-var (
+type testCluster struct {
 	dynamicClient dynamic.Interface
 	clientset     *kubernetes.Clientset
-	namespace     = "kubefabric-e2e-test"
-)
+	namespace     string
+}
 
-func setupTestCluster(t *testing.T) {
+func setupTestCluster(t *testing.T) *testCluster {
+	t.Helper()
 	config, err := clientcmd.BuildConfigFromFlags("", clientcmd.RecommendedHomeFile)
 	require.NoError(t, err, "Failed to build kubeconfig")
 
-	dynamicClient, err = dynamic.NewForConfig(config)
+	dc, err := dynamic.NewForConfig(config)
 	require.NoError(t, err, "Failed to create dynamic client")
 
-	clientset, err = kubernetes.NewForConfig(config)
+	cs, err := kubernetes.NewForConfig(config)
 	require.NoError(t, err, "Failed to create clientset")
 
+	// Use unique namespace per test
+	ns := fmt.Sprintf("kubefabric-e2e-%s", strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-")))
+	if len(ns) > 63 {
+		ns = ns[:63]
+	}
+
+	tc := &testCluster{
+		dynamicClient: dc,
+		clientset:     cs,
+		namespace:     ns,
+	}
+
 	// Create test namespace
-	_, err = clientset.CoreV1().Namespaces().Create(context.TODO(), &corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{Name: namespace},
+	_, err = cs.CoreV1().Namespaces().Create(context.Background(), &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{Name: ns},
 	}, metav1.CreateOptions{})
-	if err != nil && !strings.Contains(err.Error(), "already exists") {
+	if err != nil && !apierrors.IsAlreadyExists(err) {
 		require.NoError(t, err, "Failed to create test namespace")
 	}
+
+	return tc
 }
 
-func teardownTestCluster(t *testing.T) {
-	// Delete test namespace
-	err := clientset.CoreV1().Namespaces().Delete(context.TODO(), namespace, metav1.DeleteOptions{})
+func teardownTestCluster(t *testing.T, tc *testCluster) {
+	t.Helper()
+	err := tc.clientset.CoreV1().Namespaces().Delete(context.Background(), tc.namespace, metav1.DeleteOptions{})
 	assert.NoError(t, err, "Failed to delete test namespace")
 }
 
 func TestE2E_AIJobLifecycle(t *testing.T) {
-	setupTestCluster(t)
-	defer teardownTestCluster(t)
+	tc := setupTestCluster(t)
+	defer teardownTestCluster(t, tc)
 
 	ctx := context.Background()
 	jobName := "test-pytorch-job"
 
 	// Define FabricAIJob resource
 	gvr := schema.GroupVersionResource{
-		Group:    "kubefabric.io",
+		Group:    "kubefabric.ai",
 		Version:  "v1",
 		Resource: "fabricaijobs",
 	}
 
 	job := &unstructured.Unstructured{
 		Object: map[string]interface{}{
-			"apiVersion": "kubefabric.io/v1",
+			"apiVersion": "kubefabric.ai/v1",
 			"kind":       "FabricAIJob",
 			"metadata": map[string]interface{}{
 				"name":      jobName,
-				"namespace": namespace,
+				"namespace": tc.namespace,
 			},
 			"spec": map[string]interface{}{
 				"framework": "pytorch",
@@ -91,7 +107,7 @@ func TestE2E_AIJobLifecycle(t *testing.T) {
 
 	// Create job
 	t.Run("CreateJob", func(t *testing.T) {
-		_, err := dynamicClient.Resource(gvr).Namespace(namespace).Create(ctx, job, metav1.CreateOptions{})
+		_, err := tc.dynamicClient.Resource(gvr).Namespace(tc.namespace).Create(ctx, job, metav1.CreateOptions{})
 		require.NoError(t, err, "Failed to create FabricAIJob")
 	})
 
@@ -106,8 +122,11 @@ func TestE2E_AIJobLifecycle(t *testing.T) {
 			case <-timeout:
 				t.Fatal("Timeout waiting for job to have status")
 			case <-ticker.C:
-				obj, err := dynamicClient.Resource(gvr).Namespace(namespace).Get(ctx, jobName, metav1.GetOptions{})
-				require.NoError(t, err)
+				obj, err := tc.dynamicClient.Resource(gvr).Namespace(tc.namespace).Get(ctx, jobName, metav1.GetOptions{})
+				if err != nil {
+					t.Logf("Transient error getting job: %v", err)
+					continue
+				}
 
 				status, found, err := unstructured.NestedMap(obj.Object, "status")
 				if err == nil && found && len(status) > 0 {
@@ -124,7 +143,7 @@ func TestE2E_AIJobLifecycle(t *testing.T) {
 
 	// Verify job status
 	t.Run("VerifyJobStatus", func(t *testing.T) {
-		obj, err := dynamicClient.Resource(gvr).Namespace(namespace).Get(ctx, jobName, metav1.GetOptions{})
+		obj, err := tc.dynamicClient.Resource(gvr).Namespace(tc.namespace).Get(ctx, jobName, metav1.GetOptions{})
 		require.NoError(t, err)
 
 		status, found, err := unstructured.NestedMap(obj.Object, "status")
@@ -140,34 +159,34 @@ func TestE2E_AIJobLifecycle(t *testing.T) {
 
 	// Delete job
 	t.Run("DeleteJob", func(t *testing.T) {
-		err := dynamicClient.Resource(gvr).Namespace(namespace).Delete(ctx, jobName, metav1.DeleteOptions{})
+		err := tc.dynamicClient.Resource(gvr).Namespace(tc.namespace).Delete(ctx, jobName, metav1.DeleteOptions{})
 		require.NoError(t, err, "Failed to delete job")
 	})
 }
 
 func TestE2E_QuotaEnforcement(t *testing.T) {
-	setupTestCluster(t)
-	defer teardownTestCluster(t)
+	tc := setupTestCluster(t)
+	defer teardownTestCluster(t, tc)
 
 	ctx := context.Background()
 	quotaName := "test-team-quota"
 
 	quotaGVR := schema.GroupVersionResource{
-		Group:    "kubefabric.io",
+		Group:    "kubefabric.ai",
 		Version:  "v1",
 		Resource: "fabricquotas",
 	}
 
 	quota := &unstructured.Unstructured{
 		Object: map[string]interface{}{
-			"apiVersion": "kubefabric.io/v1",
+			"apiVersion": "kubefabric.ai/v1",
 			"kind":       "FabricQuota",
 			"metadata": map[string]interface{}{
 				"name": quotaName,
 			},
 			"spec": map[string]interface{}{
 				"team":       "e2e-test-team",
-				"namespaces": []string{namespace},
+				"namespaces": []string{tc.namespace},
 				"gpuQuota": map[string]interface{}{
 					"maxGPUs":          2,
 					"maxGPUsPerJob":    1,
@@ -180,7 +199,7 @@ func TestE2E_QuotaEnforcement(t *testing.T) {
 	}
 
 	t.Run("CreateQuota", func(t *testing.T) {
-		_, err := dynamicClient.Resource(quotaGVR).Create(ctx, quota, metav1.CreateOptions{})
+		_, err := tc.dynamicClient.Resource(quotaGVR).Create(ctx, quota, metav1.CreateOptions{})
 		require.NoError(t, err, "Failed to create FabricQuota")
 	})
 
@@ -194,8 +213,11 @@ func TestE2E_QuotaEnforcement(t *testing.T) {
 			case <-timeout:
 				t.Fatal("Timeout waiting for quota to have status")
 			case <-ticker.C:
-				obj, err := dynamicClient.Resource(quotaGVR).Get(ctx, quotaName, metav1.GetOptions{})
-				require.NoError(t, err)
+				obj, err := tc.dynamicClient.Resource(quotaGVR).Get(ctx, quotaName, metav1.GetOptions{})
+				if err != nil {
+					t.Logf("Transient error getting quota: %v", err)
+					continue
+				}
 
 				status, found, err := unstructured.NestedMap(obj.Object, "status")
 				if err == nil && found && len(status) > 0 {
@@ -206,7 +228,7 @@ func TestE2E_QuotaEnforcement(t *testing.T) {
 	})
 
 	t.Run("VerifyQuotaStatus", func(t *testing.T) {
-		obj, err := dynamicClient.Resource(quotaGVR).Get(ctx, quotaName, metav1.GetOptions{})
+		obj, err := tc.dynamicClient.Resource(quotaGVR).Get(ctx, quotaName, metav1.GetOptions{})
 		require.NoError(t, err)
 
 		status, found, err := unstructured.NestedMap(obj.Object, "status")
@@ -225,25 +247,25 @@ func TestE2E_QuotaEnforcement(t *testing.T) {
 	})
 
 	t.Run("DeleteQuota", func(t *testing.T) {
-		err := dynamicClient.Resource(quotaGVR).Delete(ctx, quotaName, metav1.DeleteOptions{})
+		err := tc.dynamicClient.Resource(quotaGVR).Delete(ctx, quotaName, metav1.DeleteOptions{})
 		require.NoError(t, err, "Failed to delete quota")
 	})
 }
 
 func TestE2E_NodeRegistration(t *testing.T) {
-	setupTestCluster(t)
-	defer teardownTestCluster(t)
+	tc := setupTestCluster(t)
+	defer teardownTestCluster(t, tc)
 
 	ctx := context.Background()
 
 	nodeGVR := schema.GroupVersionResource{
-		Group:    "kubefabric.io",
+		Group:    "kubefabric.ai",
 		Version:  "v1",
 		Resource: "fabricgpunodes",
 	}
 
 	t.Run("ListGPUNodes", func(t *testing.T) {
-		nodes, err := dynamicClient.Resource(nodeGVR).List(ctx, metav1.ListOptions{})
+		nodes, err := tc.dynamicClient.Resource(nodeGVR).List(ctx, metav1.ListOptions{})
 		require.NoError(t, err, "Failed to list GPU nodes")
 
 		t.Logf("Found %d GPU nodes", len(nodes.Items))
@@ -263,21 +285,21 @@ func TestE2E_NodeRegistration(t *testing.T) {
 }
 
 func TestE2E_StorageProvisioning(t *testing.T) {
-	setupTestCluster(t)
-	defer teardownTestCluster(t)
+	tc := setupTestCluster(t)
+	defer teardownTestCluster(t, tc)
 
 	ctx := context.Background()
 	storageName := "test-vast-storage"
 
 	storageGVR := schema.GroupVersionResource{
-		Group:    "kubefabric.io",
+		Group:    "kubefabric.ai",
 		Version:  "v1",
 		Resource: "fabricstorages",
 	}
 
 	storage := &unstructured.Unstructured{
 		Object: map[string]interface{}{
-			"apiVersion": "kubefabric.io/v1",
+			"apiVersion": "kubefabric.ai/v1",
 			"kind":       "FabricStorage",
 			"metadata": map[string]interface{}{
 				"name": storageName,
@@ -295,7 +317,7 @@ func TestE2E_StorageProvisioning(t *testing.T) {
 	}
 
 	t.Run("CreateStorage", func(t *testing.T) {
-		_, err := dynamicClient.Resource(storageGVR).Create(ctx, storage, metav1.CreateOptions{})
+		_, err := tc.dynamicClient.Resource(storageGVR).Create(ctx, storage, metav1.CreateOptions{})
 		require.NoError(t, err, "Failed to create FabricStorage")
 	})
 
@@ -310,8 +332,11 @@ func TestE2E_StorageProvisioning(t *testing.T) {
 				t.Log("Timeout waiting for storage - this is expected in test environment")
 				return
 			case <-ticker.C:
-				obj, err := dynamicClient.Resource(storageGVR).Get(ctx, storageName, metav1.GetOptions{})
-				require.NoError(t, err)
+				obj, err := tc.dynamicClient.Resource(storageGVR).Get(ctx, storageName, metav1.GetOptions{})
+				if err != nil {
+					t.Logf("Transient error getting storage: %v", err)
+					continue
+				}
 
 				status, found, err := unstructured.NestedMap(obj.Object, "status")
 				if err == nil && found && len(status) > 0 {
@@ -325,7 +350,7 @@ func TestE2E_StorageProvisioning(t *testing.T) {
 	})
 
 	t.Run("DeleteStorage", func(t *testing.T) {
-		err := dynamicClient.Resource(storageGVR).Delete(ctx, storageName, metav1.DeleteOptions{})
+		err := tc.dynamicClient.Resource(storageGVR).Delete(ctx, storageName, metav1.DeleteOptions{})
 		require.NoError(t, err, "Failed to delete storage")
 	})
 }

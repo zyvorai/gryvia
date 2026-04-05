@@ -3,7 +3,7 @@
 > **The Enterprise GPU Compute Fabric for AI Infrastructure**
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go)](https://go.dev/)
+[![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go)](https://go.dev/)
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-1.28+-326CE5?logo=kubernetes)](https://kubernetes.io/)
 [![NVIDIA](https://img.shields.io/badge/NVIDIA-GPU-76B900?logo=nvidia)](https://nvidia.com)
 

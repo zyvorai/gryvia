@@ -1,4 +1,4 @@
-module github.com/yourusername/kubefabric/operators/network-operator
+module github.com/ssahani/kube-fabric/operators/network-operator
 
 go 1.21
 

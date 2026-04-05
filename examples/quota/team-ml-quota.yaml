@@ -1,4 +1,4 @@
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricQuota
 metadata:
   name: team-ml
@@ -30,5 +30,5 @@ kind: Namespace
 metadata:
   name: ml-training
   labels:
-    kubefabric.io/team: ml-research
-    kubefabric.io/quota: team-ml
+    kubefabric.ai/team: ml-research
+    kubefabric.ai/quota: team-ml

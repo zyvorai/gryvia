@@ -34,7 +34,7 @@ Automatically optimize hyperparameters, resource allocation, and training config
 ### 1. Enable Auto-Tuning
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAutoTuner
 metadata:
   name: llama-tuning

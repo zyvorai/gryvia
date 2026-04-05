@@ -6,7 +6,7 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kubefabricv1 "github.com/yourusername/kubefabric/operators/quota-operator/api/v1"
+	kubefabricv1 "github.com/ssahani/kube-fabric/operators/quota-operator/api/v1"
 )
 
 // CalculateUsage calculates current resource usage for a quota
@@ -32,7 +32,7 @@ func CalculateUsage(ctx context.Context, k8sClient client.Client, quota *kubefab
 				runningJobs++
 
 				// Calculate GPU hours
-				if !job.Status.StartTime.IsZero() {
+				if job.Status.StartTime != nil && !job.Status.StartTime.IsZero() {
 					duration := time.Since(job.Status.StartTime.Time)
 					hours := duration.Hours()
 					gpuHours += hours * float64(job.Spec.GPUs)
@@ -67,19 +67,25 @@ func GetMonthlyGPUHours(ctx context.Context, k8sClient client.Client, quota *kub
 		}
 
 		for _, job := range jobs.Items {
-			// Skip jobs not started this month
-			if job.Status.StartTime.IsZero() || job.Status.StartTime.Time.Before(startOfMonth) {
+			// Skip jobs without a start time
+			if job.Status.StartTime == nil || job.Status.StartTime.IsZero() {
 				continue
+			}
+
+			// For jobs started before this month, count hours from start of month
+			effectiveStart := job.Status.StartTime.Time
+			if effectiveStart.Before(startOfMonth) {
+				effectiveStart = startOfMonth
 			}
 
 			// Calculate duration
 			var duration time.Duration
-			if job.Status.CompletionTime.IsZero() {
+			if job.Status.CompletionTime == nil || job.Status.CompletionTime.IsZero() {
 				// Still running
-				duration = time.Since(job.Status.StartTime.Time)
+				duration = time.Since(effectiveStart)
 			} else {
 				// Completed
-				duration = job.Status.CompletionTime.Time.Sub(job.Status.StartTime.Time)
+				duration = job.Status.CompletionTime.Time.Sub(effectiveStart)
 			}
 
 			hours := duration.Hours()

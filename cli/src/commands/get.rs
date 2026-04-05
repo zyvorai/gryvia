@@ -11,8 +11,7 @@ pub async fn execute(client: &KubeFabricClient, resource: &str, name: &str, outp
         "quota" => get_quota(client, name, output).await?,
         "node" => get_node(client, name, output).await?,
         _ => {
-            display::print_error(&format!("Unknown resource type: {}", resource));
-            return Ok(());
+            anyhow::bail!("Unknown resource type: {}. Valid types: job, quota, node", resource);
         }
     }
 

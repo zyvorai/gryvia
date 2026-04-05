@@ -12,6 +12,9 @@ spec:
     shortNames:
       - fgn
       - gpunode
+    categories:
+      - kubefabric
+      - all
   scope: Cluster
   versions:
     - name: v1
@@ -19,6 +22,7 @@ spec:
       storage: true
       schema:
         openAPIV3Schema:
+          description: FabricGpuNode is the Schema for the fabricgpunodes API
           type: object
           properties:
             spec:
@@ -47,7 +51,7 @@ spec:
                   type: integer
                   description: "Number of GPUs on this node"
                   minimum: 1
-                  maximum: 8
+                  maximum: 72
                 rdma:
                   type: boolean
                   description: "RDMA support enabled"

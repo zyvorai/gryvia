@@ -30,8 +30,8 @@ function App() {
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/jobs" element={<Jobs />} />
-            <Route path="/jobs/:name" element={<JobDetails />} />
             <Route path="/jobs/new" element={<SubmitJob />} />
+            <Route path="/jobs/:name" element={<JobDetails />} />
             <Route path="/quotas" element={<Quotas />} />
             <Route path="/nodes" element={<Nodes />} />
             <Route path="/costs" element={<Costs />} />

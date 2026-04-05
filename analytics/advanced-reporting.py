@@ -26,7 +26,7 @@ class AdvancedAnalytics:
     def __init__(self):
         try:
             config.load_kube_config()
-        except:
+        except Exception:
             config.load_incluster_config()
 
         self.api = client.CustomObjectsApi()
@@ -57,7 +57,7 @@ class AdvancedAnalytics:
         """Get high-level summary metrics"""
         try:
             jobs = self.api.list_cluster_custom_object(
-                group="kubefabric.io",
+                group="kubefabric.ai",
                 version="v1",
                 plural="fabricaijobs"
             )
@@ -82,13 +82,15 @@ class AdvancedAnalytics:
                 # Estimate cost
                 gpu_type = job.get("spec", {}).get("resources", {}).get("gpuType", "A100-80G")
                 pricing = {
-                    "H100": 30.0,
-                    "A100-80G": 24.0,
-                    "A100-40G": 12.0,
-                    "V100": 8.0,
-                    "T4": 3.0
+                    "H100": 8.0,
+                    "A100-80G": 4.0,
+                    "A100-40G": 3.0,
+                    "L40": 2.5,
+                    "A10": 1.5,
+                    "V100": 2.0,
+                    "T4": 0.75,
                 }
-                hourly_rate = pricing.get(gpu_type, 12.0)
+                hourly_rate = pricing.get(gpu_type, 2.0)
                 total_cost += hourly_rate * gpu_count * running_time
 
             return {
@@ -421,15 +423,17 @@ class AdvancedAnalytics:
               f"({cost['savings_percentage']:.1f}%){NC}")
         print()
 
-    def export_report(self, report: Dict, format: str, output: str):
+    def export_report(self, report: Dict, output_format: str, output: str):
         """Export report in various formats"""
-        if format == "json":
+        if output_format == "json":
             with open(output, 'w') as f:
                 json.dump(report, f, indent=2)
-        elif format == "html":
+        elif output_format == "html":
             self.export_html(report, output)
-        elif format == "pdf":
-            self.export_pdf(report, output)
+        elif output_format == "pdf":
+            # PDF export requires additional dependencies (e.g., weasyprint)
+            print(f"{YELLOW}PDF export not yet implemented. Use HTML or JSON format.{NC}")
+            return
 
         print(f"{GREEN}Report exported to {output}{NC}")
 

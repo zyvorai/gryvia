@@ -60,15 +60,15 @@ kfctl version
 
 ```bash
 # Label nodes with GPU type
-kubectl label nodes gpu-node-1 kubefabric.io/gpu-type=A100-80G
-kubectl label nodes gpu-node-1 kubefabric.io/gpu-count=8
+kubectl label nodes gpu-node-1 kubefabric.ai/gpu-type=A100-80G
+kubectl label nodes gpu-node-1 kubefabric.ai/gpu-count=8
 ```
 
 ### 2. Create GPU Node Profile
 
 ```yaml
 # gpu-node.yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricGPUNode
 metadata:
   name: gpu-node-1
@@ -102,7 +102,7 @@ kfctl cluster nodes
 
 ```yaml
 # training-job.yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: pytorch-training
@@ -149,7 +149,7 @@ watch kfctl status pytorch-training
 
 ```yaml
 # team-quota.yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricQuota
 metadata:
   name: ml-research

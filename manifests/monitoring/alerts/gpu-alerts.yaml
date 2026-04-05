@@ -40,7 +40,7 @@ data:
               description: "GPU {{ $labels.gpu }} on node {{ $labels.kubernetes_node }} has low utilization {{ $value }}%"
 
           - alert: GPUMemoryFull
-            expr: DCGM_FI_DEV_FB_USED / DCGM_FI_DEV_FB_FREE * 100 > 95
+            expr: DCGM_FI_DEV_FB_USED / (DCGM_FI_DEV_FB_USED + DCGM_FI_DEV_FB_FREE) * 100 > 95
             for: 5m
             labels:
               severity: warning

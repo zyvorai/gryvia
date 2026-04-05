@@ -72,7 +72,7 @@ Both operators are production-ready Kubernetes controllers built with Go and the
 ### Example Usage
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricStorage
 metadata:
   name: vast-production
@@ -134,7 +134,7 @@ Result: Automatic deployment of:
 
 **RDMA Network:**
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricNetwork
 metadata:
   name: rdma-ib
@@ -149,13 +149,13 @@ spec:
 
 Result:
 - RDMA device plugin deployed
-- Nodes labeled `kubefabric.io/rdma=enabled`
+- Nodes labeled `kubefabric.ai/rdma=enabled`
 - NetworkAttachmentDefinition `rdma-ib` created
 - RDMA resources exposed to scheduler
 
 **SR-IOV Network:**
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricNetwork
 metadata:
   name: sriov-net

@@ -30,7 +30,7 @@ Proactive health monitoring and diagnostics for GPU infrastructure.
 ### Quick Start
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricHealthCheck
 metadata:
   name: cluster-gpu-health
@@ -123,7 +123,7 @@ backoff:
 ### Resource Adaptation
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricRetryPolicy
 metadata:
   name: adaptive-retry
@@ -169,7 +169,7 @@ Reserve GPU resources in advance with guaranteed availability.
 #### Exclusive Team Reservation
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricReservation
 metadata:
   name: ml-team-reservation
@@ -250,7 +250,7 @@ Hierarchical team organization with quotas, isolation, and governance.
 ### Example Tenant
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricTenant
 metadata:
   name: ml-research
@@ -343,7 +343,7 @@ kfctl job create --template pytorch-ddp-training \
 ### Custom Template
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricTemplate
 metadata:
   name: my-training-template
@@ -391,7 +391,7 @@ Queue-based auto-scaling with predictive capabilities.
 ### Example
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAutoScaler
 metadata:
   name: a100-autoscaler
@@ -448,7 +448,7 @@ Multi-tiered budget system with forecasting.
 ### Example
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricBudget
 metadata:
   name: ml-team-budget
@@ -637,7 +637,7 @@ kfctl metrics gpu-utilization
 
 ## Support
 
-- **Documentation**: https://kubefabric.io/docs
+- **Documentation**: https://kubefabric.ai/docs
 - **Issues**: https://github.com/ssahani/kube-fabric/issues
 - **Discussions**: https://github.com/ssahani/kube-fabric/discussions
 - **Slack**: #kubefabric-users

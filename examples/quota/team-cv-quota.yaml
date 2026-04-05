@@ -1,4 +1,4 @@
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricQuota
 metadata:
   name: team-cv
@@ -29,5 +29,5 @@ kind: Namespace
 metadata:
   name: cv-training
   labels:
-    kubefabric.io/team: computer-vision
-    kubefabric.io/quota: team-cv
+    kubefabric.ai/team: computer-vision
+    kubefabric.ai/quota: team-cv

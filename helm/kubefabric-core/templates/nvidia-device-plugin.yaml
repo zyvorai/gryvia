@@ -28,7 +28,23 @@ spec:
           image: "{{ .Values.nvidiaDevicePlugin.image.repository }}:{{ .Values.nvidiaDevicePlugin.image.tag }}"
           imagePullPolicy: {{ .Values.nvidiaDevicePlugin.image.pullPolicy }}
           securityContext:
-            privileged: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            limits:
+              cpu: 200m
+              memory: 256Mi
+            requests:
+              cpu: 50m
+              memory: 64Mi
+          livenessProbe:
+            exec:
+              command:
+                - nvidia-smi
+            initialDelaySeconds: 30
+            periodSeconds: 60
           volumeMounts:
             - name: device-plugin
               mountPath: /var/lib/kubelet/device-plugins

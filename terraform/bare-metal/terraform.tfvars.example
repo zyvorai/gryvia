@@ -87,5 +87,5 @@ storage_mountpath     = "/mnt/vast"
 storage_rdma_enabled  = true
 
 # SSH configuration
-ssh_user             = "root"
+ssh_user             = "ubuntu"
 ssh_private_key_path = "~/.ssh/kubefabric_rsa"

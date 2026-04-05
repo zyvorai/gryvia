@@ -12,6 +12,9 @@ spec:
     shortNames:
       - fnet
       - network
+    categories:
+      - kubefabric
+      - all
   scope: Cluster
   versions:
     - name: v1
@@ -19,6 +22,7 @@ spec:
       storage: true
       schema:
         openAPIV3Schema:
+          description: FabricNetwork is the Schema for the fabricnetworks API
           type: object
           properties:
             spec:

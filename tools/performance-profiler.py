@@ -24,7 +24,7 @@ class PerformanceProfiler:
     def __init__(self):
         try:
             config.load_kube_config()
-        except:
+        except Exception:
             config.load_incluster_config()
 
         self.api = client.CustomObjectsApi()
@@ -36,7 +36,7 @@ class PerformanceProfiler:
 
         try:
             job = self.api.get_namespaced_custom_object(
-                group="kubefabric.io",
+                group="kubefabric.ai",
                 version="v1",
                 namespace=namespace,
                 plural="fabricaijobs",
@@ -170,14 +170,16 @@ class PerformanceProfiler:
 
         # Pricing (per GPU per hour)
         pricing = {
-            "H100": 30.0,
-            "A100-80G": 24.0,
-            "A100-40G": 12.0,
-            "V100": 8.0,
-            "T4": 3.0
+            "H100": 8.0,
+            "A100-80G": 4.0,
+            "A100-40G": 3.0,
+            "L40": 2.5,
+            "A10": 1.5,
+            "V100": 2.0,
+            "T4": 0.75,
         }
 
-        hourly_rate = pricing.get(gpu_type, 12.0) * gpu_count
+        hourly_rate = pricing.get(gpu_type, 2.0) * gpu_count
 
         # Example job ran for 6 hours
         runtime_hours = 6.0

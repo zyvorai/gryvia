@@ -80,10 +80,10 @@ pub async fn execute(
 
     println!();
     println!("{}", "Summary:".bold());
-    println!("  Total Spent: ${:.2}", total_spent.to_string().yellow());
+    println!("  Total Spent: {}", format!("${:.2}", total_spent).yellow());
     println!("  Total Budget: ${:.2}", total_budget);
-    println!("  Total Remaining: ${:.2}", (total_budget - total_spent).to_string().green());
-    println!("  Overall Usage: {:.1}%", (total_spent / total_budget * 100.0));
+    println!("  Total Remaining: {}", format!("${:.2}", total_budget - total_spent).green());
+    println!("  Overall Usage: {:.1}%", if total_budget > 0.0 { total_spent / total_budget * 100.0 } else { 0.0 });
 
     Ok(())
 }

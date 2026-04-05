@@ -13,11 +13,12 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	kubefabricv1 "github.com/yourusername/kubefabric/operators/quota-operator/api/v1"
-	"github.com/yourusername/kubefabric/operators/quota-operator/pkg/budget"
-	"github.com/yourusername/kubefabric/operators/quota-operator/pkg/usage"
+	kubefabricv1 "github.com/ssahani/kube-fabric/operators/quota-operator/api/v1"
+	"github.com/ssahani/kube-fabric/operators/quota-operator/pkg/budget"
+	"github.com/ssahani/kube-fabric/operators/quota-operator/pkg/usage"
 )
 
 // FabricQuotaReconciler reconciles a FabricQuota object
@@ -26,10 +27,10 @@ type FabricQuotaReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=kubefabric.io,resources=fabricquotas,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=kubefabric.io,resources=fabricquotas/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=kubefabric.io,resources=fabricquotas/finalizers,verbs=update
-//+kubebuilder:rbac:groups=kubefabric.io,resources=fabricaijobs,verbs=get;list;watch;update;patch
+//+kubebuilder:rbac:groups=kubefabric.ai,resources=fabricquotas,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=kubefabric.ai,resources=fabricquotas/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=kubefabric.ai,resources=fabricquotas/finalizers,verbs=update
+//+kubebuilder:rbac:groups=kubefabric.ai,resources=fabricaijobs,verbs=get;list;watch;update;patch
 //+kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch;update;patch
 //+kubebuilder:rbac:groups="",resources=resourcequotas,verbs=get;list;watch;create;update;patch;delete
 
@@ -141,9 +142,9 @@ func (r *FabricQuotaReconciler) labelNamespaces(ctx context.Context, quota *kube
 		}
 
 		// Add team label
-		if ns.Labels["kubefabric.io/team"] != quota.Spec.Team {
-			ns.Labels["kubefabric.io/team"] = quota.Spec.Team
-			ns.Labels["kubefabric.io/quota"] = quota.Name
+		if ns.Labels["kubefabric.ai/team"] != quota.Spec.Team {
+			ns.Labels["kubefabric.ai/team"] = quota.Spec.Team
+			ns.Labels["kubefabric.ai/quota"] = quota.Name
 
 			if err := r.Update(ctx, ns); err != nil {
 				return fmt.Errorf("failed to update namespace %s: %w", nsName, err)
@@ -187,7 +188,7 @@ func (r *FabricQuotaReconciler) enforceQuota(ctx context.Context, quota *kubefab
 			reason = fmt.Sprintf("Budget exceeded for team %s", quota.Spec.Team)
 		}
 
-		if int(job.Spec.GPUs) > quota.Spec.GPUQuota.MaxGPUsPerJob {
+		if quota.Spec.GPUQuota.MaxGPUsPerJob > 0 && int(job.Spec.GPUs) > quota.Spec.GPUQuota.MaxGPUsPerJob {
 			rejected = true
 			reason = fmt.Sprintf("Job requests %d GPUs, exceeds max %d per job", job.Spec.GPUs, quota.Spec.GPUQuota.MaxGPUsPerJob)
 		}
@@ -212,9 +213,7 @@ func (r *FabricQuotaReconciler) enforceQuota(ctx context.Context, quota *kubefab
 }
 
 func (r *FabricQuotaReconciler) updateStatus(ctx context.Context, quota *kubefabricv1.FabricQuota, phase, message string) {
-	if quota.Status.Phase == "" {
-		quota.Status.Phase = phase
-	}
+	quota.Status.Phase = phase
 	quota.Status.LastUpdated = metav1.Now()
 
 	condition := metav1.Condition{
@@ -240,5 +239,6 @@ func (r *FabricQuotaReconciler) updateStatus(ctx context.Context, quota *kubefab
 func (r *FabricQuotaReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&kubefabricv1.FabricQuota{}).
+		Watches(&kubefabricv1.FabricAIJob{}, &handler.EnqueueRequestForObject{}).
 		Complete(r)
 }

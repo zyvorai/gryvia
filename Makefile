@@ -28,7 +28,7 @@ build-operators: ## Build all operators
 	@echo "${GREEN}Building operators...${RESET}"
 	@for op in $(OPERATORS); do \
 		echo "${YELLOW}Building $$op...${RESET}"; \
-		cd operators/$$op && go build -o bin/manager main.go && cd ../..; \
+		(cd operators/$$op && go build -o bin/manager main.go); \
 	done
 
 build-cli: ## Build CLI tool
@@ -50,7 +50,7 @@ test-operators: ## Test all operators
 	@echo "${GREEN}Testing operators...${RESET}"
 	@for op in $(OPERATORS); do \
 		echo "${YELLOW}Testing $$op...${RESET}"; \
-		cd operators/$$op && go test -v ./... && cd ../..; \
+		(cd operators/$$op && go test -v ./...); \
 	done
 
 test-cli: ## Test CLI
@@ -138,7 +138,7 @@ dev-setup: ## Set up development environment
 	@echo "${GREEN}Setting up development environment...${RESET}"
 	@echo "Installing Go dependencies..."
 	@for op in $(OPERATORS); do \
-		cd operators/$$op && go mod download && cd ../..; \
+		(cd operators/$$op && go mod download); \
 	done
 	@echo "Installing Rust toolchain..."
 	rustup update stable
@@ -151,7 +151,7 @@ dev-setup: ## Set up development environment
 fmt: ## Format all code
 	@echo "${GREEN}Formatting code...${RESET}"
 	@for op in $(OPERATORS); do \
-		cd operators/$$op && go fmt ./... && cd ../..; \
+		(cd operators/$$op && go fmt ./...); \
 	done
 	cd cli && cargo fmt
 	cd web-ui && npm run format || true
@@ -160,7 +160,7 @@ fmt: ## Format all code
 lint: ## Lint all code
 	@echo "${GREEN}Linting code...${RESET}"
 	@for op in $(OPERATORS); do \
-		cd operators/$$op && golangci-lint run && cd ../..; \
+		(cd operators/$$op && golangci-lint run); \
 	done
 	cd cli && cargo clippy
 	cd web-ui && npm run lint || true
@@ -179,7 +179,7 @@ clean: ## Clean build artifacts
 docs: ## Generate documentation
 	@echo "${GREEN}Generating documentation...${RESET}"
 	@for op in $(OPERATORS); do \
-		cd operators/$$op && go doc -all > REFERENCE.md && cd ../..; \
+		(cd operators/$$op && go doc -all > REFERENCE.md); \
 	done
 
 ## Release targets

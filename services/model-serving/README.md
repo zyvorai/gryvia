@@ -61,7 +61,7 @@ spec:
           limits:
             nvidia.com/gpu: "2"
     nodeSelector:
-      kubefabric.io/gpu-type: A100-80G
+      kubefabric.ai/gpu-type: A100-80G
 ```
 
 **Usage:**
@@ -98,7 +98,7 @@ Optimized inference with NVIDIA TensorRT.
 ```bash
 # Submit build job
 kubectl apply -f - <<EOF
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: build-trt-llm
@@ -247,7 +247,7 @@ print(f"Model exported to {output_dir}")
 
 ```bash
 kubectl apply -f - <<EOF
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: export-llama-7b
@@ -459,15 +459,15 @@ args:
 ```yaml
 # Development/testing - T4
 nodeSelector:
-  kubefabric.io/gpu-type: T4
+  kubefabric.ai/gpu-type: T4
 
 # Production - A100
 nodeSelector:
-  kubefabric.io/gpu-type: A100-40G
+  kubefabric.ai/gpu-type: A100-40G
 
 # High throughput - H100
 nodeSelector:
-  kubefabric.io/gpu-type: H100
+  kubefabric.ai/gpu-type: H100
 ```
 
 ### Cost Tracking

@@ -19,7 +19,7 @@ KubeFabric provides sophisticated budget management to control GPU compute costs
 ### Create a Monthly Team Budget
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricBudget
 metadata:
   name: ml-team-budget
@@ -295,7 +295,7 @@ priority:
 
 Submit high-priority job:
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: critical-job
@@ -602,7 +602,7 @@ kubectl get fabricbudget my-budget \
 ```yaml
 # Organization-wide annual budget
 ---
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricBudget
 metadata:
   name: org-annual
@@ -613,7 +613,7 @@ spec:
 
 # Department quarterly budgets
 ---
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricBudget
 metadata:
   name: ml-dept-q1
@@ -624,7 +624,7 @@ spec:
 
 # Team monthly budgets
 ---
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricBudget
 metadata:
   name: ml-research-monthly
@@ -635,7 +635,7 @@ spec:
 
 # User daily budgets
 ---
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricBudget
 metadata:
   name: alice-daily

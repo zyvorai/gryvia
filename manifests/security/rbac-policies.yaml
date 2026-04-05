@@ -6,15 +6,15 @@ metadata:
   name: kubefabric:team-admin
 rules:
 # Full access to FabricAIJobs
-- apiGroups: ["kubefabric.io"]
+- apiGroups: ["kubefabric.ai"]
   resources: ["fabricaijobs"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 # Read access to quotas
-- apiGroups: ["kubefabric.io"]
+- apiGroups: ["kubefabric.ai"]
   resources: ["fabricquotas"]
   verbs: ["get", "list", "watch"]
 # Read access to nodes
-- apiGroups: ["kubefabric.io"]
+- apiGroups: ["kubefabric.ai"]
   resources: ["fabricgpunodes"]
   verbs: ["get", "list", "watch"]
 # Pod logs access
@@ -33,15 +33,15 @@ metadata:
   name: kubefabric:team-user
 rules:
 # Create and manage own jobs
-- apiGroups: ["kubefabric.io"]
+- apiGroups: ["kubefabric.ai"]
   resources: ["fabricaijobs"]
   verbs: ["get", "list", "watch", "create", "delete"]
 # Read quotas
-- apiGroups: ["kubefabric.io"]
+- apiGroups: ["kubefabric.ai"]
   resources: ["fabricquotas"]
   verbs: ["get", "list", "watch"]
 # Read nodes
-- apiGroups: ["kubefabric.io"]
+- apiGroups: ["kubefabric.ai"]
   resources: ["fabricgpunodes"]
   verbs: ["get", "list", "watch"]
 # View own pods
@@ -56,15 +56,15 @@ metadata:
   name: kubefabric:team-viewer
 rules:
 # Read jobs
-- apiGroups: ["kubefabric.io"]
+- apiGroups: ["kubefabric.ai"]
   resources: ["fabricaijobs"]
   verbs: ["get", "list", "watch"]
 # Read quotas
-- apiGroups: ["kubefabric.io"]
+- apiGroups: ["kubefabric.ai"]
   resources: ["fabricquotas"]
   verbs: ["get", "list", "watch"]
 # Read nodes
-- apiGroups: ["kubefabric.io"]
+- apiGroups: ["kubefabric.ai"]
   resources: ["fabricgpunodes"]
   verbs: ["get", "list", "watch"]
 # Read pods
@@ -79,10 +79,10 @@ metadata:
   name: kubefabric:platform-admin
 rules:
 # Full access to all KubeFabric resources
-- apiGroups: ["kubefabric.io"]
+- apiGroups: ["kubefabric.ai"]
   resources: ["fabricaijobs", "fabricquotas", "fabricgpunodes", "fabricstorages", "fabricnetworks"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-- apiGroups: ["kubefabric.io"]
+- apiGroups: ["kubefabric.ai"]
   resources: ["fabricaijobs/status", "fabricquotas/status", "fabricgpunodes/status", "fabricstorages/status", "fabricnetworks/status"]
   verbs: ["get", "update", "patch"]
 # Manage nodes

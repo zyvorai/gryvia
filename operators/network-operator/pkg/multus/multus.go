@@ -2,6 +2,7 @@ package multus
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -9,22 +10,16 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kubefabricv1 "github.com/yourusername/kubefabric/operators/network-operator/api/v1"
+	kubefabricv1 "github.com/ssahani/kube-fabric/operators/network-operator/api/v1"
 )
 
 const (
 	DefaultNamespace = "default"
 )
 
-var (
-	nadGVR = schema.GroupVersionResource{
-		Group:    "k8s.cni.cncf.io",
-		Version:  "v1",
-		Resource: "network-attachment-definitions",
-	}
-)
 
 // CreateNetworkAttachment creates a Multus NetworkAttachmentDefinition
 func CreateNetworkAttachment(ctx context.Context, k8sClient client.Client, network *kubefabricv1.FabricNetwork) error {
@@ -41,8 +36,8 @@ func CreateNetworkAttachment(ctx context.Context, k8sClient client.Client, netwo
 				"name":      network.Name,
 				"namespace": DefaultNamespace,
 				"labels": map[string]interface{}{
-					"kubefabric.io/network": network.Name,
-					"kubefabric.io/type":    network.Spec.NetworkType,
+					"kubefabric.ai/network": network.Name,
+					"kubefabric.ai/type":    network.Spec.NetworkType,
 				},
 			},
 			"spec": map[string]interface{}{
@@ -96,21 +91,25 @@ func generateRDMAConfig(network *kubefabricv1.FabricNetwork) (string, error) {
 		mtu = 9000 // Default MTU for RDMA
 	}
 
-	config := fmt.Sprintf(`{
-  "cniVersion": "0.3.1",
-  "name": "%s",
-  "type": "macvlan",
-  "master": "ib0",
-  "mode": "bridge",
-  "mtu": %d,
-  "ipam": {
-    "type": "whereabouts",
-    "range": "%s",
-    "gateway": "%s"
-  }
-}`, network.Name, mtu, network.Spec.RDMA.Subnet, network.Spec.RDMA.Gateway)
+	configObj := map[string]interface{}{
+		"cniVersion": "0.3.1",
+		"name":       network.Name,
+		"type":       "macvlan",
+		"master":     "ib0",
+		"mode":       "bridge",
+		"mtu":        mtu,
+		"ipam": map[string]interface{}{
+			"type":    "whereabouts",
+			"range":   network.Spec.RDMA.Subnet,
+			"gateway": network.Spec.RDMA.Gateway,
+		},
+	}
+	configBytes, err := json.Marshal(configObj)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal RDMA config: %w", err)
+	}
 
-	return config, nil
+	return string(configBytes), nil
 }
 
 func generateSRIOVConfig(network *kubefabricv1.FabricNetwork) (string, error) {
@@ -123,30 +122,37 @@ func generateSRIOVConfig(network *kubefabricv1.FabricNetwork) (string, error) {
 		mtu = 9000
 	}
 
-	resourceName := network.Spec.SRIOV.ResourceName
-	if resourceName == "" {
-		resourceName = "intel_sriov_netdevice"
+	// Use SRIOV spec values for IPAM if available, otherwise use defaults
+	subnet := "10.56.0.0/16"
+	gateway := "10.56.217.1"
+	if network.Spec.RDMA != nil {
+		if network.Spec.RDMA.Subnet != "" {
+			subnet = network.Spec.RDMA.Subnet
+		}
+		if network.Spec.RDMA.Gateway != "" {
+			gateway = network.Spec.RDMA.Gateway
+		}
 	}
 
-	config := fmt.Sprintf(`{
-  "cniVersion": "0.3.1",
-  "name": "%s",
-  "type": "sriov",
-  "vlan": 0,
-  "mtu": %d,
-  "ipam": {
-    "type": "host-local",
-    "subnet": "10.56.0.0/16",
-    "rangeStart": "10.56.217.131",
-    "rangeEnd": "10.56.217.190",
-    "routes": [{
-      "dst": "0.0.0.0/0"
-    }],
-    "gateway": "10.56.217.1"
-  }
-}`, network.Name, mtu)
+	configObj := map[string]interface{}{
+		"cniVersion": "0.3.1",
+		"name":       network.Name,
+		"type":       "sriov",
+		"vlan":       0,
+		"mtu":        mtu,
+		"ipam": map[string]interface{}{
+			"type":   "host-local",
+			"subnet": subnet,
+			"routes": []map[string]string{{"dst": "0.0.0.0/0"}},
+			"gateway": gateway,
+		},
+	}
+	configBytes, err := json.Marshal(configObj)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal SR-IOV config: %w", err)
+	}
 
-	return config, nil
+	return string(configBytes), nil
 }
 
 func generateStandardConfig(network *kubefabricv1.FabricNetwork) (string, error) {
@@ -155,19 +161,23 @@ func generateStandardConfig(network *kubefabricv1.FabricNetwork) (string, error)
 		mtu = 1500
 	}
 
-	config := fmt.Sprintf(`{
-  "cniVersion": "0.3.1",
-  "name": "%s",
-  "type": "bridge",
-  "bridge": "kubefabric0",
-  "mtu": %d,
-  "ipam": {
-    "type": "host-local",
-    "subnet": "10.244.0.0/16"
-  }
-}`, network.Name, mtu)
+	configObj := map[string]interface{}{
+		"cniVersion": "0.3.1",
+		"name":       network.Name,
+		"type":       "bridge",
+		"bridge":     "kubefabric0",
+		"mtu":        mtu,
+		"ipam": map[string]interface{}{
+			"type":   "host-local",
+			"subnet": "10.244.0.0/16",
+		},
+	}
+	configBytes, err := json.Marshal(configObj)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal standard config: %w", err)
+	}
 
-	return config, nil
+	return string(configBytes), nil
 }
 
 // GetNetworkAttachment retrieves a NetworkAttachmentDefinition

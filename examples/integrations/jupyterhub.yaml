@@ -48,7 +48,7 @@ data:
                     'nvidia.com/gpu': '1'
                 },
                 'node_selector': {
-                    'kubefabric.io/gpu-type': 'T4'
+                    'kubefabric.ai/gpu-type': 'T4'
                 }
             }
         },
@@ -67,7 +67,7 @@ data:
                     'nvidia.com/gpu': '1'
                 },
                 'node_selector': {
-                    'kubefabric.io/gpu-type': 'A100-40G'
+                    'kubefabric.ai/gpu-type': 'A100-40G'
                 }
             }
         },
@@ -86,7 +86,7 @@ data:
                     'nvidia.com/gpu': '1'
                 },
                 'node_selector': {
-                    'kubefabric.io/gpu-type': 'A100-80G'
+                    'kubefabric.ai/gpu-type': 'A100-80G'
                 }
             }
         },
@@ -105,7 +105,7 @@ data:
                     'nvidia.com/gpu': '4'
                 },
                 'node_selector': {
-                    'kubefabric.io/gpu-type': 'A100-80G'
+                    'kubefabric.ai/gpu-type': 'A100-80G'
                 }
             }
         }
@@ -251,7 +251,7 @@ subjects:
 
 ---
 # GPU quota integration
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricQuota
 metadata:
   name: jupyterhub-users

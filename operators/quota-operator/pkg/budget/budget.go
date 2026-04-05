@@ -7,8 +7,8 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kubefabricv1 "github.com/yourusername/kubefabric/operators/quota-operator/api/v1"
-	"github.com/yourusername/kubefabric/operators/quota-operator/pkg/usage"
+	kubefabricv1 "github.com/ssahani/kube-fabric/operators/quota-operator/api/v1"
+	"github.com/ssahani/kube-fabric/operators/quota-operator/pkg/usage"
 )
 
 // gpuPricingMu protects concurrent access to gpuPricing
@@ -46,13 +46,18 @@ func CalculateBudget(ctx context.Context, k8sClient client.Client, quota *kubefa
 
 	budgetStatus.SpentThisMonth = spentThisMonth
 	budgetStatus.RemainingBudget = quota.Spec.Budget.MonthlyBudget - spentThisMonth
-	budgetStatus.PercentUsed = (spentThisMonth / quota.Spec.Budget.MonthlyBudget) * 100
+	if quota.Spec.Budget.MonthlyBudget > 0 {
+		budgetStatus.PercentUsed = (spentThisMonth / quota.Spec.Budget.MonthlyBudget) * 100
+	}
 
 	// Project end-of-month spending
 	now := time.Now()
 	daysInMonth := float64(daysInCurrentMonth())
 	dayOfMonth := float64(now.Day())
-	dailyBurn := spentThisMonth / dayOfMonth
+	dailyBurn := 0.0
+	if dayOfMonth > 0 {
+		dailyBurn = spentThisMonth / dayOfMonth
+	}
 	budgetStatus.ProjectedSpend = dailyBurn * daysInMonth
 
 	return budgetStatus, nil

@@ -12,6 +12,9 @@ spec:
     shortNames:
       - fst
       - storage
+    categories:
+      - kubefabric
+      - all
   scope: Cluster
   versions:
     - name: v1
@@ -19,6 +22,7 @@ spec:
       storage: true
       schema:
         openAPIV3Schema:
+          description: FabricStorage is the Schema for the fabricstorages API
           type: object
           properties:
             spec:
@@ -131,7 +135,7 @@ spec:
                       default: false
                     encryption:
                       type: boolean
-                      default: false
+                      default: true
             status:
               type: object
               properties:

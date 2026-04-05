@@ -234,18 +234,18 @@ data:
 
 ```bash
 # Label GPU nodes
-kubectl label nodes gpu-node-1 kubefabric.io/gpu=true
-kubectl label nodes gpu-node-1 kubefabric.io/gpu-type=A100-80G
-kubectl label nodes gpu-node-1 kubefabric.io/gpu-count=8
-kubectl label nodes gpu-node-1 kubefabric.io/nvlink=true
-kubectl label nodes gpu-node-1 kubefabric.io/infiniband=true
+kubectl label nodes gpu-node-1 kubefabric.ai/gpu=true
+kubectl label nodes gpu-node-1 kubefabric.ai/gpu-type=A100-80G
+kubectl label nodes gpu-node-1 kubefabric.ai/gpu-count=8
+kubectl label nodes gpu-node-1 kubefabric.ai/nvlink=true
+kubectl label nodes gpu-node-1 kubefabric.ai/infiniband=true
 ```
 
 ### Register GPU Nodes
 
 ```yaml
 # gpu-node-profile.yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricGPUNode
 metadata:
   name: gpu-node-1
@@ -272,7 +272,7 @@ spec:
 
 ```bash
 # Taint GPU nodes to prevent non-GPU workloads
-kubectl taint nodes gpu-node-1 kubefabric.io/gpu=true:NoSchedule
+kubectl taint nodes gpu-node-1 kubefabric.ai/gpu=true:NoSchedule
 
 # Jobs will automatically add tolerations
 ```
@@ -497,14 +497,14 @@ kubectl get pods -n kubefabric
 
 ```bash
 # Verify CRDs are installed
-kubectl get crds | grep kubefabric.io
+kubectl get crds | grep kubefabric.ai
 
 # Expected output:
-# fabricaijobs.kubefabric.io
-# fabricgpunodes.kubefabric.io
-# fabricquotas.kubefabric.io
-# fabricstorages.kubefabric.io
-# fabricnetworks.kubefabric.io
+# fabricaijobs.kubefabric.ai
+# fabricgpunodes.kubefabric.ai
+# fabricquotas.kubefabric.ai
+# fabricstorages.kubefabric.ai
+# fabricnetworks.kubefabric.ai
 ```
 
 ### Test GPU Scheduling
@@ -512,7 +512,7 @@ kubectl get crds | grep kubefabric.io
 ```bash
 # Submit test job
 kubectl apply -f - <<EOF
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: gpu-test
@@ -549,7 +549,7 @@ spec:
         app: gpu-diagnostics
     spec:
       nodeSelector:
-        kubefabric.io/gpu: "true"
+        kubefabric.ai/gpu: "true"
       containers:
       - name: diagnostics
         image: nvidia/cuda:12.3.0-base-ubuntu22.04
@@ -660,8 +660,8 @@ kubectl uncordon gpu-node-1
 # 2. Install NVIDIA drivers
 # 3. Join to Kubernetes cluster
 # 4. Label node
-kubectl label nodes gpu-node-5 kubefabric.io/gpu=true
-kubectl label nodes gpu-node-5 kubefabric.io/gpu-type=H100
+kubectl label nodes gpu-node-5 kubefabric.ai/gpu=true
+kubectl label nodes gpu-node-5 kubefabric.ai/gpu-type=H100
 
 # 5. Register node
 kubectl apply -f gpu-node-5-profile.yaml

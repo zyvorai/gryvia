@@ -23,11 +23,12 @@ class AuditTool:
     def __init__(self, namespace: str = "default"):
         try:
             config.load_kube_config()
-        except:
+        except Exception:
             config.load_incluster_config()
 
         self.api = client.CustomObjectsApi()
         self.core_api = client.CoreV1Api()
+        self.networking_api = client.NetworkingV1Api()
         self.rbac_api = client.RbacAuthorizationV1Api()
         self.namespace = namespace
 
@@ -69,15 +70,15 @@ class AuditTool:
                 p for p in psps.items if "pod-security" in p.metadata.name
             ])
             security["pod_security"]["compliant"] = security["pod_security"]["policies_count"] > 0
-        except:
+        except Exception:
             security["pod_security"]["compliant"] = False
 
         # Check Network Policies
         try:
-            netpols = self.core_api.list_namespaced_network_policy(self.namespace)
+            netpols = self.networking_api.list_namespaced_network_policy(self.namespace)
             security["network_policies"]["count"] = len(netpols.items)
             security["network_policies"]["compliant"] = len(netpols.items) > 0
-        except:
+        except Exception:
             security["network_policies"]["compliant"] = False
 
         # Check Secrets
@@ -86,13 +87,13 @@ class AuditTool:
             security["secrets_management"]["count"] = len(secrets.items)
             security["secrets_management"]["encrypted"] = True  # Assume encrypted at rest
             security["secrets_management"]["compliant"] = True
-        except:
+        except Exception:
             security["secrets_management"]["compliant"] = False
 
         # Check Image Security
         try:
             jobs = self.api.list_namespaced_custom_object(
-                group="kubefabric.io",
+                group="kubefabric.ai",
                 version="v1",
                 namespace=self.namespace,
                 plural="fabricaijobs"
@@ -112,7 +113,7 @@ class AuditTool:
                 trusted_count / len(images) * 100 if images else 100
             )
             security["image_security"]["compliant"] = security["image_security"]["compliance_rate"] >= 80
-        except:
+        except Exception:
             security["image_security"]["compliant"] = False
 
         return security
@@ -135,7 +136,7 @@ class AuditTool:
             access["rbac"]["roles_count"] = len(roles.items)
             access["rbac"]["bindings_count"] = len(role_bindings.items)
             access["rbac"]["compliant"] = len(roles.items) > 0
-        except:
+        except Exception:
             access["rbac"]["compliant"] = False
 
         # Check Service Accounts
@@ -143,7 +144,7 @@ class AuditTool:
             sas = self.core_api.list_namespaced_service_account(self.namespace)
             access["service_accounts"]["count"] = len(sas.items)
             access["service_accounts"]["compliant"] = True
-        except:
+        except Exception:
             access["service_accounts"]["compliant"] = False
 
         return access
@@ -161,7 +162,7 @@ class AuditTool:
         # Check Resource Quotas
         try:
             quotas = self.api.list_namespaced_custom_object(
-                group="kubefabric.io",
+                group="kubefabric.ai",
                 version="v1",
                 namespace=self.namespace,
                 plural="fabricquotas"
@@ -179,13 +180,13 @@ class AuditTool:
             usage["quotas"]["total"] = total_quotas
             usage["quotas"]["exceeded"] = exceeded_quotas
             usage["quotas"]["compliant"] = exceeded_quotas == 0
-        except:
+        except Exception:
             usage["quotas"]["compliant"] = False
 
         # Check Resource Limits
         try:
             jobs = self.api.list_namespaced_custom_object(
-                group="kubefabric.io",
+                group="kubefabric.ai",
                 version="v1",
                 namespace=self.namespace,
                 plural="fabricaijobs"
@@ -204,7 +205,7 @@ class AuditTool:
                 jobs_with_limits / total_jobs * 100 if total_jobs else 100
             )
             usage["limits"]["compliant"] = usage["limits"]["compliance_rate"] >= 90
-        except:
+        except Exception:
             usage["limits"]["compliant"] = False
 
         return usage
@@ -221,7 +222,7 @@ class AuditTool:
 
         try:
             quotas = self.api.list_namespaced_custom_object(
-                group="kubefabric.io",
+                group="kubefabric.ai",
                 version="v1",
                 namespace=self.namespace,
                 plural="fabricquotas"
@@ -245,7 +246,7 @@ class AuditTool:
             costs["budget_compliance"]["total_spent"] = total_spent
             costs["budget_compliance"]["over_budget_teams"] = over_budget_count
             costs["budget_compliance"]["compliant"] = over_budget_count == 0
-        except:
+        except Exception:
             costs["budget_compliance"]["compliant"] = False
 
         return costs
@@ -265,7 +266,7 @@ class AuditTool:
             pvcs = self.core_api.list_namespaced_persistent_volume_claim(self.namespace)
             governance["data_retention"]["pvc_count"] = len(pvcs.items)
             governance["data_retention"]["compliant"] = True
-        except:
+        except Exception:
             governance["data_retention"]["compliant"] = False
 
         # Check backup policies

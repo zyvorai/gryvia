@@ -35,7 +35,7 @@ kubefabric --help
 ```bash
 # Create job YAML
 cat > llm-training.yaml <<EOF
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: llm-training
@@ -529,11 +529,11 @@ kubectl auth can-i --list
 kubectl get crds | grep kubefabric
 
 # Expected output:
-# fabricaijobs.kubefabric.io
-# fabricgpunodes.kubefabric.io
-# fabricnetworks.kubefabric.io
-# fabricquotas.kubefabric.io
-# fabricstorages.kubefabric.io
+# fabricaijobs.kubefabric.ai
+# fabricgpunodes.kubefabric.ai
+# fabricnetworks.kubefabric.ai
+# fabricquotas.kubefabric.ai
+# fabricstorages.kubefabric.ai
 ```
 
 ### Debug Mode

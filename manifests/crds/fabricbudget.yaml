@@ -3,9 +3,9 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: fabricbudgets.kubefabric.io
+  name: fabricbudgets.kubefabric.ai
 spec:
-  group: kubefabric.io
+  group: kubefabric.ai
   versions:
     - name: v1
       served: true
@@ -249,7 +249,7 @@ spec:
 
 ---
 # Example: Monthly Team Budget
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricBudget
 metadata:
   name: ml-research-monthly
@@ -315,7 +315,7 @@ spec:
 
 ---
 # Example: Quarterly Project Budget
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricBudget
 metadata:
   name: llm-training-q1
@@ -349,7 +349,7 @@ spec:
 
 ---
 # Example: User Daily Budget (Development)
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricBudget
 metadata:
   name: dev-user-alice-daily
@@ -380,7 +380,7 @@ spec:
 
 ---
 # Example: Namespace Weekly Budget
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricBudget
 metadata:
   name: production-weekly
@@ -415,7 +415,7 @@ spec:
 
 ---
 # Budget Status Example
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricBudget
 metadata:
   name: ml-research-monthly

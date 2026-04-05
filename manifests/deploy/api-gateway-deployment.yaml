@@ -98,7 +98,7 @@ kind: ClusterRole
 metadata:
   name: kubefabric-api-gateway
 rules:
-- apiGroups: ["kubefabric.io"]
+- apiGroups: ["kubefabric.ai"]
   resources: ["fabricaijobs", "fabricquotas", "fabricgpunodes", "fabricstorages", "fabricnetworks"]
   verbs: ["get", "list", "watch"]
 - apiGroups: [""]

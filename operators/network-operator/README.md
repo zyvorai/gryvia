@@ -78,7 +78,7 @@ echo 32 > /sys/class/net/ens1f0/device/sriov_numvfs
 ### RDMA InfiniBand Network
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricNetwork
 metadata:
   name: rdma-infiniband
@@ -86,7 +86,7 @@ spec:
   networkType: rdma
   mtu: 9000
   nodeSelector:
-    kubefabric.io/rdma: "true"
+    kubefabric.ai/rdma: "true"
   rdma:
     mode: infiniband
     devices:
@@ -99,7 +99,7 @@ spec:
 ### SR-IOV Network
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricNetwork
 metadata:
   name: sriov-highspeed
@@ -107,7 +107,7 @@ spec:
   networkType: sriov
   mtu: 9000
   nodeSelector:
-    kubefabric.io/sriov: "true"
+    kubefabric.ai/sriov: "true"
   sriov:
     physicalInterface: ens1f0
     numVfs: 32

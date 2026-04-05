@@ -20,9 +20,9 @@ type BenchmarkResult struct {
 	TotalJobs         int           `json:"total_jobs"`
 	SuccessfulJobs    int           `json:"successful_jobs"`
 	FailedJobs        int           `json:"failed_jobs"`
-	AvgTimeToSchedule time.Duration `json:"avg_time_to_schedule_ms"`
-	AvgTimeToComplete time.Duration `json:"avg_time_to_complete_ms"`
-	TotalDuration     time.Duration `json:"total_duration_ms"`
+	AvgTimeToScheduleMs int64 `json:"avg_time_to_schedule_ms"`
+	AvgTimeToCompleteMs int64 `json:"avg_time_to_complete_ms"`
+	TotalDurationMs     int64 `json:"total_duration_ms"`
 	JobsPerSecond     float64       `json:"jobs_per_second"`
 }
 
@@ -147,11 +147,14 @@ func benchmarkBurstSubmission(count int) BenchmarkResult {
 	metricsMu := sync.Mutex{}
 	wg := sync.WaitGroup{}
 
-	// Submit all jobs as fast as possible
+	// Submit all jobs with bounded concurrency to avoid API server overload
+	sem := make(chan struct{}, 20)
 	for i := 0; i < count; i++ {
 		wg.Add(1)
+		sem <- struct{}{}
 		go func(index int) {
 			defer wg.Done()
+			defer func() { <-sem }()
 			jobName := fmt.Sprintf("burst-bench-%d", index)
 			metric := submitAndTrackJob(ctx, namespace, jobName)
 
@@ -201,7 +204,7 @@ func benchmarkLargeScale(count, parallelism int) BenchmarkResult {
 
 func submitAndTrackJob(ctx context.Context, namespace, jobName string) JobMetrics {
 	gvr := schema.GroupVersionResource{
-		Group:    "kubefabric.io",
+		Group:    "kubefabric.ai",
 		Version:  "v1",
 		Resource: "fabricaijobs",
 	}
@@ -214,7 +217,7 @@ func submitAndTrackJob(ctx context.Context, namespace, jobName string) JobMetric
 
 	job := &unstructured.Unstructured{
 		Object: map[string]interface{}{
-			"apiVersion": "kubefabric.io/v1",
+			"apiVersion": "kubefabric.ai/v1",
 			"kind":       "FabricAIJob",
 			"metadata": map[string]interface{}{
 				"name":      jobName,
@@ -250,6 +253,8 @@ func submitAndTrackJob(ctx context.Context, namespace, jobName string) JobMetric
 
 	for {
 		select {
+		case <-ctx.Done():
+			return metric
 		case <-timeout:
 			return metric
 		case <-ticker.C:
@@ -290,9 +295,8 @@ func submitAndTrackJob(ctx context.Context, namespace, jobName string) JobMetric
 
 func calculateResults(testName string, metrics []JobMetrics, totalDuration time.Duration) BenchmarkResult {
 	result := BenchmarkResult{
-		Test:          testName,
-		TotalJobs:     len(metrics),
-		TotalDuration: totalDuration,
+		Test:      testName,
+		TotalJobs: len(metrics),
 	}
 
 	var totalScheduleTime, totalCompleteTime time.Duration
@@ -315,14 +319,17 @@ func calculateResults(testName string, metrics []JobMetrics, totalDuration time.
 	}
 
 	if scheduledCount > 0 {
-		result.AvgTimeToSchedule = totalScheduleTime / time.Duration(scheduledCount)
+		result.AvgTimeToScheduleMs = (totalScheduleTime / time.Duration(scheduledCount)).Milliseconds()
 	}
 
 	if completedCount > 0 {
-		result.AvgTimeToComplete = totalCompleteTime / time.Duration(completedCount)
+		result.AvgTimeToCompleteMs = (totalCompleteTime / time.Duration(completedCount)).Milliseconds()
 	}
 
-	result.JobsPerSecond = float64(result.TotalJobs) / totalDuration.Seconds()
+	result.TotalDurationMs = totalDuration.Milliseconds()
+	if totalDuration.Seconds() > 0 {
+		result.JobsPerSecond = float64(result.TotalJobs) / totalDuration.Seconds()
+	}
 
 	return result
 }
@@ -332,9 +339,9 @@ func printResult(result BenchmarkResult) {
 	fmt.Printf("  Total Jobs:           %d\n", result.TotalJobs)
 	fmt.Printf("  Successful:           %d\n", result.SuccessfulJobs)
 	fmt.Printf("  Failed:               %d\n", result.FailedJobs)
-	fmt.Printf("  Avg Time to Schedule: %v\n", result.AvgTimeToSchedule)
-	fmt.Printf("  Avg Time to Complete: %v\n", result.AvgTimeToComplete)
-	fmt.Printf("  Total Duration:       %v\n", result.TotalDuration)
+	fmt.Printf("  Avg Time to Schedule: %dms\n", result.AvgTimeToScheduleMs)
+	fmt.Printf("  Avg Time to Complete: %dms\n", result.AvgTimeToCompleteMs)
+	fmt.Printf("  Total Duration:       %dms\n", result.TotalDurationMs)
 	fmt.Printf("  Jobs/Second:          %.2f\n", result.JobsPerSecond)
 }
 
@@ -345,7 +352,7 @@ func saveResults(results []BenchmarkResult) {
 		return
 	}
 
-	err = os.WriteFile("benchmark_results.json", data, 0644)
+	err = os.WriteFile("benchmark_results.json", data, 0600)
 	if err != nil {
 		fmt.Printf("Error writing results: %v\n", err)
 	}

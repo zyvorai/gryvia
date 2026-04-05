@@ -51,7 +51,7 @@ helm install kubefabric-federation kubefabric/kubefabric-federation \
 
 ```yaml
 # cluster-a.yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricCluster
 metadata:
   name: cluster-a
@@ -121,12 +121,12 @@ Jobs are automatically placed based on:
 5. Team preferences
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: training-job
   annotations:
-    kubefabric.io/placement: auto
+    kubefabric.ai/placement: auto
 spec:
   framework: pytorch
   resources:
@@ -140,7 +140,7 @@ spec:
 ```yaml
 metadata:
   annotations:
-    kubefabric.io/target-cluster: cluster-a
+    kubefabric.ai/target-cluster: cluster-a
 ```
 
 ### Cluster Affinity
@@ -148,7 +148,7 @@ metadata:
 ```yaml
 metadata:
   annotations:
-    kubefabric.io/cluster-affinity: |
+    kubefabric.ai/cluster-affinity: |
       preferredClusters:
         - cluster-a
         - cluster-b
@@ -161,8 +161,8 @@ metadata:
 ```yaml
 metadata:
   annotations:
-    kubefabric.io/region: us-west-2
-    kubefabric.io/region-affinity: required  # or preferred
+    kubefabric.ai/region: us-west-2
+    kubefabric.ai/region-affinity: required  # or preferred
 ```
 
 ### Cost-Optimized Placement
@@ -170,8 +170,8 @@ metadata:
 ```yaml
 metadata:
   annotations:
-    kubefabric.io/placement-strategy: cost-optimized
-    kubefabric.io/max-cost-per-hour: "200.00"
+    kubefabric.ai/placement-strategy: cost-optimized
+    kubefabric.ai/max-cost-per-hour: "200.00"
 ```
 
 ## Data Management
@@ -180,7 +180,7 @@ metadata:
 
 ```yaml
 # Replicate dataset across clusters
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricDataset
 metadata:
   name: imagenet
@@ -201,7 +201,7 @@ spec:
 
 ```yaml
 # Schedule job where data exists
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: training-with-data
@@ -218,13 +218,13 @@ spec:
 
 ```yaml
 # Enable automatic failover
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
   name: critical-job
   annotations:
-    kubefabric.io/failover: enabled
-    kubefabric.io/max-failover-attempts: "3"
+    kubefabric.ai/failover: enabled
+    kubefabric.ai/max-failover-attempts: "3"
 spec:
   checkpointing:
     enabled: true
@@ -282,7 +282,7 @@ kfctl federation costs --by-team ml-research
 ### Budget Allocation
 
 ```yaml
-apiVersion: kubefabric.io/v1
+apiVersion: kubefabric.ai/v1
 kind: FabricFederatedQuota
 metadata:
   name: ml-research-federated

@@ -44,7 +44,7 @@ spec:
     - to:
         - namespaceSelector:
             matchLabels:
-              name: kube-system
+              kubernetes.io/metadata.name: kube-system
         - podSelector:
             matchLabels:
               k8s-app: kube-dns
@@ -100,7 +100,7 @@ spec:
     - to:
         - namespaceSelector:
             matchLabels:
-              name: kube-system
+              kubernetes.io/metadata.name: kube-system
       ports:
         - protocol: UDP
           port: 53
@@ -151,7 +151,7 @@ spec:
     - to:
         - namespaceSelector:
             matchLabels:
-              name: kube-system
+              kubernetes.io/metadata.name: kube-system
       ports:
         - protocol: UDP
           port: 53
@@ -164,7 +164,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      kubefabric.io/job-type: ai-training
+      kubefabric.ai/job-type: ai-training
   policyTypes:
     - Ingress
     - Egress
@@ -173,7 +173,7 @@ spec:
     - from:
         - podSelector:
             matchLabels:
-              kubefabric.io/job-type: ai-training
+              kubefabric.ai/job-type: ai-training
       ports:
         - protocol: TCP
           port: 29400  # PyTorch DDP
@@ -184,7 +184,7 @@ spec:
     - to:
         - podSelector:
             matchLabels:
-              kubefabric.io/job-type: ai-training
+              kubefabric.ai/job-type: ai-training
     # Allow storage access (NFS/object storage)
     - ports:
         - protocol: TCP
@@ -197,7 +197,7 @@ spec:
     - to:
         - namespaceSelector:
             matchLabels:
-              name: kube-system
+              kubernetes.io/metadata.name: kube-system
       ports:
         - protocol: UDP
           port: 53

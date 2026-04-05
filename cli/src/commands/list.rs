@@ -12,19 +12,19 @@ pub async fn execute(client: &KubeFabricClient, resource: &str, all_namespaces: 
         "quotas" | "quota" => list_quotas(client, output).await?,
         "nodes" | "node" => list_nodes(client, output).await?,
         _ => {
-            display::print_error(&format!("Unknown resource type: {}", resource));
-            return Ok(());
+            anyhow::bail!("Unknown resource type: {}. Valid types: jobs, quotas, nodes", resource);
         }
     }
 
     Ok(())
 }
 
-async fn list_jobs(client: &KubeFabricClient, _all_namespaces: bool, output: &str) -> Result<()> {
-    let api: Api<FabricAIJob> = Api::namespaced(
-        client.kube_client.clone(),
-        client.namespace(),
-    );
+async fn list_jobs(client: &KubeFabricClient, all_namespaces: bool, output: &str) -> Result<()> {
+    let api: Api<FabricAIJob> = if all_namespaces {
+        Api::all(client.kube_client.clone())
+    } else {
+        Api::namespaced(client.kube_client.clone(), client.namespace())
+    };
 
     let jobs = api.list(&ListParams::default()).await
         .context("Failed to list jobs")?;

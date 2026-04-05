@@ -54,7 +54,7 @@ class MigrationTool:
         for resource_type in ["fabricaijobs", "fabricworkflows", "fabricqueues", "fabricusers"]:
             try:
                 items = self.source_api.list_cluster_custom_object(
-                    group="kubefabric.io",
+                    group="kubefabric.ai",
                     version="v1",
                     plural=resource_type
                 )
@@ -213,7 +213,7 @@ class MigrationTool:
                     if resource_type in ["fabricaijobs", "fabricworkflows",
                                         "fabricqueues", "fabricusers"]:
                         dest_api.create_namespaced_custom_object(
-                            group="kubefabric.io",
+                            group="kubefabric.ai",
                             version="v1",
                             namespace=resource["metadata"].get("namespace", "default"),
                             plural=resource_type,
@@ -261,7 +261,7 @@ class MigrationTool:
         # Get jobs from source
         try:
             jobs = self.source_api.list_cluster_custom_object(
-                group="kubefabric.io",
+                group="kubefabric.ai",
                 version="v1",
                 plural="fabricaijobs"
             )
@@ -305,9 +305,9 @@ class MigrationTool:
                     cleaned_job["metadata"]["annotations"] = {}
 
                 cleaned_job["metadata"]["annotations"].update({
-                    "kubefabric.io/migrated-from": self.source_context,
-                    "kubefabric.io/migration-date": datetime.now().isoformat(),
-                    "kubefabric.io/original-status": status
+                    "kubefabric.ai/migrated-from": self.source_context,
+                    "kubefabric.ai/migration-date": datetime.now().isoformat(),
+                    "kubefabric.ai/original-status": status
                 })
 
                 try:
@@ -316,7 +316,7 @@ class MigrationTool:
                     dest_api = client.CustomObjectsApi()
 
                     dest_api.create_namespaced_custom_object(
-                        group="kubefabric.io",
+                        group="kubefabric.ai",
                         version="v1",
                         namespace=namespace,
                         plural="fabricaijobs",
@@ -359,7 +359,7 @@ class MigrationTool:
 
             try:
                 items = dest_api.list_cluster_custom_object(
-                    group="kubefabric.io",
+                    group="kubefabric.ai",
                     version="v1",
                     plural=resource_type
                 )
