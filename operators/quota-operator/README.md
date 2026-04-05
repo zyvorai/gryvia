@@ -38,7 +38,7 @@ kubectl apply -f crds/fabricquota.yaml
 kubectl apply -f operators/quota-operator/config/
 
 # Verify deployment
-kubectl get pods -n kubefabric-system -l app=quota-operator
+kubectl get pods -n kubefabric -l app=quota-operator
 ```
 
 ## Usage
@@ -278,7 +278,7 @@ The operator requires:
 **Quota Not Enforced**
 ```bash
 # Check operator logs
-kubectl logs -n kubefabric-system -l app=quota-operator
+kubectl logs -n kubefabric -l app=quota-operator
 
 # Verify quota exists
 kubectl get fabricquota

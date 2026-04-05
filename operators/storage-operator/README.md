@@ -42,7 +42,7 @@ kubectl apply -f crds/fabricstorage.yaml
 kubectl apply -f operators/storage-operator/config/
 
 # Verify deployment
-kubectl get pods -n kubefabric-system -l app=storage-operator
+kubectl get pods -n kubefabric -l app=storage-operator
 ```
 
 ## Usage
@@ -62,7 +62,7 @@ spec:
     kubefabric.ai/storage: "true"
   credentials:
     secretName: vast-credentials
-    secretNamespace: kubefabric-system
+    secretNamespace: kubefabric
 ```
 
 ### Create PVC
@@ -141,7 +141,7 @@ The operator requires:
 **CSI Driver Not Starting**
 ```bash
 # Check operator logs
-kubectl logs -n kubefabric-system -l app=storage-operator
+kubectl logs -n kubefabric -l app=storage-operator
 
 # Check CSI controller
 kubectl logs -n kube-system -l app=vast-csi-controller

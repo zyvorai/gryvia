@@ -43,7 +43,7 @@ kubectl apply -f crds/fabricnetwork.yaml
 kubectl apply -f operators/network-operator/config/
 
 # Verify deployment
-kubectl get pods -n kubefabric-system -l app=network-operator
+kubectl get pods -n kubefabric -l app=network-operator
 ```
 
 ## Prerequisites
