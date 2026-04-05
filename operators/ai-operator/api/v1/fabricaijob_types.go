@@ -123,6 +123,9 @@ type FabricAIJobStatus struct {
 
 	// Ready replicas
 	ReplicasReady int32 `json:"replicasReady,omitempty"`
+
+	// Human-readable message indicating details about the current phase
+	Message string `json:"message,omitempty"`
 }
 
 // JobMetrics represents job performance metrics

@@ -60,6 +60,8 @@ spec:
                       default: false
                       description: "Whether resources are guaranteed"
 
+      subresources:
+        status: {}
       additionalPrinterColumns:
         - name: Value
           type: integer

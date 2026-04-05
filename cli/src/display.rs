@@ -176,7 +176,7 @@ fn format_age(timestamp: Option<&k8s_openapi::apimachinery::pkg::apis::meta::v1:
         let age = chrono::Utc::now().signed_duration_since(ts.0);
 
         if age.num_seconds() < 0 {
-            "just now".to_string()
+            "clock skew".to_string()
         } else if age.num_days() > 0 {
             format!("{}d", age.num_days())
         } else if age.num_hours() > 0 {

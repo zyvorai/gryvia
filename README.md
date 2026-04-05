@@ -3,8 +3,8 @@
 > **The Enterprise GPU Compute Fabric for AI Infrastructure**
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go)](https://go.dev/)
-[![Kubernetes](https://img.shields.io/badge/Kubernetes-1.28+-326CE5?logo=kubernetes)](https://kubernetes.io/)
+[![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)](https://go.dev/)
+[![Kubernetes](https://img.shields.io/badge/Kubernetes-1.32+-326CE5?logo=kubernetes)](https://kubernetes.io/)
 [![NVIDIA](https://img.shields.io/badge/NVIDIA-GPU-76B900?logo=nvidia)](https://nvidia.com)
 
 **KubeFabric** is a production-grade, bare-metal GPU compute platform built from the ground up for AI/ML workloads. It combines Kubernetes-native orchestration with enterprise GPU management, RDMA networking, parallel filesystems, and deep NVIDIA integration.
@@ -263,9 +263,11 @@ Pre-installed benchmarks to prove performance:
 
 **Each cluster runs:**
 1. Custom GPU-aware Kubernetes scheduler
-2. 4 specialized operators (GPU, AI, Storage, Network)
-3. NVIDIA DCGM + Prometheus observability
+2. 5 specialized operators (GPU, AI, Storage, Network, Quota)
+3. NVIDIA DCGM + Prometheus + Grafana observability
 4. High-performance storage fabric (VAST/Weka/DDN)
+5. Dark-themed Web UI dashboard + REST API gateway
+6. Rust CLI for command-line management
 
 ---
 
@@ -317,10 +319,28 @@ kubectl get fabricaijob
 
 ### Operators (Kubernetes Controllers)
 
-1. **GPU Operator** - Manages GPU lifecycle, drivers, health checks
-2. **AI Workload Operator** - Schedules jobs, creates pods/StatefulSets
-3. **Storage Operator** - Provisions PVCs, mounts parallel filesystems
-4. **Network Operator** - Configures SR-IOV, RDMA networking
+1. **GPU Operator** - Manages GPU lifecycle, drivers, health checks, node labeling
+2. **AI Workload Operator** - Schedules jobs, creates pods/StatefulSets, distributed training
+3. **Storage Operator** - Provisions PVCs, installs CSI drivers, mounts parallel filesystems
+4. **Network Operator** - Configures SR-IOV, RDMA, Multus NetworkAttachmentDefinitions
+5. **Quota Operator** - Enforces per-team GPU limits, budget tracking, job rejection
+
+### Web UI
+
+Dark-themed React dashboard with:
+- Real-time cluster stats, GPU utilization charts, job pipeline view
+- Job submission wizard, quota management, cost analysis
+- Gradient stat cards, progress bars, health indicators
+- Top navbar layout, responsive mobile support
+- API gateway with rate limiting and Bearer token auth
+
+### CLI
+
+Rust-based CLI (`kubefabric`) for:
+- Job submission, listing, status, cancellation (patches status to Cancelled)
+- Cluster overview with watch mode
+- Quota and cost analysis
+- GPU node health checks
 
 ### GPU-Aware Scheduler
 
@@ -352,12 +372,27 @@ kubectl get fabricaijob
 
 ## 📖 **Documentation**
 
-- [🚀 Quick Start Guide](docs/quickstart.md)
-- [📐 Architecture Deep Dive](docs/architecture.md)
-- [🔧 Bare Metal Deployment](docs/DEPLOYMENT_GUIDE.md)
-- [📚 CRD Reference](docs/crd-reference.md)
-- [🎯 Examples & Tutorials](examples/README.md)
-- [🐛 Troubleshooting](docs/troubleshooting.md)
+- [Quick Start Guide](docs/getting-started/quickstart.md)
+- [Bare Metal Deployment](docs/DEPLOYMENT_GUIDE.md)
+- [Complete Deployment Guide](docs/COMPLETE_DEPLOYMENT_GUIDE.md)
+- [CLI Guide](docs/CLI_GUIDE.md)
+- [API Reference](docs/developer-guide/api-reference.md)
+- [Storage & Network Operators](docs/STORAGE_NETWORK_OPERATORS.md)
+- [Advanced Features](docs/ADVANCED_FEATURES.md)
+- [Examples & Tutorials](examples/README.md)
+- [FAQ](docs/FAQ.md)
+
+## 🔒 **Security**
+
+KubeFabric follows security best practices:
+- **Least-privilege RBAC** - Operators have scoped ClusterRoles per CRD
+- **Non-root containers** - All operator pods run as UID 65532 with read-only root filesystem
+- **No privileged containers** - GPU device plugins use targeted capabilities instead of blanket `privileged: true`
+- **Network policies** - Default-deny ingress with egress restricted to specific services
+- **Secrets management** - API key auth for API gateway with timing-safe comparison
+- **CI/CD hardened** - GitHub Actions pinned to SHA, workflow permissions scoped, concurrency controls
+- **CRD validation** - Required fields, enum constraints, min/max validation on all custom resources
+- **Image pinning** - All container images use specific version tags, never `:latest`
 
 ---
 

@@ -145,6 +145,8 @@ spec:
                   type: string
                   enum: [success, failed, skipped]
 
+      subresources:
+        status: {}
       additionalPrinterColumns:
         - name: Trigger
           type: string

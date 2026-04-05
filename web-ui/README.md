@@ -1,156 +1,112 @@
 # KubeFabric Web UI
 
-Modern React-based web dashboard for KubeFabric GPU compute platform.
+Dark-themed React dashboard for KubeFabric GPU compute platform, inspired by hyper2kvm's design language.
 
 ## Features
 
-- **Real-time Dashboard** - Cluster stats, GPU utilization, and recent jobs
-- **Job Management** - Submit, monitor, and manage AI training jobs
+- **Real-time Dashboard** - Cluster stats, GPU utilization charts, job pipeline view
+- **Job Management** - Submit, monitor, and manage AI training/inference jobs
 - **Quota Tracking** - Team-based GPU quotas and budget monitoring
 - **Node Monitoring** - Real-time GPU metrics (temperature, utilization, memory)
-- **Cost Analysis** - GPU compute costs by team and GPU type
-- **Responsive Design** - TailwindCSS-based UI with mobile support
+- **Cost Analysis** - GPU compute costs by team and GPU type with projections
+- **Dark Theme** - Slate-based dark design with gradient stat cards and glow effects
+- **Responsive** - Top navbar layout with mobile hamburger menu
+- **Error Boundary** - Graceful error handling with recovery
+- **Auth Support** - Bearer token auth via `localStorage` (`kubefabric_token`) or `VITE_API_TOKEN` env var
+- **404 Catch-All** - Unknown routes display a styled 404 page
+
+## Design System
+
+- **Background**: Dark slate (`#0f172a`)
+- **Cards**: `bg-slate-800/50` with `border-slate-700/50` and rounded-xl
+- **Stat Cards**: Gradient backgrounds (`stat-card-blue`, `stat-card-green`, etc.)
+- **Text**: `text-white` (headings), `text-slate-300` (body), `text-slate-400` (muted)
+- **Accents**: Blue (`#3b82f6`), Green (`#22c55e`), Purple (`#a855f7`), Cyan (`#06b6d4`)
+- **Font**: Inter (Google Fonts)
+- **Animations**: `animate-fade-in`, `animate-pulse-dot`, `card-glow` hover effects
 
 ## Tech Stack
 
-- **React 18** - Modern React with hooks
-- **TypeScript** - Type-safe development
-- **Vite** - Fast build tool and dev server
-- **TailwindCSS** - Utility-first CSS framework
-- **React Query** - Data fetching and caching
+- **React 18** with TypeScript
+- **Vite** - Build tool and dev server
+- **TailwindCSS** - Dark theme with CSS custom properties
+- **React Query** - Data fetching with 10-30s refetch intervals
 - **React Router** - Client-side routing
-- **Recharts** - Data visualization
+- **Recharts** - Charts with dark tooltip styling
 - **Lucide React** - Icon library
+- **Axios** - HTTP client with auth interceptors
 
 ## Development
-
-### Prerequisites
-
-- Node.js 18+ and npm
-- Running KubeFabric cluster with API accessible
-
-### Installation
 
 ```bash
 cd web-ui
 npm install
+npm run dev     # http://localhost:5173
+npm run build   # Production build to dist/
+npm run lint    # ESLint check
 ```
 
-### Development Server
+## API
 
-```bash
-npm run dev
-```
+The UI communicates through the KubeFabric API Gateway (not directly to the Kubernetes API):
 
-The application will be available at `http://localhost:5173`
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/cluster/stats` | Cluster overview (GPUs, jobs, nodes) |
+| `GET /api/jobs` | List AI jobs (pagination: `limit`, `offset`) |
+| `GET /api/jobs/:name` | Get job details |
+| `POST /api/jobs` | Submit new job |
+| `DELETE /api/jobs/:name` | Delete job |
+| `GET /api/quotas` | List team quotas (pagination: `limit`, `offset`) |
+| `GET /api/quotas/:name` | Get quota details |
+| `GET /api/nodes` | List GPU nodes (pagination: `limit`, `offset`) |
+| `GET /api/nodes/:name` | Get node details |
+| `GET /api/nodes/health` | Node health status |
+| `GET /api/metrics/gpu` | GPU utilization metrics |
+| `GET /api/metrics/costs` | Cost analysis data |
+| `GET /api/metrics/jobs` | Job metrics |
+| `GET /api/quota/usage` | Quota usage summary |
 
-The Vite dev server is configured to proxy API requests to `/api` to `http://localhost:8001` (kube-apiserver proxy).
+All endpoints require `Authorization: Bearer <token>` header.
 
-### Build for Production
-
-```bash
-npm run build
-```
-
-The production-ready files will be in the `dist/` directory.
-
-### Preview Production Build
-
-```bash
-npm run preview
-```
-
-## Configuration
-
-### API Proxy
-
-The Vite config (`vite.config.ts`) proxies API requests to the Kubernetes API server:
-
-```typescript
-server: {
-  proxy: {
-    '/api': {
-      target: 'http://localhost:8001',
-      changeOrigin: true,
-    },
-  },
-}
-```
-
-For production, you'll need to configure nginx or similar to proxy `/api` to the Kubernetes API server.
-
-### Kubernetes API Access
-
-The web UI accesses the Kubernetes API through the following endpoints:
-
-- `GET /api/apis/kubefabric.ai/v1/namespaces/default/fabricaijobs` - List jobs
-- `GET /api/apis/kubefabric.ai/v1/fabricquotas` - List quotas
-- `GET /api/apis/kubefabric.ai/v1/fabricgpunodes` - List GPU nodes
-- `POST /api/apis/kubefabric.ai/v1/namespaces/default/fabricaijobs` - Create job
-- `DELETE /api/apis/kubefabric.ai/v1/namespaces/default/fabricaijobs/{name}` - Delete job
+Typed API responses include `ClusterStats`, `GPUMetricsResponse`, and `CostData` interfaces (see `src/lib/api.ts`).
 
 ## Deployment
 
-### Docker
-
-Build the Docker image:
-
 ```bash
-docker build -t kubefabric-ui:latest -f docker/Dockerfile.ui .
-```
+# Build Docker image
+docker build -t kubefabric-ui:1.0.0 -f docker/Dockerfile.ui .
 
-Run the container:
-
-```bash
-docker run -p 8080:80 kubefabric-ui:latest
-```
-
-### Kubernetes
-
-Deploy to Kubernetes:
-
-```bash
+# Deploy to Kubernetes
 kubectl apply -f manifests/deploy/ui-deployment.yaml
-kubectl apply -f manifests/deploy/ui-service.yaml
-kubectl apply -f manifests/deploy/ui-ingress.yaml
 ```
 
 ## Project Structure
 
 ```
 web-ui/
-├── src/
-│   ├── components/       # Reusable UI components
-│   │   ├── Layout.tsx
-│   │   ├── StatCard.tsx
-│   │   ├── JobsTable.tsx
-│   │   ├── GPUChart.tsx
-│   │   └── LoadingSpinner.tsx
-│   ├── pages/           # Page components
-│   │   ├── Dashboard.tsx
-│   │   ├── Jobs.tsx
-│   │   ├── JobDetails.tsx
-│   │   ├── SubmitJob.tsx
-│   │   ├── Quotas.tsx
-│   │   ├── Nodes.tsx
-│   │   └── Costs.tsx
-│   ├── lib/             # Utilities and API client
-│   │   └── api.ts
-│   ├── types/           # TypeScript type definitions
-│   │   └── index.ts
-│   ├── App.tsx          # Main app component
-│   ├── main.tsx         # Entry point
-│   └── index.css        # Global styles
-├── index.html           # HTML template
-├── package.json
-├── tsconfig.json
-├── vite.config.ts
-└── tailwind.config.js
+  src/
+    components/
+      Layout.tsx          # Top navbar, mobile menu
+      StatCard.tsx         # Gradient stat cards
+      JobsTable.tsx        # Dark-themed job table
+      GPUChart.tsx         # GPU utilization line chart
+      LoadingSpinner.tsx   # Spinner with text
+      ErrorBoundary.tsx    # React error boundary
+    pages/
+      Dashboard.tsx        # Main dashboard with pipeline
+      Jobs.tsx             # Job listing + stats
+      JobDetails.tsx       # Job detail view
+      SubmitJob.tsx        # Job submission form
+      Quotas.tsx           # Team quota cards
+      Nodes.tsx            # GPU node metrics
+      Costs.tsx            # Cost analysis charts
+    lib/api.ts             # Typed API client with auth
+    types/index.ts         # TypeScript types
+    index.css              # Dark theme CSS (matches hyper2kvm)
+    App.tsx                # Routes + error boundary
+    main.tsx               # Entry point
 ```
-
-## Environment Variables
-
-None required - configuration is done through the Vite proxy config.
 
 ## License
 

@@ -5,7 +5,8 @@ use colored::*;
 use crate::client::KubeFabricClient;
 use crate::types::*;
 
-pub async fn execute(client: &KubeFabricClient, job: &str, _follow: bool) -> Result<()> {
+pub async fn execute(client: &KubeFabricClient, job: &str, follow: bool) -> Result<()> {
+    let _ = follow; // TODO: implement follow mode
     let api: Api<FabricAIJob> = Api::namespaced(
         client.kube_client.clone(),
         client.namespace(),

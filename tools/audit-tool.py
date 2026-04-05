@@ -85,8 +85,12 @@ class AuditTool:
         try:
             secrets = self.core_api.list_namespaced_secret(self.namespace)
             security["secrets_management"]["count"] = len(secrets.items)
-            security["secrets_management"]["encrypted"] = True  # Assume encrypted at rest
-            security["secrets_management"]["compliant"] = True
+            security["secrets_management"]["encrypted"] = False  # Cannot verify; must be checked via API server config
+            opaque_secrets = [s for s in secrets.items if s.type == "Opaque"]
+            security["secrets_management"]["compliant"] = all(
+                s.data is not None and len(s.data) > 0 for s in opaque_secrets
+            ) if opaque_secrets else False
+            security["secrets_management"]["details"] = f"Found {len(opaque_secrets)} opaque secrets"
         except Exception:
             security["secrets_management"]["compliant"] = False
 
@@ -269,15 +273,17 @@ class AuditTool:
         except Exception:
             governance["data_retention"]["compliant"] = False
 
-        # Check backup policies
-        governance["backup_policies"]["automated_backups"] = True
-        governance["backup_policies"]["backup_frequency"] = "daily"
-        governance["backup_policies"]["compliant"] = True
+        # Check backup policies (cannot be auto-detected; mark as unchecked)
+        governance["backup_policies"]["automated_backups"] = False
+        governance["backup_policies"]["backup_frequency"] = "unknown"
+        governance["backup_policies"]["compliant"] = False
+        governance["backup_policies"]["note"] = "Manual verification required"
 
-        # Check encryption
-        governance["data_encryption"]["at_rest"] = True
-        governance["data_encryption"]["in_transit"] = True
-        governance["data_encryption"]["compliant"] = True
+        # Check encryption (cannot be auto-detected; mark as unchecked)
+        governance["data_encryption"]["at_rest"] = False
+        governance["data_encryption"]["in_transit"] = False
+        governance["data_encryption"]["compliant"] = False
+        governance["data_encryption"]["note"] = "Manual verification required"
 
         return governance
 

@@ -11,7 +11,6 @@ spec:
     singular: fabricquota
     shortNames:
       - fquota
-      - quota
     categories:
       - kubefabric
       - all
@@ -24,6 +23,8 @@ spec:
         openAPIV3Schema:
           description: FabricQuota is the Schema for the fabricquotas API
           type: object
+          required:
+            - spec
           properties:
             spec:
               type: object
@@ -37,7 +38,7 @@ spec:
                 maxGpus:
                   type: integer
                   description: "Maximum number of GPUs"
-                  minimum: 0
+                  minimum: 1
                 maxJobs:
                   type: integer
                   description: "Maximum concurrent jobs"

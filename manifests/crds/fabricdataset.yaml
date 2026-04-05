@@ -211,6 +211,8 @@ spec:
                     totalAccesses:
                       type: integer
 
+      subresources:
+        status: {}
       additionalPrinterColumns:
         - name: Type
           type: string

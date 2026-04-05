@@ -65,6 +65,8 @@ class PerformanceProfiler:
         # For now, return example metrics
 
         return {
+            "data_source": "simulated",
+            "warning": "Real metrics unavailable - showing simulated data",
             "gpu_utilization": {
                 "average": 78.5,
                 "peak": 98.2,
@@ -99,6 +101,8 @@ class PerformanceProfiler:
     def analyze_resource_utilization(self, job: Dict) -> Dict:
         """Analyze CPU, memory, network utilization"""
         return {
+            "data_source": "simulated",
+            "warning": "Real metrics unavailable - showing simulated data",
             "cpu": {
                 "allocated_cores": 64,
                 "average_utilization": 45.2,
@@ -132,6 +136,8 @@ class PerformanceProfiler:
         gpu_count = spec.get("resources", {}).get("gpuCount", 1)
 
         return {
+            "data_source": "simulated",
+            "warning": "Real metrics unavailable - showing simulated data",
             "throughput": {
                 "samples_per_second": 1250,
                 "tokens_per_second": 18500,

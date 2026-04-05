@@ -22,8 +22,6 @@ import (
 )
 
 const (
-	fabricAIJobFinalizer = "kubefabric.ai/finalizer"
-
 	// Status phases
 	PhasePending    = "Pending"
 	PhaseScheduling = "Scheduling"
@@ -68,18 +66,10 @@ func (r *FabricAIJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	// Handle deletion
+	// Handle deletion - owned resources (StatefulSet, Service, PVC) are
+	// garbage-collected via controller references, so no finalizer is needed.
 	if !job.ObjectMeta.DeletionTimestamp.IsZero() {
-		return r.handleDeletion(ctx, job)
-	}
-
-	// Add finalizer if it doesn't exist
-	if !controllerutil.ContainsFinalizer(job, fabricAIJobFinalizer) {
-		controllerutil.AddFinalizer(job, fabricAIJobFinalizer)
-		if err := r.Update(ctx, job); err != nil {
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{Requeue: true}, nil
+		return ctrl.Result{}, nil
 	}
 
 	// Initialize status if needed
@@ -106,7 +96,7 @@ func (r *FabricAIJobReconciler) reconcileAIJob(ctx context.Context, job *kubefab
 	log := r.Log.WithValues("fabricaijob", job.Name)
 
 	// Phase 1: Scheduling - Find suitable GPU nodes
-	if job.Status.Phase == PhasePending {
+	if job.Status.Phase == PhasePending || (job.Status.Phase == PhaseScheduling && len(job.Status.NodesAllocated) == 0) {
 		log.Info("Scheduling AI job")
 		job.Status.Phase = PhaseScheduling
 
@@ -139,12 +129,10 @@ func (r *FabricAIJobReconciler) reconcileAIJob(ctx context.Context, job *kubefab
 		}
 	}
 
-	// Phase 3: Create headless service for distributed training
-	if job.Spec.Distributed != nil && job.Spec.Distributed.Enabled {
-		if err := r.ensureHeadlessService(ctx, job); err != nil {
-			log.Error(err, "Failed to create headless service")
-			return ctrl.Result{RequeueAfter: 10 * time.Second}, err
-		}
+	// Phase 3: Create headless service (required by StatefulSet's ServiceName field)
+	if err := r.ensureHeadlessService(ctx, job); err != nil {
+		log.Error(err, "Failed to create headless service")
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, err
 	}
 
 	// Phase 4: Create StatefulSet for the training workload
@@ -183,6 +171,29 @@ func (r *FabricAIJobReconciler) reconcileAIJob(ctx context.Context, job *kubefab
 		r.updateCondition(job, ConditionReady, metav1.ConditionFalse, "PartiallyReady", "Some replicas are ready")
 	}
 
+	// Check for job completion by examining pod status
+	if job.Status.Phase == PhaseRunning {
+		pods := &corev1.PodList{}
+		if err := r.List(ctx, pods, client.InNamespace(job.Namespace), client.MatchingLabels{"kubefabric.ai/job": job.Name}); err == nil {
+			completedPods := 0
+			failedPods := 0
+			for _, pod := range pods.Items {
+				if pod.Status.Phase == corev1.PodSucceeded {
+					completedPods++
+				} else if pod.Status.Phase == corev1.PodFailed {
+					failedPods++
+				}
+			}
+			replicas := int(r.getReplicaCount(job))
+			if completedPods >= replicas {
+				job.Status.Phase = PhaseSucceeded
+			} else if failedPods > 0 {
+				job.Status.Phase = PhaseFailed
+				job.Status.Message = fmt.Sprintf("%d pod(s) failed", failedPods)
+			}
+		}
+	}
+
 	// Set CompletionTime when job transitions to terminal state
 	if (job.Status.Phase == PhaseSucceeded || job.Status.Phase == PhaseFailed) && job.Status.CompletionTime == nil {
 		now := metav1.Now()
@@ -212,6 +223,12 @@ func (r *FabricAIJobReconciler) ensurePVC(ctx context.Context, job *kubefabricv1
 	}, pvc)
 
 	if err != nil && errors.IsNotFound(err) {
+		// Parse storage size safely
+		storageQuantity, parseErr := resource.ParseQuantity(job.Spec.StorageSize())
+		if parseErr != nil {
+			return fmt.Errorf("invalid storage size %q: %w", job.Spec.StorageSize(), parseErr)
+		}
+
 		// Create PVC
 		pvc = &corev1.PersistentVolumeClaim{
 			ObjectMeta: metav1.ObjectMeta{
@@ -228,7 +245,7 @@ func (r *FabricAIJobReconciler) ensurePVC(ctx context.Context, job *kubefabricv1
 				StorageClassName: &job.Spec.Storage,
 				Resources: corev1.ResourceRequirements{
 					Requests: corev1.ResourceList{
-						corev1.ResourceStorage: resource.MustParse(job.Spec.StorageSize()),
+						corev1.ResourceStorage: storageQuantity,
 					},
 				},
 			},
@@ -378,6 +395,8 @@ func (r *FabricAIJobReconciler) buildPodTemplate(job *kubefabricv1.FabricAIJob, 
 		NodeSelector: r.buildNodeSelector(job),
 		Tolerations:  job.Spec.Tolerations,
 		Affinity:     job.Spec.Affinity,
+		// StatefulSets only support RestartPolicyAlways; use a Job or custom
+		// completion detection for run-to-completion semantics.
 		RestartPolicy: corev1.RestartPolicyAlways,
 	}
 
@@ -509,30 +528,25 @@ func (r *FabricAIJobReconciler) getStatefulSetName(job *kubefabricv1.FabricAIJob
 
 func (r *FabricAIJobReconciler) getReplicaCount(job *kubefabricv1.FabricAIJob) int32 {
 	if job.Spec.Distributed != nil && job.Spec.Distributed.Enabled {
-		return job.Spec.Distributed.Nodes
+		if job.Spec.Distributed.Nodes > 0 {
+			return job.Spec.Distributed.Nodes
+		}
+		return 1
 	}
 	return 1
 }
 
 func (r *FabricAIJobReconciler) getGPUsPerPod(job *kubefabricv1.FabricAIJob) int32 {
 	if job.Spec.Distributed != nil && job.Spec.Distributed.Enabled {
-		return job.Spec.Distributed.GpusPerNode
-	}
-	return job.Spec.GPUs
-}
-
-func (r *FabricAIJobReconciler) handleDeletion(ctx context.Context, job *kubefabricv1.FabricAIJob) (ctrl.Result, error) {
-	if controllerutil.ContainsFinalizer(job, fabricAIJobFinalizer) {
-		// Cleanup: delete StatefulSet, Service, PVC, etc.
-		// In production, you'd want to handle this more gracefully
-
-		// Remove finalizer
-		controllerutil.RemoveFinalizer(job, fabricAIJobFinalizer)
-		if err := r.Update(ctx, job); err != nil {
-			return ctrl.Result{}, err
+		if job.Spec.Distributed.GpusPerNode > 0 {
+			return job.Spec.Distributed.GpusPerNode
 		}
+		return 1
 	}
-	return ctrl.Result{}, nil
+	if job.Spec.GPUs > 0 {
+		return job.Spec.GPUs
+	}
+	return 1
 }
 
 func (r *FabricAIJobReconciler) updateCondition(job *kubefabricv1.FabricAIJob, condType string, status metav1.ConditionStatus, reason, message string) {

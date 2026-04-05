@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use kube::api::{Api, DeleteParams};
+use kube::api::{Api, Patch, PatchParams};
 use dialoguer::Confirm;
 
 use crate::client::KubeFabricClient;
@@ -8,8 +8,7 @@ use crate::display;
 
 pub async fn execute(client: &KubeFabricClient, jobs: &[String], yes: bool) -> Result<()> {
     if jobs.is_empty() {
-        display::print_error("No jobs specified");
-        return Ok(());
+        return Err(anyhow::anyhow!("No jobs specified"));
     }
 
     if !yes {
@@ -29,11 +28,32 @@ pub async fn execute(client: &KubeFabricClient, jobs: &[String], yes: bool) -> R
         client.namespace(),
     );
 
+    let mut failures = Vec::new();
+
     for job_name in jobs {
-        match api.delete(job_name, &DeleteParams::default()).await {
+        // Patch job status to Cancelled instead of deleting
+        let patch = serde_json::json!({
+            "status": {
+                "phase": "Cancelled",
+                "message": "Cancelled by user"
+            }
+        });
+
+        match api.patch_status(
+            job_name,
+            &PatchParams::apply("kubefabric-cli"),
+            &Patch::Merge(&patch),
+        ).await {
             Ok(_) => display::print_success(&format!("Job {} cancelled", job_name)),
-            Err(e) => display::print_error(&format!("Failed to cancel job {}: {}", job_name, e)),
+            Err(e) => {
+                display::print_error(&format!("Failed to cancel job {}: {}", job_name, e));
+                failures.push(job_name.clone());
+            }
         }
+    }
+
+    if !failures.is_empty() {
+        return Err(anyhow::anyhow!("Failed to cancel {} job(s): {}", failures.len(), failures.join(", ")));
     }
 
     Ok(())

@@ -24,6 +24,8 @@ spec:
         openAPIV3Schema:
           description: FabricAIJob is the Schema for the fabricaijobs API
           type: object
+          required:
+            - spec
           properties:
             spec:
               type: object

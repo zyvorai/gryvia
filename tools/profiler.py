@@ -187,14 +187,14 @@ class GPUProfiler:
         """Estimate potential cost savings"""
         # GPU pricing ($/hour)
         pricing = {
-            "H100": 8.0,
-            "A100-80G": 4.0,
-            "A100-40G": 3.0,
-            "A100": 3.0,
-            "L40": 2.5,
-            "A10": 1.5,
-            "V100": 2.0,
-            "T4": 0.75,
+            "H100": 8.00,
+            "A100-80G": 4.00,
+            "A100-40G": 3.50,
+            "A100": 3.50,
+            "L40": 2.50,
+            "A10": 1.50,
+            "V100": 2.00,
+            "T4": 1.00,
         }
 
         current_price = pricing.get(gpu_type, 2.0) * gpu_count

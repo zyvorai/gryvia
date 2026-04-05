@@ -8,6 +8,9 @@ use crate::display;
 
 pub async fn execute(client: &KubeFabricClient, detailed: bool, watch: Option<u64>) -> Result<()> {
     if let Some(interval) = watch {
+        if interval == 0 {
+            anyhow::bail!("Watch interval must be greater than 0");
+        }
         loop {
             print!("\x1B[2J\x1B[1;1H"); // Clear screen
             if let Err(e) = show_cluster_overview(client, detailed).await {
@@ -22,12 +25,10 @@ pub async fn execute(client: &KubeFabricClient, detailed: bool, watch: Option<u6
     Ok(())
 }
 
-async fn show_cluster_overview(client: &KubeFabricClient, _detailed: bool) -> Result<()> {
+async fn show_cluster_overview(client: &KubeFabricClient, detailed: bool) -> Result<()> {
+    let _ = detailed; // TODO: implement detailed view
     let nodes_api: Api<FabricGpuNode> = Api::all(client.kube_client.clone());
-    let jobs_api: Api<FabricAIJob> = Api::namespaced(
-        client.kube_client.clone(),
-        client.namespace(),
-    );
+    let jobs_api: Api<FabricAIJob> = Api::all(client.kube_client.clone());
 
     let nodes = nodes_api.list(&ListParams::default()).await
         .context("Failed to list GPU nodes")?;

@@ -162,6 +162,8 @@ spec:
                   type: string
                   enum: [active, circuit-open, budget-exceeded]
 
+      subresources:
+        status: {}
       additionalPrinterColumns:
         - name: Max-Retries
           type: integer

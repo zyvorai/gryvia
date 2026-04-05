@@ -26,7 +26,7 @@ class AdvancedAnalytics:
     def __init__(self):
         try:
             config.load_kube_config()
-        except Exception:
+        except config.ConfigException:
             config.load_incluster_config()
 
         self.api = client.CustomObjectsApi()

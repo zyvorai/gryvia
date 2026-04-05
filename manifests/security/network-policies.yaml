@@ -2,11 +2,11 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: kubefabric-operators-policy
-  namespace: kubefabric
+  namespace: kubefabric-system
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/component: operator
+      app.kubernetes.io/part-of: kubefabric
   policyTypes:
     - Ingress
     - Egress
@@ -45,7 +45,7 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kube-system
-        - podSelector:
+          podSelector:
             matchLabels:
               k8s-app: kube-dns
       ports:
@@ -160,7 +160,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: kubefabric-gpu-jobs-policy
-  namespace: default
+  namespace: gpu-workloads
 spec:
   podSelector:
     matchLabels:
@@ -185,8 +185,12 @@ spec:
         - podSelector:
             matchLabels:
               kubefabric.ai/job-type: ai-training
-    # Allow storage access (NFS/object storage)
-    - ports:
+    # Allow storage access (NFS/object storage) - restricted to kubefabric namespace
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kubefabric
+      ports:
         - protocol: TCP
           port: 111   # NFS portmap
         - protocol: TCP
@@ -201,8 +205,24 @@ spec:
       ports:
         - protocol: UDP
           port: 53
-    # Allow egress to external HTTPS services (model registries, etc.)
-    - ports:
+    # Allow egress to Kubernetes API (for job status updates)
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              component: apiserver
+      ports:
+        - protocol: TCP
+          port: 443
+    # Allow HTTPS egress (restricted - no private IPs)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
         - protocol: TCP
           port: 443
 ---

@@ -124,7 +124,7 @@ kubefabric list jobs
 # 3. Check monthly spending
 kubefabric cost --team computer-vision --period month
 
-# 4. Cancel expensive job if needed
+# 4. Cancel expensive job if needed (sets status to "Cancelled", preserves job record)
 kubefabric cancel expensive-job
 
 # 5. Monitor budget alerts
@@ -214,8 +214,10 @@ kubefabric logs my-job --replica 0
 
 #### Cancel Jobs
 
+Cancelling a job patches its status to "Cancelled" rather than deleting the resource. The job record is preserved for auditing and cost tracking.
+
 ```bash
-# Cancel single job
+# Cancel single job (sets status to "Cancelled")
 kubefabric cancel my-job
 
 # Cancel multiple jobs
@@ -257,6 +259,8 @@ kubefabric get quota team-ml --output json
 
 #### View Costs
 
+The `--period` parameter is validated and only accepts `day`, `week`, or `month`; any other value produces an error.
+
 ```bash
 # All teams monthly costs
 kubefabric cost
@@ -291,7 +295,7 @@ kubefabric cluster
 # Detailed view with GPU metrics
 kubefabric cluster --detailed
 
-# Watch mode (refresh every 5 seconds)
+# Watch mode (refresh every 5 seconds, interval must be > 0)
 kubefabric cluster --watch 5
 
 # Refresh every 30 seconds
@@ -351,11 +355,17 @@ kubefabric delete job old-experiment
 # Delete quota
 kubefabric delete quota team-dev
 
+# Delete storage or network (stub - not yet implemented)
+kubefabric delete storage my-storage
+kubefabric delete network my-network
+
 # Skip confirmation
 kubefabric delete job my-job --yes
 ```
 
 #### Validate YAML
+
+Validates the YAML file structure and checks that `apiVersion` and `kind` match known KubeFabric types (e.g., `kubefabric.ai/v1` / `FabricAIJob`, `FabricQuota`, `FabricGpuNode`, etc.).
 
 ```bash
 # Validate job YAML before submission
@@ -396,7 +406,7 @@ kubefabric -v list jobs
 
 ### Output Formats
 
-The CLI supports three output formats:
+The CLI supports three output formats: `table`, `json`, and `yaml`. The `--output` flag is validated and any other value produces an error.
 
 ```bash
 # Pretty table (default)

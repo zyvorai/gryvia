@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -160,13 +161,19 @@ func (r *FabricNetworkReconciler) configureRDMA(ctx context.Context, network *ku
 		return fmt.Errorf("failed to install RDMA device plugin: %w", err)
 	}
 
-	// Configure RDMA on each node
+	// Configure RDMA on each node, tracking failures
+	failedNodes := 0
 	for _, node := range nodes {
 		if err := rdma.ConfigureNode(ctx, r.Client, &node, network.Spec.RDMA); err != nil {
 			logger.Error(err, "Failed to configure RDMA on node", "node", node.Name)
+			failedNodes++
 			continue
 		}
 		logger.Info("Configured RDMA on node", "node", node.Name)
+	}
+
+	if failedNodes == len(nodes) {
+		return fmt.Errorf("failed to configure RDMA on all %d nodes", failedNodes)
 	}
 
 	return nil
@@ -186,13 +193,19 @@ func (r *FabricNetworkReconciler) configureSRIOV(ctx context.Context, network *k
 		return fmt.Errorf("failed to install SR-IOV device plugin: %w", err)
 	}
 
-	// Configure SR-IOV on each node
+	// Configure SR-IOV on each node, tracking failures
+	failedNodes := 0
 	for _, node := range nodes {
 		if err := sriov.ConfigureNode(ctx, r.Client, &node, network.Spec.SRIOV); err != nil {
 			logger.Error(err, "Failed to configure SR-IOV on node", "node", node.Name)
+			failedNodes++
 			continue
 		}
 		logger.Info("Configured SR-IOV on node", "node", node.Name)
+	}
+
+	if failedNodes == len(nodes) {
+		return fmt.Errorf("failed to configure SR-IOV on all %d nodes", failedNodes)
 	}
 
 	return nil
@@ -253,7 +266,7 @@ func (r *FabricNetworkReconciler) handleDeletion(ctx context.Context, network *k
 				delete(node.Annotations, "kubefabric.ai/sriov-numvfs")
 				// Remove any kubefabric.ai/sriov-* labels
 				for k := range node.Labels {
-					if len(k) > 19 && k[:19] == "kubefabric.ai/sriov" {
+					if strings.HasPrefix(k, "kubefabric.ai/sriov") {
 						delete(node.Labels, k)
 					}
 				}
@@ -297,9 +310,11 @@ func (r *FabricNetworkReconciler) updateStatus(ctx context.Context, network *kub
 
 // SetupWithManager sets up the controller with the Manager
 func (r *FabricNetworkReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	// NOTE: Owns() for DaemonSet and ConfigMap is not used here because those
+	// resources live in kube-system while FabricNetwork is cluster-scoped.
+	// Cross-namespace owner references cannot be set, so cleanup is handled
+	// via the finalizer in handleDeletion instead.
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&kubefabricv1.FabricNetwork{}).
-		Owns(&appsv1.DaemonSet{}).
-		Owns(&corev1.ConfigMap{}).
 		Complete(r)
 }

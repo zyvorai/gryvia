@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use kube::api::{Api, PostParams};
+use kube::api::{Api, ApiResource, PostParams};
 use kube::core::DynamicObject;
 use serde_yaml;
 use std::fs;
@@ -22,9 +22,11 @@ pub async fn execute(client: &KubeFabricClient, file: &str, wait: bool, follow_l
     display::print_info(&format!("Submitting job: {}", job_name));
 
     // Submit job
-    let api: Api<DynamicObject> = Api::namespaced(
+    let ar = ApiResource::from_gvk(&kube::api::GroupVersionKind::gvk("kubefabric.ai", "v1", "FabricAIJob"));
+    let api: Api<DynamicObject> = Api::namespaced_with(
         client.kube_client.clone(),
         client.namespace(),
+        &ar,
     );
 
     let _result = api.create(&PostParams::default(), &job).await
@@ -53,9 +55,11 @@ async fn wait_for_completion(client: &KubeFabricClient, job_name: &str) -> Resul
             .unwrap()
     );
 
-    let api: Api<DynamicObject> = Api::namespaced(
+    let ar = ApiResource::from_gvk(&kube::api::GroupVersionKind::gvk("kubefabric.ai", "v1", "FabricAIJob"));
+    let api: Api<DynamicObject> = Api::namespaced_with(
         client.kube_client.clone(),
         client.namespace(),
+        &ar,
     );
 
     let timeout = Duration::from_secs(24 * 60 * 60); // 24 hour timeout

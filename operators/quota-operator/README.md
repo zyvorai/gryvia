@@ -101,10 +101,12 @@ status:
 
 **Main Reconciler** (`controllers/fabricquota_controller.go`)
 - Reconciles every 1 minute
+- Uses `EnqueueRequestsFromMapFunc` to watch FabricAIJob changes and map them to the corresponding FabricQuota objects, ensuring quotas are re-evaluated promptly when jobs change
 - Labels namespaces with team info
 - Calculates current GPU usage
-- Enforces quota limits
+- Enforces quota limits (including `AllowedGPUTypes` -- jobs requesting a disallowed GPU type are queued rather than scheduled)
 - Tracks budget spending
+- Leader election is enabled by default
 - ~250 lines of code
 
 ### Usage Tracking
@@ -141,7 +143,7 @@ When quota is exceeded:
 1. **GPU Limit**: New jobs are rejected if they would exceed `maxGPUs`
 2. **Job Limit**: Jobs are queued if `maxRunningJobs` reached
 3. **Budget Limit**: If `hardLimit: true`, new jobs rejected when budget exceeded
-4. **GPU Type**: Jobs requesting disallowed GPU types are rejected
+4. **GPU Type**: Jobs requesting disallowed GPU types are queued (not scheduled)
 
 ## Examples
 

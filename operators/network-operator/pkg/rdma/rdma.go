@@ -2,6 +2,7 @@ package rdma
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -10,6 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -117,24 +119,29 @@ func InstallDevicePlugin(ctx context.Context, k8sClient client.Client, owner *ku
 
 // ConfigureNode configures RDMA on a specific node
 func ConfigureNode(ctx context.Context, k8sClient client.Client, node *corev1.Node, rdmaConfig *kubefabricv1.RDMAConfig) error {
-	// Label node with RDMA capability
-	if node.Labels == nil {
-		node.Labels = make(map[string]string)
-	}
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if err := k8sClient.Get(ctx, types.NamespacedName{Name: node.Name}, node); err != nil {
+			return err
+		}
 
-	node.Labels["kubefabric.ai/rdma"] = "true"
-	node.Labels["kubefabric.ai/rdma-mode"] = rdmaConfig.Mode
+		if node.Labels == nil {
+			node.Labels = make(map[string]string)
+		}
+		node.Labels["kubefabric.ai/rdma"] = "true"
+		node.Labels["kubefabric.ai/rdma-mode"] = rdmaConfig.Mode
 
-	// Add device annotations
-	if node.Annotations == nil {
-		node.Annotations = make(map[string]string)
-	}
+		if node.Annotations == nil {
+			node.Annotations = make(map[string]string)
+		}
+		if len(rdmaConfig.Devices) > 0 {
+			devicesJSON, err := json.Marshal(rdmaConfig.Devices)
+			if err == nil {
+				node.Annotations["kubefabric.ai/rdma-devices"] = string(devicesJSON)
+			}
+		}
 
-	if len(rdmaConfig.Devices) > 0 {
-		node.Annotations["kubefabric.ai/rdma-devices"] = fmt.Sprintf("%v", rdmaConfig.Devices)
-	}
-
-	return k8sClient.Update(ctx, node)
+		return k8sClient.Update(ctx, node)
+	})
 }
 
 // CreateRDMAConfigMap creates a ConfigMap for RDMA device configuration

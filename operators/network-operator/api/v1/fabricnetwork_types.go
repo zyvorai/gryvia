@@ -20,6 +20,9 @@ type FabricNetworkSpec struct {
 
 	// MTU for network interfaces
 	MTU int `json:"mtu,omitempty"`
+
+	// TargetNamespace is the namespace where NetworkAttachmentDefinitions will be created
+	TargetNamespace string `json:"targetNamespace,omitempty"`
 }
 
 // RDMAConfig defines RDMA network configuration
@@ -50,6 +53,12 @@ type SRIOVConfig struct {
 
 	// ResourceName is the Kubernetes resource name
 	ResourceName string `json:"resourceName"`
+
+	// Subnet for IP assignment
+	Subnet string `json:"subnet,omitempty"`
+
+	// Gateway for the network
+	Gateway string `json:"gateway,omitempty"`
 }
 
 // FabricNetworkStatus defines the observed state of FabricNetwork

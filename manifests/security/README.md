@@ -31,7 +31,7 @@ For GPU training jobs:
 
 Network segmentation for:
 
-#### Operators
+#### Operators (targets `kubefabric-system` namespace)
 - Allow Kubernetes API access
 - Allow Prometheus metrics scraping
 - Allow webhook traffic
@@ -47,10 +47,11 @@ Network segmentation for:
 - Allow egress to Kubernetes API
 - Allow egress to Prometheus
 
-#### GPU Jobs
+#### GPU Jobs (in `gpu-workloads` namespace)
 - Allow intra-job communication (distributed training)
 - Allow storage access (NFS, object storage)
-- Allow external egress (model registries)
+- HTTPS egress restricted from private IP ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16)
+- DNS egress rule uses AND logic (port AND protocol must both match), not OR
 - Deny unnecessary traffic
 
 #### Default Deny

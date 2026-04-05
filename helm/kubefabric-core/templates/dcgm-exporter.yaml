@@ -32,7 +32,11 @@ spec:
               containerPort: 9400
               protocol: TCP
           securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
             capabilities:
+              drop:
+                - ALL
               add:
                 - SYS_ADMIN
           resources:

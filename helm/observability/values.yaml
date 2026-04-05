@@ -87,5 +87,5 @@ kube-prometheus-stack:
           #   - api_url: '<webhook-url>'
           #     channel: '#kubefabric-alerts'
           webhook_configs:
-            - url: 'http://localhost:9093/api/v1/alerts'
+            - url: 'http://alertmanager-webhook.kubefabric-system.svc:9093/api/v1/alerts'
               send_resolved: true

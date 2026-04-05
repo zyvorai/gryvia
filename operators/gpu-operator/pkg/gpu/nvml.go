@@ -125,36 +125,3 @@ func getDeviceInfo(device nvml.Device, index int) (GpuInfo, error) {
 
 	return info, nil
 }
-
-// CheckGpuHealth performs a health check on a specific GPU
-func CheckGpuHealth(index int) (string, error) {
-	ret := nvml.Init()
-	if ret != nvml.SUCCESS {
-		return "", fmt.Errorf("failed to initialize NVML: %v", nvml.ErrorString(ret))
-	}
-	defer nvml.Shutdown()
-
-	device, ret := nvml.DeviceGetHandleByIndex(index)
-	if ret != nvml.SUCCESS {
-		return "", fmt.Errorf("failed to get device: %v", nvml.ErrorString(ret))
-	}
-
-	// Check if device is accessible
-	_, ret = device.GetUUID()
-	if ret != nvml.SUCCESS {
-		return "Failed", nil
-	}
-
-	// Check temperature
-	temp, ret := device.GetTemperature(nvml.TEMPERATURE_GPU)
-	if ret == nvml.SUCCESS {
-		if temp > 95 {
-			return "Failed", nil
-		}
-		if temp > 85 {
-			return "Degraded", nil
-		}
-	}
-
-	return "Healthy", nil
-}

@@ -426,7 +426,7 @@ spec:
     singular: fabricquotapolicy
     kind: FabricQuotaPolicy
     shortNames:
-      - fquota
+      - fqp
 
 ---
 # Example: Organization-Level Quota

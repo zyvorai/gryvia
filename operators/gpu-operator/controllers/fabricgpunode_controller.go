@@ -16,6 +16,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
+	"k8s.io/client-go/util/retry"
+
 	kubefabricv1 "github.com/ssahani/kube-fabric/operators/gpu-operator/api/v1"
 	"github.com/ssahani/kube-fabric/operators/gpu-operator/pkg/gpu"
 )
@@ -95,6 +97,11 @@ func (r *FabricGpuNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return result, err
 	}
 
+	// Use the returned result's RequeueAfter if non-zero, otherwise use default interval
+	if result.RequeueAfter > 0 {
+		return result, nil
+	}
+
 	// Schedule next reconciliation based on health check interval
 	interval := 60 * time.Second
 	if fabricNode.Spec.HealthCheck != nil && fabricNode.Spec.HealthCheck.Enabled {
@@ -141,6 +148,13 @@ func (r *FabricGpuNodeReconciler) reconcileGpuNode(ctx context.Context, fabricNo
 		log.Error(err, "Failed to check GPU health")
 		r.updateCondition(fabricNode, ConditionHealthy, metav1.ConditionFalse, "HealthCheckFailed", err.Error())
 		fabricNode.Status.Phase = PhaseDegraded
+		// Update status and requeue sooner on health check failure
+		now := metav1.Now()
+		fabricNode.Status.LastHealthCheck = &now
+		if updateErr := r.Status().Update(ctx, fabricNode); updateErr != nil {
+			log.Error(updateErr, "Failed to update status after health check failure")
+		}
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
 	} else {
 		fabricNode.Status.GpuStatus = gpuHealth
 		r.updateCondition(fabricNode, ConditionHealthy, metav1.ConditionTrue, "Healthy", "All GPUs are healthy")
@@ -222,30 +236,37 @@ func (r *FabricGpuNodeReconciler) checkGpuHealth(ctx context.Context, fabricNode
 }
 
 func (r *FabricGpuNodeReconciler) labelNode(ctx context.Context, fabricNode *kubefabricv1.FabricGpuNode, node *corev1.Node) error {
-	// Apply labels to the Kubernetes node
-	if node.Labels == nil {
-		node.Labels = make(map[string]string)
-	}
-
-	// Standard KubeFabric labels
-	node.Labels["kubefabric.ai/gpu"] = fabricNode.Spec.GpuType
-	node.Labels["kubefabric.ai/gpu-count"] = fmt.Sprintf("%d", fabricNode.Spec.GpuCount)
-	node.Labels["kubefabric.ai/rdma"] = fmt.Sprintf("%t", fabricNode.Spec.RDMA)
-	node.Labels["kubefabric.ai/sriov"] = fmt.Sprintf("%t", fabricNode.Spec.SRIOV)
-
-	if fabricNode.Spec.Interconnect != "" {
-		node.Labels["kubefabric.ai/interconnect"] = fabricNode.Spec.Interconnect
-	}
-
-	// Apply custom labels from spec (only allow kubefabric.ai/ prefix)
-	for k, v := range fabricNode.Spec.Labels {
-		if strings.HasPrefix(k, "kubefabric.ai/") {
-			node.Labels[k] = v
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		// Re-fetch node to get latest version
+		if err := r.Get(ctx, types.NamespacedName{Name: node.Name}, node); err != nil {
+			return err
 		}
-	}
 
-	// Update the node
-	return r.Update(ctx, node)
+		// Apply labels to the Kubernetes node
+		if node.Labels == nil {
+			node.Labels = make(map[string]string)
+		}
+
+		// Standard KubeFabric labels
+		node.Labels["kubefabric.ai/gpu"] = fabricNode.Spec.GpuType
+		node.Labels["kubefabric.ai/gpu-count"] = fmt.Sprintf("%d", fabricNode.Spec.GpuCount)
+		node.Labels["kubefabric.ai/rdma"] = fmt.Sprintf("%t", fabricNode.Spec.RDMA)
+		node.Labels["kubefabric.ai/sriov"] = fmt.Sprintf("%t", fabricNode.Spec.SRIOV)
+
+		if fabricNode.Spec.Interconnect != "" {
+			node.Labels["kubefabric.ai/interconnect"] = fabricNode.Spec.Interconnect
+		}
+
+		// Apply custom labels from spec (only allow kubefabric.ai/ prefix)
+		for k, v := range fabricNode.Spec.Labels {
+			if strings.HasPrefix(k, "kubefabric.ai/") {
+				node.Labels[k] = v
+			}
+		}
+
+		// Update the node
+		return r.Update(ctx, node)
+	})
 }
 
 func (r *FabricGpuNodeReconciler) handleDeletion(ctx context.Context, fabricNode *kubefabricv1.FabricGpuNode) (ctrl.Result, error) {
@@ -254,13 +275,26 @@ func (r *FabricGpuNodeReconciler) handleDeletion(ctx context.Context, fabricNode
 		node := &corev1.Node{}
 		err := r.Get(ctx, types.NamespacedName{Name: fabricNode.Spec.NodeName}, node)
 		if err == nil {
-			// Remove KubeFabric labels
-			delete(node.Labels, "kubefabric.ai/gpu")
-			delete(node.Labels, "kubefabric.ai/gpu-count")
-			delete(node.Labels, "kubefabric.ai/rdma")
-			delete(node.Labels, "kubefabric.ai/sriov")
-			delete(node.Labels, "kubefabric.ai/interconnect")
-			if err := r.Update(ctx, node); err != nil {
+			if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+				if err := r.Get(ctx, types.NamespacedName{Name: fabricNode.Spec.NodeName}, node); err != nil {
+					return err
+				}
+				// Remove KubeFabric labels
+				delete(node.Labels, "kubefabric.ai/gpu")
+				delete(node.Labels, "kubefabric.ai/gpu-count")
+				delete(node.Labels, "kubefabric.ai/rdma")
+				delete(node.Labels, "kubefabric.ai/sriov")
+				delete(node.Labels, "kubefabric.ai/interconnect")
+
+				// Remove custom labels with kubefabric.ai/ prefix from spec
+				for k := range fabricNode.Spec.Labels {
+					if strings.HasPrefix(k, "kubefabric.ai/") {
+						delete(node.Labels, k)
+					}
+				}
+
+				return r.Update(ctx, node)
+			}); err != nil {
 				r.Log.Error(err, "Failed to remove labels from node during cleanup", "node", fabricNode.Spec.NodeName)
 				return ctrl.Result{}, err
 			}

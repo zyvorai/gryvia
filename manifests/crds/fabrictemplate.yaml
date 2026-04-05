@@ -96,6 +96,8 @@ spec:
                             items:
                               type: string
 
+      subresources:
+        status: {}
       additionalPrinterColumns:
         - name: Category
           type: string

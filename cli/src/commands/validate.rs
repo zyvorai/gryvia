@@ -11,13 +11,25 @@ pub async fn execute(file: &str) -> Result<()> {
     let contents = fs::read_to_string(file)
         .with_context(|| format!("Failed to read file: {}", file))?;
 
-    let _job: DynamicObject = serde_yaml::from_str(&contents)
+    let obj: DynamicObject = serde_yaml::from_str(&contents)
         .context("Failed to parse YAML file")?;
 
     display::print_success("YAML file is valid");
 
-    // TODO: Add schema validation
-    display::print_warning("Full schema validation not yet implemented");
+    // Validate that it's a known KubeFabric resource type
+    let known_kinds = ["FabricAIJob", "FabricQuota", "FabricGpuNode", "FabricStorage", "FabricNetwork"];
+    if let Some(ref types) = obj.types {
+        if types.api_version != "kubefabric.ai/v1" {
+            display::print_warning(&format!("apiVersion '{}' is not kubefabric.ai/v1", types.api_version));
+        }
+        if !known_kinds.contains(&types.kind.as_str()) {
+            display::print_warning(&format!("kind '{}' is not a known KubeFabric resource type", types.kind));
+        } else {
+            display::print_success(&format!("Resource type '{}' is valid", types.kind));
+        }
+    } else {
+        display::print_warning("Missing apiVersion/kind in YAML");
+    }
 
     Ok(())
 }

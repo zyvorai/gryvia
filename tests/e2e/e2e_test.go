@@ -88,14 +88,10 @@ func TestE2E_AIJobLifecycle(t *testing.T) {
 				"namespace": tc.namespace,
 			},
 			"spec": map[string]interface{}{
-				"framework": "pytorch",
-				"resources": map[string]interface{}{
-					"gpuType":  "H100",
-					"gpuCount": 1,
-					"memory":   "32Gi",
-					"cpu":      8,
-				},
-				"image": "nvcr.io/nvidia/pytorch:24.01-py3",
+				"type":    "pytorch",
+				"gpus":    1,
+				"gpuType": "H100",
+				"image":   "nvcr.io/nvidia/pytorch:24.01-py3",
 				"command": []string{
 					"python",
 					"-c",
@@ -305,10 +301,10 @@ func TestE2E_StorageProvisioning(t *testing.T) {
 				"name": storageName,
 			},
 			"spec": map[string]interface{}{
-				"backendType": "vast",
+				"backend":  "vast",
+				"endpoint": "vast-mgmt.example.com",
 				"vast": map[string]interface{}{
-					"endpoint": "vast-mgmt.example.com",
-					"vipPool":  "vip-pool-1",
+					"vipPool":    "vip-pool-1",
 					"viewPolicy": "default",
 				},
 				"capacity": "100Ti",

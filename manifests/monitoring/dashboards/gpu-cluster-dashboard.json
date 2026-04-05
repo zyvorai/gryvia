@@ -32,7 +32,7 @@
         "type": "gauge",
         "targets": [
           {
-            "expr": "avg(DCGM_FI_DEV_FB_USED / DCGM_FI_DEV_FB_FREE * 100)"
+            "expr": "avg(DCGM_FI_DEV_FB_USED / (DCGM_FI_DEV_FB_USED + DCGM_FI_DEV_FB_FREE) * 100)"
           }
         ],
         "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0}

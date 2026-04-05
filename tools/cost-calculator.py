@@ -25,9 +25,9 @@ GPU_PRICING = {
 class CostCalculator:
     def __init__(self):
         try:
-            config.load_incluster_config()
-        except config.ConfigException:
             config.load_kube_config()
+        except config.ConfigException:
+            config.load_incluster_config()
 
         self.api = client.CustomObjectsApi()
 
@@ -145,7 +145,10 @@ class CostCalculator:
         current_cost = analysis["total_cost"]
 
         # Simple linear projection
-        projected_cost = (current_cost / days_elapsed) * days_in_month
+        if days_elapsed == 0:
+            projected_cost = 0.0
+        else:
+            projected_cost = (current_cost / days_elapsed) * days_in_month
 
         return {
             "current_month_cost": round(current_cost, 2),

@@ -24,6 +24,8 @@ spec:
         openAPIV3Schema:
           description: FabricStorage is the Schema for the fabricstorages API
           type: object
+          required:
+            - spec
           properties:
             spec:
               type: object
@@ -94,7 +96,7 @@ spec:
                       enum:
                         - Retain
                         - Delete
-                      default: Delete
+                      default: Retain
                     volumeBindingMode:
                       type: string
                       enum:

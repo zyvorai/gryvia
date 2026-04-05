@@ -3,9 +3,14 @@ use kube::api::Api;
 
 use crate::client::KubeFabricClient;
 use crate::types::*;
-use crate::display;
 
 pub async fn execute(client: &KubeFabricClient, resource: &str, name: &str, output: &str) -> Result<()> {
+    // Validate output format
+    match output {
+        "json" | "yaml" => {}
+        _ => anyhow::bail!("Invalid output format: '{}'. Valid formats: json, yaml", output),
+    }
+
     match resource {
         "job" => get_job(client, name, output).await?,
         "quota" => get_quota(client, name, output).await?,

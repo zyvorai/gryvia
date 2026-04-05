@@ -5,14 +5,20 @@ use colored::*;
 
 use crate::client::KubeFabricClient;
 use crate::types::*;
-use crate::display;
 
 pub async fn execute(
     client: &KubeFabricClient,
     team: Option<String>,
     period: &str,
-    _detailed: bool,
+    detailed: bool,
 ) -> Result<()> {
+    let _ = detailed; // TODO: implement detailed breakdown
+
+    // Validate period
+    match period {
+        "day" | "week" | "month" => {}
+        _ => anyhow::bail!("Invalid period: '{}'. Valid periods: day, week, month", period),
+    }
     let api: Api<FabricQuota> = Api::all(client.kube_client.clone());
 
     let quotas = api.list(&ListParams::default()).await

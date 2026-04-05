@@ -218,6 +218,8 @@ spec:
                   type: string
                   enum: [healthy, warning, quota-exceeded]
 
+      subresources:
+        status: {}
       additionalPrinterColumns:
         - name: Members
           type: integer

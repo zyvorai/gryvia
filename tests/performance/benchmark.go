@@ -224,14 +224,10 @@ func submitAndTrackJob(ctx context.Context, namespace, jobName string) JobMetric
 				"namespace": namespace,
 			},
 			"spec": map[string]interface{}{
-				"framework": "pytorch",
-				"resources": map[string]interface{}{
-					"gpuType":  "H100",
-					"gpuCount": 1,
-					"memory":   "16Gi",
-					"cpu":      4,
-				},
-				"image": "nvcr.io/nvidia/pytorch:24.01-py3",
+				"type":    "pytorch",
+				"gpus":    1,
+				"gpuType": "H100",
+				"image":   "nvcr.io/nvidia/pytorch:24.01-py3",
 				"command": []string{
 					"python", "-c", "import time; time.sleep(5); print('Benchmark job completed')",
 				},

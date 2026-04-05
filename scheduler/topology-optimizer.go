@@ -112,7 +112,7 @@ func (to *TopologyOptimizer) GetGPUTopology(nodeName string) (*GPUNode, error) {
 }
 
 // OptimizePlacement finds best GPU placement for a job
-func (to *TopologyOptimizer) OptimizePlacement(gpuCount int, gpuType string, worldSize int) ([]PlacementScore, error) {
+func (to *TopologyOptimizer) OptimizePlacement(gpuCount int, gpuType string) ([]PlacementScore, error) {
 	ctx := context.Background()
 
 	// Get all GPU nodes
@@ -126,7 +126,7 @@ func (to *TopologyOptimizer) OptimizePlacement(gpuCount int, gpuType string, wor
 	var scores []PlacementScore
 
 	for _, node := range nodes.Items {
-		score := to.scoreNode(node.Name, gpuCount, gpuType, worldSize)
+		score := to.scoreNode(node.Name, gpuCount, gpuType)
 		scores = append(scores, score)
 	}
 
@@ -139,7 +139,7 @@ func (to *TopologyOptimizer) OptimizePlacement(gpuCount int, gpuType string, wor
 }
 
 // scoreNode scores a node for GPU placement
-func (to *TopologyOptimizer) scoreNode(nodeName string, gpuCount int, gpuType string, worldSize int) PlacementScore {
+func (to *TopologyOptimizer) scoreNode(nodeName string, gpuCount int, gpuType string) PlacementScore {
 	topology, err := to.GetGPUTopology(nodeName)
 	if err != nil {
 		return PlacementScore{
@@ -315,8 +315,8 @@ func (to *TopologyOptimizer) countNVLinks(node *GPUNode, gpuCount int) int {
 }
 
 // GetRecommendation provides placement recommendation
-func (to *TopologyOptimizer) GetRecommendation(gpuCount int, gpuType string, worldSize int) string {
-	scores, err := to.OptimizePlacement(gpuCount, gpuType, worldSize)
+func (to *TopologyOptimizer) GetRecommendation(gpuCount int, gpuType string) string {
+	scores, err := to.OptimizePlacement(gpuCount, gpuType)
 	if err != nil || len(scores) == 0 {
 		return "No suitable nodes found"
 	}
@@ -378,6 +378,6 @@ func main() {
 	}
 
 	// Example: Find best placement for 8xA100 job
-	recommendation := optimizer.GetRecommendation(8, "A100-80G", 32)
+	recommendation := optimizer.GetRecommendation(8, "A100-80G")
 	fmt.Println(recommendation)
 }

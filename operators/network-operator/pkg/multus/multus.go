@@ -16,16 +16,17 @@ import (
 	kubefabricv1 "github.com/ssahani/kube-fabric/operators/network-operator/api/v1"
 )
 
-const (
-	DefaultNamespace = "default"
-)
-
-
 // CreateNetworkAttachment creates a Multus NetworkAttachmentDefinition
 func CreateNetworkAttachment(ctx context.Context, k8sClient client.Client, network *kubefabricv1.FabricNetwork) error {
 	config, err := generateNetworkConfig(network)
 	if err != nil {
 		return fmt.Errorf("failed to generate network config: %w", err)
+	}
+
+	// Use the network's target namespace, or default to "default"
+	namespace := network.Spec.TargetNamespace
+	if namespace == "" {
+		namespace = "default"
 	}
 
 	nad := &unstructured.Unstructured{
@@ -34,7 +35,7 @@ func CreateNetworkAttachment(ctx context.Context, k8sClient client.Client, netwo
 			"kind":       "NetworkAttachmentDefinition",
 			"metadata": map[string]interface{}{
 				"name":      network.Name,
-				"namespace": DefaultNamespace,
+				"namespace": namespace,
 				"labels": map[string]interface{}{
 					"kubefabric.ai/network": network.Name,
 					"kubefabric.ai/type":    network.Spec.NetworkType,
@@ -55,7 +56,7 @@ func CreateNetworkAttachment(ctx context.Context, k8sClient client.Client, netwo
 	existing := &unstructured.Unstructured{}
 	existing.SetGroupVersionKind(nad.GroupVersionKind())
 
-	err = k8sClient.Get(ctx, types.NamespacedName{Name: network.Name, Namespace: DefaultNamespace}, existing)
+	err = k8sClient.Get(ctx, types.NamespacedName{Name: network.Name, Namespace: namespace}, existing)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return k8sClient.Create(ctx, nad)
@@ -125,12 +126,12 @@ func generateSRIOVConfig(network *kubefabricv1.FabricNetwork) (string, error) {
 	// Use SRIOV spec values for IPAM if available, otherwise use defaults
 	subnet := "10.56.0.0/16"
 	gateway := "10.56.217.1"
-	if network.Spec.RDMA != nil {
-		if network.Spec.RDMA.Subnet != "" {
-			subnet = network.Spec.RDMA.Subnet
+	if network.Spec.SRIOV != nil {
+		if network.Spec.SRIOV.Subnet != "" {
+			subnet = network.Spec.SRIOV.Subnet
 		}
-		if network.Spec.RDMA.Gateway != "" {
-			gateway = network.Spec.RDMA.Gateway
+		if network.Spec.SRIOV.Gateway != "" {
+			gateway = network.Spec.SRIOV.Gateway
 		}
 	}
 

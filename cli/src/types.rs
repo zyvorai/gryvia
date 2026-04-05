@@ -24,9 +24,9 @@ pub struct ResourceSpec {
     #[serde(rename = "gpuType")]
     pub gpu_type: String,
     #[serde(rename = "gpuCount")]
-    pub gpu_count: i32,
+    pub gpu_count: u32,
     pub memory: String,
-    pub cpu: i32,
+    pub cpu: u32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
@@ -35,7 +35,7 @@ pub struct DistributedConfig {
     #[serde(default)]
     pub strategy: String,
     #[serde(rename = "worldSize", default)]
-    pub world_size: i32,
+    pub world_size: u32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
@@ -74,13 +74,13 @@ pub struct QuotaSpec {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GPUQuotaSpec {
     #[serde(rename = "maxGPUs")]
-    pub max_gpus: i32,
+    pub max_gpus: u32,
     #[serde(rename = "maxGPUsPerJob", default)]
-    pub max_gpus_per_job: i32,
+    pub max_gpus_per_job: u32,
     #[serde(rename = "allowedGPUTypes", default)]
     pub allowed_gpu_types: Vec<String>,
     #[serde(rename = "maxRunningJobs", default)]
-    pub max_running_jobs: i32,
+    pub max_running_jobs: u32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -106,11 +106,11 @@ pub struct QuotaStatus {
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct QuotaUsage {
     #[serde(rename = "allocatedGPUs", default)]
-    pub allocated_gpus: i32,
+    pub allocated_gpus: u32,
     #[serde(rename = "runningJobs", default)]
-    pub running_jobs: i32,
+    pub running_jobs: u32,
     #[serde(rename = "queuedJobs", default)]
-    pub queued_jobs: i32,
+    pub queued_jobs: u32,
     #[serde(rename = "gpuHours", default)]
     pub gpu_hours: f64,
 }
@@ -137,7 +137,7 @@ pub struct GpuNodeSpec {
     #[serde(rename = "gpuType")]
     pub gpu_type: String,
     #[serde(rename = "gpuCount")]
-    pub gpu_count: i32,
+    pub gpu_count: u32,
     pub memory: String,
     #[serde(rename = "rdmaEnabled", default)]
     pub rdma_enabled: bool,

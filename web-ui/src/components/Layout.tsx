@@ -1,4 +1,4 @@
-import { ReactNode } from 'react'
+import { ReactNode, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard,
@@ -6,9 +6,11 @@ import {
   Users,
   Server,
   DollarSign,
-  Plus
+  Plus,
+  Menu,
+  X,
+  Activity,
 } from 'lucide-react'
-import clsx from 'clsx'
 
 interface LayoutProps {
   children: ReactNode
@@ -24,62 +26,118 @@ const navigation = [
 
 export default function Layout({ children }: LayoutProps) {
   const location = useLocation()
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+
+  const isActive = (href: string) => {
+    if (href === '/dashboard') return location.pathname === '/dashboard' || location.pathname === '/'
+    return location.pathname.startsWith(href)
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-xl">K</span>
+    <div className="h-screen flex flex-col bg-slate-950">
+      {/* Top Navbar */}
+      <header className="sticky top-0 z-50 navbar-gradient border-b border-slate-700/50 flex-shrink-0">
+        <div className="flex items-center h-14 px-4">
+          {/* Logo */}
+          <Link to="/dashboard" className="flex items-center gap-2 mr-8 flex-shrink-0">
+            <div className="w-8 h-8 bg-gradient-to-br from-blue-400 to-cyan-600 rounded-lg flex items-center justify-center">
+              <span className="text-white font-bold text-sm">KF</span>
             </div>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">KubeFabric</h1>
-              <p className="text-sm text-gray-500">GPU Cluster Manager</p>
-            </div>
-          </div>
-
-          <Link
-            to="/jobs/new"
-            className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Submit Job
+            <h1 className="text-xl font-bold bg-gradient-to-r from-blue-400 to-blue-600 bg-clip-text text-transparent">
+              KubeFabric
+            </h1>
           </Link>
-        </div>
-      </header>
 
-      <div className="flex">
-        {/* Sidebar */}
-        <aside className="w-64 bg-white shadow-sm min-h-[calc(100vh-73px)]">
-          <nav className="px-4 py-6 space-y-1">
+          {/* Nav items (desktop) */}
+          <nav className="hidden md:flex items-center gap-1 flex-1">
             {navigation.map((item) => {
-              const isActive = location.pathname === item.href
+              const Icon = item.icon
+              const active = isActive(item.href)
               return (
                 <Link
                   key={item.name}
                   to={item.href}
-                  className={clsx(
-                    'flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors',
-                    isActive
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
-                  )}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    active
+                      ? 'bg-blue-600/20 text-blue-400'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                  }`}
                 >
-                  <item.icon className={clsx('mr-3 h-5 w-5', isActive ? 'text-blue-700' : 'text-gray-400')} />
+                  <Icon className="h-4 w-4" />
                   {item.name}
                 </Link>
               )
             })}
           </nav>
-        </aside>
 
-        {/* Main content */}
-        <main className="flex-1 p-8">
+          {/* Right section */}
+          <div className="flex items-center gap-3 ml-auto">
+            <Link
+              to="/jobs/new"
+              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Submit Job
+            </Link>
+
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/50 rounded-lg border border-slate-700/50">
+              <Activity className="h-3.5 w-3.5 text-green-400 animate-pulse-dot" />
+              <span className="text-xs text-slate-400">Live</span>
+            </div>
+
+            {/* Mobile hamburger */}
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="h-8 w-8 rounded-lg hover:bg-slate-800 flex md:hidden items-center justify-center transition-colors text-blue-400"
+            >
+              {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* Mobile menu */}
+      {mobileMenuOpen && (
+        <div className="fixed inset-0 z-40 md:hidden">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setMobileMenuOpen(false)} />
+          <div className="absolute top-14 left-0 right-0 bg-slate-900 border-b border-slate-700 shadow-2xl p-4 space-y-1 z-50">
+            {navigation.map((item) => {
+              const Icon = item.icon
+              const active = isActive(item.href)
+              return (
+                <Link
+                  key={item.name}
+                  to={item.href}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
+                    active
+                      ? 'bg-blue-600/20 text-blue-400'
+                      : 'text-slate-300 hover:bg-slate-800 hover:text-slate-100'
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  {item.name}
+                </Link>
+              )
+            })}
+            <Link
+              to="/jobs/new"
+              onClick={() => setMobileMenuOpen(false)}
+              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm bg-blue-600/20 text-blue-400"
+            >
+              <Plus className="h-4 w-4" />
+              Submit Job
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {/* Main content */}
+      <main className="flex-1 overflow-auto px-3 py-4 md:px-6 md:py-6 page-bg">
+        <div className="animate-fade-in">
           {children}
-        </main>
-      </div>
+        </div>
+      </main>
     </div>
   )
 }

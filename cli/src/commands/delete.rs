@@ -21,8 +21,14 @@ pub async fn execute(client: &KubeFabricClient, resource: &str, name: &str, yes:
     match resource {
         "job" => delete_job(client, name).await?,
         "quota" => delete_quota(client, name).await?,
+        "storage" => {
+            display::print_warning("Resource type 'storage' delete is not yet implemented");
+        }
+        "network" => {
+            display::print_warning("Resource type 'network' delete is not yet implemented");
+        }
         _ => {
-            anyhow::bail!("Unknown resource type: {}. Valid types: job, quota", resource);
+            anyhow::bail!("Unknown resource type: {}. Valid types: job, quota, storage, network", resource);
         }
     }
 

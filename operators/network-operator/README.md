@@ -136,12 +136,20 @@ spec:
 
 ## Implementation Details
 
+### Reconciliation Behavior
+
+- SR-IOV label cleanup uses `strings.HasPrefix` for accurate prefix matching (fixes an off-by-one bug in earlier versions).
+- Node configuration failures are now tracked: the reconciler returns an error if all target nodes fail to configure, ensuring the failure is visible in operator logs and CR status.
+- RDMA device lists are serialized as JSON in ConfigMaps (not Go `fmt %v`), producing valid structured data for consumers.
+- Node updates (labels, annotations) are wrapped in `retry.RetryOnConflict` to handle concurrent modifications gracefully.
+- The controller no longer uses `Owns()` for DaemonSets or ConfigMaps, since cross-namespace owner references are not supported by Kubernetes. Resources are managed via explicit reconciliation logic instead.
+
 ### RDMA Configuration
 
 **Device Plugin Deployment:**
 - DaemonSet running on all RDMA-capable nodes
 - Uses Mellanox k8s-rdma-shared-dev-plugin
-- ConfigMap-based device configuration
+- ConfigMap-based device configuration (device list serialized as JSON)
 
 **Files:**
 - `controllers/fabricnetwork_controller.go` - Main reconciliation

@@ -5,7 +5,7 @@
 **KubeFabric** is an enterprise-grade GPU compute platform for AI infrastructure, built from scratch over 22 development iterations.
 
 ### Stats
-- **Total Commits**: 22
+- **Total Commits**: 26
 - **Total Files**: 230+
 - **Lines of Code**: ~62,600+
 - **Development Time**: Progressive iterations
@@ -55,7 +55,7 @@ Commands:
 - list        List all jobs
 - status      Get job status
 - logs        View job logs
-- cancel      Cancel running job
+- cancel      Cancel running job (patches status, does not delete)
 - cluster     View cluster resources
 - quota       Check team quota usage
 - cost        View cost breakdown
@@ -81,21 +81,30 @@ Modern dashboard (~8,000 LOC):
 - Settings (configuration)
 
 **Features**:
-- Real-time updates
-- Interactive charts
-- Dark/light mode
-- Responsive design
+- Real-time updates with React Query
+- Interactive charts (Recharts with dark tooltips)
+- Dark theme matching hyper2kvm design (slate-950 background, gradient stat cards)
+- Responsive design with top navbar and mobile menu
+- Auth token support (localStorage or VITE_API_TOKEN)
+- Error states on all pages, 404 catch-all route
+- Typed API responses (ClusterStats, GPUMetricsResponse, CostData)
+- All API calls routed through gateway (no direct K8s API access)
 
 ### 4. API Gateway (Python FastAPI)
 RESTful API (~2,000 LOC):
 
 **Endpoints**:
-- Jobs API (CRUD operations)
-- Cluster API (node management)
-- Quota API (limits, usage)
-- Cost API (analysis, reporting)
-- Metrics API (Prometheus)
-- WebSocket (real-time streaming)
+- `/api/cluster/stats` - Cluster statistics
+- `/api/jobs` - List (with pagination), create, get, delete jobs
+- `/api/quotas` - List (with pagination), get quotas
+- `/api/nodes` - List (with pagination), get nodes
+- `/api/nodes/health` - Node health status
+- `/api/metrics/gpu` - GPU metrics
+- `/api/metrics/costs` - Cost data
+- `/api/metrics/jobs` - Job metrics
+- `/api/quota/usage` - Quota usage
+- All list endpoints support `limit` and `offset` query parameters
+- Bearer token authentication, rate limiting
 
 ### 5. Services & Integrations
 
@@ -177,10 +186,11 @@ RESTful API (~2,000 LOC):
 
 ### Security & Compliance
 - RBAC (4 role levels)
-- Pod Security Policies
+- Hardened security contexts (runAsNonRoot, readOnlyRootFilesystem, allowPrivilegeEscalation: false)
 - Network Policies
-- Secrets management
+- Secrets management with timing-safe comparison
 - Audit logging
+- CRD validation (required fields, enum constraints, min/max)
 - SOC 2, HIPAA, GDPR support
 
 ## 💰 Cost Optimization
@@ -419,6 +429,19 @@ RESTful API (~2,000 LOC):
 - Advanced hierarchical quota management
 - Disaster recovery testing and validation
 
+### Iterations 23-26 (Commits 23-26) - Comprehensive Code Review
+Two-pass code review across the entire codebase, finding and fixing 110+ issues:
+
+**Categories of fixes:**
+- **Compilation errors** - Missing imports, type mismatches, incorrect API usage
+- **Security vulnerabilities** - Hardened security contexts (runAsNonRoot, readOnlyRootFilesystem, allowPrivilegeEscalation: false), timing-safe token comparison, pinned CI actions to SHA
+- **Logic bugs** - Cancel command now patches job status to Cancelled instead of deleting, proper error propagation, correct reclaim policy defaults
+- **Kubernetes best practices** - Leader election enabled by default on all operators, retry on conflict for status updates, proper watch event handlers, CRD validation with required fields and enum constraints
+- **API gateway improvements** - Async-safe Kubernetes client, pagination on all list endpoints (limit/offset), CRUD endpoints for jobs/quotas/nodes, rate limiting, proper error responses
+- **React/UI anti-patterns** - Dark theme matching hyper2kvm design (slate-950 background, gradient stat cards), auth token support via localStorage/VITE_API_TOKEN, 404 catch-all route, error states on all pages, typed API responses (ClusterStats, GPUMetricsResponse, CostData)
+- **Dead code removal** - Unused imports, unreachable branches, redundant type assertions
+- **Operator reliability** - Conflict retry logic, leader election on all operators, proper finalizer handling, structured logging
+
 ## 🎯 Production Readiness
 
 ### Checklist
@@ -456,4 +479,4 @@ KubeFabric is a complete, production-ready platform for managing GPU compute inf
 
 ---
 
-Built with ❤️ over 20 development iterations
+Built with ❤️ over 26 development iterations

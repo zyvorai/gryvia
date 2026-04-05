@@ -26,7 +26,7 @@ class CapacityPlanner:
     def __init__(self):
         try:
             config.load_kube_config()
-        except Exception:
+        except config.ConfigException:
             config.load_incluster_config()
 
         self.api = client.CustomObjectsApi()
@@ -106,12 +106,20 @@ class CapacityPlanner:
             if "memory" in allocatable:
                 memory_str = str(allocatable["memory"])
                 # Convert Kubernetes memory units to GB
-                if memory_str.endswith("Ki"):
-                    memory_gb = int(memory_str[:-2]) / (1024 * 1024)
-                elif memory_str.endswith("Mi"):
-                    memory_gb = int(memory_str[:-2]) / 1024
-                elif memory_str.endswith("Gi"):
-                    memory_gb = int(memory_str[:-2])
+                try:
+                    if memory_str.endswith("Ki"):
+                        memory_gb = int(memory_str[:-2]) / (1024 * 1024)
+                    elif memory_str.endswith("Mi"):
+                        memory_gb = int(memory_str[:-2]) / 1024
+                    elif memory_str.endswith("Gi"):
+                        memory_gb = int(memory_str[:-2])
+                    elif memory_str.endswith("Ti"):
+                        memory_gb = int(memory_str[:-2]) * 1024
+                    else:
+                        # Plain bytes
+                        memory_gb = int(memory_str) / (1024 ** 3)
+                except (ValueError, TypeError):
+                    memory_gb = 0
                 elif memory_str.endswith("Ti"):
                     memory_gb = int(memory_str[:-2]) * 1024
                 else:
@@ -257,8 +265,10 @@ class CapacityPlanner:
             return "Already at capacity"
 
         # Simple linear extrapolation
-        days_to_exhaustion = int((available_capacity - current_usage) /
-                                 (current_usage * growth_rate / 90))
+        daily_growth = current_usage * growth_rate / 90
+        if daily_growth <= 0 or current_usage <= 0:
+            return "No exhaustion predicted"
+        days_to_exhaustion = int((available_capacity - current_usage) / daily_growth)
 
         exhaustion_date = datetime.now() + timedelta(days=days_to_exhaustion)
         return exhaustion_date.strftime("%Y-%m-%d")

@@ -155,7 +155,9 @@ run_benchmark() {
     echo -e "\n${YELLOW}[8/8] Running Quick GPU Benchmark...${NC}"
 
     if command -v python3 &> /dev/null; then
-        cat > /tmp/gpu_bench.py << 'EOF'
+        local bench_file
+        bench_file=$(mktemp /tmp/gpu_bench.XXXXXX.py)
+        cat > "$bench_file" << 'EOF'
 import torch
 import time
 
@@ -186,9 +188,9 @@ else:
     print("CUDA not available")
 EOF
 
-        python3 /tmp/gpu_bench.py 2>/dev/null && echo -e "${GREEN}✓ Benchmark completed${NC}" || \
+        python3 "$bench_file" 2>/dev/null && echo -e "${GREEN}✓ Benchmark completed${NC}" || \
             echo -e "${YELLOW}⚠ PyTorch not available, skipping benchmark${NC}"
-        rm -f /tmp/gpu_bench.py
+        rm -f "$bench_file"
     else
         echo -e "${YELLOW}⚠ Python not available, skipping benchmark${NC}"
     fi

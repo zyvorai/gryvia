@@ -179,6 +179,8 @@ spec:
                     wastedCost:
                       type: number
 
+      subresources:
+        status: {}
       additionalPrinterColumns:
         - name: Owner
           type: string

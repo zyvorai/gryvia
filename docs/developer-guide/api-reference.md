@@ -37,6 +37,40 @@ curl -H "Authorization: Bearer $TOKEN" \
   http://kubefabric-api:8000/api/v1/jobs
 ```
 
+## API Gateway CRUD Endpoints
+
+The API gateway exposes simplified CRUD endpoints for direct resource management. All list endpoints support pagination via `limit` (default 100) and `offset` query parameters. All Kubernetes API calls are executed asynchronously via `run_in_executor`.
+
+### Jobs
+
+```http
+GET    /api/jobs              # List jobs (?limit=100&offset=0)
+POST   /api/jobs              # Create a job (validates apiVersion and kind, enforces namespace server-side)
+GET    /api/jobs/{name}       # Get job by name
+DELETE /api/jobs/{name}       # Delete job by name
+```
+
+### Quotas
+
+```http
+GET /api/quotas               # List quotas (?limit=100&offset=0)
+GET /api/quotas/{name}        # Get quota by name
+```
+
+### Nodes
+
+```http
+GET /api/nodes                # List nodes (?limit=100&offset=0)
+GET /api/nodes/{name}         # Get node by name
+```
+
+**Notes:**
+- `POST /api/jobs` validates that `apiVersion` is `kubefabric.ai/v1` and `kind` is a known KubeFabric type.
+- Cost responses include a `hasHistoricalData` field indicating whether Prometheus data is available.
+- Monthly cost trend data is not available through the gateway (historical trends require Prometheus).
+
+---
+
 ## Jobs API
 
 ### List Jobs

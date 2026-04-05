@@ -101,7 +101,10 @@ func (r *FabricStorageReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 func (r *FabricStorageReconciler) reconcileStorage(ctx context.Context, storage *kubefabricv1.FabricStorage) (ctrl.Result, error) {
 	log := r.Log.WithValues("fabricstorage", storage.Name)
 
-	storage.Status.Phase = PhaseConfiguring
+	// Only set Configuring if this is the first reconciliation pass
+	if storage.Status.Phase == "" {
+		storage.Status.Phase = PhaseConfiguring
+	}
 
 	// Step 1: Install CSI Driver based on backend
 	if err := r.ensureCSIDriver(ctx, storage); err != nil {
@@ -186,7 +189,10 @@ func (r *FabricStorageReconciler) ensureStorageClass(ctx context.Context, storag
 
 	sc := &storagev1.StorageClass{}
 	err := r.Get(ctx, types.NamespacedName{Name: scName}, sc)
-	if err != nil && errors.IsNotFound(err) {
+	if err != nil {
+		if !errors.IsNotFound(err) {
+			return fmt.Errorf("failed to get StorageClass %s: %w", scName, err)
+		}
 		// Create StorageClass
 		sc = r.buildStorageClass(storage, scName)
 		// Set owner reference for garbage collection (both are cluster-scoped)

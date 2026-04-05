@@ -23,6 +23,8 @@ spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 65534
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: manager
         image: "{{ .Values.global.imageRegistry }}/{{ .Values.gpuOperator.image.repository }}:{{ .Values.gpuOperator.image.tag }}"
@@ -56,6 +58,7 @@ spec:
         resources:
           {{- toYaml .Values.gpuOperator.resources | nindent 10 }}
         securityContext:
+          readOnlyRootFilesystem: true
           allowPrivilegeEscalation: false
           capabilities:
             drop:

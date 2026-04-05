@@ -83,7 +83,7 @@ backup() {
 
     # Backup CRDs
     log_info "Backing up CRDs..."
-    kubectl get crds -o yaml > "${backup_path}/crds.yaml"
+    kubectl get crds -o name | grep kubefabric | xargs kubectl get -o yaml > "${backup_path}/crds.yaml"
 
     # Backup FabricGpuNodes
     log_info "Backing up GPU Nodes..."
@@ -123,7 +123,7 @@ backup() {
 {
   "timestamp": "${TIMESTAMP}",
   "namespace": "${NAMESPACE}",
-  "kubernetes_version": "$(kubectl version --short 2>/dev/null | grep Server | awk '{print $3}')",
+  "kubernetes_version": "$(kubectl version -o json 2>/dev/null | python3 -c 'import sys,json; print(json.load(sys.stdin)["serverVersion"]["gitVersion"])' 2>/dev/null || echo 'unknown')",
   "kubefabric_version": "$(kubectl get deployment kubefabric-gpu-operator -n kubefabric -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || echo 'unknown')"
 }
 EOF

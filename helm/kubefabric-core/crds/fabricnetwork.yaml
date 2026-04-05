@@ -24,6 +24,8 @@ spec:
         openAPIV3Schema:
           description: FabricNetwork is the Schema for the fabricnetworks API
           type: object
+          required:
+            - spec
           properties:
             spec:
               type: object

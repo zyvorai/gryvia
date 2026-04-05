@@ -24,6 +24,8 @@ spec:
         openAPIV3Schema:
           description: FabricGpuNode is the Schema for the fabricgpunodes API
           type: object
+          required:
+            - spec
           properties:
             spec:
               type: object

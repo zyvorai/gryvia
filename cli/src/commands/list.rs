@@ -7,10 +7,26 @@ use crate::types::*;
 use crate::display;
 
 pub async fn execute(client: &KubeFabricClient, resource: &str, all_namespaces: bool, output: &str) -> Result<()> {
+    // Validate output format
+    match output {
+        "table" | "json" | "yaml" => {}
+        _ => anyhow::bail!("Invalid output format: '{}'. Valid formats: table, json, yaml", output),
+    }
+
     match resource {
         "jobs" | "job" => list_jobs(client, all_namespaces, output).await?,
-        "quotas" | "quota" => list_quotas(client, output).await?,
-        "nodes" | "node" => list_nodes(client, output).await?,
+        "quotas" | "quota" => {
+            if all_namespaces {
+                display::print_warning("--all-namespaces has no effect for cluster-scoped resource 'quotas'");
+            }
+            list_quotas(client, output).await?
+        },
+        "nodes" | "node" => {
+            if all_namespaces {
+                display::print_warning("--all-namespaces has no effect for cluster-scoped resource 'nodes'");
+            }
+            list_nodes(client, output).await?
+        },
         _ => {
             anyhow::bail!("Unknown resource type: {}. Valid types: jobs, quotas, nodes", resource);
         }

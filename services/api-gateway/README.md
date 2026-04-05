@@ -19,6 +19,29 @@ GET /api/cluster/stats
 ```
 Returns overall cluster statistics including GPU counts, utilization, and job counts.
 
+### Jobs CRUD
+```
+GET  /api/jobs              # List all jobs (supports ?limit=100&offset=0)
+POST /api/jobs              # Create a new job
+GET  /api/jobs/{name}       # Get job details
+DELETE /api/jobs/{name}     # Delete a job
+```
+
+- `create_job` (POST) validates `apiVersion` and `kind` against known KubeFabric types and enforces the namespace server-side.
+- List endpoint supports pagination via `limit` (default 100) and `offset` query parameters.
+
+### Quotas
+```
+GET /api/quotas             # List all quotas (supports ?limit=100&offset=0)
+GET /api/quotas/{name}      # Get quota details
+```
+
+### Nodes
+```
+GET /api/nodes              # List all nodes (supports ?limit=100&offset=0)
+GET /api/nodes/{name}       # Get node details
+```
+
 ### GPU Metrics
 ```
 GET /api/metrics/gpu?time_range=1h
@@ -29,7 +52,7 @@ Returns GPU metrics over time. Time ranges: `1h`, `6h`, `24h`, `7d`.
 ```
 GET /api/metrics/costs
 ```
-Returns cost analysis including monthly trends, breakdown by team, and by GPU type.
+Returns cost analysis including breakdown by team and by GPU type. The response includes a `hasHistoricalData` field indicating whether Prometheus historical data is available. Monthly cost trend data has been removed (historical trends require a Prometheus instance).
 
 ### Job Metrics
 ```
@@ -122,12 +145,19 @@ server: {
 
 In production, configure nginx to proxy `/api` requests to the API gateway service.
 
+## Implementation Notes
+
+- All Kubernetes API calls are async, executed via `run_in_executor` to avoid blocking the event loop.
+- `datetime.now(timezone.utc)` is used instead of the deprecated `datetime.utcnow()`.
+- The Prometheus client is optional and initialized inside a `try/except` block; the service operates without Prometheus for basic CRUD functionality.
+- All list endpoints support pagination with `limit` (default 100) and `offset` query parameters.
+
 ## Metrics Collection
 
 The API gateway collects data from multiple sources:
 
 1. **Kubernetes API**: CRD objects (jobs, quotas, nodes)
-2. **Prometheus**: GPU metrics from DCGM exporter
+2. **Prometheus**: GPU metrics from DCGM exporter (optional)
 3. **Node Status**: GPU health from FabricGpuNode CRDs
 
 ## Performance

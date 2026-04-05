@@ -101,7 +101,7 @@ nvidiaDevicePlugin:
   enabled: true
   image:
     repository: nvcr.io/nvidia/k8s-device-plugin
-    tag: v0.14.3
+    tag: v0.17.0
     pullPolicy: IfNotPresent
 
 # NVIDIA DCGM Exporter for metrics
@@ -109,7 +109,7 @@ dcgmExporter:
   enabled: true
   image:
     repository: nvcr.io/nvidia/k8s/dcgm-exporter
-    tag: 3.1.8-3.1.5-ubuntu22.04
+    tag: 3.3.9-3.6.1-ubuntu22.04
     pullPolicy: IfNotPresent
   service:
     type: ClusterIP

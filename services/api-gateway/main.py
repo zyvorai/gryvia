@@ -3,13 +3,13 @@ KubeFabric API Gateway
 Provides REST API for Web UI with aggregated metrics and cluster data
 """
 import asyncio
+import hmac
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from fastapi import FastAPI, HTTPException, Query, Depends, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from kubernetes import client, config
-from prometheus_api_client import PrometheusConnect
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -43,7 +43,7 @@ app.add_middleware(
 )
 
 # API key for authentication (from environment or mounted secret)
-API_KEY = os.environ.get("KUBEFABRIC_API_KEY", "")
+API_KEY = os.environ.get("KUBEFABRIC_API_KEY", "").strip()
 
 async def verify_auth(authorization: Optional[str] = Header(None)):
     """Verify API key or Bearer token for all protected endpoints."""
@@ -56,7 +56,6 @@ async def verify_auth(authorization: Optional[str] = Header(None)):
         raise HTTPException(status_code=401, detail="Authorization header required")
     # Support both "Bearer <token>" and raw key
     token = authorization.removeprefix("Bearer ").strip()
-    import hmac
     if not hmac.compare_digest(token, API_KEY):
         raise HTTPException(status_code=403, detail="Invalid credentials")
 
@@ -75,9 +74,16 @@ except config.ConfigException:
 k8s_custom = client.CustomObjectsApi()
 k8s_core = client.CoreV1Api()
 
-# Prometheus client
+# Prometheus client (optional - used for historical metrics when available)
 PROMETHEUS_URL = os.environ.get("PROMETHEUS_URL", "http://prometheus-operated.kubefabric:9090")
-prom = PrometheusConnect(url=PROMETHEUS_URL, disable_ssl=PROMETHEUS_URL.startswith("http://"))
+prom = None
+try:
+    from prometheus_api_client import PrometheusConnect
+    if PROMETHEUS_URL:
+        prom = PrometheusConnect(url=PROMETHEUS_URL, disable_ssl=PROMETHEUS_URL.startswith("http://"))
+        logger.info("Connected to Prometheus at %s", PROMETHEUS_URL)
+except Exception:
+    logger.warning("Failed to connect to Prometheus at %s - historical metrics unavailable", PROMETHEUS_URL)
 
 # Namespace for job queries (configurable)
 JOB_NAMESPACE = os.environ.get("KUBEFABRIC_JOB_NAMESPACE", "default")
@@ -108,19 +114,27 @@ async def health():
 async def get_cluster_stats(request: Request, _=Depends(verify_auth)):
     """Get overall cluster statistics"""
     try:
+        loop = asyncio.get_running_loop()
+
         # Get all GPU nodes
-        nodes = k8s_custom.list_cluster_custom_object(
-            group="kubefabric.ai",
-            version="v1",
-            plural="fabricgpunodes"
+        nodes = await loop.run_in_executor(
+            None,
+            lambda: k8s_custom.list_cluster_custom_object(
+                group="kubefabric.ai",
+                version="v1",
+                plural="fabricgpunodes"
+            )
         )
 
         # Get all jobs
-        jobs = k8s_custom.list_namespaced_custom_object(
-            group="kubefabric.ai",
-            version="v1",
-            namespace=JOB_NAMESPACE,
-            plural="fabricaijobs"
+        jobs = await loop.run_in_executor(
+            None,
+            lambda: k8s_custom.list_namespaced_custom_object(
+                group="kubefabric.ai",
+                version="v1",
+                namespace=JOB_NAMESPACE,
+                plural="fabricaijobs"
+            )
         )
 
         total_gpus = 0
@@ -130,22 +144,22 @@ async def get_cluster_stats(request: Request, _=Depends(verify_auth)):
         gpu_count = 0
 
         for node in nodes.get("items", []):
-            node_gpus = node["spec"]["gpuCount"]
+            node_gpus = node.get("spec", {}).get("gpuCount", 0)
             total_gpus += node_gpus
 
             # Get GPU metrics from status
-            if "status" in node and "gpus" in node["status"]:
-                for gpu in node["status"]["gpus"]:
-                    gpu_utilization_sum += gpu.get("utilization", 0)
-                    gpu_count += 1
+            status = node.get("status", {})
+            for gpu in status.get("gpus", []):
+                gpu_utilization_sum += gpu.get("utilization", 0)
+                gpu_count += 1
 
         # Count allocated GPUs from running jobs
         for job in jobs.get("items", []):
             status = job.get("status", {})
             if status.get("phase") == "Running":
-                allocated_gpus += job["spec"]["resources"]["gpuCount"]
+                allocated_gpus += job.get("spec", {}).get("gpus", job.get("spec", {}).get("resources", {}).get("gpuCount", 0))
 
-        available_gpus = total_gpus - allocated_gpus
+        available_gpus = max(0, total_gpus - allocated_gpus)
         avg_utilization = gpu_utilization_sum / gpu_count if gpu_count > 0 else 0
 
         # Count jobs by status
@@ -165,7 +179,7 @@ async def get_cluster_stats(request: Request, _=Depends(verify_auth)):
             "completedJobs": job_counts.get("Completed", 0),
             "failedJobs": job_counts.get("Failed", 0),
             "totalNodes": len(nodes.get("items", [])),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
     except Exception as e:
         logger.error("Error getting cluster stats: %s", e, exc_info=True)
@@ -176,40 +190,37 @@ async def get_cluster_stats(request: Request, _=Depends(verify_auth)):
 @limiter.limit("30/minute")
 async def get_gpu_metrics(
     request: Request,
-    time_range: str = Query("1h", description="Time range (1h, 6h, 24h, 7d)"),
+    time_range: str = Query("1h", description="Time range (1h, 6h, 24h, 7d) - reserved for Prometheus integration"),
     _=Depends(verify_auth),
 ):
     """Get GPU utilization metrics over time"""
     try:
-        # Parse time range
-        range_map = {
-            "1h": "1h",
-            "6h": "6h",
-            "24h": "1d",
-            "7d": "7d"
-        }
-        prom_range = range_map.get(time_range, "1h")
+        loop = asyncio.get_running_loop()
 
-        # Query Prometheus for GPU metrics
-        nodes = k8s_custom.list_cluster_custom_object(
-            group="kubefabric.ai",
-            version="v1",
-            plural="fabricgpunodes"
+        # Query GPU node status for current metrics
+        nodes = await loop.run_in_executor(
+            None,
+            lambda: k8s_custom.list_cluster_custom_object(
+                group="kubefabric.ai",
+                version="v1",
+                plural="fabricgpunodes"
+            )
         )
 
         metrics = []
         for node in nodes.get("items", []):
-            if "status" in node and "gpus" in node["status"]:
-                for gpu in node["status"]["gpus"]:
-                    metrics.append({
-                        "node": node["spec"]["nodeName"],
-                        "gpuIndex": gpu["index"],
-                        "utilization": gpu.get("utilization", 0),
-                        "temperature": gpu.get("temperature", 0),
-                        "memoryUsed": gpu.get("memoryUsed", 0),
-                        "memoryTotal": gpu.get("memoryTotal", 0),
-                        "timestamp": datetime.utcnow().isoformat()
-                    })
+            spec = node.get("spec", {})
+            status = node.get("status", {})
+            for gpu in status.get("gpus", []):
+                metrics.append({
+                    "node": spec.get("nodeName", "unknown"),
+                    "gpuIndex": gpu.get("index", 0),
+                    "utilization": gpu.get("utilization", 0),
+                    "temperature": gpu.get("temperature", 0),
+                    "memoryUsed": gpu.get("memoryUsed", 0),
+                    "memoryTotal": gpu.get("memoryTotal", 0),
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                })
 
         return {
             "timeRange": time_range,
@@ -225,19 +236,27 @@ async def get_gpu_metrics(
 async def get_cost_metrics(request: Request, _=Depends(verify_auth)):
     """Get cost metrics and analysis"""
     try:
+        loop = asyncio.get_running_loop()
+
         # Get all quotas with budget info
-        quotas = k8s_custom.list_cluster_custom_object(
-            group="kubefabric.ai",
-            version="v1",
-            plural="fabricquotas"
+        quotas = await loop.run_in_executor(
+            None,
+            lambda: k8s_custom.list_cluster_custom_object(
+                group="kubefabric.ai",
+                version="v1",
+                plural="fabricquotas"
+            )
         )
 
         # Get all jobs to calculate costs
-        jobs = k8s_custom.list_namespaced_custom_object(
-            group="kubefabric.ai",
-            version="v1",
-            namespace=JOB_NAMESPACE,
-            plural="fabricaijobs"
+        jobs = await loop.run_in_executor(
+            None,
+            lambda: k8s_custom.list_namespaced_custom_object(
+                group="kubefabric.ai",
+                version="v1",
+                namespace=JOB_NAMESPACE,
+                plural="fabricaijobs"
+            )
         )
 
         # Calculate costs by team
@@ -246,15 +265,15 @@ async def get_cost_metrics(request: Request, _=Depends(verify_auth)):
 
         for job in jobs.get("items", []):
             status = job.get("status", {})
-            spec = job["spec"]
+            spec = job.get("spec", {})
 
             if status.get("phase") in ["Running", "Completed"]:
-                gpu_type = spec["resources"]["gpuType"]
-                gpu_count = spec["resources"]["gpuCount"]
+                gpu_type = spec.get("gpuType", spec.get("resources", {}).get("gpuType", "unknown"))
+                gpu_count = spec.get("gpus", spec.get("resources", {}).get("gpuCount", 0))
 
                 # Calculate hours
                 start_time = status.get("startTime")
-                end_time = status.get("completionTime") or datetime.utcnow().isoformat()
+                end_time = status.get("completionTime") or datetime.now(timezone.utc).isoformat()
 
                 if start_time:
                     start = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
@@ -264,23 +283,18 @@ async def get_cost_metrics(request: Request, _=Depends(verify_auth)):
                     cost = hours * gpu_count * GPU_PRICING.get(gpu_type, 1.0)
 
                     # Add to team costs (use namespace or label as team identifier)
-                    team = job["metadata"].get("labels", {}).get("team", "default")
+                    team = job.get("metadata", {}).get("labels", {}).get("team", "default")
                     team_costs[team] += cost
 
                     # Add to GPU type costs
                     gpu_type_costs[gpu_type]["cost"] += cost
                     gpu_type_costs[gpu_type]["hours"] += hours * gpu_count
 
-        # Generate monthly data (mock for now - in production, query historical data)
         current_month_cost = sum(team_costs.values())
-        monthly_data = [
-            {"month": "Jan", "cost": current_month_cost * 0.7},
-            {"month": "Feb", "cost": current_month_cost * 0.8},
-            {"month": "Mar", "cost": current_month_cost * 0.75},
-            {"month": "Apr", "cost": current_month_cost * 0.9},
-            {"month": "May", "cost": current_month_cost * 0.95},
-            {"month": "Jun", "cost": current_month_cost},
-        ]
+
+        # Historical monthly data requires Prometheus integration
+        monthly_data = []
+        has_historical_data = False
 
         # Format team costs
         by_team = [
@@ -300,10 +314,11 @@ async def get_cost_metrics(request: Request, _=Depends(verify_auth)):
 
         return {
             "monthly": monthly_data,
+            "hasHistoricalData": has_historical_data,
             "byTeam": by_team,
             "byGPUType": by_gpu_type,
             "totalCost": round(current_month_cost, 2),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
     except Exception as e:
         logger.error("Error getting cost metrics: %s", e, exc_info=True)
@@ -319,11 +334,16 @@ async def get_job_metrics(
 ):
     """Get job metrics over time"""
     try:
-        jobs = k8s_custom.list_namespaced_custom_object(
-            group="kubefabric.ai",
-            version="v1",
-            namespace=JOB_NAMESPACE,
-            plural="fabricaijobs"
+        loop = asyncio.get_running_loop()
+
+        jobs = await loop.run_in_executor(
+            None,
+            lambda: k8s_custom.list_namespaced_custom_object(
+                group="kubefabric.ai",
+                version="v1",
+                namespace=JOB_NAMESPACE,
+                plural="fabricaijobs"
+            )
         )
 
         # Calculate job statistics
@@ -335,12 +355,12 @@ async def get_job_metrics(
 
         for job in jobs.get("items", []):
             status = job.get("status", {})
-            spec = job["spec"]
+            spec = job.get("spec", {})
 
             phase = status.get("phase", "Unknown")
             by_status[phase] += 1
 
-            framework = spec.get("framework", "unknown")
+            framework = spec.get("framework", spec.get("type", "unknown"))
             by_framework[framework] += 1
 
             # Calculate duration for completed jobs
@@ -358,38 +378,304 @@ async def get_job_metrics(
             "byStatus": dict(by_status),
             "byFramework": dict(by_framework),
             "averageDurationHours": round(avg_duration, 2),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
     except Exception as e:
         logger.error("Error getting job metrics: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to retrieve job metrics")
 
 
+@app.get("/api/jobs")
+@limiter.limit("30/minute")
+async def list_jobs(
+    request: Request,
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    _=Depends(verify_auth),
+):
+    """List all jobs with pagination"""
+    try:
+        loop = asyncio.get_running_loop()
+
+        jobs = await loop.run_in_executor(
+            None,
+            lambda: k8s_custom.list_namespaced_custom_object(
+                group="kubefabric.ai",
+                version="v1",
+                namespace=JOB_NAMESPACE,
+                plural="fabricaijobs"
+            )
+        )
+
+        all_items = jobs.get("items", [])
+        total = len(all_items)
+        items = all_items[offset:offset + limit]
+
+        return {
+            "items": items,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        }
+    except Exception as e:
+        logger.error("Error listing jobs: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to list jobs")
+
+
+@app.get("/api/jobs/{name}")
+@limiter.limit("30/minute")
+async def get_job(request: Request, name: str, _=Depends(verify_auth)):
+    """Get a specific job by name"""
+    try:
+        loop = asyncio.get_running_loop()
+
+        job = await loop.run_in_executor(
+            None,
+            lambda: k8s_custom.get_namespaced_custom_object(
+                group="kubefabric.ai",
+                version="v1",
+                namespace=JOB_NAMESPACE,
+                plural="fabricaijobs",
+                name=name,
+            )
+        )
+        return job
+    except client.ApiException as e:
+        if e.status == 404:
+            raise HTTPException(status_code=404, detail=f"Job '{name}' not found")
+        raise HTTPException(status_code=500, detail="Failed to get job")
+    except Exception as e:
+        logger.error("Error getting job %s: %s", name, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get job")
+
+
+@app.post("/api/jobs")
+@limiter.limit("10/minute")
+async def create_job(request: Request, _=Depends(verify_auth)):
+    """Create a new job"""
+    try:
+        loop = asyncio.get_running_loop()
+        body = await request.json()
+
+        # Validate required fields
+        if not isinstance(body, dict):
+            raise HTTPException(status_code=400, detail="Request body must be a JSON object")
+        if body.get("apiVersion") != "kubefabric.ai/v1":
+            raise HTTPException(status_code=400, detail="apiVersion must be kubefabric.ai/v1")
+        if body.get("kind") != "FabricAIJob":
+            raise HTTPException(status_code=400, detail="kind must be FabricAIJob")
+
+        # Enforce namespace server-side to prevent namespace bypass
+        body.setdefault("metadata", {})["namespace"] = JOB_NAMESPACE
+
+        job = await loop.run_in_executor(
+            None,
+            lambda: k8s_custom.create_namespaced_custom_object(
+                group="kubefabric.ai",
+                version="v1",
+                namespace=JOB_NAMESPACE,
+                plural="fabricaijobs",
+                body=body,
+            )
+        )
+        return job
+    except HTTPException:
+        raise
+    except client.ApiException as e:
+        raise HTTPException(status_code=e.status or 500, detail="Failed to create job")
+    except Exception as e:
+        logger.error("Error creating job: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to create job")
+
+
+@app.delete("/api/jobs/{name}")
+@limiter.limit("10/minute")
+async def delete_job(request: Request, name: str, _=Depends(verify_auth)):
+    """Delete a job by name"""
+    try:
+        loop = asyncio.get_running_loop()
+
+        await loop.run_in_executor(
+            None,
+            lambda: k8s_custom.delete_namespaced_custom_object(
+                group="kubefabric.ai",
+                version="v1",
+                namespace=JOB_NAMESPACE,
+                plural="fabricaijobs",
+                name=name,
+            )
+        )
+        return {"status": "deleted", "name": name}
+    except client.ApiException as e:
+        if e.status == 404:
+            raise HTTPException(status_code=404, detail=f"Job '{name}' not found")
+        raise HTTPException(status_code=500, detail="Failed to delete job")
+    except Exception as e:
+        logger.error("Error deleting job %s: %s", name, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to delete job")
+
+
+@app.get("/api/quotas")
+@limiter.limit("30/minute")
+async def list_quotas(
+    request: Request,
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    _=Depends(verify_auth),
+):
+    """List all quotas with pagination"""
+    try:
+        loop = asyncio.get_running_loop()
+
+        quotas = await loop.run_in_executor(
+            None,
+            lambda: k8s_custom.list_cluster_custom_object(
+                group="kubefabric.ai",
+                version="v1",
+                plural="fabricquotas"
+            )
+        )
+
+        all_items = quotas.get("items", [])
+        total = len(all_items)
+        items = all_items[offset:offset + limit]
+
+        return {
+            "items": items,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        }
+    except Exception as e:
+        logger.error("Error listing quotas: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to list quotas")
+
+
+@app.get("/api/quotas/{name}")
+@limiter.limit("30/minute")
+async def get_quota(request: Request, name: str, _=Depends(verify_auth)):
+    """Get a specific quota by name"""
+    try:
+        loop = asyncio.get_running_loop()
+
+        quota = await loop.run_in_executor(
+            None,
+            lambda: k8s_custom.get_cluster_custom_object(
+                group="kubefabric.ai",
+                version="v1",
+                plural="fabricquotas",
+                name=name,
+            )
+        )
+        return quota
+    except client.ApiException as e:
+        if e.status == 404:
+            raise HTTPException(status_code=404, detail=f"Quota '{name}' not found")
+        raise HTTPException(status_code=500, detail="Failed to get quota")
+    except Exception as e:
+        logger.error("Error getting quota %s: %s", name, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get quota")
+
+
+@app.get("/api/nodes")
+@limiter.limit("30/minute")
+async def list_nodes(
+    request: Request,
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    _=Depends(verify_auth),
+):
+    """List all GPU nodes with pagination"""
+    try:
+        loop = asyncio.get_running_loop()
+
+        nodes = await loop.run_in_executor(
+            None,
+            lambda: k8s_custom.list_cluster_custom_object(
+                group="kubefabric.ai",
+                version="v1",
+                plural="fabricgpunodes"
+            )
+        )
+
+        all_items = nodes.get("items", [])
+        total = len(all_items)
+        items = all_items[offset:offset + limit]
+
+        return {
+            "items": items,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        }
+    except Exception as e:
+        logger.error("Error listing nodes: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to list nodes")
+
+
+@app.get("/api/nodes/{name}")
+@limiter.limit("30/minute")
+async def get_node(request: Request, name: str, _=Depends(verify_auth)):
+    """Get a specific GPU node by name"""
+    try:
+        loop = asyncio.get_running_loop()
+
+        node = await loop.run_in_executor(
+            None,
+            lambda: k8s_custom.get_cluster_custom_object(
+                group="kubefabric.ai",
+                version="v1",
+                plural="fabricgpunodes",
+                name=name,
+            )
+        )
+        return node
+    except client.ApiException as e:
+        if e.status == 404:
+            raise HTTPException(status_code=404, detail=f"Node '{name}' not found")
+        raise HTTPException(status_code=500, detail="Failed to get node")
+    except Exception as e:
+        logger.error("Error getting node %s: %s", name, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get node")
+
+
 @app.get("/api/quota/usage")
 @limiter.limit("30/minute")
-async def get_quota_usage(request: Request, _=Depends(verify_auth)):
+async def get_quota_usage(
+    request: Request,
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    _=Depends(verify_auth),
+):
     """Get quota usage across all teams"""
     try:
-        quotas = k8s_custom.list_cluster_custom_object(
-            group="kubefabric.ai",
-            version="v1",
-            plural="fabricquotas"
+        loop = asyncio.get_running_loop()
+
+        quotas = await loop.run_in_executor(
+            None,
+            lambda: k8s_custom.list_cluster_custom_object(
+                group="kubefabric.ai",
+                version="v1",
+                plural="fabricquotas"
+            )
         )
 
         usage_data = []
         for quota in quotas.get("items", []):
-            spec = quota["spec"]
+            spec = quota.get("spec", {})
             status = quota.get("status", {})
             current_usage = status.get("currentUsage", {})
             budget_status = status.get("budgetStatus", {})
+            gpu_quota = spec.get("gpuQuota", {})
+            max_gpus = gpu_quota.get("maxGPUs", 0)
 
             usage_data.append({
-                "team": spec["team"],
-                "maxGPUs": spec["gpuQuota"]["maxGPUs"],
+                "team": spec.get("team", "unknown"),
+                "maxGPUs": max_gpus,
                 "allocatedGPUs": current_usage.get("allocatedGPUs", 0),
                 "utilizationPercent": round(
-                    (current_usage.get("allocatedGPUs", 0) / spec["gpuQuota"]["maxGPUs"]) * 100, 1
-                ) if spec["gpuQuota"]["maxGPUs"] > 0 else 0,
+                    (current_usage.get("allocatedGPUs", 0) / max_gpus) * 100, 1
+                ) if max_gpus > 0 else 0,
                 "runningJobs": current_usage.get("runningJobs", 0),
                 "queuedJobs": current_usage.get("queuedJobs", 0),
                 "monthlyBudget": spec.get("budget", {}).get("monthlyBudget", 0),
@@ -397,9 +683,15 @@ async def get_quota_usage(request: Request, _=Depends(verify_auth)):
                 "remainingBudget": budget_status.get("remainingBudget", 0)
             })
 
+        total = len(usage_data)
+        usage_data = usage_data[offset:offset + limit]
+
         return {
             "quotas": usage_data,
-            "timestamp": datetime.utcnow().isoformat()
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
     except Exception as e:
         logger.error("Error getting quota usage: %s", e, exc_info=True)
@@ -408,47 +700,62 @@ async def get_quota_usage(request: Request, _=Depends(verify_auth)):
 
 @app.get("/api/nodes/health")
 @limiter.limit("30/minute")
-async def get_node_health(request: Request, _=Depends(verify_auth)):
+async def get_node_health(
+    request: Request,
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    _=Depends(verify_auth),
+):
     """Get GPU node health status"""
     try:
-        nodes = k8s_custom.list_cluster_custom_object(
-            group="kubefabric.ai",
-            version="v1",
-            plural="fabricgpunodes"
+        loop = asyncio.get_running_loop()
+
+        nodes = await loop.run_in_executor(
+            None,
+            lambda: k8s_custom.list_cluster_custom_object(
+                group="kubefabric.ai",
+                version="v1",
+                plural="fabricgpunodes"
+            )
         )
 
         health_data = []
         for node in nodes.get("items", []):
-            spec = node["spec"]
+            spec = node.get("spec", {})
             status = node.get("status", {})
 
             # Calculate node health based on GPU metrics
             gpu_health = "Healthy"
             issues = []
 
-            if "gpus" in status:
-                for gpu in status["gpus"]:
-                    temp = gpu.get("temperature", 0)
-                    if temp > 90:
-                        gpu_health = "Critical"
-                        issues.append(f"GPU {gpu['index']} critical temperature: {temp}C")
-                    elif temp > 85:
-                        gpu_health = "Warning"
-                        issues.append(f"GPU {gpu['index']} high temperature: {temp}C")
+            for gpu in status.get("gpus", []):
+                temp = gpu.get("temperature", 0)
+                if temp > 90:
+                    gpu_health = "Critical"
+                    issues.append(f"GPU {gpu.get('index', '?')} critical temperature: {temp}C")
+                elif temp > 85:
+                    gpu_health = "Warning"
+                    issues.append(f"GPU {gpu.get('index', '?')} high temperature: {temp}C")
 
             health_data.append({
-                "nodeName": spec["nodeName"],
-                "gpuType": spec["gpuType"],
-                "gpuCount": spec["gpuCount"],
+                "nodeName": spec.get("nodeName", "unknown"),
+                "gpuType": spec.get("gpuType", "unknown"),
+                "gpuCount": spec.get("gpuCount", 0),
                 "phase": status.get("phase", "Unknown"),
                 "health": gpu_health,
                 "issues": issues,
                 "rdmaEnabled": spec.get("rdmaEnabled", False)
             })
 
+        total = len(health_data)
+        health_data = health_data[offset:offset + limit]
+
         return {
             "nodes": health_data,
-            "timestamp": datetime.utcnow().isoformat()
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
     except Exception as e:
         logger.error("Error getting node health: %s", e, exc_info=True)

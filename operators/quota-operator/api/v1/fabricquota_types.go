@@ -122,13 +122,19 @@ type FabricQuotaList struct {
 	Items           []FabricQuota `json:"items"`
 }
 
-// FabricAIJobSpec defines the spec fields needed by the quota operator
+// FabricAIJobSpec is a minimal struct for quota tracking that intentionally
+// omits fields not needed for quota enforcement (e.g., image, command,
+// distributed config, volumes). Go JSON unmarshaling ignores unknown fields
+// by default, so the full FabricAIJob spec from the API server deserializes
+// correctly into this reduced type.
 type FabricAIJobSpec struct {
 	GPUs    int32  `json:"gpus"`
 	GpuType string `json:"gpuType,omitempty"`
 }
 
-// FabricAIJobStatus defines the status fields needed by the quota operator
+// FabricAIJobStatus is a minimal struct for quota tracking that intentionally
+// omits status fields not needed for quota enforcement. Go JSON unmarshaling
+// ignores unknown fields by default.
 type FabricAIJobStatus struct {
 	Phase          string      `json:"phase,omitempty"`
 	StartTime      *metav1.Time `json:"startTime,omitempty"`
@@ -139,7 +145,10 @@ type FabricAIJobStatus struct {
 //+kubebuilder:object:root=true
 //+kubebuilder:resource:scope=Namespaced
 
-// FabricAIJob is used by the quota operator to track AI job resources
+// FabricAIJob is a minimal duplicate of the AI operator's FabricAIJob type,
+// used by the quota operator to track AI job resources. It intentionally omits
+// fields not needed for quota enforcement. Go JSON unmarshaling ignores
+// unknown fields by default, so the full resource deserializes correctly.
 type FabricAIJob struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

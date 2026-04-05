@@ -1,6 +1,43 @@
 import axios from 'axios'
 import type { FabricAIJob, FabricQuota, FabricGpuNode } from '@/types'
 
+export interface ClusterStats {
+  totalGPUs: number
+  availableGPUs: number
+  allocatedGPUs: number
+  utilizationPercent: number
+  totalJobs: number
+  runningJobs: number
+  pendingJobs: number
+  completedJobs: number
+  failedJobs: number
+  totalNodes: number
+  avgGPUUtilization?: number
+}
+
+export interface GPUMetric {
+  node: string
+  gpuIndex: number
+  utilization: number
+  temperature: number
+  memoryUsed: number
+  memoryTotal: number
+  timestamp: string
+}
+
+export interface GPUMetricsResponse {
+  timeRange: string
+  metrics: GPUMetric[]
+}
+
+export interface CostData {
+  monthly: Array<{ month: string; cost: number }>
+  hasHistoricalData: boolean
+  byTeam: Array<{ team: string; cost: number }>
+  byGPUType: Array<{ type: string; cost: number; hours: number }>
+  totalCost: number
+}
+
 const apiClient = axios.create({
   baseURL: '/api',
   headers: {
@@ -8,63 +45,83 @@ const apiClient = axios.create({
   },
 })
 
+// Attach auth token to all requests
+apiClient.interceptors.request.use((config) => {
+  const token = localStorage.getItem('kubefabric_token') || import.meta.env.VITE_API_TOKEN || ''
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
+
+// Global error handler for auth failures
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      console.error('Authentication failed. Please check your API token.')
+    }
+    return Promise.reject(error)
+  }
+)
+
 export const api = {
   // Cluster stats
-  getClusterStats: async () => {
+  getClusterStats: async (): Promise<ClusterStats> => {
     const { data } = await apiClient.get('/cluster/stats')
     return data
   },
 
-  // Jobs
+  // Jobs - routed through API gateway
   getJobs: async (): Promise<FabricAIJob[]> => {
-    const { data } = await apiClient.get('/apis/kubefabric.ai/v1/namespaces/default/fabricaijobs')
+    const { data } = await apiClient.get('/jobs')
     return data.items || []
   },
 
   getJob: async (name: string): Promise<FabricAIJob> => {
-    const { data } = await apiClient.get(`/apis/kubefabric.ai/v1/namespaces/default/fabricaijobs/${name}`)
+    const { data } = await apiClient.get(`/jobs/${encodeURIComponent(name)}`)
     return data
   },
 
   createJob: async (job: Partial<FabricAIJob>): Promise<FabricAIJob> => {
-    const { data } = await apiClient.post('/apis/kubefabric.ai/v1/namespaces/default/fabricaijobs', job)
+    const { data } = await apiClient.post('/jobs', job)
     return data
   },
 
   deleteJob: async (name: string): Promise<void> => {
-    await apiClient.delete(`/apis/kubefabric.ai/v1/namespaces/default/fabricaijobs/${name}`)
+    await apiClient.delete(`/jobs/${encodeURIComponent(name)}`)
   },
 
-  // Quotas
+  // Quotas - routed through API gateway
   getQuotas: async (): Promise<FabricQuota[]> => {
-    const { data } = await apiClient.get('/apis/kubefabric.ai/v1/fabricquotas')
+    const { data } = await apiClient.get('/quotas')
     return data.items || []
   },
 
   getQuota: async (name: string): Promise<FabricQuota> => {
-    const { data } = await apiClient.get(`/apis/kubefabric.ai/v1/fabricquotas/${name}`)
+    const { data } = await apiClient.get(`/quotas/${encodeURIComponent(name)}`)
     return data
   },
 
-  // Nodes
+  // Nodes - routed through API gateway
   getNodes: async (): Promise<FabricGpuNode[]> => {
-    const { data } = await apiClient.get('/apis/kubefabric.ai/v1/fabricgpunodes')
+    const { data } = await apiClient.get('/nodes')
     return data.items || []
   },
 
   getNode: async (name: string): Promise<FabricGpuNode> => {
-    const { data } = await apiClient.get(`/apis/kubefabric.ai/v1/fabricgpunodes/${name}`)
+    const { data } = await apiClient.get(`/nodes/${encodeURIComponent(name)}`)
     return data
   },
 
   // GPU Metrics
-  getGPUMetrics: async () => {
+  getGPUMetrics: async (): Promise<GPUMetricsResponse> => {
     const { data } = await apiClient.get('/metrics/gpu')
     return data
   },
 
   // Cost data
-  getCostData: async () => {
+  getCostData: async (): Promise<CostData> => {
     const { data } = await apiClient.get('/metrics/costs')
     return data
   },

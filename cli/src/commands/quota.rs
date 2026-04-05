@@ -50,7 +50,7 @@ fn print_quota_details(quota: &FabricQuota, show_budget: bool) {
     println!("  Allocated GPUs: {}/{} ({}%)",
         usage.allocated_gpus.to_string().yellow(),
         spec.max_gpus,
-        if spec.max_gpus > 0 { ((usage.allocated_gpus as f64 / spec.max_gpus as f64) * 100.0) as i32 } else { 0 }
+        if spec.max_gpus > 0 { ((usage.allocated_gpus as f64 / spec.max_gpus as f64) * 100.0).round() as i32 } else { 0 }
     );
 
     println!("  Max GPUs per Job: {}", spec.max_gpus_per_job);

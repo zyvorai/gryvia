@@ -168,6 +168,8 @@ spec:
                     utilization:
                       type: number
 
+      subresources:
+        status: {}
       additionalPrinterColumns:
         - name: Strategy
           type: string

@@ -127,6 +127,15 @@ The following table lists the configurable parameters and their default values.
 | `networkPolicy.enabled` | Enable network policies | `true` |
 | `podSecurityPolicy.enabled` | Enable PSP (deprecated) | `false` |
 
+### CRD and Security Defaults
+
+- All CRDs enforce `required: ["spec"]` at the top level for validation.
+- `FabricStorage` StorageClass `reclaimPolicy` defaults to `Retain` (not `Delete`).
+- `FabricQuota` `maxGpus` minimum is `1` (cannot be `0`).
+- DCGM exporter security is hardened: drops ALL capabilities, adds only `SYS_ADMIN`, and sets `readOnlyRootFilesystem: true`.
+- nvidia-device-plugin liveness probe changed from `nvidia-smi` to an HTTP health check endpoint.
+- gpu-operator deployment includes `seccompProfile: RuntimeDefault`.
+
 ### High Availability
 
 | Parameter | Description | Default |

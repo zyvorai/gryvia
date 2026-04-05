@@ -141,7 +141,7 @@ upgrade_crds() {
 
     local crd_tmpdir
     crd_tmpdir=$(mktemp -d)
-    trap "rm -rf ${crd_tmpdir}" RETURN
+    trap 'rm -rf "${crd_tmpdir}"' RETURN
 
     for crd in fabricgpunode fabricaijob fabricstorage fabricnetwork fabricquota; do
         log_info "  Downloading ${crd}..."

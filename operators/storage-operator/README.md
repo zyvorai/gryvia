@@ -83,13 +83,18 @@ spec:
 
 ## Implementation Details
 
+### Reconciliation Behavior
+
+- The operator sets the phase to `Configuring` only when it is empty (initial creation), not on every reconciliation cycle. This prevents unnecessary status churn during steady-state operation.
+- `ensureStorageClass` properly returns errors for non-NotFound API failures, ensuring transient errors are not silently ignored.
+
 ### VAST CSI Driver
 
 The operator deploys:
 - ServiceAccount with RBAC permissions
 - CSI Controller Deployment (1 replica)
 - CSI Node DaemonSet (on all storage nodes)
-- StorageClass with RWX access mode
+- StorageClass with RWX access mode and `Retain` reclaim policy (default)
 
 **Files:**
 - `controllers/fabricstorage_controller.go` - Main reconciliation loop

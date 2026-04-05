@@ -8,7 +8,6 @@ import argparse
 import json
 import sys
 import os
-import subprocess
 from datetime import datetime
 from typing import Dict, List, Optional
 from kubernetes import client, config as k8s_config
@@ -101,8 +100,8 @@ class MigrationTool:
             os.makedirs(type_dir, exist_ok=True)
 
             for item in items:
-                # Clean up Kubernetes metadata
-                cleaned = self.clean_resource(item)
+                # Clean up Kubernetes metadata; redact secrets to avoid plaintext export
+                cleaned = self.clean_resource(item, redact_secrets=(resource_type == "secrets"))
 
                 # Generate filename
                 name = cleaned["metadata"]["name"]
@@ -129,7 +128,7 @@ class MigrationTool:
 
         print(f"\n{GREEN}✓ Exported {manifest['total_resources']} resources to {output_dir}{NC}")
 
-    def clean_resource(self, resource: Dict) -> Dict:
+    def clean_resource(self, resource: Dict, redact_secrets: bool = False) -> Dict:
         """Clean resource for migration (remove cluster-specific fields)"""
         cleaned = resource.copy()
 
@@ -148,6 +147,13 @@ class MigrationTool:
 
         # Remove status
         cleaned.pop("status", None)
+
+        # Redact secret data to avoid plaintext export
+        if redact_secrets and cleaned.get("kind") == "Secret":
+            if "data" in cleaned:
+                cleaned["data"] = {k: "REDACTED" for k in cleaned["data"]}
+            if "stringData" in cleaned:
+                cleaned["stringData"] = {k: "REDACTED" for k in cleaned["stringData"]}
 
         return cleaned
 

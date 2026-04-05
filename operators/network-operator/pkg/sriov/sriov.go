@@ -10,6 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	kubefabricv1 "github.com/ssahani/kube-fabric/operators/network-operator/api/v1"
@@ -229,21 +230,27 @@ func createSRIOVConfigMap(ctx context.Context, k8sClient client.Client, sriovCon
 
 // ConfigureNode configures SR-IOV on a specific node
 func ConfigureNode(ctx context.Context, k8sClient client.Client, node *corev1.Node, sriovConfig *kubefabricv1.SRIOVConfig) error {
-	if node.Labels == nil {
-		node.Labels = make(map[string]string)
-	}
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if err := k8sClient.Get(ctx, types.NamespacedName{Name: node.Name}, node); err != nil {
+			return err
+		}
 
-	node.Labels["kubefabric.ai/sriov"] = "true"
-	node.Labels[fmt.Sprintf("kubefabric.ai/sriov-%s", sriovConfig.ResourceName)] = "true"
+		if node.Labels == nil {
+			node.Labels = make(map[string]string)
+		}
 
-	if node.Annotations == nil {
-		node.Annotations = make(map[string]string)
-	}
+		node.Labels["kubefabric.ai/sriov"] = "true"
+		node.Labels[fmt.Sprintf("kubefabric.ai/sriov-%s", sriovConfig.ResourceName)] = "true"
 
-	node.Annotations["kubefabric.ai/sriov-interface"] = sriovConfig.PhysicalInterface
-	node.Annotations["kubefabric.ai/sriov-numvfs"] = fmt.Sprintf("%d", sriovConfig.NumVFs)
+		if node.Annotations == nil {
+			node.Annotations = make(map[string]string)
+		}
 
-	return k8sClient.Update(ctx, node)
+		node.Annotations["kubefabric.ai/sriov-interface"] = sriovConfig.PhysicalInterface
+		node.Annotations["kubefabric.ai/sriov-numvfs"] = fmt.Sprintf("%d", sriovConfig.NumVFs)
+
+		return k8sClient.Update(ctx, node)
+	})
 }
 
 // EnableVFs enables Virtual Functions on the physical interface

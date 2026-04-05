@@ -13,12 +13,18 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	kubefabricv1 "github.com/ssahani/kube-fabric/operators/quota-operator/api/v1"
 	"github.com/ssahani/kube-fabric/operators/quota-operator/pkg/budget"
 	"github.com/ssahani/kube-fabric/operators/quota-operator/pkg/usage"
+)
+
+const (
+	fabricQuotaFinalizer = "kubefabric.ai/quota-finalizer"
 )
 
 // FabricQuotaReconciler reconciles a FabricQuota object
@@ -47,6 +53,20 @@ func (r *FabricQuotaReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 		logger.Error(err, "Failed to get FabricQuota")
 		return ctrl.Result{}, err
+	}
+
+	// Handle deletion
+	if !quota.ObjectMeta.DeletionTimestamp.IsZero() {
+		return r.handleDeletion(ctx, quota)
+	}
+
+	// Add finalizer if it doesn't exist
+	if !controllerutil.ContainsFinalizer(quota, fabricQuotaFinalizer) {
+		controllerutil.AddFinalizer(quota, fabricQuotaFinalizer)
+		if err := r.Update(ctx, quota); err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{Requeue: true}, nil
 	}
 
 	logger.Info("Reconciling FabricQuota", "team", quota.Spec.Team, "maxGPUs", quota.Spec.GPUQuota.MaxGPUs)
@@ -193,6 +213,23 @@ func (r *FabricQuotaReconciler) enforceQuota(ctx context.Context, quota *kubefab
 			reason = fmt.Sprintf("Job requests %d GPUs, exceeds max %d per job", job.Spec.GPUs, quota.Spec.GPUQuota.MaxGPUsPerJob)
 		}
 
+		// Check GPU type is allowed
+		if len(quota.Spec.GPUQuota.AllowedGPUTypes) > 0 {
+			gpuType := job.Spec.GpuType
+			allowed := false
+			for _, t := range quota.Spec.GPUQuota.AllowedGPUTypes {
+				if t == gpuType {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				// Queue the job - GPU type not allowed
+				logger.Info("Job uses disallowed GPU type", "job", job.Name, "gpuType", gpuType)
+				continue
+			}
+		}
+
 		if rejected {
 			job.Status.Phase = "Rejected"
 			meta.SetStatusCondition(&job.Status.Conditions, metav1.Condition{
@@ -235,10 +272,69 @@ func (r *FabricQuotaReconciler) updateStatus(ctx context.Context, quota *kubefab
 	}
 }
 
+func (r *FabricQuotaReconciler) handleDeletion(ctx context.Context, quota *kubefabricv1.FabricQuota) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+
+	if controllerutil.ContainsFinalizer(quota, fabricQuotaFinalizer) {
+		logger.Info("Running cleanup for FabricQuota", "team", quota.Spec.Team)
+
+		// Remove kubefabric labels from namespaces
+		for _, nsName := range quota.Spec.Namespaces {
+			ns := &corev1.Namespace{}
+			err := r.Get(ctx, types.NamespacedName{Name: nsName}, ns)
+			if err != nil {
+				if !errors.IsNotFound(err) {
+					logger.Error(err, "Failed to get namespace during cleanup", "namespace", nsName)
+				}
+				continue
+			}
+
+			if ns.Labels != nil {
+				delete(ns.Labels, "kubefabric.ai/team")
+				delete(ns.Labels, "kubefabric.ai/quota")
+				if err := r.Update(ctx, ns); err != nil {
+					logger.Error(err, "Failed to remove labels from namespace", "namespace", nsName)
+				}
+			}
+		}
+
+		// Remove finalizer
+		controllerutil.RemoveFinalizer(quota, fabricQuotaFinalizer)
+		if err := r.Update(ctx, quota); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+	return ctrl.Result{}, nil
+}
+
 // SetupWithManager sets up the controller with the Manager
 func (r *FabricQuotaReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&kubefabricv1.FabricQuota{}).
-		Watches(&kubefabricv1.FabricAIJob{}, &handler.EnqueueRequestForObject{}).
+		Watches(&kubefabricv1.FabricAIJob{}, handler.EnqueueRequestsFromMapFunc(
+			func(obj client.Object) []reconcile.Request {
+				// When a FabricAIJob changes, enqueue all FabricQuota objects
+				// in the same namespace so quota usage is recalculated.
+				quotaList := &kubefabricv1.FabricQuotaList{}
+				if err := mgr.GetClient().List(context.Background(), quotaList); err != nil {
+					return nil
+				}
+				var requests []reconcile.Request
+				for _, quota := range quotaList.Items {
+					for _, ns := range quota.Spec.Namespaces {
+						if ns == obj.GetNamespace() {
+							requests = append(requests, reconcile.Request{
+								NamespacedName: types.NamespacedName{
+									Name:      quota.Name,
+									Namespace: quota.Namespace,
+								},
+							})
+							break
+						}
+					}
+				}
+				return requests
+			},
+		)).
 		Complete(r)
 }

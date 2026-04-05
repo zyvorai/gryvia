@@ -41,29 +41,50 @@ Types: feat, fix, docs, style, refactor, test, chore
 ```bash
 git clone https://github.com/ssahani/kube-fabric.git
 cd kube-fabric
-make install-deps
-make build
-make test
+make build          # Build all operators + CLI + Web UI
+make test           # Run all tests
+make lint           # Run linters
 ```
+
+### Prerequisites
+
+- Go 1.22+
+- Rust (stable)
+- Node.js 20+
+- Docker / Podman
+- kubectl + helm
 
 ## Code Style
 
-- Go: Use gofmt and golint
-- Rust: Use rustfmt and clippy  
-- Python: Use black and pylint
-- TypeScript: Use prettier and eslint
+- **Go**: `gofmt`, `golangci-lint` (v1.57+), production logging (`Development: false`)
+- **Rust**: `rustfmt`, `clippy` with `-D warnings`
+- **Python**: `black`, `flake8`, use `config.ConfigException` (not bare `Exception`)
+- **TypeScript**: `prettier`, `eslint`, proper types (no `any`)
+- **CSS**: Tailwind dark theme (slate palette), no light-theme classes (`bg-white`, `text-gray-*`)
+- **Dockerfiles**: Multi-arch support (`TARGETARCH` build arg), non-root user, distroless base
+- **Helm**: Resource limits required, security contexts, no `privileged: true`
+- **CI**: Pin actions to SHA, add `permissions` block, add `concurrency` group
+
+## Security Guidelines
+
+- Never commit credentials or secrets (use `data:` with base64 placeholders)
+- Pin container images to specific versions, never use `:latest`
+- Use `hmac.compare_digest()` for secret comparison in Python
+- Validate all user input at system boundaries
+- Set `allowPrivilegeEscalation: false` and drop ALL capabilities
 
 ## Testing
 
 - Write unit tests for new code
 - Run `make test` before submitting PR
 - Add integration tests for features
+- Ensure Makefile targets use subshells: `(cd dir && cmd)` not `cd dir && cmd && cd ..`
 
 ## Documentation
 
 - Update docs for new features
-- Add code comments
-- Include examples
+- Keep README.md architecture section current
+- Include examples in `examples/` directory
 
 ## Community
 
