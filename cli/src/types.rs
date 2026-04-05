@@ -1,10 +1,10 @@
 use serde::{Deserialize, Serialize};
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use kube::CustomResource;
+use schemars::JsonSchema;
 use chrono::{DateTime, Utc};
 
 // FabricAIJob CRD
-#[derive(CustomResource, Clone, Debug, Serialize, Deserialize)]
+#[derive(CustomResource, Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[kube(group = "kubefabric.ai", version = "v1", kind = "FabricAIJob", namespaced)]
 #[kube(status = "AIJobStatus")]
 pub struct AIJobSpec {
@@ -19,7 +19,7 @@ pub struct AIJobSpec {
 }
 
 
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default, JsonSchema)]
 pub struct ResourceSpec {
     #[serde(rename = "gpuType")]
     pub gpu_type: String,
@@ -29,7 +29,7 @@ pub struct ResourceSpec {
     pub cpu: u32,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default, JsonSchema)]
 pub struct DistributedConfig {
     pub enabled: bool,
     #[serde(default)]
@@ -38,13 +38,13 @@ pub struct DistributedConfig {
     pub world_size: u32,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default, JsonSchema)]
 pub struct EnvVar {
     pub name: String,
     pub value: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default, JsonSchema)]
 pub struct AIJobStatus {
     #[serde(default)]
     pub phase: String,
@@ -57,7 +57,7 @@ pub struct AIJobStatus {
 }
 
 // FabricQuota CRD
-#[derive(CustomResource, Clone, Debug, Serialize, Deserialize)]
+#[derive(CustomResource, Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[kube(group = "kubefabric.ai", version = "v1", kind = "FabricQuota")]
 #[kube(status = "QuotaStatus")]
 pub struct QuotaSpec {
@@ -71,7 +71,7 @@ pub struct QuotaSpec {
     pub priority: i32,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct GPUQuotaSpec {
     #[serde(rename = "maxGPUs")]
     pub max_gpus: u32,
@@ -83,7 +83,7 @@ pub struct GPUQuotaSpec {
     pub max_running_jobs: u32,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct BudgetSpec {
     #[serde(rename = "monthlyBudget")]
     pub monthly_budget: f64,
@@ -93,7 +93,7 @@ pub struct BudgetSpec {
     pub hard_limit: bool,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default, JsonSchema)]
 pub struct QuotaStatus {
     #[serde(default)]
     pub phase: String,
@@ -103,7 +103,7 @@ pub struct QuotaStatus {
     pub budget_status: Option<BudgetStatus>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default, JsonSchema)]
 pub struct QuotaUsage {
     #[serde(rename = "allocatedGPUs", default)]
     pub allocated_gpus: u32,
@@ -115,7 +115,7 @@ pub struct QuotaUsage {
     pub gpu_hours: f64,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct BudgetStatus {
     #[serde(rename = "spentThisMonth")]
     pub spent_this_month: f64,
@@ -128,7 +128,7 @@ pub struct BudgetStatus {
 }
 
 // FabricGpuNode CRD
-#[derive(CustomResource, Clone, Debug, Serialize, Deserialize)]
+#[derive(CustomResource, Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[kube(group = "kubefabric.ai", version = "v1", kind = "FabricGpuNode")]
 #[kube(status = "GpuNodeStatus")]
 pub struct GpuNodeSpec {
@@ -143,7 +143,7 @@ pub struct GpuNodeSpec {
     pub rdma_enabled: bool,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default, JsonSchema)]
 pub struct GpuNodeStatus {
     #[serde(default)]
     pub phase: String,
@@ -151,7 +151,7 @@ pub struct GpuNodeStatus {
     pub gpus: Vec<GPUInfo>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct GPUInfo {
     pub index: i32,
     pub uuid: String,
