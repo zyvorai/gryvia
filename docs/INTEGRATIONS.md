@@ -177,7 +177,7 @@ with DAG('ml_training', schedule_interval='@daily') as dag:
         namespace='default',
         name='training-job',
         image='kubefabric/job-operator:latest',
-        cmds=['kfctl'],
+        cmds=['kubefabric'],
         arguments=['submit', 'job.yaml'],
         env_vars={'KUBECONFIG': '/config/kubeconfig'}
     )
@@ -193,7 +193,7 @@ def training_pipeline():
     train_op = dsl.ContainerOp(
         name='Submit Job',
         image='kubefabric/cli:latest',
-        command=['kfctl', 'submit', 'job.yaml']
+        command=['kubefabric', 'submit', 'job.yaml']
     )
 ```
 
@@ -262,7 +262,7 @@ jobs:
 
       - name: Submit Training Job
         run: |
-          kfctl submit job.yaml \
+          kubefabric submit job.yaml \
             --gpu-type A100-80G \
             --gpu-count 8 \
             --wait
@@ -271,7 +271,7 @@ jobs:
 
       - name: Get Job Status
         run: |
-          kfctl job status training-job-${{ github.run_id }}
+          kubefabric job status training-job-${{ github.run_id }}
 ```
 
 ### GitLab CI
@@ -281,8 +281,8 @@ train-model:
   stage: train
   image: kubefabric/cli:latest
   script:
-    - kfctl submit job.yaml --wait
-    - kfctl job logs training-job
+    - kubefabric submit job.yaml --wait
+    - kubefabric job logs training-job
   only:
     - main
 ```
@@ -295,8 +295,8 @@ pipeline {
     stages {
         stage('Train') {
             steps {
-                sh 'kfctl submit job.yaml'
-                sh 'kfctl job wait training-job'
+                sh 'kubefabric submit job.yaml'
+                sh 'kubefabric job wait training-job'
             }
         }
     }
@@ -608,10 +608,10 @@ rate(kubefabric_integration_errors_total[5m])
 kubectl logs -n kubefabric deploy/integrations-controller
 
 # Test webhook
-kfctl integrations test wandb
+kubefabric integrations test wandb
 
 # View integration status
-kfctl integrations status
+kubefabric integrations status
 ```
 
 ### Authentication Failures
@@ -621,7 +621,7 @@ kfctl integrations status
 kubectl get secret wandb-api-key -o yaml
 
 # Test credentials
-kfctl integrations auth-test wandb
+kubefabric integrations auth-test wandb
 ```
 
 ## Support

@@ -25,7 +25,7 @@ Complete guide for setting up a production KubeFabric cluster.
 
 ### Software Requirements
 
-- Kubernetes 1.28+
+- Kubernetes 1.30+
 - Container runtime with GPU support (containerd + nvidia-container-runtime)
 - Helm 3.0+
 - kubectl
@@ -527,7 +527,7 @@ EOF
 
 # Check job status
 kubectl get fabricaijob gpu-test
-kfctl logs gpu-test
+kubefabric logs gpu-test
 ```
 
 ### Run Diagnostics
@@ -612,7 +612,7 @@ EOF
 kubectl get nodes
 kubectl get pods -n kubefabric
 kubectl get fabricgpunodes
-kfctl cluster status
+kubefabric cluster status
 ```
 
 ### Log Rotation
@@ -711,10 +711,10 @@ kubectl get nodes --show-labels | grep gpu
 
 ```bash
 # Check GPU availability
-kfctl cluster nodes
+kubefabric cluster nodes
 
 # Check quotas
-kfctl quota list
+kubefabric quota list
 
 # Check job events
 kubectl describe fabricaijob <job-name>

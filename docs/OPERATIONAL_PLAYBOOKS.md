@@ -26,7 +26,7 @@ Standard operating procedures and runbooks for KubeFabric operations.
 
 ```bash
 # 1. Identify failed node
-kfctl health status cluster-gpu-health
+kubefabric health status cluster-gpu-health
 
 # 2. Cordon node immediately
 kubectl cordon gpu-node-05
@@ -36,24 +36,24 @@ kubectl get fabricaijobs -o wide | grep gpu-node-05
 
 # 4. Migrate running jobs
 for job in $(kubectl get fabricaijobs -o name | grep running); do
-  kfctl job migrate $job --target-node gpu-node-06
+  kubefabric job migrate $job --target-node gpu-node-06
 done
 
 # 5. Drain node gracefully
 kubectl drain gpu-node-05 --ignore-daemonsets --delete-emptydir-data
 
 # 6. Run diagnostics
-kfctl health diagnose --node gpu-node-05
+kubefabric health diagnose --node gpu-node-05
 
 # 7. Create incident ticket
-kfctl incident create \
+kubefabric incident create \
   --title "GPU node failure: gpu-node-05" \
   --severity high \
   --assign sre-team
 
 # 8. Schedule maintenance
 # If hardware replacement needed:
-kfctl maintenance schedule gpu-node-05 \
+kubefabric maintenance schedule gpu-node-05 \
   --action "Replace failed GPU" \
   --window "2024-01-22 02:00-06:00"
 ```
@@ -66,13 +66,13 @@ kfctl maintenance schedule gpu-node-05 \
 kubectl uncordon gpu-node-05
 
 # 2. Verify health
-kfctl health check node gpu-node-05
+kubefabric health check node gpu-node-05
 
 # 3. Run test job
-kfctl job test --node gpu-node-05 --gpu-count 8
+kubefabric job test --node gpu-node-05 --gpu-count 8
 
 # 4. Close incident
-kfctl incident resolve <incident-id>
+kubefabric incident resolve <incident-id>
 ```
 
 ---
@@ -88,31 +88,31 @@ kfctl incident resolve <incident-id>
 
 ```bash
 # 1. Check current capacity
-kfctl cluster status
+kubefabric cluster status
 
 # 2. View queue
-kfctl queue status default
+kubefabric queue status default
 
 # 3. Identify bottleneck
-kfctl capacity analyze
+kubefabric capacity analyze
 
 # 4. Options:
 
 # Option A: Scale up (if auto-scaling enabled)
-kfctl autoscale trigger --gpu-type A100-80G --count 16
+kubefabric autoscale trigger --gpu-type A100-80G --count 16
 
 # Option B: Optimize existing jobs
-kfctl profile analyze-queue
+kubefabric profile analyze-queue
 # Shows jobs that can be right-sized or use different GPU types
 
 # Option C: Enable GPU sharing for dev jobs
-kfctl gpu-sharing enable --gpu-type T4 --max-pods 4
+kubefabric gpu-sharing enable --gpu-type T4 --max-pods 4
 
 # Option D: Migrate low-priority jobs to spot
-kfctl job migrate-to-spot --priority low --count 10
+kubefabric job migrate-to-spot --priority low --count 10
 
 # 5. Communicate to users
-kfctl announcement create \
+kubefabric announcement create \
   --title "Cluster at capacity" \
   --message "Long queue times expected. Consider using spot instances or T4 GPUs."
 ```
@@ -129,34 +129,34 @@ kfctl announcement create \
 
 ```bash
 # 1. Check budget status
-kfctl budget status --team ml-research
+kubefabric budget status --team ml-research
 
 # 2. Analyze spending
-kfctl cost analyze --team ml-research --breakdown
+kubefabric cost analyze --team ml-research --breakdown
 
 # 3. Identify cost drivers
-kfctl cost top-jobs --team ml-research --top 10
+kubefabric cost top-jobs --team ml-research --top 10
 
 # 4. Options:
 
 # Option A: Request budget increase
-kfctl budget request-increase \
+kubefabric budget request-increase \
   --team ml-research \
   --amount 10000 \
   --justification "Critical deadline"
 
 # Option B: Optimize spending
 # Cancel low-priority jobs
-kfctl job cancel --priority low --team ml-research
+kubefabric job cancel --priority low --team ml-research
 
 # Enable spot instances
-kfctl job migrate-to-spot --team ml-research
+kubefabric job migrate-to-spot --team ml-research
 
 # Use smaller GPUs
-kfctl recommend right-size --team ml-research
+kubefabric recommend right-size --team ml-research
 
 # 5. Set up alerts
-kfctl budget alert create \
+kubefabric budget alert create \
   --team ml-research \
   --threshold 80 \
   --notify team-lead@company.com
@@ -172,19 +172,19 @@ kfctl budget alert create \
 
 ```bash
 # 1. Profile the job
-kfctl profile training-job-42
+kubefabric profile training-job-42
 
 # 2. Check GPU utilization
-kfctl metrics gpu-utilization training-job-42
+kubefabric metrics gpu-utilization training-job-42
 
 # 3. Check data loading
-kfctl profile data-loading training-job-42
+kubefabric profile data-loading training-job-42
 
 # 4. Check network
-kfctl network metrics training-job-42
+kubefabric network metrics training-job-42
 
 # 5. Get recommendations
-kfctl optimize training-job-42
+kubefabric optimize training-job-42
 ```
 
 **Common Fixes:**
@@ -224,15 +224,15 @@ spec:
 
 ```bash
 # 1. Check network configuration
-kfctl network nccl-check training-job-42
+kubefabric network nccl-check training-job-42
 
 # 2. Test network bandwidth
-kfctl network test bandwidth \
+kubefabric network test bandwidth \
   --nodes gpu-node-01,gpu-node-02 \
   --gpus-per-node 8
 
 # 3. Check topology
-kfctl topology analyze training-job-42
+kubefabric topology analyze training-job-42
 
 # 4. View NCCL logs
 kubectl logs training-job-42 | grep NCCL
@@ -273,40 +273,40 @@ spec:
 
 ```bash
 # 1. Generate monthly report
-kfctl cost report --month 2024-01 --output report.pdf
+kubefabric cost report --month 2024-01 --output report.pdf
 
 # 2. Analyze by team
-kfctl cost breakdown --group-by team
+kubefabric cost breakdown --group-by team
 
 # 3. Identify waste
-kfctl cost waste --last 30d
+kubefabric cost waste --last 30d
 
 # 4. Get optimization recommendations
-kfctl cost optimize --potential-savings
+kubefabric cost optimize --potential-savings
 
 # 5. Compare to budget
-kfctl budget compare --month 2024-01
+kubefabric budget compare --month 2024-01
 
 # 6. Project next month
-kfctl cost forecast --next-month
+kubefabric cost forecast --next-month
 ```
 
 **Optimization Actions:**
 
 ```bash
 # Enable spot instances for batch jobs
-kfctl job migrate-to-spot --job-type batch --dry-run
-kfctl job migrate-to-spot --job-type batch --confirm
+kubefabric job migrate-to-spot --job-type batch --dry-run
+kubefabric job migrate-to-spot --job-type batch --confirm
 
 # Enable MIG for development
-kfctl gpu-sharing enable --gpu-type A100-80G --profile all-1g.10gb
+kubefabric gpu-sharing enable --gpu-type A100-80G --profile all-1g.10gb
 
 # Right-size over-provisioned jobs
-kfctl recommend right-size --execute
+kubefabric recommend right-size --execute
 
 # Set up budget alerts
 for team in ml-research cv-team nlp-team; do
-  kfctl budget alert create \
+  kubefabric budget alert create \
     --team $team \
     --threshold 75,90,100 \
     --action warn,warn,block
@@ -323,29 +323,29 @@ done
 
 ```bash
 # 1. Analyze current utilization
-kfctl capacity analyze --last 90d
+kubefabric capacity analyze --last 90d
 
 # 2. Forecast demand
-kfctl capacity forecast --next-quarter
+kubefabric capacity forecast --next-quarter
 
 # 3. Identify gaps
-kfctl capacity gaps --horizon 90d
+kubefabric capacity gaps --horizon 90d
 
 # 4. Generate expansion plan
-kfctl capacity plan --output expansion-plan.json
+kubefabric capacity plan --output expansion-plan.json
 
 # 5. Estimate costs
-kfctl capacity cost-estimate expansion-plan.json
+kubefabric capacity cost-estimate expansion-plan.json
 
 # 6. Create presentation
-kfctl capacity presentation --output capacity-review-q2.pdf
+kubefabric capacity presentation --output capacity-review-q2.pdf
 ```
 
 **Expansion Procedure:**
 
 ```bash
 # 1. Request budget approval
-kfctl budget request-capex \
+kubefabric budget request-capex \
   --amount 500000 \
   --justification "Q2 capacity expansion" \
   --attach expansion-plan.json
@@ -354,27 +354,27 @@ kfctl budget request-capex \
 # (External procurement process)
 
 # 3. Schedule installation
-kfctl maintenance schedule-installation \
+kubefabric maintenance schedule-installation \
   --nodes 16 \
   --gpu-type A100-80G \
   --date 2024-04-01
 
 # 4. Pre-configure
-kfctl node preconfigure \
+kubefabric node preconfigure \
   --count 16 \
   --gpu-type A100-80G \
   --network infiniband-hdr200
 
 # 5. Add to cluster
 for node in gpu-node-{17..32}; do
-  kfctl node add $node --validate
+  kubefabric node add $node --validate
 done
 
 # 6. Verify
-kfctl cluster validate
+kubefabric cluster validate
 
 # 7. Announce
-kfctl announcement create \
+kubefabric announcement create \
   --title "Capacity Expansion Complete" \
   --message "16 new A100-80G nodes available"
 ```
@@ -389,35 +389,35 @@ kfctl announcement create \
 
 ```bash
 # 1. Announce maintenance (7 days before)
-kfctl announcement create \
+kubefabric announcement create \
   --title "Scheduled Maintenance" \
   --message "Maintenance window: Jan 28, 02:00-06:00 UTC" \
   --send-email
 
 # 2. Create maintenance window
-kfctl maintenance create \
+kubefabric maintenance create \
   --start "2024-01-28T02:00:00Z" \
   --duration 4h \
   --nodes gpu-node-{01..04}
 
 # 3. Send reminders (24h before)
-kfctl announcement remind maintenance-001
+kubefabric announcement remind maintenance-001
 
 # 4. Verify no critical jobs scheduled
-kfctl jobs list --during-maintenance maintenance-001
+kubefabric jobs list --during-maintenance maintenance-001
 ```
 
 **During Maintenance:**
 
 ```bash
 # 1. Enable maintenance mode
-kfctl maintenance start maintenance-001
+kubefabric maintenance start maintenance-001
 
 # 2. Cordon nodes
-kfctl maintenance cordon maintenance-001
+kubefabric maintenance cordon maintenance-001
 
 # 3. Drain gracefully
-kfctl maintenance drain maintenance-001 --timeout 30m
+kubefabric maintenance drain maintenance-001 --timeout 30m
 
 # 4. Perform maintenance
 # - Update firmware
@@ -427,31 +427,31 @@ kfctl maintenance drain maintenance-001 --timeout 30m
 
 # 5. Validate nodes
 for node in gpu-node-{01..04}; do
-  kfctl health check node $node
-  kfctl health test $node --full
+  kubefabric health check node $node
+  kubefabric health test $node --full
 done
 
 # 6. Uncordon nodes
-kfctl maintenance uncordon maintenance-001
+kubefabric maintenance uncordon maintenance-001
 
 # 7. End maintenance mode
-kfctl maintenance complete maintenance-001
+kubefabric maintenance complete maintenance-001
 ```
 
 **Post-Maintenance:**
 
 ```bash
 # 1. Verify cluster health
-kfctl health status cluster-gpu-health
+kubefabric health status cluster-gpu-health
 
 # 2. Run smoke tests
-kfctl test smoke
+kubefabric test smoke
 
 # 3. Monitor for issues
-kfctl monitor --window 2h
+kubefabric monitor --window 2h
 
 # 4. Send completion notice
-kfctl announcement create \
+kubefabric announcement create \
   --title "Maintenance Complete" \
   --message "All systems operational"
 ```
@@ -464,27 +464,27 @@ kfctl announcement create \
 
 ```bash
 # 1. Plan rollout
-kfctl upgrade plan --version 1.1.0
+kubefabric upgrade plan --version 1.1.0
 
 # 2. Create rollout
-kfctl upgrade create \
+kubefabric upgrade create \
   --version 1.1.0 \
   --strategy rolling \
   --max-unavailable 25%
 
 # 3. Start rollout
-kfctl upgrade start
+kubefabric upgrade start
 
 # 4. Monitor progress
-kfctl upgrade status
+kubefabric upgrade status
 
 # 5. If issues detected
-kfctl upgrade pause
+kubefabric upgrade pause
 # Fix issues
-kfctl upgrade resume
+kubefabric upgrade resume
 
 # 6. Complete rollout
-kfctl upgrade verify
+kubefabric upgrade verify
 ```
 
 ---
@@ -504,27 +504,27 @@ kfctl upgrade verify
 
 ```bash
 # 1. Declare incident
-kfctl incident create \
+kubefabric incident create \
   --severity P0 \
   --title "Cluster outage" \
   --description "Complete cluster unavailable"
 
 # 2. Notify stakeholders
-kfctl incident notify \
+kubefabric incident notify \
   --channels slack,pagerduty,email \
   --recipients on-call,leadership
 
 # 3. Assemble response team
-kfctl incident assign \
+kubefabric incident assign \
   --incident-lead alice \
   --tech-lead bob \
   --comms-lead charlie
 
 # 4. Create war room
-kfctl incident war-room create
+kubefabric incident war-room create
 
 # 5. Update status every 15 minutes
-kfctl incident update \
+kubefabric incident update \
   --status "Investigating root cause" \
   --eta "30 minutes to diagnosis"
 
@@ -532,16 +532,16 @@ kfctl incident update \
 # ... resolution steps ...
 
 # 7. Verify resolution
-kfctl health status cluster-gpu-health
-kfctl test smoke
+kubefabric health status cluster-gpu-health
+kubefabric test smoke
 
 # 8. Clear incident
-kfctl incident resolve \
+kubefabric incident resolve \
   --resolution "Restored from backup" \
   --duration "2h 15m"
 
 # 9. Schedule post-mortem
-kfctl incident post-mortem schedule \
+kubefabric incident post-mortem schedule \
   --date "2024-01-23 14:00" \
   --required alice,bob,charlie
 ```
@@ -607,8 +607,8 @@ kfctl incident post-mortem schedule \
 ### Job Troubleshooting
 
 ```bash
-☐ Check job status: kfctl job status <name>
-☐ View logs: kfctl job logs <name>
+☐ Check job status: kubefabric job status <name>
+☐ View logs: kubefabric job logs <name>
 ☐ Check events: kubectl describe fabricaijob <name>
 ☐ Verify resources available
 ☐ Check quota/budget
@@ -671,34 +671,34 @@ GPUError:
 
 ```bash
 # Cluster health
-kfctl health status cluster-gpu-health
-kfctl cluster validate
-kfctl node list --unhealthy
+kubefabric health status cluster-gpu-health
+kubefabric cluster validate
+kubefabric node list --unhealthy
 
 # Performance
-kfctl profile <job-name>
-kfctl metrics gpu-utilization
-kfctl network metrics
+kubefabric profile <job-name>
+kubefabric metrics gpu-utilization
+kubefabric network metrics
 
 # Cost
-kfctl cost analyze
-kfctl cost optimize
-kfctl budget status
+kubefabric cost analyze
+kubefabric cost optimize
+kubefabric budget status
 
 # Capacity
-kfctl capacity analyze
-kfctl capacity forecast
-kfctl queue status
+kubefabric capacity analyze
+kubefabric capacity forecast
+kubefabric queue status
 
 # Incidents
-kfctl incident create
-kfctl incident update
-kfctl incident resolve
+kubefabric incident create
+kubefabric incident update
+kubefabric incident resolve
 
 # Maintenance
-kfctl maintenance create
-kfctl maintenance start
-kfctl maintenance complete
+kubefabric maintenance create
+kubefabric maintenance start
+kubefabric maintenance complete
 ```
 
 ---

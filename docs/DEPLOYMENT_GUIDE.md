@@ -2,6 +2,27 @@
 
 Complete guide for deploying KubeFabric on bare metal GPU clusters.
 
+## Quick Deploy (Single Server)
+
+For quick deployment to any server with a Kubernetes cluster:
+
+```bash
+# One-command deploy
+./scripts/deploy-remote.sh <host> <user> <password>
+
+# Quick mode (rsync + apply only)
+./scripts/deploy-remote.sh <host> <user> <password> --quick
+
+# Uninstall
+./scripts/deploy-remote.sh <host> <user> <password> --uninstall
+```
+
+This script handles: rsync, CRD installation, namespace creation, operator deployment, API gateway, and Web UI. See [Quick Start Guide](getting-started/quickstart.md) for details.
+
+## Full Production Deployment
+
+For multi-node GPU clusters with HA, RDMA, and parallel storage.
+
 ## Prerequisites
 
 ### Hardware Requirements
@@ -163,9 +184,9 @@ kubectl get nodes
 Expected output:
 ```
 NAME           STATUS   ROLES           AGE   VERSION
-master-01      Ready    control-plane   10m   v1.28.5
-gpu-h100-01    Ready    <none>          8m    v1.28.5
-gpu-h100-02    Ready    <none>          8m    v1.28.5
+master-01      Ready    control-plane   10m   v1.30.5
+gpu-h100-01    Ready    <none>          8m    v1.30.5
+gpu-h100-02    Ready    <none>          8m    v1.30.5
 ```
 
 ### 4.2 Verify GPU Nodes

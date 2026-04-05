@@ -4,38 +4,36 @@ Complete REST API reference for KubeFabric.
 
 ## Base URL
 
+Internal (from within the cluster):
 ```
-http://kubefabric-api-gateway.kubefabric.svc.cluster.local:8000
+http://kubefabric-api-gateway.kubefabric.svc.cluster.local:8080
+```
+
+External (via NodePort):
+```
+http://<server-ip>:30088
+```
+
+Via Web UI proxy (handles auth automatically):
+```
+http://<server-ip>:30081/api/
 ```
 
 ## Authentication
 
-All API requests require authentication.
-
-### API Key
+All API requests require a Bearer token. Set the API key on the gateway:
 
 ```bash
-# Get API key
-kubectl get secret kubefabric-api-key -n kubefabric -o jsonpath='{.data.key}' | base64 -d
+# Set API key
+kubectl set env deployment/kubefabric-api-gateway -n kubefabric \
+  KUBEFABRIC_API_KEY=your-secure-key
 
 # Use in requests
-curl -H "Authorization: Bearer <API_KEY>" \
-  http://kubefabric-api:8000/api/v1/jobs
+curl -H "Authorization: Bearer your-secure-key" \
+  http://<server-ip>:30088/api/cluster/stats
 ```
 
-### Service Account Token
-
-```bash
-# Create service account
-kubectl create serviceaccount api-client -n default
-
-# Get token
-TOKEN=$(kubectl create token api-client -n default)
-
-# Use token
-curl -H "Authorization: Bearer $TOKEN" \
-  http://kubefabric-api:8000/api/v1/jobs
-```
+The Web UI's nginx proxy injects the auth header automatically for `/api/` requests.
 
 ## API Gateway CRUD Endpoints
 

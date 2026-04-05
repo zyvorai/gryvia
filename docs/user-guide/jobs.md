@@ -37,18 +37,18 @@ spec:
 kubectl apply -f job.yaml
 ```
 
-**Using kfctl:**
+**Using kubefabric:**
 ```bash
 # Submit from file
-kfctl submit job.yaml
+kubefabric submit job.yaml
 
 # Submit with parameters
-kfctl submit --template pytorch-ddp \
+kubefabric submit --template pytorch-ddp \
   --param model=llama-7b \
   --param gpu-count=8
 
 # Submit and wait
-kfctl submit job.yaml --wait
+kubefabric submit job.yaml --wait
 ```
 
 ## Job Lifecycle
@@ -65,13 +65,13 @@ kfctl submit job.yaml --wait
 
 ```bash
 # List all jobs
-kfctl list
+kubefabric list
 
 # Get job status
-kfctl status my-training-job
+kubefabric status my-training-job
 
 # Watch job progress
-watch kfctl status my-training-job
+watch kubefabric status my-training-job
 
 # Get detailed info
 kubectl describe fabricaijob my-training-job
@@ -81,23 +81,23 @@ kubectl describe fabricaijob my-training-job
 
 ```bash
 # Stream logs
-kfctl logs my-training-job
+kubefabric logs my-training-job
 
 # Follow logs
-kfctl logs my-training-job -f
+kubefabric logs my-training-job -f
 
 # Get logs from specific replica
-kfctl logs my-training-job --replica 0
+kubefabric logs my-training-job --replica 0
 
 # Save logs to file
-kfctl logs my-training-job > training.log
+kubefabric logs my-training-job > training.log
 ```
 
 ### Cancelling Jobs
 
 ```bash
 # Cancel job
-kfctl cancel my-training-job
+kubefabric cancel my-training-job
 
 # Delete job
 kubectl delete fabricaijob my-training-job
@@ -244,13 +244,13 @@ envFrom:
 
 ```bash
 # List templates
-kfctl templates list
+kubefabric templates list
 
 # View template
-kfctl templates show pytorch-ddp
+kubefabric templates show pytorch-ddp
 
 # Submit from template
-kfctl submit --template pytorch-ddp \
+kubefabric submit --template pytorch-ddp \
   --param model=llama-7b \
   --param dataset=/data/openwebtext \
   --param gpu-count=8 \
@@ -309,10 +309,10 @@ spec:
 
 ```bash
 # Estimate job cost
-kfctl cost estimate --job my-training-job
+kubefabric cost estimate --job my-training-job
 
 # Track running costs
-kfctl cost --job my-training-job
+kubefabric cost --job my-training-job
 ```
 
 ### Budget Alerts
@@ -335,7 +335,7 @@ python3 tools/profiler.py --job my-training-job \
   --gpu-count 8
 
 # Get recommendations
-kfctl profile my-training-job
+kubefabric profile my-training-job
 ```
 
 ### Common Optimizations
@@ -355,17 +355,17 @@ kfctl profile my-training-job
 kubectl describe fabricaijob my-training-job
 
 # Check GPU availability
-kfctl cluster nodes
+kubefabric cluster nodes
 
 # Check quota
-kfctl quota my-team
+kubefabric quota my-team
 ```
 
 ### Job Failed
 
 ```bash
 # Check logs
-kfctl logs my-training-job
+kubefabric logs my-training-job
 
 # Check events
 kubectl get events --field-selector involvedObject.name=my-training-job

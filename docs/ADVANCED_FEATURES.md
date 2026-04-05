@@ -62,16 +62,16 @@ spec:
 
 ```bash
 # Check cluster health
-kfctl health status cluster-gpu-health
+kubefabric health status cluster-gpu-health
 
 # Diagnose specific GPU
-kfctl health diagnose --node gpu-node-05 --gpu 3
+kubefabric health diagnose --node gpu-node-05 --gpu 3
 
 # Manual remediation
-kfctl health remediate gpu-node-05 --action gpu-reset
+kubefabric health remediate gpu-node-05 --action gpu-reset
 
 # View history
-kfctl health history gpu-node-05
+kubefabric health history gpu-node-05
 ```
 
 ### Health Check Types
@@ -220,7 +220,7 @@ spec:
 
 ```bash
 # Create reservation
-kfctl reservation create my-reservation \
+kubefabric reservation create my-reservation \
   --team ml-research \
   --gpu-type A100-80G \
   --gpu-count 32 \
@@ -228,7 +228,7 @@ kfctl reservation create my-reservation \
   --exclusive
 
 # View utilization
-kfctl reservation usage my-reservation
+kubefabric reservation usage my-reservation
 # Output: 75% utilized, $12,960 wasted
 ```
 
@@ -303,18 +303,18 @@ Each sub-team gets a portion of parent's quota.
 
 ```bash
 # Create tenant
-kfctl tenant create ml-research \
+kubefabric tenant create ml-research \
   --quota-gpus 128 \
   --quota-cost 50000
 
 # Add member
-kfctl tenant add-member ml-research alice --role admin
+kubefabric tenant add-member ml-research alice --role admin
 
 # View usage
-kfctl tenant usage ml-research
+kubefabric tenant usage ml-research
 
 # Generate report
-kfctl tenant report ml-research --month 2024-01 --output report.pdf
+kubefabric tenant report ml-research --month 2024-01 --output report.pdf
 ```
 
 ---
@@ -334,7 +334,7 @@ Reusable job configurations with parameters.
 
 ```bash
 # Create job from template
-kfctl job create --template pytorch-ddp-training \
+kubefabric job create --template pytorch-ddp-training \
   --param dataPath=/data/imagenet \
   --param batchSize=128 \
   --param epochs=90
@@ -598,39 +598,39 @@ Let the system scale based on demand.
 
 ```bash
 # Check budget
-kfctl budget status --team my-team
+kubefabric budget status --team my-team
 
 # Check reservation
-kfctl reservation list
+kubefabric reservation list
 
 # Check health
-kfctl health status cluster-gpu-health
+kubefabric health status cluster-gpu-health
 ```
 
 ### High Costs
 
 ```bash
 # Analyze costs
-kfctl cost analyze --team my-team
+kubefabric cost analyze --team my-team
 
 # Get recommendations
-kfctl cost optimize --team my-team
+kubefabric cost optimize --team my-team
 
 # Check for idle resources
-kfctl cost waste --team my-team
+kubefabric cost waste --team my-team
 ```
 
 ### Poor Performance
 
 ```bash
 # Profile job
-kfctl profile my-job
+kubefabric profile my-job
 
 # Check GPU health
-kfctl health check node gpu-node-05
+kubefabric health check node gpu-node-05
 
 # View metrics
-kfctl metrics gpu-utilization
+kubefabric metrics gpu-utilization
 ```
 
 ---

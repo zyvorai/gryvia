@@ -1,151 +1,186 @@
 # Quick Start Guide
 
-Get up and running with KubeFabric in 10 minutes.
+Get KubeFabric running in minutes.
 
 ## Prerequisites
 
-- Kubernetes cluster 1.28+
-- kubectl configured
-- Helm 3.0+
-- GPU nodes with NVIDIA drivers
+- Kubernetes cluster (K3s, K8s 1.30+, or EKS/GKE/AKS)
+- `kubectl` configured and cluster accessible
+- Node.js 20+ (for building the Web UI)
+- Go 1.24+ (optional, for building operators from source)
 
-## Installation
+## Option 1: One-Command Remote Deploy
 
-### 1. Install KubeFabric via Helm
+Deploy to any server with a Kubernetes cluster:
 
 ```bash
-# Add Helm repository
-helm repo add kubefabric https://ssahani.github.io/kube-fabric
-helm repo update
+# Full deployment (rsync + CRDs + operators + Web UI)
+./scripts/deploy-remote.sh <host> <user> <password>
 
-# Install KubeFabric
-helm install kubefabric kubefabric/kubefabric \
-  --namespace kubefabric \
-  --create-namespace \
-  --wait
+# Example
+./scripts/deploy-remote.sh 185.165.240.5 root mypassword
+
+# Quick mode (skip system deps, just rsync + kubectl apply)
+./scripts/deploy-remote.sh 185.165.240.5 root mypassword --quick
+
+# SSH key auth (no password)
+./scripts/deploy-remote.sh 185.165.240.5 root --quick
 ```
 
-### 2. Verify Installation
+Expected output:
+```
+  ✅ Synced to 185.165.240.5:/root/kube-fabric
+  ✅ Prerequisites checked
+  ✅ CRDs installed
+  ✅ Operators deployed
+  ✅ API gateway and Web UI deployed
+  ✅ Deployment verified
+```
+
+## Option 2: Manual Install
+
+### 1. Install CRDs
 
 ```bash
-# Check operators are running
+kubectl apply -f crds/
+```
+
+Verify:
+```bash
+kubectl get crd | grep kubefabric
+# fabricaijobs.kubefabric.ai
+# fabricgpunodes.kubefabric.ai
+# fabricnetworks.kubefabric.ai
+# fabricquotas.kubefabric.ai
+# fabricstorages.kubefabric.ai
+```
+
+### 2. Create Namespace and Deploy Operators
+
+```bash
+kubectl create namespace kubefabric
+
+# Deploy operators (storage, network, quota)
+for op in storage-operator network-operator quota-operator; do
+    kubectl apply -f operators/$op/config/deployment.yaml
+done
+```
+
+### 3. Build and Deploy Web UI
+
+```bash
+# Build the UI
+cd web-ui && npm install && npx vite build && cd ..
+
+# Build container image (podman or docker)
+podman build --network=host -t kubefabric/ui:1.0.0 -f docker/Dockerfile.ui .
+
+# For K3s: import image
+podman save kubefabric/ui:1.0.0 -o /tmp/kf-ui.tar
+k3s ctr images import /tmp/kf-ui.tar
+k3s ctr images tag localhost/kubefabric/ui:1.0.0 docker.io/kubefabric/ui:1.0.0
+
+# Deploy
+kubectl apply -f manifests/deploy/ui-deployment.yaml
+
+# Expose as NodePort
+kubectl patch svc kubefabric-ui -n kubefabric \
+  --type=merge -p '{"spec":{"type":"NodePort","ports":[{"port":80,"targetPort":80,"nodePort":30081}]}}'
+```
+
+### 4. Build and Deploy API Gateway
+
+```bash
+# Build
+podman build --network=host -t kubefabric/api-gateway:1.0.0 \
+  -f services/api-gateway/Dockerfile services/api-gateway/
+
+# Import into K3s
+podman save kubefabric/api-gateway:1.0.0 -o /tmp/kf-api.tar
+k3s ctr images import /tmp/kf-api.tar
+k3s ctr images tag localhost/kubefabric/api-gateway:1.0.0 docker.io/kubefabric/api-gateway:1.0.0
+
+# Deploy
+kubectl apply -f manifests/deploy/api-gateway-deployment.yaml
+
+# Set API key
+kubectl set env deployment/kubefabric-api-gateway -n kubefabric \
+  KUBEFABRIC_API_KEY=your-secure-key-here
+```
+
+### 5. Verify
+
+```bash
 kubectl get pods -n kubefabric
+# kubefabric-api-gateway-xxx   1/1   Running
+# kubefabric-ui-xxx            1/1   Running
 
-# Expected output:
-# NAME                                      READY   STATUS    RESTARTS   AGE
-# kubefabric-gpu-operator-xxx               1/1     Running   0          2m
-# kubefabric-ai-operator-xxx                1/1     Running   0          2m
-# kubefabric-storage-operator-xxx           1/1     Running   0          2m
-# kubefabric-network-operator-xxx           1/1     Running   0          2m
-# kubefabric-quota-operator-xxx             1/1     Running   0          2m
+kubectl get svc -n kubefabric
+# kubefabric-api-gateway   NodePort   8080:30088/TCP
+# kubefabric-ui            NodePort   80:30081/TCP
 ```
 
-### 3. Install CLI
+## Access the Dashboard
 
-```bash
-# Download CLI
-curl -LO https://github.com/ssahani/kube-fabric/releases/latest/download/kfctl-linux-amd64
-
-# Make executable and move to PATH
-chmod +x kfctl-linux-amd64
-sudo mv kfctl-linux-amd64 /usr/local/bin/kfctl
-
-# Verify
-kfctl version
+Open your browser:
 ```
+http://<server-ip>:30081
+```
+
+The dark-themed dashboard shows:
+- GPU cluster overview with stat cards
+- Job pipeline (pending, running, completed, failed)
+- GPU utilization charts
+- Node health indicators
+- Quick action links
 
 ## Register GPU Nodes
-
-### 1. Label GPU Nodes
-
-```bash
-# Label nodes with GPU type
-kubectl label nodes gpu-node-1 kubefabric.ai/gpu-type=A100-80G
-kubectl label nodes gpu-node-1 kubefabric.ai/gpu-count=8
-```
-
-### 2. Create GPU Node Profile
 
 ```yaml
 # gpu-node.yaml
 apiVersion: kubefabric.ai/v1
-kind: FabricGPUNode
+kind: FabricGpuNode
 metadata:
-  name: gpu-node-1
+  name: gpu-node-01
 spec:
-  gpuType: A100-80G
+  nodeName: gpu-node-01
+  gpuType: A100
   gpuCount: 8
-  memory: 512Gi
-  nvlink: true
-  infiniband: true
-  pricing:
-    hourlyRate: 24.00
+  rdma: true
+  interconnect: NVLink
+  memoryGB: 80
 ```
 
 ```bash
 kubectl apply -f gpu-node.yaml
-```
-
-### 3. Verify GPU Nodes
-
-```bash
-kfctl cluster nodes
-
-# Expected output:
-# NODE         GPU TYPE    COUNT   AVAILABLE   STATUS
-# gpu-node-1   A100-80G    8       8           Ready
+kubectl get fabricgpunodes
 ```
 
 ## Submit Your First Job
-
-### 1. Create a Simple Training Job
 
 ```yaml
 # training-job.yaml
 apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 metadata:
-  name: pytorch-training
-  namespace: default
+  name: pytorch-test
 spec:
-  framework: pytorch
-  resources:
-    gpuType: A100-80G
-    gpuCount: 1
-    memory: 32Gi
-    cpu: 16
+  type: training
+  gpus: 1
+  gpuType: any
   image: nvcr.io/nvidia/pytorch:24.01-py3
   command:
     - python
-    - train.py
+    - -c
+    - "import torch; print(f'CUDA: {torch.cuda.is_available()}')"
 ```
 
-### 2. Submit Job
-
 ```bash
-# Using kubectl
 kubectl apply -f training-job.yaml
-
-# Or using CLI
-kfctl submit training-job.yaml
-```
-
-### 3. Monitor Job
-
-```bash
-# Get job status
-kfctl status pytorch-training
-
-# View logs
-kfctl logs pytorch-training
-
-# Watch progress
-watch kfctl status pytorch-training
+kubectl get fabricaijobs
 ```
 
 ## Set Up Team Quota
-
-### 1. Create Quota
 
 ```yaml
 # team-quota.yaml
@@ -155,97 +190,84 @@ metadata:
   name: ml-research
 spec:
   team: ml-research
-  limits:
-    gpuHours: 1000
-    maxGPUs: 16
+  maxGpus: 16
+  maxJobs: 10
+  gpuTypes:
+    - H100
+    - A100
   budget:
-    monthly: 50000
-  notifications:
-    - type: email
-      threshold: 80
-      recipients:
-        - team-lead@company.com
+    monthly: 5000
+    alert: 80
 ```
 
 ```bash
 kubectl apply -f team-quota.yaml
+kubectl get fabricquotas
 ```
 
-### 2. Check Quota Usage
+## Install CLI (Optional)
 
 ```bash
-kfctl quota ml-research
+cd cli
+cargo build --release
+sudo cp target/release/kubefabric /usr/local/bin/
 
-# Expected output:
-# TEAM         GPU HOURS   USED    REMAINING   BUDGET      SPENT
-# ml-research  1000        245     755         $50,000     $12,450
+# Usage
+kubefabric cluster
+kubefabric list jobs
+kubefabric quota --budget
+kubefabric cost --period month
 ```
 
-## Access Web Dashboard
+## Uninstall
 
 ```bash
-# Port-forward Web UI
-kubectl port-forward -n kubefabric svc/kubefabric-ui 3000:3000
+# Via deploy script
+./scripts/deploy-remote.sh <host> <user> <password> --uninstall
 
-# Open browser
-open http://localhost:3000
+# Or manually
+kubectl delete namespace kubefabric
+kubectl delete crd fabricaijobs.kubefabric.ai fabricgpunodes.kubefabric.ai \
+  fabricnetworks.kubefabric.ai fabricquotas.kubefabric.ai fabricstorages.kubefabric.ai
+```
+
+## Troubleshooting
+
+### Pods in ImagePullBackOff
+
+Container images need to be built locally and imported into K3s:
+```bash
+podman build --network=host -t <image> -f <Dockerfile> .
+podman save <image> -o /tmp/img.tar
+k3s ctr images import /tmp/img.tar
+```
+
+### DNS Failures During Build
+
+Use `--network=host` with podman/docker build:
+```bash
+podman build --network=host -t myimage .
+```
+
+### API Returns 401/403
+
+Set the API key on the gateway deployment:
+```bash
+kubectl set env deployment/kubefabric-api-gateway -n kubefabric \
+  KUBEFABRIC_API_KEY=your-key
+```
+
+### Web UI Shows "Failed to load cluster stats"
+
+Check that the API gateway pods are running and the nginx proxy is configured:
+```bash
+kubectl get pods -n kubefabric -l app=kubefabric-api-gateway
+kubectl logs -n kubefabric deployment/kubefabric-api-gateway
 ```
 
 ## Next Steps
 
-### Learn More
-- [Submit distributed training jobs](../user-guide/jobs.md#distributed-training)
-- [Configure storage backends](../user-guide/storage.md)
-- [Set up monitoring](../admin-guide/monitoring.md)
-- [Use Argo Workflows](../examples/workflows/)
-
-### Common Tasks
-- [View cluster resources](../user-guide/gpus.md#viewing-resources)
-- [Cancel jobs](../user-guide/jobs.md#cancelling-jobs)
-- [Track costs](../user-guide/costs.md)
-- [Debug failed jobs](../admin-guide/troubleshooting.md#job-failures)
-
-### Integrations
-- [JupyterHub](../examples/integrations/jupyterhub.md)
-- [VSCode Server](../examples/integrations/vscode.md)
-- [Ray Cluster](../examples/integrations/ray.md)
-
-## Troubleshooting
-
-### Pods Not Starting
-
-```bash
-# Check operator logs
-kubectl logs -n kubefabric deployment/kubefabric-gpu-operator
-
-# Check events
-kubectl get events -n kubefabric
-```
-
-### GPU Not Detected
-
-```bash
-# Verify NVIDIA drivers
-kubectl exec -it <gpu-pod> -- nvidia-smi
-
-# Check GPU node labels
-kubectl get nodes --show-labels | grep gpu
-```
-
-### Job Stuck in Pending
-
-```bash
-# Check scheduling decision
-kubectl describe fabricaijob <job-name>
-
-# Check available GPUs
-kfctl cluster nodes
-```
-
-## Support
-
-Need help?
-
-- Check [Troubleshooting Guide](../admin-guide/troubleshooting.md)
-- Ask in [GitHub Discussions](https://github.com/ssahani/kube-fabric/discussions)
-- File an [Issue](https://github.com/ssahani/kube-fabric/issues)
+- [Bare Metal Deployment Guide](../DEPLOYMENT_GUIDE.md) - Full production setup
+- [CLI Guide](../CLI_GUIDE.md) - Command-line reference
+- [API Reference](../developer-guide/api-reference.md) - REST API docs
+- [Examples](../../examples/README.md) - Job templates and workflows

@@ -26,9 +26,9 @@ This guide walks through deploying a complete KubeFabric cluster with all five o
 ### Software Requirements
 
 - Ubuntu 22.04 LTS (on all nodes)
-- Kubernetes 1.28+ cluster
+- Kubernetes 1.30+ cluster
 - Helm 3.12+
-- kubectl 1.28+
+- kubectl 1.30+
 - NVIDIA Driver 535+ with CUDA 12.2+
 - NVIDIA OFED 24.01+ (for InfiniBand)
 
