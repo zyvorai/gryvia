@@ -1,5 +1,7 @@
 use anyhow::{Context, Result};
-use kube::api::{Api, ApiResource, PostParams};
+use futures::{AsyncBufReadExt, StreamExt};
+use k8s_openapi::api::core::v1::Pod;
+use kube::api::{Api, ApiResource, PostParams, ListParams, LogParams};
 use kube::core::DynamicObject;
 use serde_yaml;
 use std::fs;
@@ -40,8 +42,8 @@ pub async fn execute(client: &KubeFabricClient, file: &str, wait: bool, follow_l
     }
 
     if follow_logs {
-        // TODO: Implement log following
-        display::print_info("Log following not yet implemented");
+        display::print_info("Waiting for pods to start...");
+        follow_job_logs(&client, &job_name).await?;
     }
 
     Ok(())
@@ -101,4 +103,60 @@ async fn wait_for_completion(client: &KubeFabricClient, job_name: &str) -> Resul
 
         sleep(Duration::from_secs(5)).await;
     }
+}
+
+async fn follow_job_logs(client: &KubeFabricClient, job_name: &str) -> Result<()> {
+    let pods_api: Api<Pod> = Api::namespaced(
+        client.kube_client.clone(),
+        client.namespace(),
+    );
+
+    let label_selector = format!("kubefabric.ai/job={}", job_name);
+    let lp = ListParams::default().labels(&label_selector);
+
+    // Wait for pods to appear (up to 5 minutes)
+    let timeout = Duration::from_secs(300);
+    let start = tokio::time::Instant::now();
+    let pod_name;
+
+    loop {
+        if start.elapsed() > timeout {
+            display::print_warning("Timed out waiting for pods to start");
+            return Ok(());
+        }
+
+        let pods = pods_api.list(&lp).await?;
+        if let Some(pod) = pods.items.first() {
+            if let Some(name) = &pod.metadata.name {
+                pod_name = name.clone();
+                break;
+            }
+        }
+
+        sleep(Duration::from_secs(3)).await;
+    }
+
+    display::print_info(&format!("Following logs from pod: {}", pod_name));
+
+    let log_params = LogParams {
+        follow: true,
+        container: Some("trainer".to_string()),
+        ..Default::default()
+    };
+
+    let stream = pods_api.log_stream(&pod_name, &log_params).await
+        .context("Failed to start log stream")?;
+
+    let mut lines = stream.lines();
+    while let Some(line) = lines.next().await {
+        match line {
+            Ok(l) => println!("{}", l),
+            Err(e) => {
+                display::print_error(&format!("Log stream error: {}", e));
+                break;
+            }
+        }
+    }
+
+    Ok(())
 }

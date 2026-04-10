@@ -1,21 +1,46 @@
 use anyhow::{Context, Result};
 use kube::api::Api;
 use colored::*;
+use tokio::time::{sleep, Duration};
 
 use crate::client::KubeFabricClient;
 use crate::types::*;
 
 pub async fn execute(client: &KubeFabricClient, job: &str, follow: bool) -> Result<()> {
-    let _ = follow; // TODO: implement follow mode
-    let api: Api<FabricAIJob> = Api::namespaced(
-        client.kube_client.clone(),
-        client.namespace(),
-    );
+    if follow {
+        loop {
+            print!("\x1B[2J\x1B[1;1H"); // Clear screen
+            let api: Api<FabricAIJob> = Api::namespaced(
+                client.kube_client.clone(),
+                client.namespace(),
+            );
 
-    let job_obj = api.get(job).await
-        .context("Failed to get job")?;
+            let job_obj = api.get(job).await
+                .context("Failed to get job")?;
 
-    print_job_status(&job_obj);
+            print_job_status(&job_obj);
+
+            let status = job_obj.status.clone().unwrap_or_default();
+            match status.phase.as_str() {
+                "Completed" | "Succeeded" | "Failed" => {
+                    break;
+                }
+                _ => {}
+            }
+
+            sleep(Duration::from_secs(5)).await;
+        }
+    } else {
+        let api: Api<FabricAIJob> = Api::namespaced(
+            client.kube_client.clone(),
+            client.namespace(),
+        );
+
+        let job_obj = api.get(job).await
+            .context("Failed to get job")?;
+
+        print_job_status(&job_obj);
+    }
 
     Ok(())
 }

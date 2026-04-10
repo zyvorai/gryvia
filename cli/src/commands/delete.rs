@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
-use kube::api::{Api, DeleteParams};
+use kube::api::{Api, ApiResource, DeleteParams, GroupVersionKind};
+use kube::core::DynamicObject;
 use dialoguer::Confirm;
 
 use crate::client::KubeFabricClient;
@@ -21,12 +22,8 @@ pub async fn execute(client: &KubeFabricClient, resource: &str, name: &str, yes:
     match resource {
         "job" => delete_job(client, name).await?,
         "quota" => delete_quota(client, name).await?,
-        "storage" => {
-            display::print_warning("Resource type 'storage' delete is not yet implemented");
-        }
-        "network" => {
-            display::print_warning("Resource type 'network' delete is not yet implemented");
-        }
+        "storage" => delete_storage(client, name).await?,
+        "network" => delete_network(client, name).await?,
         _ => {
             anyhow::bail!("Unknown resource type: {}. Valid types: job, quota, storage, network", resource);
         }
@@ -56,6 +53,36 @@ async fn delete_quota(client: &KubeFabricClient, name: &str) -> Result<()> {
         .context("Failed to delete quota")?;
 
     display::print_success(&format!("Quota {} deleted", name));
+
+    Ok(())
+}
+
+async fn delete_storage(client: &KubeFabricClient, name: &str) -> Result<()> {
+    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("kubefabric.ai", "v1", "FabricStorage"));
+    let api: Api<DynamicObject> = Api::all_with(
+        client.kube_client.clone(),
+        &ar,
+    );
+
+    api.delete(name, &DeleteParams::default()).await
+        .context("Failed to delete storage")?;
+
+    display::print_success(&format!("Storage {} deleted", name));
+
+    Ok(())
+}
+
+async fn delete_network(client: &KubeFabricClient, name: &str) -> Result<()> {
+    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("kubefabric.ai", "v1", "FabricNetwork"));
+    let api: Api<DynamicObject> = Api::all_with(
+        client.kube_client.clone(),
+        &ar,
+    );
+
+    api.delete(name, &DeleteParams::default()).await
+        .context("Failed to delete network")?;
+
+    display::print_success(&format!("Network {} deleted", name));
 
     Ok(())
 }

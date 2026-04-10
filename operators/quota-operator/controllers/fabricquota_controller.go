@@ -312,7 +312,7 @@ func (r *FabricQuotaReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&kubefabricv1.FabricQuota{}).
 		Watches(&kubefabricv1.FabricAIJob{}, handler.EnqueueRequestsFromMapFunc(
-			func(obj client.Object) []reconcile.Request {
+			func(ctx context.Context, obj client.Object) []reconcile.Request {
 				// When a FabricAIJob changes, enqueue all FabricQuota objects
 				// in the same namespace so quota usage is recalculated.
 				quotaList := &kubefabricv1.FabricQuotaList{}

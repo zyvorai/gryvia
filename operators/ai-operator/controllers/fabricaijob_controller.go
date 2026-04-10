@@ -243,7 +243,7 @@ func (r *FabricAIJobReconciler) ensurePVC(ctx context.Context, job *kubefabricv1
 					corev1.ReadWriteMany,
 				},
 				StorageClassName: &job.Spec.Storage,
-				Resources: corev1.ResourceRequirements{
+				Resources: corev1.VolumeResourceRequirements{
 					Requests: corev1.ResourceList{
 						corev1.ResourceStorage: storageQuantity,
 					},
@@ -323,10 +323,71 @@ func (r *FabricAIJobReconciler) ensureStatefulSet(ctx context.Context, job *kube
 
 		return r.Create(ctx, sts)
 	}
+	if err != nil {
+		return err
+	}
 
-	// TODO: Update StatefulSet if needed
+	// Update StatefulSet if the job spec has changed
+	desired := r.buildStatefulSet(job)
+	needsUpdate := false
 
-	return err
+	// Check replica count
+	if *sts.Spec.Replicas != *desired.Spec.Replicas {
+		sts.Spec.Replicas = desired.Spec.Replicas
+		needsUpdate = true
+	}
+
+	// Check container image
+	if len(sts.Spec.Template.Spec.Containers) > 0 && len(desired.Spec.Template.Spec.Containers) > 0 {
+		if sts.Spec.Template.Spec.Containers[0].Image != desired.Spec.Template.Spec.Containers[0].Image {
+			sts.Spec.Template.Spec.Containers[0].Image = desired.Spec.Template.Spec.Containers[0].Image
+			needsUpdate = true
+		}
+
+		// Check command
+		if !stringSlicesEqual(sts.Spec.Template.Spec.Containers[0].Command, desired.Spec.Template.Spec.Containers[0].Command) {
+			sts.Spec.Template.Spec.Containers[0].Command = desired.Spec.Template.Spec.Containers[0].Command
+			needsUpdate = true
+		}
+
+		// Check args
+		if !stringSlicesEqual(sts.Spec.Template.Spec.Containers[0].Args, desired.Spec.Template.Spec.Containers[0].Args) {
+			sts.Spec.Template.Spec.Containers[0].Args = desired.Spec.Template.Spec.Containers[0].Args
+			needsUpdate = true
+		}
+
+		// Check env vars
+		if !envVarsEqual(sts.Spec.Template.Spec.Containers[0].Env, desired.Spec.Template.Spec.Containers[0].Env) {
+			sts.Spec.Template.Spec.Containers[0].Env = desired.Spec.Template.Spec.Containers[0].Env
+			needsUpdate = true
+		}
+
+		// Check resource limits (GPU count changes)
+		desiredGPU := desired.Spec.Template.Spec.Containers[0].Resources.Limits["nvidia.com/gpu"]
+		currentGPU := sts.Spec.Template.Spec.Containers[0].Resources.Limits["nvidia.com/gpu"]
+		if !desiredGPU.Equal(currentGPU) {
+			sts.Spec.Template.Spec.Containers[0].Resources = desired.Spec.Template.Spec.Containers[0].Resources
+			needsUpdate = true
+		}
+	}
+
+	// Check annotations (network mode changes)
+	if !mapsEqual(sts.Spec.Template.Annotations, desired.Spec.Template.Annotations) {
+		sts.Spec.Template.Annotations = desired.Spec.Template.Annotations
+		needsUpdate = true
+	}
+
+	// Check node selector
+	if !mapsEqual(sts.Spec.Template.Spec.NodeSelector, desired.Spec.Template.Spec.NodeSelector) {
+		sts.Spec.Template.Spec.NodeSelector = desired.Spec.Template.Spec.NodeSelector
+		needsUpdate = true
+	}
+
+	if needsUpdate {
+		return r.Update(ctx, sts)
+	}
+
+	return nil
 }
 
 func (r *FabricAIJobReconciler) buildStatefulSet(job *kubefabricv1.FabricAIJob) *appsv1.StatefulSet {
@@ -578,6 +639,42 @@ func (r *FabricAIJobReconciler) updateCondition(job *kubefabricv1.FabricAIJob, c
 	if !found {
 		job.Status.Conditions = append(job.Status.Conditions, condition)
 	}
+}
+
+func stringSlicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func envVarsEqual(a, b []corev1.EnvVar) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Name != b[i].Name || a[i].Value != b[i].Value {
+			return false
+		}
+	}
+	return true
+}
+
+func mapsEqual(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if b[k] != v {
+			return false
+		}
+	}
+	return true
 }
 
 // SetupWithManager sets up the controller with the Manager.

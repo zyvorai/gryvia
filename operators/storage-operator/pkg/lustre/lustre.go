@@ -1,4 +1,4 @@
-package weka
+package lustre
 
 import (
 	"context"
@@ -18,13 +18,13 @@ import (
 )
 
 const (
-	WekaCSINamespace      = "kube-system"
-	WekaCSIDriverName     = "csi.weka.io"
-	WekaCSIControllerName = "weka-csi-controller"
-	WekaCSINodeName       = "weka-csi-node"
+	LustreCSINamespace      = "kube-system"
+	LustreCSIDriverName     = "csi.lustre.org"
+	LustreCSIControllerName = "lustre-csi-controller"
+	LustreCSINodeName       = "lustre-csi-node"
 )
 
-// InstallCSIDriver installs the Weka CSI driver
+// InstallCSIDriver installs the Lustre CSI driver
 func InstallCSIDriver(ctx context.Context, k8sClient client.Client, storage *kubefabricv1.FabricStorage) error {
 	if err := ensureServiceAccount(ctx, k8sClient); err != nil {
 		return fmt.Errorf("failed to create ServiceAccount: %w", err)
@@ -48,8 +48,8 @@ func InstallCSIDriver(ctx context.Context, k8sClient client.Client, storage *kub
 func ensureServiceAccount(ctx context.Context, k8sClient client.Client) error {
 	sa := &corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "weka-csi-controller-sa",
-			Namespace: WekaCSINamespace,
+			Name:      "lustre-csi-controller-sa",
+			Namespace: LustreCSINamespace,
 		},
 	}
 
@@ -63,7 +63,7 @@ func ensureServiceAccount(ctx context.Context, k8sClient client.Client) error {
 func ensureRBAC(ctx context.Context, k8sClient client.Client) error {
 	cr := &rbacv1.ClusterRole{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "weka-csi-controller-role",
+			Name: "lustre-csi-controller-role",
 		},
 		Rules: []rbacv1.PolicyRule{
 			{
@@ -82,11 +82,6 @@ func ensureRBAC(ctx context.Context, k8sClient client.Client) error {
 				Verbs:     []string{"get", "list", "watch"},
 			},
 			{
-				APIGroups: []string{"storage.k8s.io"},
-				Resources: []string{"csinodes"},
-				Verbs:     []string{"get", "list", "watch"},
-			},
-			{
 				APIGroups: []string{""},
 				Resources: []string{"events"},
 				Verbs:     []string{"list", "watch", "create", "update", "patch"},
@@ -95,16 +90,6 @@ func ensureRBAC(ctx context.Context, k8sClient client.Client) error {
 				APIGroups: []string{""},
 				Resources: []string{"nodes"},
 				Verbs:     []string{"get", "list", "watch"},
-			},
-			{
-				APIGroups: []string{""},
-				Resources: []string{"secrets"},
-				Verbs:     []string{"get", "list"},
-			},
-			{
-				APIGroups: []string{"snapshot.storage.k8s.io"},
-				Resources: []string{"volumesnapshots", "volumesnapshotcontents"},
-				Verbs:     []string{"get", "list", "watch", "create", "delete"},
 			},
 		},
 	}
@@ -120,18 +105,18 @@ func ensureRBAC(ctx context.Context, k8sClient client.Client) error {
 
 	crb := &rbacv1.ClusterRoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "weka-csi-controller-binding",
+			Name: "lustre-csi-controller-binding",
 		},
 		RoleRef: rbacv1.RoleRef{
 			APIGroup: "rbac.authorization.k8s.io",
 			Kind:     "ClusterRole",
-			Name:     "weka-csi-controller-role",
+			Name:     "lustre-csi-controller-role",
 		},
 		Subjects: []rbacv1.Subject{
 			{
 				Kind:      "ServiceAccount",
-				Name:      "weka-csi-controller-sa",
-				Namespace: WekaCSINamespace,
+				Name:      "lustre-csi-controller-sa",
+				Namespace: LustreCSINamespace,
 			},
 		},
 	}
@@ -147,7 +132,7 @@ func ensureEndpointSecret(ctx context.Context, k8sClient client.Client, secretNa
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      secretName,
-			Namespace: WekaCSINamespace,
+			Namespace: LustreCSINamespace,
 			Labels: map[string]string{
 				"app.kubernetes.io/managed-by": "kubefabric",
 			},
@@ -159,7 +144,7 @@ func ensureEndpointSecret(ctx context.Context, k8sClient client.Client, secretNa
 	}
 
 	existing := &corev1.Secret{}
-	err := k8sClient.Get(ctx, types.NamespacedName{Name: secretName, Namespace: WekaCSINamespace}, existing)
+	err := k8sClient.Get(ctx, types.NamespacedName{Name: secretName, Namespace: LustreCSINamespace}, existing)
 	if errors.IsNotFound(err) {
 		return k8sClient.Create(ctx, secret)
 	}
@@ -180,42 +165,37 @@ func ensureController(ctx context.Context, k8sClient client.Client, storage *kub
 
 	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      WekaCSIControllerName,
-			Namespace: WekaCSINamespace,
+			Name:      LustreCSIControllerName,
+			Namespace: LustreCSINamespace,
 			Labels: map[string]string{
-				"app": WekaCSIControllerName,
+				"app": LustreCSIControllerName,
 			},
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &replicas,
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
-					"app": WekaCSIControllerName,
+					"app": LustreCSIControllerName,
 				},
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{
-						"app": WekaCSIControllerName,
+						"app": LustreCSIControllerName,
 					},
 				},
 				Spec: corev1.PodSpec{
-					ServiceAccountName: "weka-csi-controller-sa",
+					ServiceAccountName: "lustre-csi-controller-sa",
 					Containers: []corev1.Container{
 						{
-							Name:  "weka-csi-plugin",
-							Image: "quay.io/weka.io/csi-wekafs:v2.6.0",
+							Name:  "lustre-csi-plugin",
+							Image: "ghcr.io/kubernetes-sigs/lustre-csi-driver:v0.3.0",
 							Args: []string{
-								"--drivername=$(CSI_DRIVER_NAME)",
 								"--endpoint=$(CSI_ENDPOINT)",
 								"--nodeid=$(KUBE_NODE_NAME)",
-								"--dynamic-path=csi-volumes",
+								"--drivername=" + LustreCSIDriverName,
 							},
 							Env: []corev1.EnvVar{
-								{
-									Name:  "CSI_DRIVER_NAME",
-									Value: WekaCSIDriverName,
-								},
 								{
 									Name:  "CSI_ENDPOINT",
 									Value: "unix:///var/lib/csi/sockets/pluginproxy/csi.sock",
@@ -225,6 +205,17 @@ func ensureController(ctx context.Context, k8sClient client.Client, storage *kub
 									ValueFrom: &corev1.EnvVarSource{
 										FieldRef: &corev1.ObjectFieldSelector{
 											FieldPath: "spec.nodeName",
+										},
+									},
+								},
+								{
+									Name: "LUSTRE_ENDPOINT",
+									ValueFrom: &corev1.EnvVarSource{
+										SecretKeyRef: &corev1.SecretKeySelector{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: secretName,
+											},
+											Key: "endpoint",
 										},
 									},
 								},
@@ -242,7 +233,6 @@ func ensureController(ctx context.Context, k8sClient client.Client, storage *kub
 							Args: []string{
 								"--csi-address=$(ADDRESS)",
 								"--leader-election",
-								"--extra-create-metadata",
 							},
 							Env: []corev1.EnvVar{
 								{
@@ -254,26 +244,6 @@ func ensureController(ctx context.Context, k8sClient client.Client, storage *kub
 								{
 									Name:      "socket-dir",
 									MountPath: "/var/lib/csi/sockets/pluginproxy",
-								},
-							},
-						},
-						{
-							Name:  "csi-attacher",
-							Image: "registry.k8s.io/sig-storage/csi-attacher:v4.7.0",
-							Args: []string{
-								"--csi-address=$(ADDRESS)",
-								"--leader-election",
-							},
-							Env: []corev1.EnvVar{
-								{
-									Name:  "ADDRESS",
-									Value: "/var/lib/csi/sockets/pluginproxy/csi.sock",
-								},
-							},
-							VolumeMounts: []corev1.VolumeMount{
-								{
-									Name:      "socket-dir",
-									MountPath: "/var/lib/csi/sockets/pluginproxy/",
 								},
 							},
 						},
@@ -299,48 +269,41 @@ func ensureController(ctx context.Context, k8sClient client.Client, storage *kub
 }
 
 func ensureNodeDaemonSet(ctx context.Context, k8sClient client.Client, storage *kubefabricv1.FabricStorage) error {
-	secretName := fmt.Sprintf("%s-endpoint", storage.Name)
-
 	ds := &appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      WekaCSINodeName,
-			Namespace: WekaCSINamespace,
+			Name:      LustreCSINodeName,
+			Namespace: LustreCSINamespace,
 			Labels: map[string]string{
-				"app": WekaCSINodeName,
+				"app": LustreCSINodeName,
 			},
 		},
 		Spec: appsv1.DaemonSetSpec{
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
-					"app": WekaCSINodeName,
+					"app": LustreCSINodeName,
 				},
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{
-						"app": WekaCSINodeName,
+						"app": LustreCSINodeName,
 					},
 				},
 				Spec: corev1.PodSpec{
 					HostNetwork: true,
 					Containers: []corev1.Container{
 						{
-							Name:  "weka-csi-node",
-							Image: "quay.io/weka.io/csi-wekafs:v2.6.0",
+							Name:  "lustre-csi-node",
+							Image: "ghcr.io/kubernetes-sigs/lustre-csi-driver:v0.3.0",
 							SecurityContext: &corev1.SecurityContext{
 								Privileged: func() *bool { b := true; return &b }(),
 							},
 							Args: []string{
-								"--drivername=$(CSI_DRIVER_NAME)",
 								"--endpoint=$(CSI_ENDPOINT)",
 								"--nodeid=$(KUBE_NODE_NAME)",
-								"--dynamic-path=csi-volumes",
+								"--drivername=" + LustreCSIDriverName,
 							},
 							Env: []corev1.EnvVar{
-								{
-									Name:  "CSI_DRIVER_NAME",
-									Value: WekaCSIDriverName,
-								},
 								{
 									Name:  "CSI_ENDPOINT",
 									Value: "unix:///csi/csi.sock",
@@ -350,17 +313,6 @@ func ensureNodeDaemonSet(ctx context.Context, k8sClient client.Client, storage *
 									ValueFrom: &corev1.EnvVarSource{
 										FieldRef: &corev1.ObjectFieldSelector{
 											FieldPath: "spec.nodeName",
-										},
-									},
-								},
-								{
-									Name: "WEKA_ENDPOINT",
-									ValueFrom: &corev1.EnvVarSource{
-										SecretKeyRef: &corev1.SecretKeySelector{
-											LocalObjectReference: corev1.LocalObjectReference{
-												Name: secretName,
-											},
-											Key: "endpoint",
 										},
 									},
 								},
@@ -382,6 +334,14 @@ func ensureNodeDaemonSet(ctx context.Context, k8sClient client.Client, storage *
 									Name:      "registration-dir",
 									MountPath: "/registration",
 								},
+								{
+									Name:      "lustre-mount",
+									MountPath: "/lustre",
+									MountPropagation: func() *corev1.MountPropagationMode {
+										m := corev1.MountPropagationBidirectional
+										return &m
+									}(),
+								},
 							},
 						},
 						{
@@ -398,7 +358,7 @@ func ensureNodeDaemonSet(ctx context.Context, k8sClient client.Client, storage *
 								},
 								{
 									Name:  "DRIVER_REG_SOCK_PATH",
-									Value: "/var/lib/kubelet/plugins/csi.weka.io/csi.sock",
+									Value: "/var/lib/kubelet/plugins/csi.lustre.org/csi.sock",
 								},
 							},
 							VolumeMounts: []corev1.VolumeMount{
@@ -418,7 +378,7 @@ func ensureNodeDaemonSet(ctx context.Context, k8sClient client.Client, storage *
 							Name: "plugin-dir",
 							VolumeSource: corev1.VolumeSource{
 								HostPath: &corev1.HostPathVolumeSource{
-									Path: "/var/lib/kubelet/plugins/csi.weka.io",
+									Path: "/var/lib/kubelet/plugins/csi.lustre.org",
 									Type: func() *corev1.HostPathType {
 										t := corev1.HostPathDirectoryOrCreate
 										return &t
@@ -450,6 +410,18 @@ func ensureNodeDaemonSet(ctx context.Context, k8sClient client.Client, storage *
 								},
 							},
 						},
+						{
+							Name: "lustre-mount",
+							VolumeSource: corev1.VolumeSource{
+								HostPath: &corev1.HostPathVolumeSource{
+									Path: "/lustre",
+									Type: func() *corev1.HostPathType {
+										t := corev1.HostPathDirectoryOrCreate
+										return &t
+									}(),
+								},
+							},
+						},
 					},
 				},
 			},
@@ -463,22 +435,22 @@ func ensureNodeDaemonSet(ctx context.Context, k8sClient client.Client, storage *
 	return err
 }
 
-// HealthCheck checks Weka cluster health
+// HealthCheck checks Lustre filesystem health via the management endpoint
 func HealthCheck(endpoint string) error {
-	client := &http.Client{
-		Timeout: 5 * time.Second,
+	httpClient := &http.Client{
+		Timeout: 10 * time.Second,
 	}
 
-	url := fmt.Sprintf("https://%s/api/v2/healthcheck", endpoint)
+	healthURL := fmt.Sprintf("https://%s/api/health", endpoint)
 
-	resp, err := client.Get(url)
+	resp, err := httpClient.Get(healthURL)
 	if err != nil {
-		return fmt.Errorf("Weka health check failed: %w", err)
+		return fmt.Errorf("Lustre health check failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("Weka health check returned status %d", resp.StatusCode)
+		return fmt.Errorf("Lustre health check returned status %d", resp.StatusCode)
 	}
 
 	return nil

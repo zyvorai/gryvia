@@ -1,4 +1,4 @@
-package weka
+package ceph
 
 import (
 	"context"
@@ -18,13 +18,13 @@ import (
 )
 
 const (
-	WekaCSINamespace      = "kube-system"
-	WekaCSIDriverName     = "csi.weka.io"
-	WekaCSIControllerName = "weka-csi-controller"
-	WekaCSINodeName       = "weka-csi-node"
+	CephCSINamespace      = "kube-system"
+	CephCSIDriverName     = "rook-ceph.cephfs.csi.ceph.com"
+	CephCSIControllerName = "ceph-csi-controller"
+	CephCSINodeName       = "ceph-csi-node"
 )
 
-// InstallCSIDriver installs the Weka CSI driver
+// InstallCSIDriver installs the CephFS CSI driver
 func InstallCSIDriver(ctx context.Context, k8sClient client.Client, storage *kubefabricv1.FabricStorage) error {
 	if err := ensureServiceAccount(ctx, k8sClient); err != nil {
 		return fmt.Errorf("failed to create ServiceAccount: %w", err)
@@ -34,11 +34,15 @@ func InstallCSIDriver(ctx context.Context, k8sClient client.Client, storage *kub
 		return fmt.Errorf("failed to create RBAC: %w", err)
 	}
 
+	if err := ensureCephConfigMap(ctx, k8sClient, storage); err != nil {
+		return fmt.Errorf("failed to create Ceph config: %w", err)
+	}
+
 	if err := ensureController(ctx, k8sClient, storage); err != nil {
 		return fmt.Errorf("failed to deploy CSI controller: %w", err)
 	}
 
-	if err := ensureNodeDaemonSet(ctx, k8sClient, storage); err != nil {
+	if err := ensureNodeDaemonSet(ctx, k8sClient); err != nil {
 		return fmt.Errorf("failed to deploy CSI node DaemonSet: %w", err)
 	}
 
@@ -48,8 +52,8 @@ func InstallCSIDriver(ctx context.Context, k8sClient client.Client, storage *kub
 func ensureServiceAccount(ctx context.Context, k8sClient client.Client) error {
 	sa := &corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "weka-csi-controller-sa",
-			Namespace: WekaCSINamespace,
+			Name:      "ceph-csi-controller-sa",
+			Namespace: CephCSINamespace,
 		},
 	}
 
@@ -63,7 +67,7 @@ func ensureServiceAccount(ctx context.Context, k8sClient client.Client) error {
 func ensureRBAC(ctx context.Context, k8sClient client.Client) error {
 	cr := &rbacv1.ClusterRole{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "weka-csi-controller-role",
+			Name: "ceph-csi-controller-role",
 		},
 		Rules: []rbacv1.PolicyRule{
 			{
@@ -103,7 +107,7 @@ func ensureRBAC(ctx context.Context, k8sClient client.Client) error {
 			},
 			{
 				APIGroups: []string{"snapshot.storage.k8s.io"},
-				Resources: []string{"volumesnapshots", "volumesnapshotcontents"},
+				Resources: []string{"volumesnapshots", "volumesnapshotcontents", "volumesnapshotclasses"},
 				Verbs:     []string{"get", "list", "watch", "create", "delete"},
 			},
 		},
@@ -120,18 +124,18 @@ func ensureRBAC(ctx context.Context, k8sClient client.Client) error {
 
 	crb := &rbacv1.ClusterRoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "weka-csi-controller-binding",
+			Name: "ceph-csi-controller-binding",
 		},
 		RoleRef: rbacv1.RoleRef{
 			APIGroup: "rbac.authorization.k8s.io",
 			Kind:     "ClusterRole",
-			Name:     "weka-csi-controller-role",
+			Name:     "ceph-csi-controller-role",
 		},
 		Subjects: []rbacv1.Subject{
 			{
 				Kind:      "ServiceAccount",
-				Name:      "weka-csi-controller-sa",
-				Namespace: WekaCSINamespace,
+				Name:      "ceph-csi-controller-sa",
+				Namespace: CephCSINamespace,
 			},
 		},
 	}
@@ -143,85 +147,77 @@ func ensureRBAC(ctx context.Context, k8sClient client.Client) error {
 	return err
 }
 
-func ensureEndpointSecret(ctx context.Context, k8sClient client.Client, secretName, endpoint string) error {
-	secret := &corev1.Secret{
+func ensureCephConfigMap(ctx context.Context, k8sClient client.Client, storage *kubefabricv1.FabricStorage) error {
+	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      secretName,
-			Namespace: WekaCSINamespace,
+			Name:      "ceph-csi-config",
+			Namespace: CephCSINamespace,
 			Labels: map[string]string{
 				"app.kubernetes.io/managed-by": "kubefabric",
 			},
 		},
-		Type: corev1.SecretTypeOpaque,
-		StringData: map[string]string{
-			"endpoint": endpoint,
+		Data: map[string]string{
+			"config.json": fmt.Sprintf(`[{"clusterID":"%s","monitors":["%s"]}]`,
+				storage.Name, storage.Spec.Endpoint),
 		},
 	}
 
-	existing := &corev1.Secret{}
-	err := k8sClient.Get(ctx, types.NamespacedName{Name: secretName, Namespace: WekaCSINamespace}, existing)
+	existing := &corev1.ConfigMap{}
+	err := k8sClient.Get(ctx, types.NamespacedName{Name: cm.Name, Namespace: CephCSINamespace}, existing)
 	if errors.IsNotFound(err) {
-		return k8sClient.Create(ctx, secret)
+		return k8sClient.Create(ctx, cm)
 	}
 	if err != nil {
 		return err
 	}
-	existing.StringData = secret.StringData
+	existing.Data = cm.Data
 	return k8sClient.Update(ctx, existing)
 }
 
 func ensureController(ctx context.Context, k8sClient client.Client, storage *kubefabricv1.FabricStorage) error {
-	secretName := fmt.Sprintf("%s-endpoint", storage.Name)
-	if err := ensureEndpointSecret(ctx, k8sClient, secretName, storage.Spec.Endpoint); err != nil {
-		return fmt.Errorf("failed to create endpoint secret: %w", err)
-	}
-
 	replicas := int32(1)
 
 	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      WekaCSIControllerName,
-			Namespace: WekaCSINamespace,
+			Name:      CephCSIControllerName,
+			Namespace: CephCSINamespace,
 			Labels: map[string]string{
-				"app": WekaCSIControllerName,
+				"app": CephCSIControllerName,
 			},
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &replicas,
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
-					"app": WekaCSIControllerName,
+					"app": CephCSIControllerName,
 				},
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{
-						"app": WekaCSIControllerName,
+						"app": CephCSIControllerName,
 					},
 				},
 				Spec: corev1.PodSpec{
-					ServiceAccountName: "weka-csi-controller-sa",
+					ServiceAccountName: "ceph-csi-controller-sa",
 					Containers: []corev1.Container{
 						{
-							Name:  "weka-csi-plugin",
-							Image: "quay.io/weka.io/csi-wekafs:v2.6.0",
+							Name:  "csi-cephfsplugin",
+							Image: "quay.io/cephcsi/cephcsi:v3.12.2",
 							Args: []string{
-								"--drivername=$(CSI_DRIVER_NAME)",
+								"--nodeid=$(NODE_ID)",
+								"--type=cephfs",
+								"--controllerserver=true",
 								"--endpoint=$(CSI_ENDPOINT)",
-								"--nodeid=$(KUBE_NODE_NAME)",
-								"--dynamic-path=csi-volumes",
+								"--drivername=" + CephCSIDriverName,
 							},
 							Env: []corev1.EnvVar{
 								{
-									Name:  "CSI_DRIVER_NAME",
-									Value: WekaCSIDriverName,
-								},
-								{
 									Name:  "CSI_ENDPOINT",
-									Value: "unix:///var/lib/csi/sockets/pluginproxy/csi.sock",
+									Value: "unix:///csi/csi-provisioner.sock",
 								},
 								{
-									Name: "KUBE_NODE_NAME",
+									Name: "NODE_ID",
 									ValueFrom: &corev1.EnvVarSource{
 										FieldRef: &corev1.ObjectFieldSelector{
 											FieldPath: "spec.nodeName",
@@ -232,7 +228,11 @@ func ensureController(ctx context.Context, k8sClient client.Client, storage *kub
 							VolumeMounts: []corev1.VolumeMount{
 								{
 									Name:      "socket-dir",
-									MountPath: "/var/lib/csi/sockets/pluginproxy",
+									MountPath: "/csi",
+								},
+								{
+									Name:      "ceph-csi-config",
+									MountPath: "/etc/ceph-csi-config",
 								},
 							},
 						},
@@ -247,33 +247,13 @@ func ensureController(ctx context.Context, k8sClient client.Client, storage *kub
 							Env: []corev1.EnvVar{
 								{
 									Name:  "ADDRESS",
-									Value: "/var/lib/csi/sockets/pluginproxy/csi.sock",
+									Value: "unix:///csi/csi-provisioner.sock",
 								},
 							},
 							VolumeMounts: []corev1.VolumeMount{
 								{
 									Name:      "socket-dir",
-									MountPath: "/var/lib/csi/sockets/pluginproxy",
-								},
-							},
-						},
-						{
-							Name:  "csi-attacher",
-							Image: "registry.k8s.io/sig-storage/csi-attacher:v4.7.0",
-							Args: []string{
-								"--csi-address=$(ADDRESS)",
-								"--leader-election",
-							},
-							Env: []corev1.EnvVar{
-								{
-									Name:  "ADDRESS",
-									Value: "/var/lib/csi/sockets/pluginproxy/csi.sock",
-								},
-							},
-							VolumeMounts: []corev1.VolumeMount{
-								{
-									Name:      "socket-dir",
-									MountPath: "/var/lib/csi/sockets/pluginproxy/",
+									MountPath: "/csi",
 								},
 							},
 						},
@@ -283,6 +263,16 @@ func ensureController(ctx context.Context, k8sClient client.Client, storage *kub
 							Name: "socket-dir",
 							VolumeSource: corev1.VolumeSource{
 								EmptyDir: &corev1.EmptyDirVolumeSource{},
+							},
+						},
+						{
+							Name: "ceph-csi-config",
+							VolumeSource: corev1.VolumeSource{
+								ConfigMap: &corev1.ConfigMapVolumeSource{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: "ceph-csi-config",
+									},
+								},
 							},
 						},
 					},
@@ -298,69 +288,53 @@ func ensureController(ctx context.Context, k8sClient client.Client, storage *kub
 	return err
 }
 
-func ensureNodeDaemonSet(ctx context.Context, k8sClient client.Client, storage *kubefabricv1.FabricStorage) error {
-	secretName := fmt.Sprintf("%s-endpoint", storage.Name)
-
+func ensureNodeDaemonSet(ctx context.Context, k8sClient client.Client) error {
 	ds := &appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      WekaCSINodeName,
-			Namespace: WekaCSINamespace,
+			Name:      CephCSINodeName,
+			Namespace: CephCSINamespace,
 			Labels: map[string]string{
-				"app": WekaCSINodeName,
+				"app": CephCSINodeName,
 			},
 		},
 		Spec: appsv1.DaemonSetSpec{
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
-					"app": WekaCSINodeName,
+					"app": CephCSINodeName,
 				},
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{
-						"app": WekaCSINodeName,
+						"app": CephCSINodeName,
 					},
 				},
 				Spec: corev1.PodSpec{
 					HostNetwork: true,
 					Containers: []corev1.Container{
 						{
-							Name:  "weka-csi-node",
-							Image: "quay.io/weka.io/csi-wekafs:v2.6.0",
+							Name:  "csi-cephfsplugin",
+							Image: "quay.io/cephcsi/cephcsi:v3.12.2",
 							SecurityContext: &corev1.SecurityContext{
 								Privileged: func() *bool { b := true; return &b }(),
 							},
 							Args: []string{
-								"--drivername=$(CSI_DRIVER_NAME)",
+								"--nodeid=$(NODE_ID)",
+								"--type=cephfs",
+								"--nodeserver=true",
 								"--endpoint=$(CSI_ENDPOINT)",
-								"--nodeid=$(KUBE_NODE_NAME)",
-								"--dynamic-path=csi-volumes",
+								"--drivername=" + CephCSIDriverName,
 							},
 							Env: []corev1.EnvVar{
-								{
-									Name:  "CSI_DRIVER_NAME",
-									Value: WekaCSIDriverName,
-								},
 								{
 									Name:  "CSI_ENDPOINT",
 									Value: "unix:///csi/csi.sock",
 								},
 								{
-									Name: "KUBE_NODE_NAME",
+									Name: "NODE_ID",
 									ValueFrom: &corev1.EnvVarSource{
 										FieldRef: &corev1.ObjectFieldSelector{
 											FieldPath: "spec.nodeName",
-										},
-									},
-								},
-								{
-									Name: "WEKA_ENDPOINT",
-									ValueFrom: &corev1.EnvVarSource{
-										SecretKeyRef: &corev1.SecretKeySelector{
-											LocalObjectReference: corev1.LocalObjectReference{
-												Name: secretName,
-											},
-											Key: "endpoint",
 										},
 									},
 								},
@@ -382,6 +356,10 @@ func ensureNodeDaemonSet(ctx context.Context, k8sClient client.Client, storage *
 									Name:      "registration-dir",
 									MountPath: "/registration",
 								},
+								{
+									Name:      "ceph-csi-config",
+									MountPath: "/etc/ceph-csi-config",
+								},
 							},
 						},
 						{
@@ -398,7 +376,7 @@ func ensureNodeDaemonSet(ctx context.Context, k8sClient client.Client, storage *
 								},
 								{
 									Name:  "DRIVER_REG_SOCK_PATH",
-									Value: "/var/lib/kubelet/plugins/csi.weka.io/csi.sock",
+									Value: "/var/lib/kubelet/plugins/rook-ceph.cephfs.csi.ceph.com/csi.sock",
 								},
 							},
 							VolumeMounts: []corev1.VolumeMount{
@@ -418,7 +396,7 @@ func ensureNodeDaemonSet(ctx context.Context, k8sClient client.Client, storage *
 							Name: "plugin-dir",
 							VolumeSource: corev1.VolumeSource{
 								HostPath: &corev1.HostPathVolumeSource{
-									Path: "/var/lib/kubelet/plugins/csi.weka.io",
+									Path: "/var/lib/kubelet/plugins/rook-ceph.cephfs.csi.ceph.com",
 									Type: func() *corev1.HostPathType {
 										t := corev1.HostPathDirectoryOrCreate
 										return &t
@@ -450,6 +428,16 @@ func ensureNodeDaemonSet(ctx context.Context, k8sClient client.Client, storage *
 								},
 							},
 						},
+						{
+							Name: "ceph-csi-config",
+							VolumeSource: corev1.VolumeSource{
+								ConfigMap: &corev1.ConfigMapVolumeSource{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: "ceph-csi-config",
+									},
+								},
+							},
+						},
 					},
 				},
 			},
@@ -463,22 +451,22 @@ func ensureNodeDaemonSet(ctx context.Context, k8sClient client.Client, storage *
 	return err
 }
 
-// HealthCheck checks Weka cluster health
+// HealthCheck checks Ceph cluster health via the management endpoint
 func HealthCheck(endpoint string) error {
-	client := &http.Client{
-		Timeout: 5 * time.Second,
+	httpClient := &http.Client{
+		Timeout: 10 * time.Second,
 	}
 
-	url := fmt.Sprintf("https://%s/api/v2/healthcheck", endpoint)
+	healthURL := fmt.Sprintf("https://%s/api/health", endpoint)
 
-	resp, err := client.Get(url)
+	resp, err := httpClient.Get(healthURL)
 	if err != nil {
-		return fmt.Errorf("Weka health check failed: %w", err)
+		return fmt.Errorf("Ceph health check failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("Weka health check returned status %d", resp.StatusCode)
+		return fmt.Errorf("Ceph health check returned status %d", resp.StatusCode)
 	}
 
 	return nil

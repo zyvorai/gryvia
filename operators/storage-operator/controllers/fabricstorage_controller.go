@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -16,9 +17,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	kubefabricv1 "github.com/ssahani/kube-fabric/operators/storage-operator/api/v1"
+	"github.com/ssahani/kube-fabric/operators/storage-operator/pkg/ceph"
+	"github.com/ssahani/kube-fabric/operators/storage-operator/pkg/ddn"
+	"github.com/ssahani/kube-fabric/operators/storage-operator/pkg/lustre"
 	"github.com/ssahani/kube-fabric/operators/storage-operator/pkg/vast"
 	"github.com/ssahani/kube-fabric/operators/storage-operator/pkg/weka"
-	"github.com/ssahani/kube-fabric/operators/storage-operator/pkg/ddn"
 )
 
 const (
@@ -158,8 +161,6 @@ func (r *FabricStorageReconciler) reconcileStorage(ctx context.Context, storage 
 }
 
 func (r *FabricStorageReconciler) ensureCSIDriver(ctx context.Context, storage *kubefabricv1.FabricStorage) error {
-	log := r.Log.WithValues("backend", storage.Spec.Backend)
-
 	switch storage.Spec.Backend {
 	case "vast":
 		return vast.InstallCSIDriver(ctx, r.Client, storage)
@@ -168,11 +169,9 @@ func (r *FabricStorageReconciler) ensureCSIDriver(ctx context.Context, storage *
 	case "ddn":
 		return ddn.InstallCSIDriver(ctx, r.Client, storage)
 	case "lustre":
-		log.Info("Lustre CSI driver installation not yet implemented")
-		return nil
+		return lustre.InstallCSIDriver(ctx, r.Client, storage)
 	case "ceph":
-		log.Info("Ceph CSI driver installation not yet implemented")
-		return nil
+		return ceph.InstallCSIDriver(ctx, r.Client, storage)
 	default:
 		return fmt.Errorf("unsupported storage backend: %s", storage.Spec.Backend)
 	}
@@ -209,9 +208,9 @@ func (r *FabricStorageReconciler) ensureStorageClass(ctx context.Context, storag
 }
 
 func (r *FabricStorageReconciler) buildStorageClass(storage *kubefabricv1.FabricStorage, name string) *storagev1.StorageClass {
-	reclaimPolicy := storagev1.PersistentVolumeReclaimDelete
+	reclaimPolicy := corev1.PersistentVolumeReclaimDelete
 	if storage.Spec.StorageClass != nil && storage.Spec.StorageClass.ReclaimPolicy == "Retain" {
-		reclaimPolicy = storagev1.PersistentVolumeReclaimRetain
+		reclaimPolicy = corev1.PersistentVolumeReclaimRetain
 	}
 
 	volumeBindingMode := storagev1.VolumeBindingWaitForFirstConsumer
@@ -277,6 +276,10 @@ func (r *FabricStorageReconciler) healthCheckStorage(ctx context.Context, storag
 		return weka.HealthCheck(storage.Spec.Endpoint)
 	case "ddn":
 		return ddn.HealthCheck(storage.Spec.Endpoint)
+	case "lustre":
+		return lustre.HealthCheck(storage.Spec.Endpoint)
+	case "ceph":
+		return ceph.HealthCheck(storage.Spec.Endpoint)
 	default:
 		r.Log.Info("Health check not implemented for backend", "backend", storage.Spec.Backend)
 		return nil

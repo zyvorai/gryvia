@@ -253,10 +253,137 @@ func ConfigureNode(ctx context.Context, k8sClient client.Client, node *corev1.No
 	})
 }
 
-// EnableVFs enables Virtual Functions on the physical interface
-// This would typically be done via a node configuration DaemonSet
-func EnableVFs(physicalInterface string, numVFs int) error {
-	// This is a placeholder - actual implementation would use:
-	// echo <numVFs> > /sys/class/net/<physicalInterface>/device/sriov_numvfs
-	return fmt.Errorf("VF enablement requires node-level access - deploy SR-IOV network operator or configure manually")
+// EnsureVFConfigDaemonSet deploys a DaemonSet that enables Virtual Functions
+// on matching nodes by writing to the sysfs sriov_numvfs file.
+func EnsureVFConfigDaemonSet(ctx context.Context, k8sClient client.Client, sriovConfig *kubefabricv1.SRIOVConfig) error {
+	name := fmt.Sprintf("sriov-vf-config-%s", sriovConfig.ResourceName)
+	enableScript := fmt.Sprintf(
+		`#!/bin/sh
+set -e
+IFACE="%s"
+NUM_VFS=%d
+CURRENT=$(cat /sys/class/net/$IFACE/device/sriov_numvfs 2>/dev/null || echo 0)
+if [ "$CURRENT" != "$NUM_VFS" ]; then
+  echo 0 > /sys/class/net/$IFACE/device/sriov_numvfs
+  echo $NUM_VFS > /sys/class/net/$IFACE/device/sriov_numvfs
+  echo "Configured $NUM_VFS VFs on $IFACE"
+else
+  echo "VFs already configured ($CURRENT) on $IFACE"
+fi
+sleep infinity`,
+		sriovConfig.PhysicalInterface, sriovConfig.NumVFs,
+	)
+
+	cm := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name + "-script",
+			Namespace: SRIOVDevicePluginNamespace,
+		},
+		Data: map[string]string{
+			"enable-vfs.sh": enableScript,
+		},
+	}
+
+	existingCM := &corev1.ConfigMap{}
+	err := k8sClient.Get(ctx, types.NamespacedName{Name: cm.Name, Namespace: cm.Namespace}, existingCM)
+	if errors.IsNotFound(err) {
+		if err := k8sClient.Create(ctx, cm); err != nil {
+			return fmt.Errorf("failed to create VF config script: %w", err)
+		}
+	} else if err != nil {
+		return err
+	} else {
+		existingCM.Data = cm.Data
+		if err := k8sClient.Update(ctx, existingCM); err != nil {
+			return fmt.Errorf("failed to update VF config script: %w", err)
+		}
+	}
+
+	ds := &appsv1.DaemonSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: SRIOVDevicePluginNamespace,
+			Labels: map[string]string{
+				"app":                          name,
+				"kubefabric.ai/component":      "sriov-vf-config",
+				"kubefabric.ai/sriov-resource": sriovConfig.ResourceName,
+			},
+		},
+		Spec: appsv1.DaemonSetSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app": name,
+				},
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"app": name,
+					},
+				},
+				Spec: corev1.PodSpec{
+					HostNetwork: true,
+					HostPID:     true,
+					NodeSelector: map[string]string{
+						"kubefabric.ai/sriov": "true",
+					},
+					Containers: []corev1.Container{
+						{
+							Name:  "vf-config",
+							Image: "busybox:1.36",
+							Command: []string{
+								"/bin/sh",
+								"/scripts/enable-vfs.sh",
+							},
+							SecurityContext: &corev1.SecurityContext{
+								Privileged: func() *bool { b := true; return &b }(),
+							},
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									Name:      "scripts",
+									MountPath: "/scripts",
+								},
+								{
+									Name:      "sys",
+									MountPath: "/sys",
+								},
+							},
+						},
+					},
+					Volumes: []corev1.Volume{
+						{
+							Name: "scripts",
+							VolumeSource: corev1.VolumeSource{
+								ConfigMap: &corev1.ConfigMapVolumeSource{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: cm.Name,
+									},
+									DefaultMode: func() *int32 { m := int32(0755); return &m }(),
+								},
+							},
+						},
+						{
+							Name: "sys",
+							VolumeSource: corev1.VolumeSource{
+								HostPath: &corev1.HostPathVolumeSource{
+									Path: "/sys",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	existingDS := &appsv1.DaemonSet{}
+	err = k8sClient.Get(ctx, types.NamespacedName{Name: ds.Name, Namespace: ds.Namespace}, existingDS)
+	if errors.IsNotFound(err) {
+		return k8sClient.Create(ctx, ds)
+	} else if err != nil {
+		return err
+	}
+
+	existingDS.Spec = ds.Spec
+	return k8sClient.Update(ctx, existingDS)
 }

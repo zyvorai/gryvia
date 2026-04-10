@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strconv"
 
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -25,14 +26,28 @@ func FindOptimalNodes(ctx context.Context, k8sClient client.Client, job *kubefab
 		return nil, fmt.Errorf("failed to list nodes: %w", err)
 	}
 
+	// Get all pods to calculate GPU usage per node
+	pods := &corev1.PodList{}
+	if err := k8sClient.List(ctx, pods); err != nil {
+		return nil, fmt.Errorf("failed to list pods: %w", err)
+	}
+
+	gpuUsagePerNode := calculateGPUUsagePerNode(pods.Items)
+
+	// Determine GPUs needed per node
+	gpusNeeded := job.Spec.GPUs
+	if job.Spec.Distributed != nil && job.Spec.Distributed.Enabled && job.Spec.Distributed.GpusPerNode > 0 {
+		gpusNeeded = job.Spec.Distributed.GpusPerNode
+	}
+
 	// Filter nodes based on job requirements
-	eligibleNodes := filterNodes(nodes.Items, job)
+	eligibleNodes := filterNodes(nodes.Items, job, gpuUsagePerNode, gpusNeeded)
 	if len(eligibleNodes) == 0 {
 		return nil, fmt.Errorf("no nodes meet the job requirements")
 	}
 
 	// Score nodes
-	scoredNodes := scoreNodes(eligibleNodes, job)
+	scoredNodes := scoreNodes(eligibleNodes, job, gpuUsagePerNode)
 
 	// Sort by score (highest first)
 	sort.Slice(scoredNodes, func(i, j int) bool {
@@ -58,8 +73,30 @@ func FindOptimalNodes(ctx context.Context, k8sClient client.Client, job *kubefab
 	return selectedNodes, nil
 }
 
-// filterNodes filters nodes based on job requirements
-func filterNodes(nodes []corev1.Node, job *kubefabricv1.FabricAIJob) []corev1.Node {
+// calculateGPUUsagePerNode sums the nvidia.com/gpu requests across all
+// non-terminal pods scheduled on each node.
+func calculateGPUUsagePerNode(pods []corev1.Pod) map[string]int64 {
+	usage := make(map[string]int64)
+	for _, pod := range pods {
+		if pod.Spec.NodeName == "" {
+			continue
+		}
+		if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
+			continue
+		}
+		for _, c := range pod.Spec.Containers {
+			if gpuReq, ok := c.Resources.Requests["nvidia.com/gpu"]; ok {
+				usage[pod.Spec.NodeName] += gpuReq.Value()
+			} else if gpuLim, ok := c.Resources.Limits["nvidia.com/gpu"]; ok {
+				usage[pod.Spec.NodeName] += gpuLim.Value()
+			}
+		}
+	}
+	return usage
+}
+
+// filterNodes filters nodes based on job requirements and GPU availability
+func filterNodes(nodes []corev1.Node, job *kubefabricv1.FabricAIJob, gpuUsage map[string]int64, gpusNeeded int32) []corev1.Node {
 	var eligible []corev1.Node
 
 	for _, node := range nodes {
@@ -94,14 +131,43 @@ func filterNodes(nodes []corev1.Node, job *kubefabricv1.FabricAIJob) []corev1.No
 			continue
 		}
 
+		// Check GPU availability: node must have enough free GPUs
+		availableGPUs := getAvailableGPUs(node, gpuUsage)
+		if availableGPUs < int64(gpusNeeded) {
+			continue
+		}
+
 		eligible = append(eligible, node)
 	}
 
 	return eligible
 }
 
+// getAvailableGPUs returns the number of GPUs available on a node.
+// It checks both the kubefabric.ai/gpu-count label and the
+// nvidia.com/gpu allocatable resource, then subtracts current usage.
+func getAvailableGPUs(node corev1.Node, gpuUsage map[string]int64) int64 {
+	var totalGPUs int64
+
+	// First try the kubefabric label (set by the GPU operator)
+	if countStr, exists := node.Labels["kubefabric.ai/gpu-count"]; exists {
+		if count, err := strconv.ParseInt(countStr, 10, 64); err == nil {
+			totalGPUs = count
+		}
+	}
+
+	// Fall back to the nvidia.com/gpu allocatable resource
+	if totalGPUs == 0 {
+		if gpuResource, ok := node.Status.Allocatable["nvidia.com/gpu"]; ok {
+			totalGPUs = gpuResource.Value()
+		}
+	}
+
+	return totalGPUs - gpuUsage[node.Name]
+}
+
 // scoreNodes assigns a score to each node based on various factors
-func scoreNodes(nodes []corev1.Node, job *kubefabricv1.FabricAIJob) []NodeScore {
+func scoreNodes(nodes []corev1.Node, job *kubefabricv1.FabricAIJob, gpuUsage map[string]int64) []NodeScore {
 	scored := make([]NodeScore, len(nodes))
 
 	for i, node := range nodes {
@@ -132,8 +198,18 @@ func scoreNodes(nodes []corev1.Node, job *kubefabricv1.FabricAIJob) []NodeScore 
 			}
 		}
 
-		// Prefer nodes with more available resources
-		// (In production, you'd query actual GPU availability)
+		// Score based on available GPU count (prefer nodes with more free GPUs)
+		availableGPUs := getAvailableGPUs(node, gpuUsage)
+		score += int(availableGPUs) * 5
+
+		// Score based on GPU memory (from kubefabric label)
+		if memStr, exists := node.Labels["kubefabric.ai/gpu-memory"]; exists {
+			if memGB, err := strconv.ParseInt(memStr, 10, 64); err == nil {
+				score += int(memGB / 10) // 1 point per 10GB GPU memory
+			}
+		}
+
+		// Score based on general node resources
 		score += calculateResourceScore(node)
 
 		scored[i] = NodeScore{
@@ -171,20 +247,23 @@ func matchesNodeSelector(node corev1.Node, selector map[string]string) bool {
 
 // calculateResourceScore calculates a score based on available resources
 func calculateResourceScore(node corev1.Node) int {
-	// In production, you'd query actual GPU availability from metrics
-	// For now, we'll use a simplified score based on node capacity
-
 	score := 0
 
-	// Prefer nodes with more memory
+	// Prefer nodes with more allocatable memory
 	if memory, ok := node.Status.Allocatable[corev1.ResourceMemory]; ok {
 		memoryGB := memory.Value() / (1024 * 1024 * 1024)
 		score += int(memoryGB / 100) // 1 point per 100GB
 	}
 
-	// Prefer nodes with more CPUs
+	// Prefer nodes with more allocatable CPUs
 	if cpu, ok := node.Status.Allocatable[corev1.ResourceCPU]; ok {
 		score += int(cpu.Value() / 10) // 1 point per 10 CPUs
+	}
+
+	// Prefer nodes with more allocatable GPU capacity
+	gpuResourceName := corev1.ResourceName("nvidia.com/gpu")
+	if gpu, ok := node.Status.Allocatable[gpuResourceName]; ok {
+		score += int(gpu.Value()) * 3 // 3 points per GPU capacity
 	}
 
 	return score
