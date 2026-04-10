@@ -163,7 +163,11 @@ func getAvailableGPUs(node corev1.Node, gpuUsage map[string]int64) int64 {
 		}
 	}
 
-	return totalGPUs - gpuUsage[node.Name]
+	available := totalGPUs - gpuUsage[node.Name]
+	if available < 0 {
+		return 0
+	}
+	return available
 }
 
 // scoreNodes assigns a score to each node based on various factors

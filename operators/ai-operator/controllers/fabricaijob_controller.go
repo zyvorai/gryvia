@@ -363,9 +363,12 @@ func (r *FabricAIJobReconciler) ensureStatefulSet(ctx context.Context, job *kube
 		}
 
 		// Check resource limits (GPU count changes)
-		desiredGPU := desired.Spec.Template.Spec.Containers[0].Resources.Limits["nvidia.com/gpu"]
-		currentGPU := sts.Spec.Template.Spec.Containers[0].Resources.Limits["nvidia.com/gpu"]
-		if !desiredGPU.Equal(currentGPU) {
+		desiredLimits := desired.Spec.Template.Spec.Containers[0].Resources.Limits
+		currentLimits := sts.Spec.Template.Spec.Containers[0].Resources.Limits
+		gpuResource := corev1.ResourceName("nvidia.com/gpu")
+		desiredGPU, desiredHas := desiredLimits[gpuResource]
+		currentGPU, currentHas := currentLimits[gpuResource]
+		if desiredHas != currentHas || (desiredHas && !desiredGPU.Equal(currentGPU)) {
 			sts.Spec.Template.Spec.Containers[0].Resources = desired.Spec.Template.Spec.Containers[0].Resources
 			needsUpdate = true
 		}
