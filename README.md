@@ -337,19 +337,28 @@ Dark-themed React dashboard with:
 ### CLI
 
 Rust-based CLI (`kubefabric`) for:
-- Job submission, listing, status, cancellation (patches status to Cancelled)
-- Cluster overview with watch mode
-- Quota and cost analysis
-- GPU node health checks
+- Job submission with `--wait` and `--logs` flags, listing, status with `--follow`, cancellation
+- Interactive job/quota creation wizard (`kubefabric create job`)
+- Cluster overview with `--detailed` GPU metrics and `--watch` mode
+- Log streaming with follow mode and per-replica selection
+- Job queue monitoring with watch mode
+- Quota and cost analysis with `--detailed` breakdown
+- GPU, storage, and network health checks
+- Storage and network resource deletion
 
 ### GPU-Aware Scheduler
+
+Three-stage scheduling: filter, score, select.
+
+**Filtering:** Eliminates nodes that are unhealthy, wrong GPU type, lack RDMA/SR-IOV, or have insufficient free GPUs (calculated from actual pod GPU usage across the cluster).
 
 **Scoring algorithm:**
 - GPU type match: +50 points
 - RDMA availability: +30 points
 - NVSwitch interconnect: +40 points
-- Available memory: +10 points per GB
-- Network proximity: +20 points
+- Available GPU count: +5 points per free GPU
+- GPU memory: +1 point per 10GB
+- Node resources: memory and CPU capacity
 
 **Result:** Optimal job placement every time.
 

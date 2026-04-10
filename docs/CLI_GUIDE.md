@@ -315,6 +315,31 @@ kubefabric get node gpu-worker-01
 kubefabric get node gpu-worker-01 --output json
 ```
 
+### Queue Management
+
+```bash
+# View job queue (pending/queued/scheduling jobs)
+kubefabric queue
+
+# Filter by name
+kubefabric queue --name my-experiment
+
+# Watch mode (refresh every 5 seconds)
+kubefabric queue --watch 5
+```
+
+### Interactive Creation
+
+```bash
+# Interactive job creation wizard
+kubefabric create job
+
+# Interactive quota creation wizard
+kubefabric create quota
+```
+
+The wizard prompts for framework, GPU type/count, image, distributed config, and more.
+
 ### Health Checks
 
 ```bash
@@ -355,8 +380,10 @@ kubefabric delete job old-experiment
 # Delete quota
 kubefabric delete quota team-dev
 
-# Delete storage or network (stub - not yet implemented)
+# Delete storage
 kubefabric delete storage my-storage
+
+# Delete network
 kubefabric delete network my-network
 
 # Skip confirmation
@@ -651,15 +678,24 @@ jobs:
         run: ./kubefabric submit -f job.yaml --wait
 ```
 
+## Recently Implemented
+
+- [x] Interactive job/quota creation wizard (`kubefabric create job`, `kubefabric create quota`)
+- [x] Real-time log streaming (`kubefabric logs --follow`)
+- [x] Job queue monitoring (`kubefabric queue`, `kubefabric queue --watch 5`)
+- [x] Storage and network deletion (`kubefabric delete storage/network`)
+- [x] Storage and network health checks (`kubefabric health storage`, `kubefabric health network`)
+- [x] Detailed cluster view with per-GPU metrics (`kubefabric cluster --detailed`)
+- [x] Status follow mode (`kubefabric status --follow`)
+- [x] Submit with log following (`kubefabric submit --logs`)
+- [x] Cost detailed breakdown (`kubefabric cost --detailed`)
+
 ## Future Features
 
 Coming soon:
-- [ ] Interactive job creation wizard (`kubefabric create job`)
 - [ ] Job templates library
 - [ ] Shell completion (bash/zsh/fish)
-- [ ] Job scheduling and queuing
 - [ ] Multi-cluster support
-- [ ] Real-time log streaming
 - [ ] Job history and analytics
 
 ## Support

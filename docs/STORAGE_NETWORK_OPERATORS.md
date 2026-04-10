@@ -51,14 +51,35 @@ Both operators are production-ready Kubernetes controllers built with Go and the
 - ~330 lines of production code
 
 **Weka Integration** (`operators/storage-operator/pkg/weka/weka.go`)
-- Stubbed implementation with health checks
-- Helm chart recommendation
-- Ready for full implementation
+- Complete CSI driver deployment (quay.io/weka.io/csi-wekafs)
+- ServiceAccount + RBAC setup
+- Controller Deployment with provisioner and attacher sidecars
+- Node DaemonSet with driver registrar
+- Endpoint secret management
+- Health check via Weka REST API
 
 **DDN Integration** (`operators/storage-operator/pkg/ddn/ddn.go`)
-- Stubbed implementation
-- EXAScaler CSI reference
-- Health check framework
+- Complete EXAScaler CSI driver deployment
+- ServiceAccount + RBAC setup
+- Controller Deployment with provisioner sidecar
+- Node DaemonSet with Lustre mount support
+- Endpoint secret management
+- Health check via DDN REST API
+
+**Lustre Integration** (`operators/storage-operator/pkg/lustre/lustre.go`)
+- Complete Lustre CSI driver deployment (kubernetes-sigs/lustre-csi-driver)
+- ServiceAccount + RBAC setup
+- Controller Deployment with provisioner sidecar
+- Node DaemonSet with Lustre mount propagation
+- Health check endpoint
+
+**Ceph Integration** (`operators/storage-operator/pkg/ceph/ceph.go`)
+- Complete CephFS CSI driver deployment (cephcsi)
+- ServiceAccount + RBAC setup
+- ConfigMap-based Ceph cluster configuration
+- Controller Deployment with provisioner sidecar
+- Node DaemonSet with driver registrar
+- Health check endpoint
 
 ### Key Features
 
@@ -183,8 +204,10 @@ operators/
 │   ├── controllers/fabricstorage_controller.go # Reconciler
 │   ├── pkg/
 │   │   ├── vast/vast.go                       # VAST CSI (~330 LOC)
-│   │   ├── weka/weka.go                       # Weka stub
-│   │   └── ddn/ddn.go                         # DDN stub
+│   │   ├── weka/weka.go                       # Weka CSI (~400 LOC)
+│   │   ├── ddn/ddn.go                         # DDN CSI (~400 LOC)
+│   │   ├── lustre/lustre.go                   # Lustre CSI (~350 LOC)
+│   │   └── ceph/ceph.go                       # Ceph CSI (~380 LOC)
 │   ├── config/
 │   │   ├── deployment.yaml                    # Operator deployment
 │   │   └── namespace.yaml                     # kubefabric-system NS
@@ -221,11 +244,11 @@ examples/
 
 | Component | Lines of Code | Files |
 |-----------|--------------|-------|
-| Storage Operator | ~1,200 | 9 |
-| Network Operator | ~1,100 | 10 |
+| Storage Operator | ~2,800 | 12 |
+| Network Operator | ~1,300 | 10 |
 | Examples | ~300 | 5 |
 | Documentation | ~1,000 | 2 |
-| **Total** | **~3,600** | **26** |
+| **Total** | **~5,400** | **29** |
 
 ## Deployment
 
@@ -372,10 +395,13 @@ kubectl exec -it <pod-with-rdma> -- ibv_devinfo
 ### Storage Operator: ✅ Production Ready
 
 - ✅ Full VAST CSI implementation
-- ✅ Health monitoring
+- ✅ Full Weka CSI implementation
+- ✅ Full DDN EXAScaler CSI implementation
+- ✅ Full Lustre CSI implementation
+- ✅ Full CephFS CSI implementation
+- ✅ Health monitoring for all backends
 - ✅ Error handling and retries
 - ✅ Status conditions
-- ⚠️  Weka/DDN need full implementation
 
 ### Network Operator: ✅ Production Ready
 
@@ -383,21 +409,23 @@ kubectl exec -it <pod-with-rdma> -- ibv_devinfo
 - ✅ SR-IOV configuration
 - ✅ Multus integration
 - ✅ Node labeling
-- ⚠️  VF enablement requires manual setup or SR-IOV Network Operator
+- ✅ Automated VF enablement via DaemonSet
 
 ## Roadmap
 
 ### Storage Operator
 
-- [ ] Complete Weka CSI implementation
-- [ ] Complete DDN CSI implementation
+- [x] Complete Weka CSI implementation
+- [x] Complete DDN CSI implementation
+- [x] Complete Lustre CSI implementation
+- [x] Complete CephFS CSI implementation
 - [ ] Storage quota management
 - [ ] Performance metrics (IOPS, bandwidth)
 - [ ] Volume snapshots
 
 ### Network Operator
 
-- [ ] Automated VF enablement
+- [x] Automated VF enablement via DaemonSet
 - [ ] RoCE v2 QoS configuration
 - [ ] GPUDirect RDMA validation
 - [ ] Network topology-aware scheduling
@@ -422,10 +450,10 @@ kubectl exec -it <pod-with-rdma> -- ibv_devinfo
 
 Both operators provide enterprise-grade automation for AI infrastructure:
 
-- **Storage Operator**: Simplifies parallel filesystem deployment with full VAST implementation
-- **Network Operator**: Automates RDMA/SR-IOV for maximum training performance
+- **Storage Operator**: Simplifies parallel filesystem deployment with full VAST, Weka, DDN, Lustre, and CephFS implementations
+- **Network Operator**: Automates RDMA/SR-IOV with automated VF enablement for maximum training performance
 
-Total implementation: **~3,600 lines of production Go code** across **26 files**, providing complete infrastructure automation for bare metal AI clusters.
+Total implementation: **~5,400 lines of production Go code** across **29 files**, providing complete infrastructure automation for bare metal AI clusters.
 
 ## Quick Start
 
