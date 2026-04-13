@@ -92,8 +92,13 @@ export default function Nodes() {
                       <MetricBar icon={Thermometer} label="Temperature" value={`${gpu.temperature}°C`} percent={Math.min(gpu.temperature, 100)}
                         color={gpu.temperature > 80 ? 'red' : gpu.temperature > 70 ? 'yellow' : 'green'} />
                       <MetricBar icon={Activity} label="Utilization" value={`${gpu.utilization}%`} percent={Math.min(gpu.utilization, 100)} color="blue" />
-                      <MetricBar icon={HardDrive} label="Memory" value={`${(gpu.memoryUsed / 1024).toFixed(1)} / ${(gpu.memoryTotal / 1024).toFixed(1)} GB`}
-                        percent={gpu.memoryTotal > 0 ? (gpu.memoryUsed / gpu.memoryTotal) * 100 : 0} color="purple" />
+                      {(() => {
+                        const memUsedGB = Number(gpu.memoryUsed) / 1024 || 0
+                        const memTotalGB = Number(gpu.memoryTotal) / 1024 || 0
+                        const memPercent = memTotalGB > 0 ? Math.min(100, (memUsedGB / memTotalGB) * 100) : 0
+                        return <MetricBar icon={HardDrive} label="Memory" value={`${memUsedGB.toFixed(1)} / ${memTotalGB.toFixed(1)} GB`}
+                          percent={memPercent} color="purple" />
+                      })()}
                     </div>
                   ))}
                 </div>

@@ -198,7 +198,7 @@ func (r *FabricNetworkReconciler) configureSRIOV(ctx context.Context, network *k
 	logger.Info("Configuring SR-IOV network", "interface", network.Spec.SRIOV.PhysicalInterface)
 
 	// Install SR-IOV device plugin
-	if err := sriov.InstallDevicePlugin(ctx, r.Client, network.Spec.SRIOV); err != nil {
+	if err := sriov.InstallDevicePlugin(ctx, r.Client, network.Name, network.Spec.SRIOV); err != nil {
 		return fmt.Errorf("failed to install SR-IOV device plugin: %w", err)
 	}
 
@@ -240,7 +240,14 @@ func (r *FabricNetworkReconciler) handleDeletion(ctx context.Context, network *k
 
 		// Explicitly clean up DaemonSets and ConfigMaps since cross-namespace owner
 		// references don't work (resources are in kube-system, owner is cluster-scoped).
-		for _, name := range []string{"rdma-device-plugin", "sriov-device-plugin", "sriov-cni"} {
+		// Resource names are scoped by the FabricNetwork name to avoid conflicts
+		// when multiple FabricNetworks exist.
+		daemonSetsToClean := []string{
+			rdma.RDMADevicePluginDaemonSetName(network.Name),
+			sriov.SRIOVDevicePluginDaemonSetName(network.Name),
+			sriov.SRIOVCNIDaemonSetName(network.Name),
+		}
+		for _, name := range daemonSetsToClean {
 			ds := &appsv1.DaemonSet{}
 			if err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: "kube-system"}, ds); err == nil {
 				if delErr := r.Delete(ctx, ds); delErr != nil {
@@ -250,7 +257,11 @@ func (r *FabricNetworkReconciler) handleDeletion(ctx context.Context, network *k
 				}
 			}
 		}
-		for _, name := range []string{"rdma-devices", "sriov-config"} {
+		configMapsToClean := []string{
+			rdma.RDMAConfigMapName(network.Name),
+			sriov.SRIOVConfigMapName(network.Name),
+		}
+		for _, name := range configMapsToClean {
 			cm := &corev1.ConfigMap{}
 			if err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: "kube-system"}, cm); err == nil {
 				if delErr := r.Delete(ctx, cm); delErr != nil {

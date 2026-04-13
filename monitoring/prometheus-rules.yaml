@@ -188,14 +188,14 @@ data:
           description: "Health check failed for {{ $labels.backend_type }}"
 
       - alert: StorageHighLatency
-        expr: kubefabric_storage_latency_ms > 100
+        expr: kubefabric_storage_latency_ms > 50
         for: 10m
         labels:
           severity: warning
           component: storage
         annotations:
           summary: "High storage latency on {{ $labels.backend_name }}"
-          description: "Latency is {{ $value }}ms (threshold: 100ms)"
+          description: "Latency is {{ $value }}ms (threshold: 50ms)"
 
       - alert: StorageLowThroughput
         expr: kubefabric_storage_throughput_mbps < 1000

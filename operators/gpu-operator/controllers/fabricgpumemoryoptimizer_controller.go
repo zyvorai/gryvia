@@ -215,6 +215,7 @@ func (r *FabricGpuMemoryOptimizerReconciler) runOomPrevention(ctx context.Contex
 	}
 
 	oomPrevented := 0
+	skippedPredictions := 0
 	warningThreshold := 85
 	if optimizer.Spec.OomPrevention.PreemptiveAction != nil {
 		if optimizer.Spec.OomPrevention.PreemptiveAction.WarningThresholdPercent > 0 {
@@ -248,6 +249,7 @@ func (r *FabricGpuMemoryOptimizerReconciler) runOomPrevention(ctx context.Contex
 		prediction, err := r.Predictor.PredictOOM(gpuKey, projectionMethod)
 		if err != nil {
 			r.Log.Error(err, "Failed to predict OOM", "gpu", gpuKey)
+			skippedPredictions++
 			continue
 		}
 
@@ -290,6 +292,10 @@ func (r *FabricGpuMemoryOptimizerReconciler) runOomPrevention(ctx context.Contex
 			r.Log.Info("OOM warning issued for GPU workload", "gpu", gpuKey,
 				"predictedTimeToOOM", prediction.TimeToOOM)
 		}
+	}
+
+	if skippedPredictions > 0 {
+		r.Log.Info("Some GPUs skipped during OOM prediction", "skippedCount", skippedPredictions)
 	}
 
 	return oomPrevented, nil

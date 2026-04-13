@@ -52,6 +52,15 @@ async fn create_job(client: &KubeFabricClient) -> Result<()> {
     let image: String = Input::new()
         .with_prompt("Container image")
         .default("nvcr.io/nvidia/pytorch:24.01-py3".to_string())
+        .validate_with(|input: &String| -> Result<(), &str> {
+            if input.trim().is_empty() {
+                Err("Image cannot be empty")
+            } else if input.contains(' ') {
+                Err("Image cannot contain spaces")
+            } else {
+                Ok(())
+            }
+        })
         .interact_text()?;
 
     let gpu_types = vec!["H100", "A100-80G", "A100-40G", "L40", "A10", "V100", "T4", "any"];
@@ -74,6 +83,17 @@ async fn create_job(client: &KubeFabricClient) -> Result<()> {
     let memory: String = Input::new()
         .with_prompt("Memory (e.g., 64Gi)")
         .default("32Gi".to_string())
+        .validate_with(|input: &String| -> Result<(), &str> {
+            let trimmed = input.trim();
+            if trimmed.is_empty() {
+                return Err("Memory cannot be empty");
+            }
+            // Must start with a digit
+            if !trimmed.chars().next().map_or(false, |c| c.is_ascii_digit()) {
+                return Err("Memory must start with a number (e.g., 32Gi)");
+            }
+            Ok(())
+        })
         .interact_text()?;
 
     let cpu: u32 = Input::new()
@@ -192,6 +212,16 @@ async fn create_quota(client: &KubeFabricClient) -> Result<()> {
 
     let team: String = Input::new()
         .with_prompt("Team name")
+        .validate_with(|input: &String| -> Result<(), &str> {
+            let trimmed = input.trim();
+            if trimmed.is_empty() {
+                return Err("Team name cannot be empty");
+            }
+            if !trimmed.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+                return Err("Team name must only contain alphanumeric characters, hyphens, or underscores");
+            }
+            Ok(())
+        })
         .interact_text()?;
 
     let namespaces: String = Input::new()

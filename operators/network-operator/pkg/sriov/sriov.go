@@ -18,41 +18,60 @@ import (
 
 const (
 	SRIOVDevicePluginNamespace = "kube-system"
-	SRIOVDevicePluginName      = "sriov-device-plugin"
-	SRIOVCNIName               = "sriov-cni"
 )
 
-// InstallDevicePlugin installs the SR-IOV device plugin
-func InstallDevicePlugin(ctx context.Context, k8sClient client.Client, sriovConfig *kubefabricv1.SRIOVConfig) error {
+// SRIOVDevicePluginDaemonSetName returns a DaemonSet name scoped to the owning FabricNetwork.
+func SRIOVDevicePluginDaemonSetName(networkName string) string {
+	return fmt.Sprintf("sriov-device-plugin-%s", networkName)
+}
+
+// SRIOVCNIDaemonSetName returns the SR-IOV CNI DaemonSet name scoped to the owning FabricNetwork.
+func SRIOVCNIDaemonSetName(networkName string) string {
+	return fmt.Sprintf("sriov-cni-%s", networkName)
+}
+
+// SRIOVConfigMapName returns a ConfigMap name scoped to the owning FabricNetwork.
+func SRIOVConfigMapName(networkName string) string {
+	return fmt.Sprintf("sriov-config-%s", networkName)
+}
+
+// InstallDevicePlugin installs the SR-IOV device plugin.
+// networkName is the owning FabricNetwork's name, used to scope resource names
+// so that multiple FabricNetworks don't conflict.
+func InstallDevicePlugin(ctx context.Context, k8sClient client.Client, networkName string, sriovConfig *kubefabricv1.SRIOVConfig) error {
 	// Install SR-IOV CNI first
-	if err := installSRIOVCNI(ctx, k8sClient); err != nil {
+	if err := installSRIOVCNI(ctx, k8sClient, networkName); err != nil {
 		return fmt.Errorf("failed to install SR-IOV CNI: %w", err)
 	}
 
 	// Create ConfigMap for SR-IOV device plugin
-	if err := createSRIOVConfigMap(ctx, k8sClient, sriovConfig); err != nil {
+	if err := createSRIOVConfigMap(ctx, k8sClient, networkName, sriovConfig); err != nil {
 		return fmt.Errorf("failed to create SR-IOV ConfigMap: %w", err)
 	}
+
+	dsName := SRIOVDevicePluginDaemonSetName(networkName)
+	cmName := SRIOVConfigMapName(networkName)
 
 	// Install device plugin DaemonSet
 	ds := &appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      SRIOVDevicePluginName,
+			Name:      dsName,
 			Namespace: SRIOVDevicePluginNamespace,
 			Labels: map[string]string{
-				"app": SRIOVDevicePluginName,
+				"app":                   dsName,
+				"kubefabric.ai/network": networkName,
 			},
 		},
 		Spec: appsv1.DaemonSetSpec{
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
-					"app": SRIOVDevicePluginName,
+					"app": dsName,
 				},
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{
-						"app": SRIOVDevicePluginName,
+						"app": dsName,
 					},
 				},
 				Spec: corev1.PodSpec{
@@ -94,7 +113,7 @@ func InstallDevicePlugin(ctx context.Context, k8sClient client.Client, sriovConf
 							VolumeSource: corev1.VolumeSource{
 								ConfigMap: &corev1.ConfigMapVolumeSource{
 									LocalObjectReference: corev1.LocalObjectReference{
-										Name: "sriov-config",
+										Name: cmName,
 									},
 								},
 							},
@@ -118,25 +137,28 @@ func InstallDevicePlugin(ctx context.Context, k8sClient client.Client, sriovConf
 	return k8sClient.Update(ctx, existing)
 }
 
-func installSRIOVCNI(ctx context.Context, k8sClient client.Client) error {
+func installSRIOVCNI(ctx context.Context, k8sClient client.Client, networkName string) error {
+	cniName := SRIOVCNIDaemonSetName(networkName)
+
 	ds := &appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      SRIOVCNIName,
+			Name:      cniName,
 			Namespace: SRIOVDevicePluginNamespace,
 			Labels: map[string]string{
-				"app": SRIOVCNIName,
+				"app":                   cniName,
+				"kubefabric.ai/network": networkName,
 			},
 		},
 		Spec: appsv1.DaemonSetSpec{
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
-					"app": SRIOVCNIName,
+					"app": cniName,
 				},
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{
-						"app": SRIOVCNIName,
+						"app": cniName,
 					},
 				},
 				Spec: corev1.PodSpec{
@@ -184,7 +206,7 @@ func installSRIOVCNI(ctx context.Context, k8sClient client.Client) error {
 	return nil
 }
 
-func createSRIOVConfigMap(ctx context.Context, k8sClient client.Client, sriovConfig *kubefabricv1.SRIOVConfig) error {
+func createSRIOVConfigMap(ctx context.Context, k8sClient client.Client, networkName string, sriovConfig *kubefabricv1.SRIOVConfig) error {
 	resourceName := sriovConfig.ResourceName
 	if resourceName == "" {
 		resourceName = "intel_sriov_netdevice"
@@ -208,8 +230,11 @@ func createSRIOVConfigMap(ctx context.Context, k8sClient client.Client, sriovCon
 
 	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "sriov-config",
+			Name:      SRIOVConfigMapName(networkName),
 			Namespace: SRIOVDevicePluginNamespace,
+			Labels: map[string]string{
+				"kubefabric.ai/network": networkName,
+			},
 		},
 		Data: map[string]string{
 			"config.json": config,

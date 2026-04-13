@@ -135,7 +135,7 @@ fn show_detailed_nodes(nodes: &[FabricGpuNode]) -> Result<()> {
 
             gpu_table.add_row(Row::new(vec![
                 Cell::new(&gpu.index.to_string()),
-                Cell::new(&gpu.uuid[..std::cmp::min(12, gpu.uuid.len())]),
+                Cell::new(&gpu.uuid.chars().take(12).collect::<String>()),
                 Cell::new(&temp_colored),
                 Cell::new(&util_colored),
                 Cell::new(&format!("{}MB", gpu.memory_used)),

@@ -1,3 +1,8 @@
+# ServiceMonitor for all KubeFabric operators.
+# namespaceSelector is set to kubefabric-system because the operator Service
+# objects are deployed there. If operators are installed in a different
+# namespace, update the namespaceSelector and the Service manifests below
+# accordingly.
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -17,6 +22,8 @@ spec:
     matchNames:
     - kubefabric-system
 ---
+# GPU metrics ServiceMonitor targeting the DCGM exporter.
+# Assumes dcgm-exporter is deployed in kubefabric-system.
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -116,6 +123,8 @@ spec:
     port: 8080
     targetPort: 8080
 ---
+# Per-operator ServiceMonitors below. All assume operators run in
+# kubefabric-system. Adjust namespaceSelector if deploying elsewhere.
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:

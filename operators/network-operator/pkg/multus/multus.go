@@ -11,6 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	kubefabricv1 "github.com/ssahani/kube-fabric/operators/network-operator/api/v1"
 )
@@ -22,10 +23,16 @@ func CreateNetworkAttachment(ctx context.Context, k8sClient client.Client, netwo
 		return fmt.Errorf("failed to generate network config: %w", err)
 	}
 
-	// Use the network's target namespace, or default to "default"
+	// Use the network's target namespace. FabricNetwork is cluster-scoped so it
+	// has no namespace of its own; the user should set spec.targetNamespace
+	// explicitly. We fall back to "default" but log a warning so operators
+	// notice the implicit behaviour.
 	namespace := network.Spec.TargetNamespace
 	if namespace == "" {
 		namespace = "default"
+		logger := log.FromContext(ctx)
+		logger.Info("FabricNetwork has no targetNamespace set, defaulting NAD namespace to \"default\"",
+			"network", network.Name)
 	}
 
 	nad := &unstructured.Unstructured{
@@ -86,9 +93,14 @@ func generateRDMAConfig(network *kubefabricv1.FabricNetwork) (string, error) {
 		return "", fmt.Errorf("RDMA configuration required")
 	}
 
+	// Default MTU for RDMA networks is 9000 (jumbo frames).
+	// Valid range: 1280 (IPv6 minimum) to 9216 (common jumbo frame max).
 	mtu := network.Spec.MTU
 	if mtu == 0 {
-		mtu = 9000 // Default MTU for RDMA
+		mtu = 9000
+	}
+	if mtu < 1280 || mtu > 9216 {
+		return "", fmt.Errorf("invalid MTU %d: must be between 1280 and 9216", mtu)
 	}
 
 	configObj := map[string]interface{}{
@@ -117,9 +129,14 @@ func generateSRIOVConfig(network *kubefabricv1.FabricNetwork) (string, error) {
 		return "", fmt.Errorf("SR-IOV configuration required")
 	}
 
+	// Default MTU for SR-IOV networks is 9000 (jumbo frames).
+	// Valid range: 1280 (IPv6 minimum) to 9216 (common jumbo frame max).
 	mtu := network.Spec.MTU
 	if mtu == 0 {
 		mtu = 9000
+	}
+	if mtu < 1280 || mtu > 9216 {
+		return "", fmt.Errorf("invalid MTU %d: must be between 1280 and 9216", mtu)
 	}
 
 	// Use SRIOV spec values for IPAM if available, otherwise use defaults
@@ -156,9 +173,14 @@ func generateSRIOVConfig(network *kubefabricv1.FabricNetwork) (string, error) {
 }
 
 func generateStandardConfig(network *kubefabricv1.FabricNetwork) (string, error) {
+	// Default MTU for standard networks is 1500.
+	// Valid range: 1280 (IPv6 minimum) to 9216 (common jumbo frame max).
 	mtu := network.Spec.MTU
 	if mtu == 0 {
 		mtu = 1500
+	}
+	if mtu < 1280 || mtu > 9216 {
+		return "", fmt.Errorf("invalid MTU %d: must be between 1280 and 9216", mtu)
 	}
 
 	configObj := map[string]interface{}{

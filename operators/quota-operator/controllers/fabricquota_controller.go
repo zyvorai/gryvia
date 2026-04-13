@@ -203,6 +203,10 @@ func (r *FabricQuotaReconciler) enforceQuota(ctx context.Context, quota *kubefab
 
 	// Reject jobs that exceed quota
 	for _, job := range pendingJobs {
+		if job.Spec.GPUs <= 0 {
+			continue // skip invalid job specs
+		}
+
 		rejected := false
 		reason := ""
 

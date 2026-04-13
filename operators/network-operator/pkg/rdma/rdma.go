@@ -20,8 +20,17 @@ import (
 
 const (
 	RDMADevicePluginNamespace = "kube-system"
-	RDMADevicePluginName      = "rdma-device-plugin"
 )
+
+// RDMADevicePluginDaemonSetName returns a DaemonSet name scoped to the owning FabricNetwork.
+func RDMADevicePluginDaemonSetName(networkName string) string {
+	return fmt.Sprintf("rdma-device-plugin-%s", networkName)
+}
+
+// RDMAConfigMapName returns a ConfigMap name scoped to the owning FabricNetwork.
+func RDMAConfigMapName(networkName string) string {
+	return fmt.Sprintf("rdma-devices-%s", networkName)
+}
 
 // InstallDevicePlugin installs the RDMA device plugin DaemonSet
 func InstallDevicePlugin(ctx context.Context, k8sClient client.Client, owner *kubefabricv1.FabricNetwork, scheme *runtime.Scheme) error {
@@ -30,25 +39,29 @@ func InstallDevicePlugin(ctx context.Context, k8sClient client.Client, owner *ku
 		return fmt.Errorf("failed to create RDMA ConfigMap: %w", err)
 	}
 
+	dsName := RDMADevicePluginDaemonSetName(owner.Name)
+	cmName := RDMAConfigMapName(owner.Name)
+
 	ds := &appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      RDMADevicePluginName,
+			Name:      dsName,
 			Namespace: RDMADevicePluginNamespace,
 			Labels: map[string]string{
-				"app":                          RDMADevicePluginName,
+				"app":                          dsName,
 				"app.kubernetes.io/managed-by": "kubefabric",
+				"kubefabric.ai/network":        owner.Name,
 			},
 		},
 		Spec: appsv1.DaemonSetSpec{
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
-					"app": RDMADevicePluginName,
+					"app": dsName,
 				},
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{
-						"app": RDMADevicePluginName,
+						"app": dsName,
 					},
 				},
 				Spec: corev1.PodSpec{
@@ -86,7 +99,7 @@ func InstallDevicePlugin(ctx context.Context, k8sClient client.Client, owner *ku
 							VolumeSource: corev1.VolumeSource{
 								ConfigMap: &corev1.ConfigMapVolumeSource{
 									LocalObjectReference: corev1.LocalObjectReference{
-										Name: "rdma-devices",
+										Name: cmName,
 									},
 								},
 							},
@@ -162,10 +175,11 @@ func CreateRDMAConfigMap(ctx context.Context, k8sClient client.Client, owner *ku
 
 	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "rdma-devices",
+			Name:      RDMAConfigMapName(owner.Name),
 			Namespace: RDMADevicePluginNamespace,
 			Labels: map[string]string{
 				"app.kubernetes.io/managed-by": "kubefabric",
+				"kubefabric.ai/network":        owner.Name,
 			},
 		},
 		Data: map[string]string{
