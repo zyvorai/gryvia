@@ -1,4 +1,4 @@
-IMG ?= kubefabric/quota-operator:latest
+IMG ?= tensorreaper/quota-operator:latest
 
 .PHONY: all
 all: build

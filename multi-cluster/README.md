@@ -1,6 +1,6 @@
 # Multi-Cluster Federation
 
-Deploy and manage KubeFabric across multiple Kubernetes clusters for high availability, disaster recovery, and geographic distribution.
+Deploy and manage TensorReaper across multiple Kubernetes clusters for high availability, disaster recovery, and geographic distribution.
 
 ## Architecture
 
@@ -36,14 +36,14 @@ Deploy and manage KubeFabric across multiple Kubernetes clusters for high availa
 
 - Multiple Kubernetes clusters (v1.28+)
 - Network connectivity between clusters
-- KubeFabric installed on each cluster
+- TensorReaper installed on each cluster
 
 ### Install Federation Control Plane
 
 ```bash
 # On management cluster
-helm install kubefabric-federation kubefabric/kubefabric-federation \
-  --namespace kubefabric-system \
+helm install tensorreaper-federation tensorreaper/tensorreaper-federation \
+  --namespace tensorreaper-system \
   --create-namespace
 ```
 
@@ -51,11 +51,11 @@ helm install kubefabric-federation kubefabric/kubefabric-federation \
 
 ```yaml
 # cluster-a.yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricCluster
 metadata:
   name: cluster-a
-  namespace: kubefabric-system
+  namespace: tensorreaper-system
 spec:
   apiEndpoint: https://cluster-a.example.com:6443
   region: us-west-2
@@ -88,7 +88,7 @@ spec:
 # Create secret with kubeconfig
 kubectl create secret generic cluster-a-kubeconfig \
   --from-file=kubeconfig=~/.kube/cluster-a.yaml \
-  -n kubefabric-system
+  -n tensorreaper-system
 
 # Register cluster
 kubectl apply -f cluster-a.yaml
@@ -100,7 +100,7 @@ kubectl apply -f cluster-a.yaml
 
 ```bash
 # List registered clusters
-kubectl get fabricclusters -n kubefabric-system
+kubectl get fabricclusters -n tensorreaper-system
 
 # Check cluster status
 kubectl describe fabriccluster cluster-a
@@ -121,12 +121,12 @@ Jobs are automatically placed based on:
 5. Team preferences
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAIJob
 metadata:
   name: training-job
   annotations:
-    kubefabric.ai/placement: auto
+    tensorreaper.ai/placement: auto
 spec:
   framework: pytorch
   resources:
@@ -140,7 +140,7 @@ spec:
 ```yaml
 metadata:
   annotations:
-    kubefabric.ai/target-cluster: cluster-a
+    tensorreaper.ai/target-cluster: cluster-a
 ```
 
 ### Cluster Affinity
@@ -148,7 +148,7 @@ metadata:
 ```yaml
 metadata:
   annotations:
-    kubefabric.ai/cluster-affinity: |
+    tensorreaper.ai/cluster-affinity: |
       preferredClusters:
         - cluster-a
         - cluster-b
@@ -161,8 +161,8 @@ metadata:
 ```yaml
 metadata:
   annotations:
-    kubefabric.ai/region: us-west-2
-    kubefabric.ai/region-affinity: required  # or preferred
+    tensorreaper.ai/region: us-west-2
+    tensorreaper.ai/region-affinity: required  # or preferred
 ```
 
 ### Cost-Optimized Placement
@@ -170,8 +170,8 @@ metadata:
 ```yaml
 metadata:
   annotations:
-    kubefabric.ai/placement-strategy: cost-optimized
-    kubefabric.ai/max-cost-per-hour: "200.00"
+    tensorreaper.ai/placement-strategy: cost-optimized
+    tensorreaper.ai/max-cost-per-hour: "200.00"
 ```
 
 ## Data Management
@@ -180,7 +180,7 @@ metadata:
 
 ```yaml
 # Replicate dataset across clusters
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricDataset
 metadata:
   name: imagenet
@@ -201,7 +201,7 @@ spec:
 
 ```yaml
 # Schedule job where data exists
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAIJob
 metadata:
   name: training-with-data
@@ -218,13 +218,13 @@ spec:
 
 ```yaml
 # Enable automatic failover
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAIJob
 metadata:
   name: critical-job
   annotations:
-    kubefabric.ai/failover: enabled
-    kubefabric.ai/max-failover-attempts: "3"
+    tensorreaper.ai/failover: enabled
+    tensorreaper.ai/max-failover-attempts: "3"
 spec:
   checkpointing:
     enabled: true
@@ -282,7 +282,7 @@ kfctl federation costs --by-team ml-research
 ### Budget Allocation
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricFederatedQuota
 metadata:
   name: ml-research-federated
@@ -341,8 +341,8 @@ strategy: locality-aware
 
 ```bash
 # Access federation dashboard
-kubectl port-forward -n kubefabric-system \
-  svc/kubefabric-federation-ui 8080:80
+kubectl port-forward -n tensorreaper-system \
+  svc/tensorreaper-federation-ui 8080:80
 
 # Open browser
 open http://localhost:8080
@@ -359,17 +359,17 @@ open http://localhost:8080
 
 ```prometheus
 # Total GPUs across federation
-kubefabric_federation_total_gpus 144
+tensorreaper_federation_total_gpus 144
 
 # Available GPUs by cluster
-kubefabric_federation_available_gpus{cluster="cluster-a"} 16
-kubefabric_federation_available_gpus{cluster="cluster-b"} 32
+tensorreaper_federation_available_gpus{cluster="cluster-a"} 16
+tensorreaper_federation_available_gpus{cluster="cluster-b"} 32
 
 # Jobs per cluster
-kubefabric_federation_jobs{cluster="cluster-a",status="running"} 8
+tensorreaper_federation_jobs{cluster="cluster-a",status="running"} 8
 
 # Federated cost
-kubefabric_federation_cost_total{team="ml-research"} 125432.50
+tensorreaper_federation_cost_total{team="ml-research"} 125432.50
 ```
 
 ## Network Configuration
@@ -388,10 +388,10 @@ spec:
       - settings:
           clusterLocal: false
         hosts:
-          - "*.kubefabric-system.svc.cluster.local"
+          - "*.tensorreaper-system.svc.cluster.local"
   values:
     global:
-      meshID: kubefabric-mesh
+      meshID: tensorreaper-mesh
       multiCluster:
         clusterName: cluster-a
       network: network-a
@@ -543,7 +543,7 @@ spec:
 kfctl federation ping cluster-a
 
 # Check credentials
-kubectl get secret cluster-a-kubeconfig -n kubefabric-system
+kubectl get secret cluster-a-kubeconfig -n tensorreaper-system
 
 # Test API access
 kubectl --kubeconfig=<path> get nodes
@@ -559,8 +559,8 @@ kubectl describe fabricaijob <job-name> | grep -A 10 "Placement"
 kfctl federation capacity
 
 # View scheduler logs
-kubectl logs -n kubefabric-system \
-  deployment/kubefabric-federation-scheduler
+kubectl logs -n tensorreaper-system \
+  deployment/tensorreaper-federation-scheduler
 ```
 
 ### Data Sync Issues
@@ -573,7 +573,7 @@ kubectl get fabricdataset imagenet -o yaml
 kfctl federation sync-dataset imagenet
 
 # Check data transfer logs
-kubectl logs -n kubefabric-system \
+kubectl logs -n tensorreaper-system \
   job/sync-imagenet-cluster-b
 ```
 
@@ -588,5 +588,5 @@ See `multi-cluster/examples/` for:
 
 ## Support
 
-- Federation Issues: https://github.com/ssahani/kube-fabric/issues
-- Multi-cluster Guide: https://github.com/ssahani/kube-fabric/docs/multi-cluster
+- Federation Issues: https://github.com/ssahani/tensor-reaper/issues
+- Multi-cluster Guide: https://github.com/ssahani/tensor-reaper/docs/multi-cluster

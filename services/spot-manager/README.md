@@ -34,14 +34,14 @@ Optimize costs with spot/preemptible GPU instances while maintaining reliability
 ### Enable Spot Instances
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAIJob
 metadata:
   name: training-spot
   annotations:
-    kubefabric.ai/spot-enabled: "true"
-    kubefabric.ai/spot-max-price: "15.00"  # Max $/hour per GPU
-    kubefabric.ai/spot-fallback: "on-demand"
+    tensorreaper.ai/spot-enabled: "true"
+    tensorreaper.ai/spot-max-price: "15.00"  # Max $/hour per GPU
+    tensorreaper.ai/spot-fallback: "on-demand"
 spec:
   framework: pytorch
   resources:
@@ -62,7 +62,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: spot-config
-  namespace: kubefabric
+  namespace: tensorreaper
 data:
   config.yaml: |
     # Pricing
@@ -93,13 +93,13 @@ data:
 ### Cost-Optimized Training
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAIJob
 metadata:
   name: llama-training-spot
   annotations:
-    kubefabric.ai/spot-enabled: "true"
-    kubefabric.ai/spot-max-price: "15.00"
+    tensorreaper.ai/spot-enabled: "true"
+    tensorreaper.ai/spot-max-price: "15.00"
 spec:
   framework: pytorch
   distributed:
@@ -130,7 +130,7 @@ spec:
 Mix spot and on-demand for optimal cost/reliability:
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAIJob
 metadata:
   name: hybrid-training
@@ -319,7 +319,7 @@ kfctl spot prices --gpu-type A100-80G --days 7
 
 # Adjust max price
 kubectl annotate fabricaijob my-job \
-  kubefabric.ai/spot-max-price=18.00 --overwrite
+  tensorreaper.ai/spot-max-price=18.00 --overwrite
 
 # Or switch to different GPU type
 # T4 often has lower interruption rate
@@ -329,7 +329,7 @@ kubectl annotate fabricaijob my-job \
 
 ```bash
 # Check migration logs
-kubectl logs -n kubefabric deployment/spot-manager
+kubectl logs -n tensorreaper deployment/spot-manager
 
 # Verify checkpoint integrity
 kfctl spot verify-checkpoint my-job
@@ -415,5 +415,5 @@ kfctl spot estimate \
 
 ## Support
 
-- Spot Issues: https://github.com/ssahani/kube-fabric/issues
-- Cost Optimization: https://github.com/ssahani/kube-fabric/discussions
+- Spot Issues: https://github.com/ssahani/tensor-reaper/issues
+- Cost Optimization: https://github.com/ssahani/tensor-reaper/discussions

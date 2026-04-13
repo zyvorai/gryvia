@@ -3,24 +3,24 @@
 
 # Show cluster overview
 echo "=== Cluster Overview ==="
-kubefabric cluster
+tensorreaper cluster
 
 echo ""
 echo "=== GPU Nodes ==="
-kubefabric list nodes
+tensorreaper list nodes
 
 echo ""
 echo "=== Running Jobs ==="
-kubefabric list jobs
+tensorreaper list jobs
 
 echo ""
 echo "=== Team Quotas ==="
-kubefabric list quotas
+tensorreaper list quotas
 
 echo ""
 echo "=== Cost Analysis ==="
-kubefabric cost
+tensorreaper cost
 
 echo ""
 echo "=== Health Check ==="
-kubefabric health
+tensorreaper health

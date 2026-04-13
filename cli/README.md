@@ -1,6 +1,6 @@
-# KubeFabric CLI
+# TensorReaper CLI
 
-Command-line interface for managing KubeFabric GPU clusters.
+Command-line interface for managing TensorReaper GPU clusters.
 
 ## Features
 
@@ -18,7 +18,7 @@ Command-line interface for managing KubeFabric GPU clusters.
 ```bash
 cd cli
 cargo build --release
-sudo cp target/release/kubefabric /usr/local/bin/
+sudo cp target/release/tensorreaper /usr/local/bin/
 ```
 
 ### Using Cargo
@@ -33,55 +33,55 @@ cargo install --path .
 
 ```bash
 # Submit job from YAML file
-kubefabric submit -f job.yaml
+tensorreaper submit -f job.yaml
 
 # Submit and wait for completion
-kubefabric submit -f job.yaml --wait
+tensorreaper submit -f job.yaml --wait
 
 # Submit and follow logs
-kubefabric submit -f job.yaml --logs
+tensorreaper submit -f job.yaml --logs
 ```
 
 ### List Resources
 
 ```bash
 # List all jobs
-kubefabric list jobs
+tensorreaper list jobs
 
 # List all quotas
-kubefabric list quotas
+tensorreaper list quotas
 
 # List GPU nodes
-kubefabric list nodes
+tensorreaper list nodes
 
 # Output as JSON
-kubefabric list jobs --output json
+tensorreaper list jobs --output json
 ```
 
 ### Get Detailed Information
 
 ```bash
 # Get job details
-kubefabric get job my-training-job
+tensorreaper get job my-training-job
 
 # Get quota details
-kubefabric get quota team-ml
+tensorreaper get quota team-ml
 
 # Get node details
-kubefabric get node gpu-worker-01
+tensorreaper get node gpu-worker-01
 ```
 
 ### Monitor Job Status
 
 ```bash
 # View job status
-kubefabric status my-training-job
+tensorreaper status my-training-job
 
 # View and follow logs
-kubefabric logs my-training-job --follow
+tensorreaper logs my-training-job --follow
 
 # View specific replica logs
-kubefabric logs my-training-job --replica 0
+tensorreaper logs my-training-job --replica 0
 ```
 
 The `logs` and `submit --logs` commands auto-detect the container name from the
@@ -94,39 +94,39 @@ Cancelling a job patches its status to "Cancelled" rather than deleting the reso
 
 ```bash
 # Cancel a single job
-kubefabric cancel my-job
+tensorreaper cancel my-job
 
 # Cancel multiple jobs
-kubefabric cancel job1 job2 job3
+tensorreaper cancel job1 job2 job3
 
 # Skip confirmation
-kubefabric cancel my-job --yes
+tensorreaper cancel my-job --yes
 ```
 
 ### Cluster Overview
 
 ```bash
 # View cluster status
-kubefabric cluster
+tensorreaper cluster
 
 # Detailed view
-kubefabric cluster --detailed
+tensorreaper cluster --detailed
 
 # Watch mode (refresh every 5 seconds, interval must be > 0)
-kubefabric cluster --watch 5
+tensorreaper cluster --watch 5
 ```
 
 ### View Quotas
 
 ```bash
 # List all team quotas
-kubefabric quota
+tensorreaper quota
 
 # View specific team quota
-kubefabric quota --team ml-research
+tensorreaper quota --team ml-research
 
 # Show budget details
-kubefabric quota --team ml-research --budget
+tensorreaper quota --team ml-research --budget
 ```
 
 ### Cost Analysis
@@ -135,63 +135,63 @@ The `--period` parameter is validated and only accepts `day`, `week`, or `month`
 
 ```bash
 # View monthly costs for all teams
-kubefabric cost
+tensorreaper cost
 
 # View costs for specific team
-kubefabric cost --team ml-research
+tensorreaper cost --team ml-research
 
 # Detailed breakdown
-kubefabric cost --team ml-research --detailed
+tensorreaper cost --team ml-research --detailed
 ```
 
 ### Health Checks
 
 ```bash
 # Check all components
-kubefabric health
+tensorreaper health
 
 # Check specific component
-kubefabric health gpu
-kubefabric health storage
-kubefabric health network
+tensorreaper health gpu
+tensorreaper health storage
+tensorreaper health network
 ```
 
 ### Delete Resources
 
 ```bash
 # Delete a job
-kubefabric delete job my-training-job
+tensorreaper delete job my-training-job
 
 # Delete a quota
-kubefabric delete quota team-dev
+tensorreaper delete quota team-dev
 
 # Delete storage or network resources (stub - not yet implemented)
-kubefabric delete storage my-storage
-kubefabric delete network my-network
+tensorreaper delete storage my-storage
+tensorreaper delete network my-network
 
 # Skip confirmation
-kubefabric delete job my-job --yes
+tensorreaper delete job my-job --yes
 ```
 
 ### Validate YAML
 
-Validates the YAML file structure and checks that `apiVersion` and `kind` match known KubeFabric types (e.g., `kubefabric.ai/v1` / `FabricAIJob`).
+Validates the YAML file structure and checks that `apiVersion` and `kind` match known TensorReaper types (e.g., `tensorreaper.ai/v1` / `FabricAIJob`).
 
 ```bash
-kubefabric validate -f job.yaml
+tensorreaper validate -f job.yaml
 ```
 
 ## Global Options
 
 ```bash
 # Use specific Kubernetes context
-kubefabric --context production list jobs
+tensorreaper --context production list jobs
 
 # Use specific namespace
-kubefabric -n ml-training list jobs
+tensorreaper -n ml-training list jobs
 
 # Enable verbose logging
-kubefabric --verbose submit -f job.yaml
+tensorreaper --verbose submit -f job.yaml
 ```
 
 ## Examples
@@ -200,38 +200,38 @@ kubefabric --verbose submit -f job.yaml
 
 ```bash
 # 1. Check cluster status
-kubefabric cluster
+tensorreaper cluster
 
 # 2. View available quota
-kubefabric quota --team ml-research --budget
+tensorreaper quota --team ml-research --budget
 
 # 3. Submit training job
-kubefabric submit -f llm-training.yaml --wait
+tensorreaper submit -f llm-training.yaml --wait
 
 # 4. Monitor job status
-kubefabric status llm-training
+tensorreaper status llm-training
 
 # 5. View logs
-kubefabric logs llm-training --follow
+tensorreaper logs llm-training --follow
 
 # 6. Check cost impact
-kubefabric cost --team ml-research
+tensorreaper cost --team ml-research
 ```
 
 ### Team Manager Workflow
 
 ```bash
 # View team quota status
-kubefabric quota --team computer-vision --budget
+tensorreaper quota --team computer-vision --budget
 
 # List all running jobs
-kubefabric list jobs | grep Running
+tensorreaper list jobs | grep Running
 
 # Check monthly spending
-kubefabric cost --team computer-vision --period month
+tensorreaper cost --team computer-vision --period month
 
 # Check if approaching budget
-kubefabric quota --team computer-vision
+tensorreaper quota --team computer-vision
 ```
 
 ## Output Formats
@@ -243,9 +243,9 @@ The CLI supports multiple output formats. The `--output` flag is validated and o
 - **yaml**: YAML format
 
 ```bash
-kubefabric list jobs --output table
-kubefabric list jobs --output json
-kubefabric list jobs --output yaml
+tensorreaper list jobs --output table
+tensorreaper list jobs --output json
+tensorreaper list jobs --output yaml
 ```
 
 ## Configuration
@@ -256,13 +256,13 @@ The CLI uses your Kubernetes configuration (`~/.kube/config`) by default.
 
 ```bash
 export KUBECONFIG=/path/to/kubeconfig
-kubefabric --context staging list jobs
+tensorreaper --context staging list jobs
 ```
 
 ### Set Default Namespace
 
 ```bash
-kubefabric -n production list jobs
+tensorreaper -n production list jobs
 ```
 
 ## Building
@@ -271,14 +271,14 @@ kubefabric -n production list jobs
 
 ```bash
 cargo build
-./target/debug/kubefabric --help
+./target/debug/tensorreaper --help
 ```
 
 ### Release Build (Optimized)
 
 ```bash
 cargo build --release
-./target/release/kubefabric --help
+./target/release/tensorreaper --help
 ```
 
 ### Run Tests
@@ -324,12 +324,12 @@ kubectl cluster-info
 kubectl config current-context
 
 # Use specific context
-kubefabric --context my-cluster list jobs
+tensorreaper --context my-cluster list jobs
 ```
 
 ### Permission Errors
 
-Ensure your Kubernetes user has permissions to access KubeFabric CRDs:
+Ensure your Kubernetes user has permissions to access TensorReaper CRDs:
 
 ```bash
 kubectl auth can-i list fabricaijobs
@@ -338,15 +338,15 @@ kubectl auth can-i get fabricquotas
 
 ### CRD Not Found
 
-Ensure KubeFabric CRDs are installed:
+Ensure TensorReaper CRDs are installed:
 
 ```bash
-kubectl get crds | grep kubefabric
+kubectl get crds | grep tensorreaper
 ```
 
 ## Contributing
 
-See the main [KubeFabric repository](https://github.com/ssahani/kube-fabric) for contribution guidelines.
+See the main [TensorReaper repository](https://github.com/ssahani/tensor-reaper) for contribution guidelines.
 
 ## License
 

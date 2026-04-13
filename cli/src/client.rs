@@ -1,12 +1,12 @@
 use anyhow::{Context, Result};
 use kube::{Client, Config};
 
-pub struct KubeFabricClient {
+pub struct TensorReaperClient {
     pub kube_client: Client,
     pub namespace: String,
 }
 
-impl KubeFabricClient {
+impl TensorReaperClient {
     pub async fn new(context: Option<String>, namespace: Option<String>) -> Result<Self> {
         let config = if let Some(ctx) = context {
             Config::from_kubeconfig(&kube::config::KubeConfigOptions {

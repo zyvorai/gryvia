@@ -1,5 +1,5 @@
 """
-KubeFabric API Gateway
+TensorReaper API Gateway
 Provides REST API for Web UI with aggregated metrics and cluster data
 """
 import asyncio
@@ -23,8 +23,8 @@ logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(
-    title="KubeFabric API Gateway",
-    description="REST API for KubeFabric Web UI",
+    title="TensorReaper API Gateway",
+    description="REST API for TensorReaper Web UI",
     version="1.0.0"
 )
 app.state.limiter = limiter
@@ -44,7 +44,7 @@ app.add_middleware(
 )
 
 # API key for authentication (from environment or mounted secret)
-API_KEY = os.environ.get("KUBEFABRIC_API_KEY", "").strip()
+API_KEY = os.environ.get("TENSORREAPER_API_KEY", "").strip()
 
 async def verify_auth(authorization: Optional[str] = Header(None)):
     """Verify API key or Bearer token for all protected endpoints."""
@@ -88,7 +88,7 @@ def _validate_prometheus_url(url: str) -> str:
 
 # Prometheus client (optional - used for historical metrics when available)
 PROMETHEUS_URL = _validate_prometheus_url(
-    os.environ.get("PROMETHEUS_URL", "http://prometheus-operated.kubefabric:9090")
+    os.environ.get("PROMETHEUS_URL", "http://prometheus-operated.tensorreaper:9090")
 )
 HTTP_TIMEOUT_SECONDS = int(os.environ.get("HTTP_TIMEOUT_SECONDS", "10"))
 prom = None
@@ -114,7 +114,7 @@ except Exception:
     logger.warning("Failed to connect to Prometheus at %s - historical metrics unavailable", PROMETHEUS_URL)
 
 # Namespace for job queries (configurable)
-JOB_NAMESPACE = os.environ.get("KUBEFABRIC_JOB_NAMESPACE", "default")
+JOB_NAMESPACE = os.environ.get("TENSORREAPER_JOB_NAMESPACE", "default")
 
 # GPU pricing (same as quota operator)
 GPU_PRICING = {
@@ -129,7 +129,7 @@ GPU_PRICING = {
 
 @app.get("/")
 async def root():
-    return {"status": "healthy", "service": "kubefabric-api-gateway"}
+    return {"status": "healthy", "service": "tensorreaper-api-gateway"}
 
 
 @app.get("/health")
@@ -149,7 +149,7 @@ async def get_cluster_stats(request: Request, _=Depends(verify_auth)):
             loop.run_in_executor(
                 None,
                 lambda: k8s_custom.list_cluster_custom_object(
-                    group="kubefabric.ai",
+                    group="tensorreaper.ai",
                     version="v1",
                     plural="fabricgpunodes"
                 )
@@ -157,7 +157,7 @@ async def get_cluster_stats(request: Request, _=Depends(verify_auth)):
             loop.run_in_executor(
                 None,
                 lambda: k8s_custom.list_namespaced_custom_object(
-                    group="kubefabric.ai",
+                    group="tensorreaper.ai",
                     version="v1",
                     namespace=JOB_NAMESPACE,
                     plural="fabricaijobs"
@@ -232,7 +232,7 @@ async def get_gpu_metrics(
         nodes = await loop.run_in_executor(
             None,
             lambda: k8s_custom.list_cluster_custom_object(
-                group="kubefabric.ai",
+                group="tensorreaper.ai",
                 version="v1",
                 plural="fabricgpunodes"
             )
@@ -273,7 +273,7 @@ async def get_cost_metrics(request: Request, _=Depends(verify_auth)):
         quotas = await loop.run_in_executor(
             None,
             lambda: k8s_custom.list_cluster_custom_object(
-                group="kubefabric.ai",
+                group="tensorreaper.ai",
                 version="v1",
                 plural="fabricquotas"
             )
@@ -283,7 +283,7 @@ async def get_cost_metrics(request: Request, _=Depends(verify_auth)):
         jobs = await loop.run_in_executor(
             None,
             lambda: k8s_custom.list_namespaced_custom_object(
-                group="kubefabric.ai",
+                group="tensorreaper.ai",
                 version="v1",
                 namespace=JOB_NAMESPACE,
                 plural="fabricaijobs"
@@ -373,7 +373,7 @@ async def get_job_metrics(
         jobs = await loop.run_in_executor(
             None,
             lambda: k8s_custom.list_namespaced_custom_object(
-                group="kubefabric.ai",
+                group="tensorreaper.ai",
                 version="v1",
                 namespace=JOB_NAMESPACE,
                 plural="fabricaijobs"
@@ -437,7 +437,7 @@ async def list_jobs(
         jobs = await loop.run_in_executor(
             None,
             lambda: k8s_custom.list_namespaced_custom_object(
-                group="kubefabric.ai",
+                group="tensorreaper.ai",
                 version="v1",
                 namespace=JOB_NAMESPACE,
                 plural="fabricaijobs"
@@ -469,7 +469,7 @@ async def get_job(request: Request, name: str, _=Depends(verify_auth)):
         job = await loop.run_in_executor(
             None,
             lambda: k8s_custom.get_namespaced_custom_object(
-                group="kubefabric.ai",
+                group="tensorreaper.ai",
                 version="v1",
                 namespace=JOB_NAMESPACE,
                 plural="fabricaijobs",
@@ -497,8 +497,8 @@ async def create_job(request: Request, _=Depends(verify_auth)):
         # Validate required fields
         if not isinstance(body, dict):
             raise HTTPException(status_code=400, detail="Request body must be a JSON object")
-        if body.get("apiVersion") != "kubefabric.ai/v1":
-            raise HTTPException(status_code=400, detail="apiVersion must be kubefabric.ai/v1")
+        if body.get("apiVersion") != "tensorreaper.ai/v1":
+            raise HTTPException(status_code=400, detail="apiVersion must be tensorreaper.ai/v1")
         if body.get("kind") != "FabricAIJob":
             raise HTTPException(status_code=400, detail="kind must be FabricAIJob")
 
@@ -517,7 +517,7 @@ async def create_job(request: Request, _=Depends(verify_auth)):
         job = await loop.run_in_executor(
             None,
             lambda: k8s_custom.create_namespaced_custom_object(
-                group="kubefabric.ai",
+                group="tensorreaper.ai",
                 version="v1",
                 namespace=JOB_NAMESPACE,
                 plural="fabricaijobs",
@@ -544,7 +544,7 @@ async def delete_job(request: Request, name: str, _=Depends(verify_auth)):
         await loop.run_in_executor(
             None,
             lambda: k8s_custom.delete_namespaced_custom_object(
-                group="kubefabric.ai",
+                group="tensorreaper.ai",
                 version="v1",
                 namespace=JOB_NAMESPACE,
                 plural="fabricaijobs",
@@ -576,7 +576,7 @@ async def list_quotas(
         quotas = await loop.run_in_executor(
             None,
             lambda: k8s_custom.list_cluster_custom_object(
-                group="kubefabric.ai",
+                group="tensorreaper.ai",
                 version="v1",
                 plural="fabricquotas"
             )
@@ -607,7 +607,7 @@ async def get_quota(request: Request, name: str, _=Depends(verify_auth)):
         quota = await loop.run_in_executor(
             None,
             lambda: k8s_custom.get_cluster_custom_object(
-                group="kubefabric.ai",
+                group="tensorreaper.ai",
                 version="v1",
                 plural="fabricquotas",
                 name=name,
@@ -638,7 +638,7 @@ async def list_nodes(
         nodes = await loop.run_in_executor(
             None,
             lambda: k8s_custom.list_cluster_custom_object(
-                group="kubefabric.ai",
+                group="tensorreaper.ai",
                 version="v1",
                 plural="fabricgpunodes"
             )
@@ -669,7 +669,7 @@ async def get_node(request: Request, name: str, _=Depends(verify_auth)):
         node = await loop.run_in_executor(
             None,
             lambda: k8s_custom.get_cluster_custom_object(
-                group="kubefabric.ai",
+                group="tensorreaper.ai",
                 version="v1",
                 plural="fabricgpunodes",
                 name=name,
@@ -700,7 +700,7 @@ async def get_quota_usage(
         quotas = await loop.run_in_executor(
             None,
             lambda: k8s_custom.list_cluster_custom_object(
-                group="kubefabric.ai",
+                group="tensorreaper.ai",
                 version="v1",
                 plural="fabricquotas"
             )
@@ -759,7 +759,7 @@ async def get_node_health(
         nodes = await loop.run_in_executor(
             None,
             lambda: k8s_custom.list_cluster_custom_object(
-                group="kubefabric.ai",
+                group="tensorreaper.ai",
                 version="v1",
                 plural="fabricgpunodes"
             )

@@ -1,6 +1,6 @@
-# KubeFabric Bare Metal Deployment Guide
+# TensorReaper Bare Metal Deployment Guide
 
-Complete guide for deploying KubeFabric on bare metal GPU clusters.
+Complete guide for deploying TensorReaper on bare metal GPU clusters.
 
 ## Quick Deploy (Single Server)
 
@@ -71,12 +71,12 @@ Mount VAST/Weka/DDN on all GPU nodes:
 ```bash
 # Example for VAST
 mkdir -p /mnt/vast
-mount -t nfs -o rdma,port=20049 vast-vip:/kubefabric /mnt/vast
+mount -t nfs -o rdma,port=20049 vast-vip:/tensorreaper /mnt/vast
 ```
 
 Add to `/etc/fstab`:
 ```
-vast-vip:/kubefabric /mnt/vast nfs rdma,port=20049,hard,nointr 0 0
+vast-vip:/tensorreaper /mnt/vast nfs rdma,port=20049,hard,nointr 0 0
 ```
 
 ## Step 2: Configure Terraform
@@ -91,7 +91,7 @@ cp terraform.tfvars.example terraform.tfvars
 ### 2.2 Edit terraform.tfvars
 
 ```hcl
-cluster_name = "kubefabric-production"
+cluster_name = "tensorreaper-production"
 control_plane_endpoint = "10.0.1.100"
 
 control_nodes = [
@@ -167,7 +167,7 @@ This will:
 3. Setup RDMA networking
 4. Optimize GPU performance
 5. Install Kubernetes
-6. Deploy KubeFabric operators
+6. Deploy TensorReaper operators
 7. Register GPU nodes
 
 **Duration**: 30-60 minutes depending on cluster size
@@ -205,14 +205,14 @@ gpu-h100-02    gpu-h100-02   H100       8           true   Ready   5m
 ### 4.3 Check Operators
 
 ```bash
-kubectl get pods -n kubefabric-system
+kubectl get pods -n tensorreaper-system
 ```
 
 Expected output:
 ```
 NAME                                    READY   STATUS    RESTARTS   AGE
-kubefabric-gpu-operator-xxx             1/1     Running   0          5m
-kubefabric-ai-operator-xxx              1/1     Running   0          5m
+tensorreaper-gpu-operator-xxx             1/1     Running   0          5m
+tensorreaper-ai-operator-xxx              1/1     Running   0          5m
 nvidia-device-plugin-daemonset-xxx      1/1     Running   0          5m
 dcgm-exporter-xxx                       1/1     Running   0          5m
 ```
@@ -241,12 +241,12 @@ kubectl logs gpu-test
 ### 5.1 Access Grafana
 
 ```bash
-kubectl port-forward -n kubefabric-system svc/kubefabric-observability-grafana 3000:80
+kubectl port-forward -n tensorreaper-system svc/tensorreaper-observability-grafana 3000:80
 ```
 
 Open http://localhost:3000
 - Username: admin
-- Password: kubefabric-admin
+- Password: tensorreaper-admin
 
 ### 5.2 Import Dashboards
 
@@ -262,7 +262,7 @@ Pre-configured dashboards available:
 ```bash
 kubectl apply -f ../../examples/training/simple-pytorch-training.yaml
 kubectl get fabricaijob
-kubectl logs -f $(kubectl get pod -l kubefabric.ai/job=pytorch-simple-training -o name)
+kubectl logs -f $(kubectl get pod -l tensorreaper.ai/job=pytorch-simple-training -o name)
 ```
 
 ## Troubleshooting
@@ -326,6 +326,6 @@ kubectl describe node <gpu-node-name>
 ## Support
 
 For issues and questions:
-- GitHub Issues: https://github.com/ssahani/kubefabric/issues
-- Documentation: https://kubefabric.ai/docs
-- Community: https://kubefabric.ai/community
+- GitHub Issues: https://github.com/ssahani/tensorreaper/issues
+- Documentation: https://tensorreaper.ai/docs
+- Community: https://tensorreaper.ai/community

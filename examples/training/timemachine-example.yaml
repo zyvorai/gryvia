@@ -8,14 +8,14 @@
 #
 ---
 # Step 1: Create the source training job
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAIJob
 metadata:
   name: resnet50-baseline
   namespace: default
   labels:
-    kubefabric.ai/model: resnet50
-    kubefabric.ai/team: cv-research
+    tensorreaper.ai/model: resnet50
+    tensorreaper.ai/team: cv-research
 spec:
   type: training
   model: resnet50
@@ -63,7 +63,7 @@ spec:
 
 ---
 # Step 2: Create the time machine to track checkpoints and enable forking
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricTrainingTimeMachine
 metadata:
   name: resnet50-timemachine

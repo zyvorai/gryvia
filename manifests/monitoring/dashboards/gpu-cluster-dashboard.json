@@ -1,7 +1,7 @@
 {
   "dashboard": {
-    "title": "KubeFabric - GPU Cluster Overview",
-    "tags": ["kubefabric", "gpu", "nvidia"],
+    "title": "TensorReaper - GPU Cluster Overview",
+    "tags": ["tensorreaper", "gpu", "nvidia"],
     "timezone": "browser",
     "panels": [
       {
@@ -43,7 +43,7 @@
         "type": "stat",
         "targets": [
           {
-            "expr": "count(kube_pod_labels{label_kubefabric_ai_type=\"training\", phase=\"Running\"})"
+            "expr": "count(kube_pod_labels{label_tensorreaper_ai_type=\"training\", phase=\"Running\"})"
           }
         ],
         "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0}

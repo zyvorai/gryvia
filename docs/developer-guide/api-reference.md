@@ -1,12 +1,12 @@
 # API Reference
 
-Complete REST API reference for KubeFabric.
+Complete REST API reference for TensorReaper.
 
 ## Base URL
 
 Internal (from within the cluster):
 ```
-http://kubefabric-api-gateway.kubefabric.svc.cluster.local:8080
+http://tensorreaper-api-gateway.tensorreaper.svc.cluster.local:8080
 ```
 
 External (via NodePort):
@@ -25,8 +25,8 @@ All API requests require a Bearer token. Set the API key on the gateway:
 
 ```bash
 # Set API key
-kubectl set env deployment/kubefabric-api-gateway -n kubefabric \
-  KUBEFABRIC_API_KEY=your-secure-key
+kubectl set env deployment/tensorreaper-api-gateway -n tensorreaper \
+  TENSORREAPER_API_KEY=your-secure-key
 
 # Use in requests
 curl -H "Authorization: Bearer your-secure-key" \
@@ -63,7 +63,7 @@ GET /api/nodes/{name}         # Get node by name
 ```
 
 **Notes:**
-- `POST /api/jobs` validates that `apiVersion` is `kubefabric.ai/v1` and `kind` is a known KubeFabric type.
+- `POST /api/jobs` validates that `apiVersion` is `tensorreaper.ai/v1` and `kind` is a known TensorReaper type.
 - Cost responses include a `hasHistoricalData` field indicating whether Prometheus data is available.
 - Monthly cost trend data is not available through the gateway (historical trends require Prometheus).
 
@@ -179,7 +179,7 @@ POST /api/v1/jobs/{namespace}
 
 ```json
 {
-  "apiVersion": "kubefabric.ai/v1",
+  "apiVersion": "tensorreaper.ai/v1",
   "kind": "FabricAIJob",
   "metadata": {
     "name": "new-training-job",
@@ -322,8 +322,8 @@ GET /api/v1/cluster/nodes/{name}
 {
   "name": "gpu-node-1",
   "labels": {
-    "kubefabric.ai/gpu-type": "A100-80G",
-    "kubefabric.ai/gpu-count": "8"
+    "tensorreaper.ai/gpu-type": "A100-80G",
+    "tensorreaper.ai/gpu-count": "8"
   },
   "spec": {
     "gpuType": "A100-80G",
@@ -429,7 +429,7 @@ POST /api/v1/quotas
 
 ```json
 {
-  "apiVersion": "kubefabric.ai/v1",
+  "apiVersion": "tensorreaper.ai/v1",
   "kind": "FabricQuota",
   "metadata": {
     "name": "new-team"
@@ -590,18 +590,18 @@ GET /metrics
 Returns Prometheus-formatted metrics:
 
 ```
-# HELP kubefabric_jobs_total Total number of jobs
-# TYPE kubefabric_jobs_total counter
-kubefabric_jobs_total{status="succeeded"} 1245
-kubefabric_jobs_total{status="failed"} 23
+# HELP tensorreaper_jobs_total Total number of jobs
+# TYPE tensorreaper_jobs_total counter
+tensorreaper_jobs_total{status="succeeded"} 1245
+tensorreaper_jobs_total{status="failed"} 23
 
-# HELP kubefabric_gpu_utilization GPU utilization percentage
-# TYPE kubefabric_gpu_utilization gauge
-kubefabric_gpu_utilization{node="gpu-node-1",gpu="0"} 85.5
+# HELP tensorreaper_gpu_utilization GPU utilization percentage
+# TYPE tensorreaper_gpu_utilization gauge
+tensorreaper_gpu_utilization{node="gpu-node-1",gpu="0"} 85.5
 
-# HELP kubefabric_cost_total Total cost in USD
-# TYPE kubefabric_cost_total counter
-kubefabric_cost_total{team="ml-research"} 25432.10
+# HELP tensorreaper_cost_total Total cost in USD
+# TYPE tensorreaper_cost_total counter
+tensorreaper_cost_total{team="ml-research"} 25432.10
 ```
 
 ## WebSocket API
@@ -609,7 +609,7 @@ kubefabric_cost_total{team="ml-research"} 25432.10
 ### Stream Job Logs
 
 ```javascript
-const ws = new WebSocket('ws://kubefabric-api:8000/api/v1/jobs/default/my-job/logs/stream');
+const ws = new WebSocket('ws://tensorreaper-api:8000/api/v1/jobs/default/my-job/logs/stream');
 
 ws.onmessage = (event) => {
   console.log(event.data);
@@ -619,7 +619,7 @@ ws.onmessage = (event) => {
 ### Stream Metrics
 
 ```javascript
-const ws = new WebSocket('ws://kubefabric-api:8000/api/v1/metrics/stream');
+const ws = new WebSocket('ws://tensorreaper-api:8000/api/v1/metrics/stream');
 
 ws.onmessage = (event) => {
   const metrics = JSON.parse(event.data);
@@ -670,10 +670,10 @@ ws.onmessage = (event) => {
 ### Python SDK
 
 ```python
-from kubefabric import KubeFabricClient
+from tensorreaper import TensorReaperClient
 
-client = KubeFabricClient(
-    api_url="http://kubefabric-api:8000",
+client = TensorReaperClient(
+    api_url="http://tensorreaper-api:8000",
     api_key="your-api-key"
 )
 
@@ -705,10 +705,10 @@ costs = client.costs.summary(days=30, team="ml-research")
 ### Go SDK
 
 ```go
-import "github.com/ssahani/kube-fabric/sdk/go/kubefabric"
+import "github.com/ssahani/tensor-reaper/sdk/go/tensorreaper"
 
-client := kubefabric.NewClient(kubefabric.Config{
-    APIURL: "http://kubefabric-api:8000",
+client := tensorreaper.NewClient(tensorreaper.Config{
+    APIURL: "http://tensorreaper-api:8000",
     APIKey: "your-api-key",
 })
 
@@ -716,9 +716,9 @@ client := kubefabric.NewClient(kubefabric.Config{
 jobs, err := client.Jobs.List(ctx, "default", nil)
 
 // Create job
-job, err := client.Jobs.Create(ctx, "default", &kubefabric.JobSpec{
+job, err := client.Jobs.Create(ctx, "default", &tensorreaper.JobSpec{
     Framework: "pytorch",
-    Resources: kubefabric.Resources{
+    Resources: tensorreaper.Resources{
         GPUType:  "A100-80G",
         GPUCount: 8,
     },
@@ -727,7 +727,7 @@ job, err := client.Jobs.Create(ctx, "default", &kubefabric.JobSpec{
 })
 
 // Get costs
-costs, err := client.Costs.Summary(ctx, kubefabric.CostOptions{
+costs, err := client.Costs.Summary(ctx, tensorreaper.CostOptions{
     Days: 30,
     Team: "ml-research",
 })
@@ -774,5 +774,5 @@ POST /api/v1/webhooks
 
 ## Support
 
-- API Issues: https://github.com/ssahani/kube-fabric/issues
-- SDK Documentation: https://github.com/ssahani/kube-fabric/sdk
+- API Issues: https://github.com/ssahani/tensor-reaper/issues
+- SDK Documentation: https://github.com/ssahani/tensor-reaper/sdk

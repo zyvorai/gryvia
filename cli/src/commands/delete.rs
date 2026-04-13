@@ -3,11 +3,11 @@ use kube::api::{Api, ApiResource, DeleteParams, GroupVersionKind};
 use kube::core::DynamicObject;
 use dialoguer::Confirm;
 
-use crate::client::KubeFabricClient;
+use crate::client::TensorReaperClient;
 use crate::types::*;
 use crate::display;
 
-pub async fn execute(client: &KubeFabricClient, resource: &str, name: &str, yes: bool) -> Result<()> {
+pub async fn execute(client: &TensorReaperClient, resource: &str, name: &str, yes: bool) -> Result<()> {
     if !yes {
         let confirm = Confirm::new()
             .with_prompt(format!("Delete {} '{}'?", resource, name))
@@ -32,7 +32,7 @@ pub async fn execute(client: &KubeFabricClient, resource: &str, name: &str, yes:
     Ok(())
 }
 
-async fn delete_job(client: &KubeFabricClient, name: &str) -> Result<()> {
+async fn delete_job(client: &TensorReaperClient, name: &str) -> Result<()> {
     let api: Api<FabricAIJob> = Api::namespaced(
         client.kube_client.clone(),
         client.namespace(),
@@ -46,7 +46,7 @@ async fn delete_job(client: &KubeFabricClient, name: &str) -> Result<()> {
     Ok(())
 }
 
-async fn delete_quota(client: &KubeFabricClient, name: &str) -> Result<()> {
+async fn delete_quota(client: &TensorReaperClient, name: &str) -> Result<()> {
     let api: Api<FabricQuota> = Api::all(client.kube_client.clone());
 
     api.delete(name, &DeleteParams::default()).await
@@ -57,8 +57,8 @@ async fn delete_quota(client: &KubeFabricClient, name: &str) -> Result<()> {
     Ok(())
 }
 
-async fn delete_storage(client: &KubeFabricClient, name: &str) -> Result<()> {
-    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("kubefabric.ai", "v1", "FabricStorage"));
+async fn delete_storage(client: &TensorReaperClient, name: &str) -> Result<()> {
+    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("tensorreaper.ai", "v1", "FabricStorage"));
     let api: Api<DynamicObject> = Api::all_with(
         client.kube_client.clone(),
         &ar,
@@ -72,8 +72,8 @@ async fn delete_storage(client: &KubeFabricClient, name: &str) -> Result<()> {
     Ok(())
 }
 
-async fn delete_network(client: &KubeFabricClient, name: &str) -> Result<()> {
-    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("kubefabric.ai", "v1", "FabricNetwork"));
+async fn delete_network(client: &TensorReaperClient, name: &str) -> Result<()> {
+    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("tensorreaper.ai", "v1", "FabricNetwork"));
     let api: Api<DynamicObject> = Api::all_with(
         client.kube_client.clone(),
         &ar,

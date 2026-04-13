@@ -15,7 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	kubefabricv1 "github.com/ssahani/kube-fabric/operators/network-operator/api/v1"
+	tensorreaperv1 "github.com/ssahani/tensor-reaper/operators/network-operator/api/v1"
 )
 
 const (
@@ -33,7 +33,7 @@ func RDMAConfigMapName(networkName string) string {
 }
 
 // InstallDevicePlugin installs the RDMA device plugin DaemonSet
-func InstallDevicePlugin(ctx context.Context, k8sClient client.Client, owner *kubefabricv1.FabricNetwork, scheme *runtime.Scheme) error {
+func InstallDevicePlugin(ctx context.Context, k8sClient client.Client, owner *tensorreaperv1.FabricNetwork, scheme *runtime.Scheme) error {
 	// Create ConfigMap first
 	if err := CreateRDMAConfigMap(ctx, k8sClient, owner, scheme, owner.Spec.RDMA); err != nil {
 		return fmt.Errorf("failed to create RDMA ConfigMap: %w", err)
@@ -48,8 +48,8 @@ func InstallDevicePlugin(ctx context.Context, k8sClient client.Client, owner *ku
 			Namespace: RDMADevicePluginNamespace,
 			Labels: map[string]string{
 				"app":                          dsName,
-				"app.kubernetes.io/managed-by": "kubefabric",
-				"kubefabric.ai/network":        owner.Name,
+				"app.kubernetes.io/managed-by": "tensorreaper",
+				"tensorreaper.ai/network":        owner.Name,
 			},
 		},
 		Spec: appsv1.DaemonSetSpec{
@@ -131,7 +131,7 @@ func InstallDevicePlugin(ctx context.Context, k8sClient client.Client, owner *ku
 }
 
 // ConfigureNode configures RDMA on a specific node
-func ConfigureNode(ctx context.Context, k8sClient client.Client, node *corev1.Node, rdmaConfig *kubefabricv1.RDMAConfig) error {
+func ConfigureNode(ctx context.Context, k8sClient client.Client, node *corev1.Node, rdmaConfig *tensorreaperv1.RDMAConfig) error {
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		if err := k8sClient.Get(ctx, types.NamespacedName{Name: node.Name}, node); err != nil {
 			return err
@@ -140,8 +140,8 @@ func ConfigureNode(ctx context.Context, k8sClient client.Client, node *corev1.No
 		if node.Labels == nil {
 			node.Labels = make(map[string]string)
 		}
-		node.Labels["kubefabric.ai/rdma"] = "true"
-		node.Labels["kubefabric.ai/rdma-mode"] = rdmaConfig.Mode
+		node.Labels["tensorreaper.ai/rdma"] = "true"
+		node.Labels["tensorreaper.ai/rdma-mode"] = rdmaConfig.Mode
 
 		if node.Annotations == nil {
 			node.Annotations = make(map[string]string)
@@ -149,7 +149,7 @@ func ConfigureNode(ctx context.Context, k8sClient client.Client, node *corev1.No
 		if len(rdmaConfig.Devices) > 0 {
 			devicesJSON, err := json.Marshal(rdmaConfig.Devices)
 			if err == nil {
-				node.Annotations["kubefabric.ai/rdma-devices"] = string(devicesJSON)
+				node.Annotations["tensorreaper.ai/rdma-devices"] = string(devicesJSON)
 			}
 		}
 
@@ -158,7 +158,7 @@ func ConfigureNode(ctx context.Context, k8sClient client.Client, node *corev1.No
 }
 
 // CreateRDMAConfigMap creates a ConfigMap for RDMA device configuration
-func CreateRDMAConfigMap(ctx context.Context, k8sClient client.Client, owner *kubefabricv1.FabricNetwork, scheme *runtime.Scheme, rdmaConfig *kubefabricv1.RDMAConfig) error {
+func CreateRDMAConfigMap(ctx context.Context, k8sClient client.Client, owner *tensorreaperv1.FabricNetwork, scheme *runtime.Scheme, rdmaConfig *tensorreaperv1.RDMAConfig) error {
 	// RDMA device plugin configuration
 	config := `{
   "configList": [
@@ -178,8 +178,8 @@ func CreateRDMAConfigMap(ctx context.Context, k8sClient client.Client, owner *ku
 			Name:      RDMAConfigMapName(owner.Name),
 			Namespace: RDMADevicePluginNamespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/managed-by": "kubefabric",
-				"kubefabric.ai/network":        owner.Name,
+				"app.kubernetes.io/managed-by": "tensorreaper",
+				"tensorreaper.ai/network":        owner.Name,
 			},
 		},
 		Data: map[string]string{

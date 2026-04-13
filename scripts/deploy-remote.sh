@@ -1,8 +1,8 @@
 #!/bin/bash
 # ============================================================================
-# deploy-remote.sh — Full KubeFabric deployment to a remote server
+# deploy-remote.sh — Full TensorReaper deployment to a remote server
 # ============================================================================
-# One command to deploy KubeFabric to a remote Kubernetes node:
+# One command to deploy TensorReaper to a remote Kubernetes node:
 #   1. Rsync repo to remote
 #   2. Install CRDs
 #   3. Build and deploy operators
@@ -16,14 +16,14 @@
 #   ./scripts/deploy-remote.sh 10.0.0.1 root                  # SSH key auth
 #   ./scripts/deploy-remote.sh 10.0.0.1 root pass --quick     # skip build
 #   ./scripts/deploy-remote.sh 10.0.0.1 root pass --https     # enable HTTPS
-#   ./scripts/deploy-remote.sh 10.0.0.1 root pass --uninstall # remove kubefabric
+#   ./scripts/deploy-remote.sh 10.0.0.1 root pass --uninstall # remove tensorreaper
 #
 # Environment variables:
 #   DEPLOY_HOST=185.165.240.5
 #   DEPLOY_USER=root
 #   DEPLOY_PASS=mypassword
-#   DEPLOY_DIR=/root/kube-fabric
-#   KUBEFABRIC_HTTPS_PORT=30443
+#   DEPLOY_DIR=/root/tensor-reaper
+#   TENSORREAPER_HTTPS_PORT=30443
 # ============================================================================
 
 set -euo pipefail
@@ -47,7 +47,7 @@ for arg in "$@"; do
             echo "Usage: $0 <host> [user] [password] [--quick|--uninstall|--https]"
             echo ""
             echo "  --quick      Skip builds (only rsync + kubectl apply)"
-            echo "  --uninstall  Remove KubeFabric from remote server"
+            echo "  --uninstall  Remove TensorReaper from remote server"
             echo "  --https      Enable HTTPS with auto self-signed TLS certificate"
             echo ""
             echo "Full mode: rsync, install CRDs, build operators, deploy all."
@@ -60,15 +60,15 @@ done
 HOST="${POSITIONAL[0]:-${DEPLOY_HOST:-}}"
 USER="${POSITIONAL[1]:-${DEPLOY_USER:-root}}"
 PASS="${POSITIONAL[2]:-${DEPLOY_PASS:-}}"
-REMOTE_DIR="${DEPLOY_DIR:-/root/kube-fabric}"
-HTTPS_PORT="${KUBEFABRIC_HTTPS_PORT:-30443}"
+REMOTE_DIR="${DEPLOY_DIR:-/root/tensor-reaper}"
+HTTPS_PORT="${TENSORREAPER_HTTPS_PORT:-30443}"
 
 [ -z "$HOST" ] && error "Usage: $0 <host> [user] [password] [--quick|--https]"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-[ -d "$REPO_DIR/operators" ] || error "Not in kube-fabric repo: $REPO_DIR"
+[ -d "$REPO_DIR/operators" ] || error "Not in tensor-reaper repo: $REPO_DIR"
 
 # ── SSH/rsync wrappers ──
 # NOTE: StrictHostKeyChecking=accept-new requires OpenSSH 7.6+ (2017-10-03).
@@ -105,25 +105,25 @@ fi
 if $UNINSTALL_MODE; then
     echo ""
     echo "  ╔══════════════════════════════════════════════════╗"
-    echo "  ║     🗑️  KubeFabric Remote Uninstall               ║"
+    echo "  ║     🗑️  TensorReaper Remote Uninstall               ║"
     echo "  ╚══════════════════════════════════════════════════╝"
     echo ""
     echo "  Host: ${USER}@${HOST}"
     echo ""
 
-    step "Removing KubeFabric resources"
+    step "Removing TensorReaper resources"
     _ssh "
-        kubectl delete namespace kubefabric --ignore-not-found 2>/dev/null || true
-        kubectl delete crd fabricaijobs.kubefabric.ai fabricgpunodes.kubefabric.ai \
-            fabricstorages.kubefabric.ai fabricnetworks.kubefabric.ai \
-            fabricquotas.kubefabric.ai --ignore-not-found 2>/dev/null || true
-        kubectl delete secret kubefabric-tls -n kubefabric --ignore-not-found 2>/dev/null || true
+        kubectl delete namespace tensorreaper --ignore-not-found 2>/dev/null || true
+        kubectl delete crd fabricaijobs.tensorreaper.ai fabricgpunodes.tensorreaper.ai \
+            fabricstorages.tensorreaper.ai fabricnetworks.tensorreaper.ai \
+            fabricquotas.tensorreaper.ai --ignore-not-found 2>/dev/null || true
+        kubectl delete secret tensorreaper-tls -n tensorreaper --ignore-not-found 2>/dev/null || true
         rm -rf $REMOTE_DIR
-        rm -f /etc/kubefabric/tls.*
+        rm -f /etc/tensorreaper/tls.*
         echo 'Done'
     " 2>&1 | grep -v "^Warning" || true
 
-    info "KubeFabric removed from ${HOST}"
+    info "TensorReaper removed from ${HOST}"
     exit 0
 fi
 
@@ -133,7 +133,7 @@ $HTTPS_MODE && ((TOTAL_STEPS++))
 
 echo ""
 echo "  ╔══════════════════════════════════════════════════╗"
-echo "  ║     🚀 KubeFabric Remote Deployment              ║"
+echo "  ║     🚀 TensorReaper Remote Deployment              ║"
 echo "  ╚══════════════════════════════════════════════════╝"
 echo ""
 echo "  Host:     ${USER}@${HOST}"
@@ -192,7 +192,7 @@ if ! $QUICK_MODE; then
     step "Step 4/${TOTAL_STEPS}: 🔐 Creating namespace and RBAC"
     _ssh "
         cd $REMOTE_DIR
-        kubectl create namespace kubefabric --dry-run=client -o yaml | kubectl apply -f -
+        kubectl create namespace tensorreaper --dry-run=client -o yaml | kubectl apply -f -
 
         # Apply operator deployments
         for op in gpu-operator ai-operator storage-operator network-operator quota-operator; do
@@ -221,7 +221,7 @@ else
     _ssh "
         cd $REMOTE_DIR
         kubectl apply -f crds/
-        kubectl create namespace kubefabric --dry-run=client -o yaml | kubectl apply -f -
+        kubectl create namespace tensorreaper --dry-run=client -o yaml | kubectl apply -f -
         for op in gpu-operator ai-operator storage-operator network-operator quota-operator; do
             if [ -f operators/\$op/config/deployment.yaml ]; then
                 kubectl apply -f operators/\$op/config/deployment.yaml 2>&1
@@ -244,7 +244,7 @@ if $HTTPS_MODE; then
 
     _ssh "
         set -e
-        CERT_DIR=/etc/kubefabric
+        CERT_DIR=/etc/tensorreaper
         mkdir -p \$CERT_DIR
 
         # Generate self-signed certificate if not present or expired
@@ -268,8 +268,8 @@ if $HTTPS_MODE; then
             openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
                 -keyout \$CERT_DIR/tls.key \
                 -out \$CERT_DIR/tls.crt \
-                -subj \"/CN=${HOST}/O=KubeFabric\" \
-                -addext \"subjectAltName=IP:${HOST},DNS:kubefabric.local\" \
+                -subj \"/CN=${HOST}/O=TensorReaper\" \
+                -addext \"subjectAltName=IP:${HOST},DNS:tensorreaper.local\" \
                 2>/dev/null
             chmod 600 \$CERT_DIR/tls.key
             echo '  ✅ Certificate generated (365 days)'
@@ -278,19 +278,19 @@ if $HTTPS_MODE; then
         fi
 
         # Create/update TLS secret in kubernetes
-        kubectl -n kubefabric delete secret kubefabric-tls --ignore-not-found 2>/dev/null || true
-        kubectl -n kubefabric create secret tls kubefabric-tls \
+        kubectl -n tensorreaper delete secret tensorreaper-tls --ignore-not-found 2>/dev/null || true
+        kubectl -n tensorreaper create secret tls tensorreaper-tls \
             --cert=\$CERT_DIR/tls.crt \
             --key=\$CERT_DIR/tls.key 2>/dev/null
-        echo '  ✅ TLS secret created in kubefabric namespace'
+        echo '  ✅ TLS secret created in tensorreaper namespace'
 
         # Patch UI service to add HTTPS NodePort
-        kubectl -n kubefabric apply -f - <<SVCEOF
+        kubectl -n tensorreaper apply -f - <<SVCEOF
 apiVersion: v1
 kind: Service
 metadata:
-  name: kubefabric-ui-https
-  namespace: kubefabric
+  name: tensorreaper-ui-https
+  namespace: tensorreaper
 spec:
   type: NodePort
   ports:
@@ -300,16 +300,16 @@ spec:
       protocol: TCP
       name: https
   selector:
-    app: kubefabric-ui
+    app: tensorreaper-ui
 SVCEOF
 
         # Deploy nginx TLS termination sidecar as a separate pod
-        kubectl -n kubefabric apply -f - <<TLSEOF
+        kubectl -n tensorreaper apply -f - <<TLSEOF
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: kubefabric-tls-nginx
-  namespace: kubefabric
+  name: tensorreaper-tls-nginx
+  namespace: tensorreaper
 data:
   nginx.conf: |
     events { worker_connections 128; }
@@ -322,7 +322,7 @@ data:
         ssl_ciphers HIGH:!aNULL:!MD5;
 
         location / {
-          proxy_pass http://kubefabric-ui.kubefabric.svc:80;
+          proxy_pass http://tensorreaper-ui.tensorreaper.svc:80;
           proxy_set_header Host \\\$host;
           proxy_set_header X-Real-IP \\\$remote_addr;
           proxy_set_header X-Forwarded-For \\\$proxy_add_x_forwarded_for;
@@ -330,7 +330,7 @@ data:
         }
 
         location /api/ {
-          proxy_pass http://kubefabric-api-gateway.kubefabric.svc:8080/api/;
+          proxy_pass http://tensorreaper-api-gateway.tensorreaper.svc:8080/api/;
           proxy_set_header Host \\\$host;
           proxy_set_header X-Real-IP \\\$remote_addr;
           proxy_set_header X-Forwarded-For \\\$proxy_add_x_forwarded_for;
@@ -342,17 +342,17 @@ data:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: kubefabric-tls-proxy
-  namespace: kubefabric
+  name: tensorreaper-tls-proxy
+  namespace: tensorreaper
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: kubefabric-tls-proxy
+      app: tensorreaper-tls-proxy
   template:
     metadata:
       labels:
-        app: kubefabric-tls-proxy
+        app: tensorreaper-tls-proxy
     spec:
       containers:
         - name: nginx
@@ -380,21 +380,21 @@ spec:
       volumes:
         - name: tls
           secret:
-            secretName: kubefabric-tls
+            secretName: tensorreaper-tls
         - name: nginx-conf
           configMap:
-            name: kubefabric-tls-nginx
+            name: tensorreaper-tls-nginx
 TLSEOF
 
         # Patch the HTTPS service selector to point to TLS proxy
-        kubectl -n kubefabric patch svc kubefabric-ui-https \
-            -p '{\"spec\":{\"selector\":{\"app\":\"kubefabric-tls-proxy\"}}}' 2>/dev/null
+        kubectl -n tensorreaper patch svc tensorreaper-ui-https \
+            -p '{\"spec\":{\"selector\":{\"app\":\"tensorreaper-tls-proxy\"}}}' 2>/dev/null
 
         echo '  ✅ TLS proxy deployed'
 
         # Wait for TLS proxy to be ready
         echo '  Waiting for TLS proxy...'
-        kubectl -n kubefabric rollout status deployment kubefabric-tls-proxy --timeout=60s 2>/dev/null || true
+        kubectl -n tensorreaper rollout status deployment tensorreaper-tls-proxy --timeout=60s 2>/dev/null || true
 
         echo '  ✅ HTTPS configured on port ${HTTPS_PORT}'
     " 2>&1
@@ -412,15 +412,15 @@ step "Step ${VERIFY_STEP}/${TOTAL_STEPS}: ✅ Verifying deployment"
 _ssh "
     echo ''
     echo '📋 CRDs:'
-    kubectl get crd | grep kubefabric || echo '  (none found)'
+    kubectl get crd | grep tensorreaper || echo '  (none found)'
 
     echo ''
     echo '📦 Pods:'
-    kubectl get pods -n kubefabric --no-headers 2>/dev/null | head -15 || echo '  (none running)'
+    kubectl get pods -n tensorreaper --no-headers 2>/dev/null | head -15 || echo '  (none running)'
 
     echo ''
     echo '🌐 Services:'
-    kubectl get svc -n kubefabric --no-headers 2>/dev/null || echo '  (none)'
+    kubectl get svc -n tensorreaper --no-headers 2>/dev/null || echo '  (none)'
 " 2>&1
 
 info "Deployment verified"
@@ -435,8 +435,8 @@ echo "    ssh ${USER}@${HOST}"
 echo ""
 
 # Get service ports
-UI_PORT=$(_ssh "kubectl get svc -n kubefabric kubefabric-ui -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null" || echo "30081")
-API_PORT=$(_ssh "kubectl get svc -n kubefabric kubefabric-api-gateway -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null" || echo "30088")
+UI_PORT=$(_ssh "kubectl get svc -n tensorreaper tensorreaper-ui -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null" || echo "30081")
+API_PORT=$(_ssh "kubectl get svc -n tensorreaper tensorreaper-api-gateway -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null" || echo "30088")
 
 echo "  🌐 Web Dashboard:"
 echo "    http://${HOST}:${UI_PORT}"
@@ -456,5 +456,5 @@ echo ""
 echo "  📊 Check status:"
 echo "    kubectl get fabricgpunodes"
 echo "    kubectl get fabricaijobs"
-echo "    kubectl get pods -n kubefabric"
+echo "    kubectl get pods -n tensorreaper"
 echo ""

@@ -16,7 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kubefabricv1 "github.com/ssahani/kube-fabric/operators/storage-operator/api/v1"
+	tensorreaperv1 "github.com/ssahani/tensor-reaper/operators/storage-operator/api/v1"
 )
 
 const (
@@ -27,7 +27,7 @@ const (
 )
 
 // InstallCSIDriver installs the DDN EXAScaler CSI driver
-func InstallCSIDriver(ctx context.Context, k8sClient client.Client, storage *kubefabricv1.FabricStorage) error {
+func InstallCSIDriver(ctx context.Context, k8sClient client.Client, storage *tensorreaperv1.FabricStorage) error {
 	if err := ensureServiceAccount(ctx, k8sClient); err != nil {
 		return fmt.Errorf("failed to create ServiceAccount: %w", err)
 	}
@@ -160,7 +160,7 @@ func ensureEndpointSecret(ctx context.Context, k8sClient client.Client, secretNa
 			Name:      secretName,
 			Namespace: DDNCSINamespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/managed-by": "kubefabric",
+				"app.kubernetes.io/managed-by": "tensorreaper",
 			},
 		},
 		Type: corev1.SecretTypeOpaque,
@@ -181,7 +181,7 @@ func ensureEndpointSecret(ctx context.Context, k8sClient client.Client, secretNa
 	return k8sClient.Update(ctx, existing)
 }
 
-func ensureController(ctx context.Context, k8sClient client.Client, storage *kubefabricv1.FabricStorage) error {
+func ensureController(ctx context.Context, k8sClient client.Client, storage *tensorreaperv1.FabricStorage) error {
 	secretName := fmt.Sprintf("%s-endpoint", storage.Name)
 	if err := ensureEndpointSecret(ctx, k8sClient, secretName, storage.Spec.Endpoint); err != nil {
 		return fmt.Errorf("failed to create endpoint secret: %w", err)
@@ -299,7 +299,7 @@ func ensureController(ctx context.Context, k8sClient client.Client, storage *kub
 	return err
 }
 
-func ensureNodeDaemonSet(ctx context.Context, k8sClient client.Client, storage *kubefabricv1.FabricStorage) error {
+func ensureNodeDaemonSet(ctx context.Context, k8sClient client.Client, storage *tensorreaperv1.FabricStorage) error {
 	secretName := fmt.Sprintf("%s-endpoint", storage.Name)
 
 	ds := &appsv1.DaemonSet{

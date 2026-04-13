@@ -1,6 +1,6 @@
-# Contributing to KubeFabric
+# Contributing to TensorReaper
 
-Thank you for your interest in contributing to KubeFabric!
+Thank you for your interest in contributing to TensorReaper!
 
 ## Code of Conduct
 
@@ -39,8 +39,8 @@ Types: feat, fix, docs, style, refactor, test, chore
 ## Development Setup
 
 ```bash
-git clone https://github.com/ssahani/kube-fabric.git
-cd kube-fabric
+git clone https://github.com/ssahani/tensor-reaper.git
+cd tensor-reaper
 make build          # Build all operators + CLI + Web UI
 make test           # Run all tests
 make lint           # Run linters
@@ -90,6 +90,6 @@ make lint           # Run linters
 
 - GitHub Issues: Bug reports
 - GitHub Discussions: Questions
-- Documentation: https://github.com/ssahani/kube-fabric/docs
+- Documentation: https://github.com/ssahani/tensor-reaper/docs
 
 Thank you for contributing! 🚀

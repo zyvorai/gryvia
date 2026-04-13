@@ -63,7 +63,7 @@ func ScrapeMetrics(ctx context.Context, k8sClient client.Client, pod *corev1.Pod
 	}
 
 	result := &ScrapeResult{
-		JobName: pod.Labels["kubefabric.ai/job"],
+		JobName: pod.Labels["tensorreaper.ai/job"],
 		Metrics: make(map[string]*MetricValues),
 	}
 
@@ -166,7 +166,7 @@ func ScrapeMetricsWithReader(ctx context.Context, reader LogReader, pod *corev1.
 	}
 
 	result := &ScrapeResult{
-		JobName: pod.Labels["kubefabric.ai/job"],
+		JobName: pod.Labels["tensorreaper.ai/job"],
 		Metrics: make(map[string]*MetricValues),
 	}
 

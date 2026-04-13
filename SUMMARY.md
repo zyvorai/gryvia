@@ -1,8 +1,8 @@
-# KubeFabric - Complete Platform Summary
+# TensorReaper - Complete Platform Summary
 
 ## 🎯 Project Overview
 
-**KubeFabric** is an enterprise-grade GPU compute platform for AI infrastructure, built from scratch over 22 development iterations.
+**TensorReaper** is an enterprise-grade GPU compute platform for AI infrastructure, built from scratch over 22 development iterations.
 
 ### Stats
 - **Total Commits**: 26
@@ -118,7 +118,7 @@ RESTful API (~2,000 LOC):
 **Apache Airflow**:
 - ML data pipelines
 - GPU-aware scheduling
-- KubeFabric job submission
+- TensorReaper job submission
 - Workflow orchestration
 
 **Auto-Tuner**:
@@ -471,9 +471,9 @@ Two-pass code review across the entire codebase, finding and fixing 110+ issues:
 
 ## 🚀 Ready for Production
 
-KubeFabric is a complete, production-ready platform for managing GPU compute infrastructure at enterprise scale.
+TensorReaper is a complete, production-ready platform for managing GPU compute infrastructure at enterprise scale.
 
-**Repository**: https://github.com/ssahani/kube-fabric
+**Repository**: https://github.com/ssahani/tensor-reaper
 **License**: Apache 2.0
 **Version**: 1.0.0
 

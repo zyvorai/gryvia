@@ -1,10 +1,10 @@
-# KubeFabric CLI - Build Summary
+# TensorReaper CLI - Build Summary
 
-Complete Rust-based command-line interface for KubeFabric GPU cluster management.
+Complete Rust-based command-line interface for TensorReaper GPU cluster management.
 
 ## Overview
 
-The KubeFabric CLI is a production-ready command-line tool built with Rust that provides comprehensive management capabilities for GPU clusters. It offers beautiful output, real-time monitoring, and seamless integration with Kubernetes.
+The TensorReaper CLI is a production-ready command-line tool built with Rust that provides comprehensive management capabilities for GPU clusters. It offers beautiful output, real-time monitoring, and seamless integration with Kubernetes.
 
 ## Implementation Statistics
 
@@ -17,7 +17,7 @@ The KubeFabric CLI is a production-ready command-line tool built with Rust that 
 ## Architecture
 
 ```
-kubefabric (binary)
+tensorreaper (binary)
     ├── main.rs           - CLI entry point with clap
     ├── client.rs         - Kubernetes client wrapper
     ├── types.rs          - CRD type definitions
@@ -158,32 +158,32 @@ dialoguer = "0.11"        # Interactive prompts
 
 ```bash
 # Submit job
-kubefabric submit -f job.yaml
+tensorreaper submit -f job.yaml
 
 # List jobs
-kubefabric list jobs
+tensorreaper list jobs
 
 # View cluster
-kubefabric cluster
+tensorreaper cluster
 
 # Check quota
-kubefabric quota --team ml-research
+tensorreaper quota --team ml-research
 ```
 
 ### Advanced Usage
 
 ```bash
 # Watch cluster with 5-second refresh
-kubefabric cluster --watch 5
+tensorreaper cluster --watch 5
 
 # Submit and wait for completion
-kubefabric submit -f job.yaml --wait
+tensorreaper submit -f job.yaml --wait
 
 # Cost analysis with details
-kubefabric cost --team ml-research --detailed
+tensorreaper cost --team ml-research --detailed
 
 # Delete with confirmation skip
-kubefabric delete job old-experiment --yes
+tensorreaper delete job old-experiment --yes
 ```
 
 ## Output Examples
@@ -253,19 +253,19 @@ cd cli
 cargo build --release
 ```
 
-Binary will be at: `target/release/kubefabric`
+Binary will be at: `target/release/tensorreaper`
 
 ### Install
 
 ```bash
-sudo cp target/release/kubefabric /usr/local/bin/
+sudo cp target/release/tensorreaper /usr/local/bin/
 ```
 
 ### Verify
 
 ```bash
-kubefabric --version
-kubefabric --help
+tensorreaper --version
+tensorreaper --help
 ```
 
 ## Performance
@@ -279,7 +279,7 @@ kubefabric --help
 
 ### Works With
 - Kubernetes 1.24+
-- KubeFabric operators
+- TensorReaper operators
 - kubectl contexts
 - All major terminal emulators
 
@@ -310,9 +310,9 @@ kubefabric --help
 
 ## Comparison with kubectl
 
-| Feature | kubectl | kubefabric CLI |
+| Feature | kubectl | tensorreaper CLI |
 |---------|---------|----------------|
-| CRD Management | ✅ Generic | ✅ KubeFabric-specific |
+| CRD Management | ✅ Generic | ✅ TensorReaper-specific |
 | Pretty Tables | ❌ Basic | ✅ Colored tables |
 | GPU Awareness | ❌ No | ✅ Full GPU metrics |
 | Cost Tracking | ❌ No | ✅ Built-in |
@@ -339,7 +339,7 @@ enum Commands {
 }
 
 // Implement in commands/mycommand.rs
-pub async fn execute(client: &KubeFabricClient, option: &str) -> Result<()> {
+pub async fn execute(client: &TensorReaperClient, option: &str) -> Result<()> {
     // Implementation
     Ok(())
 }
@@ -366,7 +366,7 @@ src/
 
 ## Conclusion
 
-The KubeFabric CLI provides a production-ready, user-friendly interface for managing GPU clusters:
+The TensorReaper CLI provides a production-ready, user-friendly interface for managing GPU clusters:
 
 - **Complete**: 14 commands covering all major operations
 - **Fast**: Rust performance with <100ms startup

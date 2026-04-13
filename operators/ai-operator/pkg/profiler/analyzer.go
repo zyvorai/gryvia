@@ -8,7 +8,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	kubefabricv1 "github.com/ssahani/kube-fabric/operators/ai-operator/api/v1"
+	tensorreaperv1 "github.com/ssahani/tensor-reaper/operators/ai-operator/api/v1"
 )
 
 // Severity levels for recommendations
@@ -197,7 +197,7 @@ func CalculateMFU(achievedTFLOPS float64, gpuType string, gpuCount int32) float6
 // AnalyzeGpuEfficiency takes GPU metrics and produces a complete analysis with recommendations.
 // The config parameter controls which recommendation categories are enabled and the
 // minimum severity threshold.
-func AnalyzeGpuEfficiency(metrics GpuMetrics, config *kubefabricv1.ProfilerAnalysis) *AnalysisResult {
+func AnalyzeGpuEfficiency(metrics GpuMetrics, config *tensorreaperv1.ProfilerAnalysis) *AnalysisResult {
 	result := &AnalysisResult{
 		JobName: metrics.JobName,
 	}
@@ -258,13 +258,13 @@ func AnalyzeGpuEfficiency(metrics GpuMetrics, config *kubefabricv1.ProfilerAnaly
 }
 
 // ToProfilerRecommendations converts analysis results to the CRD status type
-func ToProfilerRecommendations(results []*AnalysisResult, maxRecommendations int) []kubefabricv1.ProfilerRecommendation {
-	var all []kubefabricv1.ProfilerRecommendation
+func ToProfilerRecommendations(results []*AnalysisResult, maxRecommendations int) []tensorreaperv1.ProfilerRecommendation {
+	var all []tensorreaperv1.ProfilerRecommendation
 	now := metav1.Now()
 
 	for _, result := range results {
 		for _, rec := range result.Recommendations {
-			all = append(all, kubefabricv1.ProfilerRecommendation{
+			all = append(all, tensorreaperv1.ProfilerRecommendation{
 				JobName:         result.JobName,
 				Category:        rec.Category,
 				Severity:        rec.Severity,
@@ -655,8 +655,8 @@ func severityRank(severity string) int {
 }
 
 // defaultRecommendationConfig returns a config with all recommendations enabled
-func defaultRecommendationConfig() *kubefabricv1.RecommendationConfig {
-	return &kubefabricv1.RecommendationConfig{
+func defaultRecommendationConfig() *tensorreaperv1.RecommendationConfig {
+	return &tensorreaperv1.RecommendationConfig{
 		BatchSize:               true,
 		DataLoading:             true,
 		MixedPrecision:          true,
@@ -668,7 +668,7 @@ func defaultRecommendationConfig() *kubefabricv1.RecommendationConfig {
 
 // ExtractGpuMetricsFromAnnotations extracts GPU metrics from pod annotations.
 // These annotations are expected to be set by a monitoring sidecar or the
-// kubefabric GPU operator.
+// tensorreaper GPU operator.
 func ExtractGpuMetricsFromAnnotations(annotations map[string]string, jobName, gpuType string, gpuCount int32, isDistributed bool) GpuMetrics {
 	m := GpuMetrics{
 		JobName:       jobName,
@@ -677,23 +677,23 @@ func ExtractGpuMetricsFromAnnotations(annotations map[string]string, jobName, gp
 		IsDistributed: isDistributed,
 	}
 
-	m.SMUtilization = parseFloatAnnotation(annotations, "kubefabric.ai/gpu-sm-utilization")
-	m.TensorCoreUtilization = parseFloatAnnotation(annotations, "kubefabric.ai/gpu-tensor-utilization")
-	m.AchievedTFLOPS = parseFloatAnnotation(annotations, "kubefabric.ai/gpu-tflops")
-	m.MemoryBandwidthUtilization = parseFloatAnnotation(annotations, "kubefabric.ai/gpu-memory-bw-utilization")
-	m.PeakMemoryUsageGB = parseFloatAnnotation(annotations, "kubefabric.ai/gpu-peak-memory-gb")
-	m.TotalMemoryGB = parseFloatAnnotation(annotations, "kubefabric.ai/gpu-total-memory-gb")
-	m.IoWaitRatio = parseFloatAnnotation(annotations, "kubefabric.ai/gpu-io-wait-ratio")
-	m.DataloaderThroughput = parseFloatAnnotation(annotations, "kubefabric.ai/dataloader-throughput")
-	m.NcclBandwidthGBps = parseFloatAnnotation(annotations, "kubefabric.ai/nccl-bandwidth-gbps")
-	m.AllReduceTimeFraction = parseFloatAnnotation(annotations, "kubefabric.ai/allreduce-time-fraction")
-	m.ComputeCommOverlap = parseFloatAnnotation(annotations, "kubefabric.ai/compute-comm-overlap")
+	m.SMUtilization = parseFloatAnnotation(annotations, "tensorreaper.ai/gpu-sm-utilization")
+	m.TensorCoreUtilization = parseFloatAnnotation(annotations, "tensorreaper.ai/gpu-tensor-utilization")
+	m.AchievedTFLOPS = parseFloatAnnotation(annotations, "tensorreaper.ai/gpu-tflops")
+	m.MemoryBandwidthUtilization = parseFloatAnnotation(annotations, "tensorreaper.ai/gpu-memory-bw-utilization")
+	m.PeakMemoryUsageGB = parseFloatAnnotation(annotations, "tensorreaper.ai/gpu-peak-memory-gb")
+	m.TotalMemoryGB = parseFloatAnnotation(annotations, "tensorreaper.ai/gpu-total-memory-gb")
+	m.IoWaitRatio = parseFloatAnnotation(annotations, "tensorreaper.ai/gpu-io-wait-ratio")
+	m.DataloaderThroughput = parseFloatAnnotation(annotations, "tensorreaper.ai/dataloader-throughput")
+	m.NcclBandwidthGBps = parseFloatAnnotation(annotations, "tensorreaper.ai/nccl-bandwidth-gbps")
+	m.AllReduceTimeFraction = parseFloatAnnotation(annotations, "tensorreaper.ai/allreduce-time-fraction")
+	m.ComputeCommOverlap = parseFloatAnnotation(annotations, "tensorreaper.ai/compute-comm-overlap")
 
 	// Check for mixed precision and compilation flags
-	if v, ok := annotations["kubefabric.ai/mixed-precision"]; ok && v == "true" {
+	if v, ok := annotations["tensorreaper.ai/mixed-precision"]; ok && v == "true" {
 		m.UsesMixedPrecision = true
 	}
-	if v, ok := annotations["kubefabric.ai/torch-compile"]; ok && v == "true" {
+	if v, ok := annotations["tensorreaper.ai/torch-compile"]; ok && v == "true" {
 		m.UsesCompilation = true
 	}
 

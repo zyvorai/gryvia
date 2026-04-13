@@ -14,8 +14,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kubefabricv1 "github.com/ssahani/kube-fabric/operators/ai-operator/api/v1"
-	"github.com/ssahani/kube-fabric/operators/ai-operator/pkg/timemachine"
+	tensorreaperv1 "github.com/ssahani/tensor-reaper/operators/ai-operator/api/v1"
+	"github.com/ssahani/tensor-reaper/operators/ai-operator/pkg/timemachine"
 )
 
 const (
@@ -44,10 +44,10 @@ type FabricTrainingTimeMachineReconciler struct {
 	ForkHandler *timemachine.ForkHandler
 }
 
-//+kubebuilder:rbac:groups=kubefabric.ai,resources=fabrictrainingtimemachines,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=kubefabric.ai,resources=fabrictrainingtimemachines/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=kubefabric.ai,resources=fabrictrainingtimemachines/finalizers,verbs=update
-//+kubebuilder:rbac:groups=kubefabric.ai,resources=fabricaijobs,verbs=get;list;watch;create;update;patch
+//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabrictrainingtimemachines,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabrictrainingtimemachines/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabrictrainingtimemachines/finalizers,verbs=update
+//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricaijobs,verbs=get;list;watch;create;update;patch
 //+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch
 
@@ -56,7 +56,7 @@ func (r *FabricTrainingTimeMachineReconciler) Reconcile(ctx context.Context, req
 	log := r.Log.WithValues("fabrictrainingtimemachine", req.NamespacedName)
 
 	// Fetch the FabricTrainingTimeMachine instance
-	tm := &kubefabricv1.FabricTrainingTimeMachine{}
+	tm := &tensorreaperv1.FabricTrainingTimeMachine{}
 	err := r.Get(ctx, req.NamespacedName, tm)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -82,7 +82,7 @@ func (r *FabricTrainingTimeMachineReconciler) Reconcile(ctx context.Context, req
 	return result, nil
 }
 
-func (r *FabricTrainingTimeMachineReconciler) reconcileTimeMachine(ctx context.Context, tm *kubefabricv1.FabricTrainingTimeMachine) (ctrl.Result, error) {
+func (r *FabricTrainingTimeMachineReconciler) reconcileTimeMachine(ctx context.Context, tm *tensorreaperv1.FabricTrainingTimeMachine) (ctrl.Result, error) {
 	log := r.Log.WithValues("timemachine", tm.Name, "namespace", tm.Namespace)
 
 	// Step 1: Watch the source FabricAIJob
@@ -157,8 +157,8 @@ func (r *FabricTrainingTimeMachineReconciler) reconcileTimeMachine(ctx context.C
 }
 
 // getSourceJob fetches the source FabricAIJob
-func (r *FabricTrainingTimeMachineReconciler) getSourceJob(ctx context.Context, tm *kubefabricv1.FabricTrainingTimeMachine) (*kubefabricv1.FabricAIJob, error) {
-	job := &kubefabricv1.FabricAIJob{}
+func (r *FabricTrainingTimeMachineReconciler) getSourceJob(ctx context.Context, tm *tensorreaperv1.FabricTrainingTimeMachine) (*tensorreaperv1.FabricAIJob, error) {
+	job := &tensorreaperv1.FabricAIJob{}
 	err := r.Get(ctx, types.NamespacedName{
 		Namespace: tm.Namespace,
 		Name:      tm.Spec.SourceJob,
@@ -170,12 +170,12 @@ func (r *FabricTrainingTimeMachineReconciler) getSourceJob(ctx context.Context, 
 }
 
 // indexCheckpoints discovers and indexes checkpoints from the source job
-func (r *FabricTrainingTimeMachineReconciler) indexCheckpoints(ctx context.Context, tm *kubefabricv1.FabricTrainingTimeMachine, sourceJob *kubefabricv1.FabricAIJob) error {
+func (r *FabricTrainingTimeMachineReconciler) indexCheckpoints(ctx context.Context, tm *tensorreaperv1.FabricTrainingTimeMachine, sourceJob *tensorreaperv1.FabricAIJob) error {
 	log := r.Log.WithValues("timemachine", tm.Name)
 
 	// Initialize timeline status if needed
 	if tm.Status.CheckpointTimeline == nil {
-		tm.Status.CheckpointTimeline = &kubefabricv1.CheckpointTimelineStatus{}
+		tm.Status.CheckpointTimeline = &tensorreaperv1.CheckpointTimelineStatus{}
 	}
 
 	// Extract metrics from the source job
@@ -196,7 +196,7 @@ func (r *FabricTrainingTimeMachineReconciler) indexCheckpoints(ctx context.Conte
 
 	// Update latest checkpoint
 	now := metav1.Now()
-	latestCheckpoint := &kubefabricv1.CheckpointInfo{
+	latestCheckpoint := &tensorreaperv1.CheckpointInfo{
 		Step:      currentStep,
 		Epoch:     currentEpoch,
 		Timestamp: &now,
@@ -243,7 +243,7 @@ func (r *FabricTrainingTimeMachineReconciler) indexCheckpoints(ctx context.Conte
 }
 
 // enforceRetention applies the retention policy to checkpoints
-func (r *FabricTrainingTimeMachineReconciler) enforceRetention(ctx context.Context, tm *kubefabricv1.FabricTrainingTimeMachine) error {
+func (r *FabricTrainingTimeMachineReconciler) enforceRetention(ctx context.Context, tm *tensorreaperv1.FabricTrainingTimeMachine) error {
 	retention := tm.Spec.Retention
 
 	if retention.KeepAll {
@@ -294,11 +294,11 @@ func (r *FabricTrainingTimeMachineReconciler) enforceRetention(ctx context.Conte
 }
 
 // processForks creates new FabricAIJob CRs from checkpoint state for each fork request
-func (r *FabricTrainingTimeMachineReconciler) processForks(ctx context.Context, tm *kubefabricv1.FabricTrainingTimeMachine, sourceJob *kubefabricv1.FabricAIJob) error {
+func (r *FabricTrainingTimeMachineReconciler) processForks(ctx context.Context, tm *tensorreaperv1.FabricTrainingTimeMachine, sourceJob *tensorreaperv1.FabricAIJob) error {
 	log := r.Log.WithValues("timemachine", tm.Name)
 
 	// Initialize fork status slice if needed
-	existingForks := make(map[string]*kubefabricv1.ForkStatus)
+	existingForks := make(map[string]*tensorreaperv1.ForkStatus)
 	for i := range tm.Status.Forks {
 		existingForks[tm.Status.Forks[i].Name] = &tm.Status.Forks[i]
 	}
@@ -344,7 +344,7 @@ func (r *FabricTrainingTimeMachineReconciler) processForks(ctx context.Context, 
 }
 
 // resolveCheckpoint resolves a CheckpointSelector to a specific training step
-func (r *FabricTrainingTimeMachineReconciler) resolveCheckpoint(tm *kubefabricv1.FabricTrainingTimeMachine, selector kubefabricv1.CheckpointSelector) (int, error) {
+func (r *FabricTrainingTimeMachineReconciler) resolveCheckpoint(tm *tensorreaperv1.FabricTrainingTimeMachine, selector tensorreaperv1.CheckpointSelector) (int, error) {
 	// Step-based selection
 	if selector.Step != nil {
 		return *selector.Step, nil
@@ -377,7 +377,7 @@ func (r *FabricTrainingTimeMachineReconciler) resolveCheckpoint(tm *kubefabricv1
 }
 
 // setForkStatus updates the status for a specific fork
-func (r *FabricTrainingTimeMachineReconciler) setForkStatus(tm *kubefabricv1.FabricTrainingTimeMachine, name string, sourceStep int, forkedJob string, status string, currentMetric float64) {
+func (r *FabricTrainingTimeMachineReconciler) setForkStatus(tm *tensorreaperv1.FabricTrainingTimeMachine, name string, sourceStep int, forkedJob string, status string, currentMetric float64) {
 	for i, fs := range tm.Status.Forks {
 		if fs.Name == name {
 			tm.Status.Forks[i].SourceStep = sourceStep
@@ -391,7 +391,7 @@ func (r *FabricTrainingTimeMachineReconciler) setForkStatus(tm *kubefabricv1.Fab
 	}
 
 	// Append new fork status
-	tm.Status.Forks = append(tm.Status.Forks, kubefabricv1.ForkStatus{
+	tm.Status.Forks = append(tm.Status.Forks, tensorreaperv1.ForkStatus{
 		Name:          name,
 		SourceStep:    sourceStep,
 		ForkedJob:     forkedJob,
@@ -401,7 +401,7 @@ func (r *FabricTrainingTimeMachineReconciler) setForkStatus(tm *kubefabricv1.Fab
 }
 
 // trackForkedJobs updates the status of forked jobs
-func (r *FabricTrainingTimeMachineReconciler) trackForkedJobs(ctx context.Context, tm *kubefabricv1.FabricTrainingTimeMachine) {
+func (r *FabricTrainingTimeMachineReconciler) trackForkedJobs(ctx context.Context, tm *tensorreaperv1.FabricTrainingTimeMachine) {
 	for i, forkStatus := range tm.Status.Forks {
 		if forkStatus.ForkedJob == "" {
 			continue
@@ -411,7 +411,7 @@ func (r *FabricTrainingTimeMachineReconciler) trackForkedJobs(ctx context.Contex
 		}
 
 		// Fetch the forked job
-		forkedJob := &kubefabricv1.FabricAIJob{}
+		forkedJob := &tensorreaperv1.FabricAIJob{}
 		err := r.Get(ctx, types.NamespacedName{
 			Namespace: tm.Namespace,
 			Name:      forkStatus.ForkedJob,
@@ -441,12 +441,12 @@ func (r *FabricTrainingTimeMachineReconciler) trackForkedJobs(ctx context.Contex
 }
 
 // updateStorageUsage updates the storage usage status
-func (r *FabricTrainingTimeMachineReconciler) updateStorageUsage(ctx context.Context, tm *kubefabricv1.FabricTrainingTimeMachine) {
+func (r *FabricTrainingTimeMachineReconciler) updateStorageUsage(ctx context.Context, tm *tensorreaperv1.FabricTrainingTimeMachine) {
 	// List PVCs associated with the source job
 	pvcList := &corev1.PersistentVolumeClaimList{}
 	if err := r.List(ctx, pvcList,
 		client.InNamespace(tm.Namespace),
-		client.MatchingLabels{"kubefabric.ai/job": tm.Spec.SourceJob},
+		client.MatchingLabels{"tensorreaper.ai/job": tm.Spec.SourceJob},
 	); err != nil {
 		return
 	}
@@ -465,7 +465,7 @@ func (r *FabricTrainingTimeMachineReconciler) updateStorageUsage(ctx context.Con
 }
 
 // updateCondition updates or appends a condition on the time machine status
-func (r *FabricTrainingTimeMachineReconciler) updateCondition(tm *kubefabricv1.FabricTrainingTimeMachine, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *FabricTrainingTimeMachineReconciler) updateCondition(tm *tensorreaperv1.FabricTrainingTimeMachine, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -500,6 +500,6 @@ func (r *FabricTrainingTimeMachineReconciler) updateCondition(tm *kubefabricv1.F
 // SetupWithManager sets up the controller with the Manager.
 func (r *FabricTrainingTimeMachineReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&kubefabricv1.FabricTrainingTimeMachine{}).
+		For(&tensorreaperv1.FabricTrainingTimeMachine{}).
 		Complete(r)
 }

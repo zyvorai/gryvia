@@ -8,7 +8,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kubefabricv1 "github.com/ssahani/kube-fabric/operators/ai-operator/api/v1"
+	tensorreaperv1 "github.com/ssahani/tensor-reaper/operators/ai-operator/api/v1"
 )
 
 // ForkHandler creates new FabricAIJob resources from checkpoint state
@@ -24,7 +24,7 @@ func NewForkHandler(c client.Client) *ForkHandler {
 // CreateForkedJob creates a new FabricAIJob from a source job and a fork specification.
 // It clones the source job spec, applies overrides from the fork, and sets environment
 // variables to resume from the specified checkpoint step.
-func (f *ForkHandler) CreateForkedJob(ctx context.Context, sourceJob *kubefabricv1.FabricAIJob, fork kubefabricv1.ForkSpec, checkpointStep int) (string, error) {
+func (f *ForkHandler) CreateForkedJob(ctx context.Context, sourceJob *tensorreaperv1.FabricAIJob, fork tensorreaperv1.ForkSpec, checkpointStep int) (string, error) {
 	// Determine the new job name
 	newJobName := fork.NewJobName
 	if newJobName == "" {
@@ -35,15 +35,15 @@ func (f *ForkHandler) CreateForkedJob(ctx context.Context, sourceJob *kubefabric
 	forkedSpec := buildForkedSpec(sourceJob.Spec, fork, checkpointStep)
 
 	// Create the forked FabricAIJob
-	forkedJob := &kubefabricv1.FabricAIJob{
+	forkedJob := &tensorreaperv1.FabricAIJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      newJobName,
 			Namespace: sourceJob.Namespace,
 			Labels:    buildForkLabels(sourceJob, fork),
 			Annotations: map[string]string{
-				"kubefabric.ai/forked-from":       sourceJob.Name,
-				"kubefabric.ai/fork-name":         fork.Name,
-				"kubefabric.ai/fork-step":         fmt.Sprintf("%d", checkpointStep),
+				"tensorreaper.ai/forked-from":       sourceJob.Name,
+				"tensorreaper.ai/fork-name":         fork.Name,
+				"tensorreaper.ai/fork-step":         fmt.Sprintf("%d", checkpointStep),
 			},
 		},
 		Spec: forkedSpec,
@@ -57,22 +57,22 @@ func (f *ForkHandler) CreateForkedJob(ctx context.Context, sourceJob *kubefabric
 }
 
 // buildForkedSpec creates a new FabricAIJobSpec by cloning the source and applying overrides
-func buildForkedSpec(sourceSpec kubefabricv1.FabricAIJobSpec, fork kubefabricv1.ForkSpec, checkpointStep int) kubefabricv1.FabricAIJobSpec {
+func buildForkedSpec(sourceSpec tensorreaperv1.FabricAIJobSpec, fork tensorreaperv1.ForkSpec, checkpointStep int) tensorreaperv1.FabricAIJobSpec {
 	// Deep clone the source spec
 	spec := cloneJobSpec(sourceSpec)
 
 	// Add checkpoint resume environment variables
 	resumeEnvVars := []corev1.EnvVar{
 		{
-			Name:  "KUBEFABRIC_RESUME_FROM_CHECKPOINT",
+			Name:  "TENSORREAPER_RESUME_FROM_CHECKPOINT",
 			Value: "true",
 		},
 		{
-			Name:  "KUBEFABRIC_CHECKPOINT_STEP",
+			Name:  "TENSORREAPER_CHECKPOINT_STEP",
 			Value: fmt.Sprintf("%d", checkpointStep),
 		},
 		{
-			Name:  "KUBEFABRIC_FORK_NAME",
+			Name:  "TENSORREAPER_FORK_NAME",
 			Value: fork.Name,
 		},
 	}
@@ -95,8 +95,8 @@ func buildForkedSpec(sourceSpec kubefabricv1.FabricAIJobSpec, fork kubefabricv1.
 }
 
 // cloneJobSpec creates a deep copy of a FabricAIJobSpec
-func cloneJobSpec(src kubefabricv1.FabricAIJobSpec) kubefabricv1.FabricAIJobSpec {
-	spec := kubefabricv1.FabricAIJobSpec{
+func cloneJobSpec(src tensorreaperv1.FabricAIJobSpec) tensorreaperv1.FabricAIJobSpec {
+	spec := tensorreaperv1.FabricAIJobSpec{
 		Type:            src.Type,
 		Model:           src.Model,
 		GPUs:            src.GPUs,
@@ -128,7 +128,7 @@ func cloneJobSpec(src kubefabricv1.FabricAIJobSpec) kubefabricv1.FabricAIJobSpec
 
 	// Clone distributed config
 	if src.Distributed != nil {
-		spec.Distributed = &kubefabricv1.DistributedConfig{
+		spec.Distributed = &tensorreaperv1.DistributedConfig{
 			Enabled:     src.Distributed.Enabled,
 			Framework:   src.Distributed.Framework,
 			Nodes:       src.Distributed.Nodes,
@@ -181,7 +181,7 @@ func cloneJobSpec(src kubefabricv1.FabricAIJobSpec) kubefabricv1.FabricAIJobSpec
 
 // applyEnvOverride applies an environment variable override. If the variable
 // already exists, its value is updated. Otherwise, the variable is appended.
-func applyEnvOverride(envVars []corev1.EnvVar, override kubefabricv1.EnvOverride) []corev1.EnvVar {
+func applyEnvOverride(envVars []corev1.EnvVar, override tensorreaperv1.EnvOverride) []corev1.EnvVar {
 	for i, env := range envVars {
 		if env.Name == override.Name {
 			envVars[i].Value = override.Value
@@ -196,20 +196,20 @@ func applyEnvOverride(envVars []corev1.EnvVar, override kubefabricv1.EnvOverride
 }
 
 // buildForkLabels creates labels for a forked job
-func buildForkLabels(sourceJob *kubefabricv1.FabricAIJob, fork kubefabricv1.ForkSpec) map[string]string {
+func buildForkLabels(sourceJob *tensorreaperv1.FabricAIJob, fork tensorreaperv1.ForkSpec) map[string]string {
 	labels := map[string]string{
-		"kubefabric.ai/forked-from": sourceJob.Name,
-		"kubefabric.ai/fork":       fork.Name,
-		"kubefabric.ai/type":       sourceJob.Spec.Type,
+		"tensorreaper.ai/forked-from": sourceJob.Name,
+		"tensorreaper.ai/fork":       fork.Name,
+		"tensorreaper.ai/type":       sourceJob.Spec.Type,
 	}
 
 	// Copy relevant labels from the source job
 	if sourceJob.Labels != nil {
-		if model, ok := sourceJob.Labels["kubefabric.ai/model"]; ok {
-			labels["kubefabric.ai/model"] = model
+		if model, ok := sourceJob.Labels["tensorreaper.ai/model"]; ok {
+			labels["tensorreaper.ai/model"] = model
 		}
-		if team, ok := sourceJob.Labels["kubefabric.ai/team"]; ok {
-			labels["kubefabric.ai/team"] = team
+		if team, ok := sourceJob.Labels["tensorreaper.ai/team"]; ok {
+			labels["tensorreaper.ai/team"] = team
 		}
 	}
 
@@ -217,7 +217,7 @@ func buildForkLabels(sourceJob *kubefabricv1.FabricAIJob, fork kubefabricv1.Fork
 }
 
 // ValidateForkSpec validates a fork specification
-func ValidateForkSpec(fork kubefabricv1.ForkSpec) error {
+func ValidateForkSpec(fork tensorreaperv1.ForkSpec) error {
 	if fork.Name == "" {
 		return fmt.Errorf("fork name is required")
 	}

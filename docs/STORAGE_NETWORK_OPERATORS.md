@@ -1,6 +1,6 @@
 # Storage and Network Operators - Implementation Summary
 
-This document provides a comprehensive overview of the KubeFabric Storage and Network operators built for enterprise AI infrastructure.
+This document provides a comprehensive overview of the TensorReaper Storage and Network operators built for enterprise AI infrastructure.
 
 ## Overview
 
@@ -13,7 +13,7 @@ Both operators are production-ready Kubernetes controllers built with Go and the
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                   KubeFabric Platform                    │
+│                   TensorReaper Platform                    │
 ├──────────────────────┬──────────────────────────────────┤
 │  Storage Operator    │     Network Operator             │
 ├──────────────────────┼──────────────────────────────────┤
@@ -93,7 +93,7 @@ Both operators are production-ready Kubernetes controllers built with Go and the
 ### Example Usage
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricStorage
 metadata:
   name: vast-production
@@ -155,7 +155,7 @@ Result: Automatic deployment of:
 
 **RDMA Network:**
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricNetwork
 metadata:
   name: rdma-ib
@@ -170,13 +170,13 @@ spec:
 
 Result:
 - RDMA device plugin deployed
-- Nodes labeled `kubefabric.ai/rdma=enabled`
+- Nodes labeled `tensorreaper.ai/rdma=enabled`
 - NetworkAttachmentDefinition `rdma-ib` created
 - RDMA resources exposed to scheduler
 
 **SR-IOV Network:**
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricNetwork
 metadata:
   name: sriov-net
@@ -210,7 +210,7 @@ operators/
 │   │   └── ceph/ceph.go                       # Ceph CSI (~380 LOC)
 │   ├── config/
 │   │   ├── deployment.yaml                    # Operator deployment
-│   │   └── namespace.yaml                     # kubefabric-system NS
+│   │   └── namespace.yaml                     # tensorreaper-system NS
 │   ├── Dockerfile                             # Multi-stage build
 │   ├── Makefile                               # Build automation
 │   └── README.md                              # Documentation
@@ -225,7 +225,7 @@ operators/
     │   └── multus/multus.go                  # NAD generator (~200 LOC)
     ├── config/
     │   ├── deployment.yaml                   # Operator deployment
-    │   └── namespace.yaml                    # kubefabric-system NS
+    │   └── namespace.yaml                    # tensorreaper-system NS
     ├── Dockerfile                            # Multi-stage build
     ├── Makefile                              # Build automation
     └── README.md                             # Documentation
@@ -256,7 +256,7 @@ examples/
 
 ```bash
 # Create namespace
-kubectl create namespace kubefabric-system
+kubectl create namespace tensorreaper-system
 
 # Apply CRDs
 kubectl apply -f crds/fabricstorage.yaml
@@ -267,7 +267,7 @@ kubectl apply -f operators/storage-operator/config/
 kubectl apply -f operators/network-operator/config/
 
 # Verify
-kubectl get pods -n kubefabric-system
+kubectl get pods -n tensorreaper-system
 ```
 
 ### Configure Storage

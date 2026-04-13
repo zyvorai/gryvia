@@ -2,11 +2,11 @@ use anyhow::Result;
 use kube::api::{Api, Patch, PatchParams};
 use dialoguer::Confirm;
 
-use crate::client::KubeFabricClient;
+use crate::client::TensorReaperClient;
 use crate::types::*;
 use crate::display;
 
-pub async fn execute(client: &KubeFabricClient, jobs: &[String], yes: bool) -> Result<()> {
+pub async fn execute(client: &TensorReaperClient, jobs: &[String], yes: bool) -> Result<()> {
     if jobs.is_empty() {
         return Err(anyhow::anyhow!("No jobs specified"));
     }
@@ -41,7 +41,7 @@ pub async fn execute(client: &KubeFabricClient, jobs: &[String], yes: bool) -> R
 
         match api.patch_status(
             job_name,
-            &PatchParams::apply("kubefabric-cli"),
+            &PatchParams::apply("tensorreaper-cli"),
             &Patch::Merge(&patch),
         ).await {
             Ok(_) => display::print_success(&format!("Job {} cancelled", job_name)),

@@ -8,7 +8,7 @@ metadata:
     pipeline-type: training
 spec:
   entrypoint: training-pipeline
-  serviceAccountName: kubefabric-job-runner
+  serviceAccountName: tensorreaper-job-runner
 
   # Workflow parameters
   arguments:
@@ -58,7 +58,7 @@ spec:
       resource:
         action: create
         manifest: |
-          apiVersion: kubefabric.ai/v1
+          apiVersion: tensorreaper.ai/v1
           kind: FabricAIJob
           metadata:
             name: data-prep-{{workflow.name}}
@@ -85,7 +85,7 @@ spec:
       resource:
         action: create
         manifest: |
-          apiVersion: kubefabric.ai/v1
+          apiVersion: tensorreaper.ai/v1
           kind: FabricAIJob
           metadata:
             name: training-{{workflow.name}}
@@ -121,7 +121,7 @@ spec:
       resource:
         action: create
         manifest: |
-          apiVersion: kubefabric.ai/v1
+          apiVersion: tensorreaper.ai/v1
           kind: FabricAIJob
           metadata:
             name: eval-{{workflow.name}}
@@ -149,7 +149,7 @@ spec:
       resource:
         action: create
         manifest: |
-          apiVersion: kubefabric.ai/v1
+          apiVersion: tensorreaper.ai/v1
           kind: FabricAIJob
           metadata:
             name: export-{{workflow.name}}

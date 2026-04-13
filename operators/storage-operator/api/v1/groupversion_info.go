@@ -6,7 +6,7 @@ import (
 )
 
 var (
-	GroupVersion = schema.GroupVersion{Group: "kubefabric.ai", Version: "v1"}
+	GroupVersion = schema.GroupVersion{Group: "tensorreaper.ai", Version: "v1"}
 	SchemeBuilder = &scheme.Builder{GroupVersion: GroupVersion}
 	AddToScheme = SchemeBuilder.AddToScheme
 )

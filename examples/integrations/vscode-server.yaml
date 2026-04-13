@@ -1,6 +1,6 @@
 ---
 # VSCode Server with GPU Access
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAIJob
 metadata:
   name: vscode-gpu
@@ -40,7 +40,7 @@ spec:
           name: vscode-secret
           key: password
     - name: MLFLOW_TRACKING_URI
-      value: "http://mlflow.kubefabric.svc.cluster.local:5000"
+      value: "http://mlflow.tensorreaper.svc.cluster.local:5000"
     - name: CUDA_VISIBLE_DEVICES
       value: "0"
   ports:
@@ -127,7 +127,7 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-    - host: vscode.kubefabric.local
+    - host: vscode.tensorreaper.local
       http:
         paths:
           - path: /

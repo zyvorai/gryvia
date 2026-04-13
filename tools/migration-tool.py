@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Migration Tool for KubeFabric
+Migration Tool for TensorReaper
 Migrate workloads between clusters, backup/restore, and upgrade assistance
 """
 
@@ -37,7 +37,7 @@ class MigrationTool:
             self.source_core = client.CoreV1Api()
 
     def list_resources(self) -> Dict:
-        """List all KubeFabric resources in source cluster"""
+        """List all TensorReaper resources in source cluster"""
         print(f"{BLUE}Discovering resources in source cluster...{NC}\n")
 
         resources = {
@@ -54,7 +54,7 @@ class MigrationTool:
         for resource_type in ["fabricaijobs", "fabricworkflows", "fabricqueues", "fabricusers"]:
             try:
                 items = self.source_api.list_cluster_custom_object(
-                    group="kubefabric.ai",
+                    group="tensorreaper.ai",
                     version="v1",
                     plural=resource_type
                 )
@@ -63,22 +63,22 @@ class MigrationTool:
             except Exception as e:
                 print(f"{YELLOW}Warning: Could not list {resource_type}: {e}{NC}")
 
-        # Get ConfigMaps and Secrets (filtered by KubeFabric label)
+        # Get ConfigMaps and Secrets (filtered by TensorReaper label)
         try:
             configmaps = self.source_core.list_config_map_for_all_namespaces(
-                label_selector="app.kubernetes.io/part-of=kubefabric"
+                label_selector="app.kubernetes.io/part-of=tensorreaper"
             )
             resources["configmaps"] = [cm.to_dict() for cm in configmaps.items]
             print(f"Found {len(resources['configmaps'])} configmaps")
 
             secrets = self.source_core.list_secret_for_all_namespaces(
-                label_selector="app.kubernetes.io/part-of=kubefabric"
+                label_selector="app.kubernetes.io/part-of=tensorreaper"
             )
             resources["secrets"] = [s.to_dict() for s in secrets.items]
             print(f"Found {len(resources['secrets'])} secrets")
 
             pvcs = self.source_core.list_persistent_volume_claim_for_all_namespaces(
-                label_selector="app.kubernetes.io/part-of=kubefabric"
+                label_selector="app.kubernetes.io/part-of=tensorreaper"
             )
             resources["pvcs"] = [pvc.to_dict() for pvc in pvcs.items]
             print(f"Found {len(resources['pvcs'])} PVCs")
@@ -220,7 +220,7 @@ class MigrationTool:
                     if resource_type in ["fabricaijobs", "fabricworkflows",
                                         "fabricqueues", "fabricusers"]:
                         dest_api.create_namespaced_custom_object(
-                            group="kubefabric.ai",
+                            group="tensorreaper.ai",
                             version="v1",
                             namespace=resource["metadata"].get("namespace", "default"),
                             plural=resource_type,
@@ -268,7 +268,7 @@ class MigrationTool:
         # Get jobs from source
         try:
             jobs = self.source_api.list_cluster_custom_object(
-                group="kubefabric.ai",
+                group="tensorreaper.ai",
                 version="v1",
                 plural="fabricaijobs"
             )
@@ -312,9 +312,9 @@ class MigrationTool:
                     cleaned_job["metadata"]["annotations"] = {}
 
                 cleaned_job["metadata"]["annotations"].update({
-                    "kubefabric.ai/migrated-from": self.source_context,
-                    "kubefabric.ai/migration-date": datetime.now().isoformat(),
-                    "kubefabric.ai/original-status": status
+                    "tensorreaper.ai/migrated-from": self.source_context,
+                    "tensorreaper.ai/migration-date": datetime.now().isoformat(),
+                    "tensorreaper.ai/original-status": status
                 })
 
                 try:
@@ -323,7 +323,7 @@ class MigrationTool:
                     dest_api = client.CustomObjectsApi()
 
                     dest_api.create_namespaced_custom_object(
-                        group="kubefabric.ai",
+                        group="tensorreaper.ai",
                         version="v1",
                         namespace=namespace,
                         plural="fabricaijobs",
@@ -366,7 +366,7 @@ class MigrationTool:
 
             try:
                 items = dest_api.list_cluster_custom_object(
-                    group="kubefabric.ai",
+                    group="tensorreaper.ai",
                     version="v1",
                     plural=resource_type
                 )
@@ -407,7 +407,7 @@ class MigrationTool:
             },
             "pre_migration_checklist": [
                 "☐ Backup source cluster",
-                "☐ Verify destination cluster is running KubeFabric",
+                "☐ Verify destination cluster is running TensorReaper",
                 "☐ Check destination cluster has sufficient capacity",
                 "☐ Create necessary namespaces in destination",
                 "☐ Configure storage classes in destination",
@@ -480,7 +480,7 @@ class MigrationTool:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Migration Tool for KubeFabric")
+    parser = argparse.ArgumentParser(description="Migration Tool for TensorReaper")
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 
     # Export command

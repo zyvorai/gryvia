@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "Building KubeFabric CLI..."
+echo "Building TensorReaper CLI..."
 
 # Clean previous builds
 cargo clean
@@ -15,10 +15,10 @@ VERSION=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].vers
 echo ""
 echo "✓ Build complete!"
 echo "  Version: $VERSION"
-echo "  Binary: target/release/kubefabric"
+echo "  Binary: target/release/tensorreaper"
 echo ""
 echo "To install:"
-echo "  sudo cp target/release/kubefabric /usr/local/bin/"
+echo "  sudo cp target/release/tensorreaper /usr/local/bin/"
 echo ""
 echo "To test:"
-echo "  ./target/release/kubefabric --help"
+echo "  ./target/release/tensorreaper --help"

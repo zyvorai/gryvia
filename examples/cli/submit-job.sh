@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Example: Submit a training job using KubeFabric CLI
+# Example: Submit a training job using TensorReaper CLI
 
 set -e
 
 echo "Submitting LLM training job..."
 
-kubefabric submit -f - <<EOF
-apiVersion: kubefabric.ai/v1
+tensorreaper submit -f - <<EOF
+apiVersion: tensorreaper.ai/v1
 kind: FabricAIJob
 metadata:
   name: llm-training
@@ -47,5 +47,5 @@ echo ""
 echo "✓ Job submitted!"
 echo ""
 echo "Monitor with:"
-echo "  kubefabric status llm-training"
-echo "  kubefabric logs llm-training --follow"
+echo "  tensorreaper status llm-training"
+echo "  tensorreaper logs llm-training --follow"

@@ -1,4 +1,4 @@
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAIJob
 metadata:
   name: tensorflow-multi-node-training

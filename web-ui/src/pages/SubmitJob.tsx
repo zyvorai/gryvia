@@ -45,7 +45,7 @@ export default function SubmitJob() {
     }
 
     const job: Partial<FabricAIJob> = {
-      apiVersion: 'kubefabric.ai/v1',
+      apiVersion: 'tensorreaper.ai/v1',
       kind: 'FabricAIJob',
       metadata: {
         name: formData.name,
@@ -94,22 +94,36 @@ export default function SubmitJob() {
     setFormData({ ...formData, env: newEnv })
   }
 
+  const inputStyle = {
+    background: 'rgba(10,14,20,0.6)',
+    border: '1px solid rgba(192,204,224,0.08)',
+    boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.3)',
+    color: '#d0dae6',
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center space-x-4">
         <button
           onClick={() => navigate('/jobs')}
-          className="inline-flex items-center text-sm text-slate-400 hover:text-slate-200"
+          className="inline-flex items-center text-sm text-[#8090a8] hover:text-[#c0cce0] transition-colors"
         >
           <ArrowLeft className="h-4 w-4 mr-1" />
           Back to Jobs
         </button>
       </div>
 
-      <div className="bg-slate-800/50 rounded-xl border border-slate-700/50">
-        <div className="px-6 py-4 border-b border-slate-700/30">
-          <h2 className="text-lg font-bold text-white">Submit New Job</h2>
-          <p className="mt-1 text-xs text-slate-400">
+      <div className="rounded-xl overflow-hidden" style={{
+        background: 'linear-gradient(165deg, #151d28 0%, #111820 100%)',
+        border: '1px solid rgba(192,204,224,0.06)',
+        boxShadow: 'inset 0 1px 0 rgba(192,204,224,0.04)',
+      }}>
+        <div className="px-6 py-4" style={{
+          borderBottom: '1px solid rgba(192,204,224,0.04)',
+          background: 'rgba(10,14,20,0.3)',
+        }}>
+          <h2 className="text-lg font-bold text-gradient-copper">Submit New Job</h2>
+          <p className="mt-1 text-xs text-[#5a7a9e]">
             Configure and submit an AI training or inference job
           </p>
         </div>
@@ -117,26 +131,28 @@ export default function SubmitJob() {
         <form onSubmit={handleSubmit} className="px-6 py-6 space-y-6">
           {/* Basic Info */}
           <div>
-            <h3 className="text-sm font-semibold text-white mb-4">Basic Information</h3>
+            <h3 className="text-sm font-semibold text-[#e8ecf1] mb-4">Basic Information</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="block text-xs font-medium text-slate-300">Job Name</label>
+                <label className="block text-xs font-medium text-[#8ba4c0]">Job Name</label>
                 <input
                   type="text"
                   required
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="mt-1 block w-full rounded-lg bg-slate-900/50 border border-slate-600 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  className="mt-1 block w-full rounded-lg text-sm placeholder-[#344e6a] focus:ring-2 focus:ring-[#d4764e] focus:border-[#d4764e] focus:outline-none"
+                  style={inputStyle}
                   placeholder="my-training-job"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-300">Framework</label>
+                <label className="block text-xs font-medium text-[#8ba4c0]">Framework</label>
                 <select
                   value={formData.framework}
                   onChange={(e) => setFormData({ ...formData, framework: e.target.value })}
-                  className="mt-1 block w-full rounded-lg bg-slate-900/50 border border-slate-600 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  className="mt-1 block w-full rounded-lg text-sm focus:ring-2 focus:ring-[#d4764e] focus:border-[#d4764e] focus:outline-none"
+                  style={inputStyle}
                 >
                   <option value="pytorch">PyTorch</option>
                   <option value="tensorflow">TensorFlow</option>
@@ -146,13 +162,14 @@ export default function SubmitJob() {
               </div>
 
               <div className="md:col-span-2">
-                <label className="block text-xs font-medium text-slate-300">Container Image</label>
+                <label className="block text-xs font-medium text-[#8ba4c0]">Container Image</label>
                 <input
                   type="text"
                   required
                   value={formData.image}
                   onChange={(e) => setFormData({ ...formData, image: e.target.value })}
-                  className="mt-1 block w-full rounded-lg bg-slate-900/50 border border-slate-600 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono text-xs"
+                  className="mt-1 block w-full rounded-lg text-sm font-mono text-xs placeholder-[#344e6a] focus:ring-2 focus:ring-[#d4764e] focus:border-[#d4764e] focus:outline-none"
+                  style={inputStyle}
                   placeholder="nvcr.io/nvidia/pytorch:24.01-py3"
                 />
               </div>
@@ -161,14 +178,15 @@ export default function SubmitJob() {
 
           {/* Resources */}
           <div>
-            <h3 className="text-sm font-semibold text-white mb-4">Resource Requirements</h3>
+            <h3 className="text-sm font-semibold text-[#e8ecf1] mb-4">Resource Requirements</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="block text-xs font-medium text-slate-300">GPU Type</label>
+                <label className="block text-xs font-medium text-[#8ba4c0]">GPU Type</label>
                 <select
                   value={formData.gpuType}
                   onChange={(e) => setFormData({ ...formData, gpuType: e.target.value })}
-                  className="mt-1 block w-full rounded-lg bg-slate-900/50 border border-slate-600 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  className="mt-1 block w-full rounded-lg text-sm focus:ring-2 focus:ring-[#d4764e] focus:border-[#d4764e] focus:outline-none"
+                  style={inputStyle}
                 >
                   <option value="H100">H100</option>
                   <option value="A100-80G">A100-80G</option>
@@ -180,7 +198,7 @@ export default function SubmitJob() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-300">GPU Count</label>
+                <label className="block text-xs font-medium text-[#8ba4c0]">GPU Count</label>
                 <input
                   type="number"
                   min="1"
@@ -188,12 +206,13 @@ export default function SubmitJob() {
                   required
                   value={formData.gpuCount}
                   onChange={(e) => setFormData({ ...formData, gpuCount: parseInt(e.target.value, 10) || 1 })}
-                  className="mt-1 block w-full rounded-lg bg-slate-900/50 border border-slate-600 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  className="mt-1 block w-full rounded-lg text-sm focus:ring-2 focus:ring-[#d4764e] focus:border-[#d4764e] focus:outline-none"
+                  style={inputStyle}
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-300">Memory</label>
+                <label className="block text-xs font-medium text-[#8ba4c0]">Memory</label>
                 <input
                   type="text"
                   required
@@ -201,13 +220,14 @@ export default function SubmitJob() {
                   onChange={(e) => setFormData({ ...formData, memory: e.target.value })}
                   pattern="^\d+(\.\d+)?(Ki|Mi|Gi|Ti|K|M|G|T)?$"
                   title="Enter a valid memory value (e.g. 32Gi, 512Mi, 1Ti)"
-                  className="mt-1 block w-full rounded-lg bg-slate-900/50 border border-slate-600 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  className="mt-1 block w-full rounded-lg text-sm placeholder-[#344e6a] focus:ring-2 focus:ring-[#d4764e] focus:border-[#d4764e] focus:outline-none"
+                  style={inputStyle}
                   placeholder="32Gi"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-300">CPU Cores</label>
+                <label className="block text-xs font-medium text-[#8ba4c0]">CPU Cores</label>
                 <input
                   type="number"
                   min="1"
@@ -215,7 +235,8 @@ export default function SubmitJob() {
                   required
                   value={formData.cpu}
                   onChange={(e) => setFormData({ ...formData, cpu: parseInt(e.target.value, 10) || 1 })}
-                  className="mt-1 block w-full rounded-lg bg-slate-900/50 border border-slate-600 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  className="mt-1 block w-full rounded-lg text-sm focus:ring-2 focus:ring-[#d4764e] focus:border-[#d4764e] focus:outline-none"
+                  style={inputStyle}
                 />
               </div>
             </div>
@@ -223,16 +244,17 @@ export default function SubmitJob() {
 
           {/* Distributed Training */}
           <div>
-            <h3 className="text-sm font-semibold text-white mb-4">Distributed Training</h3>
+            <h3 className="text-sm font-semibold text-[#e8ecf1] mb-4">Distributed Training</h3>
             <div className="space-y-4">
               <div className="flex items-center">
                 <input
                   type="checkbox"
                   checked={formData.distributedEnabled}
                   onChange={(e) => setFormData({ ...formData, distributedEnabled: e.target.checked })}
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-slate-600 rounded bg-slate-900/50"
+                  className="h-4 w-4 rounded"
+                  style={{ accentColor: '#d4764e' }}
                 />
-                <label className="ml-2 block text-sm text-white">
+                <label className="ml-2 block text-sm text-[#c0cce0]">
                   Enable distributed training
                 </label>
               </div>
@@ -240,11 +262,12 @@ export default function SubmitJob() {
               {formData.distributedEnabled && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <label className="block text-xs font-medium text-slate-300">Strategy</label>
+                    <label className="block text-xs font-medium text-[#8ba4c0]">Strategy</label>
                     <select
                       value={formData.distributedStrategy}
                       onChange={(e) => setFormData({ ...formData, distributedStrategy: e.target.value })}
-                      className="mt-1 block w-full rounded-lg bg-slate-900/50 border border-slate-600 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                      className="mt-1 block w-full rounded-lg text-sm focus:ring-2 focus:ring-[#d4764e] focus:border-[#d4764e] focus:outline-none"
+                      style={inputStyle}
                     >
                       <option value="ddp">DDP (Distributed Data Parallel)</option>
                       <option value="fsdp">FSDP (Fully Sharded Data Parallel)</option>
@@ -254,25 +277,27 @@ export default function SubmitJob() {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-slate-300">Nodes</label>
+                    <label className="block text-xs font-medium text-[#8ba4c0]">Nodes</label>
                     <input
                       type="number"
                       min="1"
                       max="64"
                       value={formData.nodes}
                       onChange={(e) => setFormData({ ...formData, nodes: parseInt(e.target.value, 10) || 1 })}
-                      className="mt-1 block w-full rounded-lg bg-slate-900/50 border border-slate-600 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                      className="mt-1 block w-full rounded-lg text-sm focus:ring-2 focus:ring-[#d4764e] focus:border-[#d4764e] focus:outline-none"
+                      style={inputStyle}
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-slate-300">GPUs/Node</label>
+                    <label className="block text-xs font-medium text-[#8ba4c0]">GPUs/Node</label>
                     <input
                       type="number"
                       min="1"
                       max="8"
                       value={formData.gpusPerNode}
                       onChange={(e) => setFormData({ ...formData, gpusPerNode: parseInt(e.target.value, 10) || 1 })}
-                      className="mt-1 block w-full rounded-lg bg-slate-900/50 border border-slate-600 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                      className="mt-1 block w-full rounded-lg text-sm focus:ring-2 focus:ring-[#d4764e] focus:border-[#d4764e] focus:outline-none"
+                      style={inputStyle}
                     />
                   </div>
                 </div>
@@ -282,13 +307,14 @@ export default function SubmitJob() {
 
           {/* Command */}
           <div>
-            <h3 className="text-sm font-semibold text-white mb-4">Command</h3>
+            <h3 className="text-sm font-semibold text-[#e8ecf1] mb-4">Command</h3>
             <textarea
               required
               rows={3}
               value={formData.command}
               onChange={(e) => setFormData({ ...formData, command: e.target.value })}
-              className="mt-1 block w-full rounded-lg bg-slate-900/50 border border-slate-600 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono text-xs"
+              className="mt-1 block w-full rounded-lg text-sm font-mono text-xs placeholder-[#344e6a] focus:ring-2 focus:ring-[#d4764e] focus:border-[#d4764e] focus:outline-none"
+              style={inputStyle}
               placeholder="python train.py --epochs 100 --batch-size 32"
             />
           </div>
@@ -296,11 +322,15 @@ export default function SubmitJob() {
           {/* Environment Variables */}
           <div>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-white">Environment Variables</h3>
+              <h3 className="text-sm font-semibold text-[#e8ecf1]">Environment Variables</h3>
               <button
                 type="button"
                 onClick={addEnvVar}
-                className="inline-flex items-center px-3 py-1 border border-slate-600 rounded-lg text-xs font-medium text-slate-300 hover:bg-slate-700 transition-colors"
+                className="inline-flex items-center px-3 py-1 rounded-lg text-xs font-medium text-[#8ba4c0] hover:text-[#c0cce0] transition-colors"
+                style={{
+                  border: '1px solid rgba(192,204,224,0.1)',
+                  background: 'rgba(21,29,40,0.5)',
+                }}
               >
                 <Plus className="h-4 w-4 mr-1" />
                 Add Variable
@@ -314,19 +344,21 @@ export default function SubmitJob() {
                     value={env.name}
                     onChange={(e) => updateEnvVar(idx, 'name', e.target.value)}
                     placeholder="VARIABLE_NAME"
-                    className="flex-1 rounded-lg bg-slate-900/50 border border-slate-600 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono"
+                    className="flex-1 rounded-lg text-sm font-mono placeholder-[#344e6a] focus:ring-2 focus:ring-[#d4764e] focus:border-[#d4764e] focus:outline-none"
+                    style={inputStyle}
                   />
                   <input
                     type="text"
                     value={env.value}
                     onChange={(e) => updateEnvVar(idx, 'value', e.target.value)}
                     placeholder="value"
-                    className="flex-1 rounded-lg bg-slate-900/50 border border-slate-600 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono"
+                    className="flex-1 rounded-lg text-sm font-mono placeholder-[#344e6a] focus:ring-2 focus:ring-[#d4764e] focus:border-[#d4764e] focus:outline-none"
+                    style={inputStyle}
                   />
                   <button
                     type="button"
                     onClick={() => removeEnvVar(idx)}
-                    className="p-2 text-red-400 hover:text-red-300"
+                    className="p-2 text-red-400 hover:text-red-300 transition-colors"
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>
@@ -336,32 +368,42 @@ export default function SubmitJob() {
           </div>
 
           {error && (
-            <div className="rounded-xl bg-yellow-500/10 border border-yellow-500/20 p-4">
-              <p className="text-xs text-yellow-400">{error}</p>
+            <div className="rounded-xl p-4" style={{
+              background: 'rgba(251,191,36,0.06)',
+              border: '1px solid rgba(251,191,36,0.12)',
+            }}>
+              <p className="text-xs text-[#fbbf24]">{error}</p>
             </div>
           )}
 
           {createJobMutation.isError && (
-            <div className="rounded-xl bg-red-500/10 border border-red-500/20 p-4">
-              <p className="text-xs text-red-400">
+            <div className="rounded-xl p-4" style={{
+              background: 'rgba(239,68,68,0.06)',
+              border: '1px solid rgba(239,68,68,0.12)',
+            }}>
+              <p className="text-xs text-[#f87171]">
                 Error submitting job: {createJobMutation.error instanceof Error ? createJobMutation.error.message : 'Unknown error'}
               </p>
             </div>
           )}
 
           {/* Submit Buttons */}
-          <div className="flex justify-end space-x-3 pt-6 border-t border-slate-700/30">
+          <div className="flex justify-end space-x-3 pt-6" style={{ borderTop: '1px solid rgba(192,204,224,0.04)' }}>
             <button
               type="button"
               onClick={() => navigate('/jobs')}
-              className="px-4 py-2 border border-slate-600 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-700 transition-colors"
+              className="px-4 py-2 rounded-lg text-sm font-medium text-[#8ba4c0] hover:text-[#c0cce0] transition-all"
+              style={{
+                border: '1px solid rgba(192,204,224,0.1)',
+                background: 'rgba(21,29,40,0.5)',
+              }}
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={createJobMutation.isPending}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+              className="px-4 py-2 btn-copper rounded-lg text-sm font-medium disabled:opacity-50"
             >
               {createJobMutation.isPending ? 'Submitting...' : 'Submit Job'}
             </button>

@@ -37,7 +37,7 @@ func setupTestCluster(t *testing.T) *testCluster {
 	require.NoError(t, err, "Failed to create clientset")
 
 	// Use unique namespace per test
-	ns := fmt.Sprintf("kubefabric-e2e-%s", strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-")))
+	ns := fmt.Sprintf("tensorreaper-e2e-%s", strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-")))
 	if len(ns) > 63 {
 		ns = ns[:63]
 	}
@@ -74,14 +74,14 @@ func TestE2E_AIJobLifecycle(t *testing.T) {
 
 	// Define FabricAIJob resource
 	gvr := schema.GroupVersionResource{
-		Group:    "kubefabric.ai",
+		Group:    "tensorreaper.ai",
 		Version:  "v1",
 		Resource: "fabricaijobs",
 	}
 
 	job := &unstructured.Unstructured{
 		Object: map[string]interface{}{
-			"apiVersion": "kubefabric.ai/v1",
+			"apiVersion": "tensorreaper.ai/v1",
 			"kind":       "FabricAIJob",
 			"metadata": map[string]interface{}{
 				"name":      jobName,
@@ -168,14 +168,14 @@ func TestE2E_QuotaEnforcement(t *testing.T) {
 	quotaName := "test-team-quota"
 
 	quotaGVR := schema.GroupVersionResource{
-		Group:    "kubefabric.ai",
+		Group:    "tensorreaper.ai",
 		Version:  "v1",
 		Resource: "fabricquotas",
 	}
 
 	quota := &unstructured.Unstructured{
 		Object: map[string]interface{}{
-			"apiVersion": "kubefabric.ai/v1",
+			"apiVersion": "tensorreaper.ai/v1",
 			"kind":       "FabricQuota",
 			"metadata": map[string]interface{}{
 				"name": quotaName,
@@ -255,7 +255,7 @@ func TestE2E_NodeRegistration(t *testing.T) {
 	ctx := context.Background()
 
 	nodeGVR := schema.GroupVersionResource{
-		Group:    "kubefabric.ai",
+		Group:    "tensorreaper.ai",
 		Version:  "v1",
 		Resource: "fabricgpunodes",
 	}
@@ -288,14 +288,14 @@ func TestE2E_StorageProvisioning(t *testing.T) {
 	storageName := "test-vast-storage"
 
 	storageGVR := schema.GroupVersionResource{
-		Group:    "kubefabric.ai",
+		Group:    "tensorreaper.ai",
 		Version:  "v1",
 		Resource: "fabricstorages",
 	}
 
 	storage := &unstructured.Unstructured{
 		Object: map[string]interface{}{
-			"apiVersion": "kubefabric.ai/v1",
+			"apiVersion": "tensorreaper.ai/v1",
 			"kind":       "FabricStorage",
 			"metadata": map[string]interface{}{
 				"name": storageName,

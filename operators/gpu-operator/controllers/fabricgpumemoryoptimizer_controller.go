@@ -12,8 +12,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kubefabricv1 "github.com/ssahani/kube-fabric/operators/gpu-operator/api/v1"
-	"github.com/ssahani/kube-fabric/operators/gpu-operator/pkg/memory"
+	tensorreaperv1 "github.com/ssahani/tensor-reaper/operators/gpu-operator/api/v1"
+	"github.com/ssahani/tensor-reaper/operators/gpu-operator/pkg/memory"
 )
 
 const (
@@ -34,17 +34,17 @@ type FabricGpuMemoryOptimizerReconciler struct {
 	Predictor *memory.Predictor
 }
 
-//+kubebuilder:rbac:groups=kubefabric.ai,resources=fabricgpumemoryoptimizers,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=kubefabric.ai,resources=fabricgpumemoryoptimizers/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=kubefabric.ai,resources=fabricgpumemoryoptimizers/finalizers,verbs=update
-//+kubebuilder:rbac:groups=kubefabric.ai,resources=fabricgpunodes,verbs=get;list;watch
+//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricgpumemoryoptimizers,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricgpumemoryoptimizers/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricgpumemoryoptimizers/finalizers,verbs=update
+//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricgpunodes,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop
 func (r *FabricGpuMemoryOptimizerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("fabricgpumemoryoptimizer", req.NamespacedName)
 
 	// Fetch the FabricGpuMemoryOptimizer instance
-	optimizer := &kubefabricv1.FabricGpuMemoryOptimizer{}
+	optimizer := &tensorreaperv1.FabricGpuMemoryOptimizer{}
 	err := r.Get(ctx, req.NamespacedName, optimizer)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -70,7 +70,7 @@ func (r *FabricGpuMemoryOptimizerReconciler) Reconcile(ctx context.Context, req 
 	return result, nil
 }
 
-func (r *FabricGpuMemoryOptimizerReconciler) reconcileOptimizer(ctx context.Context, optimizer *kubefabricv1.FabricGpuMemoryOptimizer) (ctrl.Result, error) {
+func (r *FabricGpuMemoryOptimizerReconciler) reconcileOptimizer(ctx context.Context, optimizer *tensorreaperv1.FabricGpuMemoryOptimizer) (ctrl.Result, error) {
 	log := r.Log.WithValues("optimizer", optimizer.Name)
 
 	// Collect GPU memory data from FabricGpuNode resources
@@ -136,14 +136,14 @@ func (r *FabricGpuMemoryOptimizerReconciler) reconcileOptimizer(ctx context.Cont
 }
 
 // collectGpuNodes fetches FabricGpuNode resources matching the optimizer scope
-func (r *FabricGpuMemoryOptimizerReconciler) collectGpuNodes(ctx context.Context, optimizer *kubefabricv1.FabricGpuMemoryOptimizer) ([]kubefabricv1.FabricGpuNode, error) {
-	nodeList := &kubefabricv1.FabricGpuNodeList{}
+func (r *FabricGpuMemoryOptimizerReconciler) collectGpuNodes(ctx context.Context, optimizer *tensorreaperv1.FabricGpuMemoryOptimizer) ([]tensorreaperv1.FabricGpuNode, error) {
+	nodeList := &tensorreaperv1.FabricGpuNodeList{}
 	if err := r.List(ctx, nodeList); err != nil {
 		return nil, fmt.Errorf("failed to list FabricGpuNodes: %w", err)
 	}
 
 	// Filter by scope
-	var filtered []kubefabricv1.FabricGpuNode
+	var filtered []tensorreaperv1.FabricGpuNode
 	for _, node := range nodeList.Items {
 		if r.nodeMatchesScope(node, optimizer.Spec.Scope) {
 			filtered = append(filtered, node)
@@ -154,13 +154,13 @@ func (r *FabricGpuMemoryOptimizerReconciler) collectGpuNodes(ctx context.Context
 }
 
 // nodeMatchesScope checks if a GPU node matches the optimizer scope
-func (r *FabricGpuMemoryOptimizerReconciler) nodeMatchesScope(node kubefabricv1.FabricGpuNode, scope kubefabricv1.OptimizerScope) bool {
+func (r *FabricGpuMemoryOptimizerReconciler) nodeMatchesScope(node tensorreaperv1.FabricGpuNode, scope tensorreaperv1.OptimizerScope) bool {
 	switch scope.Type {
 	case "cluster":
 		return true
 	case "namespace":
 		// FabricGpuNode is cluster-scoped, so we check labels for namespace association
-		if ns, ok := node.Labels["kubefabric.ai/namespace"]; ok {
+		if ns, ok := node.Labels["tensorreaper.ai/namespace"]; ok {
 			return ns == scope.Namespace
 		}
 		// If no namespace label, include the node (cluster-scoped nodes serve all namespaces)
@@ -181,7 +181,7 @@ func (r *FabricGpuMemoryOptimizerReconciler) nodeMatchesScope(node kubefabricv1.
 }
 
 // extractMemorySamples converts GPU node status data into memory samples for analysis
-func (r *FabricGpuMemoryOptimizerReconciler) extractMemorySamples(nodes []kubefabricv1.FabricGpuNode) []memory.GpuMemorySample {
+func (r *FabricGpuMemoryOptimizerReconciler) extractMemorySamples(nodes []tensorreaperv1.FabricGpuNode) []memory.GpuMemorySample {
 	var samples []memory.GpuMemorySample
 
 	for _, node := range nodes {
@@ -209,7 +209,7 @@ func (r *FabricGpuMemoryOptimizerReconciler) extractMemorySamples(nodes []kubefa
 }
 
 // runOomPrevention analyzes memory usage and predicts potential OOM events
-func (r *FabricGpuMemoryOptimizerReconciler) runOomPrevention(ctx context.Context, optimizer *kubefabricv1.FabricGpuMemoryOptimizer, samples []memory.GpuMemorySample) (int, error) {
+func (r *FabricGpuMemoryOptimizerReconciler) runOomPrevention(ctx context.Context, optimizer *tensorreaperv1.FabricGpuMemoryOptimizer, samples []memory.GpuMemorySample) (int, error) {
 	if r.Predictor == nil {
 		return 0, fmt.Errorf("memory predictor not initialized")
 	}
@@ -302,7 +302,7 @@ func (r *FabricGpuMemoryOptimizerReconciler) runOomPrevention(ctx context.Contex
 }
 
 // applyMitigation applies automatic OOM mitigation strategies
-func (r *FabricGpuMemoryOptimizerReconciler) applyMitigation(ctx context.Context, optimizer *kubefabricv1.FabricGpuMemoryOptimizer, sample memory.GpuMemorySample) error {
+func (r *FabricGpuMemoryOptimizerReconciler) applyMitigation(ctx context.Context, optimizer *tensorreaperv1.FabricGpuMemoryOptimizer, sample memory.GpuMemorySample) error {
 	if optimizer.Spec.OomPrevention == nil || optimizer.Spec.OomPrevention.PreemptiveAction == nil {
 		return fmt.Errorf("no preemptive action configured")
 	}
@@ -343,7 +343,7 @@ func (r *FabricGpuMemoryOptimizerReconciler) applyMitigation(ctx context.Context
 }
 
 // runRightSizing analyzes memory usage and generates right-sizing recommendations
-func (r *FabricGpuMemoryOptimizerReconciler) runRightSizing(ctx context.Context, optimizer *kubefabricv1.FabricGpuMemoryOptimizer, samples []memory.GpuMemorySample) (int, error) {
+func (r *FabricGpuMemoryOptimizerReconciler) runRightSizing(ctx context.Context, optimizer *tensorreaperv1.FabricGpuMemoryOptimizer, samples []memory.GpuMemorySample) (int, error) {
 	if r.Predictor == nil {
 		return 0, fmt.Errorf("memory predictor not initialized")
 	}
@@ -401,7 +401,7 @@ func (r *FabricGpuMemoryOptimizerReconciler) runRightSizing(ctx context.Context,
 }
 
 // updateMemoryEfficiency updates the memory efficiency status metrics
-func (r *FabricGpuMemoryOptimizerReconciler) updateMemoryEfficiency(optimizer *kubefabricv1.FabricGpuMemoryOptimizer, samples []memory.GpuMemorySample) {
+func (r *FabricGpuMemoryOptimizerReconciler) updateMemoryEfficiency(optimizer *tensorreaperv1.FabricGpuMemoryOptimizer, samples []memory.GpuMemorySample) {
 	if len(samples) == 0 {
 		return
 	}
@@ -424,7 +424,7 @@ func (r *FabricGpuMemoryOptimizerReconciler) updateMemoryEfficiency(optimizer *k
 	}
 
 	if validSamples > 0 {
-		optimizer.Status.MemoryEfficiency = &kubefabricv1.MemoryEfficiencyStatus{
+		optimizer.Status.MemoryEfficiency = &tensorreaperv1.MemoryEfficiencyStatus{
 			AvgPeakUtilization:        totalPeakUtil / float64(validSamples),
 			AvgSteadyStateUtilization: totalSteadyUtil / float64(validSamples),
 		}
@@ -432,7 +432,7 @@ func (r *FabricGpuMemoryOptimizerReconciler) updateMemoryEfficiency(optimizer *k
 }
 
 // updateCondition updates or appends a condition on the optimizer status
-func (r *FabricGpuMemoryOptimizerReconciler) updateCondition(optimizer *kubefabricv1.FabricGpuMemoryOptimizer, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *FabricGpuMemoryOptimizerReconciler) updateCondition(optimizer *tensorreaperv1.FabricGpuMemoryOptimizer, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -466,6 +466,6 @@ func (r *FabricGpuMemoryOptimizerReconciler) updateCondition(optimizer *kubefabr
 // SetupWithManager sets up the controller with the Manager.
 func (r *FabricGpuMemoryOptimizerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&kubefabricv1.FabricGpuMemoryOptimizer{}).
+		For(&tensorreaperv1.FabricGpuMemoryOptimizer{}).
 		Complete(r)
 }

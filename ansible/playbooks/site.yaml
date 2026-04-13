@@ -1,5 +1,5 @@
 ---
-# KubeFabric Bare Metal Deployment - Main Playbook
+# TensorReaper Bare Metal Deployment - Main Playbook
 
 - name: Prepare all nodes
   hosts: all
@@ -29,14 +29,14 @@
   roles:
     - kubernetes-worker
 
-- name: Install KubeFabric operators
+- name: Install TensorReaper operators
   hosts: control_plane[0]
   become: yes
   roles:
-    - kubefabric-install
+    - tensorreaper-install
 
-- name: Configure GPU nodes in KubeFabric
+- name: Configure GPU nodes in TensorReaper
   hosts: control_plane[0]
   become: yes
   roles:
-    - kubefabric-configure
+    - tensorreaper-configure

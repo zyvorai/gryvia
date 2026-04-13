@@ -1,6 +1,6 @@
 # FabricCheckpointGuard
 
-Intelligent checkpoint and restore system for AI training jobs running on KubeFabric.
+Intelligent checkpoint and restore system for AI training jobs running on TensorReaper.
 
 ## Overview
 
@@ -21,7 +21,7 @@ Key capabilities:
 Create a checkpoint guard that monitors all training jobs labeled `team: ml-research`:
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricCheckpointGuard
 metadata:
   name: training-guard
@@ -29,7 +29,7 @@ metadata:
 spec:
   jobSelector:
     matchLabels:
-      kubefabric.ai/team: ml-research
+      tensorreaper.ai/team: ml-research
 
   checkpointPolicy:
     intervalMinutes: 15
@@ -214,14 +214,14 @@ kubectl get fcg training-guard -o jsonpath='{.status.emergencyCheckpointsTaken}'
 ### Minimal Guard
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricCheckpointGuard
 metadata:
   name: simple-guard
 spec:
   jobSelector:
     matchLabels:
-      kubefabric.ai/type: training
+      tensorreaper.ai/type: training
   checkpointPolicy:
     intervalMinutes: 30
 ```
@@ -229,7 +229,7 @@ spec:
 ### Full-Featured Guard for Production LLM Training
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricCheckpointGuard
 metadata:
   name: llm-production-guard
@@ -237,8 +237,8 @@ metadata:
 spec:
   jobSelector:
     matchLabels:
-      kubefabric.ai/team: llm-research
-      kubefabric.ai/type: training
+      tensorreaper.ai/team: llm-research
+      tensorreaper.ai/type: training
 
   checkpointPolicy:
     intervalMinutes: 10
@@ -277,14 +277,14 @@ spec:
 ### Guard for Spot Instance Training
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricCheckpointGuard
 metadata:
   name: spot-training-guard
 spec:
   jobSelector:
     matchLabels:
-      kubefabric.ai/priority: spot
+      tensorreaper.ai/priority: spot
 
   checkpointPolicy:
     intervalMinutes: 5
@@ -312,12 +312,12 @@ When `monitoring.exportMetrics` is true, the following metrics are exported:
 
 | Metric | Type | Description |
 |--------|------|-------------|
-| `kubefabric_checkpoint_total` | Counter | Total checkpoints taken |
-| `kubefabric_checkpoint_valid_total` | Counter | Valid checkpoints |
-| `kubefabric_checkpoint_emergency_total` | Counter | Emergency checkpoints triggered |
-| `kubefabric_checkpoint_duration_seconds` | Histogram | Checkpoint duration |
-| `kubefabric_checkpoint_storage_bytes` | Gauge | Total storage used |
-| `kubefabric_checkpoint_validation_failures` | Counter | Validation failures |
+| `tensorreaper_checkpoint_total` | Counter | Total checkpoints taken |
+| `tensorreaper_checkpoint_valid_total` | Counter | Valid checkpoints |
+| `tensorreaper_checkpoint_emergency_total` | Counter | Emergency checkpoints triggered |
+| `tensorreaper_checkpoint_duration_seconds` | Histogram | Checkpoint duration |
+| `tensorreaper_checkpoint_storage_bytes` | Gauge | Total storage used |
+| `tensorreaper_checkpoint_validation_failures` | Counter | Validation failures |
 
 ## Troubleshooting
 
@@ -354,10 +354,10 @@ kubectl get fcg training-guard -o jsonpath='{.spec.checkpointPolicy.emergencyChe
 kubectl get fabricgpunodes
 
 # Check for spot preemption annotations
-kubectl get pods -l kubefabric.ai/job=my-job -o jsonpath='{.items[*].metadata.annotations}'
+kubectl get pods -l tensorreaper.ai/job=my-job -o jsonpath='{.items[*].metadata.annotations}'
 ```
 
 ## Support
 
-- Issues: https://github.com/ssahani/kube-fabric/issues
-- Discussions: https://github.com/ssahani/kube-fabric/discussions
+- Issues: https://github.com/ssahani/tensor-reaper/issues
+- Discussions: https://github.com/ssahani/tensor-reaper/discussions

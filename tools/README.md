@@ -1,6 +1,6 @@
-# KubeFabric Tools
+# TensorReaper Tools
 
-Collection of diagnostic and utility tools for KubeFabric platform.
+Collection of diagnostic and utility tools for TensorReaper platform.
 
 ## Tools
 
@@ -64,7 +64,7 @@ python3 tools/cost-calculator.py --namespace production
 **Example Output:**
 ```
 ================================================================================
-                         KUBEFABRIC COST REPORT
+                         TENSORREAPER COST REPORT
 ================================================================================
 
 📊 SUMMARY
@@ -90,7 +90,7 @@ nlp                           $7,456.80          88     $84.74
 
 ### 3. Backup and Restore (backup-restore.sh)
 
-Complete backup and restore solution for KubeFabric resources.
+Complete backup and restore solution for TensorReaper resources.
 
 **Usage:**
 ```bash
@@ -104,10 +104,10 @@ Complete backup and restore solution for KubeFabric resources.
 ./tools/backup-restore.sh list
 
 # Verify backup
-./tools/backup-restore.sh verify --file /backups/kubefabric-20240101-120000.tar.gz
+./tools/backup-restore.sh verify --file /backups/tensorreaper-20240101-120000.tar.gz
 
 # Restore from backup
-./tools/backup-restore.sh restore --file /backups/kubefabric-20240101-120000.tar.gz
+./tools/backup-restore.sh restore --file /backups/tensorreaper-20240101-120000.tar.gz
 ```
 
 **What Gets Backed Up:**
@@ -128,7 +128,7 @@ Complete backup and restore solution for KubeFabric resources.
 
 ### 4. Upgrade Tool (upgrade.sh)
 
-Safe KubeFabric version upgrades with automatic backup.
+Safe TensorReaper version upgrades with automatic backup.
 
 **Usage:**
 ```bash
@@ -236,7 +236,7 @@ python3 tools/profiler.py --job my-job --output report.json
 **Example Output:**
 ```
 ╔════════════════════════════════════════════════════════════════╗
-║          KubeFabric GPU Profiler                              ║
+║          TensorReaper GPU Profiler                              ║
 ╚════════════════════════════════════════════════════════════════╝
 
 📊 UTILIZATION SUMMARY
@@ -295,14 +295,14 @@ chmod +x tools/*.py
 
 ```bash
 # Build tools container
-docker build -t kubefabric-tools -f tools/Dockerfile tools/
+docker build -t tensorreaper-tools -f tools/Dockerfile tools/
 
 # Run cost calculator
-docker run -v ~/.kube:/root/.kube kubefabric-tools \
+docker run -v ~/.kube:/root/.kube tensorreaper-tools \
   python3 cost-calculator.py
 
 # Run GPU diagnostics (on GPU node)
-docker run --gpus all kubefabric-tools \
+docker run --gpus all tensorreaper-tools \
   bash gpu-diagnostics.sh
 ```
 
@@ -315,17 +315,17 @@ apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: daily-cost-report
-  namespace: kubefabric
+  namespace: tensorreaper
 spec:
   schedule: "0 9 * * *"  # Daily at 9 AM
   jobTemplate:
     spec:
       template:
         spec:
-          serviceAccountName: kubefabric-tools
+          serviceAccountName: tensorreaper-tools
           containers:
           - name: cost-calculator
-            image: kubefabric-tools:1.0.0
+            image: tensorreaper-tools:1.0.0
             command:
               - python3
               - /tools/cost-calculator.py
@@ -348,7 +348,7 @@ apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: gpu-diagnostics
-  namespace: kubefabric
+  namespace: tensorreaper
 spec:
   selector:
     matchLabels:
@@ -359,11 +359,11 @@ spec:
         app: gpu-diagnostics
     spec:
       nodeSelector:
-        kubefabric.ai/gpu: "true"
+        tensorreaper.ai/gpu: "true"
       hostPID: true
       containers:
       - name: diagnostics
-        image: kubefabric-tools:1.0.0
+        image: tensorreaper-tools:1.0.0
         command:
           - /bin/bash
           - -c
@@ -405,7 +405,7 @@ export KUBECONFIG=~/.kube/config
 # Or copy into cluster
 kubectl create secret generic kubeconfig \
   --from-file=config=$HOME/.kube/config \
-  -n kubefabric
+  -n tensorreaper
 ```
 
 ### GPU Diagnostics Issues
@@ -459,6 +459,6 @@ To add new tools:
 
 ## Support
 
-- Issues: https://github.com/ssahani/kube-fabric/issues
-- Documentation: https://github.com/ssahani/kube-fabric/docs
-- Discussions: https://github.com/ssahani/kube-fabric/discussions
+- Issues: https://github.com/ssahani/tensor-reaper/issues
+- Documentation: https://github.com/ssahani/tensor-reaper/docs
+- Discussions: https://github.com/ssahani/tensor-reaper/discussions

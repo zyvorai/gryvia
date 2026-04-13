@@ -46,9 +46,9 @@ spec:
                 mountPath: /tmp/ray
             env:
               - name: RAY_GRAFANA_HOST
-                value: "http://grafana.kubefabric.svc.cluster.local:3000"
+                value: "http://grafana.tensorreaper.svc.cluster.local:3000"
               - name: RAY_PROMETHEUS_HOST
-                value: "http://prometheus.kubefabric.svc.cluster.local:9090"
+                value: "http://prometheus.tensorreaper.svc.cluster.local:9090"
         volumes:
           - name: ray-logs
             emptyDir: {}
@@ -80,7 +80,7 @@ spec:
                 - name: ray-logs
                   mountPath: /tmp/ray
           nodeSelector:
-            kubefabric.ai/gpu-type: T4
+            tensorreaper.ai/gpu-type: T4
           volumes:
             - name: ray-logs
               emptyDir: {}
@@ -116,7 +116,7 @@ spec:
                 - name: NCCL_DEBUG
                   value: "INFO"
           nodeSelector:
-            kubefabric.ai/gpu-type: A100-80G
+            tensorreaper.ai/gpu-type: A100-80G
           volumes:
             - name: ray-logs
               emptyDir: {}
@@ -253,8 +253,8 @@ data:
     print(f"Training completed: {result}")
 
 ---
-# KubeFabric Quota for Ray cluster
-apiVersion: kubefabric.ai/v1
+# TensorReaper Quota for Ray cluster
+apiVersion: tensorreaper.ai/v1
 kind: FabricQuota
 metadata:
   name: ray-cluster-quota

@@ -34,7 +34,7 @@ Automatically optimize hyperparameters, resource allocation, and training config
 ### 1. Enable Auto-Tuning
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAutoTuner
 metadata:
   name: llama-tuning
@@ -325,7 +325,7 @@ budget:
 # train.py
 import argparse
 import torch
-from kubefabric import AutoTuner
+from tensorreaper import AutoTuner
 
 def train(config):
     # Parse hyperparameters
@@ -414,7 +414,7 @@ def train_with_checkpoints(config, checkpoint_dir):
 
 ```bash
 # Open auto-tuning dashboard
-kubectl port-forward -n kubefabric svc/auto-tuner-ui 8080:80
+kubectl port-forward -n tensorreaper svc/auto-tuner-ui 8080:80
 
 # View at http://localhost:8080
 ```
@@ -449,16 +449,16 @@ kfctl tune export llama-tuning --format json > results.json
 
 ```prometheus
 # Total trials
-kubefabric_autotuner_trials_total{job="llama-tuning"} 50
+tensorreaper_autotuner_trials_total{job="llama-tuning"} 50
 
 # Best score so far
-kubefabric_autotuner_best_score{job="llama-tuning"} 0.234
+tensorreaper_autotuner_best_score{job="llama-tuning"} 0.234
 
 # Cost spent
-kubefabric_autotuner_cost_total{job="llama-tuning"} 2341.50
+tensorreaper_autotuner_cost_total{job="llama-tuning"} 2341.50
 
 # Trials per second
-kubefabric_autotuner_trials_per_second{job="llama-tuning"} 0.15
+tensorreaper_autotuner_trials_per_second{job="llama-tuning"} 0.15
 ```
 
 ## Example Results
@@ -573,7 +573,7 @@ See `examples/auto-tuning/` for:
 ### Python SDK
 
 ```python
-from kubefabric.autotuner import AutoTuner
+from tensorreaper.autotuner import AutoTuner
 
 # Initialize
 tuner = AutoTuner(
@@ -601,5 +601,5 @@ print(f"Best score: {best.score}")
 
 ## Support
 
-- Auto-Tuning Issues: https://github.com/ssahani/kube-fabric/issues
-- Optimization Help: https://github.com/ssahani/kube-fabric/discussions
+- Auto-Tuning Issues: https://github.com/ssahani/tensor-reaper/issues
+- Optimization Help: https://github.com/ssahani/tensor-reaper/discussions

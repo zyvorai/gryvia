@@ -14,7 +14,7 @@
 #   kubectl get events --field-selector reason=ProfilerMixedPrecision
 #   kubectl get events --field-selector reason=ProfilingComplete
 
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricTrainingProfiler
 metadata:
   name: gpu-efficiency-profiler
@@ -24,7 +24,7 @@ spec:
   target:
     type: auto
     jobSelector:
-      kubefabric.ai/type: training
+      tensorreaper.ai/type: training
     autoProfile:
       warmupSteps: 100     # Skip initial 100 steps (model warmup)
       profileSteps: 50     # Profile for 50 steps
@@ -68,7 +68,7 @@ spec:
 
 ---
 # Example: Profile a specific job
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricTrainingProfiler
 metadata:
   name: llm-job-profiler
@@ -112,7 +112,7 @@ spec:
 
 ---
 # Example: On-demand profiling for debugging
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricTrainingProfiler
 metadata:
   name: debug-profiler
@@ -156,13 +156,13 @@ spec:
 
 ---
 # Example training job that would be profiled
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAIJob
 metadata:
   name: resnet50-training-profiled
   namespace: default
   labels:
-    kubefabric.ai/type: training
+    tensorreaper.ai/type: training
     team: ml-research
 spec:
   type: training

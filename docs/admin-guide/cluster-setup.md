@@ -1,6 +1,6 @@
 # Cluster Setup Guide
 
-Complete guide for setting up a production KubeFabric cluster.
+Complete guide for setting up a production TensorReaper cluster.
 
 ## Prerequisites
 
@@ -36,20 +36,20 @@ Complete guide for setting up a production KubeFabric cluster.
 
 ```bash
 # Add Helm repository
-helm repo add kubefabric https://ssahani.github.io/kube-fabric
+helm repo add tensorreaper https://ssahani.github.io/tensor-reaper
 helm repo update
 
 # Create namespace
-kubectl create namespace kubefabric
+kubectl create namespace tensorreaper
 
 # Install with default values
-helm install kubefabric kubefabric/kubefabric \
-  --namespace kubefabric \
+helm install tensorreaper tensorreaper/tensorreaper \
+  --namespace tensorreaper \
   --wait
 
 # Or customize installation
-helm install kubefabric kubefabric/kubefabric \
-  --namespace kubefabric \
+helm install tensorreaper tensorreaper/tensorreaper \
+  --namespace tensorreaper \
   --set gpuOperator.replicaCount=3 \
   --set highAvailability.enabled=true \
   --set monitoring.prometheus.enabled=true \
@@ -60,8 +60,8 @@ helm install kubefabric kubefabric/kubefabric \
 
 ```bash
 # Clone repository
-git clone https://github.com/ssahani/kube-fabric.git
-cd kube-fabric
+git clone https://github.com/ssahani/tensor-reaper.git
+cd tensor-reaper
 
 # Install CRDs
 kubectl apply -f manifests/crds/
@@ -135,9 +135,9 @@ postgresql:
 ```
 
 ```bash
-helm upgrade kubefabric kubefabric/kubefabric \
+helm upgrade tensorreaper tensorreaper/tensorreaper \
   -f ha-values.yaml \
-  --namespace kubefabric
+  --namespace tensorreaper
 ```
 
 ### Storage Backend Configuration
@@ -173,7 +173,7 @@ storage:
   nfs:
     enabled: true
     server: "nfs.example.com"
-    path: /exports/kubefabric
+    path: /exports/tensorreaper
 ```
 
 ### Network Configuration
@@ -207,7 +207,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: gpu-pricing
-  namespace: kubefabric
+  namespace: tensorreaper
 data:
   pricing.yaml: |
     gpuPricing:
@@ -234,18 +234,18 @@ data:
 
 ```bash
 # Label GPU nodes
-kubectl label nodes gpu-node-1 kubefabric.ai/gpu=true
-kubectl label nodes gpu-node-1 kubefabric.ai/gpu-type=A100-80G
-kubectl label nodes gpu-node-1 kubefabric.ai/gpu-count=8
-kubectl label nodes gpu-node-1 kubefabric.ai/nvlink=true
-kubectl label nodes gpu-node-1 kubefabric.ai/infiniband=true
+kubectl label nodes gpu-node-1 tensorreaper.ai/gpu=true
+kubectl label nodes gpu-node-1 tensorreaper.ai/gpu-type=A100-80G
+kubectl label nodes gpu-node-1 tensorreaper.ai/gpu-count=8
+kubectl label nodes gpu-node-1 tensorreaper.ai/nvlink=true
+kubectl label nodes gpu-node-1 tensorreaper.ai/infiniband=true
 ```
 
 ### Register GPU Nodes
 
 ```yaml
 # gpu-node-profile.yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricGPUNode
 metadata:
   name: gpu-node-1
@@ -272,7 +272,7 @@ spec:
 
 ```bash
 # Taint GPU nodes to prevent non-GPU workloads
-kubectl taint nodes gpu-node-1 kubefabric.ai/gpu=true:NoSchedule
+kubectl taint nodes gpu-node-1 tensorreaper.ai/gpu=true:NoSchedule
 
 # Jobs will automatically add tolerations
 ```
@@ -370,7 +370,7 @@ helm repo add gpu-helm-charts \
 
 helm install dcgm-exporter \
   gpu-helm-charts/dcgm-exporter \
-  --namespace kubefabric \
+  --namespace tensorreaper \
   --set serviceMonitor.enabled=true
 ```
 
@@ -412,26 +412,26 @@ kubectl apply -f - <<EOF
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: kubefabric-admin
-  namespace: kubefabric
+  name: tensorreaper-admin
+  namespace: tensorreaper
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: kubefabric-admin
+  name: tensorreaper-admin
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: kubefabric-platform-admin
+  name: tensorreaper-platform-admin
 subjects:
 - kind: ServiceAccount
-  name: kubefabric-admin
-  namespace: kubefabric
+  name: tensorreaper-admin
+  namespace: tensorreaper
 EOF
 
 # Get admin token
-kubectl create token kubefabric-admin -n kubefabric
+kubectl create token tensorreaper-admin -n tensorreaper
 ```
 
 ### Network Policies
@@ -483,28 +483,28 @@ postgresql:
 
 ```bash
 # Check all operators are running
-kubectl get pods -n kubefabric
+kubectl get pods -n tensorreaper
 
 # Expected output:
-# kubefabric-gpu-operator-xxx       1/1   Running
-# kubefabric-ai-operator-xxx        1/1   Running
-# kubefabric-storage-operator-xxx   1/1   Running
-# kubefabric-network-operator-xxx   1/1   Running
-# kubefabric-quota-operator-xxx     1/1   Running
+# tensorreaper-gpu-operator-xxx       1/1   Running
+# tensorreaper-ai-operator-xxx        1/1   Running
+# tensorreaper-storage-operator-xxx   1/1   Running
+# tensorreaper-network-operator-xxx   1/1   Running
+# tensorreaper-quota-operator-xxx     1/1   Running
 ```
 
 ### Check CRDs
 
 ```bash
 # Verify CRDs are installed
-kubectl get crds | grep kubefabric.ai
+kubectl get crds | grep tensorreaper.ai
 
 # Expected output:
-# fabricaijobs.kubefabric.ai
-# fabricgpunodes.kubefabric.ai
-# fabricquotas.kubefabric.ai
-# fabricstorages.kubefabric.ai
-# fabricnetworks.kubefabric.ai
+# fabricaijobs.tensorreaper.ai
+# fabricgpunodes.tensorreaper.ai
+# fabricquotas.tensorreaper.ai
+# fabricstorages.tensorreaper.ai
+# fabricnetworks.tensorreaper.ai
 ```
 
 ### Test GPU Scheduling
@@ -512,7 +512,7 @@ kubectl get crds | grep kubefabric.ai
 ```bash
 # Submit test job
 kubectl apply -f - <<EOF
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAIJob
 metadata:
   name: gpu-test
@@ -527,7 +527,7 @@ EOF
 
 # Check job status
 kubectl get fabricaijob gpu-test
-kubefabric logs gpu-test
+tensorreaper logs gpu-test
 ```
 
 ### Run Diagnostics
@@ -549,7 +549,7 @@ spec:
         app: gpu-diagnostics
     spec:
       nodeSelector:
-        kubefabric.ai/gpu: "true"
+        tensorreaper.ai/gpu: "true"
       containers:
       - name: diagnostics
         image: nvidia/cuda:12.3.0-base-ubuntu22.04
@@ -568,8 +568,8 @@ kubectl apply -f - <<EOF
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: kubefabric-backup
-  namespace: kubefabric
+  name: tensorreaper-backup
+  namespace: tensorreaper
 spec:
   schedule: "0 2 * * *"  # Daily at 2 AM
   jobTemplate:
@@ -610,9 +610,9 @@ EOF
 
 # Or manually check
 kubectl get nodes
-kubectl get pods -n kubefabric
+kubectl get pods -n tensorreaper
 kubectl get fabricgpunodes
-kubefabric cluster status
+tensorreaper cluster status
 ```
 
 ### Log Rotation
@@ -630,7 +630,7 @@ data:
         Match *
         Host elasticsearch
         Port 9200
-        Index kubefabric
+        Index tensorreaper
         Type  _doc
 ```
 
@@ -660,8 +660,8 @@ kubectl uncordon gpu-node-1
 # 2. Install NVIDIA drivers
 # 3. Join to Kubernetes cluster
 # 4. Label node
-kubectl label nodes gpu-node-5 kubefabric.ai/gpu=true
-kubectl label nodes gpu-node-5 kubefabric.ai/gpu-type=H100
+kubectl label nodes gpu-node-5 tensorreaper.ai/gpu=true
+kubectl label nodes gpu-node-5 tensorreaper.ai/gpu-type=H100
 
 # 5. Register node
 kubectl apply -f gpu-node-5-profile.yaml
@@ -671,12 +671,12 @@ kubectl apply -f gpu-node-5-profile.yaml
 
 ```bash
 # Scale operators
-kubectl scale deployment kubefabric-gpu-operator -n kubefabric --replicas=5
+kubectl scale deployment tensorreaper-gpu-operator -n tensorreaper --replicas=5
 
 # Or use Helm
-helm upgrade kubefabric kubefabric/kubefabric \
+helm upgrade tensorreaper tensorreaper/tensorreaper \
   --set gpuOperator.replicaCount=5 \
-  --namespace kubefabric
+  --namespace tensorreaper
 ```
 
 ## Troubleshooting
@@ -685,13 +685,13 @@ helm upgrade kubefabric kubefabric/kubefabric \
 
 ```bash
 # Check logs
-kubectl logs -n kubefabric deployment/kubefabric-gpu-operator
+kubectl logs -n tensorreaper deployment/tensorreaper-gpu-operator
 
 # Check events
-kubectl get events -n kubefabric --sort-by='.lastTimestamp'
+kubectl get events -n tensorreaper --sort-by='.lastTimestamp'
 
 # Describe deployment
-kubectl describe deployment -n kubefabric kubefabric-gpu-operator
+kubectl describe deployment -n tensorreaper tensorreaper-gpu-operator
 ```
 
 ### GPU Not Detected
@@ -711,10 +711,10 @@ kubectl get nodes --show-labels | grep gpu
 
 ```bash
 # Check GPU availability
-kubefabric cluster nodes
+tensorreaper cluster nodes
 
 # Check quotas
-kubefabric quota list
+tensorreaper quota list
 
 # Check job events
 kubectl describe fabricaijob <job-name>
@@ -745,6 +745,6 @@ sudo systemctl enable nvidia-persistenced
 
 ## Support
 
-- Setup Issues: https://github.com/ssahani/kube-fabric/issues
-- Slack: #kubefabric-support
-- Documentation: https://github.com/ssahani/kube-fabric/docs
+- Setup Issues: https://github.com/ssahani/tensor-reaper/issues
+- Slack: #tensorreaper-support
+- Documentation: https://github.com/ssahani/tensor-reaper/docs

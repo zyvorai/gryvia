@@ -1,4 +1,4 @@
-# KubeFabric Workflow Examples
+# TensorReaper Workflow Examples
 
 Argo Workflows integration for complex ML pipelines.
 
@@ -248,9 +248,9 @@ gpuType: H100
         template: comparison
 ```
 
-## Integration with KubeFabric
+## Integration with TensorReaper
 
-Workflows automatically use KubeFabric features:
+Workflows automatically use TensorReaper features:
 
 - **GPU Scheduling**: Automatic optimal node placement
 - **Quotas**: Respect team GPU limits
@@ -323,4 +323,4 @@ train:
 ## Support
 
 - Argo Workflows Docs: https://argoproj.github.io/argo-workflows/
-- KubeFabric Issues: https://github.com/ssahani/kube-fabric/issues
+- TensorReaper Issues: https://github.com/ssahani/tensor-reaper/issues

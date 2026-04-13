@@ -3,9 +3,9 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: fabricaudits.kubefabric.ai
+  name: fabricaudits.tensorreaper.ai
 spec:
-  group: kubefabric.ai
+  group: tensorreaper.ai
   versions:
     - name: v1
       served: true
@@ -230,7 +230,7 @@ spec:
 
 ---
 # Example: SOC2 Compliance Audit
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAudit
 metadata:
   name: soc2-audit
@@ -294,7 +294,7 @@ spec:
 
 ---
 # Example: HIPAA Compliance Audit
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAudit
 metadata:
   name: hipaa-audit
@@ -336,7 +336,7 @@ spec:
 
 ---
 # Example: Team-Specific Audit
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAudit
 metadata:
   name: ml-research-audit
@@ -369,7 +369,7 @@ spec:
 
 ---
 # Audit Event Example
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAuditEvent
 metadata:
   name: job-created-event-12345
@@ -407,7 +407,7 @@ spec:
 
 ---
 # Audit Report Example
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAuditReport
 metadata:
   name: soc2-report-2024-01

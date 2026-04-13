@@ -63,7 +63,7 @@ The optimizer can operate at three levels:
 ### Cluster-Wide Memory Optimizer
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricGpuMemoryOptimizer
 metadata:
   name: cluster-memory-optimizer
@@ -94,7 +94,7 @@ spec:
 ### Namespace-Scoped with Inference Packing
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricGpuMemoryOptimizer
 metadata:
   name: inference-optimizer
@@ -119,7 +119,7 @@ spec:
 ### Job-Specific Optimizer
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricGpuMemoryOptimizer
 metadata:
   name: training-optimizer
@@ -128,7 +128,7 @@ spec:
     type: job-selector
     jobSelector:
       matchLabels:
-        kubefabric.ai/type: training
+        tensorreaper.ai/type: training
 
   oomPrevention:
     enabled: true
@@ -254,6 +254,6 @@ FabricGpuNode (status.gpuStatus) --> Memory Optimizer Controller
 
 ## Support
 
-- Issues: https://github.com/ssahani/kube-fabric/issues
+- Issues: https://github.com/ssahani/tensor-reaper/issues
 - CRD Reference: `manifests/crds/fabricgpumemoryoptimizer.yaml`
 - Example: `examples/training/memory-optimizer-example.yaml`

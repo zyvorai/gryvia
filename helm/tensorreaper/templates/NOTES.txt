@@ -1,0 +1,153 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                  TensorReaper Successfully Deployed! 🚀                        ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+Thank you for installing {{ .Chart.Name }} version {{ .Chart.Version }}!
+
+Your release is named: {{ .Release.Name }}
+Namespace: {{ .Release.Namespace }}
+
+📋 DEPLOYMENT STATUS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Operators Deployed:
+{{- if .Values.gpuOperator.enabled }}
+  ✓ GPU Operator              ({{ .Values.gpuOperator.replicaCount }} replicas)
+{{- end }}
+{{- if .Values.aiOperator.enabled }}
+  ✓ AI Workload Operator      ({{ .Values.aiOperator.replicaCount }} replicas)
+{{- end }}
+{{- if .Values.storageOperator.enabled }}
+  ✓ Storage Operator          ({{ .Values.storageOperator.replicaCount }} replicas)
+{{- end }}
+{{- if .Values.networkOperator.enabled }}
+  ✓ Network Operator          ({{ .Values.networkOperator.replicaCount }} replicas)
+{{- end }}
+{{- if .Values.quotaOperator.enabled }}
+  ✓ Quota Operator            ({{ .Values.quotaOperator.replicaCount }} replicas)
+{{- end }}
+
+User Interfaces:
+{{- if .Values.webUI.enabled }}
+  ✓ Web UI                    ({{ .Values.webUI.replicaCount }} replicas)
+{{- end }}
+{{- if .Values.apiGateway.enabled }}
+  ✓ API Gateway               ({{ .Values.apiGateway.replicaCount }} replicas)
+{{- end }}
+
+Monitoring:
+{{- if .Values.prometheus.enabled }}
+  ✓ Prometheus
+{{- end }}
+{{- if .Values.grafana.enabled }}
+  ✓ Grafana
+{{- end }}
+{{- if .Values.dcgmExporter.enabled }}
+  ✓ DCGM Exporter (GPU Metrics)
+{{- end }}
+
+🌐 ACCESS YOUR CLUSTER
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{{- if .Values.webUI.enabled }}
+
+Web UI:
+{{- if .Values.webUI.ingress.enabled }}
+  External URL: https://{{ (index .Values.webUI.ingress.hosts 0).host }}
+{{- else }}
+  Port-forward to access locally:
+
+  kubectl port-forward -n {{ .Release.Namespace }} svc/{{ .Release.Name }}-ui 8080:{{ .Values.webUI.service.port }}
+
+  Then open: http://localhost:8080
+{{- end }}
+{{- end }}
+
+{{- if .Values.grafana.enabled }}
+
+Grafana Dashboards:
+  kubectl port-forward -n {{ .Release.Namespace }} svc/{{ .Release.Name }}-grafana 3000:80
+
+  Then open: http://localhost:3000
+  Username: admin
+  Password: Run 'kubectl get secret {{ .Release.Name }}-grafana -o jsonpath="{.data.admin-password}" | base64 -d' to retrieve
+{{- end }}
+
+{{- if .Values.prometheus.enabled }}
+
+Prometheus:
+  kubectl port-forward -n {{ .Release.Namespace }} svc/{{ .Release.Name }}-prometheus-server 9090:80
+
+  Then open: http://localhost:9090
+{{- end }}
+
+📦 CLI TOOL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Install the TensorReaper CLI:
+
+  # Linux
+  curl -L https://github.com/ssahani/tensor-reaper/releases/latest/download/tensorreaper-linux-amd64 -o tensorreaper
+  chmod +x tensorreaper
+  sudo mv tensorreaper /usr/local/bin/
+
+  # macOS
+  curl -L https://github.com/ssahani/tensor-reaper/releases/latest/download/tensorreaper-darwin-amd64 -o tensorreaper
+  chmod +x tensorreaper
+  sudo mv tensorreaper /usr/local/bin/
+
+Usage:
+  tensorreaper cluster              # View cluster status
+  tensorreaper submit -f job.yaml   # Submit a job
+  tensorreaper list jobs            # List all jobs
+  tensorreaper quota                # View team quotas
+
+🚀 NEXT STEPS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Verify all operators are running:
+   kubectl get pods -n {{ .Release.Namespace }}
+
+2. Check operator logs:
+   kubectl logs -n {{ .Release.Namespace }} -l app=tensorreaper-gpu-operator
+
+3. View GPU nodes:
+   kubectl get fabricgpunodes
+
+4. Create a team quota:
+   kubectl apply -f https://raw.githubusercontent.com/ssahani/tensor-reaper/main/examples/quota/team-ml-quota.yaml
+
+5. Submit your first job:
+   kubectl apply -f https://raw.githubusercontent.com/ssahani/tensor-reaper/main/examples/jobs/pytorch-distributed.yaml
+
+6. Monitor job status:
+   kubectl get fabricaijobs
+   kubectl describe fabricaijob <job-name>
+
+📚 DOCUMENTATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Full documentation: https://github.com/ssahani/tensor-reaper/docs
+Examples: https://github.com/ssahani/tensor-reaper/tree/main/examples
+Issues: https://github.com/ssahani/tensor-reaper/issues
+
+🆘 TROUBLESHOOTING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+If you encounter issues:
+
+1. Check operator health:
+   kubectl get deployments -n {{ .Release.Namespace }}
+
+2. View events:
+   kubectl get events -n {{ .Release.Namespace }} --sort-by='.lastTimestamp'
+
+3. Check CRDs:
+   kubectl get crds | grep tensorreaper.ai
+
+4. Run diagnostics:
+   kubectl exec -it <gpu-pod> -- /tools/gpu-diagnostics.sh
+
+For support, visit: https://github.com/ssahani/tensor-reaper/issues
+
+Happy GPU Computing! 🎉

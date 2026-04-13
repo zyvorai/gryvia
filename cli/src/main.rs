@@ -7,8 +7,8 @@ use clap::{Parser, Subcommand};
 use anyhow::Result;
 
 #[derive(Parser)]
-#[command(name = "kubefabric")]
-#[command(about = "KubeFabric CLI - Manage GPU clusters for AI workloads", long_about = None)]
+#[command(name = "tensorreaper")]
+#[command(about = "TensorReaper CLI - Manage GPU clusters for AI workloads", long_about = None)]
 #[command(version)]
 struct Cli {
     #[command(subcommand)]
@@ -198,7 +198,7 @@ async fn main() -> Result<()> {
         .init();
 
     // Create Kubernetes client
-    let client = client::KubeFabricClient::new(cli.context, cli.namespace).await?;
+    let client = client::TensorReaperClient::new(cli.context, cli.namespace).await?;
 
     // Execute command
     match cli.command {

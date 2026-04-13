@@ -1,14 +1,14 @@
 [package]
-name = "kubefabric"
+name = "tensorreaper"
 version = "1.0.0"
 edition = "2021"
-authors = ["KubeFabric Contributors"]
-description = "CLI for managing KubeFabric GPU clusters"
+authors = ["TensorReaper Contributors"]
+description = "CLI for managing TensorReaper GPU clusters"
 license = "Apache-2.0"
-repository = "https://github.com/ssahani/kube-fabric"
+repository = "https://github.com/ssahani/TensorReaper"
 
 [[bin]]
-name = "kubefabric"
+name = "tensorreaper"
 path = "src/main.rs"
 
 [dependencies]

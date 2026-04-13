@@ -1,24 +1,24 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: kubefabric-api-gateway
-  namespace: kubefabric
+  name: tensorreaper-api-gateway
+  namespace: tensorreaper
   labels:
-    app: kubefabric-api-gateway
+    app: tensorreaper-api-gateway
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: kubefabric-api-gateway
+      app: tensorreaper-api-gateway
   template:
     metadata:
       labels:
-        app: kubefabric-api-gateway
+        app: tensorreaper-api-gateway
     spec:
-      serviceAccountName: kubefabric-api-gateway
+      serviceAccountName: tensorreaper-api-gateway
       containers:
       - name: api-gateway
-        image: kubefabric/api-gateway:1.0.0
+        image: tensorreaper/api-gateway:1.0.0
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8080
@@ -27,10 +27,10 @@ spec:
         - name: PROMETHEUS_URL
           valueFrom:
             configMapKeyRef:
-              name: kubefabric-api-gateway-config
+              name: tensorreaper-api-gateway-config
               key: prometheus-url
               optional: true
-        - name: KUBEFABRIC_JOB_NAMESPACE
+        - name: TENSORREAPER_JOB_NAMESPACE
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
@@ -73,14 +73,14 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: kubefabric-api-gateway
-  namespace: kubefabric
+  name: tensorreaper-api-gateway
+  namespace: tensorreaper
   labels:
-    app: kubefabric-api-gateway
+    app: tensorreaper-api-gateway
 spec:
   type: ClusterIP
   selector:
-    app: kubefabric-api-gateway
+    app: tensorreaper-api-gateway
   ports:
   - port: 8080
     targetPort: http
@@ -90,15 +90,15 @@ spec:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: kubefabric-api-gateway
-  namespace: kubefabric
+  name: tensorreaper-api-gateway
+  namespace: tensorreaper
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: kubefabric-api-gateway
+  name: tensorreaper-api-gateway
 rules:
-- apiGroups: ["kubefabric.ai"]
+- apiGroups: ["tensorreaper.ai"]
   resources: ["fabricaijobs", "fabricquotas", "fabricgpunodes", "fabricstorages", "fabricnetworks"]
   verbs: ["get", "list", "watch"]
 - apiGroups: [""]
@@ -111,12 +111,12 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: kubefabric-api-gateway
+  name: tensorreaper-api-gateway
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: kubefabric-api-gateway
+  name: tensorreaper-api-gateway
 subjects:
 - kind: ServiceAccount
-  name: kubefabric-api-gateway
-  namespace: kubefabric
+  name: tensorreaper-api-gateway
+  namespace: tensorreaper

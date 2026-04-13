@@ -1,4 +1,4 @@
-# KubeFabric Job Examples
+# TensorReaper Job Examples
 
 Production-ready job examples for various AI/ML workloads.
 
@@ -118,16 +118,16 @@ kubectl exec -it <pod-name> -- nvidia-smi
 ### Using the CLI
 ```bash
 # Submit job
-kubefabric submit -f pytorch-distributed.yaml
+tensorreaper submit -f pytorch-distributed.yaml
 
 # Check status
-kubefabric status pytorch-distributed-training
+tensorreaper status pytorch-distributed-training
 
 # Stream logs
-kubefabric logs pytorch-distributed-training --follow
+tensorreaper logs pytorch-distributed-training --follow
 
 # Cancel job
-kubefabric cancel pytorch-distributed-training
+tensorreaper cancel pytorch-distributed-training
 ```
 
 ### Job Dependencies
@@ -135,7 +135,7 @@ kubefabric cancel pytorch-distributed-training
 Create job chains using dependencies:
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAIJob
 metadata:
   name: inference-job
@@ -150,7 +150,7 @@ spec:
 Set job priorities:
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAIJob
 metadata:
   name: urgent-job
@@ -164,7 +164,7 @@ spec:
 Allow job preemption for higher priority work:
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAIJob
 metadata:
   name: preemptible-job
@@ -213,8 +213,8 @@ env:
 Use node selectors for specific hardware:
 ```yaml
 nodeSelector:
-  kubefabric.ai/gpu-type: H100
-  kubefabric.ai/rdma-enabled: "true"
+  tensorreaper.ai/gpu-type: H100
+  tensorreaper.ai/rdma-enabled: "true"
 ```
 
 ### 5. Checkpointing
@@ -330,9 +330,9 @@ labels:
 Use spot instances:
 ```yaml
 nodeSelector:
-  kubefabric.ai/spot: "true"
+  tensorreaper.ai/spot: "true"
 tolerations:
-  - key: kubefabric.ai/spot
+  - key: tensorreaper.ai/spot
     operator: Exists
 ```
 
@@ -343,6 +343,6 @@ activeDeadlineSeconds: 3600  # 1 hour max
 
 ## Support
 
-- Documentation: https://github.com/ssahani/kube-fabric/docs
-- Issues: https://github.com/ssahani/kube-fabric/issues
-- Examples: https://github.com/ssahani/kube-fabric/tree/main/examples
+- Documentation: https://github.com/ssahani/tensor-reaper/docs
+- Issues: https://github.com/ssahani/tensor-reaper/issues
+- Examples: https://github.com/ssahani/tensor-reaper/tree/main/examples

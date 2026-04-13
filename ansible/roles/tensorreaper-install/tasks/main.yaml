@@ -1,0 +1,85 @@
+---
+# Install TensorReaper Operators
+
+- name: Install Helm
+  block:
+    - name: Download Helm install script
+      get_url:
+        url: https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+        dest: /tmp/get_helm.sh
+        mode: '0755'
+
+    - name: Install Helm
+      shell: /tmp/get_helm.sh
+      args:
+        creates: /usr/local/bin/helm
+
+- name: Create tensorreaper-system namespace
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: tensorreaper-system
+
+- name: Install TensorReaper CRDs
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ item }}"
+  loop:
+    - ../../../crds/fabricgpunode.yaml
+    - ../../../crds/fabricaijob.yaml
+    - ../../../crds/fabricstorage.yaml
+    - ../../../crds/fabricnetwork.yaml
+    - ../../../crds/fabricquota.yaml
+
+- name: Install TensorReaper core via Helm
+  kubernetes.core.helm:
+    name: tensorreaper
+    chart_ref: ../../../helm/tensorreaper-core
+    release_namespace: tensorreaper-system
+    create_namespace: yes
+    values:
+      gpuOperator:
+        enabled: true
+        replicas: 1
+      aiOperator:
+        enabled: true
+        replicas: 1
+      nvidiaDevicePlugin:
+        enabled: true
+      dcgmExporter:
+        enabled: true
+      monitoring:
+        enabled: true
+
+- name: Wait for operators to be ready
+  kubernetes.core.k8s_info:
+    kind: Deployment
+    namespace: tensorreaper-system
+    name: "{{ item }}"
+    wait: yes
+    wait_condition:
+      type: Available
+      status: "True"
+    wait_timeout: 300
+  loop:
+    - tensorreaper-gpu-operator
+    - tensorreaper-ai-operator
+
+- name: Install observability stack
+  kubernetes.core.helm:
+    name: tensorreaper-observability
+    chart_ref: ../../../helm/observability
+    release_namespace: tensorreaper-system
+    create_namespace: yes
+    values:
+      prometheus:
+        enabled: true
+      grafana:
+        enabled: true
+
+- name: Display installation status
+  debug:
+    msg: "TensorReaper has been successfully installed!"

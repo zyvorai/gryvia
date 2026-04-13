@@ -135,7 +135,7 @@ output "gpu_nodes" {
 
 output "deployment_instructions" {
   value = <<-EOT
-    KubeFabric Bare Metal Deployment
+    TensorReaper Bare Metal Deployment
     =================================
 
     1. Review generated configuration:

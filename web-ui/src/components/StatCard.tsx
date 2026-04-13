@@ -18,38 +18,52 @@ const gradientClasses: Record<string, string> = {
 }
 
 const iconColors: Record<string, string> = {
-  blue: 'text-blue-400',
-  green: 'text-green-400',
+  blue: 'text-[#7ecbf5]',
+  green: 'text-emerald-400',
   purple: 'text-purple-400',
-  orange: 'text-orange-400',
+  orange: 'text-[#e8a87c]',
   red: 'text-red-400',
   cyan: 'text-cyan-400',
 }
 
-const badgeColors: Record<string, string> = {
-  blue: 'bg-blue-500/10 text-blue-400',
-  green: 'bg-green-500/10 text-green-400',
-  purple: 'bg-purple-500/10 text-purple-400',
-  orange: 'bg-orange-500/10 text-orange-400',
-  red: 'bg-red-500/10 text-red-400',
-  cyan: 'bg-cyan-500/10 text-cyan-400',
+const badgeStyles: Record<string, { bg: string; text: string }> = {
+  blue: { bg: 'rgba(95,168,211,0.1)', text: '#7ecbf5' },
+  green: { bg: 'rgba(34,197,94,0.1)', text: '#4ade80' },
+  purple: { bg: 'rgba(168,85,247,0.1)', text: '#c084fc' },
+  orange: { bg: 'rgba(212,118,78,0.1)', text: '#e8a87c' },
+  red: { bg: 'rgba(239,68,68,0.1)', text: '#f87171' },
+  cyan: { bg: 'rgba(6,182,212,0.1)', text: '#22d3ee' },
 }
 
 export default function StatCard({ title, value, subtitle, icon: Icon, color }: StatCardProps) {
+  const badge = badgeStyles[color]
   return (
-    <div className={`${gradientClasses[color]} rounded-xl border border-slate-700/50 p-5 card-glow transition-all hover:scale-[1.02]`}>
+    <div className={`${gradientClasses[color]} rounded-xl p-5 card-glow transition-all duration-300 hover:scale-[1.02]`}
+      style={{
+        border: '1px solid rgba(192,204,224,0.06)',
+        boxShadow: 'inset 0 1px 0 rgba(192,204,224,0.04), 0 2px 8px rgba(0,0,0,0.2)',
+      }}
+    >
       <div className="flex items-center justify-between mb-3">
-        <div className="w-10 h-10 rounded-lg bg-slate-900/50 flex items-center justify-center">
+        <div className="w-10 h-10 rounded-lg flex items-center justify-center"
+          style={{
+            background: 'rgba(10,14,20,0.5)',
+            border: '1px solid rgba(192,204,224,0.04)',
+            boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.3)',
+          }}
+        >
           <Icon className={`h-5 w-5 ${iconColors[color]}`} />
         </div>
         {subtitle && (
-          <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${badgeColors[color]}`}>
+          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full"
+            style={{ background: badge.bg, color: badge.text }}
+          >
             {subtitle}
           </span>
         )}
       </div>
-      <div className="text-2xl font-bold text-white">{value}</div>
-      <div className="text-xs text-slate-400 mt-1">{title}</div>
+      <div className="text-2xl font-bold text-[#e8ecf1]">{value}</div>
+      <div className="text-xs text-[#5a7a9e] mt-1">{title}</div>
     </div>
   )
 }

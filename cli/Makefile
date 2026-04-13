@@ -12,8 +12,8 @@ release:
 
 ## install: Install binary to /usr/local/bin
 install: release
-	sudo cp target/release/kubefabric /usr/local/bin/
-	@echo "✓ Installed to /usr/local/bin/kubefabric"
+	sudo cp target/release/tensorreaper /usr/local/bin/
+	@echo "✓ Installed to /usr/local/bin/tensorreaper"
 
 ## test: Run tests
 test:
@@ -37,5 +37,5 @@ run:
 
 ## help: Show this help message
 help:
-	@echo "KubeFabric CLI - Makefile commands:"
+	@echo "TensorReaper CLI - Makefile commands:"
 	@sed -n 's/^##//p' ${MAKEFILE_LIST} | column -t -s ':' | sed -e 's/^/ /'

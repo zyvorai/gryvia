@@ -1,4 +1,4 @@
-# KubeFabric Makefile
+# TensorReaper Makefile
 # Automates building, testing, and deploying all components
 
 .PHONY: all build test clean docker-build docker-push deploy install help
@@ -68,37 +68,37 @@ docker-build-operators: ## Build operator Docker images
 	@echo "${GREEN}Building operator images...${RESET}"
 	@for op in $(OPERATORS); do \
 		echo "${YELLOW}Building $$op image...${RESET}"; \
-		docker build -t $(REGISTRY)/kubefabric-$$op:$(VERSION) operators/$$op; \
-		docker tag $(REGISTRY)/kubefabric-$$op:$(VERSION) $(REGISTRY)/kubefabric-$$op:latest; \
+		docker build -t $(REGISTRY)/tensorreaper-$$op:$(VERSION) operators/$$op; \
+		docker tag $(REGISTRY)/tensorreaper-$$op:$(VERSION) $(REGISTRY)/tensorreaper-$$op:latest; \
 	done
 
 docker-build-cli: ## Build CLI Docker image
 	@echo "${GREEN}Building CLI image...${RESET}"
-	docker build -t $(REGISTRY)/kubefabric-cli:$(VERSION) cli
-	docker tag $(REGISTRY)/kubefabric-cli:$(VERSION) $(REGISTRY)/kubefabric-cli:latest
+	docker build -t $(REGISTRY)/tensorreaper-cli:$(VERSION) cli
+	docker tag $(REGISTRY)/tensorreaper-cli:$(VERSION) $(REGISTRY)/tensorreaper-cli:latest
 
 docker-build-web-ui: ## Build Web UI Docker image
 	@echo "${GREEN}Building Web UI image...${RESET}"
-	docker build -t $(REGISTRY)/kubefabric-ui:$(VERSION) -f docker/Dockerfile.ui .
-	docker tag $(REGISTRY)/kubefabric-ui:$(VERSION) $(REGISTRY)/kubefabric-ui:latest
+	docker build -t $(REGISTRY)/tensorreaper-ui:$(VERSION) -f docker/Dockerfile.ui .
+	docker tag $(REGISTRY)/tensorreaper-ui:$(VERSION) $(REGISTRY)/tensorreaper-ui:latest
 
 docker-build-api-gateway: ## Build API Gateway Docker image
 	@echo "${GREEN}Building API Gateway image...${RESET}"
-	docker build -t $(REGISTRY)/kubefabric-api-gateway:$(VERSION) services/api-gateway
-	docker tag $(REGISTRY)/kubefabric-api-gateway:$(VERSION) $(REGISTRY)/kubefabric-api-gateway:latest
+	docker build -t $(REGISTRY)/tensorreaper-api-gateway:$(VERSION) services/api-gateway
+	docker tag $(REGISTRY)/tensorreaper-api-gateway:$(VERSION) $(REGISTRY)/tensorreaper-api-gateway:latest
 
 docker-push: ## Push all Docker images
 	@echo "${GREEN}Pushing Docker images...${RESET}"
 	@for op in $(OPERATORS); do \
-		docker push $(REGISTRY)/kubefabric-$$op:$(VERSION); \
-		docker push $(REGISTRY)/kubefabric-$$op:latest; \
+		docker push $(REGISTRY)/tensorreaper-$$op:$(VERSION); \
+		docker push $(REGISTRY)/tensorreaper-$$op:latest; \
 	done
-	docker push $(REGISTRY)/kubefabric-cli:$(VERSION)
-	docker push $(REGISTRY)/kubefabric-cli:latest
-	docker push $(REGISTRY)/kubefabric-ui:$(VERSION)
-	docker push $(REGISTRY)/kubefabric-ui:latest
-	docker push $(REGISTRY)/kubefabric-api-gateway:$(VERSION)
-	docker push $(REGISTRY)/kubefabric-api-gateway:latest
+	docker push $(REGISTRY)/tensorreaper-cli:$(VERSION)
+	docker push $(REGISTRY)/tensorreaper-cli:latest
+	docker push $(REGISTRY)/tensorreaper-ui:$(VERSION)
+	docker push $(REGISTRY)/tensorreaper-ui:latest
+	docker push $(REGISTRY)/tensorreaper-api-gateway:$(VERSION)
+	docker push $(REGISTRY)/tensorreaper-api-gateway:latest
 
 ## Deployment targets
 deploy: deploy-crds deploy-operators deploy-web-ui deploy-api-gateway ## Deploy all components to Kubernetes
@@ -126,12 +126,12 @@ deploy-monitoring: ## Deploy monitoring stack
 	kubectl apply -f monitoring/
 
 install: ## Install using Helm
-	@echo "${GREEN}Installing KubeFabric with Helm...${RESET}"
-	helm install kubefabric helm/kubefabric-core -n kubefabric --create-namespace
+	@echo "${GREEN}Installing TensorReaper with Helm...${RESET}"
+	helm install tensorreaper helm/tensorreaper-core -n tensorreaper --create-namespace
 
 uninstall: ## Uninstall using Helm
-	@echo "${GREEN}Uninstalling KubeFabric...${RESET}"
-	helm uninstall kubefabric -n kubefabric
+	@echo "${GREEN}Uninstalling TensorReaper...${RESET}"
+	helm uninstall tensorreaper -n tensorreaper
 
 ## Development targets
 dev-setup: ## Set up development environment

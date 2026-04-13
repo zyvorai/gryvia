@@ -1,10 +1,10 @@
-# KubeFabric Build Summary
+# TensorReaper Build Summary
 
-Complete implementation of KubeFabric - Enterprise GPU Compute Platform for AI Infrastructure on Bare Metal.
+Complete implementation of TensorReaper - Enterprise GPU Compute Platform for AI Infrastructure on Bare Metal.
 
 ## Project Overview
 
-KubeFabric is a production-ready Kubernetes platform for managing GPU clusters, optimized for AI/ML workloads on bare metal infrastructure. Built with 5 specialized operators managing GPU resources, AI workloads, storage, networking, and quotas.
+TensorReaper is a production-ready Kubernetes platform for managing GPU clusters, optimized for AI/ML workloads on bare metal infrastructure. Built with 5 specialized operators managing GPU resources, AI workloads, storage, networking, and quotas.
 
 ## Implementation Statistics
 
@@ -33,7 +33,7 @@ KubeFabric is a production-ready Kubernetes platform for managing GPU clusters, 
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        KubeFabric Platform                       │
+│                        TensorReaper Platform                       │
 │                    Bare Metal GPU Infrastructure                 │
 └─────────────────────────────────────────────────────────────────┘
                                  │
@@ -197,7 +197,7 @@ KubeFabric is a production-ready Kubernetes platform for managing GPU clusters, 
 
 ### 6. CLI Tool ✅ COMPLETE (NEW!)
 
-**Purpose**: Command-line interface for managing KubeFabric clusters
+**Purpose**: Command-line interface for managing TensorReaper clusters
 
 **Files Created:**
 - `cli/src/main.rs` - Main CLI entry point with clap
@@ -224,20 +224,20 @@ KubeFabric is a production-ready Kubernetes platform for managing GPU clusters, 
 
 **Commands (14 total):**
 ```bash
-kubefabric submit      # Submit jobs from YAML
-kubefabric list        # List jobs/quotas/nodes
-kubefabric get         # Get resource details
-kubefabric delete      # Delete resources
-kubefabric status      # Show job status
-kubefabric logs        # View job logs
-kubefabric cancel      # Cancel running jobs
-kubefabric cluster     # Cluster overview
-kubefabric quota       # Team quotas
-kubefabric cost        # Cost analysis
-kubefabric queue       # Job queue status
-kubefabric create      # Interactive creation
-kubefabric validate    # Validate YAML
-kubefabric health      # Health checks
+tensorreaper submit      # Submit jobs from YAML
+tensorreaper list        # List jobs/quotas/nodes
+tensorreaper get         # Get resource details
+tensorreaper delete      # Delete resources
+tensorreaper status      # Show job status
+tensorreaper logs        # View job logs
+tensorreaper cancel      # Cancel running jobs
+tensorreaper cluster     # Cluster overview
+tensorreaper quota       # Team quotas
+tensorreaper cost        # Cost analysis
+tensorreaper queue       # Job queue status
+tensorreaper create      # Interactive creation
+tensorreaper validate    # Validate YAML
+tensorreaper health      # Health checks
 ```
 
 **LOC:** ~2,500 Rust
@@ -249,10 +249,10 @@ kubefabric health      # Health checks
 **Files Created:**
 - `monitoring/prometheus-rules.yaml` - 40+ alert rules
 - `monitoring/servicemonitor.yaml` - Prometheus ServiceMonitors
-- `monitoring/grafana-dashboards/kubefabric-overview.json` - Cluster dashboard
-- `monitoring/grafana-dashboards/kubefabric-quotas.json` - Quota dashboard
-- `monitoring/grafana-dashboards/kubefabric-gpus.json` - GPU metrics dashboard
-- `monitoring/grafana-dashboards/kubefabric-costs.json` - Cost analysis dashboard
+- `monitoring/grafana-dashboards/tensorreaper-overview.json` - Cluster dashboard
+- `monitoring/grafana-dashboards/tensorreaper-quotas.json` - Quota dashboard
+- `monitoring/grafana-dashboards/tensorreaper-gpus.json` - GPU metrics dashboard
+- `monitoring/grafana-dashboards/tensorreaper-costs.json` - Cost analysis dashboard
 - `monitoring/README.md` - Complete monitoring guide
 
 **Metrics Categories (50+ metrics):**
@@ -412,7 +412,7 @@ GET /docs                      # Swagger UI
 
 ### FabricGpuNode
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricGpuNode
 spec:
   nodeName: gpu-worker-01
@@ -424,7 +424,7 @@ spec:
 
 ### FabricAIJob
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAIJob
 spec:
   framework: pytorch
@@ -439,7 +439,7 @@ spec:
 
 ### FabricStorage
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricStorage
 spec:
   backendType: vast
@@ -449,7 +449,7 @@ spec:
 
 ### FabricNetwork
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricNetwork
 spec:
   networkType: rdma
@@ -460,7 +460,7 @@ spec:
 
 ### FabricQuota
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricQuota
 spec:
   team: ml-research
@@ -494,12 +494,12 @@ spec:
 3. `rdma` - InfiniBand/RoCE configuration
 4. `kubernetes` - K8s cluster deployment
 5. `gpu-optimization` - Performance tuning
-6. `kubefabric-install` - Operator deployment
+6. `tensorreaper-install` - Operator deployment
 7. `monitoring` - Prometheus/Grafana
 
 ## Helm Charts
 
-### kubefabric-core
+### tensorreaper-core
 Complete operator deployment with:
 - All 5 operators (GPU, AI, Storage, Network, Quota)
 - NVIDIA device plugin
@@ -626,7 +626,7 @@ Monitoring stack:
 ## Repository Structure
 
 ```
-kube-fabric/
+tensor-reaper/
 ├── crds/                          # 5 CRDs
 │   ├── fabricgpunode.yaml
 │   ├── fabricaijob.yaml
@@ -675,13 +675,13 @@ kube-fabric/
 │   ├── prometheus-rules.yaml     # 40+ alert rules
 │   ├── servicemonitor.yaml       # Metric scraping
 │   ├── grafana-dashboards/       # 4 dashboards
-│   │   ├── kubefabric-overview.json
-│   │   ├── kubefabric-quotas.json
-│   │   ├── kubefabric-gpus.json
-│   │   └── kubefabric-costs.json
+│   │   ├── tensorreaper-overview.json
+│   │   ├── tensorreaper-quotas.json
+│   │   ├── tensorreaper-gpus.json
+│   │   └── tensorreaper-costs.json
 │   └── README.md
 ├── helm/                          # Helm charts
-│   ├── kubefabric-core/          # Main chart
+│   ├── tensorreaper-core/          # Main chart
 │   └── observability/            # Monitoring stack
 ├── terraform/                     # Infrastructure
 │   └── bare-metal/               # Bare metal provisioning
@@ -726,7 +726,7 @@ kube-fabric/
 
 ## Conclusion
 
-KubeFabric provides a complete, production-ready platform for bare metal GPU infrastructure:
+TensorReaper provides a complete, production-ready platform for bare metal GPU infrastructure:
 
 - **5 Operators**: ~5,800 LOC of production Go code
 - **CLI Tool**: ~2,500 LOC of Rust for cluster management

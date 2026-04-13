@@ -1,4 +1,4 @@
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricNetwork
 metadata:
   name: rdma-infiniband
@@ -6,7 +6,7 @@ spec:
   networkType: rdma
   mtu: 9000
   nodeSelector:
-    kubefabric.ai/rdma: "true"
+    tensorreaper.ai/rdma: "true"
   rdma:
     mode: infiniband
     devices:

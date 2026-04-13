@@ -3,9 +3,9 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: fabricautoscalers.kubefabric.ai
+  name: fabricautoscalers.tensorreaper.ai
 spec:
-  group: kubefabric.ai
+  group: tensorreaper.ai
   versions:
     - name: v1
       served: true
@@ -216,7 +216,7 @@ spec:
 
 ---
 # Example: A100 Queue Auto-Scaler
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAutoScaler
 metadata:
   name: a100-autoscaler
@@ -257,7 +257,7 @@ spec:
 
 ---
 # Example: Cloud-Based Auto-Scaler with Spot Instances
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAutoScaler
 metadata:
   name: t4-spot-autoscaler
@@ -299,7 +299,7 @@ spec:
 
 ---
 # Example: Predictive Auto-Scaler
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAutoScaler
 metadata:
   name: h100-predictive-autoscaler
@@ -331,7 +331,7 @@ spec:
 
 ---
 # Auto-Scaler Status Example
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAutoScaler
 metadata:
   name: a100-autoscaler

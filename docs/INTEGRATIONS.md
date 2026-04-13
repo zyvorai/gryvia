@@ -1,13 +1,13 @@
 ## External System Integrations
 
-KubeFabric integrates seamlessly with popular ML platforms and tools.
+TensorReaper integrates seamlessly with popular ML platforms and tools.
 
 ## Experiment Tracking
 
 ### Weights & Biases
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAIJob
 metadata:
   name: training-with-wandb
@@ -36,7 +36,7 @@ spec:
     - --wandb-project=my-project
 ```
 
-**Auto-Integration**: KubeFabric automatically logs:
+**Auto-Integration**: TensorReaper automatically logs:
 - GPU metrics (utilization, memory, temperature)
 - Cost per epoch
 - Resource allocation
@@ -81,7 +81,7 @@ Access: `http://<external-ip>:6006`
 ### HuggingFace Hub
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricJobHook
 metadata:
   name: push-to-huggingface
@@ -134,7 +134,7 @@ spec:
 ### DVC (Data Version Control)
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricDataset
 metadata:
   name: my-dataset
@@ -176,8 +176,8 @@ with DAG('ml_training', schedule_interval='@daily') as dag:
         task_id='train_model',
         namespace='default',
         name='training-job',
-        image='kubefabric/job-operator:1.0.0',
-        cmds=['kubefabric'],
+        image='tensorreaper/job-operator:1.0.0',
+        cmds=['tensorreaper'],
         arguments=['submit', 'job.yaml'],
         env_vars={'KUBECONFIG': '/config/kubeconfig'}
     )
@@ -188,12 +188,12 @@ with DAG('ml_training', schedule_interval='@daily') as dag:
 ```python
 from kfp import dsl
 
-@dsl.pipeline(name='KubeFabric Training')
+@dsl.pipeline(name='TensorReaper Training')
 def training_pipeline():
     train_op = dsl.ContainerOp(
         name='Submit Job',
-        image='kubefabric/cli:1.0.0',
-        command=['kubefabric', 'submit', 'job.yaml']
+        image='tensorreaper/cli:1.0.0',
+        command=['tensorreaper', 'submit', 'job.yaml']
     )
 ```
 
@@ -211,14 +211,14 @@ data:
     logs_enabled: true
     apm_enabled: true
 
-    # Custom checks for KubeFabric
+    # Custom checks for TensorReaper
     instances:
       - prometheus_url: http://prometheus:9090
-        namespace: kubefabric
+        namespace: tensorreaper
         metrics:
-          - kubefabric_gpu_utilization
-          - kubefabric_job_duration
-          - kubefabric_cost_total
+          - tensorreaper_gpu_utilization
+          - tensorreaper_job_duration
+          - tensorreaper_cost_total
 ```
 
 ### New Relic
@@ -228,7 +228,7 @@ integrations:
   newrelic:
     enabled: true
     licenseKey: <secret>
-    appName: kubefabric-cluster
+    appName: tensorreaper-cluster
 ```
 
 ### Grafana Cloud
@@ -262,7 +262,7 @@ jobs:
 
       - name: Submit Training Job
         run: |
-          kubefabric submit job.yaml \
+          tensorreaper submit job.yaml \
             --gpu-type A100-80G \
             --gpu-count 8 \
             --wait
@@ -271,7 +271,7 @@ jobs:
 
       - name: Get Job Status
         run: |
-          kubefabric job status training-job-${{ github.run_id }}
+          tensorreaper job status training-job-${{ github.run_id }}
 ```
 
 ### GitLab CI
@@ -279,10 +279,10 @@ jobs:
 ```yaml
 train-model:
   stage: train
-  image: kubefabric/cli:1.0.0
+  image: tensorreaper/cli:1.0.0
   script:
-    - kubefabric submit job.yaml --wait
-    - kubefabric job logs training-job
+    - tensorreaper submit job.yaml --wait
+    - tensorreaper job logs training-job
   only:
     - main
 ```
@@ -295,8 +295,8 @@ pipeline {
     stages {
         stage('Train') {
             steps {
-                sh 'kubefabric submit job.yaml'
-                sh 'kubefabric job wait training-job'
+                sh 'tensorreaper submit job.yaml'
+                sh 'tensorreaper job wait training-job'
             }
         }
     }
@@ -308,7 +308,7 @@ pipeline {
 ### Job Notifications
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricJobHook
 metadata:
   name: slack-notifications
@@ -339,10 +339,10 @@ spec:
 
 ```bash
 # In Slack channel #ml-jobs
-/kubefabric submit job.yaml
-/kubefabric status training-job-42
-/kubefabric logs training-job-42 --tail 50
-/kubefabric cost --team ml-research --month current
+/tensorreaper submit job.yaml
+/tensorreaper status training-job-42
+/tensorreaper logs training-job-42 --tail 50
+/tensorreaper cost --team ml-research --month current
 ```
 
 ## Cost Management
@@ -370,7 +370,7 @@ metadata:
 data:
   custom-metrics: |
     - name: gpu_cost_hourly
-      query: kubefabric_job_cost_total / kubefabric_job_duration_hours
+      query: tensorreaper_job_cost_total / tensorreaper_job_duration_hours
 ```
 
 ## Authentication
@@ -381,13 +381,13 @@ data:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: kubefabric-auth
+  name: tensorreaper-auth
 data:
   oauth2-config.yaml: |
     issuer: https://accounts.google.com
     clientID: your-client-id
     clientSecret: your-client-secret
-    redirectURL: https://kubefabric.company.com/callback
+    redirectURL: https://tensorreaper.company.com/callback
 ```
 
 ### LDAP
@@ -410,12 +410,12 @@ auth:
 apiVersion: velero.io/v1
 kind: Schedule
 metadata:
-  name: kubefabric-backup
+  name: tensorreaper-backup
 spec:
   schedule: "0 2 * * *"  # Daily at 2 AM
   template:
     includedNamespaces:
-      - kubefabric
+      - tensorreaper
     includedResources:
       - fabricaijobs
       - fabricqueues
@@ -426,7 +426,7 @@ spec:
 ### S3 Backup
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricJobHook
 metadata:
   name: backup-checkpoints
@@ -475,7 +475,7 @@ spec:
 ### Python SDK
 
 ```python
-from kubefabric import Client
+from tensorreaper import Client
 
 client = Client()
 
@@ -502,7 +502,7 @@ print(f"Cost: ${metrics['cost']}")
 
 ```bash
 # Submit job
-curl -X POST https://kubefabric-api/v1/jobs \
+curl -X POST https://tensorreaper-api/v1/jobs \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -517,7 +517,7 @@ curl -X POST https://kubefabric-api/v1/jobs \
   }'
 
 # Get job status
-curl https://kubefabric-api/v1/jobs/training-job \
+curl https://tensorreaper-api/v1/jobs/training-job \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -596,7 +596,7 @@ integrations:
 Monitor integration health:
 
 ```promql
-rate(kubefabric_integration_errors_total[5m])
+rate(tensorreaper_integration_errors_total[5m])
 ```
 
 ## Troubleshooting
@@ -605,13 +605,13 @@ rate(kubefabric_integration_errors_total[5m])
 
 ```bash
 # Check integration logs
-kubectl logs -n kubefabric deploy/integrations-controller
+kubectl logs -n tensorreaper deploy/integrations-controller
 
 # Test webhook
-kubefabric integrations test wandb
+tensorreaper integrations test wandb
 
 # View integration status
-kubefabric integrations status
+tensorreaper integrations status
 ```
 
 ### Authentication Failures
@@ -621,13 +621,13 @@ kubefabric integrations status
 kubectl get secret wandb-api-key -o yaml
 
 # Test credentials
-kubefabric integrations auth-test wandb
+tensorreaper integrations auth-test wandb
 ```
 
 ## Support
 
-- Integration Issues: https://github.com/ssahani/kube-fabric/issues
-- Integration Requests: https://github.com/ssahani/kube-fabric/discussions
+- Integration Issues: https://github.com/ssahani/tensor-reaper/issues
+- Integration Requests: https://github.com/ssahani/tensor-reaper/discussions
 
 ---
 

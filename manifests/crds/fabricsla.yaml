@@ -3,9 +3,9 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: fabricslas.kubefabric.ai
+  name: fabricslas.tensorreaper.ai
 spec:
-  group: kubefabric.ai
+  group: tensorreaper.ai
   versions:
     - name: v1
       served: true
@@ -259,7 +259,7 @@ spec:
 
 ---
 # Example: Platinum SLA (Production)
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricSLA
 metadata:
   name: production-platinum
@@ -317,7 +317,7 @@ spec:
 
 ---
 # Example: Gold SLA (Research)
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricSLA
 metadata:
   name: research-gold
@@ -364,7 +364,7 @@ spec:
 
 ---
 # Example: Silver SLA (Development)
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricSLA
 metadata:
   name: dev-silver
@@ -409,7 +409,7 @@ spec:
 
 ---
 # Example: Job with SLA
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAIJob
 metadata:
   name: production-inference
@@ -434,7 +434,7 @@ spec:
 
 ---
 # SLA Status Example
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricSLA
 metadata:
   name: production-platinum

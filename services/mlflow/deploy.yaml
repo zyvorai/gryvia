@@ -4,7 +4,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: mlflow-postgres-pvc
-  namespace: kubefabric
+  namespace: tensorreaper
 spec:
   accessModes:
     - ReadWriteOnce
@@ -18,7 +18,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: mlflow-postgres-config
-  namespace: kubefabric
+  namespace: tensorreaper
 data:
   POSTGRES_DB: mlflow
   POSTGRES_USER: mlflow
@@ -28,7 +28,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: mlflow-postgres-secret
-  namespace: kubefabric
+  namespace: tensorreaper
 type: Opaque
 data:
   # IMPORTANT: Replace with a base64-encoded secure password before deploying
@@ -40,7 +40,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: mlflow-postgres
-  namespace: kubefabric
+  namespace: tensorreaper
 spec:
   replicas: 1
   selector:
@@ -92,7 +92,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: mlflow-postgres
-  namespace: kubefabric
+  namespace: tensorreaper
 spec:
   selector:
     app: mlflow-postgres
@@ -106,7 +106,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: mlflow-artifacts-pvc
-  namespace: kubefabric
+  namespace: tensorreaper
 spec:
   accessModes:
     - ReadWriteMany
@@ -121,7 +121,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: mlflow-server
-  namespace: kubefabric
+  namespace: tensorreaper
   labels:
     app: mlflow-server
 spec:
@@ -204,7 +204,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: mlflow
-  namespace: kubefabric
+  namespace: tensorreaper
   labels:
     app: mlflow-server
 spec:
@@ -222,7 +222,7 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: mlflow-ingress
-  namespace: kubefabric
+  namespace: tensorreaper
   annotations:
     nginx.ingress.kubernetes.io/proxy-body-size: "0"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
@@ -231,10 +231,10 @@ spec:
   ingressClassName: nginx
   tls:
     - hosts:
-        - mlflow.kubefabric.local
+        - mlflow.tensorreaper.local
       secretName: mlflow-tls
   rules:
-    - host: mlflow.kubefabric.local
+    - host: mlflow.tensorreaper.local
       http:
         paths:
           - path: /
@@ -251,7 +251,7 @@ apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: mlflow-metrics
-  namespace: kubefabric
+  namespace: tensorreaper
   labels:
     app: mlflow-server
 spec:

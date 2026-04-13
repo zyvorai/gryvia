@@ -1,6 +1,6 @@
-# Complete KubeFabric Setup Example
+# Complete TensorReaper Setup Example
 
-This directory contains a complete example setup for KubeFabric with all components configured.
+This directory contains a complete example setup for TensorReaper with all components configured.
 
 ## Prerequisites
 
@@ -12,11 +12,11 @@ This directory contains a complete example setup for KubeFabric with all compone
 ## Quick Start
 
 ```bash
-# 1. Install KubeFabric
+# 1. Install TensorReaper
 ./deploy.sh
 
 # 2. Verify installation
-kubectl get pods -n kubefabric
+kubectl get pods -n tensorreaper
 
 # 3. Submit example job
 kubectl apply -f example-job.yaml
@@ -40,7 +40,7 @@ kubectl get fabricaijobs -n default
 
 ```bash
 # Create namespace
-kubectl create namespace kubefabric
+kubectl create namespace tensorreaper
 
 # Deploy CRDs
 kubectl apply -f ../../crds/
@@ -133,7 +133,7 @@ Example jobs:
 ### Web UI
 
 ```bash
-kubectl port-forward -n kubefabric svc/kubefabric-ui 8080:80
+kubectl port-forward -n tensorreaper svc/tensorreaper-ui 8080:80
 ```
 
 Open http://localhost:8080
@@ -142,24 +142,24 @@ Open http://localhost:8080
 
 ```bash
 # Install CLI
-curl -L https://github.com/ssahani/kube-fabric/releases/latest/download/kubefabric-linux-amd64 -o kubefabric
-chmod +x kubefabric
-sudo mv kubefabric /usr/local/bin/
+curl -L https://github.com/ssahani/tensor-reaper/releases/latest/download/tensorreaper-linux-amd64 -o tensorreaper
+chmod +x tensorreaper
+sudo mv tensorreaper /usr/local/bin/
 
 # Check cluster status
-kubefabric cluster
+tensorreaper cluster
 
 # List jobs
-kubefabric list jobs
+tensorreaper list jobs
 
 # Get quota information
-kubefabric quota
+tensorreaper quota
 ```
 
 ### Grafana Dashboards
 
 ```bash
-kubectl port-forward -n kubefabric svc/prometheus-grafana 3000:80
+kubectl port-forward -n tensorreaper svc/prometheus-grafana 3000:80
 ```
 
 Open http://localhost:3000
@@ -167,7 +167,7 @@ Open http://localhost:3000
 - Password: (get from secret)
 
 ```bash
-kubectl get secret -n kubefabric prometheus-grafana -o jsonpath="{.data.admin-password}" | base64 -d
+kubectl get secret -n tensorreaper prometheus-grafana -o jsonpath="{.data.admin-password}" | base64 -d
 ```
 
 ## Example Workflows
@@ -175,7 +175,7 @@ kubectl get secret -n kubefabric prometheus-grafana -o jsonpath="{.data.admin-pa
 ### Submit a Training Job
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAIJob
 metadata:
   name: llama-training
@@ -208,8 +208,8 @@ spec:
 
 ```bash
 kubectl apply -f llama-training.yaml
-kubefabric status llama-training
-kubefabric logs llama-training
+tensorreaper status llama-training
+tensorreaper logs llama-training
 ```
 
 ### Monitor GPU Utilization
@@ -226,7 +226,7 @@ kubectl describe fabricgpunode gpu-worker-01
 
 ```bash
 # Via CLI
-kubefabric quota
+tensorreaper quota
 
 # Via kubectl
 kubectl get fabricquotas
@@ -241,10 +241,10 @@ kubectl describe fabricquota ml-research-quota
 
 ```bash
 # Check operator logs
-kubectl logs -n kubefabric -l app=kubefabric-gpu-operator --tail=50
+kubectl logs -n tensorreaper -l app=tensorreaper-gpu-operator --tail=50
 
 # Check RBAC
-kubectl auth can-i --list --as=system:serviceaccount:kubefabric:kubefabric-gpu-operator
+kubectl auth can-i --list --as=system:serviceaccount:tensorreaper:tensorreaper-gpu-operator
 ```
 
 ### Jobs stuck in Pending
@@ -264,10 +264,10 @@ kubectl describe fabricaijob <job-name>
 
 ```bash
 # Check storage operator
-kubectl logs -n kubefabric -l app=kubefabric-storage-operator
+kubectl logs -n tensorreaper -l app=tensorreaper-storage-operator
 
 # Check CSI driver
-kubectl get pods -n kubefabric | grep vast-csi
+kubectl get pods -n tensorreaper | grep vast-csi
 
 # Verify storage backend
 kubectl get fabricstorage
@@ -282,9 +282,9 @@ kubectl delete fabricaijobs --all
 # Delete example resources
 kubectl delete -f .
 
-# Uninstall KubeFabric
-helm uninstall kubefabric -n kubefabric
-kubectl delete namespace kubefabric
+# Uninstall TensorReaper
+helm uninstall tensorreaper -n tensorreaper
+kubectl delete namespace tensorreaper
 ```
 
 ## Production Considerations
@@ -323,6 +323,6 @@ kubectl delete namespace kubefabric
 
 ## Support
 
-- Documentation: https://github.com/ssahani/kube-fabric
-- Issues: https://github.com/ssahani/kube-fabric/issues
-- Discussions: https://github.com/ssahani/kube-fabric/discussions
+- Documentation: https://github.com/ssahani/tensor-reaper
+- Issues: https://github.com/ssahani/tensor-reaper/issues
+- Discussions: https://github.com/ssahani/tensor-reaper/discussions

@@ -1,6 +1,6 @@
-# KubeFabric Documentation
+# TensorReaper Documentation
 
-Complete documentation for KubeFabric - Enterprise GPU Compute Platform.
+Complete documentation for TensorReaper - Enterprise GPU Compute Platform.
 
 ## Documentation Structure
 
@@ -11,7 +11,7 @@ Complete documentation for KubeFabric - Enterprise GPU Compute Platform.
 - [Submitting Jobs](user-guide/jobs.md) - How to submit and manage AI workloads
 
 ### Administrator Guides
-- [Cluster Setup](admin-guide/cluster-setup.md) - Setting up a KubeFabric cluster
+- [Cluster Setup](admin-guide/cluster-setup.md) - Setting up a TensorReaper cluster
 - [Deployment Guide](COMPLETE_DEPLOYMENT_GUIDE.md) - Complete deployment instructions
 - [Operational Playbooks](OPERATIONAL_PLAYBOOKS.md) - Day-2 operations
 
@@ -37,11 +37,11 @@ Complete documentation for KubeFabric - Enterprise GPU Compute Platform.
 ## Quick Links
 
 ### For End Users
-- **New to KubeFabric?** Start with the [Quick Start Guide](getting-started/quickstart.md)
+- **New to TensorReaper?** Start with the [Quick Start Guide](getting-started/quickstart.md)
 - **Submit your first job:** See [Job Submission Guide](user-guide/jobs.md)
 
 ### For Administrators
-- **Install KubeFabric:** Follow [Deployment Guide](COMPLETE_DEPLOYMENT_GUIDE.md)
+- **Install TensorReaper:** Follow [Deployment Guide](COMPLETE_DEPLOYMENT_GUIDE.md)
 - **Configure cluster:** See [Cluster Setup](admin-guide/cluster-setup.md)
 
 ### For Developers
@@ -50,8 +50,8 @@ Complete documentation for KubeFabric - Enterprise GPU Compute Platform.
 
 ## Support
 
-- **Issues:** https://github.com/ssahani/kube-fabric/issues
-- **Discussions:** https://github.com/ssahani/kube-fabric/discussions
+- **Issues:** https://github.com/ssahani/tensor-reaper/issues
+- **Discussions:** https://github.com/ssahani/tensor-reaper/discussions
 
 ## Contributing
 

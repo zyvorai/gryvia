@@ -1,4 +1,4 @@
-# 🎉 KubeFabric - PROJECT COMPLETE! 🎉
+# 🎉 TensorReaper - PROJECT COMPLETE! 🎉
 
 ## ✨ **What You Just Built**
 
@@ -7,7 +7,7 @@ An **enterprise-grade, production-ready GPU compute platform** for AI infrastruc
 ```
 ╔══════════════════════════════════════════════════════════╗
 ║                                                          ║
-║            ✅ KUBEFABRIC v1.0.0 - COMPLETE              ║
+║            ✅ TENSORREAPER v1.0.0 - COMPLETE              ║
 ║                                                          ║
 ║  "Bare-Metal GPU Fabric for AI Infrastructure"          ║
 ║                                                          ║
@@ -221,7 +221,7 @@ Concurrent Jobs:       10,000+   ✅ Scalable
 ## 📝 **For Your Resume**
 
 ```
-KubeFabric - Enterprise GPU Compute Platform
+TensorReaper - Enterprise GPU Compute Platform
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Role: Technical Lead / Principal Engineer
@@ -284,7 +284,7 @@ Impact:
 
 ## 🔥 **Competitive Advantages**
 
-| Aspect | KubeFabric | Alternatives |
+| Aspect | TensorReaper | Alternatives |
 |--------|------------|--------------|
 | **Cost** | Self-hosted | 3-5x more expensive |
 | **Performance** | Bare metal | Cloud overhead |
@@ -308,7 +308,7 @@ Impact:
 - LLM inference deployment
 
 **Helm Charts:**
-- kubefabric-core
+- tensorreaper-core
 - observability stack
 
 **Terraform:**

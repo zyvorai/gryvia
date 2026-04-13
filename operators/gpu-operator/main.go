@@ -14,9 +14,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	kubefabricv1 "github.com/ssahani/kube-fabric/operators/gpu-operator/api/v1"
-	"github.com/ssahani/kube-fabric/operators/gpu-operator/controllers"
-	"github.com/ssahani/kube-fabric/operators/gpu-operator/pkg/memory"
+	tensorreaperv1 "github.com/ssahani/tensor-reaper/operators/gpu-operator/api/v1"
+	"github.com/ssahani/tensor-reaper/operators/gpu-operator/controllers"
+	"github.com/ssahani/tensor-reaper/operators/gpu-operator/pkg/memory"
 )
 
 var (
@@ -26,7 +26,7 @@ var (
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-	utilruntime.Must(kubefabricv1.AddToScheme(scheme))
+	utilruntime.Must(tensorreaperv1.AddToScheme(scheme))
 }
 
 func main() {
@@ -55,7 +55,7 @@ func main() {
 		},
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "gpu-operator.kubefabric.ai",
+		LeaderElectionID:       "gpu-operator.tensorreaper.ai",
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")

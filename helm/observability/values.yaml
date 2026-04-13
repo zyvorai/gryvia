@@ -12,14 +12,14 @@ grafana:
     dashboardproviders.yaml:
       apiVersion: 1
       providers:
-        - name: 'kubefabric'
+        - name: 'tensorreaper'
           orgId: 1
-          folder: 'KubeFabric'
+          folder: 'TensorReaper'
           type: file
           disableDeletion: false
           editable: true
           options:
-            path: /var/lib/grafana/dashboards/kubefabric
+            path: /var/lib/grafana/dashboards/tensorreaper
 
 kube-prometheus-stack:
   prometheus:
@@ -39,7 +39,7 @@ kube-prometheus-stack:
             - role: endpoints
               namespaces:
                 names:
-                  - kubefabric-system
+                  - tensorreaper-system
           relabel_configs:
             - source_labels: [__meta_kubernetes_service_name]
               action: keep
@@ -53,16 +53,16 @@ kube-prometheus-stack:
       dashboardproviders.yaml:
         apiVersion: 1
         providers:
-          - name: 'kubefabric'
+          - name: 'tensorreaper'
             orgId: 1
-            folder: 'KubeFabric'
+            folder: 'TensorReaper'
             type: file
             disableDeletion: false
             editable: true
             options:
-              path: /var/lib/grafana/dashboards/kubefabric
+              path: /var/lib/grafana/dashboards/tensorreaper
     dashboards:
-      kubefabric:
+      tensorreaper:
         gpu-overview:
           gnetId: 12239
           revision: 1
@@ -85,7 +85,7 @@ kube-prometheus-stack:
           # Example:
           # slack_configs:
           #   - api_url: '<webhook-url>'
-          #     channel: '#kubefabric-alerts'
+          #     channel: '#tensorreaper-alerts'
           webhook_configs:
-            - url: 'http://alertmanager-webhook.kubefabric-system.svc:9093/api/v1/alerts'
+            - url: 'http://alertmanager-webhook.tensorreaper-system.svc:9093/api/v1/alerts'
               send_resolved: true

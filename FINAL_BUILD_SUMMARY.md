@@ -1,4 +1,4 @@
-# 🎉 KubeFabric - Final Build Summary
+# 🎉 TensorReaper - Final Build Summary
 
 ## ✅ **Complete Enterprise GPU Platform - BUILT!**
 
@@ -110,7 +110,7 @@ You now have a **production-ready, bare-metal GPU compute fabric** for AI infras
 
 ### **3. Helm Charts (Production-Grade)**
 
-✅ **kubefabric-core** Chart
+✅ **tensorreaper-core** Chart
 - Installs all operators
 - NVIDIA device plugin
 - DCGM exporter for metrics
@@ -159,7 +159,7 @@ terraform/bare-metal/
 4. **gpu-optimization** - Performance tuning
 5. **kubernetes-control-plane** - K8s master setup
 6. **kubernetes-worker** - Worker node setup
-7. **kubefabric-install** - Operator deployment
+7. **tensorreaper-install** - Operator deployment
 
 **Total:** 3,000 lines of Ansible automation
 
@@ -258,7 +258,7 @@ terraform/bare-metal/
 ## 📁 **Complete File Tree**
 
 ```
-kube-fabric/
+tensor-reaper/
 ├── README.md                          ⭐ World-class documentation
 ├── BUILD_SUMMARY.md
 ├── FINAL_BUILD_SUMMARY.md
@@ -299,7 +299,7 @@ kube-fabric/
 │           └── scheduler.go
 │
 ├── helm/                               ✅ Production Helm charts
-│   ├── kubefabric-core/
+│   ├── tensorreaper-core/
 │   │   ├── Chart.yaml
 │   │   ├── values.yaml
 │   │   ├── README.md
@@ -340,7 +340,7 @@ kube-fabric/
 │       ├── nvidia-drivers/tasks/main.yaml
 │       ├── rdma/tasks/main.yaml
 │       ├── gpu-optimization/tasks/main.yaml
-│       └── kubefabric-install/tasks/main.yaml
+│       └── tensorreaper-install/tasks/main.yaml
 │
 ├── manifests/                          ✅ Kubernetes manifests
 │   ├── monitoring/
@@ -395,7 +395,7 @@ cp terraform.tfvars.example terraform.tfvars
 terraform init
 terraform apply
 
-# Deploy Kubernetes + KubeFabric
+# Deploy Kubernetes + TensorReaper
 cd generated
 ./deploy.sh
 ```
@@ -428,7 +428,7 @@ You now have:
 
 ### **Project Summary:**
 
-> Designed and implemented **KubeFabric**, a production-grade Kubernetes-native GPU compute platform for AI infrastructure. Built custom Kubernetes operators in Go, Terraform modules for bare-metal deployment, and complete automation with Ansible. Integrated NVIDIA DCGM for observability, RDMA for high-performance networking, and parallel filesystems (VAST/Weka/DDN) for storage.
+> Designed and implemented **TensorReaper**, a production-grade Kubernetes-native GPU compute platform for AI infrastructure. Built custom Kubernetes operators in Go, Terraform modules for bare-metal deployment, and complete automation with Ansible. Integrated NVIDIA DCGM for observability, RDMA for high-performance networking, and parallel filesystems (VAST/Weka/DDN) for storage.
 
 ### **Technical Skills Demonstrated:**
 
@@ -480,8 +480,8 @@ You now have:
 # Create awesome repo
 git init
 git add .
-git commit -m "🚀 Initial commit: KubeFabric v1.0.0"
-git remote add origin git@github.com:ssahani/kubefabric.git
+git commit -m "🚀 Initial commit: TensorReaper v1.0.0"
+git remote add origin git@github.com:ssahani/tensorreaper.git
 git push -u origin main
 ```
 

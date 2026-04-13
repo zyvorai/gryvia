@@ -20,7 +20,7 @@ FabricModelLineage provides end-to-end tracking of how a model was produced:
 ### Create a Model Lineage Record
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricModelLineage
 metadata:
   name: llama-70b-finetune-v1
@@ -312,5 +312,5 @@ A model is considered reproducible when:
 
 ## Support
 
-- Issues: https://github.com/ssahani/kube-fabric/issues
-- Discussions: https://github.com/ssahani/kube-fabric/discussions
+- Issues: https://github.com/ssahani/tensor-reaper/issues
+- Discussions: https://github.com/ssahani/tensor-reaper/discussions

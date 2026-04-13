@@ -22,7 +22,7 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: kubefabric
+  IMAGE_PREFIX: tensorreaper
 
 jobs:
   test-operators:

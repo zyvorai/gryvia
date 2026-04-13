@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 
-const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#ec4899', '#84cc16']
+const COLORS = ['#e8a87c', '#4ade80', '#7ecbf5', '#c084fc', '#f87171', '#22d3ee', '#fbbf24', '#a78bfa']
 
 interface GPUDataPoint {
   time: string
@@ -22,7 +22,7 @@ export default function GPUChart({ data }: GPUChartProps) {
 
   if (chartData.length === 0) {
     return (
-      <div className="flex items-center justify-center h-[300px] text-slate-500 text-sm">
+      <div className="flex items-center justify-center h-[300px] text-[#5a7a9e] text-sm">
         No GPU utilization data available
       </div>
     )
@@ -31,19 +31,20 @@ export default function GPUChart({ data }: GPUChartProps) {
   return (
     <ResponsiveContainer width="100%" height={300}>
       <LineChart data={chartData}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-        <XAxis dataKey="time" tick={{ fontSize: 11, fill: '#94a3b8' }} stroke="#475569" />
-        <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: '#94a3b8' }} stroke="#475569" />
+        <CartesianGrid strokeDasharray="3 3" stroke="rgba(192,204,224,0.06)" />
+        <XAxis dataKey="time" tick={{ fontSize: 11, fill: '#5a7a9e' }} stroke="rgba(192,204,224,0.08)" />
+        <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: '#5a7a9e' }} stroke="rgba(192,204,224,0.08)" />
         <Tooltip
           contentStyle={{
-            backgroundColor: '#1e293b',
-            border: '1px solid #334155',
-            borderRadius: '8px',
-            color: '#e2e8f0',
+            backgroundColor: '#111820',
+            border: '1px solid rgba(192,204,224,0.1)',
+            borderRadius: '10px',
+            color: '#d0dae6',
             fontSize: '12px',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
           }}
         />
-        <Legend wrapperStyle={{ fontSize: '12px', color: '#94a3b8' }} />
+        <Legend wrapperStyle={{ fontSize: '12px', color: '#8090a8' }} />
         {nodeKeys.map((key, idx) => (
           <Line
             key={key}

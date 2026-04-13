@@ -1,6 +1,6 @@
-# KubeFabric Monitoring & Observability
+# TensorReaper Monitoring & Observability
 
-Comprehensive monitoring setup for KubeFabric with Prometheus metrics, alerts, and Grafana dashboards.
+Comprehensive monitoring setup for TensorReaper with Prometheus metrics, alerts, and Grafana dashboards.
 
 ## Overview
 
@@ -21,63 +21,63 @@ This monitoring stack provides complete visibility into:
 
 #### GPU Metrics
 ```
-kubefabric_gpu_count                      # Total GPUs per node
-kubefabric_gpu_utilization_percent        # GPU utilization (0-100)
-kubefabric_gpu_temperature_celsius        # GPU temperature
-kubefabric_gpu_memory_used_bytes          # GPU memory used
-kubefabric_gpu_memory_total_bytes         # GPU memory total
-kubefabric_gpu_power_watts                # GPU power draw
-kubefabric_gpu_health_status              # 1=healthy, 0=unhealthy
+tensorreaper_gpu_count                      # Total GPUs per node
+tensorreaper_gpu_utilization_percent        # GPU utilization (0-100)
+tensorreaper_gpu_temperature_celsius        # GPU temperature
+tensorreaper_gpu_memory_used_bytes          # GPU memory used
+tensorreaper_gpu_memory_total_bytes         # GPU memory total
+tensorreaper_gpu_power_watts                # GPU power draw
+tensorreaper_gpu_health_status              # 1=healthy, 0=unhealthy
 ```
 
 #### Job Metrics
 ```
-kubefabric_job_running                    # Running jobs count
-kubefabric_job_pending                    # Pending jobs count
-kubefabric_job_queued                     # Queued jobs count
-kubefabric_job_completed_total            # Total completed jobs (counter)
-kubefabric_job_failed_total               # Total failed jobs (counter)
-kubefabric_job_duration_seconds           # Job duration histogram
-kubefabric_job_pending_duration_seconds   # Time in pending state
+tensorreaper_job_running                    # Running jobs count
+tensorreaper_job_pending                    # Pending jobs count
+tensorreaper_job_queued                     # Queued jobs count
+tensorreaper_job_completed_total            # Total completed jobs (counter)
+tensorreaper_job_failed_total               # Total failed jobs (counter)
+tensorreaper_job_duration_seconds           # Job duration histogram
+tensorreaper_job_pending_duration_seconds   # Time in pending state
 ```
 
 #### Quota Metrics
 ```
-kubefabric_quota_gpus_allocated           # GPUs allocated to team
-kubefabric_quota_gpus_max                 # Max GPUs for team
-kubefabric_quota_running_jobs             # Running jobs for team
-kubefabric_quota_queued_jobs              # Queued jobs for team
-kubefabric_quota_gpu_hours                # GPU hours consumed
+tensorreaper_quota_gpus_allocated           # GPUs allocated to team
+tensorreaper_quota_gpus_max                 # Max GPUs for team
+tensorreaper_quota_running_jobs             # Running jobs for team
+tensorreaper_quota_queued_jobs              # Queued jobs for team
+tensorreaper_quota_gpu_hours                # GPU hours consumed
 ```
 
 #### Budget Metrics
 ```
-kubefabric_budget_spent_month             # Spent this month ($)
-kubefabric_budget_monthly_limit           # Monthly budget limit ($)
-kubefabric_budget_remaining               # Remaining budget ($)
-kubefabric_budget_percent_used            # Budget % used
-kubefabric_budget_projected_spend         # Projected month-end spend ($)
-kubefabric_budget_alert_threshold         # Alert threshold %
+tensorreaper_budget_spent_month             # Spent this month ($)
+tensorreaper_budget_monthly_limit           # Monthly budget limit ($)
+tensorreaper_budget_remaining               # Remaining budget ($)
+tensorreaper_budget_percent_used            # Budget % used
+tensorreaper_budget_projected_spend         # Projected month-end spend ($)
+tensorreaper_budget_alert_threshold         # Alert threshold %
 ```
 
 #### Storage Metrics
 ```
-kubefabric_storage_health_status          # 1=healthy, 0=unhealthy
-kubefabric_storage_latency_ms             # Storage latency
-kubefabric_storage_throughput_mbps        # Storage throughput
+tensorreaper_storage_health_status          # 1=healthy, 0=unhealthy
+tensorreaper_storage_latency_ms             # Storage latency
+tensorreaper_storage_throughput_mbps        # Storage throughput
 ```
 
 #### Network Metrics
 ```
-kubefabric_rdma_device_status             # 1=up, 0=down
-kubefabric_network_errors_total           # Network errors (counter)
-kubefabric_sriov_vf_available             # Available SR-IOV VFs
+tensorreaper_rdma_device_status             # 1=up, 0=down
+tensorreaper_network_errors_total           # Network errors (counter)
+tensorreaper_sriov_vf_available             # Available SR-IOV VFs
 ```
 
 #### Operator Metrics
 ```
-kubefabric_operator_errors_total          # Operator errors (counter)
-kubefabric_operator_reconcile_duration_seconds  # Reconciliation time
+tensorreaper_operator_errors_total          # Operator errors (counter)
+tensorreaper_operator_reconcile_duration_seconds  # Reconciliation time
 ```
 
 ### Alert Rules
@@ -123,7 +123,7 @@ kubefabric_operator_reconcile_duration_seconds  # Reconciliation time
 
 **4 comprehensive dashboards:**
 
-#### 1. Cluster Overview (`kubefabric-overview.json`)
+#### 1. Cluster Overview (`tensorreaper-overview.json`)
 - GPU cluster summary stats
 - GPU utilization by node
 - GPU temperature trends
@@ -133,7 +133,7 @@ kubefabric_operator_reconcile_duration_seconds  # Reconciliation time
 - Job completion rate
 - Average job duration
 
-#### 2. Team Quotas & Budgets (`kubefabric-quotas.json`)
+#### 2. Team Quotas & Budgets (`tensorreaper-quotas.json`)
 - GPU quota usage by team (bar gauge)
 - Budget usage by team (bar gauge)
 - GPU allocation details (table)
@@ -143,7 +143,7 @@ kubefabric_operator_reconcile_duration_seconds  # Reconciliation time
 - Running jobs by team
 - Queue depth by team
 
-#### 3. GPU Metrics (`kubefabric-gpus.json`)
+#### 3. GPU Metrics (`tensorreaper-gpus.json`)
 - GPU health status
 - Average GPU utilization gauge
 - Peak GPU temperature gauge
@@ -153,7 +153,7 @@ kubefabric_operator_reconcile_duration_seconds  # Reconciliation time
 - Temperature distribution
 - Power consumption trends
 
-#### 4. Cost Analysis (`kubefabric-costs.json`)
+#### 4. Cost Analysis (`tensorreaper-costs.json`)
 - Total monthly spending
 - Budget remaining
 - Budget utilization rate
@@ -180,7 +180,7 @@ helm install prometheus-operator prometheus-community/kube-prometheus-stack \
   --set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false
 ```
 
-### 2. Apply KubeFabric Monitoring Configuration
+### 2. Apply TensorReaper Monitoring Configuration
 
 ```bash
 # Alert rules
@@ -196,12 +196,12 @@ kubectl apply -f monitoring/servicemonitor.yaml
 # Via Grafana UI: Import each dashboard JSON
 # Or via ConfigMap:
 
-kubectl create configmap kubefabric-dashboards \
+kubectl create configmap tensorreaper-dashboards \
   --from-file=monitoring/grafana-dashboards/ \
   -n monitoring
 
 # Label for auto-discovery
-kubectl label configmap kubefabric-dashboards \
+kubectl label configmap tensorreaper-dashboards \
   grafana_dashboard=1 \
   -n monitoring
 ```
@@ -213,7 +213,7 @@ kubectl label configmap kubefabric-dashboards \
 kubectl port-forward -n monitoring svc/prometheus-operated 9090:9090
 
 # Open http://localhost:9090
-# Query: kubefabric_gpu_count
+# Query: tensorreaper_gpu_count
 
 # Port-forward Grafana
 kubectl port-forward -n monitoring svc/prometheus-grafana 3000:80
@@ -245,16 +245,16 @@ kubectl get prometheusrules -n monitoring
 
 ```promql
 # Average GPU utilization
-avg(kubefabric_gpu_utilization_percent)
+avg(tensorreaper_gpu_utilization_percent)
 
 # Team GPU allocation percentage
-(kubefabric_quota_gpus_allocated / kubefabric_quota_gpus_max) * 100
+(tensorreaper_quota_gpus_allocated / tensorreaper_quota_gpus_max) * 100
 
 # Budget utilization rate
-kubefabric_budget_percent_used
+tensorreaper_budget_percent_used
 
 # Job completion rate
-rate(kubefabric_job_completed_total[5m])
+rate(tensorreaper_job_completed_total[5m])
 ```
 
 ## Alert Routing
@@ -289,15 +289,15 @@ data:
     - name: 'slack-notifications'
       slack_configs:
       - api_url_file: /etc/alertmanager/secrets/slack_api_url
-        channel: '#kubefabric-alerts'
-        title: 'KubeFabric Alert'
+        channel: '#tensorreaper-alerts'
+        title: 'TensorReaper Alert'
         text: '{{ .CommonAnnotations.summary }}'
 
     - name: 'slack-critical'
       slack_configs:
       - api_url_file: /etc/alertmanager/secrets/slack_api_url
-        channel: '#kubefabric-critical'
-        title: 'CRITICAL: KubeFabric Alert'
+        channel: '#tensorreaper-critical'
+        title: 'CRITICAL: TensorReaper Alert'
         text: '{{ .CommonAnnotations.summary }}'
 ```
 
@@ -308,9 +308,9 @@ receivers:
 - name: 'email'
   email_configs:
   - to: 'team@example.com'
-    from: 'kubefabric@example.com'
+    from: 'tensorreaper@example.com'
     smarthost: 'smtp.example.com:587'
-    auth_username: 'kubefabric'
+    auth_username: 'tensorreaper'
     auth_password: 'password'
 ```
 
@@ -355,7 +355,7 @@ kubectl get servicemonitor -n monitoring
 http://localhost:9090/targets
 
 # Check operator metrics endpoint
-kubectl port-forward -n kubefabric-system svc/gpu-operator-metrics 8080:8080
+kubectl port-forward -n tensorreaper-system svc/gpu-operator-metrics 8080:8080
 curl http://localhost:8080/metrics
 ```
 
@@ -377,7 +377,7 @@ http://localhost:9093
 
 ```bash
 # Check ConfigMap
-kubectl get configmap kubefabric-dashboards -n monitoring
+kubectl get configmap tensorreaper-dashboards -n monitoring
 
 # Verify Grafana can read it
 kubectl logs -n monitoring -l app.kubernetes.io/name=grafana | grep dashboard
@@ -389,9 +389,9 @@ kubectl logs -n monitoring -l app.kubernetes.io/name=grafana | grep dashboard
 
 ```yaml
 # Limit label cardinality in metrics
-kubefabric_gpu_utilization_percent{node="worker-01", gpu_id="0"}
+tensorreaper_gpu_utilization_percent{node="worker-01", gpu_id="0"}
 # vs
-kubefabric_gpu_utilization_percent{node="worker-01", gpu_id="0", uuid="GPU-xyz..."} # Too many labels
+tensorreaper_gpu_utilization_percent{node="worker-01", gpu_id="0", uuid="GPU-xyz..."} # Too many labels
 ```
 
 ### Scrape Intervals

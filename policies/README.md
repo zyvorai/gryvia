@@ -1,6 +1,6 @@
 # Scheduling Policies
 
-Advanced scheduling policies for optimizing GPU resource allocation in KubeFabric.
+Advanced scheduling policies for optimizing GPU resource allocation in TensorReaper.
 
 ## Available Policies
 
@@ -9,12 +9,12 @@ Advanced scheduling policies for optimizing GPU resource allocation in KubeFabri
 Schedule jobs based on priority levels (critical, high, medium, low).
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAIJob
 metadata:
   name: critical-training
   annotations:
-    kubefabric.ai/priority: critical
+    tensorreaper.ai/priority: critical
 spec:
   # ... job spec
 ```
@@ -232,18 +232,18 @@ Guarantee service level agreements.
 kubectl apply -f policies/scheduling-policies.yaml
 
 # Set default policy
-kubectl patch configmap kubefabric-config -n kubefabric \
+kubectl patch configmap tensorreaper-config -n tensorreaper \
   -p '{"data":{"default-scheduling-policy":"fair-share"}}'
 ```
 
 ### Per-Job Policy
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAIJob
 metadata:
   annotations:
-    kubefabric.ai/scheduling-policy: cost-optimized
+    tensorreaper.ai/scheduling-policy: cost-optimized
 spec:
   # ... job spec
 ```
@@ -251,7 +251,7 @@ spec:
 ### Per-Team Policy
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricQuota
 metadata:
   name: ml-research
@@ -374,7 +374,7 @@ kfctl quota <team-name>
 kubectl get schedulingpolicy <policy-name>
 
 # Check controller logs
-kubectl logs -n kubefabric deployment/kubefabric-gpu-operator
+kubectl logs -n tensorreaper deployment/tensorreaper-gpu-operator
 
 # Test policy
 kfctl policy test <policy-name>
@@ -387,7 +387,7 @@ kfctl policy test <policy-name>
 Create custom scheduling policies:
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: SchedulingPolicy
 metadata:
   name: custom-ml-policy
@@ -415,5 +415,5 @@ spec:
 
 ## Support
 
-- Policy Questions: https://github.com/ssahani/kube-fabric/discussions
-- Issues: https://github.com/ssahani/kube-fabric/issues
+- Policy Questions: https://github.com/ssahani/tensor-reaper/discussions
+- Issues: https://github.com/ssahani/tensor-reaper/issues

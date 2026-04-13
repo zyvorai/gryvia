@@ -1,6 +1,6 @@
-# KubeFabric Quota Operator
+# TensorReaper Quota Operator
 
-The Quota Operator manages GPU quotas and budgets for teams in KubeFabric. It enforces resource limits, tracks spending, and ensures fair resource allocation across teams.
+The Quota Operator manages GPU quotas and budgets for teams in TensorReaper. It enforces resource limits, tracks spending, and ensures fair resource allocation across teams.
 
 ## Features
 
@@ -38,7 +38,7 @@ kubectl apply -f crds/fabricquota.yaml
 kubectl apply -f operators/quota-operator/config/
 
 # Verify deployment
-kubectl get pods -n kubefabric -l app=quota-operator
+kubectl get pods -n tensorreaper -l app=quota-operator
 ```
 
 ## Usage
@@ -46,7 +46,7 @@ kubectl get pods -n kubefabric -l app=quota-operator
 ### Create Team Quota
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricQuota
 metadata:
   name: team-ml
@@ -154,7 +154,7 @@ ensuring no job silently bypasses quota enforcement.
 ### High-Priority LLM Team
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricQuota
 metadata:
   name: team-nlp
@@ -176,7 +176,7 @@ spec:
 ### Development Team with Soft Limits
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricQuota
 metadata:
   name: team-dev
@@ -260,7 +260,7 @@ status:
 Update GPU pricing for your infrastructure:
 
 ```go
-import "github.com/ssahani/kubefabric/operators/quota-operator/pkg/budget"
+import "github.com/ssahani/tensorreaper/operators/quota-operator/pkg/budget"
 
 // Set custom H100 pricing (returns error on invalid input)
 if err := budget.UpdatePricing("H100", 10.00); err != nil {
@@ -289,13 +289,13 @@ The operator requires:
 **Quota Not Enforced**
 ```bash
 # Check operator logs
-kubectl logs -n kubefabric -l app=quota-operator
+kubectl logs -n tensorreaper -l app=quota-operator
 
 # Verify quota exists
 kubectl get fabricquota
 
 # Check namespace labels
-kubectl get namespace ml-training -o yaml | grep kubefabric.ai/team
+kubectl get namespace ml-training -o yaml | grep tensorreaper.ai/team
 ```
 
 **Incorrect Budget Calculation**
@@ -363,7 +363,7 @@ kubectl get fabricquotas
 
 # Launch a training job
 kubectl apply -f - <<EOF
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAIJob
 metadata:
   name: llm-training

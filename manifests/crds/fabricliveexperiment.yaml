@@ -3,9 +3,9 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: fabricliveexperiments.kubefabric.ai
+  name: fabricliveexperiments.tensorreaper.ai
 spec:
-  group: kubefabric.ai
+  group: tensorreaper.ai
   versions:
     - name: v1
       served: true

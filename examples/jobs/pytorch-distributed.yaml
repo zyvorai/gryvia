@@ -1,4 +1,4 @@
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAIJob
 metadata:
   name: pytorch-distributed-training
@@ -89,8 +89,8 @@ spec:
 
   # Node selection
   nodeSelector:
-    kubefabric.ai/gpu-type: H100
-    kubefabric.ai/rdma-enabled: "true"
+    tensorreaper.ai/gpu-type: H100
+    tensorreaper.ai/rdma-enabled: "true"
 
   # Tolerations
   tolerations:

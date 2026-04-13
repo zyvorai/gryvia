@@ -1,5 +1,5 @@
 ---
-# JupyterHub with KubeFabric GPU Integration
+# JupyterHub with TensorReaper GPU Integration
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -48,7 +48,7 @@ data:
                     'nvidia.com/gpu': '1'
                 },
                 'node_selector': {
-                    'kubefabric.ai/gpu-type': 'T4'
+                    'tensorreaper.ai/gpu-type': 'T4'
                 }
             }
         },
@@ -67,7 +67,7 @@ data:
                     'nvidia.com/gpu': '1'
                 },
                 'node_selector': {
-                    'kubefabric.ai/gpu-type': 'A100-40G'
+                    'tensorreaper.ai/gpu-type': 'A100-40G'
                 }
             }
         },
@@ -86,7 +86,7 @@ data:
                     'nvidia.com/gpu': '1'
                 },
                 'node_selector': {
-                    'kubefabric.ai/gpu-type': 'A100-80G'
+                    'tensorreaper.ai/gpu-type': 'A100-80G'
                 }
             }
         },
@@ -105,7 +105,7 @@ data:
                     'nvidia.com/gpu': '4'
                 },
                 'node_selector': {
-                    'kubefabric.ai/gpu-type': 'A100-80G'
+                    'tensorreaper.ai/gpu-type': 'A100-80G'
                 }
             }
         }
@@ -118,7 +118,7 @@ data:
 
     # Environment variables
     c.KubeSpawner.environment = {
-        'MLFLOW_TRACKING_URI': 'http://mlflow.kubefabric.svc.cluster.local:5000',
+        'MLFLOW_TRACKING_URI': 'http://mlflow.tensorreaper.svc.cluster.local:5000',
         'JUPYTER_ENABLE_LAB': 'yes'
     }
 
@@ -260,7 +260,7 @@ subjects:
 
 ---
 # GPU quota integration
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricQuota
 metadata:
   name: jupyterhub-users

@@ -1,7 +1,7 @@
 {
-  "name": "kubefabric-ui",
+  "name": "tensorreaper-ui",
   "version": "1.0.0",
-  "description": "Web UI for KubeFabric GPU Cluster Management",
+  "description": "Web UI for TensorReaper GPU Cluster Management",
   "private": true,
   "scripts": {
     "dev": "vite",

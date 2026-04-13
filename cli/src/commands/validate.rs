@@ -16,14 +16,14 @@ pub async fn execute(file: &str) -> Result<()> {
 
     display::print_success("YAML file is valid");
 
-    // Validate that it's a known KubeFabric resource type
+    // Validate that it's a known TensorReaper resource type
     let known_kinds = ["FabricAIJob", "FabricQuota", "FabricGpuNode", "FabricStorage", "FabricNetwork"];
     if let Some(ref types) = obj.types {
-        if types.api_version != "kubefabric.ai/v1" {
-            display::print_warning(&format!("apiVersion '{}' is not kubefabric.ai/v1", types.api_version));
+        if types.api_version != "tensorreaper.ai/v1" {
+            display::print_warning(&format!("apiVersion '{}' is not tensorreaper.ai/v1", types.api_version));
         }
         if !known_kinds.contains(&types.kind.as_str()) {
-            display::print_warning(&format!("kind '{}' is not a known KubeFabric resource type", types.kind));
+            display::print_warning(&format!("kind '{}' is not a known TensorReaper resource type", types.kind));
         } else {
             display::print_success(&format!("Resource type '{}' is valid", types.kind));
         }

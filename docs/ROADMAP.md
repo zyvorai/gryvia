@@ -1,8 +1,8 @@
-# 🚀 KubeFabric — 6-Month Production Roadmap
+# 🚀 TensorReaper — 6-Month Production Roadmap
 
 **Status:** ✅ Month 1 MVP COMPLETE (Today's Build)
 
-This is a realistic, investor-ready roadmap for taking KubeFabric from MVP to production-grade platform.
+This is a realistic, investor-ready roadmap for taking TensorReaper from MVP to production-grade platform.
 
 ---
 
@@ -86,7 +86,7 @@ This is a realistic, investor-ready roadmap for taking KubeFabric from MVP to pr
 
 ## **📅 Month 3 — Networking + RDMA + SR-IOV**
 
-### Goal: "Turn KubeFabric into a high-performance fabric."
+### Goal: "Turn TensorReaper into a high-performance fabric."
 
 ### What to Build
 
@@ -214,11 +214,11 @@ This is a realistic, investor-ready roadmap for taking KubeFabric from MVP to pr
 
 ## **📅 Month 6 — Scale + Multi-Cluster + Product Polish**
 
-### Goal: "Turn KubeFabric into a real platform."
+### Goal: "Turn TensorReaper into a real platform."
 
 ### What to Ship
 
-1. **Multi-Cluster KubeFabric**
+1. **Multi-Cluster TensorReaper**
    - [ ] Build Global Control Plane
    - [ ] Multiple GPU clusters underneath
    - [ ] Global scheduler places jobs across clusters
@@ -233,7 +233,7 @@ This is a realistic, investor-ready roadmap for taking KubeFabric from MVP to pr
    - [ ] Load balancer integration
 
 3. **Developer Experience**
-   - [ ] Build CLI: `kubefabric job submit ...`
+   - [ ] Build CLI: `tensorreaper job submit ...`
    - [ ] Build Web dashboard:
      - Submit jobs
      - View GPU usage

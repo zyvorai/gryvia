@@ -41,7 +41,11 @@ export default function Dashboard() {
 
   if (statsError) {
     return (
-      <div className="p-4 bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl text-sm">
+      <div className="p-4 rounded-xl text-sm" style={{
+        background: 'rgba(239,68,68,0.06)',
+        border: '1px solid rgba(239,68,68,0.15)',
+        color: '#f87171',
+      }}>
         Failed to load cluster stats. Please check your API connection.
       </div>
     )
@@ -59,13 +63,18 @@ export default function Dashboard() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gradient-blue">Dashboard</h2>
-          <p className="text-sm text-slate-400 mt-1">GPU Cluster Overview</p>
+          <h2 className="text-2xl font-bold text-gradient-copper">Dashboard</h2>
+          <p className="text-sm text-[#5a7a9e] mt-1">GPU Cluster Overview</p>
         </div>
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/50 rounded-lg border border-slate-700/50">
-            <Activity className="h-3.5 w-3.5 text-green-400 animate-pulse-dot" />
-            <span className="text-xs text-slate-400">Live</span>
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
+            style={{
+              background: 'rgba(10,14,20,0.5)',
+              border: '1px solid rgba(34,197,94,0.12)',
+            }}
+          >
+            <Activity className="h-3.5 w-3.5 text-emerald-400 animate-pulse-dot" />
+            <span className="text-xs text-[#5a7a9e]">Live</span>
           </div>
         </div>
       </div>
@@ -144,10 +153,14 @@ export default function Dashboard() {
         {/* Left: GPU chart + recent jobs */}
         <div className="lg:col-span-2 space-y-6">
           {/* GPU Metrics Chart */}
-          <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 p-5">
+          <div className="rounded-xl p-5" style={{
+            background: 'linear-gradient(165deg, #151d28 0%, #111820 100%)',
+            border: '1px solid rgba(192,204,224,0.06)',
+            boxShadow: 'inset 0 1px 0 rgba(192,204,224,0.04)',
+          }}>
             <div className="flex items-center gap-2 mb-4">
-              <BarChart3 className="h-4 w-4 text-blue-400" />
-              <h3 className="text-sm font-semibold text-white">GPU Utilization</h3>
+              <BarChart3 className="h-4 w-4 text-[#7ecbf5]" />
+              <h3 className="text-sm font-semibold text-[#e8ecf1]">GPU Utilization</h3>
             </div>
             <GPUChart data={gpuMetrics?.metrics?.map(m => ({
               time: new Date(m.timestamp).toLocaleTimeString(),
@@ -156,13 +169,17 @@ export default function Dashboard() {
           </div>
 
           {/* Job Pipeline */}
-          <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 p-5">
+          <div className="rounded-xl p-5" style={{
+            background: 'linear-gradient(165deg, #151d28 0%, #111820 100%)',
+            border: '1px solid rgba(192,204,224,0.06)',
+            boxShadow: 'inset 0 1px 0 rgba(192,204,224,0.04)',
+          }}>
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <Briefcase className="h-4 w-4 text-blue-400" />
-                <h3 className="text-sm font-semibold text-white">Job Pipeline</h3>
+                <Briefcase className="h-4 w-4 text-[#e8a87c]" />
+                <h3 className="text-sm font-semibold text-[#e8ecf1]">Job Pipeline</h3>
               </div>
-              <span className="text-xs text-slate-500">{totalJobs} total</span>
+              <span className="text-xs text-[#5a7a9e]">{totalJobs} total</span>
             </div>
 
             <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 sm:gap-3 mb-5">
@@ -174,7 +191,7 @@ export default function Dashboard() {
             </div>
 
             {/* Recent Jobs */}
-            <div className="text-xs text-slate-500 mb-2">Recent Jobs</div>
+            <div className="text-xs text-[#5a7a9e] mb-2">Recent Jobs</div>
             <div className="space-y-1">
               {jobsLoading ? (
                 <LoadingSpinner />
@@ -184,15 +201,15 @@ export default function Dashboard() {
                     <JobRow key={job.metadata?.name} job={job} />
                   ))}
                   {(!jobs || jobs.length === 0) && (
-                    <div className="text-center py-6 text-sm text-slate-600">No jobs yet</div>
+                    <div className="text-center py-6 text-sm text-[#344e6a]">No jobs yet</div>
                   )}
                 </>
               )}
             </div>
 
-            <div className="mt-4 pt-4 border-t border-slate-700/30">
-              <Link to="/jobs" className="text-xs text-blue-400 hover:text-blue-300 font-medium">
-                View all jobs →
+            <div className="mt-4 pt-4" style={{ borderTop: '1px solid rgba(192,204,224,0.06)' }}>
+              <Link to="/jobs" className="text-xs text-[#e8a87c] hover:text-[#f0c4a0] font-medium transition-colors">
+                View all jobs &rarr;
               </Link>
             </div>
           </div>
@@ -201,10 +218,14 @@ export default function Dashboard() {
         {/* Right sidebar */}
         <div className="space-y-6">
           {/* Cluster Health */}
-          <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 p-5">
+          <div className="rounded-xl p-5" style={{
+            background: 'linear-gradient(165deg, #151d28 0%, #111820 100%)',
+            border: '1px solid rgba(192,204,224,0.06)',
+            boxShadow: 'inset 0 1px 0 rgba(192,204,224,0.04)',
+          }}>
             <div className="flex items-center gap-2 mb-4">
-              <Gauge className="h-4 w-4 text-yellow-400" />
-              <h3 className="text-sm font-semibold text-white">Cluster Health</h3>
+              <Gauge className="h-4 w-4 text-[#fbbf24]" />
+              <h3 className="text-sm font-semibold text-[#e8ecf1]">Cluster Health</h3>
             </div>
             <div className="space-y-2">
               <HealthCheck label="GPU Nodes" ok={(clusterStats?.totalNodes || 0) > 0} detail={`${clusterStats?.totalNodes || 0} nodes`} />
@@ -217,29 +238,44 @@ export default function Dashboard() {
 
           {/* GPU Distribution */}
           {nodes && nodes.length > 0 && (
-            <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 p-5">
+            <div className="rounded-xl p-5" style={{
+              background: 'linear-gradient(165deg, #151d28 0%, #111820 100%)',
+              border: '1px solid rgba(192,204,224,0.06)',
+              boxShadow: 'inset 0 1px 0 rgba(192,204,224,0.04)',
+            }}>
               <div className="flex items-center gap-2 mb-4">
                 <Server className="h-4 w-4 text-cyan-400" />
-                <h3 className="text-sm font-semibold text-white">GPU Nodes</h3>
+                <h3 className="text-sm font-semibold text-[#e8ecf1]">GPU Nodes</h3>
               </div>
               <div className="space-y-2">
                 {nodes.slice(0, 6).map((node) => (
-                  <div key={node.metadata?.name} className="flex items-center gap-3 p-2.5 bg-slate-900/50 rounded-lg border border-slate-700/30">
+                  <div key={node.metadata?.name} className="flex items-center gap-3 p-2.5 rounded-lg"
+                    style={{
+                      background: 'rgba(10,14,20,0.5)',
+                      border: '1px solid rgba(192,204,224,0.04)',
+                    }}
+                  >
                     <div className={`w-2 h-2 rounded-full ${
-                      node.status?.phase === 'Ready' ? 'bg-green-400' :
+                      node.status?.phase === 'Ready' ? 'bg-emerald-400' :
                       node.status?.phase === 'Degraded' ? 'bg-yellow-400' : 'bg-red-400'
-                    }`} />
+                    }`} style={{
+                      boxShadow: node.status?.phase === 'Ready'
+                        ? '0 0 6px rgba(52,211,153,0.4)'
+                        : node.status?.phase === 'Degraded'
+                        ? '0 0 6px rgba(250,204,21,0.4)'
+                        : '0 0 6px rgba(248,113,113,0.4)',
+                    }} />
                     <div className="flex-1 min-w-0">
-                      <div className="text-xs font-medium text-white truncate">{node.spec?.nodeName || node.metadata?.name}</div>
-                      <div className="text-[10px] text-slate-500">{node.spec?.gpuType} x{node.spec?.gpuCount}</div>
+                      <div className="text-xs font-medium text-[#c0cce0] truncate">{node.spec?.nodeName || node.metadata?.name}</div>
+                      <div className="text-[10px] text-[#5a7a9e]">{node.spec?.gpuType} x{node.spec?.gpuCount}</div>
                     </div>
                   </div>
                 ))}
               </div>
               {nodes.length > 6 && (
                 <div className="mt-3 text-center">
-                  <Link to="/nodes" className="text-xs text-blue-400 hover:text-blue-300">
-                    View all {nodes.length} nodes →
+                  <Link to="/nodes" className="text-xs text-[#e8a87c] hover:text-[#f0c4a0] transition-colors">
+                    View all {nodes.length} nodes &rarr;
                   </Link>
                 </div>
               )}
@@ -247,22 +283,41 @@ export default function Dashboard() {
           )}
 
           {/* Quick Actions */}
-          <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 p-5">
+          <div className="rounded-xl p-5" style={{
+            background: 'linear-gradient(165deg, #151d28 0%, #111820 100%)',
+            border: '1px solid rgba(192,204,224,0.06)',
+            boxShadow: 'inset 0 1px 0 rgba(192,204,224,0.04)',
+          }}>
             <div className="flex items-center gap-2 mb-4">
-              <Activity className="h-4 w-4 text-green-400" />
-              <h3 className="text-sm font-semibold text-white">Quick Actions</h3>
+              <Activity className="h-4 w-4 text-emerald-400" />
+              <h3 className="text-sm font-semibold text-[#e8ecf1]">Quick Actions</h3>
             </div>
             <div className="space-y-2">
-              <Link to="/jobs/new" className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-blue-600/10 border border-blue-500/20 text-blue-400 hover:bg-blue-600/20 transition-colors text-sm">
+              <Link to="/jobs/new" className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-200 text-[#e8a87c] hover:text-[#f0c4a0]"
+                style={{
+                  background: 'rgba(212,118,78,0.08)',
+                  border: '1px solid rgba(212,118,78,0.15)',
+                }}
+              >
                 <Zap className="h-4 w-4" />
                 Submit New Job
               </Link>
-              <Link to="/quotas" className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-slate-900/50 border border-slate-700/30 text-slate-300 hover:bg-slate-800 transition-colors text-sm">
+              <Link to="/quotas" className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-[#8ba4c0] hover:text-[#c0cce0] transition-all duration-200"
+                style={{
+                  background: 'rgba(10,14,20,0.4)',
+                  border: '1px solid rgba(192,204,224,0.04)',
+                }}
+              >
                 <Gauge className="h-4 w-4 text-purple-400" />
                 View Quotas
               </Link>
-              <Link to="/costs" className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-slate-900/50 border border-slate-700/30 text-slate-300 hover:bg-slate-800 transition-colors text-sm">
-                <TrendingUp className="h-4 w-4 text-yellow-400" />
+              <Link to="/costs" className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-[#8ba4c0] hover:text-[#c0cce0] transition-all duration-200"
+                style={{
+                  background: 'rgba(10,14,20,0.4)',
+                  border: '1px solid rgba(192,204,224,0.04)',
+                }}
+              >
+                <TrendingUp className="h-4 w-4 text-[#fbbf24]" />
                 Cost Analysis
               </Link>
             </div>
@@ -278,24 +333,43 @@ export default function Dashboard() {
 function ResourceCard({ icon: Icon, label, value, subValue, percent, color }: {
   icon: React.ElementType; label: string; value: string; subValue: string; percent: number; color: string;
 }) {
-  const barColors: Record<string, string> = { blue: 'bg-blue-500', green: 'bg-green-500', yellow: 'bg-yellow-500', cyan: 'bg-cyan-500' }
-  const textColors: Record<string, string> = { blue: 'text-blue-400', green: 'text-green-400', yellow: 'text-yellow-400', cyan: 'text-cyan-400' }
-  const pctColor = percent > 90 ? 'text-red-400' : percent > 75 ? 'text-yellow-400' : textColors[color]
+  const barColors: Record<string, string> = {
+    blue: 'linear-gradient(90deg, #344e6a, #5fa8d3)',
+    green: 'linear-gradient(90deg, #166534, #4ade80)',
+    yellow: 'linear-gradient(90deg, #7c3a1a, #d4764e)',
+    cyan: 'linear-gradient(90deg, #164e63, #22d3ee)',
+  }
+  const textColors: Record<string, string> = { blue: 'text-[#7ecbf5]', green: 'text-emerald-400', yellow: 'text-[#e8a87c]', cyan: 'text-cyan-400' }
+  const pctColor = percent > 90 ? 'text-red-400' : percent > 75 ? 'text-[#fbbf24]' : textColors[color]
 
   return (
-    <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 p-4 card-glow transition-all hover:scale-[1.01]">
+    <div className="rounded-xl p-4 card-glow transition-all duration-300 hover:scale-[1.01]"
+      style={{
+        background: 'linear-gradient(165deg, #151d28 0%, #111820 100%)',
+        border: '1px solid rgba(192,204,224,0.06)',
+        boxShadow: 'inset 0 1px 0 rgba(192,204,224,0.04)',
+      }}
+    >
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <Icon className={`h-4 w-4 ${textColors[color]}`} />
-          <span className="text-xs font-medium text-slate-300">{label}</span>
+          <span className="text-xs font-medium text-[#8ba4c0]">{label}</span>
         </div>
         <span className={`text-sm font-bold ${pctColor}`}>{percent}%</span>
       </div>
-      <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden mb-2">
-        <div className={`h-full ${percent > 90 ? 'bg-red-500' : percent > 75 ? 'bg-yellow-500' : barColors[color]} rounded-full transition-all`} style={{ width: `${percent}%` }} />
+      <div className="h-1.5 rounded-full overflow-hidden mb-2"
+        style={{ background: 'rgba(10,14,20,0.6)', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.4)' }}
+      >
+        <div className="h-full rounded-full transition-all"
+          style={{
+            width: `${percent}%`,
+            background: percent > 90 ? 'linear-gradient(90deg, #7f1d1d, #ef4444)' : percent > 75 ? 'linear-gradient(90deg, #7c3a1a, #fbbf24)' : barColors[color],
+            boxShadow: '0 0 6px rgba(192,204,224,0.1)',
+          }}
+        />
       </div>
-      <div className="text-xs text-slate-300">{value}</div>
-      <div className="text-[10px] text-slate-500">{subValue}</div>
+      <div className="text-xs text-[#8ba4c0]">{value}</div>
+      <div className="text-[10px] text-[#5a7a9e]">{subValue}</div>
     </div>
   )
 }
@@ -303,19 +377,23 @@ function ResourceCard({ icon: Icon, label, value, subValue, percent, color }: {
 function PipelineStage({ label, count, color, icon: Icon, spinning }: {
   label: string; count: number; color: string; icon: React.ElementType; spinning?: boolean;
 }) {
-  const c: Record<string, { bg: string; text: string; ring: string }> = {
-    yellow: { bg: 'bg-yellow-500/10', text: 'text-yellow-400', ring: 'ring-yellow-500/30' },
-    blue: { bg: 'bg-blue-500/10', text: 'text-blue-400', ring: 'ring-blue-500/30' },
-    cyan: { bg: 'bg-cyan-500/10', text: 'text-cyan-400', ring: 'ring-cyan-500/30' },
-    green: { bg: 'bg-green-500/10', text: 'text-green-400', ring: 'ring-green-500/30' },
-    red: { bg: 'bg-red-500/10', text: 'text-red-400', ring: 'ring-red-500/30' },
+  const c: Record<string, { bg: string; text: string; ring: string; glow: string }> = {
+    yellow: { bg: 'rgba(251,191,36,0.06)', text: 'text-[#fbbf24]', ring: 'rgba(251,191,36,0.15)', glow: 'rgba(251,191,36,0.1)' },
+    blue: { bg: 'rgba(95,168,211,0.06)', text: 'text-[#7ecbf5]', ring: 'rgba(95,168,211,0.15)', glow: 'rgba(95,168,211,0.1)' },
+    cyan: { bg: 'rgba(6,182,212,0.06)', text: 'text-cyan-400', ring: 'rgba(6,182,212,0.15)', glow: 'rgba(6,182,212,0.1)' },
+    green: { bg: 'rgba(34,197,94,0.06)', text: 'text-emerald-400', ring: 'rgba(34,197,94,0.15)', glow: 'rgba(34,197,94,0.1)' },
+    red: { bg: 'rgba(239,68,68,0.06)', text: 'text-red-400', ring: 'rgba(239,68,68,0.15)', glow: 'rgba(239,68,68,0.1)' },
   }
   const s = c[color] || c.blue
   return (
-    <div className={`text-center p-3 rounded-lg ${s.bg} ring-1 ${s.ring}`}>
+    <div className="text-center p-3 rounded-lg" style={{
+      background: s.bg,
+      border: `1px solid ${s.ring}`,
+      boxShadow: `inset 0 1px 0 rgba(192,204,224,0.02), 0 0 12px ${s.glow}`,
+    }}>
       <Icon className={`h-4 w-4 mx-auto mb-1 ${s.text} ${spinning && count > 0 ? 'animate-spin' : ''}`} />
       <div className={`text-lg font-bold ${s.text}`}>{count}</div>
-      <div className="text-[10px] text-slate-500">{label}</div>
+      <div className="text-[10px] text-[#5a7a9e]">{label}</div>
     </div>
   )
 }
@@ -323,39 +401,45 @@ function PipelineStage({ label, count, color, icon: Icon, spinning }: {
 function JobRow({ job }: { job: FabricAIJob }) {
   const phase = job.status?.phase || 'Unknown'
   const cfg: Record<string, { icon: React.ElementType; color: string; bg: string }> = {
-    Pending: { icon: Clock, color: 'text-yellow-400', bg: 'bg-yellow-500/10' },
-    Queued: { icon: Clock, color: 'text-yellow-400', bg: 'bg-yellow-500/10' },
-    Running: { icon: Loader2, color: 'text-blue-400', bg: 'bg-blue-500/10' },
-    Completed: { icon: CheckCircle, color: 'text-green-400', bg: 'bg-green-500/10' },
-    Succeeded: { icon: CheckCircle, color: 'text-green-400', bg: 'bg-green-500/10' },
-    Failed: { icon: XCircle, color: 'text-red-400', bg: 'bg-red-500/10' },
+    Pending: { icon: Clock, color: 'text-[#fbbf24]', bg: 'rgba(251,191,36,0.08)' },
+    Queued: { icon: Clock, color: 'text-[#fbbf24]', bg: 'rgba(251,191,36,0.08)' },
+    Running: { icon: Loader2, color: 'text-[#7ecbf5]', bg: 'rgba(95,168,211,0.08)' },
+    Completed: { icon: CheckCircle, color: 'text-emerald-400', bg: 'rgba(34,197,94,0.08)' },
+    Succeeded: { icon: CheckCircle, color: 'text-emerald-400', bg: 'rgba(34,197,94,0.08)' },
+    Failed: { icon: XCircle, color: 'text-red-400', bg: 'rgba(239,68,68,0.08)' },
   }
-  const c = cfg[phase] || { icon: AlertCircle, color: 'text-slate-400', bg: 'bg-slate-500/10' }
+  const c = cfg[phase] || { icon: AlertCircle, color: 'text-[#5a7a9e]', bg: 'rgba(90,122,158,0.08)' }
   const Icon = c.icon
 
   return (
     <Link to={`/jobs/${job.metadata?.name}`} className="flex items-center gap-3 p-2.5 rounded-lg table-row-hover">
-      <span className={`inline-flex items-center justify-center w-7 h-7 rounded-lg ${c.bg}`}>
+      <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg" style={{ background: c.bg }}>
         <Icon className={`h-3.5 w-3.5 ${c.color} ${phase === 'Running' ? 'animate-spin' : ''}`} />
       </span>
       <div className="flex-1 min-w-0">
-        <div className="text-xs font-medium text-white truncate">{job.metadata?.name}</div>
-        <div className="text-[10px] text-slate-500">
+        <div className="text-xs font-medium text-[#c0cce0] truncate">{job.metadata?.name}</div>
+        <div className="text-[10px] text-[#5a7a9e]">
           {job.spec?.framework || 'job'} · {job.spec?.resources?.gpuType || 'GPU'} x{job.spec?.resources?.gpuCount || '?'}
         </div>
       </div>
-      <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${c.bg} ${c.color}`}>{phase}</span>
+      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full" style={{ background: c.bg, color: undefined }}>
+        <span className={c.color}>{phase}</span>
+      </span>
     </Link>
   )
 }
 
 function HealthCheck({ label, ok, warn, detail }: { label: string; ok: boolean; warn?: boolean; detail?: string }) {
+  const dotColor = ok ? (warn ? '#fbbf24' : '#4ade80') : '#f87171'
   return (
     <div className="flex items-center justify-between py-1.5">
-      <span className="text-xs text-slate-400">{label}</span>
+      <span className="text-xs text-[#8090a8]">{label}</span>
       <div className="flex items-center gap-2">
-        {detail && <span className="text-[10px] text-slate-500">{detail}</span>}
-        <div className={`w-2 h-2 rounded-full ${ok ? (warn ? 'bg-yellow-400' : 'bg-green-400') : 'bg-red-400'}`} />
+        {detail && <span className="text-[10px] text-[#5a7a9e]">{detail}</span>}
+        <div className="w-2 h-2 rounded-full" style={{
+          backgroundColor: dotColor,
+          boxShadow: `0 0 6px ${dotColor}60`,
+        }} />
       </div>
     </div>
   )

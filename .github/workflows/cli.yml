@@ -77,16 +77,16 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            artifact: kubefabric-linux-amd64
+            artifact: tensorreaper-linux-amd64
           - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
-            artifact: kubefabric-linux-arm64
+            artifact: tensorreaper-linux-arm64
           - os: macos-latest
             target: x86_64-apple-darwin
-            artifact: kubefabric-darwin-amd64
+            artifact: tensorreaper-darwin-amd64
           - os: macos-latest
             target: aarch64-apple-darwin
-            artifact: kubefabric-darwin-arm64
+            artifact: tensorreaper-darwin-arm64
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -108,7 +108,7 @@ jobs:
 
       - name: Rename binary
         run: |
-          cp cli/target/${{ matrix.target }}/release/kubefabric ${{ matrix.artifact }}
+          cp cli/target/${{ matrix.target }}/release/tensorreaper ${{ matrix.artifact }}
           chmod +x ${{ matrix.artifact }}
 
       - name: Upload artifact
@@ -131,13 +131,13 @@ jobs:
 
       - name: Create checksums
         run: |
-          sha256sum kubefabric-* > checksums.txt
+          sha256sum tensorreaper-* > checksums.txt
 
       - name: Create release
         uses: softprops/action-gh-release@c062e08bd532815e2082a07b400cf8c3b4b23223 # v2
         with:
           files: |
-            kubefabric-*
+            tensorreaper-*
             checksums.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,6 +1,6 @@
-# KubeFabric Storage Operator
+# TensorReaper Storage Operator
 
-The Storage Operator manages parallel filesystem integrations for AI workloads in KubeFabric. It automates CSI driver deployment and storage configuration for enterprise-grade parallel filesystems.
+The Storage Operator manages parallel filesystem integrations for AI workloads in TensorReaper. It automates CSI driver deployment and storage configuration for enterprise-grade parallel filesystems.
 
 ## Supported Storage Backends
 
@@ -42,7 +42,7 @@ kubectl apply -f crds/fabricstorage.yaml
 kubectl apply -f operators/storage-operator/config/
 
 # Verify deployment
-kubectl get pods -n kubefabric -l app=storage-operator
+kubectl get pods -n tensorreaper -l app=storage-operator
 ```
 
 ## Usage
@@ -50,7 +50,7 @@ kubectl get pods -n kubefabric -l app=storage-operator
 ### VAST Data Example
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricStorage
 metadata:
   name: vast-production
@@ -59,10 +59,10 @@ spec:
   endpoint: vast-mgmt.example.com
   capacity: 100Ti
   nodeSelector:
-    kubefabric.ai/storage: "true"
+    tensorreaper.ai/storage: "true"
   credentials:
     secretName: vast-credentials
-    secretNamespace: kubefabric
+    secretNamespace: tensorreaper
 ```
 
 ### Create PVC
@@ -141,7 +141,7 @@ The operator requires:
 **CSI Driver Not Starting**
 ```bash
 # Check operator logs
-kubectl logs -n kubefabric -l app=storage-operator
+kubectl logs -n tensorreaper -l app=storage-operator
 
 # Check CSI controller
 kubectl logs -n kube-system -l app=vast-csi-controller

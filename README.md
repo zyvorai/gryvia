@@ -1,34 +1,102 @@
-# KubeFabric
+# TensorReaper
 
-> **The Enterprise GPU Compute Fabric for AI Infrastructure**
+> **GPU is the new CPU. TensorReaper is its scheduler.**
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)](https://go.dev/)
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-1.32+-326CE5?logo=kubernetes)](https://kubernetes.io/)
 [![NVIDIA](https://img.shields.io/badge/NVIDIA-GPU-76B900?logo=nvidia)](https://nvidia.com)
 
-**KubeFabric** is a production-grade, bare-metal GPU compute platform built from the ground up for AI/ML workloads. It combines Kubernetes-native orchestration with enterprise GPU management, RDMA networking, parallel filesystems, and deep NVIDIA integration.
+**From cluster to fabric.** TensorReaper turns your GPU infrastructure into a high-performance compute fabric — optimizing not just GPU allocation, but GPU-to-GPU communication. Like DGX SuperPOD, but open-source and self-hosted.
 
 ---
 
-## 🚀 **What Makes KubeFabric Different?**
+## TL;DR
 
-| **Platform**     | **Weakness**           | **KubeFabric Advantage**              |
-|------------------|------------------------|---------------------------------------|
-| **EKS/GKE/AKS**  | Generic, cloud-only    | GPU-first, multi-cloud + bare metal   |
-| **OpenShift AI** | Heavy, complex         | Lightweight, purpose-built            |
-| **Databricks**   | Expensive, closed      | Open-source, self-hosted              |
-| **CoreWeave**    | Cloud-only             | On-prem + edge + multi-cloud          |
-| **Lambda Labs**  | Basic features         | Enterprise-grade, production-ready    |
+TensorReaper is a Kubernetes-native GPU platform that:
 
-**Think of it as:**
-> **"EKS + OpenAI Infrastructure + Databricks + CoreWeave"** — but open-source, bare-metal native, and built for teams that need **maximum GPU performance**.
+- Runs AI workloads at **95%+ GPU utilization** (vs 60-70% industry average)
+- Optimizes **RDMA + NVLink automatically** — no manual NCCL tuning
+- Delivers **40GB/s storage throughput** per node
+- Works on **bare metal + any cloud** (EKS, GKE, AKS)
+
+Built for teams training large models, not running containers.
 
 ---
 
-## 🔥 **Amazing Features**
+## The Problem
 
-### 1. 🧠 **Deep NVIDIA Integration (Core Differentiator)**
+Modern AI infrastructure is broken:
+
+- **GPUs sit idle** — bad scheduling means 30-40% of expensive GPU hours are wasted
+- **Distributed training is slow** — network bottlenecks kill multi-node scaling efficiency
+- **Storage can't keep up** — data loading becomes the training bottleneck at scale
+- **Teams waste weeks** tuning NCCL, RDMA, drivers, and topology before training starts
+- **No single platform** handles GPU scheduling, networking, storage, and observability together
+
+## The Solution
+
+TensorReaper turns your infrastructure into a **high-performance GPU fabric**:
+
+- **GPUs communicate at hardware speed** — automatic RDMA, NVLink, and NCCL optimization
+- **Jobs are always optimally placed** — topology-aware scheduling with GPU affinity
+- **Storage and network are automatically tuned** — parallel filesystems + SR-IOV out of the box
+- **No manual cluster tuning required** — submit a job, get maximum performance
+
+---
+
+## TensorReaper vs Vanilla Kubernetes
+
+| Metric | Vanilla K8s + GPU Operator | TensorReaper |
+|--------|---------------------------|------------|
+| **GPU Utilization** | 60-70% | **95%+** |
+| **Multi-node distributed training setup** | Hours of manual config | **Automatic** |
+| **RDMA/NVLink tuning** | Manual, error-prone | **Zero-touch** |
+| **Job placement quality** | Random (first-fit) | **Topology-optimal** |
+| **Storage throughput** | 1-5 GB/s (standard CSI) | **40 GB/s (RDMA)** |
+| **GPU failure recovery** | Manual intervention | **<60s auto-recovery** |
+| **Cost tracking** | Not built-in | **Per-team chargeback** |
+
+---
+
+## 5-Minute Demo
+
+```bash
+# Deploy TensorReaper
+tensorreaper init --bare-metal
+
+# Submit a distributed training job — that's it
+tensorreaper create job llama-70b \
+  --gpus 64 \
+  --gpu-type H100 \
+  --distributed \
+  --nodes 8
+
+# Watch it run
+tensorreaper status llama-70b --follow
+```
+
+No NCCL tuning. No topology config. No storage provisioning. **It just works.**
+
+---
+
+## What Makes TensorReaper Different?
+
+| **Platform** | **Weakness** | **TensorReaper Advantage** |
+|---|---|---|
+| **EKS/GKE/AKS** | Generic, cloud-only | GPU-first, multi-cloud + bare metal |
+| **OpenShift AI** | Heavy, complex | Lightweight, purpose-built |
+| **Databricks** | Expensive, closed | Open-source, self-hosted |
+| **CoreWeave** | Cloud-only | On-prem + edge + multi-cloud |
+| **DGX SuperPOD** | Proprietary, rigid | Open, flexible, Kubernetes-native |
+
+**Stop managing nodes. Start managing compute fabric.**
+
+---
+
+## Features
+
+### 1. **Never Waste a GPU Again — Deep NVIDIA Integration**
 
 #### Native NVIDIA Stack
 Built-in support for the complete NVIDIA ecosystem:
@@ -41,7 +109,7 @@ Built-in support for the complete NVIDIA ecosystem:
 
 **Example:** Register an H100 GPU node:
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricGpuNode
 spec:
   nodeName: gpu-worker-01
@@ -76,10 +144,10 @@ Custom scheduler that understands:
 
 ---
 
-### 2. ⚡ **High-Performance Networking (Superpower)**
+### 2. **Fix the #1 AI Training Bottleneck — GPU Communication**
 
-#### 🚀 RDMA + SR-IOV First Class
-KubeFabric automatically:
+#### Automatic RDMA + SR-IOV
+TensorReaper automatically:
 - Configures **SR-IOV Virtual Functions (VFs)**
 - Enables **RDMA for pod-to-pod traffic**
 - Tunes MTU, buffer sizes, congestion control
@@ -103,7 +171,7 @@ KubeFabric automatically:
 
 ---
 
-### 3. 💾 **Ultra-Fast Storage Fabric**
+### 3. **Stop Waiting for Data — Ultra-Fast Storage Fabric**
 
 Native support for parallel filesystems:
 - **VAST Data** - NVMe-optimized, 40GB/s+ throughput
@@ -125,7 +193,7 @@ Native support for parallel filesystems:
 
 **One command gives you:**
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricStorage
 spec:
   backend: vast
@@ -135,9 +203,9 @@ spec:
 
 ---
 
-### 4. 🤖 **AI Workload Superpowers**
+### 4. **Submit a Job, Not a Cluster Config — AI Workload Automation**
 
-#### 🧩 **Auto-Distributed Training**
+#### Auto-Distributed Training
 You submit:
 ```yaml
 kind: FabricAIJob
@@ -150,7 +218,7 @@ spec:
     gpusPerNode: 8
 ```
 
-KubeFabric automatically:
+TensorReaper automatically:
 - Creates multi-node StatefulSet topology
 - Sets `WORLD_SIZE`, `MASTER_ADDR`, `MASTER_PORT` environment variables
 - Configures NCCL for optimal communication (RDMA when available)
@@ -175,9 +243,9 @@ Submit a model, get auto-deployed:
 
 ---
 
-### 5. 🔁 **Self-Healing Platform**
+### 5. **Your Jobs Keep Running — Self-Healing Platform**
 
-If something breaks, KubeFabric auto-recovers:
+If something breaks, TensorReaper auto-recovers:
 
 | Issue                  | Auto-Action             |
 |------------------------|-------------------------|
@@ -192,7 +260,7 @@ If something breaks, KubeFabric auto-recovers:
 
 ---
 
-### 6. 💰 **Cost + Quota + Chargeback**
+### 6. **Know Where Every GPU Dollar Goes — Cost + Quota + Chargeback**
 
 Built-in metering tracks:
 - GPU hours per team/namespace
@@ -212,7 +280,7 @@ Perfect for:
 
 ---
 
-### 7. 🔐 **Security & Compliance**
+### 7. **Enterprise-Ready from Day 1 — Security & Compliance**
 
 Enterprise-grade security:
 - **Secure boot** for GPU nodes
@@ -224,9 +292,9 @@ Enterprise-grade security:
 
 ---
 
-### 8. 🌍 **Multi-Cloud + Bare Metal**
+### 8. **Run Anywhere, Same Experience — Multi-Cloud + Bare Metal**
 
-KubeFabric runs everywhere:
+TensorReaper runs everywhere:
 - **AWS** (EKS with GPU nodes)
 - **GCP** (GKE with T4/A100)
 - **Azure** (AKS with NDv4)
@@ -237,7 +305,7 @@ KubeFabric runs everywhere:
 
 ---
 
-### 9. 🧪 **Built-in AI Benchmarks**
+### 9. **Prove It Before Production — Built-in AI Benchmarks**
 
 Pre-installed benchmarks to prove performance:
 - **LLM throughput** (tokens/sec)
@@ -250,11 +318,11 @@ Pre-installed benchmarks to prove performance:
 
 ---
 
-## 🏗️ **Architecture**
+## Architecture
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│               KubeFabric Control Plane                   │
+│               TensorReaper Control Plane                   │
 │    (Multi-Cluster Management + Global Scheduling)        │
 └─────────────────────┬────────────────────────────────────┘
                       │
@@ -278,7 +346,7 @@ Pre-installed benchmarks to prove performance:
 
 ---
 
-## ⚡ **Quick Start (Bare Metal)**
+## Quick Start (Bare Metal)
 
 ### Install on Physical GPU Servers
 
@@ -312,7 +380,7 @@ kubectl get fabricaijob
 
 ---
 
-## 📦 **Core Components**
+## Core Components
 
 ### Custom Resource Definitions (CRDs)
 
@@ -343,9 +411,9 @@ Dark-themed React dashboard with:
 
 ### CLI
 
-Rust-based CLI (`kubefabric`) for:
+Rust-based CLI (`tensorreaper`) for:
 - Job submission with `--wait` and `--logs` flags, listing, status with `--follow`, cancellation
-- Interactive job/quota creation wizard with DNS-1123 name validation (`kubefabric create job`)
+- Interactive job/quota creation wizard with DNS-1123 name validation (`tensorreaper create job`)
 - Cluster overview with `--detailed` GPU metrics and `--watch` mode
 - Log streaming with auto-detected container names and per-replica selection
 - Job queue monitoring with watch mode
@@ -373,7 +441,7 @@ Three-stage scheduling: filter, score, select.
 
 ---
 
-## 📊 **Performance Metrics**
+## Performance Metrics
 
 ### Benchmark Results
 
@@ -388,7 +456,7 @@ Three-stage scheduling: filter, score, select.
 
 ---
 
-## 📖 **Documentation**
+## Documentation
 
 - [Quick Start Guide](docs/getting-started/quickstart.md)
 - [Bare Metal Deployment](docs/DEPLOYMENT_GUIDE.md)
@@ -400,9 +468,9 @@ Three-stage scheduling: filter, score, select.
 - [Examples & Tutorials](examples/README.md)
 - [FAQ](docs/FAQ.md)
 
-## 🔒 **Security**
+## Security
 
-KubeFabric follows security best practices:
+TensorReaper follows security best practices:
 - **Least-privilege RBAC** - Operators have scoped ClusterRoles per CRD
 - **Non-root containers** - All operator pods run as UID 65532 with read-only root filesystem
 - **No privileged containers** - GPU device plugins use targeted capabilities instead of blanket `privileged: true`
@@ -415,11 +483,11 @@ KubeFabric follows security best practices:
 
 ---
 
-## 🌟 **Real-World Use Cases**
+## Real-World Use Cases
 
 ### Large Language Model Training
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAIJob
 spec:
   model: llama-70b
@@ -437,7 +505,7 @@ spec:
 
 ### Multi-Tenant GPU Sharing
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricQuota
 spec:
   team: data-science
@@ -451,7 +519,7 @@ spec:
 
 ### Inference at Scale
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAIJob
 spec:
   type: inference
@@ -462,29 +530,29 @@ spec:
 
 ---
 
-## 🤝 **Contributing**
+## Contributing
 
 We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
-## 📄 **License**
+## License
 
 Apache License 2.0 - see [LICENSE](LICENSE).
 
 ---
 
-## 🏆 **Why Teams Choose KubeFabric**
+## Why Teams Choose TensorReaper
 
-1. **Maximum GPU Utilization** - 95%+ vs industry average of 60-70%
-2. **Bare Metal Performance** - No cloud overhead, full hardware access
-3. **Cost Savings** - Self-hosted = 50-70% cheaper than cloud GPUs
-4. **Flexibility** - Run anywhere (on-prem, cloud, edge)
-5. **Production-Ready** - Built by platform engineers, for platform engineers
-6. **Open Source** - No vendor lock-in, full visibility
+1. **Maximum GPU Utilization** — 95%+ vs industry average of 60-70%
+2. **Bare Metal Performance** — No cloud overhead, full hardware access
+3. **Cost Savings** — Self-hosted = 50-70% cheaper than cloud GPUs
+4. **Flexibility** — Run anywhere (on-prem, cloud, edge)
+5. **Production-Ready** — Built by platform engineers, for platform engineers
+6. **Open Source** — No vendor lock-in, full visibility
 
 ---
 
-**Built with ❤️ by the AI infrastructure community**
+**AI infra without bottlenecks.**
 
 [Get Started](docs/getting-started/quickstart.md) | [View Examples](examples/) | [Documentation](docs/README.md)

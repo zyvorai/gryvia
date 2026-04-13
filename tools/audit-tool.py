@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-KubeFabric Audit and Compliance Tool
+TensorReaper Audit and Compliance Tool
 Generates compliance reports and audit logs
 """
 
@@ -97,7 +97,7 @@ class AuditTool:
         # Check Image Security
         try:
             jobs = self.api.list_namespaced_custom_object(
-                group="kubefabric.ai",
+                group="tensorreaper.ai",
                 version="v1",
                 namespace=self.namespace,
                 plural="fabricaijobs"
@@ -166,7 +166,7 @@ class AuditTool:
         # Check Resource Quotas
         try:
             quotas = self.api.list_namespaced_custom_object(
-                group="kubefabric.ai",
+                group="tensorreaper.ai",
                 version="v1",
                 namespace=self.namespace,
                 plural="fabricquotas"
@@ -190,7 +190,7 @@ class AuditTool:
         # Check Resource Limits
         try:
             jobs = self.api.list_namespaced_custom_object(
-                group="kubefabric.ai",
+                group="tensorreaper.ai",
                 version="v1",
                 namespace=self.namespace,
                 plural="fabricaijobs"
@@ -226,7 +226,7 @@ class AuditTool:
 
         try:
             quotas = self.api.list_namespaced_custom_object(
-                group="kubefabric.ai",
+                group="tensorreaper.ai",
                 version="v1",
                 namespace=self.namespace,
                 plural="fabricquotas"
@@ -333,7 +333,7 @@ class AuditTool:
     def print_report(self, report: Dict):
         """Print formatted compliance report"""
         print(f"\n{BLUE}╔═══════════════════════════════════════════════════════════════╗{NC}")
-        print(f"{BLUE}║         KubeFabric Compliance Report                          ║{NC}")
+        print(f"{BLUE}║         TensorReaper Compliance Report                          ║{NC}")
         print(f"{BLUE}╚═══════════════════════════════════════════════════════════════╝{NC}\n")
 
         print(f"Generated: {report['generated_at']}")
@@ -412,7 +412,7 @@ class AuditTool:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="KubeFabric Audit and Compliance Tool")
+    parser = argparse.ArgumentParser(description="TensorReaper Audit and Compliance Tool")
     parser.add_argument("--namespace", default="default", help="Namespace to audit")
     parser.add_argument("--days", type=int, default=30, help="Number of days to analyze")
     parser.add_argument("--output", help="Output file (JSON)")

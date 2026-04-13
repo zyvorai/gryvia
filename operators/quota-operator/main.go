@@ -14,8 +14,8 @@ import (
 
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
-	kubefabricv1 "github.com/ssahani/kube-fabric/operators/quota-operator/api/v1"
-	"github.com/ssahani/kube-fabric/operators/quota-operator/controllers"
+	tensorreaperv1 "github.com/ssahani/tensor-reaper/operators/quota-operator/api/v1"
+	"github.com/ssahani/tensor-reaper/operators/quota-operator/controllers"
 )
 
 var (
@@ -25,7 +25,7 @@ var (
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-	utilruntime.Must(kubefabricv1.AddToScheme(scheme))
+	utilruntime.Must(tensorreaperv1.AddToScheme(scheme))
 }
 
 func main() {
@@ -51,7 +51,7 @@ func main() {
 		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "quota-operator.kubefabric.ai",
+		LeaderElectionID:       "quota-operator.tensorreaper.ai",
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")

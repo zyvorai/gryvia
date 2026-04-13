@@ -15,8 +15,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kubefabricv1 "github.com/ssahani/kube-fabric/operators/ai-operator/api/v1"
-	"github.com/ssahani/kube-fabric/operators/ai-operator/pkg/checkpoint"
+	tensorreaperv1 "github.com/ssahani/tensor-reaper/operators/ai-operator/api/v1"
+	"github.com/ssahani/tensor-reaper/operators/ai-operator/pkg/checkpoint"
 )
 
 const (
@@ -47,11 +47,11 @@ type FabricCheckpointGuardReconciler struct {
 	Log    logr.Logger
 }
 
-//+kubebuilder:rbac:groups=kubefabric.ai,resources=fabriccheckpointguards,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=kubefabric.ai,resources=fabriccheckpointguards/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=kubefabric.ai,resources=fabriccheckpointguards/finalizers,verbs=update
-//+kubebuilder:rbac:groups=kubefabric.ai,resources=fabricaijobs,verbs=get;list;watch
-//+kubebuilder:rbac:groups=kubefabric.ai,resources=fabricgpunodes,verbs=get;list;watch
+//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabriccheckpointguards,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabriccheckpointguards/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabriccheckpointguards/finalizers,verbs=update
+//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricaijobs,verbs=get;list;watch
+//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricgpunodes,verbs=get;list;watch
 //+kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
@@ -61,7 +61,7 @@ func (r *FabricCheckpointGuardReconciler) Reconcile(ctx context.Context, req ctr
 	log := r.Log.WithValues("fabriccheckpointguard", req.NamespacedName)
 
 	// Fetch the FabricCheckpointGuard instance
-	guard := &kubefabricv1.FabricCheckpointGuard{}
+	guard := &tensorreaperv1.FabricCheckpointGuard{}
 	err := r.Get(ctx, req.NamespacedName, guard)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -97,7 +97,7 @@ func (r *FabricCheckpointGuardReconciler) Reconcile(ctx context.Context, req ctr
 	return result, nil
 }
 
-func (r *FabricCheckpointGuardReconciler) reconcileCheckpointGuard(ctx context.Context, guard *kubefabricv1.FabricCheckpointGuard) (ctrl.Result, error) {
+func (r *FabricCheckpointGuardReconciler) reconcileCheckpointGuard(ctx context.Context, guard *tensorreaperv1.FabricCheckpointGuard) (ctrl.Result, error) {
 	log := r.Log.WithValues("fabriccheckpointguard", guard.Name)
 
 	// Step 1: Find matching FabricAIJob resources using the jobSelector
@@ -228,8 +228,8 @@ func (r *FabricCheckpointGuardReconciler) reconcileCheckpointGuard(ctx context.C
 }
 
 // findMatchingJobs finds FabricAIJob resources that match the guard's jobSelector
-func (r *FabricCheckpointGuardReconciler) findMatchingJobs(ctx context.Context, guard *kubefabricv1.FabricCheckpointGuard) ([]kubefabricv1.FabricAIJob, error) {
-	jobList := &kubefabricv1.FabricAIJobList{}
+func (r *FabricCheckpointGuardReconciler) findMatchingJobs(ctx context.Context, guard *tensorreaperv1.FabricCheckpointGuard) ([]tensorreaperv1.FabricAIJob, error) {
+	jobList := &tensorreaperv1.FabricAIJobList{}
 
 	listOpts := []client.ListOption{
 		client.InNamespace(guard.Namespace),
@@ -247,7 +247,7 @@ func (r *FabricCheckpointGuardReconciler) findMatchingJobs(ctx context.Context, 
 }
 
 // checkJobPodHealth checks the health of pods belonging to a job's StatefulSet
-func (r *FabricCheckpointGuardReconciler) checkJobPodHealth(ctx context.Context, job *kubefabricv1.FabricAIJob) (bool, string) {
+func (r *FabricCheckpointGuardReconciler) checkJobPodHealth(ctx context.Context, job *tensorreaperv1.FabricAIJob) (bool, string) {
 	// Look up the StatefulSet for this job
 	stsName := fmt.Sprintf("%s-training", job.Name)
 	sts := &appsv1.StatefulSet{}
@@ -265,7 +265,7 @@ func (r *FabricCheckpointGuardReconciler) checkJobPodHealth(ctx context.Context,
 	// List pods for the StatefulSet
 	pods := &corev1.PodList{}
 	if err := r.List(ctx, pods, client.InNamespace(job.Namespace), client.MatchingLabels{
-		"kubefabric.ai/job": job.Name,
+		"tensorreaper.ai/job": job.Name,
 	}); err != nil {
 		return false, fmt.Sprintf("failed to list pods: %v", err)
 	}
@@ -293,20 +293,20 @@ func (r *FabricCheckpointGuardReconciler) checkJobPodHealth(ctx context.Context,
 }
 
 // checkGpuHealth checks GPU health status from FabricGpuNode resources for nodes running the job
-func (r *FabricCheckpointGuardReconciler) checkGpuHealth(ctx context.Context, job *kubefabricv1.FabricAIJob) (bool, string) {
+func (r *FabricCheckpointGuardReconciler) checkGpuHealth(ctx context.Context, job *tensorreaperv1.FabricAIJob) (bool, string) {
 	if len(job.Status.NodesAllocated) == 0 {
 		return true, ""
 	}
 
 	// List all FabricGpuNode resources (they are cluster-scoped)
-	gpuNodeList := &kubefabricv1.FabricGpuNodeList{}
+	gpuNodeList := &tensorreaperv1.FabricGpuNodeList{}
 	if err := r.List(ctx, gpuNodeList); err != nil {
 		// If the CRD is not installed, skip the check gracefully
 		return true, ""
 	}
 
 	// Build a map of node names to GPU nodes for quick lookup
-	gpuNodesByNodeName := make(map[string]*kubefabricv1.FabricGpuNode)
+	gpuNodesByNodeName := make(map[string]*tensorreaperv1.FabricGpuNode)
 	for i := range gpuNodeList.Items {
 		gpuNode := &gpuNodeList.Items[i]
 		gpuNodesByNodeName[gpuNode.Spec.NodeName] = gpuNode
@@ -340,12 +340,12 @@ func (r *FabricCheckpointGuardReconciler) checkGpuHealth(ctx context.Context, jo
 }
 
 // checkNvlinkHealth checks NVLink interconnect health from FabricGpuNode resources
-func (r *FabricCheckpointGuardReconciler) checkNvlinkHealth(ctx context.Context, job *kubefabricv1.FabricAIJob) bool {
+func (r *FabricCheckpointGuardReconciler) checkNvlinkHealth(ctx context.Context, job *tensorreaperv1.FabricAIJob) bool {
 	if len(job.Status.NodesAllocated) == 0 {
 		return true
 	}
 
-	gpuNodeList := &kubefabricv1.FabricGpuNodeList{}
+	gpuNodeList := &tensorreaperv1.FabricGpuNodeList{}
 	if err := r.List(ctx, gpuNodeList); err != nil {
 		return true // Cannot check, assume healthy
 	}
@@ -375,17 +375,17 @@ func (r *FabricCheckpointGuardReconciler) checkNvlinkHealth(ctx context.Context,
 }
 
 // detectSpotPreemption checks if any pods have received spot preemption signals
-func (r *FabricCheckpointGuardReconciler) detectSpotPreemption(ctx context.Context, job *kubefabricv1.FabricAIJob) bool {
+func (r *FabricCheckpointGuardReconciler) detectSpotPreemption(ctx context.Context, job *tensorreaperv1.FabricAIJob) bool {
 	pods := &corev1.PodList{}
 	if err := r.List(ctx, pods, client.InNamespace(job.Namespace), client.MatchingLabels{
-		"kubefabric.ai/job": job.Name,
+		"tensorreaper.ai/job": job.Name,
 	}); err != nil {
 		return false
 	}
 
 	for _, pod := range pods.Items {
 		// Check for spot preemption annotations (set by cloud provider or node termination handler)
-		if _, hasAnnotation := pod.Annotations["kubefabric.ai/spot-preemption"]; hasAnnotation {
+		if _, hasAnnotation := pod.Annotations["tensorreaper.ai/spot-preemption"]; hasAnnotation {
 			return true
 		}
 
@@ -413,7 +413,7 @@ func (r *FabricCheckpointGuardReconciler) detectSpotPreemption(ctx context.Conte
 }
 
 // detectLossDivergence checks if the job's training loss is diverging
-func (r *FabricCheckpointGuardReconciler) detectLossDivergence(job *kubefabricv1.FabricAIJob) bool {
+func (r *FabricCheckpointGuardReconciler) detectLossDivergence(job *tensorreaperv1.FabricAIJob) bool {
 	if job.Status.Metrics == nil {
 		return false
 	}
@@ -432,7 +432,7 @@ func (r *FabricCheckpointGuardReconciler) detectLossDivergence(job *kubefabricv1
 }
 
 // isEmergencyTrigger checks if a given trigger is configured in the guard's emergency checkpoint policy
-func (r *FabricCheckpointGuardReconciler) isEmergencyTrigger(guard *kubefabricv1.FabricCheckpointGuard, trigger string) bool {
+func (r *FabricCheckpointGuardReconciler) isEmergencyTrigger(guard *tensorreaperv1.FabricCheckpointGuard, trigger string) bool {
 	if guard.Spec.CheckpointPolicy.EmergencyCheckpoint == nil {
 		return false
 	}
@@ -447,7 +447,7 @@ func (r *FabricCheckpointGuardReconciler) isEmergencyTrigger(guard *kubefabricv1
 }
 
 // isPeriodicCheckpointDue checks if enough time has elapsed since the last checkpoint
-func (r *FabricCheckpointGuardReconciler) isPeriodicCheckpointDue(guard *kubefabricv1.FabricCheckpointGuard) bool {
+func (r *FabricCheckpointGuardReconciler) isPeriodicCheckpointDue(guard *tensorreaperv1.FabricCheckpointGuard) bool {
 	interval := guard.Spec.CheckpointPolicy.IntervalMinutes
 	if interval <= 0 {
 		interval = 30 // Default 30 minutes
@@ -462,7 +462,7 @@ func (r *FabricCheckpointGuardReconciler) isPeriodicCheckpointDue(guard *kubefab
 }
 
 // performCheckpoint executes a checkpoint operation for the matched jobs
-func (r *FabricCheckpointGuardReconciler) performCheckpoint(ctx context.Context, guard *kubefabricv1.FabricCheckpointGuard, jobs []kubefabricv1.FabricAIJob, isEmergency bool) error {
+func (r *FabricCheckpointGuardReconciler) performCheckpoint(ctx context.Context, guard *tensorreaperv1.FabricCheckpointGuard, jobs []tensorreaperv1.FabricAIJob, isEmergency bool) error {
 	log := r.Log.WithValues("fabriccheckpointguard", guard.Name, "emergency", isEmergency)
 
 	checkpointStart := time.Now()
@@ -562,7 +562,7 @@ func (r *FabricCheckpointGuardReconciler) updateAvgDuration(currentAvg string, n
 }
 
 // getRequeueInterval returns the requeue interval based on checkpoint policy
-func (r *FabricCheckpointGuardReconciler) getRequeueInterval(guard *kubefabricv1.FabricCheckpointGuard) time.Duration {
+func (r *FabricCheckpointGuardReconciler) getRequeueInterval(guard *tensorreaperv1.FabricCheckpointGuard) time.Duration {
 	interval := guard.Spec.CheckpointPolicy.IntervalMinutes
 	if interval <= 0 {
 		interval = 30
@@ -579,7 +579,7 @@ func (r *FabricCheckpointGuardReconciler) getRequeueInterval(guard *kubefabricv1
 }
 
 // updateGuardCondition updates a condition on the checkpoint guard status
-func (r *FabricCheckpointGuardReconciler) updateGuardCondition(guard *kubefabricv1.FabricCheckpointGuard, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *FabricCheckpointGuardReconciler) updateGuardCondition(guard *tensorreaperv1.FabricCheckpointGuard, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -614,6 +614,6 @@ func (r *FabricCheckpointGuardReconciler) updateGuardCondition(guard *kubefabric
 // SetupWithManager sets up the controller with the Manager.
 func (r *FabricCheckpointGuardReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&kubefabricv1.FabricCheckpointGuard{}).
+		For(&tensorreaperv1.FabricCheckpointGuard{}).
 		Complete(r)
 }

@@ -16,7 +16,7 @@ Track requests across distributed GPU training jobs.
 
 **Access Jaeger UI:**
 ```bash
-kubectl port-forward -n kubefabric svc/jaeger-query 16686:16686
+kubectl port-forward -n tensorreaper svc/jaeger-query 16686:16686
 open http://localhost:16686
 ```
 
@@ -28,7 +28,7 @@ Centralized log management for all components.
 ```bash
 helm repo add grafana https://grafana.github.io/helm-charts
 helm install loki grafana/loki-stack \
-  --namespace kubefabric \
+  --namespace tensorreaper \
   --set grafana.enabled=false
 ```
 
@@ -153,7 +153,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: promtail-config
-  namespace: kubefabric
+  namespace: tensorreaper
 data:
   promtail.yaml: |
     server:
@@ -166,8 +166,8 @@ data:
       filename: /tmp/positions.yaml
 
     scrape_configs:
-      # Scrape KubeFabric job logs
-      - job_name: kubefabric-jobs
+      # Scrape TensorReaper job logs
+      - job_name: tensorreaper-jobs
         kubernetes_sd_configs:
           - role: pod
             namespaces:
@@ -313,7 +313,7 @@ apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
   name: trace-alerts
-  namespace: kubefabric
+  namespace: tensorreaper
 spec:
   groups:
     - name: tracing
@@ -435,21 +435,21 @@ sum(span.cost.total_usd) by (model)
 
 ```bash
 # Check collector
-kubectl logs -n kubefabric deployment/otel-collector
+kubectl logs -n tensorreaper deployment/otel-collector
 
 # Verify endpoint
 kubectl exec -it <job-pod> -- env | grep OTEL
 
 # Test connectivity
 kubectl exec -it <job-pod> -- \
-  curl http://otel-collector.kubefabric:4318/v1/traces
+  curl http://otel-collector.tensorreaper:4318/v1/traces
 ```
 
 ### High Cardinality
 
 ```bash
 # Find high cardinality labels
-kubectl exec -n kubefabric prometheus-0 -- \
+kubectl exec -n tensorreaper prometheus-0 -- \
   promtool tsdb analyze /prometheus
 
 # Solutions:
@@ -460,6 +460,6 @@ kubectl exec -n kubefabric prometheus-0 -- \
 
 ## Support
 
-- Observability Issues: https://github.com/ssahani/kube-fabric/issues
+- Observability Issues: https://github.com/ssahani/tensor-reaper/issues
 - Jaeger Docs: https://www.jaegertracing.io/docs/
 - OpenTelemetry: https://opentelemetry.io/docs/

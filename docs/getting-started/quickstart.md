@@ -1,6 +1,6 @@
 # Quick Start Guide
 
-Get KubeFabric running in minutes.
+Get TensorReaper running in minutes.
 
 ## Prerequisites
 
@@ -29,7 +29,7 @@ Deploy to any server with a Kubernetes cluster:
 
 Expected output:
 ```
-  ✅ Synced to 185.165.240.5:/root/kube-fabric
+  ✅ Synced to 185.165.240.5:/root/tensor-reaper
   ✅ Prerequisites checked
   ✅ CRDs installed
   ✅ Operators deployed
@@ -47,18 +47,18 @@ kubectl apply -f crds/
 
 Verify:
 ```bash
-kubectl get crd | grep kubefabric
-# fabricaijobs.kubefabric.ai
-# fabricgpunodes.kubefabric.ai
-# fabricnetworks.kubefabric.ai
-# fabricquotas.kubefabric.ai
-# fabricstorages.kubefabric.ai
+kubectl get crd | grep tensorreaper
+# fabricaijobs.tensorreaper.ai
+# fabricgpunodes.tensorreaper.ai
+# fabricnetworks.tensorreaper.ai
+# fabricquotas.tensorreaper.ai
+# fabricstorages.tensorreaper.ai
 ```
 
 ### 2. Create Namespace and Deploy Operators
 
 ```bash
-kubectl create namespace kubefabric
+kubectl create namespace tensorreaper
 
 # Deploy operators (storage, network, quota)
 for op in storage-operator network-operator quota-operator; do
@@ -73,18 +73,18 @@ done
 cd web-ui && npm install && npx vite build && cd ..
 
 # Build container image (podman or docker)
-podman build --network=host -t kubefabric/ui:1.0.0 -f docker/Dockerfile.ui .
+podman build --network=host -t tensorreaper/ui:1.0.0 -f docker/Dockerfile.ui .
 
 # For K3s: import image
-podman save kubefabric/ui:1.0.0 -o /tmp/kf-ui.tar
+podman save tensorreaper/ui:1.0.0 -o /tmp/kf-ui.tar
 k3s ctr images import /tmp/kf-ui.tar
-k3s ctr images tag localhost/kubefabric/ui:1.0.0 docker.io/kubefabric/ui:1.0.0
+k3s ctr images tag localhost/tensorreaper/ui:1.0.0 docker.io/tensorreaper/ui:1.0.0
 
 # Deploy
 kubectl apply -f manifests/deploy/ui-deployment.yaml
 
 # Expose as NodePort
-kubectl patch svc kubefabric-ui -n kubefabric \
+kubectl patch svc tensorreaper-ui -n tensorreaper \
   --type=merge -p '{"spec":{"type":"NodePort","ports":[{"port":80,"targetPort":80,"nodePort":30081}]}}'
 ```
 
@@ -92,32 +92,32 @@ kubectl patch svc kubefabric-ui -n kubefabric \
 
 ```bash
 # Build
-podman build --network=host -t kubefabric/api-gateway:1.0.0 \
+podman build --network=host -t tensorreaper/api-gateway:1.0.0 \
   -f services/api-gateway/Dockerfile services/api-gateway/
 
 # Import into K3s
-podman save kubefabric/api-gateway:1.0.0 -o /tmp/kf-api.tar
+podman save tensorreaper/api-gateway:1.0.0 -o /tmp/kf-api.tar
 k3s ctr images import /tmp/kf-api.tar
-k3s ctr images tag localhost/kubefabric/api-gateway:1.0.0 docker.io/kubefabric/api-gateway:1.0.0
+k3s ctr images tag localhost/tensorreaper/api-gateway:1.0.0 docker.io/tensorreaper/api-gateway:1.0.0
 
 # Deploy
 kubectl apply -f manifests/deploy/api-gateway-deployment.yaml
 
 # Set API key
-kubectl set env deployment/kubefabric-api-gateway -n kubefabric \
-  KUBEFABRIC_API_KEY=your-secure-key-here
+kubectl set env deployment/tensorreaper-api-gateway -n tensorreaper \
+  TENSORREAPER_API_KEY=your-secure-key-here
 ```
 
 ### 5. Verify
 
 ```bash
-kubectl get pods -n kubefabric
-# kubefabric-api-gateway-xxx   1/1   Running
-# kubefabric-ui-xxx            1/1   Running
+kubectl get pods -n tensorreaper
+# tensorreaper-api-gateway-xxx   1/1   Running
+# tensorreaper-ui-xxx            1/1   Running
 
-kubectl get svc -n kubefabric
-# kubefabric-api-gateway   NodePort   8080:30088/TCP
-# kubefabric-ui            NodePort   80:30081/TCP
+kubectl get svc -n tensorreaper
+# tensorreaper-api-gateway   NodePort   8080:30088/TCP
+# tensorreaper-ui            NodePort   80:30081/TCP
 ```
 
 ## Access the Dashboard
@@ -138,7 +138,7 @@ The dark-themed dashboard shows:
 
 ```yaml
 # gpu-node.yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricGpuNode
 metadata:
   name: gpu-node-01
@@ -160,7 +160,7 @@ kubectl get fabricgpunodes
 
 ```yaml
 # training-job.yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAIJob
 metadata:
   name: pytorch-test
@@ -184,7 +184,7 @@ kubectl get fabricaijobs
 
 ```yaml
 # team-quota.yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricQuota
 metadata:
   name: ml-research
@@ -214,13 +214,13 @@ kubectl get fabricquotas
 ```bash
 cd cli
 cargo build --release
-sudo cp target/release/kubefabric /usr/local/bin/
+sudo cp target/release/tensorreaper /usr/local/bin/
 
 # Usage
-kubefabric cluster
-kubefabric list jobs
-kubefabric quota --budget
-kubefabric cost --period month
+tensorreaper cluster
+tensorreaper list jobs
+tensorreaper quota --budget
+tensorreaper cost --period month
 ```
 
 ## Uninstall
@@ -230,9 +230,9 @@ kubefabric cost --period month
 ./scripts/deploy-remote.sh <host> <user> <password> --uninstall
 
 # Or manually
-kubectl delete namespace kubefabric
-kubectl delete crd fabricaijobs.kubefabric.ai fabricgpunodes.kubefabric.ai \
-  fabricnetworks.kubefabric.ai fabricquotas.kubefabric.ai fabricstorages.kubefabric.ai
+kubectl delete namespace tensorreaper
+kubectl delete crd fabricaijobs.tensorreaper.ai fabricgpunodes.tensorreaper.ai \
+  fabricnetworks.tensorreaper.ai fabricquotas.tensorreaper.ai fabricstorages.tensorreaper.ai
 ```
 
 ## Troubleshooting
@@ -257,16 +257,16 @@ podman build --network=host -t myimage .
 
 Set the API key on the gateway deployment:
 ```bash
-kubectl set env deployment/kubefabric-api-gateway -n kubefabric \
-  KUBEFABRIC_API_KEY=your-key
+kubectl set env deployment/tensorreaper-api-gateway -n tensorreaper \
+  TENSORREAPER_API_KEY=your-key
 ```
 
 ### Web UI Shows "Failed to load cluster stats"
 
 Check that the API gateway pods are running and the nginx proxy is configured:
 ```bash
-kubectl get pods -n kubefabric -l app=kubefabric-api-gateway
-kubectl logs -n kubefabric deployment/kubefabric-api-gateway
+kubectl get pods -n tensorreaper -l app=tensorreaper-api-gateway
+kubectl logs -n tensorreaper deployment/tensorreaper-api-gateway
 ```
 
 ## Next Steps

@@ -1,6 +1,6 @@
-# KubeFabric Web UI
+# TensorReaper Web UI
 
-Dark-themed React dashboard for KubeFabric GPU compute platform, inspired by hyper2kvm's design language.
+Dark-themed React dashboard for TensorReaper GPU compute platform, inspired by hyper2kvm's design language.
 
 ## Features
 
@@ -12,7 +12,7 @@ Dark-themed React dashboard for KubeFabric GPU compute platform, inspired by hyp
 - **Dark Theme** - Slate-based dark design with gradient stat cards and glow effects
 - **Responsive** - Top navbar layout with mobile hamburger menu
 - **Error Boundary** - Graceful error handling with recovery
-- **Auth Support** - Bearer token auth via `localStorage` (`kubefabric_token`) or `VITE_API_TOKEN` env var
+- **Auth Support** - Bearer token auth via `localStorage` (`tensorreaper_token`) or `VITE_API_TOKEN` env var
 - **404 Catch-All** - Unknown routes display a styled 404 page
 
 ## Design System
@@ -48,7 +48,7 @@ npm run lint    # ESLint check
 
 ## API
 
-The UI communicates through the KubeFabric API Gateway (not directly to the Kubernetes API):
+The UI communicates through the TensorReaper API Gateway (not directly to the Kubernetes API):
 
 | Endpoint | Description |
 |----------|-------------|
@@ -75,7 +75,7 @@ Typed API responses include `ClusterStats`, `GPUMetricsResponse`, and `CostData`
 
 ```bash
 # Build Docker image
-docker build -t kubefabric-ui:1.0.0 -f docker/Dockerfile.ui .
+docker build -t tensorreaper-ui:1.0.0 -f docker/Dockerfile.ui .
 
 # Deploy to Kubernetes
 kubectl apply -f manifests/deploy/ui-deployment.yaml

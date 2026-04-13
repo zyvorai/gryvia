@@ -47,7 +47,7 @@
 
 - name: Ensure kernel modules load on boot
   copy:
-    dest: /etc/modules-load.d/kubefabric.conf
+    dest: /etc/modules-load.d/tensorreaper.conf
     content: |
       overlay
       br_netfilter

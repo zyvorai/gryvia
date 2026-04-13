@@ -1,6 +1,6 @@
 # Apache Airflow Integration
 
-Orchestrate ML data pipelines with Apache Airflow and KubeFabric.
+Orchestrate ML data pipelines with Apache Airflow and TensorReaper.
 
 ## Overview
 
@@ -15,7 +15,7 @@ Orchestrate ML data pipelines with Apache Airflow and KubeFabric.
          │              │              │
          ↓              ↓              ↓
 ┌────────────────────────────────────────────────────────┐
-│              KubeFabric Cluster                        │
+│              TensorReaper Cluster                        │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐            │
 │  │   CPU    │  │  1x GPU  │  │  8x GPU  │            │
 │  │   Pod    │  │   Job    │  │   Job    │            │
@@ -26,7 +26,7 @@ Orchestrate ML data pipelines with Apache Airflow and KubeFabric.
 ## Features
 
 - **GPU-Aware Scheduling**: Schedule tasks to GPU nodes
-- **KubeFabric Integration**: Submit jobs via FabricAIJob CRD
+- **TensorReaper Integration**: Submit jobs via FabricAIJob CRD
 - **Data Validation**: Validate datasets before training
 - **Cost Tracking**: Track pipeline costs
 - **MLflow Integration**: Auto-register models
@@ -91,7 +91,7 @@ preprocess = KubernetesPodOperator(
     resources={
         'limit_nvidia.com/gpu': '1'
     },
-    node_selector={'kubefabric.ai/gpu-type': 'T4'},
+    node_selector={'tensorreaper.ai/gpu-type': 'T4'},
     dag=dag,
 )
 
@@ -105,7 +105,7 @@ train = KubernetesPodOperator(
     resources={
         'limit_nvidia.com/gpu': '8'
     },
-    node_selector={'kubefabric.ai/gpu-type': 'A100-80G'},
+    node_selector={'tensorreaper.ai/gpu-type': 'A100-80G'},
     dag=dag,
 )
 
@@ -188,18 +188,18 @@ for i, config in enumerate(configs):
     generate >> train_task
 ```
 
-## KubeFabric Integration
+## TensorReaper Integration
 
 ### Submit FabricAIJob from Airflow
 
 ```python
 from kubernetes import client, config
 
-def submit_kubefabric_job(**context):
+def submit_tensorreaper_job(**context):
     config.load_incluster_config()
 
     job_spec = {
-        'apiVersion': 'kubefabric.ai/v1',
+        'apiVersion': 'tensorreaper.ai/v1',
         'kind': 'FabricAIJob',
         'metadata': {
             'name': 'airflow-training',
@@ -218,7 +218,7 @@ def submit_kubefabric_job(**context):
 
     api = client.CustomObjectsApi()
     api.create_namespaced_custom_object(
-        group='kubefabric.ai',
+        group='tensorreaper.ai',
         version='v1',
         namespace='default',
         plural='fabricaijobs',
@@ -229,7 +229,7 @@ def submit_kubefabric_job(**context):
 
 submit_job = PythonOperator(
     task_id='submit_job',
-    python_callable=submit_kubefabric_job,
+    python_callable=submit_tensorreaper_job,
     dag=dag,
 )
 ```
@@ -244,7 +244,7 @@ def check_job_status(**context):
     api = client.CustomObjectsApi()
 
     job = api.get_namespaced_custom_object(
-        group='kubefabric.ai',
+        group='tensorreaper.ai',
         version='v1',
         namespace='default',
         plural='fabricaijobs',
@@ -276,7 +276,7 @@ def calculate_cost(**context):
     # Get job metrics
     api = client.CustomObjectsApi()
     job = api.get_namespaced_custom_object(
-        group='kubefabric.ai',
+        group='tensorreaper.ai',
         version='v1',
         namespace='default',
         plural='fabricaijobs',
@@ -428,4 +428,4 @@ See `services/airflow/examples/` for:
 ## Support
 
 - Airflow Docs: https://airflow.apache.org/docs/
-- KubeFabric Issues: https://github.com/ssahani/kube-fabric/issues
+- TensorReaper Issues: https://github.com/ssahani/tensor-reaper/issues

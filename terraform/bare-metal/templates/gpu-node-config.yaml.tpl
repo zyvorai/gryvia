@@ -1,4 +1,4 @@
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricGpuNode
 metadata:
   name: ${node_name}
@@ -16,9 +16,9 @@ spec:
     enabled: true
     intervalSeconds: 60
   labels:
-    kubefabric.ai/gpu: "${gpu_type}"
-    kubefabric.ai/gpu-count: "${gpu_count}"
-    kubefabric.ai/rdma: "${rdma_enabled}"
+    tensorreaper.ai/gpu: "${gpu_type}"
+    tensorreaper.ai/gpu-count: "${gpu_count}"
+    tensorreaper.ai/rdma: "${rdma_enabled}"
     %{ if rdma_enabled }
-    kubefabric.ai/rdma-device: "${rdma_device}"
+    tensorreaper.ai/rdma-device: "${rdma_device}"
     %{ endif }

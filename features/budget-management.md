@@ -4,7 +4,7 @@ Advanced budget management with cost controls, alerts, and forecasting.
 
 ## Overview
 
-KubeFabric provides sophisticated budget management to control GPU compute costs:
+TensorReaper provides sophisticated budget management to control GPU compute costs:
 
 - **Flexible Periods**: Daily, weekly, monthly, quarterly, annual
 - **Multi-Dimensional Limits**: Cost, GPU hours, job count, concurrent resources
@@ -19,7 +19,7 @@ KubeFabric provides sophisticated budget management to control GPU compute costs
 ### Create a Monthly Team Budget
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricBudget
 metadata:
   name: ml-team-budget
@@ -295,7 +295,7 @@ priority:
 
 Submit high-priority job:
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAIJob
 metadata:
   name: critical-job
@@ -444,17 +444,17 @@ kfctl budget efficiency --team ml-research
 
 ### Email Alerts
 
-Configure SMTP in KubeFabric:
+Configure SMTP in TensorReaper:
 
 ```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: kubefabric-config
+  name: tensorreaper-config
 data:
   smtp_host: smtp.company.com
   smtp_port: "587"
-  smtp_from: kubefabric@company.com
+  smtp_from: tensorreaper@company.com
 ```
 
 ### Slack Integration
@@ -463,7 +463,7 @@ data:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: kubefabric-slack
+  name: tensorreaper-slack
 type: Opaque
 stringData:
   webhook_url: https://hooks.slack.com/services/YOUR/WEBHOOK/URL
@@ -578,7 +578,7 @@ kfctl budget override \
 
 ```bash
 # Check budget controller logs
-kubectl logs -n kubefabric deploy/budget-controller
+kubectl logs -n tensorreaper deploy/budget-controller
 
 # Verify budget is enabled
 kubectl get fabricbudget my-budget -o yaml | grep enforcement
@@ -602,7 +602,7 @@ kubectl get fabricbudget my-budget \
 ```yaml
 # Organization-wide annual budget
 ---
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricBudget
 metadata:
   name: org-annual
@@ -613,7 +613,7 @@ spec:
 
 # Department quarterly budgets
 ---
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricBudget
 metadata:
   name: ml-dept-q1
@@ -624,7 +624,7 @@ spec:
 
 # Team monthly budgets
 ---
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricBudget
 metadata:
   name: ml-research-monthly
@@ -635,7 +635,7 @@ spec:
 
 # User daily budgets
 ---
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricBudget
 metadata:
   name: alice-daily
@@ -668,19 +668,19 @@ kfctl budget chargeback --month 2024-01 --output chargeback.csv
     {
       "title": "Budget Utilization",
       "targets": [{
-        "expr": "kubefabric_budget_utilization_percent"
+        "expr": "tensorreaper_budget_utilization_percent"
       }]
     },
     {
       "title": "Budgets by State",
       "targets": [{
-        "expr": "sum(kubefabric_budget_state) by (state)"
+        "expr": "sum(tensorreaper_budget_state) by (state)"
       }]
     },
     {
       "title": "Projected Budget Exhaustion",
       "targets": [{
-        "expr": "kubefabric_budget_days_until_exhaustion"
+        "expr": "tensorreaper_budget_days_until_exhaustion"
       }]
     }
   ]
@@ -694,17 +694,17 @@ groups:
   - name: budget_alerts
     rules:
       - alert: BudgetExceeded
-        expr: kubefabric_budget_utilization_percent > 100
+        expr: tensorreaper_budget_utilization_percent > 100
         annotations:
           summary: "Budget {{ $labels.budget }} exceeded"
 
       - alert: BudgetNearlyExhausted
-        expr: kubefabric_budget_days_until_exhaustion < 5
+        expr: tensorreaper_budget_days_until_exhaustion < 5
         annotations:
           summary: "Budget {{ $labels.budget }} will be exhausted in < 5 days"
 ```
 
 ## Support
 
-- Budget Issues: https://github.com/ssahani/kube-fabric/issues
-- Finance Integration: https://github.com/ssahani/kube-fabric/discussions
+- Budget Issues: https://github.com/ssahani/tensor-reaper/issues
+- Finance Integration: https://github.com/ssahani/tensor-reaper/discussions

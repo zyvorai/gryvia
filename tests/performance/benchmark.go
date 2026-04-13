@@ -51,7 +51,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Println("KubeFabric Performance Benchmark")
+	fmt.Println("TensorReaper Performance Benchmark")
 	fmt.Println("=================================")
 
 	// Run benchmarks
@@ -91,7 +91,7 @@ func main() {
 
 func benchmarkSequentialSubmission(count int) BenchmarkResult {
 	ctx := context.Background()
-	namespace := "kubefabric-bench"
+	namespace := "tensorreaper-bench"
 
 	startTime := time.Now()
 	metrics := []JobMetrics{}
@@ -107,7 +107,7 @@ func benchmarkSequentialSubmission(count int) BenchmarkResult {
 
 func benchmarkParallelSubmission(count, parallelism int) BenchmarkResult {
 	ctx := context.Background()
-	namespace := "kubefabric-bench"
+	namespace := "tensorreaper-bench"
 
 	startTime := time.Now()
 	metrics := []JobMetrics{}
@@ -140,7 +140,7 @@ func benchmarkParallelSubmission(count, parallelism int) BenchmarkResult {
 
 func benchmarkBurstSubmission(count int) BenchmarkResult {
 	ctx := context.Background()
-	namespace := "kubefabric-bench"
+	namespace := "tensorreaper-bench"
 
 	startTime := time.Now()
 	metrics := []JobMetrics{}
@@ -171,7 +171,7 @@ func benchmarkBurstSubmission(count int) BenchmarkResult {
 
 func benchmarkLargeScale(count, parallelism int) BenchmarkResult {
 	ctx := context.Background()
-	namespace := "kubefabric-bench"
+	namespace := "tensorreaper-bench"
 
 	startTime := time.Now()
 	metrics := []JobMetrics{}
@@ -204,7 +204,7 @@ func benchmarkLargeScale(count, parallelism int) BenchmarkResult {
 
 func submitAndTrackJob(ctx context.Context, namespace, jobName string) JobMetrics {
 	gvr := schema.GroupVersionResource{
-		Group:    "kubefabric.ai",
+		Group:    "tensorreaper.ai",
 		Version:  "v1",
 		Resource: "fabricaijobs",
 	}
@@ -217,7 +217,7 @@ func submitAndTrackJob(ctx context.Context, namespace, jobName string) JobMetric
 
 	job := &unstructured.Unstructured{
 		Object: map[string]interface{}{
-			"apiVersion": "kubefabric.ai/v1",
+			"apiVersion": "tensorreaper.ai/v1",
 			"kind":       "FabricAIJob",
 			"metadata": map[string]interface{}{
 				"name":      jobName,

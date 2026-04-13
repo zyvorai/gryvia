@@ -12,22 +12,22 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	kubefabricv1 "github.com/ssahani/kube-fabric/operators/ai-operator/api/v1"
+	tensorreaperv1 "github.com/ssahani/tensor-reaper/operators/ai-operator/api/v1"
 )
 
 // CollectedProvenance holds provenance data gathered from related CRs
 type CollectedProvenance struct {
 	// Infrastructure details gathered from the cluster
-	Infrastructure kubefabricv1.InfrastructureProvenance
+	Infrastructure tensorreaperv1.InfrastructureProvenance
 
 	// Training details gathered from the FabricAIJob
-	Training kubefabricv1.TrainingProvenance
+	Training tensorreaperv1.TrainingProvenance
 
 	// Events gathered from the FabricAIJob
-	Events kubefabricv1.EventsProvenance
+	Events tensorreaperv1.EventsProvenance
 
 	// Code provenance gathered from the job container image
-	Code kubefabricv1.CodeProvenance
+	Code tensorreaperv1.CodeProvenance
 
 	// JobFound indicates whether the referenced job was found
 	JobFound bool
@@ -48,7 +48,7 @@ func NewCollector(c client.Client) *Collector {
 
 // CollectProvenance gathers provenance data from the referenced FabricAIJob
 // and related cluster resources.
-func (c *Collector) CollectProvenance(ctx context.Context, lineage *kubefabricv1.FabricModelLineage) (*CollectedProvenance, error) {
+func (c *Collector) CollectProvenance(ctx context.Context, lineage *tensorreaperv1.FabricModelLineage) (*CollectedProvenance, error) {
 	logger := log.FromContext(ctx)
 	result := &CollectedProvenance{}
 
@@ -59,7 +59,7 @@ func (c *Collector) CollectProvenance(ctx context.Context, lineage *kubefabricv1
 	}
 
 	// Fetch the referenced FabricAIJob
-	job := &kubefabricv1.FabricAIJob{}
+	job := &tensorreaperv1.FabricAIJob{}
 	err := c.Get(ctx, types.NamespacedName{
 		Name:      jobRef,
 		Namespace: lineage.Namespace,
@@ -91,8 +91,8 @@ func (c *Collector) CollectProvenance(ctx context.Context, lineage *kubefabricv1
 }
 
 // collectInfrastructure gathers infrastructure details from a FabricAIJob
-func (c *Collector) collectInfrastructure(job *kubefabricv1.FabricAIJob) kubefabricv1.InfrastructureProvenance {
-	infra := kubefabricv1.InfrastructureProvenance{
+func (c *Collector) collectInfrastructure(job *tensorreaperv1.FabricAIJob) tensorreaperv1.InfrastructureProvenance {
+	infra := tensorreaperv1.InfrastructureProvenance{
 		GPUNodes:    job.Status.NodesAllocated,
 		NetworkType: job.Spec.Network,
 		StorageBackend: job.Spec.Storage,
@@ -114,8 +114,8 @@ func (c *Collector) collectInfrastructure(job *kubefabricv1.FabricAIJob) kubefab
 }
 
 // collectTraining gathers training configuration from a FabricAIJob
-func (c *Collector) collectTraining(job *kubefabricv1.FabricAIJob, lineage *kubefabricv1.FabricModelLineage) kubefabricv1.TrainingProvenance {
-	training := kubefabricv1.TrainingProvenance{
+func (c *Collector) collectTraining(job *tensorreaperv1.FabricAIJob, lineage *tensorreaperv1.FabricModelLineage) tensorreaperv1.TrainingProvenance {
+	training := tensorreaperv1.TrainingProvenance{
 		JobRef: job.Name,
 	}
 
@@ -141,7 +141,7 @@ func (c *Collector) collectTraining(job *kubefabricv1.FabricAIJob, lineage *kube
 }
 
 // collectCode gathers code provenance from a FabricAIJob
-func (c *Collector) collectCode(job *kubefabricv1.FabricAIJob, lineage *kubefabricv1.FabricModelLineage) kubefabricv1.CodeProvenance {
+func (c *Collector) collectCode(job *tensorreaperv1.FabricAIJob, lineage *tensorreaperv1.FabricModelLineage) tensorreaperv1.CodeProvenance {
 	code := lineage.Spec.Provenance.Code
 
 	// Auto-fill container image from the job spec if not already set
@@ -153,13 +153,13 @@ func (c *Collector) collectCode(job *kubefabricv1.FabricAIJob, lineage *kubefabr
 }
 
 // collectEvents gathers event data from a FabricAIJob
-func (c *Collector) collectEvents(job *kubefabricv1.FabricAIJob) kubefabricv1.EventsProvenance {
-	events := kubefabricv1.EventsProvenance{}
+func (c *Collector) collectEvents(job *tensorreaperv1.FabricAIJob) tensorreaperv1.EventsProvenance {
+	events := tensorreaperv1.EventsProvenance{}
 
 	// Detect anomalies from job conditions
 	for _, condition := range job.Status.Conditions {
 		if condition.Status == "False" && condition.Reason != "" {
-			events.Anomalies = append(events.Anomalies, kubefabricv1.AnomalyEvent{
+			events.Anomalies = append(events.Anomalies, tensorreaperv1.AnomalyEvent{
 				Timestamp:   condition.LastTransitionTime,
 				Type:        condition.Type,
 				Description: condition.Message,
@@ -173,7 +173,7 @@ func (c *Collector) collectEvents(job *kubefabricv1.FabricAIJob) kubefabricv1.Ev
 		if job.Status.StartTime != nil {
 			ts = *job.Status.StartTime
 		}
-		events.Interventions = append(events.Interventions, kubefabricv1.InterventionEvent{
+		events.Interventions = append(events.Interventions, tensorreaperv1.InterventionEvent{
 			Timestamp: ts,
 			Action:    fmt.Sprintf("Retried %d times", job.Status.Retries),
 			Reason:    "Automatic retry on failure",
@@ -185,12 +185,12 @@ func (c *Collector) collectEvents(job *kubefabricv1.FabricAIJob) kubefabricv1.Ev
 
 // ComputeProvenanceHash computes a SHA256 hash of the lineage provenance data.
 // When cryptographic chaining is enabled, it incorporates the previous hash.
-func ComputeProvenanceHash(lineage *kubefabricv1.FabricModelLineage, previousHash string) (string, error) {
+func ComputeProvenanceHash(lineage *tensorreaperv1.FabricModelLineage, previousHash string) (string, error) {
 	// Build a canonical representation of the provenance
 	provenanceData := struct {
-		Model      kubefabricv1.ModelIdentity  `json:"model"`
-		Provenance kubefabricv1.ProvenanceSpec `json:"provenance"`
-		Compliance kubefabricv1.ComplianceSpec `json:"compliance"`
+		Model      tensorreaperv1.ModelIdentity  `json:"model"`
+		Provenance tensorreaperv1.ProvenanceSpec `json:"provenance"`
+		Compliance tensorreaperv1.ComplianceSpec `json:"compliance"`
 		PrevHash   string                      `json:"prevHash,omitempty"`
 	}{
 		Model:      lineage.Spec.Model,
@@ -212,7 +212,7 @@ func ComputeProvenanceHash(lineage *kubefabricv1.FabricModelLineage, previousHas
 }
 
 // EvaluateCompliance evaluates compliance status based on the lineage spec
-func EvaluateCompliance(lineage *kubefabricv1.FabricModelLineage) string {
+func EvaluateCompliance(lineage *tensorreaperv1.FabricModelLineage) string {
 	if len(lineage.Spec.Compliance.RegulatoryFramework) == 0 {
 		return "Compliant"
 	}
@@ -262,7 +262,7 @@ func EvaluateCompliance(lineage *kubefabricv1.FabricModelLineage) string {
 }
 
 // CheckLineageCompleteness determines if all required provenance data is present
-func CheckLineageCompleteness(lineage *kubefabricv1.FabricModelLineage) bool {
+func CheckLineageCompleteness(lineage *tensorreaperv1.FabricModelLineage) bool {
 	// Model identity must be complete
 	if lineage.Spec.Model.Name == "" || lineage.Spec.Model.Version == "" {
 		return false
@@ -287,7 +287,7 @@ func CheckLineageCompleteness(lineage *kubefabricv1.FabricModelLineage) bool {
 }
 
 // CheckReproducibility checks if the model can be reproduced from recorded provenance
-func CheckReproducibility(lineage *kubefabricv1.FabricModelLineage) bool {
+func CheckReproducibility(lineage *tensorreaperv1.FabricModelLineage) bool {
 	// Need code commit
 	if lineage.Spec.Provenance.Code.GitCommit == "" {
 		return false

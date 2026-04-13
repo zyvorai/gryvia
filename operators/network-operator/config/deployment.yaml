@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: network-operator
-  namespace: kubefabric
+  namespace: tensorreaper
   labels:
     app: network-operator
 spec:
@@ -22,7 +22,7 @@ spec:
           type: RuntimeDefault
       containers:
       - name: manager
-        image: kubefabric/network-operator:1.0.0
+        image: tensorreaper/network-operator:1.0.0
         imagePullPolicy: IfNotPresent
         command:
         - /manager
@@ -59,17 +59,17 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: network-operator
-  namespace: kubefabric
+  namespace: tensorreaper
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: network-operator-role
 rules:
-- apiGroups: ["kubefabric.ai"]
+- apiGroups: ["tensorreaper.ai"]
   resources: ["fabricnetworks"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-- apiGroups: ["kubefabric.ai"]
+- apiGroups: ["tensorreaper.ai"]
   resources: ["fabricnetworks/status"]
   verbs: ["get", "update", "patch"]
 - apiGroups: [""]
@@ -96,4 +96,4 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: network-operator
-  namespace: kubefabric
+  namespace: tensorreaper

@@ -126,7 +126,7 @@ func (to *TopologyOptimizer) OptimizePlacement(gpuCount int, gpuType string) ([]
 
 	// Get all GPU nodes
 	nodes, err := to.clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{
-		LabelSelector: "kubefabric.ai/gpu",
+		LabelSelector: "tensorreaper.ai/gpu",
 	})
 	if err != nil {
 		return nil, err

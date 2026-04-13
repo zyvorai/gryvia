@@ -3,9 +3,9 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: fabriccheckpointguards.kubefabric.ai
+  name: fabriccheckpointguards.tensorreaper.ai
 spec:
-  group: kubefabric.ai
+  group: tensorreaper.ai
   versions:
     - name: v1
       served: true
@@ -219,7 +219,7 @@ spec:
 
 ---
 # Example: Checkpoint guard for LLM training
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricCheckpointGuard
 metadata:
   name: llm-training-guard
@@ -227,8 +227,8 @@ metadata:
 spec:
   jobSelector:
     matchLabels:
-      kubefabric.ai/team: ml-research
-      kubefabric.ai/type: training
+      tensorreaper.ai/team: ml-research
+      tensorreaper.ai/type: training
 
   checkpointPolicy:
     intervalMinutes: 15

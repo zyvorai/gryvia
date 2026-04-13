@@ -1,7 +1,7 @@
 variable "cluster_name" {
-  description = "Name of the KubeFabric cluster"
+  description = "Name of the TensorReaper cluster"
   type        = string
-  default     = "kubefabric-baremetal"
+  default     = "tensorreaper-baremetal"
 }
 
 variable "control_plane_endpoint" {
@@ -82,7 +82,7 @@ variable "storage_endpoint" {
 variable "storage_mountpath" {
   description = "Storage mount path on nodes"
   type        = string
-  default     = "/mnt/kubefabric-storage"
+  default     = "/mnt/tensorreaper-storage"
 }
 
 variable "storage_rdma_enabled" {

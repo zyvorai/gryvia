@@ -2,11 +2,11 @@ use anyhow::{Context, Result};
 use kube::api::{Api, ListParams};
 use colored::*;
 
-use crate::client::KubeFabricClient;
+use crate::client::TensorReaperClient;
 use crate::types::*;
 use crate::display;
 
-pub async fn execute(client: &KubeFabricClient, team: Option<String>, budget: bool) -> Result<()> {
+pub async fn execute(client: &TensorReaperClient, team: Option<String>, budget: bool) -> Result<()> {
     let api: Api<FabricQuota> = Api::all(client.kube_client.clone());
 
     let quotas = api.list(&ListParams::default()).await

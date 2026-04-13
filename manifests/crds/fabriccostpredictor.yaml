@@ -3,9 +3,9 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: fabriccostpredictors.kubefabric.ai
+  name: fabriccostpredictors.tensorreaper.ai
 spec:
-  group: kubefabric.ai
+  group: tensorreaper.ai
   versions:
     - name: v1
       served: true
@@ -235,7 +235,7 @@ spec:
 
 ---
 # Example: Cost Predictor
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricCostPredictor
 metadata:
   name: default-predictor

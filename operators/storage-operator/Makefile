@@ -1,4 +1,4 @@
-IMG ?= kubefabric/storage-operator:latest
+IMG ?= tensorreaper/storage-operator:latest
 
 .PHONY: all
 all: build

@@ -4,12 +4,12 @@ use kube::api::{Api, ListParams};
 use prettytable::{Table, Row, Cell, format};
 use tokio::time::{sleep, Duration};
 
-use crate::client::KubeFabricClient;
+use crate::client::TensorReaperClient;
 use crate::types::*;
 use crate::display;
 
 pub async fn execute(
-    client: &KubeFabricClient,
+    client: &TensorReaperClient,
     name: Option<String>,
     watch: Option<u64>,
 ) -> Result<()> {
@@ -31,7 +31,7 @@ pub async fn execute(
     Ok(())
 }
 
-async fn show_queue(client: &KubeFabricClient, name: &Option<String>) -> Result<()> {
+async fn show_queue(client: &TensorReaperClient, name: &Option<String>) -> Result<()> {
     let api: Api<FabricAIJob> = Api::all(client.kube_client.clone());
 
     let jobs = api.list(&ListParams::default()).await

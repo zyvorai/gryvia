@@ -9,7 +9,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kubefabricv1 "github.com/ssahani/kube-fabric/operators/ai-operator/api/v1"
+	tensorreaperv1 "github.com/ssahani/tensor-reaper/operators/ai-operator/api/v1"
 )
 
 // NodeScore represents a node with its scheduling score
@@ -19,7 +19,7 @@ type NodeScore struct {
 }
 
 // FindOptimalNodes finds the best nodes for running an AI job
-func FindOptimalNodes(ctx context.Context, k8sClient client.Client, job *kubefabricv1.FabricAIJob) ([]string, error) {
+func FindOptimalNodes(ctx context.Context, k8sClient client.Client, job *tensorreaperv1.FabricAIJob) ([]string, error) {
 	// Get all nodes
 	nodes := &corev1.NodeList{}
 	if err := k8sClient.List(ctx, nodes); err != nil {
@@ -104,7 +104,7 @@ func calculateGPUUsagePerNode(pods []corev1.Pod) map[string]int64 {
 }
 
 // filterNodes filters nodes based on job requirements and GPU availability
-func filterNodes(nodes []corev1.Node, job *kubefabricv1.FabricAIJob, gpuUsage map[string]int64, gpusNeeded int32) []corev1.Node {
+func filterNodes(nodes []corev1.Node, job *tensorreaperv1.FabricAIJob, gpuUsage map[string]int64, gpusNeeded int32) []corev1.Node {
 	var eligible []corev1.Node
 
 	for _, node := range nodes {
@@ -115,21 +115,21 @@ func filterNodes(nodes []corev1.Node, job *kubefabricv1.FabricAIJob, gpuUsage ma
 
 		// Check GPU type if specified
 		if job.Spec.GpuType != "" && job.Spec.GpuType != "any" {
-			if gpuType, exists := node.Labels["kubefabric.ai/gpu"]; !exists || gpuType != job.Spec.GpuType {
+			if gpuType, exists := node.Labels["tensorreaper.ai/gpu"]; !exists || gpuType != job.Spec.GpuType {
 				continue
 			}
 		}
 
 		// Check RDMA requirement
 		if job.Spec.Network == "rdma" {
-			if rdma, exists := node.Labels["kubefabric.ai/rdma"]; !exists || rdma != "true" {
+			if rdma, exists := node.Labels["tensorreaper.ai/rdma"]; !exists || rdma != "true" {
 				continue
 			}
 		}
 
 		// Check SR-IOV requirement
 		if job.Spec.Network == "sriov" {
-			if sriov, exists := node.Labels["kubefabric.ai/sriov"]; !exists || sriov != "true" {
+			if sriov, exists := node.Labels["tensorreaper.ai/sriov"]; !exists || sriov != "true" {
 				continue
 			}
 		}
@@ -152,13 +152,13 @@ func filterNodes(nodes []corev1.Node, job *kubefabricv1.FabricAIJob, gpuUsage ma
 }
 
 // getAvailableGPUs returns the number of GPUs available on a node.
-// It checks both the kubefabric.ai/gpu-count label and the
+// It checks both the tensorreaper.ai/gpu-count label and the
 // nvidia.com/gpu allocatable resource, then subtracts current usage.
 func getAvailableGPUs(node corev1.Node, gpuUsage map[string]int64) int64 {
 	var totalGPUs int64
 
-	// First try the kubefabric label (set by the GPU operator)
-	if countStr, exists := node.Labels["kubefabric.ai/gpu-count"]; exists {
+	// First try the tensorreaper label (set by the GPU operator)
+	if countStr, exists := node.Labels["tensorreaper.ai/gpu-count"]; exists {
 		if count, err := strconv.ParseInt(countStr, 10, 64); err == nil {
 			totalGPUs = count
 		}
@@ -179,7 +179,7 @@ func getAvailableGPUs(node corev1.Node, gpuUsage map[string]int64) int64 {
 }
 
 // scoreNodes assigns a score to each node based on various factors
-func scoreNodes(nodes []corev1.Node, job *kubefabricv1.FabricAIJob, gpuUsage map[string]int64) []NodeScore {
+func scoreNodes(nodes []corev1.Node, job *tensorreaperv1.FabricAIJob, gpuUsage map[string]int64) []NodeScore {
 	scored := make([]NodeScore, len(nodes))
 
 	for i, node := range nodes {
@@ -187,21 +187,21 @@ func scoreNodes(nodes []corev1.Node, job *kubefabricv1.FabricAIJob, gpuUsage map
 
 		// Prefer nodes with matching GPU type
 		if job.Spec.GpuType != "" {
-			if gpuType, exists := node.Labels["kubefabric.ai/gpu"]; exists && gpuType == job.Spec.GpuType {
+			if gpuType, exists := node.Labels["tensorreaper.ai/gpu"]; exists && gpuType == job.Spec.GpuType {
 				score += 50
 			}
 		}
 
 		// Prefer nodes with RDMA if requested
 		if job.Spec.Network == "rdma" {
-			if rdma, exists := node.Labels["kubefabric.ai/rdma"]; exists && rdma == "true" {
+			if rdma, exists := node.Labels["tensorreaper.ai/rdma"]; exists && rdma == "true" {
 				score += 30
 			}
 		}
 
 		// Prefer nodes with NVLink/NVSwitch for multi-GPU jobs
 		if job.Spec.GPUs > 1 {
-			if interconnect, exists := node.Labels["kubefabric.ai/interconnect"]; exists {
+			if interconnect, exists := node.Labels["tensorreaper.ai/interconnect"]; exists {
 				if interconnect == "NVSwitch" {
 					score += 40
 				} else if interconnect == "NVLink" {
@@ -214,8 +214,8 @@ func scoreNodes(nodes []corev1.Node, job *kubefabricv1.FabricAIJob, gpuUsage map
 		availableGPUs := getAvailableGPUs(node, gpuUsage)
 		score += int(availableGPUs) * 5
 
-		// Score based on GPU memory (from kubefabric label)
-		if memStr, exists := node.Labels["kubefabric.ai/gpu-memory"]; exists {
+		// Score based on GPU memory (from tensorreaper label)
+		if memStr, exists := node.Labels["tensorreaper.ai/gpu-memory"]; exists {
 			if memGB, err := strconv.ParseInt(memStr, 10, 64); err == nil {
 				score += int(memGB / 10) // 1 point per 10GB GPU memory
 			}

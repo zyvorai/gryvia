@@ -1,4 +1,4 @@
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricQuota
 metadata:
   name: team-nlp
@@ -27,5 +27,5 @@ kind: Namespace
 metadata:
   name: nlp-training
   labels:
-    kubefabric.ai/team: nlp
-    kubefabric.ai/quota: team-nlp
+    tensorreaper.ai/team: nlp
+    tensorreaper.ai/quota: team-nlp

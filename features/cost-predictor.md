@@ -17,7 +17,7 @@ FabricCostPredictor analyzes historical job data to provide accurate estimates f
 ### Create a Cost Predictor
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricCostPredictor
 metadata:
   name: default-predictor
@@ -75,12 +75,12 @@ kubectl apply -f cost-predictor.yaml
 Submit a job with the dry-run annotation to get an estimate without running it:
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAIJob
 metadata:
   name: llm-training-estimate
   annotations:
-    kubefabric.ai/dry-run: "true"
+    tensorreaper.ai/dry-run: "true"
 spec:
   type: training
   model: llama-70b
@@ -98,14 +98,14 @@ kubectl get fabricaijob llm-training-estimate -o jsonpath='{.metadata.annotation
 Output:
 ```json
 {
-  "kubefabric.ai/dry-run": "true",
-  "kubefabric.ai/estimated-cost": "384.00",
-  "kubefabric.ai/estimated-duration": "6h0m0s",
-  "kubefabric.ai/estimated-queue-wait": "12m30s",
-  "kubefabric.ai/cost-confidence": "0.75",
-  "kubefabric.ai/alternative-gpu": "A100-80G",
-  "kubefabric.ai/alternative-cost": "192.00",
-  "kubefabric.ai/potential-savings": "192.00"
+  "tensorreaper.ai/dry-run": "true",
+  "tensorreaper.ai/estimated-cost": "384.00",
+  "tensorreaper.ai/estimated-duration": "6h0m0s",
+  "tensorreaper.ai/estimated-queue-wait": "12m30s",
+  "tensorreaper.ai/cost-confidence": "0.75",
+  "tensorreaper.ai/alternative-gpu": "A100-80G",
+  "tensorreaper.ai/alternative-cost": "192.00",
+  "tensorreaper.ai/potential-savings": "192.00"
 }
 ```
 
@@ -327,5 +327,5 @@ Status fields:
 
 ## Support
 
-- Issues: https://github.com/ssahani/kube-fabric/issues
-- Discussions: https://github.com/ssahani/kube-fabric/discussions
+- Issues: https://github.com/ssahani/tensor-reaper/issues
+- Discussions: https://github.com/ssahani/tensor-reaper/discussions

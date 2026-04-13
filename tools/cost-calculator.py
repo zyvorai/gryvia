@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-KubeFabric Cost Calculator
+TensorReaper Cost Calculator
 Analyzes job history and provides cost projections
 """
 
@@ -35,7 +35,7 @@ class CostCalculator:
         """Get all jobs from the last N days"""
         try:
             jobs = self.api.list_namespaced_custom_object(
-                group="kubefabric.ai",
+                group="tensorreaper.ai",
                 version="v1",
                 namespace=namespace,
                 plural="fabricaijobs"
@@ -161,7 +161,7 @@ class CostCalculator:
 def print_report(analysis, projection):
     """Print formatted cost report"""
     print("\n" + "=" * 80)
-    print(" " * 25 + "KUBEFABRIC COST REPORT")
+    print(" " * 25 + "TENSORREAPER COST REPORT")
     print("=" * 80)
 
     print(f"\nGenerated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -212,7 +212,7 @@ def print_report(analysis, projection):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="KubeFabric Cost Calculator")
+    parser = argparse.ArgumentParser(description="TensorReaper Cost Calculator")
     parser.add_argument("--namespace", "-n", default="default", help="Kubernetes namespace")
     parser.add_argument("--days", "-d", type=int, default=30, help="Number of days to analyze")
     parser.add_argument("--output", "-o", help="Output file (JSON)")

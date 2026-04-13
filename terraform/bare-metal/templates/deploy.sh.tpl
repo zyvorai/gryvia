@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "$${BASH_SOURCE[0]}")" && pwd)"
 ANSIBLE_DIR="$SCRIPT_DIR/../../ansible"
 
 echo "========================================="
-echo "KubeFabric Bare Metal Deployment"
+echo "TensorReaper Bare Metal Deployment"
 echo "Cluster: $CLUSTER_NAME"
 echo "========================================="
 

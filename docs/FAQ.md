@@ -1,27 +1,27 @@
 # Frequently Asked Questions
 
-Common questions about KubeFabric and GPU infrastructure management.
+Common questions about TensorReaper and GPU infrastructure management.
 
 ## General
 
-### What is KubeFabric?
+### What is TensorReaper?
 
-KubeFabric is an enterprise-grade GPU compute platform for AI/ML infrastructure. It provides:
+TensorReaper is an enterprise-grade GPU compute platform for AI/ML infrastructure. It provides:
 - GPU resource management and scheduling
 - Cost optimization and budget controls
 - Multi-tenancy with quotas
 - Advanced features like job dependencies, auto-scaling, and health monitoring
 
-### Who should use KubeFabric?
+### Who should use TensorReaper?
 
 - **ML Engineers**: Submit training jobs, manage experiments
 - **Platform Teams**: Manage GPU infrastructure at scale
 - **Finance**: Track and optimize GPU compute costs
 - **Executives**: Get insights and forecasts on GPU utilization
 
-### How is KubeFabric different from Kubeflow?
+### How is TensorReaper different from Kubeflow?
 
-| Feature | KubeFabric | Kubeflow |
+| Feature | TensorReaper | Kubeflow |
 |---------|-----------|----------|
 | Focus | GPU infrastructure management | ML pipelines |
 | Multi-tenancy | Built-in with quotas | Basic |
@@ -30,7 +30,7 @@ KubeFabric is an enterprise-grade GPU compute platform for AI/ML infrastructure.
 | Scheduling | 13 policies + ML-driven | Basic |
 | Reservations | Yes | No |
 
-**Use together**: KubeFabric for infrastructure, Kubeflow for ML pipelines.
+**Use together**: TensorReaper for infrastructure, Kubeflow for ML pipelines.
 
 ---
 
@@ -40,7 +40,7 @@ KubeFabric is an enterprise-grade GPU compute platform for AI/ML infrastructure.
 
 ```bash
 # Install CLI
-curl -sSL https://kubefabric.ai/install.sh | bash
+curl -sSL https://tensorreaper.ai/install.sh | bash
 
 # Submit job
 kfctl submit job.yaml --gpu-type A100-80G --gpu-count 8
@@ -63,15 +63,15 @@ All NVIDIA GPUs:
 
 ### Can I use my existing Kubernetes cluster?
 
-Yes! KubeFabric is deployed on Kubernetes:
+Yes! TensorReaper is deployed on Kubernetes:
 
 ```bash
 # Add Helm repo
-helm repo add kubefabric https://charts.kubefabric.ai
+helm repo add tensorreaper https://charts.tensorreaper.ai
 
 # Install
-helm install kubefabric kubefabric/kubefabric \
-  --namespace kubefabric \
+helm install tensorreaper tensorreaper/tensorreaper \
+  --namespace tensorreaper \
   --create-namespace
 ```
 
@@ -249,7 +249,7 @@ spec:
     gpuCount: 8  # GPUs per node
 ```
 
-KubeFabric handles:
+TensorReaper handles:
 - Node selection via the GPU-aware scheduler
 - `WORLD_SIZE` environment variable (automatically set to `nodes * gpusPerNode`)
 - `MASTER_ADDR` and `MASTER_PORT` for rendezvous
@@ -349,12 +349,12 @@ spec:
 
 ## Security & Compliance
 
-### Is KubeFabric SOC2 compliant?
+### Is TensorReaper SOC2 compliant?
 
 Yes, with audit trail enabled:
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAudit
 spec:
   compliance:
@@ -378,7 +378,7 @@ Features:
 - **Secrets**: Kubernetes secrets (optionally Vault)
 - **Volumes**: Encrypted by storage provider
 
-### Can I use KubeFabric for HIPAA workloads?
+### Can I use TensorReaper for HIPAA workloads?
 
 Yes:
 
@@ -406,7 +406,7 @@ Requirements:
 Hooks execute actions at job lifecycle events:
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricJobHook
 spec:
   trigger: post-completion
@@ -504,10 +504,10 @@ kubectl describe fabricaijob my-job
 
 ### How do I get support?
 
-1. **Documentation**: https://kubefabric.ai/docs
-2. **GitHub Issues**: https://github.com/ssahani/kube-fabric/issues
-3. **Slack**: #kubefabric-users
-4. **Email**: support@kubefabric.ai (Enterprise only)
+1. **Documentation**: https://tensorreaper.ai/docs
+2. **GitHub Issues**: https://github.com/ssahani/tensor-reaper/issues
+3. **Slack**: #tensorreaper-users
+4. **Email**: support@tensorreaper.ai (Enterprise only)
 
 ---
 
@@ -564,12 +564,12 @@ spec:
 # Export Slurm jobs
 squeue -u $USER -o "%i,%j,%N,%p" > slurm-jobs.csv
 
-# Convert to KubeFabric
+# Convert to TensorReaper
 kfctl import slurm slurm-jobs.csv
 
 # Or manually:
 srun --gres=gpu:8 python train.py  # Slurm
-kfctl submit job.yaml --gpu-count 8  # KubeFabric
+kfctl submit job.yaml --gpu-count 8  # TensorReaper
 ```
 
 ### From Kubernetes Jobs
@@ -618,4 +618,4 @@ Depends on cluster size and quotas. Contact admin for increases.
 
 ---
 
-*Still have questions? See [ADVANCED_FEATURES.md](ADVANCED_FEATURES.md) or ask in Slack #kubefabric-users*
+*Still have questions? See [ADVANCED_FEATURES.md](ADVANCED_FEATURES.md) or ask in Slack #tensorreaper-users*

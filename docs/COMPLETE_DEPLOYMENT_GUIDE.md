@@ -1,6 +1,6 @@
-## KubeFabric Complete Deployment Guide
+## TensorReaper Complete Deployment Guide
 
-This guide walks through deploying a complete KubeFabric cluster with all five operators on bare metal infrastructure.
+This guide walks through deploying a complete TensorReaper cluster with all five operators on bare metal infrastructure.
 
 ## Prerequisites
 
@@ -79,23 +79,23 @@ kubectl get nodes -o json | jq '.items[].status.capacity'
 # Should show nvidia.com/gpu resources
 ```
 
-### 3. Install KubeFabric Operators
+### 3. Install TensorReaper Operators
 
 #### Option A: Helm Installation (Recommended)
 
 ```bash
-cd helm/kubefabric-core
+cd helm/tensorreaper-core
 
 # Install all operators at once
-helm install kubefabric . \
-  --namespace kubefabric-system \
+helm install tensorreaper . \
+  --namespace tensorreaper-system \
   --create-namespace \
   --set storageOperator.enabled=true \
   --set networkOperator.enabled=true \
   --set quotaOperator.enabled=true
 
 # Verify installation
-kubectl get pods -n kubefabric-system
+kubectl get pods -n tensorreaper-system
 ```
 
 Expected output:
@@ -131,13 +131,13 @@ kubectl apply -f operators/quota-operator/config/
 ```bash
 # Create storage credentials
 kubectl create secret generic vast-credentials \
-  -n kubefabric-system \
+  -n tensorreaper-system \
   --from-literal=username=admin \
   --from-literal=password=your-vast-password
 
 # Deploy VAST storage
 kubectl apply -f - <<EOF
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricStorage
 metadata:
   name: vast-production
@@ -146,10 +146,10 @@ spec:
   endpoint: vast-mgmt.example.com
   capacity: 500Ti
   nodeSelector:
-    kubefabric.ai/storage: "true"
+    tensorreaper.ai/storage: "true"
   credentials:
     secretName: vast-credentials
-    secretNamespace: kubefabric-system
+    secretNamespace: tensorreaper-system
 EOF
 
 # Wait for CSI driver deployment
@@ -164,11 +164,11 @@ kubectl get storageclass vast-production
 
 ```bash
 # Label nodes with RDMA capability
-kubectl label nodes gpu-worker-{01..04} kubefabric.ai/rdma=true
+kubectl label nodes gpu-worker-{01..04} tensorreaper.ai/rdma=true
 
 # Deploy RDMA network
 kubectl apply -f - <<EOF
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricNetwork
 metadata:
   name: rdma-training
@@ -176,7 +176,7 @@ spec:
   networkType: rdma
   mtu: 9000
   nodeSelector:
-    kubefabric.ai/rdma: "true"
+    tensorreaper.ai/rdma: "true"
   rdma:
     mode: infiniband
     devices: [mlx5_0, mlx5_1]
@@ -250,7 +250,7 @@ kubectl port-forward -n monitoring svc/monitoring-grafana 3000:80
 ```bash
 # Submit distributed training job
 kubectl apply -f - <<EOF
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAIJob
 metadata:
   name: test-training
@@ -304,7 +304,7 @@ kubectl logs -n ml-training test-training-0
 ### ✅ Operators Running
 
 ```bash
-kubectl get pods -n kubefabric-system
+kubectl get pods -n tensorreaper-system
 # All 5 operators should be Running
 ```
 
@@ -354,10 +354,10 @@ kubectl get fabricquotas
 # Check Prometheus targets
 kubectl port-forward -n monitoring svc/prometheus-server 9090:80
 # Open http://localhost:9090/targets
-# All KubeFabric targets should be UP
+# All TensorReaper targets should be UP
 
 # Check GPU metrics in Grafana
-# Dashboard: "KubeFabric - GPU Overview"
+# Dashboard: "TensorReaper - GPU Overview"
 ```
 
 ## Production Configuration
@@ -366,8 +366,8 @@ kubectl port-forward -n monitoring svc/prometheus-server 9090:80
 
 ```bash
 # Update Helm values
-helm upgrade kubefabric ./helm/kubefabric-core \
-  --namespace kubefabric-system \
+helm upgrade tensorreaper ./helm/tensorreaper-core \
+  --namespace tensorreaper-system \
   --set ha.enabled=true \
   --set gpuOperator.replicas=3 \
   --set aiOperator.replicas=3 \
@@ -382,7 +382,7 @@ Edit quota operator ConfigMap:
 
 ```bash
 kubectl create configmap gpu-pricing \
-  -n kubefabric-system \
+  -n tensorreaper-system \
   --from-literal=H100=8.00 \
   --from-literal=A100-80G=4.00 \
   --from-literal=L40=2.50 \
@@ -395,13 +395,13 @@ kubectl create configmap gpu-pricing \
 # Install Velero for cluster backups
 velero install \
   --provider aws \
-  --bucket kubefabric-backups \
+  --bucket tensorreaper-backups \
   --backup-location-config region=us-west-2
 
 # Schedule daily CRD backups
 velero schedule create daily-backup \
   --schedule="0 2 * * *" \
-  --include-namespaces kubefabric-system,ml-training,cv-training,nlp-training
+  --include-namespaces tensorreaper-system,ml-training,cv-training,nlp-training
 ```
 
 ## Troubleshooting
@@ -455,7 +455,7 @@ kubectl get fabricquota -o yaml
 kubectl describe fabricaijob <job-name>
 
 # Check scheduler logs
-kubectl logs -n kubefabric-system -l app=ai-operator
+kubectl logs -n tensorreaper-system -l app=ai-operator
 ```
 
 ## Performance Tuning
@@ -545,9 +545,9 @@ kubectl patch pvc training-data \
 
 ## Support
 
-- GitHub Issues: https://github.com/ssahani/kube-fabric/issues
-- Documentation: https://kube-fabric.readthedocs.io
-- Slack: #kube-fabric
+- GitHub Issues: https://github.com/ssahani/tensor-reaper/issues
+- Documentation: https://tensor-reaper.readthedocs.io
+- Slack: #tensor-reaper
 
 ## Cost Estimate
 

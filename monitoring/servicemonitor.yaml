@@ -1,36 +1,36 @@
-# ServiceMonitor for all KubeFabric operators.
-# namespaceSelector is set to kubefabric-system because the operator Service
+# ServiceMonitor for all TensorReaper operators.
+# namespaceSelector is set to tensorreaper-system because the operator Service
 # objects are deployed there. If operators are installed in a different
 # namespace, update the namespaceSelector and the Service manifests below
 # accordingly.
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: kubefabric-operators
+  name: tensorreaper-operators
   namespace: monitoring
   labels:
-    app: kubefabric
+    app: tensorreaper
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/part-of: kubefabric
+      app.kubernetes.io/part-of: tensorreaper
   endpoints:
   - port: metrics
     interval: 30s
     path: /metrics
   namespaceSelector:
     matchNames:
-    - kubefabric-system
+    - tensorreaper-system
 ---
 # GPU metrics ServiceMonitor targeting the DCGM exporter.
-# Assumes dcgm-exporter is deployed in kubefabric-system.
+# Assumes dcgm-exporter is deployed in tensorreaper-system.
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: kubefabric-gpu-metrics
+  name: tensorreaper-gpu-metrics
   namespace: monitoring
   labels:
-    app: kubefabric
+    app: tensorreaper
 spec:
   selector:
     matchLabels:
@@ -41,16 +41,16 @@ spec:
     path: /metrics
   namespaceSelector:
     matchNames:
-    - kubefabric-system
+    - tensorreaper-system
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: gpu-operator-metrics
-  namespace: kubefabric-system
+  namespace: tensorreaper-system
   labels:
     app: gpu-operator
-    app.kubernetes.io/part-of: kubefabric
+    app.kubernetes.io/part-of: tensorreaper
 spec:
   selector:
     app: gpu-operator
@@ -63,10 +63,10 @@ apiVersion: v1
 kind: Service
 metadata:
   name: ai-operator-metrics
-  namespace: kubefabric-system
+  namespace: tensorreaper-system
   labels:
     app: ai-operator
-    app.kubernetes.io/part-of: kubefabric
+    app.kubernetes.io/part-of: tensorreaper
 spec:
   selector:
     app: ai-operator
@@ -79,10 +79,10 @@ apiVersion: v1
 kind: Service
 metadata:
   name: storage-operator-metrics
-  namespace: kubefabric-system
+  namespace: tensorreaper-system
   labels:
     app: storage-operator
-    app.kubernetes.io/part-of: kubefabric
+    app.kubernetes.io/part-of: tensorreaper
 spec:
   selector:
     app: storage-operator
@@ -95,10 +95,10 @@ apiVersion: v1
 kind: Service
 metadata:
   name: network-operator-metrics
-  namespace: kubefabric-system
+  namespace: tensorreaper-system
   labels:
     app: network-operator
-    app.kubernetes.io/part-of: kubefabric
+    app.kubernetes.io/part-of: tensorreaper
 spec:
   selector:
     app: network-operator
@@ -111,10 +111,10 @@ apiVersion: v1
 kind: Service
 metadata:
   name: quota-operator-metrics
-  namespace: kubefabric-system
+  namespace: tensorreaper-system
   labels:
     app: quota-operator
-    app.kubernetes.io/part-of: kubefabric
+    app.kubernetes.io/part-of: tensorreaper
 spec:
   selector:
     app: quota-operator
@@ -124,14 +124,14 @@ spec:
     targetPort: 8080
 ---
 # Per-operator ServiceMonitors below. All assume operators run in
-# kubefabric-system. Adjust namespaceSelector if deploying elsewhere.
+# tensorreaper-system. Adjust namespaceSelector if deploying elsewhere.
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: kubefabric-storage-operator
+  name: tensorreaper-storage-operator
   namespace: monitoring
   labels:
-    app: kubefabric
+    app: tensorreaper
 spec:
   selector:
     matchLabels:
@@ -142,15 +142,15 @@ spec:
     path: /metrics
   namespaceSelector:
     matchNames:
-    - kubefabric-system
+    - tensorreaper-system
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: kubefabric-network-operator
+  name: tensorreaper-network-operator
   namespace: monitoring
   labels:
-    app: kubefabric
+    app: tensorreaper
 spec:
   selector:
     matchLabels:
@@ -161,15 +161,15 @@ spec:
     path: /metrics
   namespaceSelector:
     matchNames:
-    - kubefabric-system
+    - tensorreaper-system
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: kubefabric-quota-operator
+  name: tensorreaper-quota-operator
   namespace: monitoring
   labels:
-    app: kubefabric
+    app: tensorreaper
 spec:
   selector:
     matchLabels:
@@ -180,4 +180,4 @@ spec:
     path: /metrics
   namespaceSelector:
     matchNames:
-    - kubefabric-system
+    - tensorreaper-system

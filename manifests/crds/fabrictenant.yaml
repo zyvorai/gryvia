@@ -3,9 +3,9 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: fabrictenants.kubefabric.ai
+  name: fabrictenants.tensorreaper.ai
 spec:
-  group: kubefabric.ai
+  group: tensorreaper.ai
   versions:
     - name: v1
       served: true
@@ -250,7 +250,7 @@ spec:
 
 ---
 # Example: ML Research Team
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricTenant
 metadata:
   name: ml-research
@@ -329,7 +329,7 @@ spec:
 
 ---
 # Example: Production Inference Team
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricTenant
 metadata:
   name: production-inference
@@ -375,7 +375,7 @@ spec:
 
 ---
 # Example: Sub-Team (Hierarchical)
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricTenant
 metadata:
   name: ml-research-cv
@@ -403,7 +403,7 @@ spec:
 
 ---
 # Example: External Collaborator Tenant
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricTenant
 metadata:
   name: university-collab
@@ -450,7 +450,7 @@ spec:
 
 ---
 # Tenant Status Example
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricTenant
 metadata:
   name: ml-research

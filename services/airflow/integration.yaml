@@ -1,6 +1,6 @@
 ---
 # Apache Airflow for Data Pipelines
-# Orchestrate ML data workflows with KubeFabric
+# Orchestrate ML data workflows with TensorReaper
 
 apiVersion: v1
 kind: Namespace
@@ -267,7 +267,7 @@ rules:
   - apiGroups: [""]
     resources: ["pods", "pods/log"]
     verbs: ["create", "get", "list", "watch", "delete"]
-  - apiGroups: ["kubefabric.ai"]
+  - apiGroups: ["tensorreaper.ai"]
     resources: ["fabricaijobs"]
     verbs: ["create", "get", "list", "watch", "delete"]
 
@@ -313,7 +313,7 @@ data:
     dag = DAG(
         'ml_training_pipeline',
         default_args=default_args,
-        description='Complete ML training pipeline with KubeFabric',
+        description='Complete ML training pipeline with TensorReaper',
         schedule_interval=timedelta(days=1),
         start_date=datetime(2024, 1, 1),
         catchup=False,
@@ -338,7 +338,7 @@ data:
     # Task 2: Data Preprocessing (GPU)
     def create_preprocessing_job():
         job_yaml = {
-            'apiVersion': 'kubefabric.ai/v1',
+            'apiVersion': 'tensorreaper.ai/v1',
             'kind': 'FabricAIJob',
             'metadata': {
                 'name': 'data-preprocessing',
@@ -356,7 +356,7 @@ data:
                 'command': ['python', 'preprocess.py']
             }
         }
-        # Submit to KubeFabric
+        # Submit to TensorReaper
         return yaml.dump(job_yaml)
 
     preprocess_data = PythonOperator(
@@ -379,7 +379,7 @@ data:
             'limit_cpu': '64',
             'limit_nvidia.com/gpu': '8'
         },
-        node_selector={'kubefabric.ai/gpu-type': 'A100-80G'},
+        node_selector={'tensorreaper.ai/gpu-type': 'A100-80G'},
         dag=dag,
     )
 

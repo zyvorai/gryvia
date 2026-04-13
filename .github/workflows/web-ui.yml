@@ -20,7 +20,7 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: kubefabric-ui
+  IMAGE_NAME: tensorreaper-ui
 
 jobs:
   test:

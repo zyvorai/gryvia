@@ -1,13 +1,13 @@
 # Job Management Guide
 
-Complete guide to submitting and managing AI workloads with KubeFabric.
+Complete guide to submitting and managing AI workloads with TensorReaper.
 
 ## Job Basics
 
 ### Creating a Job
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAIJob
 metadata:
   name: my-training-job
@@ -37,18 +37,18 @@ spec:
 kubectl apply -f job.yaml
 ```
 
-**Using kubefabric:**
+**Using tensorreaper:**
 ```bash
 # Submit from file
-kubefabric submit job.yaml
+tensorreaper submit job.yaml
 
 # Submit with parameters
-kubefabric submit --template pytorch-ddp \
+tensorreaper submit --template pytorch-ddp \
   --param model=llama-7b \
   --param gpu-count=8
 
 # Submit and wait
-kubefabric submit job.yaml --wait
+tensorreaper submit job.yaml --wait
 ```
 
 ## Job Lifecycle
@@ -65,13 +65,13 @@ kubefabric submit job.yaml --wait
 
 ```bash
 # List all jobs
-kubefabric list
+tensorreaper list
 
 # Get job status
-kubefabric status my-training-job
+tensorreaper status my-training-job
 
 # Watch job progress
-watch kubefabric status my-training-job
+watch tensorreaper status my-training-job
 
 # Get detailed info
 kubectl describe fabricaijob my-training-job
@@ -81,23 +81,23 @@ kubectl describe fabricaijob my-training-job
 
 ```bash
 # Stream logs
-kubefabric logs my-training-job
+tensorreaper logs my-training-job
 
 # Follow logs
-kubefabric logs my-training-job -f
+tensorreaper logs my-training-job -f
 
 # Get logs from specific replica
-kubefabric logs my-training-job --replica 0
+tensorreaper logs my-training-job --replica 0
 
 # Save logs to file
-kubefabric logs my-training-job > training.log
+tensorreaper logs my-training-job > training.log
 ```
 
 ### Cancelling Jobs
 
 ```bash
 # Cancel job
-kubefabric cancel my-training-job
+tensorreaper cancel my-training-job
 
 # Delete job
 kubectl delete fabricaijob my-training-job
@@ -147,7 +147,7 @@ spec:
     - train.py
 ```
 
-KubeFabric automatically sets `WORLD_SIZE` to `nodes * gpusPerNode` (e.g., 32
+TensorReaper automatically sets `WORLD_SIZE` to `nodes * gpusPerNode` (e.g., 32
 for the example above), along with `MASTER_ADDR`, `MASTER_PORT`, and NCCL
 environment variables.
 
@@ -249,13 +249,13 @@ envFrom:
 
 ```bash
 # List templates
-kubefabric templates list
+tensorreaper templates list
 
 # View template
-kubefabric templates show pytorch-ddp
+tensorreaper templates show pytorch-ddp
 
 # Submit from template
-kubefabric submit --template pytorch-ddp \
+tensorreaper submit --template pytorch-ddp \
   --param model=llama-7b \
   --param dataset=/data/openwebtext \
   --param gpu-count=8 \
@@ -314,10 +314,10 @@ spec:
 
 ```bash
 # Estimate job cost
-kubefabric cost estimate --job my-training-job
+tensorreaper cost estimate --job my-training-job
 
 # Track running costs
-kubefabric cost --job my-training-job
+tensorreaper cost --job my-training-job
 ```
 
 ### Budget Alerts
@@ -325,8 +325,8 @@ kubefabric cost --job my-training-job
 ```yaml
 metadata:
   annotations:
-    kubefabric.ai/budget-alert: "100.00"
-    kubefabric.ai/alert-email: "team@company.com"
+    tensorreaper.ai/budget-alert: "100.00"
+    tensorreaper.ai/alert-email: "team@company.com"
 ```
 
 ## Performance Optimization
@@ -340,7 +340,7 @@ python3 tools/profiler.py --job my-training-job \
   --gpu-count 8
 
 # Get recommendations
-kubefabric profile my-training-job
+tensorreaper profile my-training-job
 ```
 
 ### Common Optimizations
@@ -360,17 +360,17 @@ kubefabric profile my-training-job
 kubectl describe fabricaijob my-training-job
 
 # Check GPU availability
-kubefabric cluster nodes
+tensorreaper cluster nodes
 
 # Check quota
-kubefabric quota my-team
+tensorreaper quota my-team
 ```
 
 ### Job Failed
 
 ```bash
 # Check logs
-kubefabric logs my-training-job
+tensorreaper logs my-training-job
 
 # Check events
 kubectl get events --field-selector involvedObject.name=my-training-job
@@ -423,6 +423,6 @@ See [Job Examples](../../examples/jobs/) for complete examples:
 
 ## Support
 
-- Job Issues: https://github.com/ssahani/kube-fabric/issues
+- Job Issues: https://github.com/ssahani/tensor-reaper/issues
 - Optimization Help: Use profiler tool
-- Documentation: https://github.com/ssahani/kube-fabric/docs
+- Documentation: https://github.com/ssahani/tensor-reaper/docs

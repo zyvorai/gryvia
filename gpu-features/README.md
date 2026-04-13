@@ -36,7 +36,7 @@ MIG allows a single A100 or H100 GPU to be partitioned into up to 7 separate ins
 
 ```bash
 # Label MIG-capable nodes
-kubectl label nodes gpu-node-1 kubefabric.ai/mig-capable=true
+kubectl label nodes gpu-node-1 tensorreaper.ai/mig-capable=true
 
 # Deploy MIG manager
 kubectl apply -f gpu-features/mig-support.yaml
@@ -72,7 +72,7 @@ kubectl describe node gpu-node-1 | grep nvidia.com/mig
 #### Request MIG Instance
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAIJob
 metadata:
   name: small-inference
@@ -350,7 +350,7 @@ nvidia-smi -i 0 --query-compute-apps=pid,used_memory --format=csv
 For GPUs that don't support MIG (V100, T4), use time-sharing:
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: GPUSharingPolicy
 metadata:
   name: gpu-sharing
@@ -377,5 +377,5 @@ spec:
 
 ## Support
 
-- MIG Issues: https://github.com/ssahani/kube-fabric/issues
+- MIG Issues: https://github.com/ssahani/tensor-reaper/issues
 - NVIDIA MIG Docs: https://docs.nvidia.com/datacenter/tesla/mig-user-guide/

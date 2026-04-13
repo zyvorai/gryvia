@@ -1,4 +1,4 @@
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAIJob
 metadata:
   name: distributed-llama-training
@@ -67,4 +67,4 @@ spec:
   timeout: "72h"
 
   nodeSelector:
-    kubefabric.ai/interconnect: "NVSwitch"
+    tensorreaper.ai/interconnect: "NVSwitch"

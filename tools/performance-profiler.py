@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Performance Profiler for KubeFabric
+Performance Profiler for TensorReaper
 Profiles GPU jobs and provides optimization recommendations
 """
 
@@ -36,7 +36,7 @@ class PerformanceProfiler:
 
         try:
             job = self.api.get_namespaced_custom_object(
-                group="kubefabric.ai",
+                group="tensorreaper.ai",
                 version="v1",
                 namespace=namespace,
                 plural="fabricaijobs",
@@ -348,7 +348,7 @@ model = torch.compile(model, mode='max-autotune')
     def print_profile(self, profile: Dict):
         """Print formatted profile"""
         print(f"\n{BLUE}╔══════════════════════════════════════════════════════════════╗{NC}")
-        print(f"{BLUE}║         KubeFabric Performance Profile Report              ║{NC}")
+        print(f"{BLUE}║         TensorReaper Performance Profile Report              ║{NC}")
         print(f"{BLUE}╚══════════════════════════════════════════════════════════════╝{NC}\n")
 
         # GPU Metrics
@@ -434,7 +434,7 @@ model = torch.compile(model, mode='max-autotune')
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Performance Profiler for KubeFabric")
+    parser = argparse.ArgumentParser(description="Performance Profiler for TensorReaper")
     parser.add_argument("job_name", help="Name of job to profile")
     parser.add_argument("--namespace", default="default", help="Namespace")
     parser.add_argument("--output", help="Export profile to JSON file")

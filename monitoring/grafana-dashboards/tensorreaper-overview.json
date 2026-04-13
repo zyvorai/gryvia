@@ -1,0 +1,240 @@
+{
+  "dashboard": {
+    "title": "TensorReaper - Cluster Overview",
+    "tags": ["tensorreaper", "gpu", "cluster"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 1,
+    "refresh": "30s",
+    "panels": [
+      {
+        "title": "GPU Cluster Summary",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+        "targets": [
+          {
+            "expr": "sum(tensorreaper_gpu_count)",
+            "legendFormat": "Total GPUs"
+          }
+        ],
+        "options": {
+          "colorMode": "background",
+          "graphMode": "none",
+          "textMode": "value_and_name"
+        }
+      },
+      {
+        "title": "GPUs Allocated",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+        "targets": [
+          {
+            "expr": "sum(tensorreaper_quota_gpus_allocated)",
+            "legendFormat": "Allocated"
+          }
+        ],
+        "options": {
+          "colorMode": "background",
+          "graphMode": "area",
+          "textMode": "value_and_name"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "percentage",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 70, "color": "yellow"},
+                {"value": 90, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "title": "Running Jobs",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+        "targets": [
+          {
+            "expr": "sum(tensorreaper_job_running)",
+            "legendFormat": "Running"
+          }
+        ],
+        "options": {
+          "colorMode": "background",
+          "graphMode": "area"
+        }
+      },
+      {
+        "title": "Queued Jobs",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+        "targets": [
+          {
+            "expr": "sum(tensorreaper_job_queued)",
+            "legendFormat": "Queued"
+          }
+        ],
+        "options": {
+          "colorMode": "background",
+          "graphMode": "area"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 5, "color": "yellow"},
+                {"value": 10, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "title": "GPU Utilization by Node",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+        "targets": [
+          {
+            "expr": "tensorreaper_gpu_utilization_percent",
+            "legendFormat": "{{node}} - GPU {{gpu_id}}"
+          }
+        ],
+        "yaxes": [
+          {"format": "percent", "min": 0, "max": 100},
+          {"format": "short"}
+        ],
+        "lines": true,
+        "fill": 1,
+        "linewidth": 2
+      },
+      {
+        "title": "GPU Temperature",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+        "targets": [
+          {
+            "expr": "tensorreaper_gpu_temperature_celsius",
+            "legendFormat": "{{node}} - GPU {{gpu_id}}"
+          }
+        ],
+        "yaxes": [
+          {"format": "celsius", "min": 0, "max": 100},
+          {"format": "short"}
+        ],
+        "lines": true,
+        "fill": 0,
+        "linewidth": 2,
+        "thresholds": [
+          {"value": 85, "colorMode": "critical", "fill": false, "line": true, "op": "gt"}
+        ]
+      },
+      {
+        "title": "GPU Memory Usage",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+        "targets": [
+          {
+            "expr": "tensorreaper_gpu_memory_used_bytes / 1024 / 1024 / 1024",
+            "legendFormat": "{{node}} - GPU {{gpu_id}} Used"
+          },
+          {
+            "expr": "tensorreaper_gpu_memory_total_bytes / 1024 / 1024 / 1024",
+            "legendFormat": "{{node}} - GPU {{gpu_id}} Total"
+          }
+        ],
+        "yaxes": [
+          {"format": "decgbytes", "min": 0},
+          {"format": "short"}
+        ],
+        "lines": true,
+        "fill": 1
+      },
+      {
+        "title": "GPU Power Usage",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+        "targets": [
+          {
+            "expr": "tensorreaper_gpu_power_watts",
+            "legendFormat": "{{node}} - GPU {{gpu_id}}"
+          }
+        ],
+        "yaxes": [
+          {"format": "watt", "min": 0},
+          {"format": "short"}
+        ],
+        "lines": true,
+        "fill": 1
+      },
+      {
+        "title": "Jobs by Status",
+        "type": "piechart",
+        "gridPos": {"h": 8, "w": 8, "x": 0, "y": 20},
+        "targets": [
+          {
+            "expr": "sum(tensorreaper_job_running)",
+            "legendFormat": "Running"
+          },
+          {
+            "expr": "sum(tensorreaper_job_pending)",
+            "legendFormat": "Pending"
+          },
+          {
+            "expr": "sum(tensorreaper_job_completed)",
+            "legendFormat": "Completed"
+          },
+          {
+            "expr": "sum(tensorreaper_job_failed)",
+            "legendFormat": "Failed"
+          }
+        ],
+        "options": {
+          "pieType": "donut",
+          "displayLabels": ["percent"]
+        }
+      },
+      {
+        "title": "Job Completion Rate",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 8, "x": 8, "y": 20},
+        "targets": [
+          {
+            "expr": "rate(tensorreaper_job_completed_total[5m]) * 60",
+            "legendFormat": "Completions/min"
+          },
+          {
+            "expr": "rate(tensorreaper_job_failed_total[5m]) * 60",
+            "legendFormat": "Failures/min"
+          }
+        ],
+        "yaxes": [
+          {"format": "short", "min": 0},
+          {"format": "short"}
+        ],
+        "lines": true,
+        "bars": false
+      },
+      {
+        "title": "Average Job Duration",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 8, "x": 16, "y": 20},
+        "targets": [
+          {
+            "expr": "rate(tensorreaper_job_duration_seconds_sum[5m]) / rate(tensorreaper_job_duration_seconds_count[5m]) / 60",
+            "legendFormat": "Avg Duration (minutes)"
+          }
+        ],
+        "yaxes": [
+          {"format": "m", "min": 0},
+          {"format": "short"}
+        ],
+        "lines": true,
+        "fill": 1
+      }
+    ]
+  }
+}

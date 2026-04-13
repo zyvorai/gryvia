@@ -1,10 +1,10 @@
 use anyhow::{Context, Result};
 use kube::api::Api;
 
-use crate::client::KubeFabricClient;
+use crate::client::TensorReaperClient;
 use crate::types::*;
 
-pub async fn execute(client: &KubeFabricClient, resource: &str, name: &str, output: &str) -> Result<()> {
+pub async fn execute(client: &TensorReaperClient, resource: &str, name: &str, output: &str) -> Result<()> {
     // Validate output format
     match output {
         "json" | "yaml" => {}
@@ -23,7 +23,7 @@ pub async fn execute(client: &KubeFabricClient, resource: &str, name: &str, outp
     Ok(())
 }
 
-async fn get_job(client: &KubeFabricClient, name: &str, output: &str) -> Result<()> {
+async fn get_job(client: &TensorReaperClient, name: &str, output: &str) -> Result<()> {
     let api: Api<FabricAIJob> = Api::namespaced(
         client.kube_client.clone(),
         client.namespace(),
@@ -47,7 +47,7 @@ async fn get_job(client: &KubeFabricClient, name: &str, output: &str) -> Result<
     Ok(())
 }
 
-async fn get_quota(client: &KubeFabricClient, name: &str, output: &str) -> Result<()> {
+async fn get_quota(client: &TensorReaperClient, name: &str, output: &str) -> Result<()> {
     let api: Api<FabricQuota> = Api::all(client.kube_client.clone());
 
     let quota = api.get(name).await
@@ -68,7 +68,7 @@ async fn get_quota(client: &KubeFabricClient, name: &str, output: &str) -> Resul
     Ok(())
 }
 
-async fn get_node(client: &KubeFabricClient, name: &str, output: &str) -> Result<()> {
+async fn get_node(client: &TensorReaperClient, name: &str, output: &str) -> Result<()> {
     let api: Api<FabricGpuNode> = Api::all(client.kube_client.clone());
 
     let node = api.get(name).await

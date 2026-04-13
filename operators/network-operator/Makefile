@@ -1,4 +1,4 @@
-IMG ?= kubefabric/network-operator:latest
+IMG ?= tensorreaper/network-operator:latest
 
 .PHONY: all
 all: build

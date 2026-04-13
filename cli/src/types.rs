@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 
 // FabricAIJob CRD
 #[derive(CustomResource, Clone, Debug, Serialize, Deserialize, JsonSchema)]
-#[kube(group = "kubefabric.ai", version = "v1", kind = "FabricAIJob", namespaced)]
+#[kube(group = "tensorreaper.ai", version = "v1", kind = "FabricAIJob", namespaced)]
 #[kube(status = "AIJobStatus")]
 pub struct AIJobSpec {
     pub framework: String,
@@ -60,7 +60,7 @@ pub struct AIJobStatus {
 
 // FabricQuota CRD
 #[derive(CustomResource, Clone, Debug, Serialize, Deserialize, JsonSchema)]
-#[kube(group = "kubefabric.ai", version = "v1", kind = "FabricQuota")]
+#[kube(group = "tensorreaper.ai", version = "v1", kind = "FabricQuota")]
 #[kube(status = "QuotaStatus")]
 pub struct QuotaSpec {
     pub team: String,
@@ -131,7 +131,7 @@ pub struct BudgetStatus {
 
 // FabricGpuNode CRD
 #[derive(CustomResource, Clone, Debug, Serialize, Deserialize, JsonSchema)]
-#[kube(group = "kubefabric.ai", version = "v1", kind = "FabricGpuNode")]
+#[kube(group = "tensorreaper.ai", version = "v1", kind = "FabricGpuNode")]
 #[kube(status = "GpuNodeStatus")]
 pub struct GpuNodeSpec {
     #[serde(rename = "nodeName")]

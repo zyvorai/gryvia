@@ -1,4 +1,4 @@
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricStorage
 metadata:
   name: vast-production
@@ -7,10 +7,10 @@ spec:
   endpoint: vast-mgmt.example.com
   capacity: 100Ti
   nodeSelector:
-    kubefabric.ai/storage: "true"
+    tensorreaper.ai/storage: "true"
   credentials:
     secretName: vast-credentials
-    secretNamespace: kubefabric-system
+    secretNamespace: tensorreaper-system
   config:
     vipPool: "10.0.0.0/24"
     mountOptions:
@@ -23,7 +23,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: vast-credentials
-  namespace: kubefabric-system
+  namespace: tensorreaper-system
 type: Opaque
 # IMPORTANT: Replace placeholders with real credentials before applying.
 stringData:

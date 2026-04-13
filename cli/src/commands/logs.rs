@@ -5,11 +5,11 @@ use kube::api::{Api, ListParams, LogParams};
 use kube::core::DynamicObject;
 use kube::api::{ApiResource, GroupVersionKind};
 
-use crate::client::KubeFabricClient;
+use crate::client::TensorReaperClient;
 use crate::display;
 
 pub async fn execute(
-    client: &KubeFabricClient,
+    client: &TensorReaperClient,
     job: &str,
     follow: bool,
     tail: usize,
@@ -25,14 +25,14 @@ pub async fn execute(
         client.namespace(),
     );
 
-    let label_selector = format!("kubefabric.ai/job={}", job);
+    let label_selector = format!("tensorreaper.ai/job={}", job);
     let lp = ListParams::default().labels(&label_selector);
 
     let pods = pods_api.list(&lp).await
         .context("Failed to list pods for job")?;
 
     if pods.items.is_empty() {
-        let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("kubefabric.ai", "v1", "FabricAIJob"));
+        let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("tensorreaper.ai", "v1", "FabricAIJob"));
         let jobs_api: Api<DynamicObject> = Api::namespaced_with(
             client.kube_client.clone(),
             client.namespace(),

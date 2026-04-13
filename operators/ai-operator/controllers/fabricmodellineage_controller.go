@@ -14,8 +14,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	kubefabricv1 "github.com/ssahani/kube-fabric/operators/ai-operator/api/v1"
-	"github.com/ssahani/kube-fabric/operators/ai-operator/pkg/lineage"
+	tensorreaperv1 "github.com/ssahani/tensor-reaper/operators/ai-operator/api/v1"
+	"github.com/ssahani/tensor-reaper/operators/ai-operator/pkg/lineage"
 )
 
 // FabricModelLineageReconciler reconciles a FabricModelLineage object
@@ -24,16 +24,16 @@ type FabricModelLineageReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=kubefabric.ai,resources=fabricmodellineages,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=kubefabric.ai,resources=fabricmodellineages/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=kubefabric.ai,resources=fabricmodellineages/finalizers,verbs=update
-//+kubebuilder:rbac:groups=kubefabric.ai,resources=fabricaijobs,verbs=get;list;watch
+//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricmodellineages,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricmodellineages/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricmodellineages/finalizers,verbs=update
+//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricaijobs,verbs=get;list;watch
 
 func (r *FabricModelLineageReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	// Fetch the FabricModelLineage instance
-	ml := &kubefabricv1.FabricModelLineage{}
+	ml := &tensorreaperv1.FabricModelLineage{}
 	err := r.Get(ctx, req.NamespacedName, ml)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -122,7 +122,7 @@ func (r *FabricModelLineageReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 // autoCollectProvenance uses the lineage collector to gather provenance data
 // from referenced FabricAIJob and related resources.
-func (r *FabricModelLineageReconciler) autoCollectProvenance(ctx context.Context, ml *kubefabricv1.FabricModelLineage) error {
+func (r *FabricModelLineageReconciler) autoCollectProvenance(ctx context.Context, ml *tensorreaperv1.FabricModelLineage) error {
 	logger := log.FromContext(ctx)
 	collector := lineage.NewCollector(r.Client)
 
@@ -196,7 +196,7 @@ func (r *FabricModelLineageReconciler) autoCollectProvenance(ctx context.Context
 	return nil
 }
 
-func (r *FabricModelLineageReconciler) setCondition(ml *kubefabricv1.FabricModelLineage, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *FabricModelLineageReconciler) setCondition(ml *tensorreaperv1.FabricModelLineage, condType string, status metav1.ConditionStatus, reason, message string) {
 	meta.SetStatusCondition(&ml.Status.Conditions, metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -209,12 +209,12 @@ func (r *FabricModelLineageReconciler) setCondition(ml *kubefabricv1.FabricModel
 // SetupWithManager sets up the controller with the Manager
 func (r *FabricModelLineageReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&kubefabricv1.FabricModelLineage{}).
-		Watches(&kubefabricv1.FabricAIJob{}, handler.EnqueueRequestsFromMapFunc(
+		For(&tensorreaperv1.FabricModelLineage{}).
+		Watches(&tensorreaperv1.FabricAIJob{}, handler.EnqueueRequestsFromMapFunc(
 			func(ctx context.Context, obj client.Object) []reconcile.Request {
 				// When a FabricAIJob completes, re-reconcile lineages that
 				// reference it so provenance can be auto-collected.
-				job, ok := obj.(*kubefabricv1.FabricAIJob)
+				job, ok := obj.(*tensorreaperv1.FabricAIJob)
 				if !ok {
 					return nil
 				}
@@ -225,7 +225,7 @@ func (r *FabricModelLineageReconciler) SetupWithManager(mgr ctrl.Manager) error 
 				}
 
 				// Find lineages that reference this job
-				lineageList := &kubefabricv1.FabricModelLineageList{}
+				lineageList := &tensorreaperv1.FabricModelLineageList{}
 				if err := mgr.GetClient().List(ctx, lineageList,
 					client.InNamespace(job.Namespace)); err != nil {
 					return nil

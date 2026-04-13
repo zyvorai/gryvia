@@ -1,6 +1,6 @@
 # Advanced Features Guide
 
-Complete guide to KubeFabric's advanced capabilities for enterprise GPU infrastructure management.
+Complete guide to TensorReaper's advanced capabilities for enterprise GPU infrastructure management.
 
 ## Table of Contents
 
@@ -30,7 +30,7 @@ Proactive health monitoring and diagnostics for GPU infrastructure.
 ### Quick Start
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricHealthCheck
 metadata:
   name: cluster-gpu-health
@@ -62,16 +62,16 @@ spec:
 
 ```bash
 # Check cluster health
-kubefabric health status cluster-gpu-health
+tensorreaper health status cluster-gpu-health
 
 # Diagnose specific GPU
-kubefabric health diagnose --node gpu-node-05 --gpu 3
+tensorreaper health diagnose --node gpu-node-05 --gpu 3
 
 # Manual remediation
-kubefabric health remediate gpu-node-05 --action gpu-reset
+tensorreaper health remediate gpu-node-05 --action gpu-reset
 
 # View history
-kubefabric health history gpu-node-05
+tensorreaper health history gpu-node-05
 ```
 
 ### Health Check Types
@@ -123,7 +123,7 @@ backoff:
 ### Resource Adaptation
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricRetryPolicy
 metadata:
   name: adaptive-retry
@@ -169,7 +169,7 @@ Reserve GPU resources in advance with guaranteed availability.
 #### Exclusive Team Reservation
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricReservation
 metadata:
   name: ml-team-reservation
@@ -220,7 +220,7 @@ spec:
 
 ```bash
 # Create reservation
-kubefabric reservation create my-reservation \
+tensorreaper reservation create my-reservation \
   --team ml-research \
   --gpu-type A100-80G \
   --gpu-count 32 \
@@ -228,7 +228,7 @@ kubefabric reservation create my-reservation \
   --exclusive
 
 # View utilization
-kubefabric reservation usage my-reservation
+tensorreaper reservation usage my-reservation
 # Output: 75% utilized, $12,960 wasted
 ```
 
@@ -250,7 +250,7 @@ Hierarchical team organization with quotas, isolation, and governance.
 ### Example Tenant
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricTenant
 metadata:
   name: ml-research
@@ -303,18 +303,18 @@ Each sub-team gets a portion of parent's quota.
 
 ```bash
 # Create tenant
-kubefabric tenant create ml-research \
+tensorreaper tenant create ml-research \
   --quota-gpus 128 \
   --quota-cost 50000
 
 # Add member
-kubefabric tenant add-member ml-research alice --role admin
+tensorreaper tenant add-member ml-research alice --role admin
 
 # View usage
-kubefabric tenant usage ml-research
+tensorreaper tenant usage ml-research
 
 # Generate report
-kubefabric tenant report ml-research --month 2024-01 --output report.pdf
+tensorreaper tenant report ml-research --month 2024-01 --output report.pdf
 ```
 
 ---
@@ -334,7 +334,7 @@ Reusable job configurations with parameters.
 
 ```bash
 # Create job from template
-kubefabric job create --template pytorch-ddp-training \
+tensorreaper job create --template pytorch-ddp-training \
   --param dataPath=/data/imagenet \
   --param batchSize=128 \
   --param epochs=90
@@ -343,7 +343,7 @@ kubefabric job create --template pytorch-ddp-training \
 ### Custom Template
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricTemplate
 metadata:
   name: my-training-template
@@ -391,7 +391,7 @@ Queue-based auto-scaling with predictive capabilities.
 ### Example
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAutoScaler
 metadata:
   name: a100-autoscaler
@@ -448,7 +448,7 @@ Multi-tiered budget system with forecasting.
 ### Example
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricBudget
 metadata:
   name: ml-team-budget
@@ -598,50 +598,50 @@ Let the system scale based on demand.
 
 ```bash
 # Check budget
-kubefabric budget status --team my-team
+tensorreaper budget status --team my-team
 
 # Check reservation
-kubefabric reservation list
+tensorreaper reservation list
 
 # Check health
-kubefabric health status cluster-gpu-health
+tensorreaper health status cluster-gpu-health
 ```
 
 ### High Costs
 
 ```bash
 # Analyze costs
-kubefabric cost analyze --team my-team
+tensorreaper cost analyze --team my-team
 
 # Get recommendations
-kubefabric cost optimize --team my-team
+tensorreaper cost optimize --team my-team
 
 # Check for idle resources
-kubefabric cost waste --team my-team
+tensorreaper cost waste --team my-team
 ```
 
 ### Poor Performance
 
 ```bash
 # Profile job
-kubefabric profile my-job
+tensorreaper profile my-job
 
 # Check GPU health
-kubefabric health check node gpu-node-05
+tensorreaper health check node gpu-node-05
 
 # View metrics
-kubefabric metrics gpu-utilization
+tensorreaper metrics gpu-utilization
 ```
 
 ---
 
 ## Support
 
-- **Documentation**: https://kubefabric.ai/docs
-- **Issues**: https://github.com/ssahani/kube-fabric/issues
-- **Discussions**: https://github.com/ssahani/kube-fabric/discussions
-- **Slack**: #kubefabric-users
+- **Documentation**: https://tensorreaper.ai/docs
+- **Issues**: https://github.com/ssahani/tensor-reaper/issues
+- **Discussions**: https://github.com/ssahani/tensor-reaper/discussions
+- **Slack**: #tensorreaper-users
 
 ---
 
-*KubeFabric - Enterprise GPU Infrastructure Management*
+*TensorReaper - Enterprise GPU Infrastructure Management*

@@ -18,13 +18,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	kubefabricv1 "github.com/ssahani/kube-fabric/operators/quota-operator/api/v1"
-	"github.com/ssahani/kube-fabric/operators/quota-operator/pkg/budget"
-	"github.com/ssahani/kube-fabric/operators/quota-operator/pkg/usage"
+	tensorreaperv1 "github.com/ssahani/tensor-reaper/operators/quota-operator/api/v1"
+	"github.com/ssahani/tensor-reaper/operators/quota-operator/pkg/budget"
+	"github.com/ssahani/tensor-reaper/operators/quota-operator/pkg/usage"
 )
 
 const (
-	fabricQuotaFinalizer = "kubefabric.ai/quota-finalizer"
+	fabricQuotaFinalizer = "tensorreaper.ai/quota-finalizer"
 )
 
 // FabricQuotaReconciler reconciles a FabricQuota object
@@ -33,10 +33,10 @@ type FabricQuotaReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=kubefabric.ai,resources=fabricquotas,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=kubefabric.ai,resources=fabricquotas/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=kubefabric.ai,resources=fabricquotas/finalizers,verbs=update
-//+kubebuilder:rbac:groups=kubefabric.ai,resources=fabricaijobs,verbs=get;list;watch;update;patch
+//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricquotas,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricquotas/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricquotas/finalizers,verbs=update
+//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricaijobs,verbs=get;list;watch;update;patch
 //+kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch;update;patch
 //+kubebuilder:rbac:groups="",resources=resourcequotas,verbs=get;list;watch;create;update;patch;delete
 
@@ -44,7 +44,7 @@ func (r *FabricQuotaReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	logger := log.FromContext(ctx)
 
 	// Fetch the FabricQuota instance
-	quota := &kubefabricv1.FabricQuota{}
+	quota := &tensorreaperv1.FabricQuota{}
 	err := r.Get(ctx, req.NamespacedName, quota)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -89,7 +89,7 @@ func (r *FabricQuotaReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 }
 
-func (r *FabricQuotaReconciler) reconcileQuota(ctx context.Context, quota *kubefabricv1.FabricQuota) (ctrl.Result, error) {
+func (r *FabricQuotaReconciler) reconcileQuota(ctx context.Context, quota *tensorreaperv1.FabricQuota) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	// Ensure namespaces have correct labels
@@ -147,7 +147,7 @@ func (r *FabricQuotaReconciler) reconcileQuota(ctx context.Context, quota *kubef
 	return ctrl.Result{}, nil
 }
 
-func (r *FabricQuotaReconciler) labelNamespaces(ctx context.Context, quota *kubefabricv1.FabricQuota) error {
+func (r *FabricQuotaReconciler) labelNamespaces(ctx context.Context, quota *tensorreaperv1.FabricQuota) error {
 	logger := log.FromContext(ctx)
 
 	for _, nsName := range quota.Spec.Namespaces {
@@ -166,9 +166,9 @@ func (r *FabricQuotaReconciler) labelNamespaces(ctx context.Context, quota *kube
 		}
 
 		// Add team label
-		if ns.Labels["kubefabric.ai/team"] != quota.Spec.Team {
-			ns.Labels["kubefabric.ai/team"] = quota.Spec.Team
-			ns.Labels["kubefabric.ai/quota"] = quota.Name
+		if ns.Labels["tensorreaper.ai/team"] != quota.Spec.Team {
+			ns.Labels["tensorreaper.ai/team"] = quota.Spec.Team
+			ns.Labels["tensorreaper.ai/quota"] = quota.Name
 
 			if err := r.Update(ctx, ns); err != nil {
 				return fmt.Errorf("failed to update namespace %s: %w", nsName, err)
@@ -180,13 +180,13 @@ func (r *FabricQuotaReconciler) labelNamespaces(ctx context.Context, quota *kube
 	return nil
 }
 
-func (r *FabricQuotaReconciler) enforceQuota(ctx context.Context, quota *kubefabricv1.FabricQuota) error {
+func (r *FabricQuotaReconciler) enforceQuota(ctx context.Context, quota *tensorreaperv1.FabricQuota) error {
 	logger := log.FromContext(ctx)
 
 	// Get all AI jobs in quota namespaces
-	jobList := &kubefabricv1.FabricAIJobList{}
+	jobList := &tensorreaperv1.FabricAIJobList{}
 	for _, nsName := range quota.Spec.Namespaces {
-		jobs := &kubefabricv1.FabricAIJobList{}
+		jobs := &tensorreaperv1.FabricAIJobList{}
 		if err := r.List(ctx, jobs, client.InNamespace(nsName)); err != nil {
 			return fmt.Errorf("failed to list jobs in namespace %s: %w", nsName, err)
 		}
@@ -194,7 +194,7 @@ func (r *FabricQuotaReconciler) enforceQuota(ctx context.Context, quota *kubefab
 	}
 
 	// Sort jobs by priority and creation time
-	pendingJobs := []kubefabricv1.FabricAIJob{}
+	pendingJobs := []tensorreaperv1.FabricAIJob{}
 	for _, job := range jobList.Items {
 		if job.Status.Phase == "Pending" || job.Status.Phase == "Queued" {
 			pendingJobs = append(pendingJobs, job)
@@ -256,7 +256,7 @@ func (r *FabricQuotaReconciler) enforceQuota(ctx context.Context, quota *kubefab
 	return nil
 }
 
-func (r *FabricQuotaReconciler) updateStatus(ctx context.Context, quota *kubefabricv1.FabricQuota, phase, message string) error {
+func (r *FabricQuotaReconciler) updateStatus(ctx context.Context, quota *tensorreaperv1.FabricQuota, phase, message string) error {
 	quota.Status.Phase = phase
 	quota.Status.LastUpdated = metav1.Now()
 
@@ -281,13 +281,13 @@ func (r *FabricQuotaReconciler) updateStatus(ctx context.Context, quota *kubefab
 	return nil
 }
 
-func (r *FabricQuotaReconciler) handleDeletion(ctx context.Context, quota *kubefabricv1.FabricQuota) (ctrl.Result, error) {
+func (r *FabricQuotaReconciler) handleDeletion(ctx context.Context, quota *tensorreaperv1.FabricQuota) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	if controllerutil.ContainsFinalizer(quota, fabricQuotaFinalizer) {
 		logger.Info("Running cleanup for FabricQuota", "team", quota.Spec.Team)
 
-		// Remove kubefabric labels from namespaces
+		// Remove tensorreaper labels from namespaces
 		for _, nsName := range quota.Spec.Namespaces {
 			ns := &corev1.Namespace{}
 			err := r.Get(ctx, types.NamespacedName{Name: nsName}, ns)
@@ -299,8 +299,8 @@ func (r *FabricQuotaReconciler) handleDeletion(ctx context.Context, quota *kubef
 			}
 
 			if ns.Labels != nil {
-				delete(ns.Labels, "kubefabric.ai/team")
-				delete(ns.Labels, "kubefabric.ai/quota")
+				delete(ns.Labels, "tensorreaper.ai/team")
+				delete(ns.Labels, "tensorreaper.ai/quota")
 				if err := r.Update(ctx, ns); err != nil {
 					logger.Error(err, "Failed to remove labels from namespace", "namespace", nsName)
 				}
@@ -319,12 +319,12 @@ func (r *FabricQuotaReconciler) handleDeletion(ctx context.Context, quota *kubef
 // SetupWithManager sets up the controller with the Manager
 func (r *FabricQuotaReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&kubefabricv1.FabricQuota{}).
-		Watches(&kubefabricv1.FabricAIJob{}, handler.EnqueueRequestsFromMapFunc(
+		For(&tensorreaperv1.FabricQuota{}).
+		Watches(&tensorreaperv1.FabricAIJob{}, handler.EnqueueRequestsFromMapFunc(
 			func(ctx context.Context, obj client.Object) []reconcile.Request {
 				// When a FabricAIJob changes, enqueue all FabricQuota objects
 				// in the same namespace so quota usage is recalculated.
-				quotaList := &kubefabricv1.FabricQuotaList{}
+				quotaList := &tensorreaperv1.FabricQuotaList{}
 				if err := mgr.GetClient().List(ctx, quotaList); err != nil {
 					return nil
 				}

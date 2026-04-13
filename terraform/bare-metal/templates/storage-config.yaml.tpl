@@ -1,4 +1,4 @@
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricStorage
 metadata:
   name: ${storage_backend}-storage
@@ -24,7 +24,7 @@ spec:
     parameters:
       type: "nfs"
       server: "${storage_endpoint}"
-      path: "/kubefabric"
+      path: "/tensorreaper"
   performance:
     tier: hot
     caching: true

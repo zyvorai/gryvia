@@ -41,31 +41,31 @@ MLflow tracking server for experiment management and model registry.
 
 ```bash
 # Create namespace
-kubectl create namespace kubefabric
+kubectl create namespace tensorreaper
 
 # Deploy MLflow stack
 kubectl apply -f services/mlflow/deploy.yaml
 
 # Wait for deployment
 kubectl wait --for=condition=available --timeout=300s \
-  deployment/mlflow-server -n kubefabric
+  deployment/mlflow-server -n tensorreaper
 ```
 
 ### Verify Installation
 
 ```bash
 # Check pods
-kubectl get pods -n kubefabric -l app=mlflow-server
+kubectl get pods -n tensorreaper -l app=mlflow-server
 
 # Check service
-kubectl get svc -n kubefabric mlflow
+kubectl get svc -n tensorreaper mlflow
 ```
 
 ### Access MLflow UI
 
 ```bash
 # Port-forward
-kubectl port-forward -n kubefabric svc/mlflow 5000:5000
+kubectl port-forward -n tensorreaper svc/mlflow 5000:5000
 
 # Open browser
 open http://localhost:5000
@@ -80,7 +80,7 @@ import mlflow
 import mlflow.pytorch
 
 # Set tracking URI
-mlflow.set_tracking_uri("http://mlflow.kubefabric.svc.cluster.local:5000")
+mlflow.set_tracking_uri("http://mlflow.tensorreaper.svc.cluster.local:5000")
 
 # Create experiment
 mlflow.set_experiment("llama-training")
@@ -109,7 +109,7 @@ with mlflow.start_run(run_name="run-001"):
 ### Using in AI Jobs
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAIJob
 metadata:
   name: mlflow-training
@@ -124,7 +124,7 @@ spec:
     - train.py
   env:
     - name: MLFLOW_TRACKING_URI
-      value: "http://mlflow.kubefabric.svc.cluster.local:5000"
+      value: "http://mlflow.tensorreaper.svc.cluster.local:5000"
     - name: MLFLOW_EXPERIMENT_NAME
       value: "distributed-training"
 ```
@@ -293,11 +293,11 @@ Import dashboard from `monitoring/grafana-dashboards/mlflow-dashboard.json`
 
 ```bash
 # Backup PostgreSQL
-kubectl exec -n kubefabric mlflow-postgres-xxx -- \
+kubectl exec -n tensorreaper mlflow-postgres-xxx -- \
   pg_dump -U mlflow mlflow > mlflow-backup.sql
 
 # Backup artifacts
-kubectl exec -n kubefabric mlflow-server-xxx -- \
+kubectl exec -n tensorreaper mlflow-server-xxx -- \
   tar -czf /tmp/artifacts.tar.gz /mlflow/artifacts
 ```
 
@@ -305,7 +305,7 @@ kubectl exec -n kubefabric mlflow-server-xxx -- \
 
 ```bash
 # Restore PostgreSQL
-kubectl exec -i -n kubefabric mlflow-postgres-xxx -- \
+kubectl exec -i -n tensorreaper mlflow-postgres-xxx -- \
   psql -U mlflow mlflow < mlflow-backup.sql
 ```
 
@@ -341,21 +341,21 @@ resources:
 
 ```bash
 # Check service
-kubectl get svc -n kubefabric mlflow
+kubectl get svc -n tensorreaper mlflow
 
 # Test connectivity
 kubectl run -it --rm debug --image=curlimages/curl -- \
-  curl http://mlflow.kubefabric.svc.cluster.local:5000/health
+  curl http://mlflow.tensorreaper.svc.cluster.local:5000/health
 ```
 
 ### Storage Full
 
 ```bash
 # Check PVC usage
-kubectl exec -n kubefabric mlflow-server-xxx -- df -h /mlflow/artifacts
+kubectl exec -n tensorreaper mlflow-server-xxx -- df -h /mlflow/artifacts
 
 # Resize PVC
-kubectl patch pvc mlflow-artifacts-pvc -n kubefabric \
+kubectl patch pvc mlflow-artifacts-pvc -n tensorreaper \
   -p '{"spec":{"resources":{"requests":{"storage":"1Ti"}}}}'
 ```
 
@@ -363,10 +363,10 @@ kubectl patch pvc mlflow-artifacts-pvc -n kubefabric \
 
 ```bash
 # Check PostgreSQL logs
-kubectl logs -n kubefabric deployment/mlflow-postgres
+kubectl logs -n tensorreaper deployment/mlflow-postgres
 
 # Optimize database
-kubectl exec -n kubefabric mlflow-postgres-xxx -- \
+kubectl exec -n tensorreaper mlflow-postgres-xxx -- \
   psql -U mlflow -c "VACUUM ANALYZE;"
 ```
 
@@ -376,9 +376,9 @@ kubectl exec -n kubefabric mlflow-postgres-xxx -- \
 2. **Tag Runs**: Add tags for filtering (`team`, `project`, `gpu_type`)
 3. **Version Models**: Always use model registry for production models
 4. **Clean Up**: Archive old experiments regularly
-5. **Monitor Costs**: Track experiment costs with KubeFabric cost tracking
+5. **Monitor Costs**: Track experiment costs with TensorReaper cost tracking
 
-## Integration with KubeFabric
+## Integration with TensorReaper
 
 All AI jobs can automatically log to MLflow:
 
@@ -394,4 +394,4 @@ spec:
 ## Support
 
 - MLflow Docs: https://mlflow.org/docs/latest/index.html
-- KubeFabric Issues: https://github.com/ssahani/kube-fabric/issues
+- TensorReaper Issues: https://github.com/ssahani/tensor-reaper/issues

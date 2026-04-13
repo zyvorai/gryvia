@@ -13,7 +13,7 @@ import (
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kubefabricv1 "github.com/ssahani/kube-fabric/operators/network-operator/api/v1"
+	tensorreaperv1 "github.com/ssahani/tensor-reaper/operators/network-operator/api/v1"
 )
 
 const (
@@ -38,7 +38,7 @@ func SRIOVConfigMapName(networkName string) string {
 // InstallDevicePlugin installs the SR-IOV device plugin.
 // networkName is the owning FabricNetwork's name, used to scope resource names
 // so that multiple FabricNetworks don't conflict.
-func InstallDevicePlugin(ctx context.Context, k8sClient client.Client, networkName string, sriovConfig *kubefabricv1.SRIOVConfig) error {
+func InstallDevicePlugin(ctx context.Context, k8sClient client.Client, networkName string, sriovConfig *tensorreaperv1.SRIOVConfig) error {
 	// Install SR-IOV CNI first
 	if err := installSRIOVCNI(ctx, k8sClient, networkName); err != nil {
 		return fmt.Errorf("failed to install SR-IOV CNI: %w", err)
@@ -59,7 +59,7 @@ func InstallDevicePlugin(ctx context.Context, k8sClient client.Client, networkNa
 			Namespace: SRIOVDevicePluginNamespace,
 			Labels: map[string]string{
 				"app":                   dsName,
-				"kubefabric.ai/network": networkName,
+				"tensorreaper.ai/network": networkName,
 			},
 		},
 		Spec: appsv1.DaemonSetSpec{
@@ -146,7 +146,7 @@ func installSRIOVCNI(ctx context.Context, k8sClient client.Client, networkName s
 			Namespace: SRIOVDevicePluginNamespace,
 			Labels: map[string]string{
 				"app":                   cniName,
-				"kubefabric.ai/network": networkName,
+				"tensorreaper.ai/network": networkName,
 			},
 		},
 		Spec: appsv1.DaemonSetSpec{
@@ -206,7 +206,7 @@ func installSRIOVCNI(ctx context.Context, k8sClient client.Client, networkName s
 	return nil
 }
 
-func createSRIOVConfigMap(ctx context.Context, k8sClient client.Client, networkName string, sriovConfig *kubefabricv1.SRIOVConfig) error {
+func createSRIOVConfigMap(ctx context.Context, k8sClient client.Client, networkName string, sriovConfig *tensorreaperv1.SRIOVConfig) error {
 	resourceName := sriovConfig.ResourceName
 	if resourceName == "" {
 		resourceName = "intel_sriov_netdevice"
@@ -233,7 +233,7 @@ func createSRIOVConfigMap(ctx context.Context, k8sClient client.Client, networkN
 			Name:      SRIOVConfigMapName(networkName),
 			Namespace: SRIOVDevicePluginNamespace,
 			Labels: map[string]string{
-				"kubefabric.ai/network": networkName,
+				"tensorreaper.ai/network": networkName,
 			},
 		},
 		Data: map[string]string{
@@ -255,7 +255,7 @@ func createSRIOVConfigMap(ctx context.Context, k8sClient client.Client, networkN
 }
 
 // ConfigureNode configures SR-IOV on a specific node
-func ConfigureNode(ctx context.Context, k8sClient client.Client, node *corev1.Node, sriovConfig *kubefabricv1.SRIOVConfig) error {
+func ConfigureNode(ctx context.Context, k8sClient client.Client, node *corev1.Node, sriovConfig *tensorreaperv1.SRIOVConfig) error {
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		if err := k8sClient.Get(ctx, types.NamespacedName{Name: node.Name}, node); err != nil {
 			return err
@@ -265,15 +265,15 @@ func ConfigureNode(ctx context.Context, k8sClient client.Client, node *corev1.No
 			node.Labels = make(map[string]string)
 		}
 
-		node.Labels["kubefabric.ai/sriov"] = "true"
-		node.Labels[fmt.Sprintf("kubefabric.ai/sriov-%s", sriovConfig.ResourceName)] = "true"
+		node.Labels["tensorreaper.ai/sriov"] = "true"
+		node.Labels[fmt.Sprintf("tensorreaper.ai/sriov-%s", sriovConfig.ResourceName)] = "true"
 
 		if node.Annotations == nil {
 			node.Annotations = make(map[string]string)
 		}
 
-		node.Annotations["kubefabric.ai/sriov-interface"] = sriovConfig.PhysicalInterface
-		node.Annotations["kubefabric.ai/sriov-numvfs"] = fmt.Sprintf("%d", sriovConfig.NumVFs)
+		node.Annotations["tensorreaper.ai/sriov-interface"] = sriovConfig.PhysicalInterface
+		node.Annotations["tensorreaper.ai/sriov-numvfs"] = fmt.Sprintf("%d", sriovConfig.NumVFs)
 
 		return k8sClient.Update(ctx, node)
 	})
@@ -281,7 +281,7 @@ func ConfigureNode(ctx context.Context, k8sClient client.Client, node *corev1.No
 
 // EnsureVFConfigDaemonSet deploys a DaemonSet that enables Virtual Functions
 // on matching nodes by writing to the sysfs sriov_numvfs file.
-func EnsureVFConfigDaemonSet(ctx context.Context, k8sClient client.Client, sriovConfig *kubefabricv1.SRIOVConfig) error {
+func EnsureVFConfigDaemonSet(ctx context.Context, k8sClient client.Client, sriovConfig *tensorreaperv1.SRIOVConfig) error {
 	name := fmt.Sprintf("sriov-vf-config-%s", sriovConfig.ResourceName)
 	enableScript := fmt.Sprintf(
 		`#!/bin/sh
@@ -331,8 +331,8 @@ sleep infinity`,
 			Namespace: SRIOVDevicePluginNamespace,
 			Labels: map[string]string{
 				"app":                          name,
-				"kubefabric.ai/component":      "sriov-vf-config",
-				"kubefabric.ai/sriov-resource": sriovConfig.ResourceName,
+				"tensorreaper.ai/component":      "sriov-vf-config",
+				"tensorreaper.ai/sriov-resource": sriovConfig.ResourceName,
 			},
 		},
 		Spec: appsv1.DaemonSetSpec{
@@ -351,7 +351,7 @@ sleep infinity`,
 					HostNetwork: true,
 					HostPID:     true,
 					NodeSelector: map[string]string{
-						"kubefabric.ai/sriov": "true",
+						"tensorreaper.ai/sriov": "true",
 					},
 					Containers: []corev1.Container{
 						{

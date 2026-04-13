@@ -1,6 +1,6 @@
 # Operational Playbooks
 
-Standard operating procedures and runbooks for KubeFabric operations.
+Standard operating procedures and runbooks for TensorReaper operations.
 
 ## Table of Contents
 
@@ -26,7 +26,7 @@ Standard operating procedures and runbooks for KubeFabric operations.
 
 ```bash
 # 1. Identify failed node
-kubefabric health status cluster-gpu-health
+tensorreaper health status cluster-gpu-health
 
 # 2. Cordon node immediately
 kubectl cordon gpu-node-05
@@ -36,24 +36,24 @@ kubectl get fabricaijobs -o wide | grep gpu-node-05
 
 # 4. Migrate running jobs
 for job in $(kubectl get fabricaijobs -o name | grep running); do
-  kubefabric job migrate $job --target-node gpu-node-06
+  tensorreaper job migrate $job --target-node gpu-node-06
 done
 
 # 5. Drain node gracefully
 kubectl drain gpu-node-05 --ignore-daemonsets --delete-emptydir-data
 
 # 6. Run diagnostics
-kubefabric health diagnose --node gpu-node-05
+tensorreaper health diagnose --node gpu-node-05
 
 # 7. Create incident ticket
-kubefabric incident create \
+tensorreaper incident create \
   --title "GPU node failure: gpu-node-05" \
   --severity high \
   --assign sre-team
 
 # 8. Schedule maintenance
 # If hardware replacement needed:
-kubefabric maintenance schedule gpu-node-05 \
+tensorreaper maintenance schedule gpu-node-05 \
   --action "Replace failed GPU" \
   --window "2024-01-22 02:00-06:00"
 ```
@@ -66,13 +66,13 @@ kubefabric maintenance schedule gpu-node-05 \
 kubectl uncordon gpu-node-05
 
 # 2. Verify health
-kubefabric health check node gpu-node-05
+tensorreaper health check node gpu-node-05
 
 # 3. Run test job
-kubefabric job test --node gpu-node-05 --gpu-count 8
+tensorreaper job test --node gpu-node-05 --gpu-count 8
 
 # 4. Close incident
-kubefabric incident resolve <incident-id>
+tensorreaper incident resolve <incident-id>
 ```
 
 ---
@@ -88,31 +88,31 @@ kubefabric incident resolve <incident-id>
 
 ```bash
 # 1. Check current capacity
-kubefabric cluster status
+tensorreaper cluster status
 
 # 2. View queue
-kubefabric queue status default
+tensorreaper queue status default
 
 # 3. Identify bottleneck
-kubefabric capacity analyze
+tensorreaper capacity analyze
 
 # 4. Options:
 
 # Option A: Scale up (if auto-scaling enabled)
-kubefabric autoscale trigger --gpu-type A100-80G --count 16
+tensorreaper autoscale trigger --gpu-type A100-80G --count 16
 
 # Option B: Optimize existing jobs
-kubefabric profile analyze-queue
+tensorreaper profile analyze-queue
 # Shows jobs that can be right-sized or use different GPU types
 
 # Option C: Enable GPU sharing for dev jobs
-kubefabric gpu-sharing enable --gpu-type T4 --max-pods 4
+tensorreaper gpu-sharing enable --gpu-type T4 --max-pods 4
 
 # Option D: Migrate low-priority jobs to spot
-kubefabric job migrate-to-spot --priority low --count 10
+tensorreaper job migrate-to-spot --priority low --count 10
 
 # 5. Communicate to users
-kubefabric announcement create \
+tensorreaper announcement create \
   --title "Cluster at capacity" \
   --message "Long queue times expected. Consider using spot instances or T4 GPUs."
 ```
@@ -129,34 +129,34 @@ kubefabric announcement create \
 
 ```bash
 # 1. Check budget status
-kubefabric budget status --team ml-research
+tensorreaper budget status --team ml-research
 
 # 2. Analyze spending
-kubefabric cost analyze --team ml-research --breakdown
+tensorreaper cost analyze --team ml-research --breakdown
 
 # 3. Identify cost drivers
-kubefabric cost top-jobs --team ml-research --top 10
+tensorreaper cost top-jobs --team ml-research --top 10
 
 # 4. Options:
 
 # Option A: Request budget increase
-kubefabric budget request-increase \
+tensorreaper budget request-increase \
   --team ml-research \
   --amount 10000 \
   --justification "Critical deadline"
 
 # Option B: Optimize spending
 # Cancel low-priority jobs
-kubefabric job cancel --priority low --team ml-research
+tensorreaper job cancel --priority low --team ml-research
 
 # Enable spot instances
-kubefabric job migrate-to-spot --team ml-research
+tensorreaper job migrate-to-spot --team ml-research
 
 # Use smaller GPUs
-kubefabric recommend right-size --team ml-research
+tensorreaper recommend right-size --team ml-research
 
 # 5. Set up alerts
-kubefabric budget alert create \
+tensorreaper budget alert create \
   --team ml-research \
   --threshold 80 \
   --notify team-lead@company.com
@@ -172,19 +172,19 @@ kubefabric budget alert create \
 
 ```bash
 # 1. Profile the job
-kubefabric profile training-job-42
+tensorreaper profile training-job-42
 
 # 2. Check GPU utilization
-kubefabric metrics gpu-utilization training-job-42
+tensorreaper metrics gpu-utilization training-job-42
 
 # 3. Check data loading
-kubefabric profile data-loading training-job-42
+tensorreaper profile data-loading training-job-42
 
 # 4. Check network
-kubefabric network metrics training-job-42
+tensorreaper network metrics training-job-42
 
 # 5. Get recommendations
-kubefabric optimize training-job-42
+tensorreaper optimize training-job-42
 ```
 
 **Common Fixes:**
@@ -224,15 +224,15 @@ spec:
 
 ```bash
 # 1. Check network configuration
-kubefabric network nccl-check training-job-42
+tensorreaper network nccl-check training-job-42
 
 # 2. Test network bandwidth
-kubefabric network test bandwidth \
+tensorreaper network test bandwidth \
   --nodes gpu-node-01,gpu-node-02 \
   --gpus-per-node 8
 
 # 3. Check topology
-kubefabric topology analyze training-job-42
+tensorreaper topology analyze training-job-42
 
 # 4. View NCCL logs
 kubectl logs training-job-42 | grep NCCL
@@ -273,40 +273,40 @@ spec:
 
 ```bash
 # 1. Generate monthly report
-kubefabric cost report --month 2024-01 --output report.pdf
+tensorreaper cost report --month 2024-01 --output report.pdf
 
 # 2. Analyze by team
-kubefabric cost breakdown --group-by team
+tensorreaper cost breakdown --group-by team
 
 # 3. Identify waste
-kubefabric cost waste --last 30d
+tensorreaper cost waste --last 30d
 
 # 4. Get optimization recommendations
-kubefabric cost optimize --potential-savings
+tensorreaper cost optimize --potential-savings
 
 # 5. Compare to budget
-kubefabric budget compare --month 2024-01
+tensorreaper budget compare --month 2024-01
 
 # 6. Project next month
-kubefabric cost forecast --next-month
+tensorreaper cost forecast --next-month
 ```
 
 **Optimization Actions:**
 
 ```bash
 # Enable spot instances for batch jobs
-kubefabric job migrate-to-spot --job-type batch --dry-run
-kubefabric job migrate-to-spot --job-type batch --confirm
+tensorreaper job migrate-to-spot --job-type batch --dry-run
+tensorreaper job migrate-to-spot --job-type batch --confirm
 
 # Enable MIG for development
-kubefabric gpu-sharing enable --gpu-type A100-80G --profile all-1g.10gb
+tensorreaper gpu-sharing enable --gpu-type A100-80G --profile all-1g.10gb
 
 # Right-size over-provisioned jobs
-kubefabric recommend right-size --execute
+tensorreaper recommend right-size --execute
 
 # Set up budget alerts
 for team in ml-research cv-team nlp-team; do
-  kubefabric budget alert create \
+  tensorreaper budget alert create \
     --team $team \
     --threshold 75,90,100 \
     --action warn,warn,block
@@ -323,29 +323,29 @@ done
 
 ```bash
 # 1. Analyze current utilization
-kubefabric capacity analyze --last 90d
+tensorreaper capacity analyze --last 90d
 
 # 2. Forecast demand
-kubefabric capacity forecast --next-quarter
+tensorreaper capacity forecast --next-quarter
 
 # 3. Identify gaps
-kubefabric capacity gaps --horizon 90d
+tensorreaper capacity gaps --horizon 90d
 
 # 4. Generate expansion plan
-kubefabric capacity plan --output expansion-plan.json
+tensorreaper capacity plan --output expansion-plan.json
 
 # 5. Estimate costs
-kubefabric capacity cost-estimate expansion-plan.json
+tensorreaper capacity cost-estimate expansion-plan.json
 
 # 6. Create presentation
-kubefabric capacity presentation --output capacity-review-q2.pdf
+tensorreaper capacity presentation --output capacity-review-q2.pdf
 ```
 
 **Expansion Procedure:**
 
 ```bash
 # 1. Request budget approval
-kubefabric budget request-capex \
+tensorreaper budget request-capex \
   --amount 500000 \
   --justification "Q2 capacity expansion" \
   --attach expansion-plan.json
@@ -354,27 +354,27 @@ kubefabric budget request-capex \
 # (External procurement process)
 
 # 3. Schedule installation
-kubefabric maintenance schedule-installation \
+tensorreaper maintenance schedule-installation \
   --nodes 16 \
   --gpu-type A100-80G \
   --date 2024-04-01
 
 # 4. Pre-configure
-kubefabric node preconfigure \
+tensorreaper node preconfigure \
   --count 16 \
   --gpu-type A100-80G \
   --network infiniband-hdr200
 
 # 5. Add to cluster
 for node in gpu-node-{17..32}; do
-  kubefabric node add $node --validate
+  tensorreaper node add $node --validate
 done
 
 # 6. Verify
-kubefabric cluster validate
+tensorreaper cluster validate
 
 # 7. Announce
-kubefabric announcement create \
+tensorreaper announcement create \
   --title "Capacity Expansion Complete" \
   --message "16 new A100-80G nodes available"
 ```
@@ -389,35 +389,35 @@ kubefabric announcement create \
 
 ```bash
 # 1. Announce maintenance (7 days before)
-kubefabric announcement create \
+tensorreaper announcement create \
   --title "Scheduled Maintenance" \
   --message "Maintenance window: Jan 28, 02:00-06:00 UTC" \
   --send-email
 
 # 2. Create maintenance window
-kubefabric maintenance create \
+tensorreaper maintenance create \
   --start "2024-01-28T02:00:00Z" \
   --duration 4h \
   --nodes gpu-node-{01..04}
 
 # 3. Send reminders (24h before)
-kubefabric announcement remind maintenance-001
+tensorreaper announcement remind maintenance-001
 
 # 4. Verify no critical jobs scheduled
-kubefabric jobs list --during-maintenance maintenance-001
+tensorreaper jobs list --during-maintenance maintenance-001
 ```
 
 **During Maintenance:**
 
 ```bash
 # 1. Enable maintenance mode
-kubefabric maintenance start maintenance-001
+tensorreaper maintenance start maintenance-001
 
 # 2. Cordon nodes
-kubefabric maintenance cordon maintenance-001
+tensorreaper maintenance cordon maintenance-001
 
 # 3. Drain gracefully
-kubefabric maintenance drain maintenance-001 --timeout 30m
+tensorreaper maintenance drain maintenance-001 --timeout 30m
 
 # 4. Perform maintenance
 # - Update firmware
@@ -427,31 +427,31 @@ kubefabric maintenance drain maintenance-001 --timeout 30m
 
 # 5. Validate nodes
 for node in gpu-node-{01..04}; do
-  kubefabric health check node $node
-  kubefabric health test $node --full
+  tensorreaper health check node $node
+  tensorreaper health test $node --full
 done
 
 # 6. Uncordon nodes
-kubefabric maintenance uncordon maintenance-001
+tensorreaper maintenance uncordon maintenance-001
 
 # 7. End maintenance mode
-kubefabric maintenance complete maintenance-001
+tensorreaper maintenance complete maintenance-001
 ```
 
 **Post-Maintenance:**
 
 ```bash
 # 1. Verify cluster health
-kubefabric health status cluster-gpu-health
+tensorreaper health status cluster-gpu-health
 
 # 2. Run smoke tests
-kubefabric test smoke
+tensorreaper test smoke
 
 # 3. Monitor for issues
-kubefabric monitor --window 2h
+tensorreaper monitor --window 2h
 
 # 4. Send completion notice
-kubefabric announcement create \
+tensorreaper announcement create \
   --title "Maintenance Complete" \
   --message "All systems operational"
 ```
@@ -464,27 +464,27 @@ kubefabric announcement create \
 
 ```bash
 # 1. Plan rollout
-kubefabric upgrade plan --version 1.1.0
+tensorreaper upgrade plan --version 1.1.0
 
 # 2. Create rollout
-kubefabric upgrade create \
+tensorreaper upgrade create \
   --version 1.1.0 \
   --strategy rolling \
   --max-unavailable 25%
 
 # 3. Start rollout
-kubefabric upgrade start
+tensorreaper upgrade start
 
 # 4. Monitor progress
-kubefabric upgrade status
+tensorreaper upgrade status
 
 # 5. If issues detected
-kubefabric upgrade pause
+tensorreaper upgrade pause
 # Fix issues
-kubefabric upgrade resume
+tensorreaper upgrade resume
 
 # 6. Complete rollout
-kubefabric upgrade verify
+tensorreaper upgrade verify
 ```
 
 ---
@@ -504,27 +504,27 @@ kubefabric upgrade verify
 
 ```bash
 # 1. Declare incident
-kubefabric incident create \
+tensorreaper incident create \
   --severity P0 \
   --title "Cluster outage" \
   --description "Complete cluster unavailable"
 
 # 2. Notify stakeholders
-kubefabric incident notify \
+tensorreaper incident notify \
   --channels slack,pagerduty,email \
   --recipients on-call,leadership
 
 # 3. Assemble response team
-kubefabric incident assign \
+tensorreaper incident assign \
   --incident-lead alice \
   --tech-lead bob \
   --comms-lead charlie
 
 # 4. Create war room
-kubefabric incident war-room create
+tensorreaper incident war-room create
 
 # 5. Update status every 15 minutes
-kubefabric incident update \
+tensorreaper incident update \
   --status "Investigating root cause" \
   --eta "30 minutes to diagnosis"
 
@@ -532,16 +532,16 @@ kubefabric incident update \
 # ... resolution steps ...
 
 # 7. Verify resolution
-kubefabric health status cluster-gpu-health
-kubefabric test smoke
+tensorreaper health status cluster-gpu-health
+tensorreaper test smoke
 
 # 8. Clear incident
-kubefabric incident resolve \
+tensorreaper incident resolve \
   --resolution "Restored from backup" \
   --duration "2h 15m"
 
 # 9. Schedule post-mortem
-kubefabric incident post-mortem schedule \
+tensorreaper incident post-mortem schedule \
   --date "2024-01-23 14:00" \
   --required alice,bob,charlie
 ```
@@ -607,8 +607,8 @@ kubefabric incident post-mortem schedule \
 ### Job Troubleshooting
 
 ```bash
-☐ Check job status: kubefabric job status <name>
-☐ View logs: kubefabric job logs <name>
+☐ Check job status: tensorreaper job status <name>
+☐ View logs: tensorreaper job logs <name>
 ☐ Check events: kubectl describe fabricaijob <name>
 ☐ Verify resources available
 ☐ Check quota/budget
@@ -671,34 +671,34 @@ GPUError:
 
 ```bash
 # Cluster health
-kubefabric health status cluster-gpu-health
-kubefabric cluster validate
-kubefabric node list --unhealthy
+tensorreaper health status cluster-gpu-health
+tensorreaper cluster validate
+tensorreaper node list --unhealthy
 
 # Performance
-kubefabric profile <job-name>
-kubefabric metrics gpu-utilization
-kubefabric network metrics
+tensorreaper profile <job-name>
+tensorreaper metrics gpu-utilization
+tensorreaper network metrics
 
 # Cost
-kubefabric cost analyze
-kubefabric cost optimize
-kubefabric budget status
+tensorreaper cost analyze
+tensorreaper cost optimize
+tensorreaper budget status
 
 # Capacity
-kubefabric capacity analyze
-kubefabric capacity forecast
-kubefabric queue status
+tensorreaper capacity analyze
+tensorreaper capacity forecast
+tensorreaper queue status
 
 # Incidents
-kubefabric incident create
-kubefabric incident update
-kubefabric incident resolve
+tensorreaper incident create
+tensorreaper incident update
+tensorreaper incident resolve
 
 # Maintenance
-kubefabric maintenance create
-kubefabric maintenance start
-kubefabric maintenance complete
+tensorreaper maintenance create
+tensorreaper maintenance start
+tensorreaper maintenance complete
 ```
 
 ---

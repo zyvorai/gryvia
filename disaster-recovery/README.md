@@ -1,6 +1,6 @@
 # Disaster Recovery
 
-Comprehensive disaster recovery and business continuity for KubeFabric.
+Comprehensive disaster recovery and business continuity for TensorReaper.
 
 ## Overview
 
@@ -39,11 +39,11 @@ Comprehensive disaster recovery and business continuity for KubeFabric.
 ### 1. Continuous Backup
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: BackupPolicy
 metadata:
   name: production-backup
-  namespace: kubefabric
+  namespace: tensorreaper
 spec:
   tier: platinum
 
@@ -64,7 +64,7 @@ spec:
   # Where to backup
   storage:
     type: s3
-    bucket: kubefabric-backups-us-west-2
+    bucket: tensorreaper-backups-us-west-2
     region: us-west-2
     encryption: AES256
 
@@ -84,7 +84,7 @@ spec:
 ### 2. Data Replication
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: DataReplication
 metadata:
   name: primary-to-secondary
@@ -124,7 +124,7 @@ spec:
 ### 3. Multi-Region Setup
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: MultiRegionConfig
 metadata:
   name: dr-config
@@ -183,7 +183,7 @@ kfctl backup create --namespace production
 
 # Export to external storage
 kfctl backup export backup-20240115 \
-  --destination s3://dr-backups/kubefabric/
+  --destination s3://dr-backups/tensorreaper/
 ```
 
 ## Recovery Procedures
@@ -192,12 +192,12 @@ kfctl backup export backup-20240115 \
 
 ```bash
 # 1. Provision new cluster
-# 2. Install KubeFabric
-helm install kubefabric kubefabric/kubefabric -n kubefabric
+# 2. Install TensorReaper
+helm install tensorreaper tensorreaper/tensorreaper -n tensorreaper
 
 # 3. Restore from backup
 kfctl restore \
-  --backup s3://backups/kubefabric-20240115-020000.tar.gz \
+  --backup s3://backups/tensorreaper-20240115-020000.tar.gz \
   --verify
 
 # 4. Verify restoration
@@ -212,18 +212,18 @@ kfctl cluster resume
 ```bash
 # Restore specific resources
 kfctl restore \
-  --backup kubefabric-20240115 \
+  --backup tensorreaper-20240115 \
   --resources fabricaijobs,fabricquotas \
   --namespace default
 
 # Restore single job
 kfctl restore \
-  --backup kubefabric-20240115 \
+  --backup tensorreaper-20240115 \
   --resource fabricaijob/training-job-123
 
 # Restore to different namespace
 kfctl restore \
-  --backup kubefabric-20240115 \
+  --backup tensorreaper-20240115 \
   --target-namespace recovery
 ```
 
@@ -334,7 +334,7 @@ kfctl backup list --verified
 
 # 3. Restore from last good backup
 kfctl restore \
-  --backup kubefabric-20240114-020000 \
+  --backup tensorreaper-20240114-020000 \
   --point-in-time "2024-01-14T23:30:00Z"
 
 # 4. Verify data integrity
@@ -390,7 +390,7 @@ kubectl get fabricaijob critical-training
 ### Regular DR Drills
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: DRDrill
 metadata:
   name: quarterly-dr-drill
@@ -439,33 +439,33 @@ spec:
 
 ```prometheus
 # Backup success rate
-kubefabric_backup_success_rate 99.8
+tensorreaper_backup_success_rate 99.8
 
 # Last successful backup age
-kubefabric_backup_last_success_hours 4.2
+tensorreaper_backup_last_success_hours 4.2
 
 # Backup size trend
-kubefabric_backup_size_gb{type="full"} 485
-kubefabric_backup_size_gb{type="incremental"} 23
+tensorreaper_backup_size_gb{type="full"} 485
+tensorreaper_backup_size_gb{type="incremental"} 23
 
 # Verification failures
-kubefabric_backup_verification_failures_total 0
+tensorreaper_backup_verification_failures_total 0
 ```
 
 ### Replication Lag
 
 ```prometheus
 # Replication lag in seconds
-kubefabric_replication_lag_seconds{
+tensorreaper_replication_lag_seconds{
   source="us-west-2",
   destination="us-east-1"
 } 45
 
 # Replication throughput
-kubefabric_replication_throughput_mbps 850
+tensorreaper_replication_throughput_mbps 850
 
 # Failed replications
-kubefabric_replication_failures_total 2
+tensorreaper_replication_failures_total 2
 ```
 
 ### DR Readiness Score
@@ -593,6 +593,6 @@ See `disaster-recovery/runbooks/` for detailed procedures:
 
 ## Support
 
-- DR Issues: https://github.com/ssahani/kube-fabric/issues
+- DR Issues: https://github.com/ssahani/tensor-reaper/issues
 - Emergency Hotline: [Configure your support line]
 - DR Slack: #disaster-recovery

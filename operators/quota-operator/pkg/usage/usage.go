@@ -6,12 +6,12 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kubefabricv1 "github.com/ssahani/kube-fabric/operators/quota-operator/api/v1"
+	tensorreaperv1 "github.com/ssahani/tensor-reaper/operators/quota-operator/api/v1"
 )
 
 // CalculateUsage calculates current resource usage for a quota
-func CalculateUsage(ctx context.Context, k8sClient client.Client, quota *kubefabricv1.FabricQuota) (*kubefabricv1.QuotaUsage, error) {
-	usage := &kubefabricv1.QuotaUsage{}
+func CalculateUsage(ctx context.Context, k8sClient client.Client, quota *tensorreaperv1.FabricQuota) (*tensorreaperv1.QuotaUsage, error) {
+	usage := &tensorreaperv1.QuotaUsage{}
 
 	// Get all AI jobs in quota namespaces
 	totalGPUs := int32(0)
@@ -20,7 +20,7 @@ func CalculateUsage(ctx context.Context, k8sClient client.Client, quota *kubefab
 	gpuHours := 0.0
 
 	for _, nsName := range quota.Spec.Namespaces {
-		jobs := &kubefabricv1.FabricAIJobList{}
+		jobs := &tensorreaperv1.FabricAIJobList{}
 		if err := k8sClient.List(ctx, jobs, client.InNamespace(nsName)); err != nil {
 			return nil, err
 		}
@@ -53,7 +53,7 @@ func CalculateUsage(ctx context.Context, k8sClient client.Client, quota *kubefab
 }
 
 // GetMonthlyGPUHours calculates total GPU hours for the current month
-func GetMonthlyGPUHours(ctx context.Context, k8sClient client.Client, quota *kubefabricv1.FabricQuota) (float64, error) {
+func GetMonthlyGPUHours(ctx context.Context, k8sClient client.Client, quota *tensorreaperv1.FabricQuota) (float64, error) {
 	// Get start of current month
 	now := time.Now()
 	startOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
@@ -61,7 +61,7 @@ func GetMonthlyGPUHours(ctx context.Context, k8sClient client.Client, quota *kub
 	totalHours := 0.0
 
 	for _, nsName := range quota.Spec.Namespaces {
-		jobs := &kubefabricv1.FabricAIJobList{}
+		jobs := &tensorreaperv1.FabricAIJobList{}
 		if err := k8sClient.List(ctx, jobs, client.InNamespace(nsName)); err != nil {
 			return 0, err
 		}

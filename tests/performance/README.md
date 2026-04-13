@@ -1,6 +1,6 @@
-# KubeFabric Performance Benchmarks
+# TensorReaper Performance Benchmarks
 
-Performance benchmarking tools for KubeFabric platform.
+Performance benchmarking tools for TensorReaper platform.
 
 ## Benchmarks
 

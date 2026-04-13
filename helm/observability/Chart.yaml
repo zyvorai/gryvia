@@ -1,6 +1,6 @@
 apiVersion: v2
-name: kubefabric-observability
-description: Observability stack for KubeFabric with GPU metrics
+name: tensorreaper-observability
+description: Observability stack for TensorReaper with GPU metrics
 type: application
 version: 1.0.0
 appVersion: "1.0.0"
@@ -15,4 +15,4 @@ keywords:
   - grafana
   - gpu
   - nvidia
-home: https://github.com/ssahani/kube-fabric
+home: https://github.com/ssahani/tensor-reaper

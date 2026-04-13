@@ -48,7 +48,7 @@ const apiClient = axios.create({
 
 // Attach auth token to all requests
 apiClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem('kubefabric_token') || import.meta.env.VITE_API_TOKEN || ''
+  const token = localStorage.getItem('tensorreaper_token') || import.meta.env.VITE_API_TOKEN || ''
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }

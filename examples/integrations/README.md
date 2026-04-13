@@ -1,6 +1,6 @@
 # Integration Examples
 
-KubeFabric integrations with popular ML tools and platforms.
+TensorReaper integrations with popular ML tools and platforms.
 
 ## Available Integrations
 
@@ -27,7 +27,7 @@ Multi-user Jupyter notebook server with GPU profile selection.
 - **Persistent Storage**: 100GB VAST Data storage per user
 - **MLflow Integration**: Pre-configured MLflow tracking
 - **Idle Culling**: Automatic shutdown after 1 hour idle
-- **KubeFabric Integration**: Quota enforcement and cost tracking
+- **TensorReaper Integration**: Quota enforcement and cost tracking
 
 ### Installation
 
@@ -62,7 +62,7 @@ print(f"GPU count: {torch.cuda.device_count()}")
 print(f"GPU name: {torch.cuda.get_device_name(0)}")
 
 # MLflow tracking
-mlflow.set_tracking_uri("http://mlflow.kubefabric.svc.cluster.local:5000")
+mlflow.set_tracking_uri("http://mlflow.tensorreaper.svc.cluster.local:5000")
 mlflow.set_experiment("jupyter-experiments")
 
 with mlflow.start_run():
@@ -89,7 +89,7 @@ data:
           'cpu_limit': 32,
           'mem_limit': '256G',
           'extra_resource_limits': {'nvidia.com/gpu': '1'},
-          'node_selector': {'kubefabric.ai/gpu-type': 'H100'}
+          'node_selector': {'tensorreaper.ai/gpu-type': 'H100'}
         }
       }
     ]
@@ -102,7 +102,7 @@ Browser-based VS Code with GPU access.
 ### Deployment
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAIJob
 metadata:
   name: vscode-server
@@ -194,7 +194,7 @@ spec:
                   memory: 64Gi
                   nvidia.com/gpu: 2
           nodeSelector:
-            kubefabric.ai/gpu-type: A100-80G
+            tensorreaper.ai/gpu-type: A100-80G
 ```
 
 ### Usage
@@ -227,9 +227,9 @@ results = ray.get(futures)
 from kfp import dsl
 from kfp import components
 
-# KubeFabric job component
+# TensorReaper job component
 @dsl.component
-def kubefabric_training_op(
+def tensorreaper_training_op(
     model: str,
     dataset: str,
     gpu_type: str,
@@ -238,7 +238,7 @@ def kubefabric_training_op(
     import subprocess
 
     job_yaml = f"""
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAIJob
 metadata:
   name: kfp-training
@@ -259,11 +259,11 @@ spec:
 
 # Pipeline
 @dsl.pipeline(
-    name='KubeFabric Training Pipeline',
-    description='Training pipeline using KubeFabric'
+    name='TensorReaper Training Pipeline',
+    description='Training pipeline using TensorReaper'
 )
 def training_pipeline():
-    train_op = kubefabric_training_op(
+    train_op = tensorreaper_training_op(
         model="llama-7b",
         dataset="openwebtext",
         gpu_type="A100-80G",
@@ -297,7 +297,7 @@ gateway:
         limit: 64G
       extraPodConfig:
         nodeSelector:
-          kubefabric.ai/gpu: "true"
+          tensorreaper.ai/gpu: "true"
 ```
 
 ### Usage
@@ -325,7 +325,7 @@ R development environment with GPU support.
 ### Deployment
 
 ```yaml
-apiVersion: kubefabric.ai/v1
+apiVersion: tensorreaper.ai/v1
 kind: FabricAIJob
 metadata:
   name: rstudio-server
@@ -379,7 +379,7 @@ model %>% fit(x_train, y_train, epochs = 10, batch_size = 32)
 1. **Profile Selection**: Choose smallest GPU that meets requirements
 2. **Idle Timeout**: Set reasonable timeouts to avoid waste
 3. **Quotas**: Assign team quotas to prevent overuse
-4. **Monitoring**: Track usage with KubeFabric cost tracking
+4. **Monitoring**: Track usage with TensorReaper cost tracking
 
 ### Security
 
@@ -427,5 +427,5 @@ open http://localhost:8265
 
 ## Support
 
-- Integration Issues: https://github.com/ssahani/kube-fabric/issues
-- Documentation: https://github.com/ssahani/kube-fabric/docs
+- Integration Issues: https://github.com/ssahani/tensor-reaper/issues
+- Documentation: https://github.com/ssahani/tensor-reaper/docs
