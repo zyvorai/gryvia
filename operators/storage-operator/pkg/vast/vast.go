@@ -3,7 +3,9 @@ package vast
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -223,7 +225,21 @@ func ensureController(ctx context.Context, k8sClient client.Client, storage *kub
 	return err
 }
 
+func validateEndpoint(endpoint string) error {
+	if endpoint == "" {
+		return fmt.Errorf("endpoint must not be empty")
+	}
+	if strings.ContainsAny(endpoint, "\n\r\t;|&$`") {
+		return fmt.Errorf("endpoint contains invalid characters")
+	}
+	return nil
+}
+
 func ensureEndpointSecret(ctx context.Context, k8sClient client.Client, secretName, endpoint string) error {
+	if err := validateEndpoint(endpoint); err != nil {
+		return fmt.Errorf("invalid endpoint: %w", err)
+	}
+
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      secretName,
@@ -368,7 +384,7 @@ func ensureNodeDaemonSet(ctx context.Context, k8sClient client.Client, storage *
 }
 
 // HealthCheck checks VAST cluster health
-func HealthCheck(endpoint string) error {
+func HealthCheck(ctx context.Context, endpoint string) error {
 	httpClient := &http.Client{
 		Timeout: 10 * time.Second,
 	}
@@ -376,11 +392,18 @@ func HealthCheck(endpoint string) error {
 	// VAST management API health endpoint
 	healthURL := fmt.Sprintf("https://%s/api/health", endpoint)
 
-	resp, err := httpClient.Get(healthURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
+	if err != nil {
+		return fmt.Errorf("VAST health check request creation failed: %w", err)
+	}
+
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("VAST health check failed: %w", err)
 	}
 	defer resp.Body.Close()
+	// Drain the body to allow connection reuse
+	_, _ = io.Copy(io.Discard, resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("VAST health check returned status %d", resp.StatusCode)

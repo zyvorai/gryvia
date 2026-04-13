@@ -2,6 +2,8 @@ package budget
 
 import (
 	"context"
+	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -89,9 +91,9 @@ func calculateAverageRate(quota *kubefabricv1.FabricQuota) float64 {
 
 func daysInCurrentMonth() int {
 	now := time.Now()
-	year, month, _ := now.Date()
 	// Get last day of month by going to first day of next month and subtracting 1 day
-	firstOfNextMonth := time.Date(year, month+1, 1, 0, 0, 0, 0, now.Location())
+	firstOfNextMonth := now.AddDate(0, 1, -now.Day()+1)
+	firstOfNextMonth = time.Date(firstOfNextMonth.Year(), firstOfNextMonth.Month(), 1, 0, 0, 0, 0, now.Location())
 	lastOfThisMonth := firstOfNextMonth.Add(-24 * time.Hour)
 	return lastOfThisMonth.Day()
 }
@@ -107,9 +109,17 @@ func GetGPURate(gpuType string) float64 {
 	return gpuPricing["default"]
 }
 
-// UpdatePricing allows updating GPU pricing (useful for custom on-prem pricing)
-func UpdatePricing(gpuType string, hourlyRate float64) {
+// UpdatePricing allows updating GPU pricing (useful for custom on-prem pricing).
+// Returns an error if gpuType is empty or hourlyRate is negative or NaN.
+func UpdatePricing(gpuType string, hourlyRate float64) error {
+	if gpuType == "" {
+		return fmt.Errorf("GPU type must not be empty")
+	}
+	if hourlyRate < 0 || math.IsNaN(hourlyRate) || math.IsInf(hourlyRate, 0) {
+		return fmt.Errorf("hourly rate must be a non-negative finite number, got %v", hourlyRate)
+	}
 	gpuPricingMu.Lock()
 	defer gpuPricingMu.Unlock()
 	gpuPricing[gpuType] = hourlyRate
+	return nil
 }

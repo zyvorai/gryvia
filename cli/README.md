@@ -84,6 +84,10 @@ kubefabric logs my-training-job --follow
 kubefabric logs my-training-job --replica 0
 ```
 
+The `logs` and `submit --logs` commands auto-detect the container name from the
+pod spec (using the first container). This works with any job container name,
+not just the default "trainer".
+
 ### Cancel Jobs
 
 Cancelling a job patches its status to "Cancelled" rather than deleting the resource, preserving the job record for auditing.
@@ -306,6 +310,7 @@ cargo test
 
 - GPU count fields use `u32` (unsigned 32-bit integer) since counts cannot be negative.
 - The tokio runtime uses specific feature flags (`rt-multi-thread`, `macros`, `time`, etc.) rather than the `full` feature set, reducing binary size.
+- Job names are validated against Kubernetes DNS-1123 subdomain rules: lowercase alphanumeric and hyphens only, max 253 characters, must not start or end with a hyphen.
 
 ## Troubleshooting
 

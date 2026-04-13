@@ -16,7 +16,7 @@ spec:
     mountOptions:
       - "rw"
       - "noatime"
-    csiDriverVersion: "latest"
+    csiDriverVersion: "v2.6.0"
 ---
 apiVersion: v1
 kind: Secret
@@ -24,7 +24,8 @@ metadata:
   name: weka-credentials
   namespace: kubefabric-system
 type: Opaque
+# IMPORTANT: Replace placeholders with real credentials before applying.
 stringData:
-  username: admin
-  password: changeme
+  username: <REPLACE_WITH_USERNAME>
+  password: <REPLACE_WITH_PASSWORD>
   organization: default

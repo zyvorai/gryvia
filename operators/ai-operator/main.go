@@ -6,6 +6,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -15,6 +16,7 @@ import (
 
 	kubefabricv1 "github.com/ssahani/kube-fabric/operators/ai-operator/api/v1"
 	"github.com/ssahani/kube-fabric/operators/ai-operator/controllers"
+	"github.com/ssahani/kube-fabric/operators/ai-operator/pkg/timemachine"
 )
 
 var (
@@ -65,6 +67,60 @@ func main() {
 		Log:    ctrl.Log.WithName("controllers").WithName("FabricAIJob"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "FabricAIJob")
+		os.Exit(1)
+	}
+
+	// Create kubernetes clientset for pod log access
+	clientset, err := kubernetes.NewForConfig(ctrl.GetConfigOrDie())
+	if err != nil {
+		setupLog.Error(err, "unable to create kubernetes clientset")
+		os.Exit(1)
+	}
+
+	if err = (&controllers.FabricLiveExperimentReconciler{
+		Client:    mgr.GetClient(),
+		Scheme:    mgr.GetScheme(),
+		Log:       ctrl.Log.WithName("controllers").WithName("FabricLiveExperiment"),
+		Clientset: clientset,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "FabricLiveExperiment")
+		os.Exit(1)
+	}
+
+	if err = (&controllers.FabricCheckpointGuardReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+		Log:    ctrl.Log.WithName("controllers").WithName("FabricCheckpointGuard"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "FabricCheckpointGuard")
+		os.Exit(1)
+	}
+
+	if err = (&controllers.FabricTrainingProfilerReconciler{
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Log:      ctrl.Log.WithName("controllers").WithName("FabricTrainingProfiler"),
+		Recorder: mgr.GetEventRecorderFor("fabrictrainingprofiler-controller"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "FabricTrainingProfiler")
+		os.Exit(1)
+	}
+
+	if err = (&controllers.FabricModelLineageReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "FabricModelLineage")
+		os.Exit(1)
+	}
+
+	if err = (&controllers.FabricTrainingTimeMachineReconciler{
+		Client:      mgr.GetClient(),
+		Scheme:      mgr.GetScheme(),
+		Log:         ctrl.Log.WithName("controllers").WithName("FabricTrainingTimeMachine"),
+		ForkHandler: timemachine.NewForkHandler(mgr.GetClient()),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "FabricTrainingTimeMachine")
 		os.Exit(1)
 	}
 

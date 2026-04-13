@@ -68,7 +68,8 @@ spec:
   distributed:
     enabled: true
     strategy: ddp
-    worldSize: ${GPU_COUNT}
+    nodes: ${NODE_COUNT:-1}
+    gpusPerNode: ${GPU_COUNT:-8}
   resources:
     gpuType: ${GPU_TYPE:-A100-80G}
     gpuCount: ${GPU_COUNT:-8}
@@ -157,13 +158,14 @@ spec:
   distributed:
     enabled: true
     strategy: deepspeed
-    worldSize: ${GPU_COUNT}
+    nodes: ${NODE_COUNT:-1}
+    gpusPerNode: ${GPU_COUNT:-16}
   resources:
     gpuType: ${GPU_TYPE:-A100-80G}
     gpuCount: ${GPU_COUNT:-16}
     memory: ${MEMORY:-1Ti}
     cpu: ${CPU:-128}
-  image: deepspeed/deepspeed:latest
+  image: deepspeed/deepspeed:0.15.4
   command:
     - deepspeed
     - --num_gpus=${GPU_COUNT}
@@ -279,7 +281,7 @@ spec:
     gpuCount: ${GPU_COUNT:-2}
     memory: ${MEMORY:-128Gi}
     cpu: ${CPU:-32}
-  image: vllm/vllm-openai:latest
+  image: vllm/vllm-openai:v0.6.6
   command:
     - python
     - -m

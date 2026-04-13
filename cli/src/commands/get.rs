@@ -36,8 +36,11 @@ async fn get_job(client: &KubeFabricClient, name: &str, output: &str) -> Result<
         "json" => {
             println!("{}", serde_json::to_string_pretty(&job)?);
         }
-        _ => {
+        "yaml" => {
             println!("{}", serde_yaml::to_string(&job)?);
+        }
+        _ => {
+            anyhow::bail!("Unknown output format '{}'. Use 'json' or 'yaml'.", output);
         }
     }
 
@@ -54,8 +57,11 @@ async fn get_quota(client: &KubeFabricClient, name: &str, output: &str) -> Resul
         "json" => {
             println!("{}", serde_json::to_string_pretty(&quota)?);
         }
-        _ => {
+        "yaml" => {
             println!("{}", serde_yaml::to_string(&quota)?);
+        }
+        _ => {
+            anyhow::bail!("Unknown output format '{}'. Use 'json' or 'yaml'.", output);
         }
     }
 
@@ -72,8 +78,11 @@ async fn get_node(client: &KubeFabricClient, name: &str, output: &str) -> Result
         "json" => {
             println!("{}", serde_json::to_string_pretty(&node)?);
         }
-        _ => {
+        "yaml" => {
             println!("{}", serde_yaml::to_string(&node)?);
+        }
+        _ => {
+            anyhow::bail!("Unknown output format '{}'. Use 'json' or 'yaml'.", output);
         }
     }
 

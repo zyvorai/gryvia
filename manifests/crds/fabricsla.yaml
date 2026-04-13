@@ -16,6 +16,9 @@ spec:
           properties:
             spec:
               type: object
+              required:
+                - tier
+                - scope
               properties:
                 # SLA tier
                 tier:
@@ -426,7 +429,7 @@ spec:
   # - Auto-retry on failure
   # - 24/7 support
 
-  image: vllm/vllm:latest
+  image: vllm/vllm:v0.6.6
   command: ["python", "-m", "vllm.entrypoints.api_server"]
 
 ---

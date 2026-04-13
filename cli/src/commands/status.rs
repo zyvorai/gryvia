@@ -9,7 +9,10 @@ use crate::types::*;
 pub async fn execute(client: &KubeFabricClient, job: &str, follow: bool) -> Result<()> {
     if follow {
         loop {
-            print!("\x1B[2J\x1B[1;1H"); // Clear screen
+            // Clear screen using ANSI escape sequences. This works on POSIX-compliant
+            // terminals but may render as garbage on non-ANSI terminals (e.g. Windows cmd.exe
+            // without virtual terminal processing enabled).
+            print!("\x1B[2J\x1B[1;1H");
             let api: Api<FabricAIJob> = Api::namespaced(
                 client.kube_client.clone(),
                 client.namespace(),
@@ -66,7 +69,8 @@ fn print_job_status(job: &FabricAIJob) {
     if job.spec.distributed.enabled {
         println!("{}", "Distributed Training:".bold().underline());
         println!("  Strategy: {}", job.spec.distributed.strategy);
-        println!("  World Size: {}", job.spec.distributed.world_size);
+        println!("  Nodes: {}", job.spec.distributed.nodes);
+        println!("  GPUs/Node: {}", job.spec.distributed.gpus_per_node);
         println!();
     }
 

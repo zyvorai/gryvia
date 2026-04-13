@@ -58,6 +58,8 @@ spec:
           resources:
             {{- toYaml .Values.gpuOperator.resources | nindent 12 }}
           securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
             {{- toYaml .Values.securityContext | nindent 12 }}
       {{- with .Values.gpuOperator.nodeSelector }}
       nodeSelector:

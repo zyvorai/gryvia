@@ -16,9 +16,17 @@ spec:
       num-cpus: '0'  # Don't schedule tasks on head
     template:
       spec:
+        securityContext:
+          runAsNonRoot: true
+          seccompProfile:
+            type: RuntimeDefault
         containers:
           - name: ray-head
             image: rayproject/ray:2.9.0-py310-gpu
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
             ports:
               - containerPort: 6379
                 name: gcs

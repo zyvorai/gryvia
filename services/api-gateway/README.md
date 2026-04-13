@@ -101,12 +101,12 @@ API documentation (Swagger UI): `http://localhost:8080/docs`
 
 ```bash
 # Build the image
-docker build -t kubefabric-api-gateway:latest .
+docker build -t kubefabric-api-gateway:1.0.0 .
 
 # Run the container
 docker run -p 8080:8080 \
   -v ~/.kube/config:/home/apigateway/.kube/config:ro \
-  kubefabric-api-gateway:latest
+  kubefabric-api-gateway:1.0.0
 ```
 
 ## Deployment

@@ -1,0 +1,285 @@
+---
+# FabricLiveExperiment - Real-time multi-experiment comparison with automatic early stopping
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: fabricliveexperiments.kubefabric.ai
+spec:
+  group: kubefabric.ai
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required:
+                - jobs
+                - comparison
+              properties:
+                description:
+                  type: string
+                  description: "Human-readable description of the experiment"
+
+                # Jobs participating in the experiment
+                jobs:
+                  type: array
+                  minItems: 2
+                  description: "List of jobs to compare in this experiment"
+                  items:
+                    type: object
+                    required:
+                      - name
+                      - jobRef
+                    properties:
+                      name:
+                        type: string
+                        description: "Friendly name for this job in the leaderboard"
+                      jobRef:
+                        type: string
+                        description: "Name of the FabricAIJob resource to track"
+
+                # Metric comparison configuration
+                comparison:
+                  type: object
+                  required:
+                    - primaryMetric
+                    - direction
+                  properties:
+                    primaryMetric:
+                      type: string
+                      description: "Name of the primary metric to compare (e.g. loss, accuracy)"
+                    direction:
+                      type: string
+                      enum:
+                        - minimize
+                        - maximize
+                      description: "Whether to minimize or maximize the primary metric"
+                    secondaryMetrics:
+                      type: array
+                      description: "Additional metrics to factor into ranking"
+                      items:
+                        type: object
+                        required:
+                          - name
+                          - weight
+                        properties:
+                          name:
+                            type: string
+                            description: "Metric name"
+                          weight:
+                            type: number
+                            minimum: 0
+                            maximum: 1
+                            description: "Weight of this metric in composite score (0-1)"
+                    metricSource:
+                      type: object
+                      description: "How to collect metrics"
+                      properties:
+                        type:
+                          type: string
+                          enum:
+                            - log-pattern
+                            - prometheus
+                          description: "Source type for metric collection"
+                        patterns:
+                          type: object
+                          additionalProperties:
+                            type: string
+                          description: "Map of metric name to regex pattern for log-pattern source"
+
+                # Strategy for comparison and early stopping
+                strategy:
+                  type: object
+                  properties:
+                    comparisonPoints:
+                      type: array
+                      description: "Points at which to compare jobs"
+                      items:
+                        type: object
+                        required:
+                          - type
+                          - values
+                        properties:
+                          type:
+                            type: string
+                            enum:
+                              - epoch
+                              - step
+                            description: "Unit for comparison points"
+                          values:
+                            type: array
+                            items:
+                              type: integer
+                            description: "Specific point values at which to compare"
+
+                    earlyTermination:
+                      type: object
+                      description: "Early termination policy"
+                      properties:
+                        enabled:
+                          type: boolean
+                          default: false
+                          description: "Whether early termination is enabled"
+                        method:
+                          type: string
+                          enum:
+                            - bayesian
+                            - median
+                            - percentile
+                          description: "Statistical method for termination decisions"
+                        minRunFraction:
+                          type: number
+                          minimum: 0
+                          maximum: 1
+                          default: 0.25
+                          description: "Minimum fraction of total run before termination is allowed"
+                        confidenceLevel:
+                          type: number
+                          minimum: 0
+                          maximum: 1
+                          default: 0.95
+                          description: "Confidence level required for termination decision"
+                        graceEpochs:
+                          type: integer
+                          minimum: 0
+                          default: 3
+                          description: "Number of epochs to wait before considering termination"
+
+                    anomalyDetection:
+                      type: object
+                      description: "Anomaly detection configuration"
+                      properties:
+                        lossPlateauDetection:
+                          type: boolean
+                          default: false
+                          description: "Detect when loss stops decreasing"
+                        lossDivergenceDetection:
+                          type: boolean
+                          default: false
+                          description: "Detect when loss starts increasing (divergence)"
+                        gradientExplosionDetection:
+                          type: boolean
+                          default: false
+                          description: "Detect gradient explosion (NaN/Inf loss)"
+
+                    intervention:
+                      type: object
+                      description: "Automated intervention configuration"
+                      properties:
+                        enabled:
+                          type: boolean
+                          default: false
+                          description: "Whether automated intervention is enabled"
+                        actions:
+                          type: array
+                          description: "List of intervention actions"
+                          items:
+                            type: string
+                            enum:
+                              - terminate
+                              - notify
+                              - reduce-lr
+                              - checkpoint
+
+                # Notification configuration
+                notifications:
+                  type: object
+                  properties:
+                    realTimeLeaderboard:
+                      type: boolean
+                      default: true
+                      description: "Enable real-time leaderboard updates in status"
+                    onNewLeader:
+                      type: boolean
+                      default: true
+                      description: "Notify when leaderboard leader changes"
+                    onTermination:
+                      type: boolean
+                      default: true
+                      description: "Notify when a job is early-terminated"
+                    channel:
+                      type: string
+                      description: "Notification channel (e.g. slack://channel, email://addr)"
+
+            status:
+              type: object
+              properties:
+                phase:
+                  type: string
+                  enum:
+                    - Pending
+                    - Running
+                    - Completed
+                    - Failed
+                  description: "Current phase of the experiment"
+                startTime:
+                  type: string
+                  format: date-time
+                  description: "When the experiment started"
+                leaderboard:
+                  type: array
+                  description: "Ranked list of jobs by performance"
+                  items:
+                    type: object
+                    properties:
+                      rank:
+                        type: integer
+                        description: "Position in the leaderboard"
+                      job:
+                        type: string
+                        description: "Job name"
+                      primaryMetricValue:
+                        type: number
+                        description: "Current value of the primary metric"
+                      status:
+                        type: string
+                        enum:
+                          - Running
+                          - TerminatedEarly
+                        description: "Current status of this job in the experiment"
+                      reason:
+                        type: string
+                        description: "Reason for termination if terminated early"
+                gpuHoursSaved:
+                  type: number
+                  description: "Estimated GPU-hours saved by early termination"
+                costSaved:
+                  type: number
+                  description: "Estimated cost saved in dollars"
+                anomaliesDetected:
+                  type: integer
+                  description: "Number of anomalies detected across all jobs"
+
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Name
+          type: string
+          jsonPath: .metadata.name
+        - name: Phase
+          type: string
+          jsonPath: .status.phase
+        - name: Leader
+          type: string
+          jsonPath: .status.leaderboard[0].job
+        - name: GPUHoursSaved
+          type: number
+          jsonPath: .status.gpuHoursSaved
+        - name: CostSaved
+          type: number
+          jsonPath: .status.costSaved
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+
+  scope: Namespaced
+  names:
+    plural: fabricliveexperiments
+    singular: fabricliveexperiment
+    kind: FabricLiveExperiment
+    shortNames:
+      - fle

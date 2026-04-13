@@ -241,18 +241,20 @@ spec:
   distributed:
     enabled: true
     strategy: ddp
-    worldSize: 32  # 32 GPUs total
+    nodes: 4         # Number of nodes
+    gpusPerNode: 8   # GPUs per node
 
   resources:
     gpuType: A100-80G
-    gpuCount: 8  # 8 GPUs per node = 4 nodes
+    gpuCount: 8  # GPUs per node
 ```
 
 KubeFabric handles:
-- Node selection
-- Environment variables
-- Network configuration
-- Rank assignment
+- Node selection via the GPU-aware scheduler
+- `WORLD_SIZE` environment variable (automatically set to `nodes * gpusPerNode`)
+- `MASTER_ADDR` and `MASTER_PORT` for rendezvous
+- NCCL configuration (including RDMA settings when network is `rdma`)
+- Rank assignment via StatefulSet ordinal indices
 
 ---
 
@@ -461,10 +463,14 @@ Benefits:
 
 ### My job is stuck in Pending
 
+The scheduler reports why no nodes matched when scheduling fails. Check the
+job's conditions for a message like:
+`no nodes meet the job requirements (gpuType="H100", gpus=8, network="rdma", 12 nodes evaluated)`
+
 **Check:**
 
 ```bash
-# 1. Why is it pending?
+# 1. Why is it pending? (look at conditions for scheduler error details)
 kubectl describe fabricaijob my-job
 
 # 2. Check capacity

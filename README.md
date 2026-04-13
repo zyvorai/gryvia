@@ -39,14 +39,16 @@ Built-in support for the complete NVIDIA ecosystem:
 - **Kernel module tuning** - Performance optimization out of the box
 - **MIG (Multi-Instance GPU) support** - Slice GPUs for multi-tenancy
 
-**Example:** Split one H100 into 8 virtual GPUs for different teams:
+**Example:** Register an H100 GPU node:
 ```yaml
 apiVersion: kubefabric.ai/v1
 kind: FabricGpuNode
 spec:
+  nodeName: gpu-worker-01
   gpuType: H100
-  migEnabled: true
-  migProfile: 1g.10gb  # 8 instances per GPU
+  gpuCount: 8
+  rdma: true
+  sriov: true
 ```
 
 #### 📊 **NVIDIA Observability (Enterprise Grade)**
@@ -141,12 +143,17 @@ You submit:
 kind: FabricAIJob
 spec:
   model: llama-70b
-  gpus: 16
+  gpus: 8
+  distributed:
+    enabled: true
+    nodes: 2
+    gpusPerNode: 8
 ```
 
 KubeFabric automatically:
-- Creates multi-node training topology
-- Configures NCCL for optimal communication
+- Creates multi-node StatefulSet topology
+- Sets `WORLD_SIZE`, `MASTER_ADDR`, `MASTER_PORT` environment variables
+- Configures NCCL for optimal communication (RDMA when available)
 - Sets up:
   - Tensor parallelism
   - Data parallelism (DDP)
@@ -319,11 +326,11 @@ kubectl get fabricaijob
 
 ### Operators (Kubernetes Controllers)
 
-1. **GPU Operator** - Manages GPU lifecycle, drivers, health checks, node labeling
-2. **AI Workload Operator** - Schedules jobs, creates pods/StatefulSets, distributed training
-3. **Storage Operator** - Provisions PVCs, installs CSI drivers, mounts parallel filesystems
-4. **Network Operator** - Configures SR-IOV, RDMA, Multus NetworkAttachmentDefinitions
-5. **Quota Operator** - Enforces per-team GPU limits, budget tracking, job rejection
+1. **GPU Operator** - Manages GPU lifecycle, drivers, NVML-based health checks with exponential backoff, node labeling
+2. **AI Workload Operator** - GPU-aware scheduling, StatefulSet-based distributed training with automatic `WORLD_SIZE` computation
+3. **Storage Operator** - Installs CSI drivers (VAST/Weka/DDN/Lustre/Ceph), context-aware health checks, safe StorageClass creation
+4. **Network Operator** - Configures SR-IOV, RDMA with per-node failure tracking, Multus NetworkAttachmentDefinitions
+5. **Quota Operator** - Atomic quota enforcement, validated budget pricing, context-propagated job watches
 
 ### Web UI
 
@@ -338,11 +345,11 @@ Dark-themed React dashboard with:
 
 Rust-based CLI (`kubefabric`) for:
 - Job submission with `--wait` and `--logs` flags, listing, status with `--follow`, cancellation
-- Interactive job/quota creation wizard (`kubefabric create job`)
+- Interactive job/quota creation wizard with DNS-1123 name validation (`kubefabric create job`)
 - Cluster overview with `--detailed` GPU metrics and `--watch` mode
-- Log streaming with follow mode and per-replica selection
+- Log streaming with auto-detected container names and per-replica selection
 - Job queue monitoring with watch mode
-- Quota and cost analysis with `--detailed` breakdown
+- Quota and cost analysis with correct percentage display
 - GPU, storage, and network health checks
 - Storage and network resource deletion
 
@@ -350,7 +357,7 @@ Rust-based CLI (`kubefabric`) for:
 
 Three-stage scheduling: filter, score, select.
 
-**Filtering:** Eliminates nodes that are unhealthy, wrong GPU type, lack RDMA/SR-IOV, or have insufficient free GPUs (calculated from actual pod GPU usage across the cluster).
+**Filtering:** Eliminates nodes that are unhealthy, wrong GPU type, lack RDMA/SR-IOV, or have insufficient free GPUs (calculated from actual pod GPU usage across the cluster). When no nodes match, the error includes the exact requirements that failed (GPU type, count, network mode, nodes evaluated).
 
 **Scoring algorithm:**
 - GPU type match: +50 points
@@ -359,6 +366,8 @@ Three-stage scheduling: filter, score, select.
 - Available GPU count: +5 points per free GPU
 - GPU memory: +1 point per 10GB
 - Node resources: memory and CPU capacity
+
+**Topology optimizer** uses named scoring weights (NVLink 40%, NUMA 30%, utilization 20%) with full-node bonuses and fragmentation penalties.
 
 **Result:** Optimal job placement every time.
 
@@ -398,10 +407,11 @@ KubeFabric follows security best practices:
 - **Non-root containers** - All operator pods run as UID 65532 with read-only root filesystem
 - **No privileged containers** - GPU device plugins use targeted capabilities instead of blanket `privileged: true`
 - **Network policies** - Default-deny ingress with egress restricted to specific services
-- **Secrets management** - API key auth for API gateway with timing-safe comparison
-- **CI/CD hardened** - GitHub Actions pinned to SHA, workflow permissions scoped, concurrency controls
+- **Secrets management** - API key auth for API gateway with timing-safe comparison; Ceph configs serialized via `json.Marshal` (no injection)
+- **Input validation** - Budget pricing rejects negative/NaN/Inf rates; CLI enforces DNS-1123 job names; quota enforcement is atomic
 - **CRD validation** - Required fields, enum constraints, min/max validation on all custom resources
 - **Image pinning** - All container images use specific version tags, never `:latest`
+- **Safe resource handling** - Nil-safe annotation cleanup, map copies to prevent spec mutation, context-propagated HTTP calls
 
 ---
 
@@ -413,13 +423,16 @@ apiVersion: kubefabric.ai/v1
 kind: FabricAIJob
 spec:
   model: llama-70b
-  gpus: 64  # 8 nodes x 8 GPUs
+  gpus: 8
   gpuType: H100
   network: rdma
   storage: vast-fast
   distributed:
+    enabled: true
     framework: pytorch
     backend: nccl
+    nodes: 8          # 8 nodes
+    gpusPerNode: 8    # 8 GPUs each = 64 total
 ```
 
 ### Multi-Tenant GPU Sharing
@@ -428,10 +441,12 @@ apiVersion: kubefabric.ai/v1
 kind: FabricQuota
 spec:
   team: data-science
-  maxGpus: 16
-  gpuTypes: [A100, L40]
+  namespaces: [ds-training, ds-inference]
+  gpuQuota:
+    maxGPUs: 16
+    allowedGPUTypes: [A100, L40]
   budget:
-    monthly: 10000  # USD
+    monthlyBudget: 10000.00  # USD
 ```
 
 ### Inference at Scale
@@ -472,4 +487,4 @@ Apache License 2.0 - see [LICENSE](LICENSE).
 
 **Built with ❤️ by the AI infrastructure community**
 
-[Get Started](docs/quickstart.md) | [View Examples](examples/) | [Join Community](https://kubefabric.ai/community)
+[Get Started](docs/getting-started/quickstart.md) | [View Examples](examples/) | [Documentation](docs/README.md)

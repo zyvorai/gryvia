@@ -13,6 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -64,8 +65,16 @@ func (r *FabricNetworkReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	// Add finalizer if it doesn't exist
 	if !controllerutil.ContainsFinalizer(network, fabricNetworkFinalizer) {
-		controllerutil.AddFinalizer(network, fabricNetworkFinalizer)
-		if err := r.Update(ctx, network); err != nil {
+		if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			if err := r.Get(ctx, req.NamespacedName, network); err != nil {
+				return err
+			}
+			if controllerutil.ContainsFinalizer(network, fabricNetworkFinalizer) {
+				return nil
+			}
+			controllerutil.AddFinalizer(network, fabricNetworkFinalizer)
+			return r.Update(ctx, network)
+		}); err != nil {
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{Requeue: true}, nil
@@ -162,18 +171,18 @@ func (r *FabricNetworkReconciler) configureRDMA(ctx context.Context, network *ku
 	}
 
 	// Configure RDMA on each node, tracking failures
-	failedNodes := 0
+	var failedNodeNames []string
 	for _, node := range nodes {
 		if err := rdma.ConfigureNode(ctx, r.Client, &node, network.Spec.RDMA); err != nil {
 			logger.Error(err, "Failed to configure RDMA on node", "node", node.Name)
-			failedNodes++
+			failedNodeNames = append(failedNodeNames, node.Name)
 			continue
 		}
 		logger.Info("Configured RDMA on node", "node", node.Name)
 	}
 
-	if failedNodes == len(nodes) {
-		return fmt.Errorf("failed to configure RDMA on all %d nodes", failedNodes)
+	if len(failedNodeNames) > 0 {
+		return fmt.Errorf("failed to configure RDMA on %d/%d nodes: %v", len(failedNodeNames), len(nodes), failedNodeNames)
 	}
 
 	return nil
@@ -194,18 +203,18 @@ func (r *FabricNetworkReconciler) configureSRIOV(ctx context.Context, network *k
 	}
 
 	// Configure SR-IOV on each node, tracking failures
-	failedNodes := 0
+	var failedNodeNames []string
 	for _, node := range nodes {
 		if err := sriov.ConfigureNode(ctx, r.Client, &node, network.Spec.SRIOV); err != nil {
 			logger.Error(err, "Failed to configure SR-IOV on node", "node", node.Name)
-			failedNodes++
+			failedNodeNames = append(failedNodeNames, node.Name)
 			continue
 		}
 		logger.Info("Configured SR-IOV on node", "node", node.Name)
 	}
 
-	if failedNodes == len(nodes) {
-		return fmt.Errorf("failed to configure SR-IOV on all %d nodes", failedNodes)
+	if len(failedNodeNames) > 0 {
+		return fmt.Errorf("failed to configure SR-IOV on %d/%d nodes: %v", len(failedNodeNames), len(nodes), failedNodeNames)
 	}
 
 	return nil
@@ -256,19 +265,23 @@ func (r *FabricNetworkReconciler) handleDeletion(ctx context.Context, network *k
 			logger.Error(err, "Failed to list nodes during cleanup")
 		} else {
 			for _, node := range nodes {
-				// Clean up RDMA labels/annotations
+				// Clean up RDMA labels
 				delete(node.Labels, "kubefabric.ai/rdma")
 				delete(node.Labels, "kubefabric.ai/rdma-mode")
-				delete(node.Annotations, "kubefabric.ai/rdma-devices")
-				// Clean up SR-IOV labels/annotations
+				// Clean up SR-IOV labels: exact match for the base key plus
+				// prefix match with trailing "-" for dynamic keys like
+				// "kubefabric.ai/sriov-<resourceName>".
 				delete(node.Labels, "kubefabric.ai/sriov")
-				delete(node.Annotations, "kubefabric.ai/sriov-interface")
-				delete(node.Annotations, "kubefabric.ai/sriov-numvfs")
-				// Remove any kubefabric.ai/sriov-* labels
 				for k := range node.Labels {
-					if strings.HasPrefix(k, "kubefabric.ai/sriov") {
+					if strings.HasPrefix(k, "kubefabric.ai/sriov-") {
 						delete(node.Labels, k)
 					}
+				}
+				// Clean up annotations (nil-safe)
+				if node.Annotations != nil {
+					delete(node.Annotations, "kubefabric.ai/rdma-devices")
+					delete(node.Annotations, "kubefabric.ai/sriov-interface")
+					delete(node.Annotations, "kubefabric.ai/sriov-numvfs")
 				}
 				if updateErr := r.Update(ctx, &node); updateErr != nil {
 					logger.Error(updateErr, "Failed to remove labels from node", "node", node.Name)
@@ -277,8 +290,16 @@ func (r *FabricNetworkReconciler) handleDeletion(ctx context.Context, network *k
 		}
 
 		// Remove finalizer
-		controllerutil.RemoveFinalizer(network, fabricNetworkFinalizer)
-		if err := r.Update(ctx, network); err != nil {
+		if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			if err := r.Get(ctx, types.NamespacedName{Name: network.Name}, network); err != nil {
+				return err
+			}
+			if !controllerutil.ContainsFinalizer(network, fabricNetworkFinalizer) {
+				return nil
+			}
+			controllerutil.RemoveFinalizer(network, fabricNetworkFinalizer)
+			return r.Update(ctx, network)
+		}); err != nil {
 			return ctrl.Result{}, err
 		}
 	}

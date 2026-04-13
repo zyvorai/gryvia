@@ -63,10 +63,11 @@ spec:
         distributed:
           enabled: true
           strategy: ddp
-          worldSize: 32
+          nodes: 4
+          gpusPerNode: 8
         resources:
           gpuType: A100-80G
-          gpuCount: 32
+          gpuCount: 8
           memory: 2Ti
           cpu: 256
         image: nvcr.io/nvidia/pytorch:24.01-py3

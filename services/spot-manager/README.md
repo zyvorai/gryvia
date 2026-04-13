@@ -105,7 +105,8 @@ spec:
   distributed:
     enabled: true
     strategy: ddp
-    worldSize: 8
+    nodes: 1
+    gpusPerNode: 8
   resources:
     gpuType: A100-80G
     gpuCount: 8

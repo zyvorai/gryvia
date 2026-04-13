@@ -578,7 +578,7 @@ spec:
         spec:
           containers:
           - name: backup
-            image: bitnami/kubectl:latest
+            image: bitnami/kubectl:1.32.0
             command:
             - /bin/bash
             - -c

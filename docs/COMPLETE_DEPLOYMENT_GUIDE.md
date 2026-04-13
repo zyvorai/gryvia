@@ -260,7 +260,8 @@ spec:
   distributed:
     enabled: true
     strategy: ddp
-    worldSize: 2  # 2 nodes x 8 GPUs = 16 GPUs
+    nodes: 2         # 2 nodes
+    gpusPerNode: 8   # 8 GPUs per node = 16 GPUs total
 
   resources:
     gpuType: H100

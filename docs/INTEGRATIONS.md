@@ -176,7 +176,7 @@ with DAG('ml_training', schedule_interval='@daily') as dag:
         task_id='train_model',
         namespace='default',
         name='training-job',
-        image='kubefabric/job-operator:latest',
+        image='kubefabric/job-operator:1.0.0',
         cmds=['kubefabric'],
         arguments=['submit', 'job.yaml'],
         env_vars={'KUBECONFIG': '/config/kubeconfig'}
@@ -192,7 +192,7 @@ from kfp import dsl
 def training_pipeline():
     train_op = dsl.ContainerOp(
         name='Submit Job',
-        image='kubefabric/cli:latest',
+        image='kubefabric/cli:1.0.0',
         command=['kubefabric', 'submit', 'job.yaml']
     )
 ```
@@ -279,7 +279,7 @@ jobs:
 ```yaml
 train-model:
   stage: train
-  image: kubefabric/cli:latest
+  image: kubefabric/cli:1.0.0
   script:
     - kubefabric submit job.yaml --wait
     - kubefabric job logs training-job
@@ -462,7 +462,7 @@ spec:
         spec:
           containers:
             - name: trivy
-              image: aquasec/trivy:latest
+              image: aquasec/trivy:0.58.0
               command:
                 - trivy
                 - image

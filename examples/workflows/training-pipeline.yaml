@@ -95,7 +95,8 @@ spec:
             distributed:
               enabled: true
               strategy: ddp
-              worldSize: {{workflow.parameters.gpu-count}}
+              nodes: 1
+              gpusPerNode: {{workflow.parameters.gpu-count}}
             resources:
               gpuType: {{workflow.parameters.gpu-type}}
               gpuCount: {{workflow.parameters.gpu-count}}

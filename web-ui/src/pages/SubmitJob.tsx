@@ -18,7 +18,8 @@ export default function SubmitJob() {
     command: '',
     distributedEnabled: false,
     distributedStrategy: 'ddp',
-    worldSize: 1,
+    nodes: 1,
+    gpusPerNode: 1,
     env: [] as Array<{ id: number; name: string; value: string }>,
   })
 
@@ -62,7 +63,8 @@ export default function SubmitJob() {
         distributed: formData.distributedEnabled ? {
           enabled: true,
           strategy: formData.distributedStrategy,
-          worldSize: formData.worldSize,
+          nodes: formData.nodes,
+          gpusPerNode: formData.gpusPerNode,
         } : undefined,
         env: formData.env.length > 0 ? formData.env.map(({ name, value }) => ({ name, value })) : undefined,
       },
@@ -185,7 +187,7 @@ export default function SubmitJob() {
                   max="512"
                   required
                   value={formData.gpuCount}
-                  onChange={(e) => setFormData({ ...formData, gpuCount: parseInt(e.target.value) || 1 })}
+                  onChange={(e) => setFormData({ ...formData, gpuCount: parseInt(e.target.value, 10) || 1 })}
                   className="mt-1 block w-full rounded-lg bg-slate-900/50 border border-slate-600 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                 />
               </div>
@@ -197,6 +199,8 @@ export default function SubmitJob() {
                   required
                   value={formData.memory}
                   onChange={(e) => setFormData({ ...formData, memory: e.target.value })}
+                  pattern="^\d+(\.\d+)?(Ki|Mi|Gi|Ti|K|M|G|T)?$"
+                  title="Enter a valid memory value (e.g. 32Gi, 512Mi, 1Ti)"
                   className="mt-1 block w-full rounded-lg bg-slate-900/50 border border-slate-600 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                   placeholder="32Gi"
                 />
@@ -210,7 +214,7 @@ export default function SubmitJob() {
                   max="128"
                   required
                   value={formData.cpu}
-                  onChange={(e) => setFormData({ ...formData, cpu: parseInt(e.target.value) || 1 })}
+                  onChange={(e) => setFormData({ ...formData, cpu: parseInt(e.target.value, 10) || 1 })}
                   className="mt-1 block w-full rounded-lg bg-slate-900/50 border border-slate-600 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                 />
               </div>
@@ -250,13 +254,24 @@ export default function SubmitJob() {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-slate-300">World Size</label>
+                    <label className="block text-xs font-medium text-slate-300">Nodes</label>
                     <input
                       type="number"
                       min="1"
                       max="64"
-                      value={formData.worldSize}
-                      onChange={(e) => setFormData({ ...formData, worldSize: parseInt(e.target.value) || 1 })}
+                      value={formData.nodes}
+                      onChange={(e) => setFormData({ ...formData, nodes: parseInt(e.target.value, 10) || 1 })}
+                      className="mt-1 block w-full rounded-lg bg-slate-900/50 border border-slate-600 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-300">GPUs/Node</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="8"
+                      value={formData.gpusPerNode}
+                      onChange={(e) => setFormData({ ...formData, gpusPerNode: parseInt(e.target.value, 10) || 1 })}
                       className="mt-1 block w-full rounded-lg bg-slate-900/50 border border-slate-600 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                     />
                   </div>
@@ -329,7 +344,7 @@ export default function SubmitJob() {
           {createJobMutation.isError && (
             <div className="rounded-xl bg-red-500/10 border border-red-500/20 p-4">
               <p className="text-xs text-red-400">
-                Error submitting job: {(createJobMutation.error as Error).message}
+                Error submitting job: {createJobMutation.error instanceof Error ? createJobMutation.error.message : 'Unknown error'}
               </p>
             </div>
           )}

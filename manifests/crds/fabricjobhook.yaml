@@ -16,6 +16,9 @@ spec:
           properties:
             spec:
               type: object
+              required:
+                - trigger
+                - action
               properties:
                 # Hook triggers
                 trigger:
@@ -211,7 +214,7 @@ spec:
   action:
     type: k8sJob
     k8sJob:
-      image: amazon/aws-cli:latest
+      image: amazon/aws-cli:2.22.0
       command:
         - aws
         - s3

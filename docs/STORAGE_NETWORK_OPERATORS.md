@@ -76,7 +76,7 @@ Both operators are production-ready Kubernetes controllers built with Go and the
 **Ceph Integration** (`operators/storage-operator/pkg/ceph/ceph.go`)
 - Complete CephFS CSI driver deployment (cephcsi)
 - ServiceAccount + RBAC setup
-- ConfigMap-based Ceph cluster configuration
+- ConfigMap-based Ceph cluster configuration (generated via `json.Marshal` for safe serialization)
 - Controller Deployment with provisioner sidecar
 - Node DaemonSet with driver registrar
 - Health check endpoint
@@ -86,7 +86,7 @@ Both operators are production-ready Kubernetes controllers built with Go and the
 ✅ **Automated CSI Deployment** - One-click CSI driver installation
 ✅ **Multi-Backend Support** - VAST, Weka, DDN, Lustre, Ceph
 ✅ **Dynamic StorageClasses** - Auto-created based on backend type
-✅ **Health Monitoring** - Continuous endpoint health checks
+✅ **Health Monitoring** - Context-aware endpoint health checks with proper HTTP connection management
 ✅ **Node Selection** - Label-based node targeting
 ✅ **Credential Management** - Kubernetes Secret integration
 

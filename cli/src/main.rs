@@ -46,7 +46,7 @@ enum Commands {
 
     /// List jobs, quotas, or nodes
     List {
-        /// Resource type to list (jobs, quotas, nodes, storage, networks)
+        /// Resource type to list (jobs, quotas, nodes)
         resource: String,
 
         /// Show all namespaces

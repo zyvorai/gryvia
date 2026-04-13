@@ -187,7 +187,8 @@ spec:
   distributed:
     enabled: true
     strategy: fsdp
-    worldSize: 8
+    nodes: 1
+    gpusPerNode: 8
   resources:
     gpuType: H100
     gpuCount: 8
@@ -289,10 +290,12 @@ kubectl delete namespace kubefabric
 ## Production Considerations
 
 1. **Security**
+   - Replace credential placeholders in `production-deployment.yaml` (marked `<REPLACE_WITH_*>`) with real values or use a secrets manager (e.g., Vault, Sealed Secrets)
    - Enable RBAC for team isolation
    - Use network policies
    - Enable audit logging
    - Set up authentication (OIDC, LDAP)
+   - Pin all container images to specific version tags (never use `:latest`)
 
 2. **High Availability**
    - Run 3+ operator replicas

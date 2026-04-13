@@ -34,8 +34,10 @@ pub struct DistributedConfig {
     pub enabled: bool,
     #[serde(default)]
     pub strategy: String,
-    #[serde(rename = "worldSize", default)]
-    pub world_size: u32,
+    #[serde(default)]
+    pub nodes: u32,
+    #[serde(rename = "gpusPerNode", default)]
+    pub gpus_per_node: u32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default, JsonSchema)]

@@ -13,7 +13,8 @@ spec:
   distributed:
     enabled: true
     strategy: parameter-server
-    worldSize: 16  # 4 nodes × 4 GPUs
+    nodes: 4       # 4 nodes
+    gpusPerNode: 4 # 4 GPUs per node = 16 total
 
   resources:
     gpuType: A100-80G

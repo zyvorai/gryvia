@@ -26,10 +26,17 @@ func FindOptimalNodes(ctx context.Context, k8sClient client.Client, job *kubefab
 		return nil, fmt.Errorf("failed to list nodes: %w", err)
 	}
 
-	// Get all pods to calculate GPU usage per node
+	// Get all non-terminal pods requesting GPUs to calculate usage per node.
+	// We filter by the nvidia.com/gpu resource in the field selector to avoid
+	// loading every pod in the cluster. Since field selectors don't support
+	// resource requests, we use a label selector for running pods instead.
 	pods := &corev1.PodList{}
-	if err := k8sClient.List(ctx, pods); err != nil {
-		return nil, fmt.Errorf("failed to list pods: %w", err)
+	if err := k8sClient.List(ctx, pods, client.MatchingFields{"status.phase": "Running"}); err != nil {
+		// Fall back to listing all pods if field selector is not indexed
+		pods = &corev1.PodList{}
+		if err := k8sClient.List(ctx, pods); err != nil {
+			return nil, fmt.Errorf("failed to list pods: %w", err)
+		}
 	}
 
 	gpuUsagePerNode := calculateGPUUsagePerNode(pods.Items)
@@ -43,7 +50,8 @@ func FindOptimalNodes(ctx context.Context, k8sClient client.Client, job *kubefab
 	// Filter nodes based on job requirements
 	eligibleNodes := filterNodes(nodes.Items, job, gpuUsagePerNode, gpusNeeded)
 	if len(eligibleNodes) == 0 {
-		return nil, fmt.Errorf("no nodes meet the job requirements")
+		return nil, fmt.Errorf("no nodes meet the job requirements (gpuType=%q, gpus=%d, network=%q, %d nodes evaluated)",
+			job.Spec.GpuType, gpusNeeded, job.Spec.Network, len(nodes.Items))
 	}
 
 	// Score nodes

@@ -15,6 +15,11 @@ pub async fn execute(
     tail: usize,
     replica: Option<usize>,
 ) -> Result<()> {
+    // Validate job name to prevent label selector injection
+    if job.contains('=') || job.contains(',') || job.contains('!') {
+        anyhow::bail!("Invalid job name '{}': contains reserved label selector characters", job);
+    }
+
     let pods_api: Api<Pod> = Api::namespaced(
         client.kube_client.clone(),
         client.namespace(),
@@ -46,16 +51,27 @@ pub async fn execute(
             .find(|p| p.metadata.name.as_deref() == Some(&pod_name))
             .with_context(|| format!("Replica {} not found for job '{}'", idx, job))?
     } else {
+        if pods.items.is_empty() {
+            anyhow::bail!("No pods found for job '{}'", job);
+        }
         &pods.items[0]
     };
 
     let pod_name = target_pod.metadata.name.as_deref().unwrap_or("unknown");
     display::print_info(&format!("Streaming logs from pod: {}", pod_name));
 
+    // Detect container name from the pod spec, defaulting to "trainer"
+    let container_name = target_pod
+        .spec
+        .as_ref()
+        .and_then(|s| s.containers.first())
+        .map(|c| c.name.clone())
+        .unwrap_or_else(|| "trainer".to_string());
+
     let log_params = LogParams {
         follow,
         tail_lines: Some(tail as i64),
-        container: Some("trainer".to_string()),
+        container: Some(container_name),
         ..Default::default()
     };
 

@@ -14,7 +14,8 @@ spec:
   distributed:
     enabled: true
     strategy: ddp  # Distributed Data Parallel
-    worldSize: 8   # Total number of GPUs across all nodes
+    nodes: 1       # Number of nodes
+    gpusPerNode: 8 # GPUs per node (WORLD_SIZE = nodes * gpusPerNode)
 
   # Resource requirements
   resources:

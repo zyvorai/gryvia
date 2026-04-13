@@ -184,8 +184,7 @@ func (r *FabricQuotaReconciler) enforceQuota(ctx context.Context, quota *kubefab
 	for _, nsName := range quota.Spec.Namespaces {
 		jobs := &kubefabricv1.FabricAIJobList{}
 		if err := r.List(ctx, jobs, client.InNamespace(nsName)); err != nil {
-			logger.Error(err, "Failed to list jobs in namespace", "namespace", nsName)
-			continue
+			return fmt.Errorf("failed to list jobs in namespace %s: %w", nsName, err)
 		}
 		jobList.Items = append(jobList.Items, jobs.Items...)
 	}
@@ -240,7 +239,7 @@ func (r *FabricQuotaReconciler) enforceQuota(ctx context.Context, quota *kubefab
 				LastTransitionTime: metav1.Now(),
 			})
 			if err := r.Status().Update(ctx, &job); err != nil {
-				logger.Error(err, "Failed to update job status", "job", job.Name)
+				return fmt.Errorf("failed to reject job %s: %w", job.Name, err)
 			}
 			logger.Info("Rejected job", "job", job.Name, "reason", reason)
 		}
@@ -316,7 +315,7 @@ func (r *FabricQuotaReconciler) SetupWithManager(mgr ctrl.Manager) error {
 				// When a FabricAIJob changes, enqueue all FabricQuota objects
 				// in the same namespace so quota usage is recalculated.
 				quotaList := &kubefabricv1.FabricQuotaList{}
-				if err := mgr.GetClient().List(context.Background(), quotaList); err != nil {
+				if err := mgr.GetClient().List(ctx, quotaList); err != nil {
 					return nil
 				}
 				var requests []reconcile.Request

@@ -18,7 +18,7 @@ data:
     from kubernetes.client.models import V1EnvVar
 
     # Spawner configuration
-    c.KubeSpawner.image = 'jupyter/pytorch-notebook:latest'
+    c.KubeSpawner.image = 'jupyter/pytorch-notebook:2024.10.0'
     c.KubeSpawner.cmd = ['start-singleuser.sh']
 
     # GPU profiles
@@ -156,9 +156,18 @@ spec:
         app: jupyterhub
     spec:
       serviceAccountName: jupyterhub
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: jupyterhub
           image: jupyterhub/k8s-hub:3.2.1
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
           ports:
             - containerPort: 8000
               name: http

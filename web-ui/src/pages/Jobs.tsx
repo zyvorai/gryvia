@@ -13,11 +13,17 @@ const statusConfig: Record<string, { icon: React.ElementType; gradient: string; 
 }
 
 export default function Jobs() {
-  const { data: jobs, isLoading, refetch, isRefetching } = useQuery({
+  const { data: jobs, isLoading, isError, refetch, isRefetching } = useQuery({
     queryKey: ['jobs'],
     queryFn: api.getJobs,
     refetchInterval: 15000,
   })
+
+  if (isError) return (
+    <div className="text-center py-12">
+      <p className="text-red-400">Failed to load jobs. Please try again.</p>
+    </div>
+  )
 
   return (
     <div className="space-y-6">

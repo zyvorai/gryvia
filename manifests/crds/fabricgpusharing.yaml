@@ -16,6 +16,8 @@ spec:
           properties:
             spec:
               type: object
+              required:
+                - strategy
               properties:
                 # GPU nodes this policy applies to
                 nodeSelector:
@@ -318,7 +320,7 @@ spec:
     memory: 16Gi
     cpu: 8
 
-  image: jupyter/tensorflow-notebook:latest
+  image: jupyter/tensorflow-notebook:2024.10.0
 
 ---
 # GPU Sharing Status Example

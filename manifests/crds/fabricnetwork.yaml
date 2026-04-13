@@ -16,6 +16,8 @@ spec:
           properties:
             spec:
               type: object
+              required:
+                - topology
               properties:
                 # Network topology
                 topology:
@@ -393,11 +395,12 @@ spec:
   distributed:
     enabled: true
     strategy: ddp
-    worldSize: 64
+    nodes: 8
+    gpusPerNode: 8
 
   resources:
     gpuType: A100-80G
-    gpuCount: 64
+    gpuCount: 8
 
   image: nvcr.io/nvidia/pytorch:24.01-py3
   command:

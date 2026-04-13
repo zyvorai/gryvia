@@ -137,7 +137,8 @@ GET /api/v1/jobs/{namespace}/{name}
     "distributed": {
       "enabled": true,
       "strategy": "ddp",
-      "worldSize": 8
+      "nodes": 1,
+      "gpusPerNode": 8
     },
     "resources": {
       "gpuType": "A100-80G",
@@ -155,6 +156,7 @@ GET /api/v1/jobs/{namespace}/{name}
       {
         "type": "Scheduled",
         "status": "True",
+        "observedGeneration": 1,
         "lastTransitionTime": "2024-01-15T10:28:00Z"
       }
     ],

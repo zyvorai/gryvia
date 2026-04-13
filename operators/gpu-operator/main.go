@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"os"
+	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -15,6 +16,7 @@ import (
 
 	kubefabricv1 "github.com/ssahani/kube-fabric/operators/gpu-operator/api/v1"
 	"github.com/ssahani/kube-fabric/operators/gpu-operator/controllers"
+	"github.com/ssahani/kube-fabric/operators/gpu-operator/pkg/memory"
 )
 
 var (
@@ -66,6 +68,16 @@ func main() {
 		Log:    ctrl.Log.WithName("controllers").WithName("FabricGpuNode"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "FabricGpuNode")
+		os.Exit(1)
+	}
+
+	if err = (&controllers.FabricGpuMemoryOptimizerReconciler{
+		Client:    mgr.GetClient(),
+		Scheme:    mgr.GetScheme(),
+		Log:       ctrl.Log.WithName("controllers").WithName("FabricGpuMemoryOptimizer"),
+		Predictor: memory.NewPredictor(24 * time.Hour),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "FabricGpuMemoryOptimizer")
 		os.Exit(1)
 	}
 

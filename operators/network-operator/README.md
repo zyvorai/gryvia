@@ -139,7 +139,7 @@ spec:
 ### Reconciliation Behavior
 
 - SR-IOV label cleanup uses `strings.HasPrefix` for accurate prefix matching (fixes an off-by-one bug in earlier versions).
-- Node configuration failures are now tracked: the reconciler returns an error if all target nodes fail to configure, ensuring the failure is visible in operator logs and CR status.
+- Node configuration failures are tracked per-node: the reconciler returns an error if **any** target node fails to configure (not just when all fail), reporting the count and names of failed nodes. This ensures partial failures are never silently ignored.
 - RDMA device lists are serialized as JSON in ConfigMaps (not Go `fmt %v`), producing valid structured data for consumers.
 - Node updates (labels, annotations) are wrapped in `retry.RetryOnConflict` to handle concurrent modifications gracefully.
 - The controller no longer uses `Owns()` for DaemonSets or ConfigMaps, since cross-namespace owner references are not supported by Kubernetes. Resources are managed via explicit reconciliation logic instead.

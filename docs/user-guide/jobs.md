@@ -113,7 +113,7 @@ spec:
   distributed:
     enabled: true
     strategy: ddp
-    worldSize: 8
+    gpusPerNode: 8
   resources:
     gpuType: A100-80G
     gpuCount: 8
@@ -132,8 +132,8 @@ spec:
   distributed:
     enabled: true
     strategy: ddp
-    worldSize: 32  # 4 nodes × 8 GPUs
-    nodes: 4
+    nodes: 4          # 4 nodes
+    gpusPerNode: 8    # 8 GPUs per node = 32 total
   resources:
     gpuType: A100-80G
     gpuCount: 8
@@ -147,6 +147,10 @@ spec:
     - train.py
 ```
 
+KubeFabric automatically sets `WORLD_SIZE` to `nodes * gpusPerNode` (e.g., 32
+for the example above), along with `MASTER_ADDR`, `MASTER_PORT`, and NCCL
+environment variables.
+
 ### DeepSpeed
 
 ```yaml
@@ -155,13 +159,14 @@ spec:
   distributed:
     enabled: true
     strategy: deepspeed
-    worldSize: 16
+    nodes: 2
+    gpusPerNode: 8
   resources:
     gpuType: A100-80G
-    gpuCount: 16
+    gpuCount: 8
   command:
     - deepspeed
-    - --num_gpus=16
+    - --num_gpus=8
     - train.py
     - --deepspeed
     - --deepspeed_config=ds_config.json

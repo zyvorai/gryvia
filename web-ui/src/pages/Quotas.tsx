@@ -4,13 +4,18 @@ import LoadingSpinner from '@/components/LoadingSpinner'
 import { Users, Cpu, DollarSign, AlertTriangle } from 'lucide-react'
 
 export default function Quotas() {
-  const { data: quotas, isLoading } = useQuery({
+  const { data: quotas, isLoading, isError } = useQuery({
     queryKey: ['quotas'],
     queryFn: api.getQuotas,
     refetchInterval: 30000,
   })
 
   if (isLoading) return <LoadingSpinner />
+  if (isError) return (
+    <div className="text-center py-12">
+      <p className="text-red-400">Failed to load quotas. Please try again.</p>
+    </div>
+  )
 
   return (
     <div className="space-y-6">

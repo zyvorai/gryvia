@@ -54,7 +54,7 @@ async fn wait_for_completion(client: &KubeFabricClient, job_name: &str) -> Resul
     spinner.set_style(
         ProgressStyle::default_spinner()
             .template("{spinner:.green} {msg}")
-            .unwrap()
+            .expect("valid spinner template")
     );
 
     let ar = ApiResource::from_gvk(&kube::api::GroupVersionKind::gvk("kubefabric.ai", "v1", "FabricAIJob"));
@@ -138,9 +138,17 @@ async fn follow_job_logs(client: &KubeFabricClient, job_name: &str) -> Result<()
 
     display::print_info(&format!("Following logs from pod: {}", pod_name));
 
+    // Detect container name from the pod spec, defaulting to "trainer"
+    let pods = pods_api.list(&lp).await?;
+    let container_name = pods.items.first()
+        .and_then(|p| p.spec.as_ref())
+        .and_then(|s| s.containers.first())
+        .map(|c| c.name.clone())
+        .unwrap_or_else(|| "trainer".to_string());
+
     let log_params = LogParams {
         follow: true,
-        container: Some("trainer".to_string()),
+        container: Some(container_name),
         ..Default::default()
     };
 

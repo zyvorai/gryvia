@@ -2,8 +2,15 @@ package gpu
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/NVIDIA/go-nvml/pkg/nvml"
+)
+
+const (
+	// Temperature thresholds for GPU health classification
+	temperatureDegraded = 85 // degrees Celsius
+	temperatureFailed   = 95 // degrees Celsius
 )
 
 // GpuInfo represents information about a GPU
@@ -18,13 +25,26 @@ type GpuInfo struct {
 	Utilization int
 }
 
+var (
+	nvmlOnce sync.Once
+	nvmlErr  nvml.Return
+)
+
+func initNVML() error {
+	nvmlOnce.Do(func() {
+		nvmlErr = nvml.Init()
+	})
+	if nvmlErr != nvml.SUCCESS {
+		return fmt.Errorf("failed to initialize NVML: %w", fmt.Errorf("%v", nvml.ErrorString(nvmlErr)))
+	}
+	return nil
+}
+
 // GetDriverInfo returns the NVIDIA driver and CUDA versions
 func GetDriverInfo() (string, string, error) {
-	ret := nvml.Init()
-	if ret != nvml.SUCCESS {
-		return "", "", fmt.Errorf("failed to initialize NVML: %v", nvml.ErrorString(ret))
+	if err := initNVML(); err != nil {
+		return "", "", err
 	}
-	defer nvml.Shutdown()
 
 	driverVersion, ret := nvml.SystemGetDriverVersion()
 	if ret != nvml.SUCCESS {
@@ -43,11 +63,9 @@ func GetDriverInfo() (string, string, error) {
 
 // GetGpuInfo returns information about all GPUs
 func GetGpuInfo(expectedCount int) ([]GpuInfo, error) {
-	ret := nvml.Init()
-	if ret != nvml.SUCCESS {
-		return nil, fmt.Errorf("failed to initialize NVML: %v", nvml.ErrorString(ret))
+	if err := initNVML(); err != nil {
+		return nil, err
 	}
-	defer nvml.Shutdown()
 
 	count, ret := nvml.DeviceGetCount()
 	if ret != nvml.SUCCESS {
@@ -80,20 +98,22 @@ func GetGpuInfo(expectedCount int) ([]GpuInfo, error) {
 func getDeviceInfo(device nvml.Device, index int) (GpuInfo, error) {
 	info := GpuInfo{
 		Index:  index,
-		Health: "Healthy",
+		Health: "Unknown",
 	}
 
 	// Get UUID
 	uuid, ret := device.GetUUID()
 	if ret != nvml.SUCCESS {
-		return info, fmt.Errorf("failed to get UUID: %v", nvml.ErrorString(ret))
+		return info, fmt.Errorf("failed to get UUID: %w", fmt.Errorf("%v", nvml.ErrorString(ret)))
 	}
 	info.UUID = uuid
 
 	// Get temperature
+	tempRetrieved := false
 	temp, ret := device.GetTemperature(nvml.TEMPERATURE_GPU)
 	if ret == nvml.SUCCESS {
 		info.Temperature = int(temp)
+		tempRetrieved = true
 	}
 
 	// Get power usage
@@ -116,11 +136,14 @@ func getDeviceInfo(device nvml.Device, index int) (GpuInfo, error) {
 	}
 
 	// Check health based on temperature
-	if info.Temperature > 85 {
-		info.Health = "Degraded"
-	}
-	if info.Temperature > 95 {
-		info.Health = "Failed"
+	if tempRetrieved {
+		if info.Temperature > temperatureFailed {
+			info.Health = "Failed"
+		} else if info.Temperature > temperatureDegraded {
+			info.Health = "Degraded"
+		} else {
+			info.Health = "Healthy"
+		}
 	}
 
 	return info, nil

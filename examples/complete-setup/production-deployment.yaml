@@ -117,6 +117,8 @@ metadata:
 
 ---
 # 7. Storage Secrets
+# IMPORTANT: Replace placeholder values with real credentials before applying.
+# Consider using a secrets manager (e.g., Vault, Sealed Secrets) in production.
 apiVersion: v1
 kind: Secret
 metadata:
@@ -124,8 +126,8 @@ metadata:
   namespace: kubefabric-system
 type: Opaque
 stringData:
-  username: admin
-  password: changeme123
+  username: <REPLACE_WITH_USERNAME>
+  password: <REPLACE_WITH_PASSWORD>
 
 ---
 # 8. Distributed Training Job - LLM on 32x H100
@@ -139,7 +141,8 @@ spec:
   distributed:
     enabled: true
     strategy: ddp
-    worldSize: 4  # 4 nodes x 8 GPUs = 32 GPUs
+    nodes: 4         # 4 nodes
+    gpusPerNode: 8   # 8 GPUs per node = 32 GPUs total
 
   resources:
     gpuType: H100

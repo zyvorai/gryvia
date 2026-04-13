@@ -309,7 +309,7 @@ spec:
         spec:
           containers:
           - name: benchmark
-            image: kubefabric/benchmark-suite:latest
+            image: kubefabric/benchmark-suite:1.0.0
             command: ["/benchmarks/run-all.sh"]
           restartPolicy: OnFailure
 ```

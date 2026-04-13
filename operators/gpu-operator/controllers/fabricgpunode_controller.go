@@ -148,13 +148,14 @@ func (r *FabricGpuNodeReconciler) reconcileGpuNode(ctx context.Context, fabricNo
 		log.Error(err, "Failed to check GPU health")
 		r.updateCondition(fabricNode, ConditionHealthy, metav1.ConditionFalse, "HealthCheckFailed", err.Error())
 		fabricNode.Status.Phase = PhaseDegraded
-		// Update status and requeue sooner on health check failure
+		// Update status and requeue with exponential backoff
 		now := metav1.Now()
 		fabricNode.Status.LastHealthCheck = &now
 		if updateErr := r.Status().Update(ctx, fabricNode); updateErr != nil {
 			log.Error(updateErr, "Failed to update status after health check failure")
 		}
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
+		backoff := r.calculateBackoff(fabricNode)
+		return ctrl.Result{RequeueAfter: backoff}, err
 	} else {
 		fabricNode.Status.GpuStatus = gpuHealth
 		r.updateCondition(fabricNode, ConditionHealthy, metav1.ConditionTrue, "Healthy", "All GPUs are healthy")
@@ -340,6 +341,29 @@ func (r *FabricGpuNodeReconciler) updateCondition(fabricNode *kubefabricv1.Fabri
 	if !found {
 		fabricNode.Status.Conditions = append(fabricNode.Status.Conditions, condition)
 	}
+}
+
+// calculateBackoff returns an exponential backoff duration based on the number
+// of consecutive health check failures (indicated by the Healthy condition being False).
+func (r *FabricGpuNodeReconciler) calculateBackoff(fabricNode *kubefabricv1.FabricGpuNode) time.Duration {
+	const (
+		minBackoff = 30 * time.Second
+		maxBackoff = 10 * time.Minute
+	)
+	backoff := minBackoff
+	for _, cond := range fabricNode.Status.Conditions {
+		if cond.Type == ConditionHealthy && cond.Status == metav1.ConditionFalse {
+			elapsed := time.Since(cond.LastTransitionTime.Time)
+			// Double backoff for each minute the condition has been false
+			multiplier := int(elapsed.Minutes()) + 1
+			backoff = time.Duration(multiplier) * minBackoff
+			break
+		}
+	}
+	if backoff > maxBackoff {
+		backoff = maxBackoff
+	}
+	return backoff
 }
 
 func (r *FabricGpuNodeReconciler) allConditionsTrue(fabricNode *kubefabricv1.FabricGpuNode) bool {

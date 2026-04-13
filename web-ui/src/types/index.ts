@@ -18,7 +18,8 @@ export interface FabricAIJob {
     distributed?: {
       enabled: boolean
       strategy?: string
-      worldSize?: number
+      nodes?: number
+      gpusPerNode?: number
     }
     image: string
     command: string[]

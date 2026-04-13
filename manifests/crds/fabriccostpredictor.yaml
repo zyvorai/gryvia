@@ -1,0 +1,297 @@
+---
+# Cost Prediction for AI/ML Jobs
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: fabriccostpredictors.kubefabric.ai
+spec:
+  group: kubefabric.ai
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                # Historical data configuration for building prediction models
+                historicalData:
+                  type: object
+                  properties:
+                    lookbackDays:
+                      type: integer
+                      minimum: 1
+                      default: 90
+                      description: "Number of days of historical job data to analyze"
+                    minimumSamples:
+                      type: integer
+                      minimum: 1
+                      default: 10
+                      description: "Minimum number of similar jobs required to make a prediction"
+                    similarityFactors:
+                      type: array
+                      items:
+                        type: string
+                        enum:
+                          - gpuType
+                          - gpuCount
+                          - modelType
+                          - datasetSize
+                          - framework
+                          - distributedConfig
+                      description: "Factors used to find similar historical jobs"
+
+                # Prediction model configuration
+                models:
+                  type: object
+                  properties:
+                    trainingTime:
+                      type: object
+                      properties:
+                        method:
+                          type: string
+                          enum: [linear-regression, weighted-average, percentile]
+                          default: weighted-average
+                          description: "Method for estimating training time"
+                        features:
+                          type: array
+                          items:
+                            type: string
+                          description: "Features used for training time estimation"
+                    costEstimation:
+                      type: object
+                      properties:
+                        includeStorageCost:
+                          type: boolean
+                          default: true
+                          description: "Include storage costs in estimate"
+                        includeNetworkCost:
+                          type: boolean
+                          default: false
+                          description: "Include network egress costs in estimate"
+                        currency:
+                          type: string
+                          default: USD
+                          description: "Currency for cost estimates"
+                    queueTime:
+                      type: object
+                      properties:
+                        method:
+                          type: string
+                          enum: [exponential-smoothing, moving-average, percentile]
+                          default: exponential-smoothing
+                          description: "Method for estimating queue wait time"
+                        includePreemptionRisk:
+                          type: boolean
+                          default: true
+                          description: "Factor in risk of preemption when estimating queue time"
+
+                # Alternative configuration recommendations
+                alternatives:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                      default: true
+                      description: "Enable alternative configuration suggestions"
+                    strategies:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                            description: "Name of the alternative strategy"
+                          constraint:
+                            type: string
+                            enum: [minimize-cost, minimize-time, minimize-queue, balance]
+                            description: "Optimization constraint for this strategy"
+                    gpuTypesToConsider:
+                      type: array
+                      items:
+                        type: string
+                      description: "GPU types to evaluate in alternatives (e.g., H100, A100-80G)"
+                    includeSpotEstimates:
+                      type: boolean
+                      default: false
+                      description: "Include spot/preemptible instance estimates"
+
+                # Integration settings
+                integration:
+                  type: object
+                  properties:
+                    dryRunMode:
+                      type: boolean
+                      default: false
+                      description: "Only estimate, do not act on predictions"
+                    webhookAdmission:
+                      type: boolean
+                      default: false
+                      description: "Enable validating webhook to annotate jobs with estimates"
+                    injectEstimateAnnotation:
+                      type: boolean
+                      default: true
+                      description: "Inject cost/time estimates as annotations on submitted jobs"
+
+                # Pricing configuration
+                pricing:
+                  type: object
+                  properties:
+                    chargebackRef:
+                      type: string
+                      description: "Reference to a FabricChargeback CR for pricing data"
+                    perGpuHour:
+                      type: object
+                      additionalProperties:
+                        type: number
+                      description: "Inline per-GPU-hour pricing map (e.g., H100: 8.00)"
+
+            status:
+              type: object
+              properties:
+                # Prediction accuracy metrics
+                predictionAccuracy:
+                  type: object
+                  properties:
+                    timeEstimate:
+                      type: object
+                      properties:
+                        mae:
+                          type: number
+                          description: "Mean absolute error of time estimates (hours)"
+                        within25Percent:
+                          type: number
+                          description: "Percentage of estimates within 25% of actual"
+                    costEstimate:
+                      type: object
+                      properties:
+                        mae:
+                          type: number
+                          description: "Mean absolute error of cost estimates (USD)"
+                        within25Percent:
+                          type: number
+                          description: "Percentage of cost estimates within 25% of actual"
+
+                # Summary metrics
+                jobsEstimated:
+                  type: integer
+                  description: "Total number of jobs estimated"
+                totalSavingsFromRecommendations:
+                  type: number
+                  description: "Total savings achieved by following alternative recommendations (USD)"
+
+                # Conditions
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      reason:
+                        type: string
+                      message:
+                        type: string
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+
+                lastUpdated:
+                  type: string
+                  format: date-time
+
+      additionalPrinterColumns:
+        - name: Jobs-Estimated
+          type: integer
+          jsonPath: .status.jobsEstimated
+        - name: Time-MAE
+          type: number
+          jsonPath: .status.predictionAccuracy.timeEstimate.mae
+        - name: Cost-MAE
+          type: number
+          jsonPath: .status.predictionAccuracy.costEstimate.mae
+        - name: Savings
+          type: number
+          jsonPath: .status.totalSavingsFromRecommendations
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+
+      subresources:
+        status: {}
+
+  scope: Cluster
+  names:
+    plural: fabriccostpredictors
+    singular: fabriccostpredictor
+    kind: FabricCostPredictor
+    shortNames:
+      - fcp
+
+---
+# Example: Cost Predictor
+apiVersion: kubefabric.ai/v1
+kind: FabricCostPredictor
+metadata:
+  name: default-predictor
+spec:
+  historicalData:
+    lookbackDays: 90
+    minimumSamples: 10
+    similarityFactors:
+      - gpuType
+      - gpuCount
+      - modelType
+      - datasetSize
+
+  models:
+    trainingTime:
+      method: weighted-average
+      features:
+        - gpuCount
+        - modelSize
+        - datasetSize
+        - batchSize
+    costEstimation:
+      includeStorageCost: true
+      includeNetworkCost: false
+      currency: USD
+    queueTime:
+      method: exponential-smoothing
+      includePreemptionRisk: true
+
+  alternatives:
+    enabled: true
+    strategies:
+      - name: cost-optimized
+        constraint: minimize-cost
+      - name: speed-optimized
+        constraint: minimize-time
+      - name: balanced
+        constraint: balance
+    gpuTypesToConsider:
+      - H100
+      - A100-80G
+      - A100-40G
+      - L40
+      - V100
+    includeSpotEstimates: true
+
+  integration:
+    dryRunMode: false
+    webhookAdmission: false
+    injectEstimateAnnotation: true
+
+  pricing:
+    perGpuHour:
+      H100: 8.00
+      A100-80G: 4.00
+      A100-40G: 3.00
+      L40: 2.50
+      V100: 2.00
+      T4: 0.75

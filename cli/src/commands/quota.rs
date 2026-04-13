@@ -98,8 +98,8 @@ fn print_quota_details(quota: &FabricQuota, show_budget: bool) {
             if let Some(ref budget) = quota.spec.budget {
                 if budget.hard_limit && percent >= 100.0 {
                     println!("  {}", "⚠ HARD LIMIT REACHED - New jobs will be blocked".red().bold());
-                } else if percent >= budget.alert_threshold {
-                    println!("  {}", format!("⚠ Alert threshold ({}%) reached", budget.alert_threshold).yellow().bold());
+                } else if percent >= budget.alert_threshold * 100.0 {
+                    println!("  {}", format!("⚠ Alert threshold ({:.0}%) reached", budget.alert_threshold * 100.0).yellow().bold());
                 }
             }
         }

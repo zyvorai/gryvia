@@ -122,24 +122,39 @@ type FabricQuotaList struct {
 	Items           []FabricQuota `json:"items"`
 }
 
-// FabricAIJobSpec is a minimal struct for quota tracking that intentionally
-// omits fields not needed for quota enforcement (e.g., image, command,
-// distributed config, volumes). Go JSON unmarshaling ignores unknown fields
-// by default, so the full FabricAIJob spec from the API server deserializes
-// correctly into this reduced type.
+// FabricAIJobSpec is a minimal struct for quota tracking and cost prediction.
+// Go JSON unmarshaling ignores unknown fields by default, so the full
+// FabricAIJob spec from the API server deserializes correctly into this type.
 type FabricAIJobSpec struct {
 	GPUs    int32  `json:"gpus"`
 	GpuType string `json:"gpuType,omitempty"`
+
+	// Additional fields used by the cost predictor
+	Model          string                      `json:"model,omitempty"`
+	StorageRequest string                      `json:"storageRequest,omitempty"`
+	Network        string                      `json:"network,omitempty"`
+	Priority       int32                       `json:"priority,omitempty"`
+	Distributed    *FabricAIJobDistributedSpec  `json:"distributed,omitempty"`
 }
 
-// FabricAIJobStatus is a minimal struct for quota tracking that intentionally
-// omits status fields not needed for quota enforcement. Go JSON unmarshaling
-// ignores unknown fields by default.
+// FabricAIJobDistributedSpec is a minimal distributed config used by the predictor
+type FabricAIJobDistributedSpec struct {
+	Enabled    bool   `json:"enabled,omitempty"`
+	Framework  string `json:"framework,omitempty"`
+	Nodes      int32  `json:"nodes,omitempty"`
+	GpusPerNode int32 `json:"gpusPerNode,omitempty"`
+	Backend    string `json:"backend,omitempty"`
+}
+
+// FabricAIJobStatus is a minimal struct for quota tracking and cost prediction.
+// Go JSON unmarshaling ignores unknown fields by default.
 type FabricAIJobStatus struct {
-	Phase          string      `json:"phase,omitempty"`
+	Phase          string       `json:"phase,omitempty"`
 	StartTime      *metav1.Time `json:"startTime,omitempty"`
 	CompletionTime *metav1.Time `json:"completionTime,omitempty"`
 	Conditions     []metav1.Condition `json:"conditions,omitempty"`
+	NodesAllocated []string     `json:"nodesAllocated,omitempty"`
+	Retries        int32        `json:"retries,omitempty"`
 }
 
 //+kubebuilder:object:root=true

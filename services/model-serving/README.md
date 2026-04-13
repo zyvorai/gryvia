@@ -52,7 +52,7 @@ spec:
   predictor:
     containers:
       - name: kserve-container
-        image: vllm/vllm-openai:latest
+        image: vllm/vllm-openai:v0.6.6
         args:
           - --model=/mnt/models/llama-7b
           - --tensor-parallel-size=2
@@ -321,14 +321,14 @@ spec:
   predictor:
     containers:
       - name: model-a
-        image: vllm/vllm-openai:latest
+        image: vllm/vllm-openai:v0.6.6
         env:
           - name: MODEL_VARIANT
             value: "optimized"
   transformer:
     containers:
       - name: model-b
-        image: vllm/vllm-openai:latest
+        image: vllm/vllm-openai:v0.6.6
         env:
           - name: MODEL_VARIANT
             value: "standard"

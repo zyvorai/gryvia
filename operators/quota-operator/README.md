@@ -145,6 +145,10 @@ When quota is exceeded:
 3. **Budget Limit**: If `hardLimit: true`, new jobs rejected when budget exceeded
 4. **GPU Type**: Jobs requesting disallowed GPU types are queued (not scheduled)
 
+Job rejection is atomic — if the status update to mark a job as "Rejected"
+fails, the operator returns an error and retries on the next reconciliation,
+ensuring no job silently bypasses quota enforcement.
+
 ## Examples
 
 ### High-Priority LLM Team
@@ -258,12 +262,19 @@ Update GPU pricing for your infrastructure:
 ```go
 import "github.com/ssahani/kubefabric/operators/quota-operator/pkg/budget"
 
-// Set custom H100 pricing
-budget.UpdatePricing("H100", 10.00)  // $10/hour
+// Set custom H100 pricing (returns error on invalid input)
+if err := budget.UpdatePricing("H100", 10.00); err != nil {
+    log.Fatal(err)  // e.g. empty GPU type, negative rate, NaN
+}
 
 // Set custom on-prem pricing
-budget.UpdatePricing("A100-80G", 0.50)  // Internal cost
+if err := budget.UpdatePricing("A100-80G", 0.50); err != nil {
+    log.Fatal(err)
+}
 ```
+
+`UpdatePricing` validates its inputs and returns an error if the GPU type
+is empty or the hourly rate is negative, NaN, or infinite.
 
 ## RBAC
 

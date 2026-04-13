@@ -17,7 +17,7 @@ spec:
       - "rw"
       - "relatime"
       - "vers=3"
-    csiDriverVersion: "latest"
+    csiDriverVersion: "v2.5.0"
 ---
 apiVersion: v1
 kind: Secret
@@ -25,9 +25,10 @@ metadata:
   name: vast-credentials
   namespace: kubefabric-system
 type: Opaque
+# IMPORTANT: Replace placeholders with real credentials before applying.
 stringData:
-  username: admin
-  password: changeme
+  username: <REPLACE_WITH_USERNAME>
+  password: <REPLACE_WITH_PASSWORD>
 ---
 # Example PVC using VAST storage
 apiVersion: v1

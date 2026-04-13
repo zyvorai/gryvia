@@ -40,6 +40,7 @@ export interface CostData {
 
 const apiClient = axios.create({
   baseURL: '/api',
+  timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -59,7 +60,7 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      console.error('Authentication failed. Please check your API token.')
+      // Error is propagated via Promise.reject below; avoid console.error in production
     }
     return Promise.reject(error)
   }

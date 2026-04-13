@@ -2,7 +2,9 @@ package ceph
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -148,6 +150,17 @@ func ensureRBAC(ctx context.Context, k8sClient client.Client) error {
 }
 
 func ensureCephConfigMap(ctx context.Context, k8sClient client.Client, storage *kubefabricv1.FabricStorage) error {
+	configData := []map[string]interface{}{
+		{
+			"clusterID": storage.Name,
+			"monitors":  []string{storage.Spec.Endpoint},
+		},
+	}
+	configJSON, err := json.Marshal(configData)
+	if err != nil {
+		return fmt.Errorf("failed to marshal Ceph config: %w", err)
+	}
+
 	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "ceph-csi-config",
@@ -157,13 +170,12 @@ func ensureCephConfigMap(ctx context.Context, k8sClient client.Client, storage *
 			},
 		},
 		Data: map[string]string{
-			"config.json": fmt.Sprintf(`[{"clusterID":"%s","monitors":["%s"]}]`,
-				storage.Name, storage.Spec.Endpoint),
+			"config.json": string(configJSON),
 		},
 	}
 
 	existing := &corev1.ConfigMap{}
-	err := k8sClient.Get(ctx, types.NamespacedName{Name: cm.Name, Namespace: CephCSINamespace}, existing)
+	err = k8sClient.Get(ctx, types.NamespacedName{Name: cm.Name, Namespace: CephCSINamespace}, existing)
 	if errors.IsNotFound(err) {
 		return k8sClient.Create(ctx, cm)
 	}
@@ -452,18 +464,24 @@ func ensureNodeDaemonSet(ctx context.Context, k8sClient client.Client) error {
 }
 
 // HealthCheck checks Ceph cluster health via the management endpoint
-func HealthCheck(endpoint string) error {
+func HealthCheck(ctx context.Context, endpoint string) error {
 	httpClient := &http.Client{
 		Timeout: 10 * time.Second,
 	}
 
 	healthURL := fmt.Sprintf("https://%s/api/health", endpoint)
 
-	resp, err := httpClient.Get(healthURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
+	if err != nil {
+		return fmt.Errorf("Ceph health check request creation failed: %w", err)
+	}
+
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("Ceph health check failed: %w", err)
 	}
 	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("Ceph health check returned status %d", resp.StatusCode)

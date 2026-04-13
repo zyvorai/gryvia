@@ -24,6 +24,10 @@ impl KubeFabricClient {
 
         let namespace = namespace.unwrap_or_else(|| config.default_namespace.clone());
 
+        let mut config = config;
+        config.connect_timeout = Some(std::time::Duration::from_secs(30));
+        config.read_timeout = Some(std::time::Duration::from_secs(30));
+
         let kube_client = Client::try_from(config).context("Failed to create Kubernetes client")?;
 
         Ok(Self {

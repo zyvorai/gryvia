@@ -28,6 +28,12 @@ async fn create_job(client: &KubeFabricClient) -> Result<()> {
             if input.is_empty() {
                 return Err("Name cannot be empty");
             }
+            if input.len() > 253 {
+                return Err("Name must be 253 characters or fewer");
+            }
+            if input.starts_with('-') || input.ends_with('-') {
+                return Err("Name must not start or end with a hyphen");
+            }
             if !input.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
                 return Err("Name must contain only lowercase letters, digits, and hyphens");
             }
@@ -61,6 +67,10 @@ async fn create_job(client: &KubeFabricClient) -> Result<()> {
         .default(1)
         .interact_text()?;
 
+    if gpu_count == 0 {
+        anyhow::bail!("GPU count must be at least 1");
+    }
+
     let memory: String = Input::new()
         .with_prompt("Memory (e.g., 64Gi)")
         .default("32Gi".to_string())
@@ -73,6 +83,12 @@ async fn create_job(client: &KubeFabricClient) -> Result<()> {
 
     let command: String = Input::new()
         .with_prompt("Command (e.g., python train.py)")
+        .validate_with(|input: &String| -> Result<(), &str> {
+            if input.trim().is_empty() {
+                return Err("Command cannot be empty");
+            }
+            Ok(())
+        })
         .interact_text()?;
 
     let distributed = Confirm::new()
@@ -89,15 +105,25 @@ async fn create_job(client: &KubeFabricClient) -> Result<()> {
             .default(0)
             .interact()?;
 
-        let world_size: u32 = Input::new()
-            .with_prompt("World size (total GPUs across nodes)")
+        let num_nodes: u32 = Input::new()
+            .with_prompt("Number of nodes")
+            .default(1)
+            .interact_text()?;
+
+        if num_nodes < 1 {
+            anyhow::bail!("Number of nodes must be at least 1");
+        }
+
+        let gpus_per_node: u32 = Input::new()
+            .with_prompt("GPUs per node")
             .default(gpu_count)
             .interact_text()?;
 
         dist_config = json!({
             "enabled": true,
             "strategy": strategies[strategy_idx],
-            "worldSize": world_size,
+            "nodes": num_nodes,
+            "gpusPerNode": gpus_per_node,
         });
     }
 

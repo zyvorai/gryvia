@@ -3,7 +3,9 @@ package lustre
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -128,7 +130,21 @@ func ensureRBAC(ctx context.Context, k8sClient client.Client) error {
 	return err
 }
 
+func validateEndpoint(endpoint string) error {
+	if endpoint == "" {
+		return fmt.Errorf("endpoint must not be empty")
+	}
+	if strings.ContainsAny(endpoint, "\n\r\t;|&$`") {
+		return fmt.Errorf("endpoint contains invalid characters")
+	}
+	return nil
+}
+
 func ensureEndpointSecret(ctx context.Context, k8sClient client.Client, secretName, endpoint string) error {
+	if err := validateEndpoint(endpoint); err != nil {
+		return fmt.Errorf("invalid endpoint: %w", err)
+	}
+
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      secretName,
@@ -436,18 +452,24 @@ func ensureNodeDaemonSet(ctx context.Context, k8sClient client.Client, storage *
 }
 
 // HealthCheck checks Lustre filesystem health via the management endpoint
-func HealthCheck(endpoint string) error {
+func HealthCheck(ctx context.Context, endpoint string) error {
 	httpClient := &http.Client{
 		Timeout: 10 * time.Second,
 	}
 
 	healthURL := fmt.Sprintf("https://%s/api/health", endpoint)
 
-	resp, err := httpClient.Get(healthURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
+	if err != nil {
+		return fmt.Errorf("Lustre health check request creation failed: %w", err)
+	}
+
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("Lustre health check failed: %w", err)
 	}
 	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("Lustre health check returned status %d", resp.StatusCode)

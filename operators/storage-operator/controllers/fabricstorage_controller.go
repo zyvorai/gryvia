@@ -117,7 +117,8 @@ func (r *FabricStorageReconciler) reconcileStorage(ctx context.Context, storage 
 		if updateErr := r.Status().Update(ctx, storage); updateErr != nil {
 			log.Error(updateErr, "Failed to update status after CSI driver install failure")
 		}
-		return ctrl.Result{RequeueAfter: 5 * time.Minute}, err
+		// CSI driver is a prerequisite; do not proceed to StorageClass or health check.
+		return ctrl.Result{}, fmt.Errorf("CSI driver installation failed: %w", err)
 	}
 
 	storage.Status.CSIDriverInstalled = true
@@ -225,7 +226,9 @@ func (r *FabricStorageReconciler) buildStorageClass(storage *kubefabricv1.Fabric
 
 	parameters := make(map[string]string)
 	if storage.Spec.StorageClass != nil && storage.Spec.StorageClass.Parameters != nil {
-		parameters = storage.Spec.StorageClass.Parameters
+		for k, v := range storage.Spec.StorageClass.Parameters {
+			parameters[k] = v
+		}
 	}
 
 	// Add backend-specific parameters
@@ -271,15 +274,15 @@ func (r *FabricStorageReconciler) getProvisioner(backend string) string {
 func (r *FabricStorageReconciler) healthCheckStorage(ctx context.Context, storage *kubefabricv1.FabricStorage) error {
 	switch storage.Spec.Backend {
 	case "vast":
-		return vast.HealthCheck(storage.Spec.Endpoint)
+		return vast.HealthCheck(ctx, storage.Spec.Endpoint)
 	case "weka":
-		return weka.HealthCheck(storage.Spec.Endpoint)
+		return weka.HealthCheck(ctx, storage.Spec.Endpoint)
 	case "ddn":
-		return ddn.HealthCheck(storage.Spec.Endpoint)
+		return ddn.HealthCheck(ctx, storage.Spec.Endpoint)
 	case "lustre":
-		return lustre.HealthCheck(storage.Spec.Endpoint)
+		return lustre.HealthCheck(ctx, storage.Spec.Endpoint)
 	case "ceph":
-		return ceph.HealthCheck(storage.Spec.Endpoint)
+		return ceph.HealthCheck(ctx, storage.Spec.Endpoint)
 	default:
 		r.Log.Info("Health check not implemented for backend", "backend", storage.Spec.Backend)
 		return nil

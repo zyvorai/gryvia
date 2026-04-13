@@ -16,7 +16,8 @@ spec:
   distributed:
     enabled: true
     strategy: ddp
-    worldSize: 4
+    nodes: 4
+    gpusPerNode: 8
 
   resources:
     gpuType: H100

@@ -5,6 +5,7 @@ Provides REST API for Web UI with aggregated metrics and cluster data
 import asyncio
 import hmac
 import os
+import urllib.parse
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from fastapi import FastAPI, HTTPException, Query, Depends, Header, Request
@@ -32,12 +33,12 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # CORS middleware - restrict origins via environment variable
 ALLOWED_ORIGINS = os.environ.get("CORS_ALLOWED_ORIGINS", "").split(",")
 if ALLOWED_ORIGINS == [""]:
-    ALLOWED_ORIGINS = []
+    ALLOWED_ORIGINS = ["http://localhost:3000", "http://localhost:5173"]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=len(ALLOWED_ORIGINS) > 0,
+    allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["Authorization", "Content-Type"],
 )
@@ -49,8 +50,8 @@ async def verify_auth(authorization: Optional[str] = Header(None)):
     """Verify API key or Bearer token for all protected endpoints."""
     if not API_KEY:
         raise HTTPException(
-            status_code=500,
-            detail="KUBEFABRIC_API_KEY not configured. Set the environment variable to enable API access."
+            status_code=401,
+            detail="Authentication required"
         )
     if not authorization:
         raise HTTPException(status_code=401, detail="Authorization header required")
@@ -74,14 +75,41 @@ except config.ConfigException:
 k8s_custom = client.CustomObjectsApi()
 k8s_core = client.CoreV1Api()
 
+def _validate_prometheus_url(url: str) -> str:
+    parsed = urllib.parse.urlparse(url)
+    hostname = parsed.hostname or ""
+    # Block common SSRF targets
+    blocked = ["169.254.169.254", "metadata.google.internal", "metadata.aws"]
+    for b in blocked:
+        if hostname == b or hostname.endswith("." + b):
+            raise ValueError(f"Blocked Prometheus URL pointing to {hostname}")
+    return url
+
+
 # Prometheus client (optional - used for historical metrics when available)
-PROMETHEUS_URL = os.environ.get("PROMETHEUS_URL", "http://prometheus-operated.kubefabric:9090")
+PROMETHEUS_URL = _validate_prometheus_url(
+    os.environ.get("PROMETHEUS_URL", "http://prometheus-operated.kubefabric:9090")
+)
+HTTP_TIMEOUT_SECONDS = int(os.environ.get("HTTP_TIMEOUT_SECONDS", "10"))
 prom = None
 try:
     from prometheus_api_client import PrometheusConnect
+    import requests as _requests
+
+    class _TimeoutSession(_requests.Session):
+        """requests.Session subclass that enforces a default timeout."""
+        def __init__(self, timeout: int = HTTP_TIMEOUT_SECONDS):
+            super().__init__()
+            self._default_timeout = timeout
+
+        def request(self, *args, **kwargs):
+            kwargs.setdefault("timeout", self._default_timeout)
+            return super().request(*args, **kwargs)
+
     if PROMETHEUS_URL:
         prom = PrometheusConnect(url=PROMETHEUS_URL, disable_ssl=PROMETHEUS_URL.startswith("http://"))
-        logger.info("Connected to Prometheus at %s", PROMETHEUS_URL)
+        prom._session = _TimeoutSession(timeout=HTTP_TIMEOUT_SECONDS)
+        logger.info("Connected to Prometheus at %s (timeout=%ds)", PROMETHEUS_URL, HTTP_TIMEOUT_SECONDS)
 except Exception:
     logger.warning("Failed to connect to Prometheus at %s - historical metrics unavailable", PROMETHEUS_URL)
 
@@ -116,25 +144,25 @@ async def get_cluster_stats(request: Request, _=Depends(verify_auth)):
     try:
         loop = asyncio.get_running_loop()
 
-        # Get all GPU nodes
-        nodes = await loop.run_in_executor(
-            None,
-            lambda: k8s_custom.list_cluster_custom_object(
-                group="kubefabric.ai",
-                version="v1",
-                plural="fabricgpunodes"
-            )
-        )
-
-        # Get all jobs
-        jobs = await loop.run_in_executor(
-            None,
-            lambda: k8s_custom.list_namespaced_custom_object(
-                group="kubefabric.ai",
-                version="v1",
-                namespace=JOB_NAMESPACE,
-                plural="fabricaijobs"
-            )
+        # Get all GPU nodes and jobs in parallel
+        nodes, jobs = await asyncio.gather(
+            loop.run_in_executor(
+                None,
+                lambda: k8s_custom.list_cluster_custom_object(
+                    group="kubefabric.ai",
+                    version="v1",
+                    plural="fabricgpunodes"
+                )
+            ),
+            loop.run_in_executor(
+                None,
+                lambda: k8s_custom.list_namespaced_custom_object(
+                    group="kubefabric.ai",
+                    version="v1",
+                    namespace=JOB_NAMESPACE,
+                    plural="fabricaijobs"
+                )
+            ),
         )
 
         total_gpus = 0
@@ -194,6 +222,9 @@ async def get_gpu_metrics(
     _=Depends(verify_auth),
 ):
     """Get GPU utilization metrics over time"""
+    allowed_ranges = {"1h", "6h", "24h", "7d", "30d"}
+    if time_range not in allowed_ranges:
+        raise HTTPException(status_code=400, detail=f"Invalid time_range. Must be one of: {', '.join(sorted(allowed_ranges))}")
     try:
         loop = asyncio.get_running_loop()
 
@@ -276,8 +307,11 @@ async def get_cost_metrics(request: Request, _=Depends(verify_auth)):
                 end_time = status.get("completionTime") or datetime.now(timezone.utc).isoformat()
 
                 if start_time:
-                    start = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
-                    end = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
+                    try:
+                        start = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+                        end = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
+                    except (ValueError, TypeError):
+                        continue
                     hours = (end - start).total_seconds() / 3600
 
                     cost = hours * gpu_count * GPU_PRICING.get(gpu_type, 1.0)
@@ -365,8 +399,11 @@ async def get_job_metrics(
 
             # Calculate duration for completed jobs
             if status.get("startTime") and status.get("completionTime"):
-                start = datetime.fromisoformat(status["startTime"].replace('Z', '+00:00'))
-                end = datetime.fromisoformat(status["completionTime"].replace('Z', '+00:00'))
+                try:
+                    start = datetime.fromisoformat(status["startTime"].replace('Z', '+00:00'))
+                    end = datetime.fromisoformat(status["completionTime"].replace('Z', '+00:00'))
+                except (ValueError, TypeError):
+                    continue
                 duration = (end - start).total_seconds() / 3600
                 avg_duration += duration
                 duration_count += 1
@@ -464,6 +501,15 @@ async def create_job(request: Request, _=Depends(verify_auth)):
             raise HTTPException(status_code=400, detail="apiVersion must be kubefabric.ai/v1")
         if body.get("kind") != "FabricAIJob":
             raise HTTPException(status_code=400, detail="kind must be FabricAIJob")
+
+        # Validate spec contains required fields
+        spec = body.get("spec", {})
+        if not isinstance(spec, dict):
+            raise HTTPException(status_code=400, detail="spec must be a JSON object")
+        if not spec.get("image"):
+            raise HTTPException(status_code=400, detail="spec.image is required")
+        if not spec.get("gpus") and not spec.get("gpuCount"):
+            raise HTTPException(status_code=400, detail="spec.gpus is required")
 
         # Enforce namespace server-side to prevent namespace bypass
         body.setdefault("metadata", {})["namespace"] = JOB_NAMESPACE

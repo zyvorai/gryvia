@@ -14,7 +14,10 @@ pub async fn execute(client: &KubeFabricClient, detailed: bool, watch: Option<u6
             anyhow::bail!("Watch interval must be greater than 0");
         }
         loop {
-            print!("\x1B[2J\x1B[1;1H"); // Clear screen
+            // Clear screen using ANSI escape sequences. This works on POSIX-compliant
+            // terminals but may render as garbage on non-ANSI terminals (e.g. Windows cmd.exe
+            // without virtual terminal processing enabled).
+            print!("\x1B[2J\x1B[1;1H");
             if let Err(e) = show_cluster_overview(client, detailed).await {
                 eprintln!("Error refreshing cluster overview: {}", e);
             }
@@ -179,7 +182,7 @@ fn show_detailed_jobs(jobs: &[FabricAIJob]) -> Result<()> {
         let gpus = job.spec.resources.gpu_count.to_string();
         let gpu_type = &job.spec.resources.gpu_type;
         let distributed = if job.spec.distributed.enabled {
-            format!("{} ({})", job.spec.distributed.strategy, job.spec.distributed.world_size)
+            format!("{} ({}x{})", job.spec.distributed.strategy, job.spec.distributed.nodes, job.spec.distributed.gpus_per_node)
         } else {
             "no".to_string()
         };

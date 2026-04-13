@@ -16,6 +16,8 @@ spec:
           properties:
             spec:
               type: object
+              required:
+                - value
               properties:
                 # Priority value (higher = more important)
                 value:
@@ -257,7 +259,7 @@ spec:
     maxLatencyMs: 100
     minThroughput: 1000  # tokens/sec
 
-  image: vllm/vllm:latest
+  image: vllm/vllm:v0.6.6
   command: ["python", "-m", "vllm.entrypoints.api_server"]
 
 ---

@@ -11,7 +11,7 @@ spec:
   network: rdma
   storage: vast-fast
 
-  image: vllm/vllm-openai:latest
+  image: vllm/vllm-openai:v0.6.6
   imagePullPolicy: IfNotPresent
 
   command:

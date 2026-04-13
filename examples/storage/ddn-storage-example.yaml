@@ -18,7 +18,7 @@ spec:
       - "rw"
       - "flock"
       - "localflock"
-    csiDriverVersion: "latest"
+    csiDriverVersion: "v2.3.0"
 ---
 apiVersion: v1
 kind: Secret

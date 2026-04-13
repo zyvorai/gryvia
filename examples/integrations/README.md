@@ -113,7 +113,7 @@ spec:
     gpuCount: 1
     memory: 64Gi
     cpu: 16
-  image: codercom/code-server:latest
+  image: codercom/code-server:4.96.4
   command:
     - code-server
     - --bind-addr=0.0.0.0:8080
@@ -336,7 +336,7 @@ spec:
     gpuCount: 1
     memory: 64Gi
     cpu: 16
-  image: rocker/ml-gpu:latest
+  image: rocker/ml-gpu:4.4.0
   command:
     - /init
   env:

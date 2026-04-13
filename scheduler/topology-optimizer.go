@@ -43,6 +43,15 @@ type PlacementScore struct {
 	NVLinkCount int
 }
 
+// Scoring weights for GPU placement (must sum to 100 with bonuses/penalties)
+const (
+	nvlinkWeight      = 40.0 // NVLink connectivity importance
+	numaWeight        = 30.0 // NUMA locality importance
+	utilizationWeight = 20.0 // Current utilization importance
+	fullNodeBonus     = 10.0 // Bonus for full-node allocation
+	fragmentPenalty   = 5.0  // Penalty for fragmenting a node
+)
+
 func NewTopologyOptimizer() (*TopologyOptimizer, error) {
 	config, err := rest.InClusterConfig()
 	if err != nil {
@@ -170,28 +179,28 @@ func (to *TopologyOptimizer) scoreNode(nodeName string, gpuCount int, gpuType st
 
 	// 2. Score based on NVLink connectivity
 	nvlinkScore := to.scoreNVLinkTopology(topology, gpuCount)
-	score += nvlinkScore * 40 // 40% weight
+	score += nvlinkScore * nvlinkWeight
 	reasoning = append(reasoning, fmt.Sprintf("NVLink: %.1f", nvlinkScore))
 
 	// 3. Score based on NUMA locality
 	numaScore := to.scoreNUMALocality(topology, gpuCount)
-	score += numaScore * 30 // 30% weight
+	score += numaScore * numaWeight
 	reasoning = append(reasoning, fmt.Sprintf("NUMA: %.1f", numaScore))
 
 	// 4. Score based on current utilization
 	utilizationScore := to.scoreUtilization(nodeName)
-	score += utilizationScore * 20 // 20% weight
+	score += utilizationScore * utilizationWeight
 	reasoning = append(reasoning, fmt.Sprintf("Util: %.1f", utilizationScore))
 
 	// 5. Bonus for full-node allocation
 	if gpuCount == len(topology.GPUs) {
-		score += 10
+		score += fullNodeBonus
 		reasoning = append(reasoning, "Full node")
 	}
 
 	// 6. Penalty for fragmentation
 	if gpuCount < len(topology.GPUs) && gpuCount > len(topology.GPUs)/2 {
-		score -= 5
+		score -= fragmentPenalty
 		reasoning = append(reasoning, "Fragments node")
 	}
 

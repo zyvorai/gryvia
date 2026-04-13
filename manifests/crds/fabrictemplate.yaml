@@ -16,6 +16,9 @@ spec:
           properties:
             spec:
               type: object
+              required:
+                - category
+                - defaults
               properties:
                 # Template metadata
                 description:
@@ -141,7 +144,7 @@ spec:
     command:
       - torchrun
       - --nproc_per_node={{ .gpuCount }}
-      - --nnodes={{ .worldSize | div .gpuCount }}
+      - --nnodes={{ .nodeCount }}
       - train.py
       - --data={{ .dataPath }}
       - --output={{ .outputPath }}
@@ -189,13 +192,13 @@ spec:
         min: 1
         max: 1000
 
-    - name: worldSize
-      description: "Total number of GPUs across all nodes"
+    - name: nodeCount
+      description: "Number of training nodes"
       type: integer
-      default: "8"
+      default: "1"
       validation:
         min: 1
-        max: 512
+        max: 64
 
 ---
 # Example: LLM Inference Template
@@ -216,7 +219,7 @@ spec:
       memory: 256Gi
       cpu: 32
 
-    image: vllm/vllm-openai:latest
+    image: vllm/vllm-openai:v0.6.6
 
     command:
       - python
@@ -266,7 +269,7 @@ spec:
       memory: 32Gi
       cpu: 8
 
-    image: jupyter/tensorflow-notebook:latest
+    image: jupyter/tensorflow-notebook:2024.10.0
 
     command:
       - jupyter
@@ -354,7 +357,7 @@ spec:
     outputPath: /output/resnet50-run1
     batchSize: 64
     epochs: 90
-    worldSize: 32  # 32 GPUs total
+    nodeCount: 4   # 4 nodes × 8 GPUs = 32 GPUs total
 
   # Can still override any defaults
   resources:

@@ -8,7 +8,7 @@ export default function JobDetails() {
   const { name } = useParams<{ name: string }>()
   const navigate = useNavigate()
 
-  const { data: job, isLoading } = useQuery({
+  const { data: job, isLoading, isError } = useQuery({
     queryKey: ['job', name],
     queryFn: () => api.getJob(name!),
     enabled: !!name,
@@ -17,6 +17,14 @@ export default function JobDetails() {
 
   if (isLoading) {
     return <LoadingSpinner />
+  }
+
+  if (isError) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-red-400">Failed to load job details. Please try again.</p>
+      </div>
+    )
   }
 
   if (!job) {
@@ -184,10 +192,16 @@ export default function JobDetails() {
                       <dt className="text-sm font-medium text-slate-400">Strategy</dt>
                       <dd className="mt-1 text-sm text-white">{job.spec.distributed.strategy}</dd>
                     </div>
-                    {job.spec.distributed.worldSize && (
+                    {job.spec.distributed.nodes && (
                       <div>
-                        <dt className="text-sm font-medium text-slate-400">World Size</dt>
-                        <dd className="mt-1 text-sm text-white">{job.spec.distributed.worldSize}</dd>
+                        <dt className="text-sm font-medium text-slate-400">Nodes</dt>
+                        <dd className="mt-1 text-sm text-white">{job.spec.distributed.nodes}</dd>
+                      </div>
+                    )}
+                    {job.spec.distributed.gpusPerNode && (
+                      <div>
+                        <dt className="text-sm font-medium text-slate-400">GPUs/Node</dt>
+                        <dd className="mt-1 text-sm text-white">{job.spec.distributed.gpusPerNode}</dd>
                       </div>
                     )}
                   </>

@@ -325,7 +325,7 @@ spec:
           serviceAccountName: kubefabric-tools
           containers:
           - name: cost-calculator
-            image: kubefabric-tools:latest
+            image: kubefabric-tools:1.0.0
             command:
               - python3
               - /tools/cost-calculator.py
@@ -363,7 +363,7 @@ spec:
       hostPID: true
       containers:
       - name: diagnostics
-        image: kubefabric-tools:latest
+        image: kubefabric-tools:1.0.0
         command:
           - /bin/bash
           - -c

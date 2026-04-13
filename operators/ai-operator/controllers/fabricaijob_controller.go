@@ -155,20 +155,20 @@ func (r *FabricAIJobReconciler) reconcileAIJob(ctx context.Context, job *kubefab
 
 	// Update phase based on replicas
 	desiredReplicas := r.getReplicaCount(job)
-	if sts.Status.ReadyReplicas == desiredReplicas {
-		if job.Status.Phase != PhaseRunning && job.Status.StartTime == nil {
-			now := metav1.Now()
-			job.Status.StartTime = &now
+	if sts.Status.ReadyReplicas > 0 {
+		if job.Status.Phase != PhaseRunning {
+			if job.Status.StartTime == nil {
+				now := metav1.Now()
+				job.Status.StartTime = &now
+			}
+			job.Status.Phase = PhaseRunning
 		}
-		job.Status.Phase = PhaseRunning
-		r.updateCondition(job, ConditionReady, metav1.ConditionTrue, "Ready", "All replicas are ready")
-	} else if sts.Status.ReadyReplicas > 0 {
-		if job.Status.Phase != PhaseRunning && job.Status.StartTime == nil {
-			now := metav1.Now()
-			job.Status.StartTime = &now
+		if sts.Status.ReadyReplicas == desiredReplicas {
+			r.updateCondition(job, ConditionReady, metav1.ConditionTrue, "Ready", "All replicas are ready")
+		} else {
+			r.updateCondition(job, ConditionReady, metav1.ConditionFalse, "PartiallyReady",
+				fmt.Sprintf("%d/%d replicas are ready", sts.Status.ReadyReplicas, desiredReplicas))
 		}
-		job.Status.Phase = PhaseRunning
-		r.updateCondition(job, ConditionReady, metav1.ConditionFalse, "PartiallyReady", "Some replicas are ready")
 	}
 
 	// Check for job completion by examining pod status
@@ -187,9 +187,10 @@ func (r *FabricAIJobReconciler) reconcileAIJob(ctx context.Context, job *kubefab
 			replicas := int(r.getReplicaCount(job))
 			if completedPods >= replicas {
 				job.Status.Phase = PhaseSucceeded
-			} else if failedPods > 0 {
+			} else if failedPods > 0 && (completedPods+failedPods) >= replicas {
+				// Only mark Failed when all pods have terminated and at least one failed
 				job.Status.Phase = PhaseFailed
-				job.Status.Message = fmt.Sprintf("%d pod(s) failed", failedPods)
+				job.Status.Message = fmt.Sprintf("%d/%d pod(s) failed", failedPods, replicas)
 			}
 		}
 	}
@@ -480,10 +481,11 @@ func (r *FabricAIJobReconciler) buildEnvVars(job *kubefabricv1.FabricAIJob) []co
 
 	// Add distributed training env vars if enabled
 	if job.Spec.Distributed != nil && job.Spec.Distributed.Enabled {
+		worldSize := r.getReplicaCount(job) * r.getGPUsPerPod(job)
 		envVars = append(envVars,
 			corev1.EnvVar{Name: "MASTER_ADDR", Value: fmt.Sprintf("%s-training-0.%s-headless", job.Name, job.Name)},
 			corev1.EnvVar{Name: "MASTER_PORT", Value: "29500"},
-			corev1.EnvVar{Name: "WORLD_SIZE", Value: fmt.Sprintf("%d", job.Spec.GPUs)},
+			corev1.EnvVar{Name: "WORLD_SIZE", Value: fmt.Sprintf("%d", worldSize)},
 			corev1.EnvVar{Name: "NCCL_DEBUG", Value: "INFO"},
 		)
 
@@ -619,6 +621,7 @@ func (r *FabricAIJobReconciler) updateCondition(job *kubefabricv1.FabricAIJob, c
 		Status:             status,
 		Reason:             reason,
 		Message:            message,
+		ObservedGeneration: job.Generation,
 		LastTransitionTime: metav1.Now(),
 	}
 

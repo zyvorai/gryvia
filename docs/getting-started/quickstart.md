@@ -190,14 +190,18 @@ metadata:
   name: ml-research
 spec:
   team: ml-research
-  maxGpus: 16
-  maxJobs: 10
-  gpuTypes:
-    - H100
-    - A100
+  namespaces:
+    - ml-training
+  gpuQuota:
+    maxGPUs: 16
+    maxRunningJobs: 10
+    allowedGPUTypes:
+      - H100
+      - A100
   budget:
-    monthly: 5000
-    alert: 80
+    monthlyBudget: 5000.00
+    alertThreshold: 80.0
+    hardLimit: false
 ```
 
 ```bash
