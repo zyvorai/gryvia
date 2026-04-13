@@ -14,9 +14,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	tensorreaperv1 "github.com/ssahani/tensor-reaper/operators/gpu-operator/api/v1"
-	"github.com/ssahani/tensor-reaper/operators/gpu-operator/controllers"
-	"github.com/ssahani/tensor-reaper/operators/gpu-operator/pkg/memory"
+	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/gpu-operator/api/v1"
+	"github.com/ssahani/TensorReaper/operators/gpu-operator/controllers"
+	"github.com/ssahani/TensorReaper/operators/gpu-operator/pkg/memory"
 )
 
 var (

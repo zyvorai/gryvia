@@ -593,6 +593,6 @@ See `disaster-recovery/runbooks/` for detailed procedures:
 
 ## Support
 
-- DR Issues: https://github.com/ssahani/tensor-reaper/issues
+- DR Issues: https://github.com/ssahani/TensorReaper/issues
 - Emergency Hotline: [Configure your support line]
 - DR Slack: #disaster-recovery

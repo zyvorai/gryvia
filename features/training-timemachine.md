@@ -334,6 +334,6 @@ FabricAIJob (source) --> Time Machine Controller
 
 ## Support
 
-- Issues: https://github.com/ssahani/tensor-reaper/issues
+- Issues: https://github.com/ssahani/TensorReaper/issues
 - CRD Reference: `manifests/crds/fabrictrainingtimemachine.yaml`
 - Example: `examples/training/timemachine-example.yaml`

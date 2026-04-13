@@ -431,5 +431,5 @@ spec:
 
 ## Support
 
-- Benchmark Issues: https://github.com/ssahani/tensor-reaper/issues
-- Performance Discussions: https://github.com/ssahani/tensor-reaper/discussions
+- Benchmark Issues: https://github.com/ssahani/TensorReaper/issues
+- Performance Discussions: https://github.com/ssahani/TensorReaper/discussions

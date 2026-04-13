@@ -12,8 +12,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	tensorreaperv1 "github.com/ssahani/tensor-reaper/operators/gpu-operator/api/v1"
-	"github.com/ssahani/tensor-reaper/operators/gpu-operator/pkg/memory"
+	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/gpu-operator/api/v1"
+	"github.com/ssahani/TensorReaper/operators/gpu-operator/pkg/memory"
 )
 
 const (

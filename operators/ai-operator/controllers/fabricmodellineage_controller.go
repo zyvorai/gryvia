@@ -14,8 +14,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	tensorreaperv1 "github.com/ssahani/tensor-reaper/operators/ai-operator/api/v1"
-	"github.com/ssahani/tensor-reaper/operators/ai-operator/pkg/lineage"
+	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/ai-operator/api/v1"
+	"github.com/ssahani/TensorReaper/operators/ai-operator/pkg/lineage"
 )
 
 // FabricModelLineageReconciler reconciles a FabricModelLineage object

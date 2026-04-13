@@ -423,6 +423,6 @@ See [Job Examples](../../examples/jobs/) for complete examples:
 
 ## Support
 
-- Job Issues: https://github.com/ssahani/tensor-reaper/issues
+- Job Issues: https://github.com/ssahani/TensorReaper/issues
 - Optimization Help: Use profiler tool
-- Documentation: https://github.com/ssahani/tensor-reaper/docs
+- Documentation: https://github.com/ssahani/TensorReaper/docs

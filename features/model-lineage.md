@@ -312,5 +312,5 @@ A model is considered reproducible when:
 
 ## Support
 
-- Issues: https://github.com/ssahani/tensor-reaper/issues
-- Discussions: https://github.com/ssahani/tensor-reaper/discussions
+- Issues: https://github.com/ssahani/TensorReaper/issues
+- Discussions: https://github.com/ssahani/TensorReaper/discussions

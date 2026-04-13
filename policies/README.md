@@ -415,5 +415,5 @@ spec:
 
 ## Support
 
-- Policy Questions: https://github.com/ssahani/tensor-reaper/discussions
-- Issues: https://github.com/ssahani/tensor-reaper/issues
+- Policy Questions: https://github.com/ssahani/TensorReaper/discussions
+- Issues: https://github.com/ssahani/TensorReaper/issues

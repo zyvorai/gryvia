@@ -87,12 +87,12 @@ Prometheus:
 Install the TensorReaper CLI:
 
   # Linux
-  curl -L https://github.com/ssahani/tensor-reaper/releases/latest/download/tensorreaper-linux-amd64 -o tensorreaper
+  curl -L https://github.com/ssahani/TensorReaper/releases/latest/download/tensorreaper-linux-amd64 -o tensorreaper
   chmod +x tensorreaper
   sudo mv tensorreaper /usr/local/bin/
 
   # macOS
-  curl -L https://github.com/ssahani/tensor-reaper/releases/latest/download/tensorreaper-darwin-amd64 -o tensorreaper
+  curl -L https://github.com/ssahani/TensorReaper/releases/latest/download/tensorreaper-darwin-amd64 -o tensorreaper
   chmod +x tensorreaper
   sudo mv tensorreaper /usr/local/bin/
 
@@ -127,9 +127,9 @@ Usage:
 📚 DOCUMENTATION
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Full documentation: https://github.com/ssahani/tensor-reaper/docs
-Examples: https://github.com/ssahani/tensor-reaper/tree/main/examples
-Issues: https://github.com/ssahani/tensor-reaper/issues
+Full documentation: https://github.com/ssahani/TensorReaper/docs
+Examples: https://github.com/ssahani/TensorReaper/tree/main/examples
+Issues: https://github.com/ssahani/TensorReaper/issues
 
 🆘 TROUBLESHOOTING
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -148,6 +148,6 @@ If you encounter issues:
 4. Run diagnostics:
    kubectl exec -it <gpu-pod> -- /tools/gpu-diagnostics.sh
 
-For support, visit: https://github.com/ssahani/tensor-reaper/issues
+For support, visit: https://github.com/ssahani/TensorReaper/issues
 
 Happy GPU Computing! 🎉

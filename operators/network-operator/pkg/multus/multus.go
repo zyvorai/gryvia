@@ -13,7 +13,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	tensorreaperv1 "github.com/ssahani/tensor-reaper/operators/network-operator/api/v1"
+	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/network-operator/api/v1"
 )
 
 // CreateNetworkAttachment creates a Multus NetworkAttachmentDefinition

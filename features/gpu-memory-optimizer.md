@@ -254,6 +254,6 @@ FabricGpuNode (status.gpuStatus) --> Memory Optimizer Controller
 
 ## Support
 
-- Issues: https://github.com/ssahani/tensor-reaper/issues
+- Issues: https://github.com/ssahani/TensorReaper/issues
 - CRD Reference: `manifests/crds/fabricgpumemoryoptimizer.yaml`
 - Example: `examples/training/memory-optimizer-example.yaml`

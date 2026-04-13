@@ -14,8 +14,8 @@ import (
 
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
-	tensorreaperv1 "github.com/ssahani/tensor-reaper/operators/network-operator/api/v1"
-	"github.com/ssahani/tensor-reaper/operators/network-operator/controllers"
+	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/network-operator/api/v1"
+	"github.com/ssahani/TensorReaper/operators/network-operator/controllers"
 )
 
 var (

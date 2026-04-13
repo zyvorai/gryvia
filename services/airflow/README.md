@@ -428,4 +428,4 @@ See `services/airflow/examples/` for:
 ## Support
 
 - Airflow Docs: https://airflow.apache.org/docs/
-- TensorReaper Issues: https://github.com/ssahani/tensor-reaper/issues
+- TensorReaper Issues: https://github.com/ssahani/TensorReaper/issues

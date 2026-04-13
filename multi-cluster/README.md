@@ -588,5 +588,5 @@ See `multi-cluster/examples/` for:
 
 ## Support
 
-- Federation Issues: https://github.com/ssahani/tensor-reaper/issues
-- Multi-cluster Guide: https://github.com/ssahani/tensor-reaper/docs/multi-cluster
+- Federation Issues: https://github.com/ssahani/TensorReaper/issues
+- Multi-cluster Guide: https://github.com/ssahani/TensorReaper/docs/multi-cluster

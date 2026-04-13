@@ -346,7 +346,7 @@ kubectl get crds | grep tensorreaper
 
 ## Contributing
 
-See the main [TensorReaper repository](https://github.com/ssahani/tensor-reaper) for contribution guidelines.
+See the main [TensorReaper repository](https://github.com/ssahani/TensorReaper) for contribution guidelines.
 
 ## License
 

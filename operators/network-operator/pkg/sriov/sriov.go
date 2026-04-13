@@ -13,7 +13,7 @@ import (
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	tensorreaperv1 "github.com/ssahani/tensor-reaper/operators/network-operator/api/v1"
+	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/network-operator/api/v1"
 )
 
 const (

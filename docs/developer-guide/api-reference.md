@@ -705,7 +705,7 @@ costs = client.costs.summary(days=30, team="ml-research")
 ### Go SDK
 
 ```go
-import "github.com/ssahani/tensor-reaper/sdk/go/tensorreaper"
+import "github.com/ssahani/TensorReaper/sdk/go/tensorreaper"
 
 client := tensorreaper.NewClient(tensorreaper.Config{
     APIURL: "http://tensorreaper-api:8000",
@@ -774,5 +774,5 @@ POST /api/v1/webhooks
 
 ## Support
 
-- API Issues: https://github.com/ssahani/tensor-reaper/issues
-- SDK Documentation: https://github.com/ssahani/tensor-reaper/sdk
+- API Issues: https://github.com/ssahani/TensorReaper/issues
+- SDK Documentation: https://github.com/ssahani/TensorReaper/sdk

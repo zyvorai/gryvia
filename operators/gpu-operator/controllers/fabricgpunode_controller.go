@@ -18,8 +18,8 @@ import (
 
 	"k8s.io/client-go/util/retry"
 
-	tensorreaperv1 "github.com/ssahani/tensor-reaper/operators/gpu-operator/api/v1"
-	"github.com/ssahani/tensor-reaper/operators/gpu-operator/pkg/gpu"
+	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/gpu-operator/api/v1"
+	"github.com/ssahani/TensorReaper/operators/gpu-operator/pkg/gpu"
 )
 
 const (

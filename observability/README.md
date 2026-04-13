@@ -460,6 +460,6 @@ kubectl exec -n tensorreaper prometheus-0 -- \
 
 ## Support
 
-- Observability Issues: https://github.com/ssahani/tensor-reaper/issues
+- Observability Issues: https://github.com/ssahani/TensorReaper/issues
 - Jaeger Docs: https://www.jaegertracing.io/docs/
 - OpenTelemetry: https://opentelemetry.io/docs/

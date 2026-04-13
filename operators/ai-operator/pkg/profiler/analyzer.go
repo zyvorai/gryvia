@@ -8,7 +8,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	tensorreaperv1 "github.com/ssahani/tensor-reaper/operators/ai-operator/api/v1"
+	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/ai-operator/api/v1"
 )
 
 // Severity levels for recommendations

@@ -13,8 +13,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	tensorreaperv1 "github.com/ssahani/tensor-reaper/operators/storage-operator/api/v1"
-	"github.com/ssahani/tensor-reaper/operators/storage-operator/controllers"
+	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/storage-operator/api/v1"
+	"github.com/ssahani/TensorReaper/operators/storage-operator/controllers"
 )
 
 var (

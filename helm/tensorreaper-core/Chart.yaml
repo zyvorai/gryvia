@@ -13,9 +13,9 @@ keywords:
   - nvidia
   - rdma
   - distributed-training
-home: https://github.com/ssahani/tensor-reaper
+home: https://github.com/ssahani/TensorReaper
 sources:
-  - https://github.com/ssahani/tensor-reaper
+  - https://github.com/ssahani/TensorReaper
 maintainers:
   - name: TensorReaper Team
     email: team@tensorreaper.ai

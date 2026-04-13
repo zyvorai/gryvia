@@ -394,4 +394,4 @@ spec:
 ## Support
 
 - MLflow Docs: https://mlflow.org/docs/latest/index.html
-- TensorReaper Issues: https://github.com/ssahani/tensor-reaper/issues
+- TensorReaper Issues: https://github.com/ssahani/TensorReaper/issues

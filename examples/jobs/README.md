@@ -343,6 +343,6 @@ activeDeadlineSeconds: 3600  # 1 hour max
 
 ## Support
 
-- Documentation: https://github.com/ssahani/tensor-reaper/docs
-- Issues: https://github.com/ssahani/tensor-reaper/issues
-- Examples: https://github.com/ssahani/tensor-reaper/tree/main/examples
+- Documentation: https://github.com/ssahani/TensorReaper/docs
+- Issues: https://github.com/ssahani/TensorReaper/issues
+- Examples: https://github.com/ssahani/TensorReaper/tree/main/examples

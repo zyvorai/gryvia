@@ -331,5 +331,5 @@ See `features/job-dependencies.yaml` for complete examples:
 
 ## Support
 
-- Workflow Issues: https://github.com/ssahani/tensor-reaper/issues
-- Workflow Patterns: https://github.com/ssahani/tensor-reaper/discussions
+- Workflow Issues: https://github.com/ssahani/TensorReaper/issues
+- Workflow Patterns: https://github.com/ssahani/TensorReaper/discussions

@@ -17,8 +17,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	tensorreaperv1 "github.com/ssahani/tensor-reaper/operators/ai-operator/api/v1"
-	"github.com/ssahani/tensor-reaper/operators/ai-operator/pkg/experiment"
+	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/ai-operator/api/v1"
+	"github.com/ssahani/TensorReaper/operators/ai-operator/pkg/experiment"
 )
 
 const (

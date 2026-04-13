@@ -16,12 +16,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	tensorreaperv1 "github.com/ssahani/tensor-reaper/operators/storage-operator/api/v1"
-	"github.com/ssahani/tensor-reaper/operators/storage-operator/pkg/ceph"
-	"github.com/ssahani/tensor-reaper/operators/storage-operator/pkg/ddn"
-	"github.com/ssahani/tensor-reaper/operators/storage-operator/pkg/lustre"
-	"github.com/ssahani/tensor-reaper/operators/storage-operator/pkg/vast"
-	"github.com/ssahani/tensor-reaper/operators/storage-operator/pkg/weka"
+	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/storage-operator/api/v1"
+	"github.com/ssahani/TensorReaper/operators/storage-operator/pkg/ceph"
+	"github.com/ssahani/TensorReaper/operators/storage-operator/pkg/ddn"
+	"github.com/ssahani/TensorReaper/operators/storage-operator/pkg/lustre"
+	"github.com/ssahani/TensorReaper/operators/storage-operator/pkg/vast"
+	"github.com/ssahani/TensorReaper/operators/storage-operator/pkg/weka"
 )
 
 const (

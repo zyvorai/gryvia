@@ -8,7 +8,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	tensorreaperv1 "github.com/ssahani/tensor-reaper/operators/ai-operator/api/v1"
+	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/ai-operator/api/v1"
 )
 
 // ForkHandler creates new FabricAIJob resources from checkpoint state

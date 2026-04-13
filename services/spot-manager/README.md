@@ -415,5 +415,5 @@ kfctl spot estimate \
 
 ## Support
 
-- Spot Issues: https://github.com/ssahani/tensor-reaper/issues
-- Cost Optimization: https://github.com/ssahani/tensor-reaper/discussions
+- Spot Issues: https://github.com/ssahani/TensorReaper/issues
+- Cost Optimization: https://github.com/ssahani/TensorReaper/discussions

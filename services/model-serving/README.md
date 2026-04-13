@@ -569,4 +569,4 @@ See `examples/model-serving/` for:
 ## Support
 
 - KServe Docs: https://kserve.github.io/website/
-- TensorReaper Issues: https://github.com/ssahani/tensor-reaper/issues
+- TensorReaper Issues: https://github.com/ssahani/TensorReaper/issues

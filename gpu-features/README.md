@@ -377,5 +377,5 @@ spec:
 
 ## Support
 
-- MIG Issues: https://github.com/ssahani/tensor-reaper/issues
+- MIG Issues: https://github.com/ssahani/TensorReaper/issues
 - NVIDIA MIG Docs: https://docs.nvidia.com/datacenter/tesla/mig-user-guide/

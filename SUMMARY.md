@@ -473,7 +473,7 @@ Two-pass code review across the entire codebase, finding and fixing 110+ issues:
 
 TensorReaper is a complete, production-ready platform for managing GPU compute infrastructure at enterprise scale.
 
-**Repository**: https://github.com/ssahani/tensor-reaper
+**Repository**: https://github.com/ssahani/TensorReaper
 **License**: Apache 2.0
 **Version**: 1.0.0
 

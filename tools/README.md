@@ -459,6 +459,6 @@ To add new tools:
 
 ## Support
 
-- Issues: https://github.com/ssahani/tensor-reaper/issues
-- Documentation: https://github.com/ssahani/tensor-reaper/docs
-- Discussions: https://github.com/ssahani/tensor-reaper/discussions
+- Issues: https://github.com/ssahani/TensorReaper/issues
+- Documentation: https://github.com/ssahani/TensorReaper/docs
+- Discussions: https://github.com/ssahani/TensorReaper/discussions

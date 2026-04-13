@@ -60,7 +60,7 @@ helm install tensorreaper tensorreaper/tensorreaper \
 
 ```bash
 # Clone repository
-git clone https://github.com/ssahani/tensor-reaper.git
+git clone https://github.com/ssahani/TensorReaper.git
 cd tensor-reaper
 
 # Install CRDs
@@ -745,6 +745,6 @@ sudo systemctl enable nvidia-persistenced
 
 ## Support
 
-- Setup Issues: https://github.com/ssahani/tensor-reaper/issues
+- Setup Issues: https://github.com/ssahani/TensorReaper/issues
 - Slack: #tensorreaper-support
-- Documentation: https://github.com/ssahani/tensor-reaper/docs
+- Documentation: https://github.com/ssahani/TensorReaper/docs

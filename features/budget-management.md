@@ -706,5 +706,5 @@ groups:
 
 ## Support
 
-- Budget Issues: https://github.com/ssahani/tensor-reaper/issues
-- Finance Integration: https://github.com/ssahani/tensor-reaper/discussions
+- Budget Issues: https://github.com/ssahani/TensorReaper/issues
+- Finance Integration: https://github.com/ssahani/TensorReaper/discussions

@@ -14,8 +14,8 @@ import (
 
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
-	tensorreaperv1 "github.com/ssahani/tensor-reaper/operators/quota-operator/api/v1"
-	"github.com/ssahani/tensor-reaper/operators/quota-operator/controllers"
+	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/quota-operator/api/v1"
+	"github.com/ssahani/TensorReaper/operators/quota-operator/controllers"
 )
 
 var (

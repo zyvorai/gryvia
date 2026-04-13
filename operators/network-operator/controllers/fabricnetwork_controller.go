@@ -19,10 +19,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	tensorreaperv1 "github.com/ssahani/tensor-reaper/operators/network-operator/api/v1"
-	"github.com/ssahani/tensor-reaper/operators/network-operator/pkg/multus"
-	"github.com/ssahani/tensor-reaper/operators/network-operator/pkg/rdma"
-	"github.com/ssahani/tensor-reaper/operators/network-operator/pkg/sriov"
+	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/network-operator/api/v1"
+	"github.com/ssahani/TensorReaper/operators/network-operator/pkg/multus"
+	"github.com/ssahani/TensorReaper/operators/network-operator/pkg/rdma"
+	"github.com/ssahani/TensorReaper/operators/network-operator/pkg/sriov"
 )
 
 const (

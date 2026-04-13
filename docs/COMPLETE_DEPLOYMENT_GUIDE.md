@@ -545,7 +545,7 @@ kubectl patch pvc training-data \
 
 ## Support
 
-- GitHub Issues: https://github.com/ssahani/tensor-reaper/issues
+- GitHub Issues: https://github.com/ssahani/TensorReaper/issues
 - Documentation: https://tensor-reaper.readthedocs.io
 - Slack: #tensor-reaper
 

@@ -509,5 +509,5 @@ See `manifests/crds/fabricpriority.yaml` for:
 
 ## Support
 
-- Priority Issues: https://github.com/ssahani/tensor-reaper/issues
-- Preemption Discussion: https://github.com/ssahani/tensor-reaper/discussions
+- Priority Issues: https://github.com/ssahani/TensorReaper/issues
+- Preemption Discussion: https://github.com/ssahani/TensorReaper/discussions

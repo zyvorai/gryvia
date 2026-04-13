@@ -424,5 +424,5 @@ kfctl submit --template my-custom-template \
 
 ## Support
 
-- Template Issues: https://github.com/ssahani/tensor-reaper/issues
-- Custom Templates: https://github.com/ssahani/tensor-reaper/discussions
+- Template Issues: https://github.com/ssahani/TensorReaper/issues
+- Custom Templates: https://github.com/ssahani/TensorReaper/discussions

@@ -626,8 +626,8 @@ tensorreaper integrations auth-test wandb
 
 ## Support
 
-- Integration Issues: https://github.com/ssahani/tensor-reaper/issues
-- Integration Requests: https://github.com/ssahani/tensor-reaper/discussions
+- Integration Issues: https://github.com/ssahani/TensorReaper/issues
+- Integration Requests: https://github.com/ssahani/TensorReaper/discussions
 
 ---
 

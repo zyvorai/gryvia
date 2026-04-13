@@ -323,4 +323,4 @@ train:
 ## Support
 
 - Argo Workflows Docs: https://argoproj.github.io/argo-workflows/
-- TensorReaper Issues: https://github.com/ssahani/tensor-reaper/issues
+- TensorReaper Issues: https://github.com/ssahani/TensorReaper/issues

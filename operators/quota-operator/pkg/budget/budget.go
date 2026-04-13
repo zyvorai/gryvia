@@ -9,8 +9,8 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	tensorreaperv1 "github.com/ssahani/tensor-reaper/operators/quota-operator/api/v1"
-	"github.com/ssahani/tensor-reaper/operators/quota-operator/pkg/usage"
+	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/quota-operator/api/v1"
+	"github.com/ssahani/TensorReaper/operators/quota-operator/pkg/usage"
 )
 
 // gpuPricingMu protects concurrent access to gpuPricing

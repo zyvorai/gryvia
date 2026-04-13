@@ -368,14 +368,14 @@ helm install tensorreaper tensorreaper/tensorreaper \
 
 ## Contributing
 
-Contributions are welcome! Please read the [contributing guidelines](https://github.com/ssahani/tensor-reaper/blob/main/CONTRIBUTING.md).
+Contributions are welcome! Please read the [contributing guidelines](https://github.com/ssahani/TensorReaper/blob/main/CONTRIBUTING.md).
 
 ## License
 
-Apache 2.0 - See [LICENSE](https://github.com/ssahani/tensor-reaper/blob/main/LICENSE)
+Apache 2.0 - See [LICENSE](https://github.com/ssahani/TensorReaper/blob/main/LICENSE)
 
 ## Support
 
-- Documentation: https://github.com/ssahani/tensor-reaper/docs
-- Issues: https://github.com/ssahani/tensor-reaper/issues
-- Discussions: https://github.com/ssahani/tensor-reaper/discussions
+- Documentation: https://github.com/ssahani/TensorReaper/docs
+- Issues: https://github.com/ssahani/TensorReaper/issues
+- Discussions: https://github.com/ssahani/TensorReaper/discussions

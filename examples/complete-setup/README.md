@@ -142,7 +142,7 @@ Open http://localhost:8080
 
 ```bash
 # Install CLI
-curl -L https://github.com/ssahani/tensor-reaper/releases/latest/download/tensorreaper-linux-amd64 -o tensorreaper
+curl -L https://github.com/ssahani/TensorReaper/releases/latest/download/tensorreaper-linux-amd64 -o tensorreaper
 chmod +x tensorreaper
 sudo mv tensorreaper /usr/local/bin/
 
@@ -323,6 +323,6 @@ kubectl delete namespace tensorreaper
 
 ## Support
 
-- Documentation: https://github.com/ssahani/tensor-reaper
-- Issues: https://github.com/ssahani/tensor-reaper/issues
-- Discussions: https://github.com/ssahani/tensor-reaper/discussions
+- Documentation: https://github.com/ssahani/TensorReaper
+- Issues: https://github.com/ssahani/TensorReaper/issues
+- Discussions: https://github.com/ssahani/TensorReaper/discussions

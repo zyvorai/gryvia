@@ -14,9 +14,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	tensorreaperv1 "github.com/ssahani/tensor-reaper/operators/ai-operator/api/v1"
-	"github.com/ssahani/tensor-reaper/operators/ai-operator/controllers"
-	"github.com/ssahani/tensor-reaper/operators/ai-operator/pkg/timemachine"
+	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/ai-operator/api/v1"
+	"github.com/ssahani/TensorReaper/operators/ai-operator/controllers"
+	"github.com/ssahani/TensorReaper/operators/ai-operator/pkg/timemachine"
 )
 
 var (

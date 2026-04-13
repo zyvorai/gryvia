@@ -16,7 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	tensorreaperv1 "github.com/ssahani/tensor-reaper/operators/storage-operator/api/v1"
+	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/storage-operator/api/v1"
 )
 
 const (

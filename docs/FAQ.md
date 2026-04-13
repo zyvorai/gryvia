@@ -505,7 +505,7 @@ kubectl describe fabricaijob my-job
 ### How do I get support?
 
 1. **Documentation**: https://tensorreaper.ai/docs
-2. **GitHub Issues**: https://github.com/ssahani/tensor-reaper/issues
+2. **GitHub Issues**: https://github.com/ssahani/TensorReaper/issues
 3. **Slack**: #tensorreaper-users
 4. **Email**: support@tensorreaper.ai (Enterprise only)
 

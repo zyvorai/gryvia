@@ -638,8 +638,8 @@ tensorreaper metrics gpu-utilization
 ## Support
 
 - **Documentation**: https://tensorreaper.ai/docs
-- **Issues**: https://github.com/ssahani/tensor-reaper/issues
-- **Discussions**: https://github.com/ssahani/tensor-reaper/discussions
+- **Issues**: https://github.com/ssahani/TensorReaper/issues
+- **Discussions**: https://github.com/ssahani/TensorReaper/discussions
 - **Slack**: #tensorreaper-users
 
 ---

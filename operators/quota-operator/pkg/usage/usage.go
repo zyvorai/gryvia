@@ -6,7 +6,7 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	tensorreaperv1 "github.com/ssahani/tensor-reaper/operators/quota-operator/api/v1"
+	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/quota-operator/api/v1"
 )
 
 // CalculateUsage calculates current resource usage for a quota

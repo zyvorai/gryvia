@@ -263,5 +263,5 @@ See `examples/training/live-experiment-example.yaml` for a complete working exam
 
 ## Support
 
-- Issues: https://github.com/ssahani/tensor-reaper/issues
-- Discussions: https://github.com/ssahani/tensor-reaper/discussions
+- Issues: https://github.com/ssahani/TensorReaper/issues
+- Discussions: https://github.com/ssahani/TensorReaper/discussions

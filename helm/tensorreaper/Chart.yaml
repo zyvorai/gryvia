@@ -15,14 +15,14 @@ keywords:
   - distributed-training
   - bare-metal
 
-home: https://github.com/ssahani/tensor-reaper
+home: https://github.com/ssahani/TensorReaper
 sources:
-  - https://github.com/ssahani/tensor-reaper
+  - https://github.com/ssahani/TensorReaper
 
 maintainers:
   - name: TensorReaper Team
     email: team@tensorreaper.ai
-    url: https://github.com/ssahani/tensor-reaper
+    url: https://github.com/ssahani/TensorReaper
 
 icon: https://raw.githubusercontent.com/ssahani/tensor-reaper/main/docs/assets/logo.png
 

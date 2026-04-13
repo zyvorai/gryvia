@@ -17,8 +17,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	tensorreaperv1 "github.com/ssahani/tensor-reaper/operators/ai-operator/api/v1"
-	"github.com/ssahani/tensor-reaper/operators/ai-operator/pkg/profiler"
+	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/ai-operator/api/v1"
+	"github.com/ssahani/TensorReaper/operators/ai-operator/pkg/profiler"
 )
 
 const (

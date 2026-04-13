@@ -601,5 +601,5 @@ print(f"Best score: {best.score}")
 
 ## Support
 
-- Auto-Tuning Issues: https://github.com/ssahani/tensor-reaper/issues
-- Optimization Help: https://github.com/ssahani/tensor-reaper/discussions
+- Auto-Tuning Issues: https://github.com/ssahani/TensorReaper/issues
+- Optimization Help: https://github.com/ssahani/TensorReaper/discussions

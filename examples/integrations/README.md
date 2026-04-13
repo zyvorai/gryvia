@@ -427,5 +427,5 @@ open http://localhost:8265
 
 ## Support
 
-- Integration Issues: https://github.com/ssahani/tensor-reaper/issues
-- Documentation: https://github.com/ssahani/tensor-reaper/docs
+- Integration Issues: https://github.com/ssahani/TensorReaper/issues
+- Documentation: https://github.com/ssahani/TensorReaper/docs

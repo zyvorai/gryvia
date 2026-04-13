@@ -8,7 +8,7 @@ The TensorReaper CLI provides a powerful command-line interface for managing GPU
 
 ```bash
 # Download latest release
-curl -LO https://github.com/ssahani/tensor-reaper/releases/latest/download/tensorreaper
+curl -LO https://github.com/ssahani/TensorReaper/releases/latest/download/tensorreaper
 chmod +x tensorreaper
 sudo mv tensorreaper /usr/local/bin/
 ```
@@ -672,7 +672,7 @@ jobs:
       - uses: actions/checkout@v2
       - name: Install TensorReaper CLI
         run: |
-          curl -LO https://github.com/ssahani/tensor-reaper/releases/latest/download/tensorreaper
+          curl -LO https://github.com/ssahani/TensorReaper/releases/latest/download/tensorreaper
           chmod +x tensorreaper
       - name: Submit Job
         run: ./tensorreaper submit -f job.yaml --wait
@@ -701,8 +701,8 @@ Coming soon:
 ## Support
 
 - **Documentation**: https://tensor-reaper.readthedocs.io
-- **Issues**: https://github.com/ssahani/tensor-reaper/issues
-- **Discussions**: https://github.com/ssahani/tensor-reaper/discussions
+- **Issues**: https://github.com/ssahani/TensorReaper/issues
+- **Discussions**: https://github.com/ssahani/TensorReaper/discussions
 
 ## Contributing
 

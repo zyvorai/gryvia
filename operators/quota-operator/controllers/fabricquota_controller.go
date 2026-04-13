@@ -18,9 +18,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	tensorreaperv1 "github.com/ssahani/tensor-reaper/operators/quota-operator/api/v1"
-	"github.com/ssahani/tensor-reaper/operators/quota-operator/pkg/budget"
-	"github.com/ssahani/tensor-reaper/operators/quota-operator/pkg/usage"
+	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/quota-operator/api/v1"
+	"github.com/ssahani/TensorReaper/operators/quota-operator/pkg/budget"
+	"github.com/ssahani/TensorReaper/operators/quota-operator/pkg/usage"
 )
 
 const (
