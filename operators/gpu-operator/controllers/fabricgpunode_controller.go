@@ -281,16 +281,18 @@ func (r *FabricGpuNodeReconciler) handleDeletion(ctx context.Context, fabricNode
 					return err
 				}
 				// Remove KubeFabric labels
-				delete(node.Labels, "kubefabric.ai/gpu")
-				delete(node.Labels, "kubefabric.ai/gpu-count")
-				delete(node.Labels, "kubefabric.ai/rdma")
-				delete(node.Labels, "kubefabric.ai/sriov")
-				delete(node.Labels, "kubefabric.ai/interconnect")
+				if node.Labels != nil {
+					delete(node.Labels, "kubefabric.ai/gpu")
+					delete(node.Labels, "kubefabric.ai/gpu-count")
+					delete(node.Labels, "kubefabric.ai/rdma")
+					delete(node.Labels, "kubefabric.ai/sriov")
+					delete(node.Labels, "kubefabric.ai/interconnect")
 
-				// Remove custom labels with kubefabric.ai/ prefix from spec
-				for k := range fabricNode.Spec.Labels {
-					if strings.HasPrefix(k, "kubefabric.ai/") {
-						delete(node.Labels, k)
+					// Remove custom labels with kubefabric.ai/ prefix from spec
+					for k := range fabricNode.Spec.Labels {
+						if strings.HasPrefix(k, "kubefabric.ai/") {
+							delete(node.Labels, k)
+						}
 					}
 				}
 

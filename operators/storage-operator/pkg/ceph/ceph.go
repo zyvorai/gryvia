@@ -182,7 +182,13 @@ func ensureCephConfigMap(ctx context.Context, k8sClient client.Client, storage *
 	if err != nil {
 		return err
 	}
-	existing.Data = cm.Data
+	// Merge new data into existing, preserving manually-added keys
+	if existing.Data == nil {
+		existing.Data = make(map[string]string)
+	}
+	for k, v := range cm.Data {
+		existing.Data[k] = v
+	}
 	return k8sClient.Update(ctx, existing)
 }
 

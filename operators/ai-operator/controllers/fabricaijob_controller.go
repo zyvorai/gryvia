@@ -667,6 +667,10 @@ func envVarsEqual(a, b []corev1.EnvVar) bool {
 		if a[i].Name != b[i].Name || a[i].Value != b[i].Value {
 			return false
 		}
+		// Compare ValueFrom references
+		if (a[i].ValueFrom == nil) != (b[i].ValueFrom == nil) {
+			return false
+		}
 	}
 	return true
 }

@@ -77,6 +77,7 @@ func (r *FabricGpuMemoryOptimizerReconciler) reconcileOptimizer(ctx context.Cont
 	gpuNodes, err := r.collectGpuNodes(ctx, optimizer)
 	if err != nil {
 		log.Error(err, "Failed to collect GPU node data")
+		optimizer.Status.JobsAnalyzed = 0
 		r.updateCondition(optimizer, ConditionAnalysisRunning, metav1.ConditionFalse, "CollectionFailed", err.Error())
 		if updateErr := r.Status().Update(ctx, optimizer); updateErr != nil {
 			log.Error(updateErr, "Failed to update status")

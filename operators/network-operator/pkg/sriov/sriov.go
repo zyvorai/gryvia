@@ -174,10 +174,11 @@ func installSRIOVCNI(ctx context.Context, k8sClient client.Client) error {
 	existing := &appsv1.DaemonSet{}
 	err := k8sClient.Get(ctx, types.NamespacedName{Name: ds.Name, Namespace: ds.Namespace}, existing)
 	if err != nil {
-		if errors.IsNotFound(err) {
-			return k8sClient.Create(ctx, ds)
+		if !errors.IsNotFound(err) {
+			return fmt.Errorf("failed to get SRIOV CNI DaemonSet: %w", err)
 		}
-		return err
+		// NotFound - create it
+		return k8sClient.Create(ctx, ds)
 	}
 
 	return nil

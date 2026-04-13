@@ -51,9 +51,6 @@ pub async fn execute(
             .find(|p| p.metadata.name.as_deref() == Some(&pod_name))
             .with_context(|| format!("Replica {} not found for job '{}'", idx, job))?
     } else {
-        if pods.items.is_empty() {
-            anyhow::bail!("No pods found for job '{}'", job);
-        }
         &pods.items[0]
     };
 

@@ -75,12 +75,16 @@ func (r *FabricQuotaReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	result, err := r.reconcileQuota(ctx, quota)
 	if err != nil {
 		logger.Error(err, "Failed to reconcile quota")
-		r.updateStatus(ctx, quota, "Failed", err.Error())
+		if statusErr := r.updateStatus(ctx, quota, "Failed", err.Error()); statusErr != nil {
+			logger.Error(statusErr, "Failed to update status after reconcile failure")
+		}
 		return result, err
 	}
 
 	// Update status
-	r.updateStatus(ctx, quota, quota.Status.Phase, "Quota reconciled successfully")
+	if err := r.updateStatus(ctx, quota, quota.Status.Phase, "Quota reconciled successfully"); err != nil {
+		return ctrl.Result{}, err
+	}
 
 	return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 }
@@ -248,7 +252,7 @@ func (r *FabricQuotaReconciler) enforceQuota(ctx context.Context, quota *kubefab
 	return nil
 }
 
-func (r *FabricQuotaReconciler) updateStatus(ctx context.Context, quota *kubefabricv1.FabricQuota, phase, message string) {
+func (r *FabricQuotaReconciler) updateStatus(ctx context.Context, quota *kubefabricv1.FabricQuota, phase, message string) error {
 	quota.Status.Phase = phase
 	quota.Status.LastUpdated = metav1.Now()
 
@@ -268,7 +272,9 @@ func (r *FabricQuotaReconciler) updateStatus(ctx context.Context, quota *kubefab
 
 	if err := r.Status().Update(ctx, quota); err != nil {
 		log.FromContext(ctx).Error(err, "Failed to update FabricQuota status")
+		return err
 	}
+	return nil
 }
 
 func (r *FabricQuotaReconciler) handleDeletion(ctx context.Context, quota *kubefabricv1.FabricQuota) (ctrl.Result, error) {

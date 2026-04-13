@@ -356,7 +356,9 @@ func (r *FabricTrainingTimeMachineReconciler) resolveCheckpoint(tm *kubefabricv1
 			latest := tm.Status.CheckpointTimeline.LatestCheckpoint
 			if latest.Epoch > 0 && latest.Step > 0 {
 				stepsPerEpoch := latest.Step / latest.Epoch
-				return stepsPerEpoch * (*selector.Epoch), nil
+				if stepsPerEpoch > 0 {
+					return stepsPerEpoch * (*selector.Epoch), nil
+				}
 			}
 		}
 		// If no epoch-to-step mapping, use epoch as step

@@ -145,6 +145,24 @@ spec:
                       type: boolean
                       default: false
 
+                # Per-tenant GPU sharing quotas
+                tenantQuotas:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - tenant
+                    properties:
+                      tenant:
+                        type: string
+                        description: "Tenant or team name"
+                      maxFractionalGPUs:
+                        type: integer
+                        description: "Maximum fractional GPU units for this tenant"
+                      maxMemoryGB:
+                        type: integer
+                        description: "Maximum GPU memory in GB for this tenant"
+
             status:
               type: object
               properties:

@@ -118,11 +118,11 @@ export default function Quotas() {
                 <div className="mt-4 pt-4 border-t border-slate-700/30">
                   <span className="text-xs font-medium text-slate-400">Allowed GPU Types</span>
                   <div className="flex flex-wrap gap-2 mt-2">
-                    {quota.spec.gpuQuota.allowedGPUTypes.map((gpuType) => (
+                    {quota.spec.gpuQuota?.allowedGPUTypes?.map((gpuType) => (
                       <span key={gpuType} className="text-[10px] px-2 py-0.5 bg-slate-900/50 border border-slate-700/30 rounded-full text-slate-300 font-mono">
                         {gpuType}
                       </span>
-                    ))}
+                    )) || <span className="text-[10px] text-slate-400">All</span>}
                   </div>
                   <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
                     <div>

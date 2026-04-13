@@ -437,10 +437,12 @@ func (p *Predictor) AnalyzeUtilization(gpuKey string) *UtilizationAnalysis {
 	}
 
 	var totalUtil, peakUtil float64
+	var validSamples int
 	for _, s := range samples {
 		if s.MemoryTotal <= 0 {
 			continue
 		}
+		validSamples++
 		utilPct := float64(s.MemoryUsed) / float64(s.MemoryTotal) * 100.0
 		totalUtil += utilPct
 		if utilPct > peakUtil {
@@ -448,7 +450,10 @@ func (p *Predictor) AnalyzeUtilization(gpuKey string) *UtilizationAnalysis {
 		}
 	}
 
-	analysis.AverageUtilization = totalUtil / float64(len(samples))
+	if validSamples == 0 {
+		return nil
+	}
+	analysis.AverageUtilization = totalUtil / float64(validSamples)
 	analysis.PeakUtilization = peakUtil
 
 	// Steady-state utilization: use median of the middle 60% of samples (sorted by time)

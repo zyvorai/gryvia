@@ -115,3 +115,60 @@ spec:
   - name: metrics
     port: 8080
     targetPort: 8080
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kubefabric-storage-operator
+  namespace: monitoring
+  labels:
+    app: kubefabric
+spec:
+  selector:
+    matchLabels:
+      app: storage-operator
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics
+  namespaceSelector:
+    matchNames:
+    - kubefabric-system
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kubefabric-network-operator
+  namespace: monitoring
+  labels:
+    app: kubefabric
+spec:
+  selector:
+    matchLabels:
+      app: network-operator
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics
+  namespaceSelector:
+    matchNames:
+    - kubefabric-system
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kubefabric-quota-operator
+  namespace: monitoring
+  labels:
+    app: kubefabric
+spec:
+  selector:
+    matchLabels:
+      app: quota-operator
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics
+  namespaceSelector:
+    matchNames:
+    - kubefabric-system

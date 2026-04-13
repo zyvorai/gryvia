@@ -339,7 +339,11 @@ func DetectAnomalies(result *ScrapeResult, lossMetric string, plateauDetection, 
 
 	// Loss plateau detection: check if loss has barely changed
 	if plateauDetection && len(values) >= 10 {
-		lastN := values[len(values)-10:]
+		n := 10
+		if len(values) < n {
+			n = len(values)
+		}
+		lastN := values[len(values)-n:]
 		minVal := lastN[0]
 		maxVal := lastN[0]
 		for _, v := range lastN[1:] {

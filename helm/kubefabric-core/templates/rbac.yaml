@@ -210,6 +210,271 @@ rules:
       - update
       - delete
 
+  # Manage FabricCheckpointGuard resources
+  - apiGroups:
+      - kubefabric.ai
+    resources:
+      - fabriccheckpointguards
+      - fabriccheckpointguards/status
+      - fabriccheckpointguards/finalizers
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+
+  # Manage FabricCostPredictor resources
+  - apiGroups:
+      - kubefabric.ai
+    resources:
+      - fabriccostpredictors
+      - fabriccostpredictors/status
+      - fabriccostpredictors/finalizers
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+
+  # Manage FabricLiveExperiment resources
+  - apiGroups:
+      - kubefabric.ai
+    resources:
+      - fabricliveexperiments
+      - fabricliveexperiments/status
+      - fabricliveexperiments/finalizers
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+
+  # Manage FabricModelLineage resources
+  - apiGroups:
+      - kubefabric.ai
+    resources:
+      - fabricmodellineages
+      - fabricmodellineages/status
+      - fabricmodellineages/finalizers
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+
+  # Manage FabricTrainingProfiler resources
+  - apiGroups:
+      - kubefabric.ai
+    resources:
+      - fabrictrainingprofilers
+      - fabrictrainingprofilers/status
+      - fabrictrainingprofilers/finalizers
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+
+  # Manage FabricTrainingTimeMachine resources
+  - apiGroups:
+      - kubefabric.ai
+    resources:
+      - fabrictrainingtimemachines
+      - fabrictrainingtimemachines/status
+      - fabrictrainingtimemachines/finalizers
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+
+  # Manage FabricGpuMemoryOptimizer resources
+  - apiGroups:
+      - kubefabric.ai
+    resources:
+      - fabricgpumemoryoptimizers
+      - fabricgpumemoryoptimizers/status
+      - fabricgpumemoryoptimizers/finalizers
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+
+  # Manage additional CRD resources
+  - apiGroups:
+      - kubefabric.ai
+    resources:
+      - fabricbudgets
+      - fabricbudgets/status
+      - fabricbudgets/finalizers
+      - fabricchargebacks
+      - fabricchargebacks/status
+      - fabricchargebacks/finalizers
+      - fabricquotapolicies
+      - fabricquotapolicies/status
+      - fabricquotapolicies/finalizers
+      - fabricaudits
+      - fabricaudits/status
+      - fabricautoscalers
+      - fabricautoscalers/status
+      - fabricbenchmarks
+      - fabricbenchmarks/status
+      - fabricgpusharingpolicies
+      - fabricgpusharingpolicies/status
+      - fabricjobhooks
+      - fabricjobhooks/status
+      - fabricpriorities
+      - fabricpriorities/status
+      - fabricslas
+      - fabricslas/status
+      - fabrictemplates
+      - fabrictemplates/status
+      - fabricdatasets
+      - fabricdatasets/status
+      - fabricfederations
+      - fabricfederations/status
+      - fabricmetrics
+      - fabricmetrics/status
+      - fabricretrypolicies
+      - fabricretrypolicies/status
+      - fabricdrtests
+      - fabricdrtests/status
+      - fabricreservations
+      - fabricreservations/status
+      - fabrichealthchecks
+      - fabrichealthchecks/status
+      - fabrictenants
+      - fabrictenants/status
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+
+  # Manage Namespaces and ResourceQuotas
+  - apiGroups:
+      - ""
+    resources:
+      - namespaces
+      - resourcequotas
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+
+  # Manage DaemonSets and ConfigMaps
+  - apiGroups:
+      - apps
+    resources:
+      - daemonsets
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - delete
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+      - secrets
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - delete
+
+  # Manage StorageClasses
+  - apiGroups:
+      - storage.k8s.io
+    resources:
+      - storageclasses
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - delete
+
+  # Manage NetworkAttachmentDefinitions (Multus)
+  - apiGroups:
+      - k8s.cni.cncf.io
+    resources:
+      - network-attachment-definitions
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - delete
+
+  # Read pod logs for experiment scraping
+  - apiGroups:
+      - ""
+    resources:
+      - pods/log
+    verbs:
+      - get
+
+  # Manage ServiceAccounts and RBAC for CSI drivers
+  - apiGroups:
+      - ""
+    resources:
+      - serviceaccounts
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - delete
+  - apiGroups:
+      - rbac.authorization.k8s.io
+    resources:
+      - clusterroles
+      - clusterrolebindings
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - delete
+
   # Leader election
   - apiGroups:
       - coordination.k8s.io

@@ -215,7 +215,7 @@ export default function JobDetails() {
             <h3 className="text-lg font-medium text-white mb-4">Command</h3>
             <div className="bg-gray-900 rounded-xl p-4">
               <code className="text-sm text-green-400 font-mono">
-                {job.spec.command.join(' ')}
+                {job.spec.command?.join(' ') || 'N/A'}
               </code>
             </div>
           </div>

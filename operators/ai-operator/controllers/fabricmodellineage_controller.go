@@ -131,6 +131,11 @@ func (r *FabricModelLineageReconciler) autoCollectProvenance(ctx context.Context
 		return err
 	}
 
+	if collected == nil {
+		logger.Info("No provenance data collected")
+		return nil
+	}
+
 	if !collected.JobFound {
 		logger.Info("Referenced job not found, skipping provenance auto-collection",
 			"jobRef", ml.Spec.Provenance.Training.JobRef)

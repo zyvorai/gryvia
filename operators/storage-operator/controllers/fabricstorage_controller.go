@@ -143,6 +143,10 @@ func (r *FabricStorageReconciler) reconcileStorage(ctx context.Context, storage 
 		log.Error(err, "Storage health check failed")
 		r.updateCondition(storage, ConditionHealthy, metav1.ConditionFalse, "Unhealthy", err.Error())
 		storage.Status.Phase = PhaseDegraded
+		if updateErr := r.Status().Update(ctx, storage); updateErr != nil {
+			log.Error(updateErr, "Failed to update status after health check failure")
+		}
+		return ctrl.Result{RequeueAfter: 2 * time.Minute}, nil
 	} else {
 		r.updateCondition(storage, ConditionHealthy, metav1.ConditionTrue, "Healthy", "Storage is healthy")
 		storage.Status.Phase = PhaseReady

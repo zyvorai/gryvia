@@ -108,7 +108,7 @@ data:
           summary: "High job queue depth"
           description: "{{ $value }} jobs queued for more than 15 minutes"
 
-      - alert: JobCompletionRatelow
+      - alert: JobCompletionRateLow
         expr: rate(kubefabric_job_completed_total[1h]) < 0.1
         for: 30m
         labels:
