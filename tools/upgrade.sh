@@ -123,7 +123,7 @@ backup_resources() {
     local backup_script="$(dirname "$0")/backup-restore.sh"
 
     if [ -f "${backup_script}" ]; then
-        ${backup_script} backup --namespace "${NAMESPACE}"
+        ${backup_script} backup --namespace "${NAMESPACE}" || { log_error "Backup failed, aborting upgrade"; exit 1; }
         log_info "✓ Backup completed"
     else
         log_warn "Backup script not found, skipping backup"

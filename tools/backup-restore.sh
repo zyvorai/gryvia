@@ -83,7 +83,17 @@ backup() {
 
     # Backup CRDs
     log_info "Backing up CRDs..."
-    kubectl get crds -o name | grep kubefabric | xargs kubectl get -o yaml > "${backup_path}/crds.yaml"
+    local crd_names
+    crd_names=$(kubectl get crds -o name | grep kubefabric || true)
+    if [ -n "$crd_names" ]; then
+        echo "$crd_names" | xargs kubectl get -o yaml > "${backup_path}/crds.yaml"
+        if [ ! -s "${backup_path}/crds.yaml" ]; then
+            log_warn "CRD backup file is empty, backup may be incomplete"
+        fi
+    else
+        log_warn "No KubeFabric CRDs found, skipping CRD backup"
+        echo "# No KubeFabric CRDs found during backup" > "${backup_path}/crds.yaml"
+    fi
 
     # Backup FabricGpuNodes
     log_info "Backing up GPU Nodes..."

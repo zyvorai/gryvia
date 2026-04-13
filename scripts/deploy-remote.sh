@@ -71,16 +71,20 @@ REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 [ -d "$REPO_DIR/operators" ] || error "Not in kube-fabric repo: $REPO_DIR"
 
 # ── SSH/rsync wrappers ──
+# NOTE: StrictHostKeyChecking=accept-new requires OpenSSH 7.6+ (2017-10-03).
+# It accepts host keys on first connection but rejects changed keys (MITM protection).
 _ssh() {
     if [ -n "$PASS" ]; then
-        SSHPASS="$PASS" sshpass -e ssh -o StrictHostKeyChecking=no "${USER}@${HOST}" "$@"
+        # WARNING: Password authentication is less secure than SSH key auth.
+        # Consider using ssh-copy-id to set up key-based authentication.
+        SSHPASS="$PASS" sshpass -e ssh -o StrictHostKeyChecking=accept-new "${USER}@${HOST}" "$@"
     else
-        ssh -o StrictHostKeyChecking=no "${USER}@${HOST}" "$@"
+        ssh -o StrictHostKeyChecking=accept-new "${USER}@${HOST}" "$@"
     fi
 }
 
 _rsync() {
-    local ssh_cmd="ssh -o StrictHostKeyChecking=no"
+    local ssh_cmd="ssh -o StrictHostKeyChecking=accept-new"
     if [ -n "$PASS" ]; then
         ssh_cmd="sshpass -e $ssh_cmd"
     fi
@@ -256,11 +260,16 @@ if $HTTPS_MODE; then
 
         if \$REGEN; then
             echo '  Generating self-signed TLS certificate...'
+            # Validate HOST to prevent injection into -subj (allow IPs and hostnames only)
+            if ! echo '${HOST}' | grep -qP '^[a-zA-Z0-9._:-]+\$'; then
+                echo '  ERROR: Invalid HOST value for certificate subject'
+                exit 1
+            fi
             openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
                 -keyout \$CERT_DIR/tls.key \
                 -out \$CERT_DIR/tls.crt \
-                -subj '/CN=${HOST}/O=KubeFabric' \
-                -addext 'subjectAltName=IP:${HOST},DNS:kubefabric.local' \
+                -subj \"/CN=${HOST}/O=KubeFabric\" \
+                -addext \"subjectAltName=IP:${HOST},DNS:kubefabric.local\" \
                 2>/dev/null
             chmod 600 \$CERT_DIR/tls.key
             echo '  ✅ Certificate generated (365 days)'

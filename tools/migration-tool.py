@@ -6,6 +6,7 @@ Migrate workloads between clusters, backup/restore, and upgrade assistance
 
 import argparse
 import json
+import re
 import sys
 import os
 from datetime import datetime
@@ -103,9 +104,9 @@ class MigrationTool:
                 # Clean up Kubernetes metadata; redact secrets to avoid plaintext export
                 cleaned = self.clean_resource(item, redact_secrets=(resource_type == "secrets"))
 
-                # Generate filename
-                name = cleaned["metadata"]["name"]
-                namespace = cleaned["metadata"].get("namespace", "default")
+                # Generate filename (sanitize to prevent path traversal / injection)
+                name = re.sub(r'[^a-zA-Z0-9._-]', '_', cleaned["metadata"]["name"])
+                namespace = re.sub(r'[^a-zA-Z0-9._-]', '_', cleaned["metadata"].get("namespace", "default"))
                 filename = f"{namespace}_{name}.yaml"
                 filepath = os.path.join(type_dir, filename)
 
