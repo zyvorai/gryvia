@@ -1,0 +1,61 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: fabricautopolicies.tensorreaper.ai
+spec:
+  group: tensorreaper.ai
+  names:
+    kind: FabricAutoPolicy
+    listKind: FabricAutoPolicyList
+    plural: fabricautopolicies
+    singular: fabricautopolicy
+    shortNames: [fap]
+    categories: [tensorreaper, all]
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                mode:
+                  type: string
+                  enum: [learn, suggest, enforce]
+                learningWindow:
+                  type: string
+                  description: "Duration for the learning phase (e.g., 24h, 7d)"
+                targetNamespaces:
+                  type: array
+                  items:
+                    type: string
+                excludeServices:
+                  type: array
+                  items:
+                    type: string
+                approvalRequired:
+                  type: boolean
+            status:
+              type: object
+              properties:
+                phase:
+                  type: string
+                  enum: [learning, suggesting, enforcing]
+                learnedPolicies: {type: integer}
+                suggestedPolicies:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      source: {type: string}
+                      destination: {type: string}
+                      port: {type: integer}
+                      confidence: {type: number, format: double}
+                appliedPolicies: {type: integer}
+                lastLearned: {type: string, format: date-time}
+      subresources:
+        status: {}

@@ -1,4 +1,4 @@
-module github.com/ssahani/kube-fabric/operators/storage-operator
+module github.com/ssahani/TensorReaper/operators/storage-operator
 
 go 1.24
 

@@ -1,4 +1,4 @@
-module github.com/ssahani/kube-fabric/operators/ai-operator
+module github.com/ssahani/TensorReaper/operators/ai-operator
 
 go 1.24
 

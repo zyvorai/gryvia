@@ -1,4 +1,4 @@
-module github.com/ssahani/kube-fabric/operators/quota-operator
+module github.com/ssahani/TensorReaper/operators/quota-operator
 
 go 1.24
 

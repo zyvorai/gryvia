@@ -1,0 +1,60 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: fabricnetworkanomalies.tensorreaper.ai
+spec:
+  group: tensorreaper.ai
+  names:
+    kind: FabricNetworkAnomaly
+    listKind: FabricNetworkAnomalyList
+    plural: fabricnetworkanomalies
+    singular: fabricnetworkanomaly
+    shortNames: [fna]
+    categories: [tensorreaper, all]
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                targetService: {type: string}
+                detectionRules:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      metric:
+                        type: string
+                        enum: [latency, throughput, connections, errors, drops]
+                      operator:
+                        type: string
+                        enum: [gt, lt, gte, lte, eq]
+                      threshold: {type: number, format: double}
+                      window:
+                        type: string
+                        description: "Time window for metric evaluation (e.g., 5m, 1h)"
+                alertWebhook: {type: string}
+                autoMitigate:
+                  type: boolean
+            status:
+              type: object
+              properties:
+                anomalies:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type: {type: string}
+                      severity: {type: string, enum: [low, medium, high, critical]}
+                      detected: {type: string, format: date-time}
+                      description: {type: string}
+                      mitigated: {type: boolean}
+                lastCheck: {type: string, format: date-time}
+      subresources:
+        status: {}

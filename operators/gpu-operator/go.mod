@@ -1,4 +1,4 @@
-module github.com/ssahani/kube-fabric/operators/gpu-operator
+module github.com/ssahani/TensorReaper/operators/gpu-operator
 
 go 1.24
 

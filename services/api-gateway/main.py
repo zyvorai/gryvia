@@ -7,7 +7,7 @@ import hmac
 import os
 import urllib.parse
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from fastapi import FastAPI, HTTPException, Query, Depends, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from kubernetes import client, config
@@ -16,6 +16,9 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 import logging
 from collections import defaultdict
+
+import httpx
+from jose import jwt, jwk, JWTError
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -46,19 +49,165 @@ app.add_middleware(
 # API key for authentication (from environment or mounted secret)
 API_KEY = os.environ.get("TENSORREAPER_API_KEY", "").strip()
 
-async def verify_auth(authorization: Optional[str] = Header(None)):
-    """Verify API key or Bearer token for all protected endpoints."""
+# OIDC configuration
+OIDC_ENABLED = os.environ.get("OIDC_ENABLED", "false").lower() in ("true", "1", "yes")
+OIDC_ISSUER_URL = os.environ.get("OIDC_ISSUER_URL", "").strip().rstrip("/")
+OIDC_CLIENT_ID = os.environ.get("OIDC_CLIENT_ID", "").strip()
+OIDC_AUDIENCE = os.environ.get("OIDC_AUDIENCE", "").strip() or OIDC_CLIENT_ID
+
+# JWKS cache for OIDC token validation
+_jwks_cache: Dict[str, Any] = {}
+_jwks_cache_time: float = 0
+_JWKS_CACHE_TTL = 3600  # 1 hour
+_oidc_discovery: Optional[Dict[str, Any]] = None
+
+
+async def _fetch_oidc_discovery() -> Dict[str, Any]:
+    """Fetch and cache the OIDC discovery document."""
+    global _oidc_discovery
+    if _oidc_discovery is not None:
+        return _oidc_discovery
+    discovery_url = f"{OIDC_ISSUER_URL}/.well-known/openid-configuration"
+    async with httpx.AsyncClient(timeout=10) as http_client:
+        resp = await http_client.get(discovery_url)
+        resp.raise_for_status()
+        _oidc_discovery = resp.json()
+        return _oidc_discovery
+
+
+async def _get_jwks() -> Dict[str, Any]:
+    """Fetch and cache JWKS from the OIDC provider."""
+    import time
+    global _jwks_cache, _jwks_cache_time
+
+    now = time.monotonic()
+    if _jwks_cache and (now - _jwks_cache_time) < _JWKS_CACHE_TTL:
+        return _jwks_cache
+
+    discovery = await _fetch_oidc_discovery()
+    jwks_uri = discovery.get("jwks_uri")
+    if not jwks_uri:
+        raise HTTPException(status_code=500, detail="OIDC provider has no jwks_uri")
+
+    async with httpx.AsyncClient(timeout=10) as http_client:
+        resp = await http_client.get(jwks_uri)
+        resp.raise_for_status()
+        _jwks_cache = resp.json()
+        _jwks_cache_time = now
+        return _jwks_cache
+
+
+async def _validate_jwt_token(token: str) -> Dict[str, Any]:
+    """Validate a JWT token against the OIDC provider's JWKS."""
+    try:
+        # Decode header without verification to get the key id
+        unverified_header = jwt.get_unverified_header(token)
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token header")
+
+    jwks_data = await _get_jwks()
+    kid = unverified_header.get("kid")
+
+    # Find the matching key
+    rsa_key: Dict[str, Any] = {}
+    for key in jwks_data.get("keys", []):
+        if key.get("kid") == kid:
+            rsa_key = key
+            break
+
+    if not rsa_key:
+        # Key not found - maybe keys rotated, refresh cache and retry once
+        import time
+        global _jwks_cache_time
+        _jwks_cache_time = 0
+        jwks_data = await _get_jwks()
+        for key in jwks_data.get("keys", []):
+            if key.get("kid") == kid:
+                rsa_key = key
+                break
+
+    if not rsa_key:
+        raise HTTPException(status_code=401, detail="Unable to find matching signing key")
+
+    try:
+        payload = jwt.decode(
+            token,
+            rsa_key,
+            algorithms=["RS256", "RS384", "RS512", "ES256", "ES384"],
+            audience=OIDC_AUDIENCE,
+            issuer=OIDC_ISSUER_URL,
+        )
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token has expired")
+    except jwt.JWTClaimsError as e:
+        raise HTTPException(status_code=401, detail=f"Invalid token claims: {e}")
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+
+def _extract_tenant_namespaces(claims: Dict[str, Any]) -> Optional[List[str]]:
+    """Extract tenant namespaces from JWT claims (org or groups)."""
+    # Check for org claim (single tenant)
+    org = claims.get("org")
+    if org and isinstance(org, str):
+        return [org]
+
+    # Check for groups claim (multi-tenant)
+    groups = claims.get("groups")
+    if groups and isinstance(groups, list):
+        return [g for g in groups if isinstance(g, str)]
+
+    return None
+
+
+async def verify_auth(authorization: Optional[str] = Header(None), request: Request = None):
+    """Verify API key or OIDC JWT token for all protected endpoints.
+
+    Authentication priority:
+    1. OIDC JWT token (when OIDC_ENABLED=true and Bearer token is a JWT)
+    2. API key (Bearer token matched against TENSORREAPER_API_KEY)
+
+    Stores user claims on request.state when OIDC is used.
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header required")
+
+    token = authorization.removeprefix("Bearer ").strip()
+
+    if not token:
+        raise HTTPException(status_code=401, detail="Authorization token required")
+
+    # Try OIDC validation first when enabled
+    if OIDC_ENABLED and OIDC_ISSUER_URL:
+        # Heuristic: JWTs have 3 dot-separated parts
+        if token.count(".") == 2:
+            try:
+                claims = await _validate_jwt_token(token)
+                # Store claims on request state for downstream use
+                if request is not None:
+                    request.state.user_claims = claims
+                    request.state.auth_method = "oidc"
+                    request.state.tenant_namespaces = _extract_tenant_namespaces(claims)
+                return
+            except HTTPException:
+                # If OIDC validation fails, fall through to API key check
+                pass
+
+    # Fall back to API key authentication
     if not API_KEY:
         raise HTTPException(
             status_code=401,
             detail="Authentication required"
         )
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Authorization header required")
-    # Support both "Bearer <token>" and raw key
-    token = authorization.removeprefix("Bearer ").strip()
     if not hmac.compare_digest(token, API_KEY):
         raise HTTPException(status_code=403, detail="Invalid credentials")
+
+    # API key auth - set default state
+    if request is not None:
+        request.state.user_claims = None
+        request.state.auth_method = "api_key"
+        request.state.tenant_namespaces = None
 
 # Initialize Kubernetes client
 try:
@@ -430,21 +579,30 @@ async def list_jobs(
     offset: int = Query(0, ge=0),
     _=Depends(verify_auth),
 ):
-    """List all jobs with pagination"""
+    """List all jobs with pagination, filtered by tenant when using OIDC."""
     try:
         loop = asyncio.get_running_loop()
 
-        jobs = await loop.run_in_executor(
-            None,
-            lambda: k8s_custom.list_namespaced_custom_object(
-                group="tensorreaper.ai",
-                version="v1",
-                namespace=JOB_NAMESPACE,
-                plural="fabricaijobs"
-            )
-        )
+        # Determine which namespaces to query based on tenant
+        tenant_ns = getattr(request.state, "tenant_namespaces", None)
+        query_namespaces = [JOB_NAMESPACE]
+        if tenant_ns:
+            query_namespaces = tenant_ns
 
-        all_items = jobs.get("items", [])
+        # Fetch jobs from all tenant namespaces
+        all_items: List[dict] = []
+        for ns in query_namespaces:
+            jobs = await loop.run_in_executor(
+                None,
+                lambda ns=ns: k8s_custom.list_namespaced_custom_object(
+                    group="tensorreaper.ai",
+                    version="v1",
+                    namespace=ns,
+                    plural="fabricaijobs"
+                )
+            )
+            all_items.extend(jobs.get("items", []))
+
         total = len(all_items)
         items = all_items[offset:offset + limit]
 
@@ -512,14 +670,17 @@ async def create_job(request: Request, _=Depends(verify_auth)):
             raise HTTPException(status_code=400, detail="spec.gpus is required")
 
         # Enforce namespace server-side to prevent namespace bypass
-        body.setdefault("metadata", {})["namespace"] = JOB_NAMESPACE
+        # When using OIDC with tenant namespaces, use the first tenant namespace
+        tenant_ns = getattr(request.state, "tenant_namespaces", None)
+        target_ns = tenant_ns[0] if tenant_ns else JOB_NAMESPACE
+        body.setdefault("metadata", {})["namespace"] = target_ns
 
         job = await loop.run_in_executor(
             None,
             lambda: k8s_custom.create_namespaced_custom_object(
                 group="tensorreaper.ai",
                 version="v1",
-                namespace=JOB_NAMESPACE,
+                namespace=target_ns,
                 plural="fabricaijobs",
                 body=body,
             )
@@ -806,6 +967,72 @@ async def get_node_health(
     except Exception as e:
         logger.error("Error getting node health: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to retrieve node health")
+
+
+# ── Auth endpoints ──────────────────────────────────────────────────
+
+@app.get("/api/auth/config")
+async def get_auth_config():
+    """Return OIDC provider configuration for the frontend.
+
+    This endpoint is unauthenticated so the login page can fetch it.
+    """
+    if not OIDC_ENABLED or not OIDC_ISSUER_URL:
+        return {
+            "oidcEnabled": False,
+            "apiKeyEnabled": bool(API_KEY),
+        }
+
+    try:
+        discovery = await _fetch_oidc_discovery()
+    except Exception:
+        logger.warning("Failed to fetch OIDC discovery document")
+        return {
+            "oidcEnabled": False,
+            "apiKeyEnabled": bool(API_KEY),
+            "error": "OIDC provider unreachable",
+        }
+
+    return {
+        "oidcEnabled": True,
+        "apiKeyEnabled": bool(API_KEY),
+        "issuer": OIDC_ISSUER_URL,
+        "clientId": OIDC_CLIENT_ID,
+        "authorizationEndpoint": discovery.get("authorization_endpoint", ""),
+        "tokenEndpoint": discovery.get("token_endpoint", ""),
+        "scopes": "openid profile email groups",
+    }
+
+
+@app.get("/api/auth/me")
+@limiter.limit("60/minute")
+async def get_current_user(request: Request, _=Depends(verify_auth)):
+    """Return current user info from JWT claims or API key identity."""
+    auth_method = getattr(request.state, "auth_method", "api_key")
+
+    if auth_method == "oidc":
+        claims = getattr(request.state, "user_claims", {}) or {}
+        return {
+            "authenticated": True,
+            "method": "oidc",
+            "sub": claims.get("sub", ""),
+            "email": claims.get("email", ""),
+            "name": claims.get("name", claims.get("preferred_username", "")),
+            "groups": claims.get("groups", []),
+            "org": claims.get("org", ""),
+            "tenantNamespaces": getattr(request.state, "tenant_namespaces", None),
+        }
+
+    return {
+        "authenticated": True,
+        "method": "api_key",
+        "sub": "api-key-user",
+        "email": "",
+        "name": "API Key User",
+        "groups": [],
+        "org": "",
+        "tenantNamespaces": None,
+    }
 
 
 if __name__ == "__main__":

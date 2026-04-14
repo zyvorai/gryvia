@@ -180,6 +180,11 @@ func (s *FabricAIJobSpec) StorageSize() string {
 	return "100Gi"
 }
 
+// EnvVarFromCoreV1 creates a corev1.EnvVar from a key-value pair.
+func EnvVarFromCoreV1(name, value string) corev1.EnvVar {
+	return corev1.EnvVar{Name: name, Value: value}
+}
+
 func init() {
 	SchemeBuilder.Register(&FabricAIJob{}, &FabricAIJobList{})
 }

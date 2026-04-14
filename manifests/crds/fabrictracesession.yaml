@@ -1,0 +1,60 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: fabrictracesessions.tensorreaper.ai
+spec:
+  group: tensorreaper.ai
+  names:
+    kind: FabricTraceSession
+    listKind: FabricTraceSessionList
+    plural: fabrictracesessions
+    singular: fabrictracesession
+    shortNames: [fts]
+    categories: [tensorreaper, all]
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                service: {type: string}
+                namespace: {type: string}
+                duration:
+                  type: string
+                  description: "Duration of the trace session (e.g., 5m, 30m)"
+                level:
+                  type: string
+                  enum: [l3, l4, l7]
+                filters:
+                  type: object
+                  properties:
+                    srcIP: {type: string}
+                    dstIP: {type: string}
+                    port: {type: integer}
+                    protocol: {type: string, enum: [tcp, udp, icmp, any]}
+                captureHeaders:
+                  type: boolean
+            status:
+              type: object
+              properties:
+                phase:
+                  type: string
+                  enum: [active, completed, expired]
+                flowsCaptured: {type: integer}
+                startTime: {type: string, format: date-time}
+                endTime: {type: string, format: date-time}
+                resultRef:
+                  type: object
+                  description: "Reference to stored trace data"
+                  properties:
+                    kind: {type: string}
+                    name: {type: string}
+                    namespace: {type: string}
+      subresources:
+        status: {}

@@ -185,6 +185,130 @@ enum Commands {
         #[arg(default_value = "all")]
         component: String,
     },
+
+    /// Network intelligence commands
+    Network {
+        #[command(subcommand)]
+        action: NetworkCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum NetworkCommands {
+    /// Trace network flows for a service
+    Trace {
+        /// Target service name
+        service: String,
+
+        /// Trace duration (e.g., 2m, 5m, 1h)
+        #[arg(short, long, default_value = "2m")]
+        duration: String,
+
+        /// Capture level (l3, l4, l7)
+        #[arg(short, long, default_value = "l7")]
+        level: String,
+
+        /// Target namespace
+        #[arg(long, default_value = "default")]
+        trace_namespace: String,
+
+        /// Follow / live stream mode
+        #[arg(short, long)]
+        follow: bool,
+    },
+
+    /// Show recent network flows
+    Flows {
+        /// Filter by service name
+        #[arg(short, long)]
+        service: Option<String>,
+
+        /// Target namespace
+        #[arg(long, default_value = "default")]
+        flow_namespace: String,
+
+        /// Time window (e.g., 5m, 1h, 24h)
+        #[arg(short, long, default_value = "5m")]
+        last: String,
+
+        /// Output format (table, json)
+        #[arg(short, long, default_value = "table")]
+        output: String,
+    },
+
+    /// Show service dependency graph
+    Graph {
+        /// Target namespace
+        #[arg(long, default_value = "default")]
+        graph_namespace: String,
+
+        /// Output format (ascii, json)
+        #[arg(short, long, default_value = "ascii")]
+        format: String,
+    },
+
+    /// Manage flow policies
+    Policy {
+        #[command(subcommand)]
+        action: PolicyCommands,
+    },
+
+    /// Show network health overview
+    Status {
+        /// Target namespace
+        #[arg(long, default_value = "default")]
+        status_namespace: String,
+    },
+
+    /// Show detected network anomalies
+    Anomalies {
+        /// Filter by service
+        #[arg(short, long)]
+        service: Option<String>,
+
+        /// Filter by severity (critical, high, medium, low)
+        #[arg(long)]
+        severity: Option<String>,
+
+        /// Target namespace
+        #[arg(long, default_value = "default")]
+        anomaly_namespace: String,
+
+        /// Output format (table, json)
+        #[arg(short, long, default_value = "table")]
+        output: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum PolicyCommands {
+    /// Show auto-generated policy suggestions
+    Suggest {
+        /// Target namespace
+        #[arg(long, default_value = "default")]
+        policy_namespace: String,
+    },
+
+    /// Apply a suggested policy
+    Apply {
+        /// Policy name to apply
+        policy_name: String,
+
+        /// Target namespace
+        #[arg(long, default_value = "default")]
+        policy_namespace: String,
+    },
+
+    /// List all flow policies
+    List {
+        /// Target namespace
+        #[arg(long, default_value = "default")]
+        policy_namespace: String,
+
+        /// Output format (table, json, yaml)
+        #[arg(short, long, default_value = "table")]
+        output: String,
+    },
 }
 
 #[tokio::main]
@@ -196,6 +320,9 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(log_level)
         .init();
+
+    // Save namespace flag before passing ownership to client
+    let namespace_flag = cli.namespace.clone();
 
     // Create Kubernetes client
     let client = client::TensorReaperClient::new(cli.context, cli.namespace).await?;
@@ -243,6 +370,100 @@ async fn main() -> Result<()> {
         }
         Commands::Health { component } => {
             commands::health::execute(&client, &component).await?;
+        }
+        Commands::Network { action } => {
+            let has_ns_flag = namespace_flag.is_some();
+            let ns_default = client.namespace().to_string();
+            match action {
+                NetworkCommands::Trace {
+                    service,
+                    duration,
+                    level,
+                    trace_namespace,
+                    follow,
+                } => {
+                    let effective_ns = if has_ns_flag { &ns_default } else { &trace_namespace };
+                    commands::trace::execute(&client, &service, &duration, &level, effective_ns, follow).await?;
+                }
+                NetworkCommands::Flows {
+                    service,
+                    flow_namespace,
+                    last,
+                    output,
+                } => {
+                    let effective_ns = if has_ns_flag { &ns_default } else { &flow_namespace };
+                    commands::flows::execute(&client, service.as_deref(), effective_ns, &last, &output).await?;
+                }
+                NetworkCommands::Graph {
+                    graph_namespace,
+                    format,
+                } => {
+                    let effective_ns = if has_ns_flag { &ns_default } else { &graph_namespace };
+                    commands::graph::execute(&client, effective_ns, &format).await?;
+                }
+                NetworkCommands::Policy { action: policy_action } => {
+                    match policy_action {
+                        PolicyCommands::Suggest { policy_namespace } => {
+                            let effective_ns = if has_ns_flag { &ns_default } else { &policy_namespace };
+                            commands::policy::execute(
+                                &client,
+                                commands::policy::PolicyAction::Suggest {
+                                    namespace: effective_ns.to_string(),
+                                },
+                            )
+                            .await?;
+                        }
+                        PolicyCommands::Apply {
+                            policy_name,
+                            policy_namespace,
+                        } => {
+                            let effective_ns = if has_ns_flag { &ns_default } else { &policy_namespace };
+                            commands::policy::execute(
+                                &client,
+                                commands::policy::PolicyAction::Apply {
+                                    policy_name,
+                                    namespace: effective_ns.to_string(),
+                                },
+                            )
+                            .await?;
+                        }
+                        PolicyCommands::List {
+                            policy_namespace,
+                            output,
+                        } => {
+                            let effective_ns = if has_ns_flag { &ns_default } else { &policy_namespace };
+                            commands::policy::execute(
+                                &client,
+                                commands::policy::PolicyAction::List {
+                                    namespace: effective_ns.to_string(),
+                                    output,
+                                },
+                            )
+                            .await?;
+                        }
+                    }
+                }
+                NetworkCommands::Status { status_namespace } => {
+                    let effective_ns = if has_ns_flag { &ns_default } else { &status_namespace };
+                    commands::network::execute_status(&client, effective_ns).await?;
+                }
+                NetworkCommands::Anomalies {
+                    service,
+                    severity,
+                    anomaly_namespace,
+                    output,
+                } => {
+                    let effective_ns = if has_ns_flag { &ns_default } else { &anomaly_namespace };
+                    commands::network::execute_anomalies(
+                        &client,
+                        effective_ns,
+                        service.as_deref(),
+                        severity.as_deref(),
+                        &output,
+                    )
+                    .await?;
+                }
+            }
         }
     }
 

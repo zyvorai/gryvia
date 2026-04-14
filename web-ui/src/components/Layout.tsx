@@ -1,5 +1,5 @@
-import { ReactNode, useState } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { ReactNode, useState, useRef, useEffect } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard,
   Briefcase,
@@ -10,7 +10,11 @@ import {
   Menu,
   X,
   Activity,
+  LogOut,
+  ChevronDown,
+  Network,
 } from 'lucide-react'
+import { useAuth } from '@/lib/auth'
 
 interface LayoutProps {
   children: ReactNode
@@ -21,12 +25,37 @@ const navigation = [
   { name: 'Jobs', href: '/jobs', icon: Briefcase },
   { name: 'Quotas', href: '/quotas', icon: Users },
   { name: 'Nodes', href: '/nodes', icon: Server },
+  { name: 'Network', href: '/network', icon: Network },
   { name: 'Costs', href: '/costs', icon: DollarSign },
 ]
 
 export default function Layout({ children }: LayoutProps) {
   const location = useLocation()
+  const navigate = useNavigate()
+  const { user, logout } = useAuth()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const userMenuRef = useRef<HTMLDivElement>(null)
+
+  // Close user menu when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setUserMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const handleLogout = () => {
+    setUserMenuOpen(false)
+    logout()
+    navigate('/login', { replace: true })
+  }
+
+  const displayName = user?.name || user?.email || 'User'
+  const displayInitial = displayName.charAt(0).toUpperCase()
 
   const isActive = (href: string) => {
     if (href === '/dashboard') return location.pathname === '/dashboard' || location.pathname === '/'
@@ -97,6 +126,75 @@ export default function Layout({ children }: LayoutProps) {
             >
               <Activity className="h-3.5 w-3.5 text-emerald-400 animate-pulse-dot" />
               <span className="text-xs text-[#8090a8]">Live</span>
+            </div>
+
+            {/* User menu */}
+            <div className="relative" ref={userMenuRef}>
+              <button
+                onClick={() => setUserMenuOpen(!userMenuOpen)}
+                className="flex items-center gap-2 px-2 py-1.5 rounded-lg transition-all duration-200 hover:bg-[#1a2332]/60"
+              >
+                <div
+                  className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold"
+                  style={{
+                    background: user?.method === 'oidc'
+                      ? 'linear-gradient(135deg, rgba(95,168,211,0.25) 0%, rgba(95,168,211,0.1) 100%)'
+                      : 'linear-gradient(135deg, rgba(212,118,78,0.25) 0%, rgba(212,118,78,0.1) 100%)',
+                    border: user?.method === 'oidc'
+                      ? '1px solid rgba(95,168,211,0.2)'
+                      : '1px solid rgba(212,118,78,0.2)',
+                    color: user?.method === 'oidc' ? '#7ecbf5' : '#e8a87c',
+                  }}
+                >
+                  {displayInitial}
+                </div>
+                <span className="hidden lg:block text-xs text-[#8ba4c0] max-w-[100px] truncate">
+                  {displayName}
+                </span>
+                <ChevronDown className="h-3 w-3 text-[#5a7a9e] hidden lg:block" />
+              </button>
+
+              {/* Dropdown */}
+              {userMenuOpen && (
+                <div
+                  className="absolute right-0 top-full mt-2 w-56 rounded-xl py-1 z-50 animate-scale-in"
+                  style={{
+                    background: 'linear-gradient(180deg, #151d28 0%, #111820 100%)',
+                    border: '1px solid rgba(192,204,224,0.08)',
+                    boxShadow: '0 15px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(192,204,224,0.06)',
+                  }}
+                >
+                  {/* User info */}
+                  <div className="px-4 py-3 border-b" style={{ borderColor: 'rgba(192,204,224,0.06)' }}>
+                    <p className="text-sm font-medium text-[#d0dae6] truncate">{displayName}</p>
+                    {user?.email && (
+                      <p className="text-xs text-[#5a7a9e] truncate mt-0.5">{user.email}</p>
+                    )}
+                    <span
+                      className="inline-flex items-center gap-1 text-[10px] font-medium mt-2 px-2 py-0.5 rounded-full"
+                      style={{
+                        background: user?.method === 'oidc'
+                          ? 'rgba(95,168,211,0.1)'
+                          : 'rgba(212,118,78,0.1)',
+                        color: user?.method === 'oidc' ? '#7ecbf5' : '#e8a87c',
+                        border: user?.method === 'oidc'
+                          ? '1px solid rgba(95,168,211,0.15)'
+                          : '1px solid rgba(212,118,78,0.15)',
+                      }}
+                    >
+                      {user?.method === 'oidc' ? 'SSO' : 'API Key'}
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={handleLogout}
+                    className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-[#8ba4c0] hover:text-red-400 hover:bg-[#1a2332]/60 transition-colors"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Sign out
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Mobile hamburger */}
