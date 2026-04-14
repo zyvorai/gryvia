@@ -96,7 +96,19 @@ No NCCL tuning. No topology config. No storage provisioning. **It just works.**
 
 ## Features
 
-### 1. **Never Waste a GPU Again — Deep NVIDIA Integration**
+### 1. **Gang Scheduling + Elastic Training — No Wasted GPUs**
+
+Advanced scheduling that goes far beyond basic Kubernetes:
+- **Gang scheduling** — all pods for a distributed job are placed atomically, or none are. No deadlocks
+- **Fair-share queuing** — DRF (Dominant Resource Fairness) ensures no team starves another
+- **Backfill scheduling** — small jobs fill gaps while large jobs wait
+- **Elastic training** — running jobs scale up/down at runtime with PyTorch Elastic (torchrun)
+- **Admission webhooks** — validate jobs at creation time, auto-inject NCCL env vars and SR-IOV annotations
+- **Priority preemption** — high-priority jobs can evict lower-priority ones with grace period for checkpointing
+
+---
+
+### 2. **Never Waste a GPU Again — Deep NVIDIA Integration**
 
 #### Native NVIDIA Stack
 Built-in support for the complete NVIDIA ecosystem:
@@ -144,7 +156,7 @@ Custom scheduler that understands:
 
 ---
 
-### 2. **Fix the #1 AI Training Bottleneck — GPU Communication**
+### 3. **Fix the #1 AI Training Bottleneck — GPU Communication**
 
 #### Automatic RDMA + SR-IOV
 TensorReaper automatically:
@@ -171,7 +183,7 @@ TensorReaper automatically:
 
 ---
 
-### 3. **Stop Waiting for Data — Ultra-Fast Storage Fabric**
+### 4. **Stop Waiting for Data — Ultra-Fast Storage Fabric**
 
 Native support for parallel filesystems:
 - **VAST Data** - NVMe-optimized, 40GB/s+ throughput
@@ -203,7 +215,7 @@ spec:
 
 ---
 
-### 4. **Submit a Job, Not a Cluster Config — AI Workload Automation**
+### 5. **Submit a Job, Not a Cluster Config — AI Workload Automation**
 
 #### Auto-Distributed Training
 You submit:
@@ -243,7 +255,7 @@ Submit a model, get auto-deployed:
 
 ---
 
-### 5. **Your Jobs Keep Running — Self-Healing Platform**
+### 6. **Your Jobs Keep Running — Self-Healing Platform**
 
 If something breaks, TensorReaper auto-recovers:
 
@@ -260,7 +272,7 @@ If something breaks, TensorReaper auto-recovers:
 
 ---
 
-### 6. **Know Where Every GPU Dollar Goes — Cost + Quota + Chargeback**
+### 7. **Know Where Every GPU Dollar Goes — Cost + Quota + Chargeback**
 
 Built-in metering tracks:
 - GPU hours per team/namespace
@@ -280,19 +292,22 @@ Perfect for:
 
 ---
 
-### 7. **Enterprise-Ready from Day 1 — Security & Compliance**
+### 8. **Enterprise-Ready from Day 1 — Security & Compliance**
 
 Enterprise-grade security:
+- **OIDC/SSO authentication** — SAML, OAuth2, LDAP with PKCE flow
+- **Multi-tenant isolation** — per-tenant namespaces, NetworkPolicies, ResourceQuotas
 - **Secure boot** for GPU nodes
 - **Encrypted storage** (at-rest & in-transit)
 - **Workload isolation** (cgroups, namespaces)
 - **RBAC + IAM** integration
-- **Audit logs** for all GPU operations
+- **Audit controller** — real-time compliance tracking with retention policies
+- **SLA monitoring** — queue time tracking, breach detection, compliance reporting
 - **SOC-2 friendly** design
 
 ---
 
-### 8. **Run Anywhere, Same Experience — Multi-Cloud + Bare Metal**
+### 9. **Run Anywhere, Same Experience — Multi-Cloud + Bare Metal**
 
 TensorReaper runs everywhere:
 - **AWS** (EKS with GPU nodes)
@@ -305,7 +320,7 @@ TensorReaper runs everywhere:
 
 ---
 
-### 9. **Prove It Before Production — Built-in AI Benchmarks**
+### 10. **Prove It Before Production — Built-in AI Benchmarks**
 
 Pre-installed benchmarks to prove performance:
 - **LLM throughput** (tokens/sec)
@@ -315,6 +330,38 @@ Pre-installed benchmarks to prove performance:
 - **Network bandwidth** (iperf, ib_write_bw)
 
 **Use these to validate your infra before production.**
+
+---
+
+### 11. **From Training to Serving — ML Workflow Engine**
+
+Complete ML lifecycle management:
+- **Hyperparameter tuning** — Grid, Random, Bayesian (TPE), ASHA early stopping with configurable parallelism
+- **Workflow/DAG engine** — multi-step pipelines with dependencies, fan-out/fan-in, conditional execution
+- **Model Registry** — version management with dev→staging→production promotion
+- **Inference Service** — deploy models to Triton/vLLM/TensorRT-LLM with canary rollouts and auto-rollback
+- **Workspaces** — managed Jupyter/VS Code environments with GPU allocation, idle timeout, pause/resume
+- **Job templates** — parameterized, reusable job definitions with validation
+
+---
+
+### 12. **See Everything — Network Intelligence (NetPredator)**
+
+eBPF-powered network visibility and control built on Cilium:
+- **Service dependency graph** — real-time topology visualization with latency and throughput per edge
+- **Traffic insights** — per-service p50/p95/p99 latency, top talkers, anomaly detection
+- **Auto-policy generation** — learn traffic patterns, suggest network policies, enforce with approval
+- **Trace sessions** — time-limited L3/L4/L7 network debugging
+- **Anomaly detection** — statistical baseline deviation with auto-mitigation
+- **eBPF collectors** — kernel-level TCP tracing, DNS tracking, syscall monitoring, latency probes
+
+```bash
+# Debug network issues in real-time
+tensorreaper network trace payment-service --duration 2m --level l7
+
+# Auto-generate security policies from observed traffic
+tensorreaper network policy suggest --namespace production
+```
 
 ---
 
@@ -337,12 +384,12 @@ Pre-installed benchmarks to prove performance:
 ```
 
 **Each cluster runs:**
-1. Custom GPU-aware Kubernetes scheduler
-2. 5 specialized operators (GPU, AI, Storage, Network, Quota)
-3. NVIDIA DCGM + Prometheus + Grafana observability
+1. GPU-aware scheduler with gang scheduling, DRF fair-share, and elastic scaling
+2. 6 specialized operators (GPU, AI, Storage, Network, Quota, Network Intelligence)
+3. eBPF flow collector + NVIDIA DCGM + Prometheus + Grafana observability
 4. High-performance storage fabric (VAST/Weka/DDN)
-5. Dark-themed Web UI dashboard + REST API gateway
-6. Rust CLI for command-line management
+5. Dark-themed Web UI with OIDC auth + REST API gateway
+6. Rust CLI + Python SDK + Go SDK
 
 ---
 
@@ -382,7 +429,9 @@ kubectl get fabricaijob
 
 ## Core Components
 
-### Custom Resource Definitions (CRDs)
+### Custom Resource Definitions (30+ CRDs)
+
+**Core Resources:**
 
 | CRD | Purpose |
 |-----|---------|
@@ -392,34 +441,86 @@ kubectl get fabricaijob
 | **FabricNetwork** | RDMA/SR-IOV network setup |
 | **FabricQuota** | Per-team GPU limits and budgets |
 
-### Operators (Kubernetes Controllers)
+**ML Workflow:**
 
-1. **GPU Operator** - Manages GPU lifecycle, drivers, NVML-based health checks with exponential backoff, node labeling
-2. **AI Workload Operator** - GPU-aware scheduling, StatefulSet-based distributed training with automatic `WORLD_SIZE` computation
-3. **Storage Operator** - Installs CSI drivers (VAST/Weka/DDN/Lustre/Ceph), context-aware health checks, safe StorageClass creation
-4. **Network Operator** - Configures SR-IOV, RDMA with per-node failure tracking, Multus NetworkAttachmentDefinitions
-5. **Quota Operator** - Atomic quota enforcement, validated budget pricing, context-propagated job watches
+| CRD | Purpose |
+|-----|---------|
+| **FabricAutoTuner** | Hyperparameter tuning with Grid/Random/Bayesian/ASHA |
+| **FabricWorkflow** | DAG-based multi-step ML pipelines |
+| **FabricModelRegistry** | Model versioning and promotion (dev→staging→prod) |
+| **FabricInferenceService** | Model serving with canary and auto-rollback |
+| **FabricWorkspace** | Managed Jupyter/VS Code GPU environments |
+| **FabricTemplate** | Reusable parameterized job templates |
+
+**Operations & Enterprise:**
+
+| CRD | Purpose |
+|-----|---------|
+| **FabricAutoScaler** | GPU-aware cluster autoscaling |
+| **FabricBudget** | Team budget tracking with burn rate forecasting |
+| **FabricChargeback** | Per-team cost reports with configurable pricing |
+| **FabricTenant** | Multi-tenant isolation with RBAC |
+| **FabricSLA** | SLA monitoring and breach detection |
+| **FabricAudit** | Compliance audit trail with retention policies |
+| **FabricReservation** | Time-windowed GPU capacity reservations |
+| **FabricPriority** | Priority classes with preemption policies |
+
+**Network Intelligence:**
+
+| CRD | Purpose |
+|-----|---------|
+| **FabricFlowPolicy** | Intent-based network policies (→ CiliumNetworkPolicy) |
+| **FabricTrafficInsight** | Real-time per-service traffic analysis |
+| **FabricAutoPolicy** | Self-healing firewall (learn → suggest → enforce) |
+| **FabricTraceSession** | Time-limited network debugging sessions |
+| **FabricServiceGraph** | Live service dependency graph |
+| **FabricNetworkAnomaly** | Anomaly detection with auto-mitigation |
+
+### Operators (6 Kubernetes Controllers)
+
+1. **GPU Operator** — GPU lifecycle, drivers, health checks, benchmarks, GPU sharing (MIG/time-slice), custom metrics
+2. **AI Workload Operator** — Scheduling (gang, elastic, fair-share), distributed training, HPO tuning, workflows, model registry, inference serving, workspaces, admission webhooks
+3. **Storage Operator** — CSI drivers (VAST/Weka/DDN/Lustre/Ceph), dataset management with caching
+4. **Network Operator** — SR-IOV, RDMA, Multus NetworkAttachmentDefinitions
+5. **Quota Operator** — Quota enforcement, budgets, chargeback, SLA monitoring, audit, tenants, reservations
+6. **Network Intelligence Operator** — eBPF-powered flow policies, traffic insights, auto-policy, trace sessions, service graph, anomaly detection
 
 ### Web UI
 
-Dark-themed React dashboard with:
-- Real-time cluster stats, GPU utilization charts, job pipeline view
-- Job submission wizard, quota management, cost analysis
-- Gradient stat cards, progress bars, health indicators
-- Top navbar layout, responsive mobile support
-- API gateway with rate limiting and Bearer token auth
+Dark-themed React dashboard with metallic design language:
+- **Dashboard** — real-time cluster stats, GPU utilization charts, job pipeline view
+- **Jobs** — submission wizard, monitoring, logs
+- **Quotas & Costs** — team quota management, cost analysis
+- **Nodes** — GPU node health and metrics
+- **Network** — service graph visualization, flow monitoring, policy management
+- **Login** — OIDC/SSO + API key authentication with PKCE flow
+- API gateway with OIDC JWT validation, rate limiting, tenant-aware filtering
 
 ### CLI
 
 Rust-based CLI (`tensorreaper`) for:
-- Job submission with `--wait` and `--logs` flags, listing, status with `--follow`, cancellation
-- Interactive job/quota creation wizard with DNS-1123 name validation (`tensorreaper create job`)
-- Cluster overview with `--detailed` GPU metrics and `--watch` mode
-- Log streaming with auto-detected container names and per-replica selection
-- Job queue monitoring with watch mode
-- Quota and cost analysis with correct percentage display
+- Job management: submit, list, status, cancel, logs, queue monitoring
+- Interactive wizards: `tensorreaper create job`, `tensorreaper create quota`
+- Cluster overview with `--detailed` and `--watch`
+- Network intelligence: `tensorreaper network trace`, `flows`, `graph`, `policy`, `anomalies`
 - GPU, storage, and network health checks
-- Storage and network resource deletion
+
+### SDKs
+
+**Python:**
+```python
+from tensorreaper import TensorReaper
+
+async with TensorReaper(api_url="https://...", token="...") as tr:
+    job = await tr.jobs.create({"spec": {"model": "llama-70b", "gpus": 8}})
+    await tr.jobs.wait_for_completion(job["metadata"]["name"])
+```
+
+**Go:**
+```go
+client := sdk.NewTensorReaperClient(mgr.GetClient())
+job, err := client.CreateJob(ctx, &v1.FabricAIJob{...})
+```
 
 ### GPU-Aware Scheduler
 
@@ -471,15 +572,17 @@ Three-stage scheduling: filter, score, select.
 ## Security
 
 TensorReaper follows security best practices:
+- **OIDC/SSO authentication** - JWT validation with JWKS caching, PKCE flow, tenant-aware filtering
+- **Multi-tenant isolation** - Per-tenant namespaces, NetworkPolicies, ResourceQuotas via FabricTenant CRD
 - **Least-privilege RBAC** - Operators have scoped ClusterRoles per CRD
 - **Non-root containers** - All operator pods run as UID 65532 with read-only root filesystem
 - **No privileged containers** - GPU device plugins use targeted capabilities instead of blanket `privileged: true`
-- **Network policies** - Default-deny ingress with egress restricted to specific services
-- **Secrets management** - API key auth for API gateway with timing-safe comparison; Ceph configs serialized via `json.Marshal` (no injection)
+- **Network policies** - Default-deny ingress; auto-generated policies from observed traffic (FabricAutoPolicy)
+- **Admission webhooks** - Validate and mutate FabricAIJob resources at creation time
+- **Audit trail** - FabricAudit controller captures all GPU resource events with configurable retention
 - **Input validation** - Budget pricing rejects negative/NaN/Inf rates; CLI enforces DNS-1123 job names; quota enforcement is atomic
 - **CRD validation** - Required fields, enum constraints, min/max validation on all custom resources
 - **Image pinning** - All container images use specific version tags, never `:latest`
-- **Safe resource handling** - Nil-safe annotation cleanup, map copies to prevent spec mutation, context-propagated HTTP calls
 
 ---
 
