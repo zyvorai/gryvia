@@ -1,0 +1,14 @@
+# FabricInferenceInsight - Latency breakdown analysis for inference endpoints
+# Provides per-phase latency measurements (DNS, TCP, TLS, GPU queue, GPU exec,
+# postprocess) to identify bottlenecks in the serving pipeline.
+apiVersion: tensorreaper.ai/v1
+kind: FabricInferenceInsight
+metadata:
+  name: llm-serving-latency
+  namespace: ml-serving
+spec:
+  # Name of the FabricInferenceService to analyze
+  targetService: llama-70b-serving
+
+  # Rolling window for latency percentile computation
+  analysisWindow: "5m"

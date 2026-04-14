@@ -244,6 +244,138 @@ export interface GPUMemStats {
   d2dCount: number
 }
 
+// Workspace types
+export interface Workspace {
+  metadata?: { name?: string; namespace?: string; creationTimestamp?: string }
+  spec?: {
+    type?: string
+    gpuCount?: number
+    gpuType?: string
+    storageSize?: string
+    idleTimeout?: string
+  }
+  status?: {
+    phase?: string
+    url?: string
+    uptime?: string
+    lastActivity?: string
+  }
+}
+
+export interface CreateWorkspaceRequest {
+  name: string
+  type: string
+  gpuCount: number
+  gpuType: string
+  storageSize: string
+  idleTimeout: string
+}
+
+// Model registry types
+export interface RegisteredModel {
+  metadata?: { name?: string; namespace?: string; creationTimestamp?: string }
+  spec?: {
+    version?: string
+    stage?: string
+    sourceJob?: string
+    artifacts?: string[]
+  }
+  status?: {
+    servingEndpoint?: string
+  }
+}
+
+// Inference service types
+export interface InferenceService {
+  metadata?: { name?: string; namespace?: string; creationTimestamp?: string }
+  spec?: {
+    modelRef?: string
+    backend?: string
+    replicas?: number
+    canary?: {
+      trafficPercent?: number
+    }
+    autoscaling?: {
+      minReplicas?: number
+      maxReplicas?: number
+      targetUtilization?: number
+    }
+  }
+  status?: {
+    phase?: string
+    readyReplicas?: number
+    endpoint?: string
+    latencyMs?: number
+  }
+}
+
+export interface CreateInferenceServiceRequest {
+  name: string
+  modelRef: string
+  backend: string
+  replicas: number
+  minReplicas: number
+  maxReplicas: number
+  targetUtilization: number
+}
+
+// Workflow types
+export interface WorkflowStep {
+  name: string
+  type?: string
+  status?: string
+  duration?: string
+  jobRef?: string
+  dependsOn?: string[]
+}
+
+export interface Workflow {
+  metadata?: { name?: string; namespace?: string; creationTimestamp?: string }
+  spec?: {
+    steps?: WorkflowStep[]
+  }
+  status?: {
+    phase?: string
+    steps?: WorkflowStep[]
+    duration?: string
+    startedAt?: string
+  }
+}
+
+// Auto tuner types
+export interface TunerTrial {
+  trialId: string
+  parameters?: Record<string, unknown>
+  metricValue?: number
+  status?: string
+  duration?: string
+}
+
+export interface AutoTunerJob {
+  metadata?: { name?: string; namespace?: string; creationTimestamp?: string }
+  spec?: {
+    algorithm?: string
+    objectiveMetric?: string
+    maxTrials?: number
+    parameterSpace?: Record<string, unknown>
+  }
+  status?: {
+    phase?: string
+    trialsCompleted?: number
+    trialsRunning?: number
+    bestMetricValue?: number
+    bestTrialId?: string
+  }
+}
+
+export interface CreateTunerRequest {
+  name: string
+  algorithm: string
+  objectiveMetric: string
+  maxTrials: number
+  parameterSpace: string
+}
+
 const apiClient = axios.create({
   baseURL: '/api',
   timeout: 30000,
@@ -426,6 +558,107 @@ export const api = {
   getGPUMemoryStats: async (): Promise<GPUMemStats> => {
     const { data } = await apiClient.get('/gpu/memory')
     return data
+  },
+
+  // Workspaces
+  getWorkspaces: async (): Promise<Workspace[]> => {
+    const { data } = await apiClient.get('/workspaces')
+    return data.items || []
+  },
+
+  getWorkspace: async (name: string): Promise<Workspace> => {
+    const { data } = await apiClient.get(`/workspaces/${encodeURIComponent(name)}`)
+    return data
+  },
+
+  createWorkspace: async (req: CreateWorkspaceRequest): Promise<Workspace> => {
+    const { data } = await apiClient.post('/workspaces', req)
+    return data
+  },
+
+  pauseWorkspace: async (name: string): Promise<void> => {
+    await apiClient.post(`/workspaces/${encodeURIComponent(name)}/pause`)
+  },
+
+  resumeWorkspace: async (name: string): Promise<void> => {
+    await apiClient.post(`/workspaces/${encodeURIComponent(name)}/resume`)
+  },
+
+  deleteWorkspace: async (name: string): Promise<void> => {
+    await apiClient.delete(`/workspaces/${encodeURIComponent(name)}`)
+  },
+
+  // Model Registry
+  getModels: async (): Promise<RegisteredModel[]> => {
+    const { data } = await apiClient.get('/models')
+    return data.items || []
+  },
+
+  getModel: async (name: string): Promise<RegisteredModel> => {
+    const { data } = await apiClient.get(`/models/${encodeURIComponent(name)}`)
+    return data
+  },
+
+  promoteModel: async (name: string, targetStage: string): Promise<RegisteredModel> => {
+    const { data } = await apiClient.post(`/models/${encodeURIComponent(name)}/promote`, { targetStage })
+    return data
+  },
+
+  // Inference Services
+  getInferenceServices: async (): Promise<InferenceService[]> => {
+    const { data } = await apiClient.get('/inference')
+    return data.items || []
+  },
+
+  getInferenceService: async (name: string): Promise<InferenceService> => {
+    const { data } = await apiClient.get(`/inference/${encodeURIComponent(name)}`)
+    return data
+  },
+
+  createInferenceService: async (req: CreateInferenceServiceRequest): Promise<InferenceService> => {
+    const { data } = await apiClient.post('/inference', req)
+    return data
+  },
+
+  deleteInferenceService: async (name: string): Promise<void> => {
+    await apiClient.delete(`/inference/${encodeURIComponent(name)}`)
+  },
+
+  // Workflows
+  getWorkflows: async (): Promise<Workflow[]> => {
+    const { data } = await apiClient.get('/workflows')
+    return data.items || []
+  },
+
+  getWorkflow: async (name: string): Promise<Workflow> => {
+    const { data } = await apiClient.get(`/workflows/${encodeURIComponent(name)}`)
+    return data
+  },
+
+  createWorkflow: async (workflow: Partial<Workflow>): Promise<Workflow> => {
+    const { data } = await apiClient.post('/workflows', workflow)
+    return data
+  },
+
+  // Auto Tuners
+  getTuners: async (): Promise<AutoTunerJob[]> => {
+    const { data } = await apiClient.get('/tuners')
+    return data.items || []
+  },
+
+  getTuner: async (name: string): Promise<AutoTunerJob> => {
+    const { data } = await apiClient.get(`/tuners/${encodeURIComponent(name)}`)
+    return data
+  },
+
+  createTuner: async (req: CreateTunerRequest): Promise<AutoTunerJob> => {
+    const { data } = await apiClient.post('/tuners', req)
+    return data
+  },
+
+  getTunerTrials: async (name: string): Promise<TunerTrial[]> => {
+    const { data } = await apiClient.get(`/tuners/${encodeURIComponent(name)}/trials`)
+    return data.items || []
   },
 }
 

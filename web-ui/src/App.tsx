@@ -20,6 +20,11 @@ import NetworkPolicies from './pages/NetworkPolicies'
 import SecurityOverview from './pages/SecurityOverview'
 import GpuCommunication from './pages/GpuCommunication'
 import NetworkCost from './pages/NetworkCost'
+import Workspaces from './pages/Workspaces'
+import ModelRegistry from './pages/ModelRegistry'
+import InferenceServices from './pages/InferenceServices'
+import WorkflowsPage from './pages/Workflows'
+import AutoTunerPage from './pages/AutoTuner'
 import Login from './pages/Login'
 import AuthCallback from './pages/AuthCallback'
 
@@ -162,6 +167,31 @@ function App() {
             <Route path="/costs" element={
               <RequireAuth>
                 <Layout><Costs /></Layout>
+              </RequireAuth>
+            } />
+            <Route path="/workspaces" element={
+              <RequireAuth>
+                <Layout><Workspaces /></Layout>
+              </RequireAuth>
+            } />
+            <Route path="/models" element={
+              <RequireAuth>
+                <Layout><ModelRegistry /></Layout>
+              </RequireAuth>
+            } />
+            <Route path="/inference" element={
+              <RequireAuth>
+                <Layout><InferenceServices /></Layout>
+              </RequireAuth>
+            } />
+            <Route path="/workflows" element={
+              <RequireAuth>
+                <Layout><WorkflowsPage /></Layout>
+              </RequireAuth>
+            } />
+            <Route path="/tuner" element={
+              <RequireAuth>
+                <Layout><AutoTunerPage /></Layout>
               </RequireAuth>
             } />
             <Route path="*" element={

@@ -1,0 +1,160 @@
+{{- if .Values.rbac.create -}}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "network-intelligence.fullname" . }}-operator-role
+  labels:
+    {{- include "network-intelligence.labels" . | nindent 4 }}
+rules:
+  # Manage FabricNetwork resources
+  - apiGroups:
+      - tensorreaper.ai
+    resources:
+      - fabricnetworks
+      - fabricnetworks/status
+      - fabricnetworks/finalizers
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  # Manage NetworkPolicy resources
+  - apiGroups:
+      - networking.k8s.io
+    resources:
+      - networkpolicies
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  # Read pods and services for network discovery
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+      - services
+      - endpoints
+      - namespaces
+    verbs:
+      - get
+      - list
+      - watch
+  # Read nodes for topology awareness
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+    verbs:
+      - get
+      - list
+      - watch
+  # Manage ConfigMaps for operator state
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+  # Events
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+  # Leader election
+  - apiGroups:
+      - coordination.k8s.io
+    resources:
+      - leases
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "network-intelligence.fullname" . }}-collector-role
+  labels:
+    {{- include "network-intelligence.labels" . | nindent 4 }}
+rules:
+  # Read pods and services for flow enrichment
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+      - services
+      - endpoints
+      - namespaces
+    verbs:
+      - get
+      - list
+      - watch
+  # Read nodes for host-level correlation
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+    verbs:
+      - get
+      - list
+      - watch
+  # Events for anomaly reporting
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "network-intelligence.fullname" . }}-operator-rolebinding
+  labels:
+    {{- include "network-intelligence.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "network-intelligence.fullname" . }}-operator-role
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "network-intelligence.operatorServiceAccountName" . }}
+    namespace: {{ .Values.namespace.name }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "network-intelligence.fullname" . }}-collector-rolebinding
+  labels:
+    {{- include "network-intelligence.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "network-intelligence.fullname" . }}-collector-role
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "network-intelligence.collectorServiceAccountName" . }}
+    namespace: {{ .Values.namespace.name }}
+{{- end }}

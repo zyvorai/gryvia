@@ -20,6 +20,11 @@ Complete documentation for TensorReaper - Enterprise GPU Compute Platform.
 - [CLI Guide](CLI_GUIDE.md) - Command-line interface usage
 - [Storage & Network Operators](STORAGE_NETWORK_OPERATORS.md) - Operator internals
 
+### Feature Guides
+- [ML Workflows](ML_WORKFLOWS.md) - Hyperparameter tuning, DAG pipelines, model registry, inference serving, workspaces
+- [Network Intelligence](NETWORK_INTELLIGENCE.md) - eBPF-powered observability, security, and traffic analysis
+- [Advanced Scheduling](SCHEDULING.md) - Gang scheduling, fair-share queues, elastic training, admission webhooks
+
 ### Reference
 - [FAQ](FAQ.md) - Frequently asked questions
 - [Roadmap](ROADMAP.md) - Feature roadmap

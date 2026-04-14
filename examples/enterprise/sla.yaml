@@ -1,0 +1,70 @@
+# FabricSLA - Gold-tier service level agreement for ML research team
+# Guarantees max 5-minute queue time, 99.9% uptime, reserved H100 capacity,
+# auto-retry on failure, and weekly compliance reports.
+apiVersion: tensorreaper.ai/v1
+kind: FabricSLA
+metadata:
+  name: ml-research-gold
+spec:
+  # SLA tier: platinum, gold, silver, bronze, best-effort
+  tier: gold
+
+  # Who this SLA applies to
+  scope:
+    type: team
+    name: ml-research
+
+  # Performance guarantees
+  performance:
+    maxQueueTime: "5m"          # Jobs must start within 5 minutes
+    guaranteedStart: true       # Guarantee that queue time target is met
+    targetCompletionTime: "24h" # Target completion for standard training jobs
+    minThroughput:
+      value: 1000
+      unit: "samples/sec"      # Minimum training throughput guarantee
+
+  # Availability guarantees
+  availability:
+    uptime: 99.9                # 99.9% uptime target (43.8 min/month downtime)
+    maxDowntimeMinutes: 43.8    # Equivalent to 99.9% monthly uptime
+    maintenanceWindows:
+      - dayOfWeek: sunday
+        startTime: "02:00"
+        duration: "2h"          # Scheduled maintenance: Sundays 2-4 AM
+
+  # Resource guarantees
+  resources:
+    guaranteedGPUTypes:
+      - H100
+      - A100-80G
+    reservedCapacity:
+      gpuCount: 16              # 16 GPUs always reserved for this team
+      always: true              # Reserved 24/7, not just business hours
+    fallbackAllowed: true       # Allow fallback to A100 if H100 unavailable
+
+  # Failure handling
+  failureHandling:
+    autoRetry: true
+    maxRetries: 3
+    compensation:
+      enabled: true
+      type: credit              # credit, refund, priority-boost
+      percentage: 10            # 10% credit for each SLA breach
+
+  # Support level
+  support:
+    responseTime: "1h"          # 1-hour response time guarantee
+    channels:
+      - email
+      - slack
+      - pagerduty
+    businessHours: false         # 24/7 support (not business hours only)
+
+  # Monitoring and reporting
+  monitoring:
+    metricsRetention: "90d"     # Keep SLA metrics for 90 days
+    reports:
+      frequency: weekly
+      recipients:
+        - "alice@company.com"
+        - "platform-team@company.com"

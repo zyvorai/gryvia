@@ -15,6 +15,11 @@ import {
   Network,
   Shield,
   Cpu,
+  Monitor,
+  Package,
+  Zap,
+  GitBranch,
+  Settings,
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 
@@ -25,6 +30,11 @@ interface LayoutProps {
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Jobs', href: '/jobs', icon: Briefcase },
+  { name: 'Workspaces', href: '/workspaces', icon: Monitor },
+  { name: 'Models', href: '/models', icon: Package },
+  { name: 'Inference', href: '/inference', icon: Zap },
+  { name: 'Workflows', href: '/workflows', icon: GitBranch },
+  { name: 'Tuner', href: '/tuner', icon: Settings },
   { name: 'Quotas', href: '/quotas', icon: Users },
   { name: 'Nodes', href: '/nodes', icon: Server },
   { name: 'Network', href: '/network', icon: Network },

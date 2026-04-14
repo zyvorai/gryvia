@@ -1,0 +1,87 @@
+{{- if and .Values.prometheus.enabled .Values.prometheus.serviceMonitor.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "network-intelligence.fullname" . }}-operator-metrics
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "network-intelligence.labels" . | nindent 4 }}
+    app.kubernetes.io/component: operator
+spec:
+  type: ClusterIP
+  ports:
+    - name: metrics
+      port: 8080
+      targetPort: metrics
+      protocol: TCP
+  selector:
+    {{- include "network-intelligence.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: operator
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "network-intelligence.fullname" . }}-collector-metrics
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "network-intelligence.labels" . | nindent 4 }}
+    app.kubernetes.io/component: collector
+spec:
+  type: ClusterIP
+  ports:
+    - name: metrics
+      port: 9090
+      targetPort: metrics
+      protocol: TCP
+  selector:
+    {{- include "network-intelligence.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: collector
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "network-intelligence.fullname" . }}-operator
+  namespace: {{ .Values.prometheus.serviceMonitor.namespace | default .Values.namespace.name }}
+  labels:
+    {{- include "network-intelligence.labels" . | nindent 4 }}
+    app.kubernetes.io/component: operator
+    {{- with .Values.prometheus.serviceMonitor.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "network-intelligence.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: operator
+  namespaceSelector:
+    matchNames:
+      - {{ .Values.namespace.name }}
+  endpoints:
+    - port: metrics
+      interval: {{ .Values.prometheus.serviceMonitor.interval }}
+      path: /metrics
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "network-intelligence.fullname" . }}-collector
+  namespace: {{ .Values.prometheus.serviceMonitor.namespace | default .Values.namespace.name }}
+  labels:
+    {{- include "network-intelligence.labels" . | nindent 4 }}
+    app.kubernetes.io/component: collector
+    {{- with .Values.prometheus.serviceMonitor.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "network-intelligence.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: collector
+  namespaceSelector:
+    matchNames:
+      - {{ .Values.namespace.name }}
+  endpoints:
+    - port: metrics
+      interval: {{ .Values.prometheus.serviceMonitor.interval }}
+      path: /metrics
+{{- end }}

@@ -1,0 +1,120 @@
+# Default values for tensorreaper-network-intelligence
+
+# Operator configuration
+operator:
+  image:
+    repository: tensorreaper/network-intelligence-operator
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  replicas: 1
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  nodeSelector: {}
+  tolerations: []
+
+# eBPF Collector configuration
+collector:
+  image:
+    repository: tensorreaper/ebpf-collector
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  hostNetwork: true
+  nodeSelector: {}
+  tolerations:
+    - operator: Exists
+
+# eBPF configuration
+ebpf:
+  enabled: true
+  programs:
+    - name: tcp_connect
+      enabled: true
+    - name: tcp_close
+      enabled: true
+    - name: dns_monitor
+      enabled: true
+    - name: packet_drop
+      enabled: true
+    - name: nccl_monitor
+      enabled: true
+
+# Prometheus monitoring
+prometheus:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: 15s
+    namespace: ""
+    additionalLabels: {}
+
+# Security features
+security:
+  enabled: true
+  autoBlock: false
+
+# Namespace configuration
+namespace:
+  create: true
+  name: tensorreaper-network
+
+# RBAC configuration
+rbac:
+  create: true
+
+# Service Account configuration
+serviceAccount:
+  create: true
+  operator:
+    name: network-intelligence-operator
+    annotations: {}
+  collector:
+    name: ebpf-collector
+    annotations: {}
+
+# High availability
+ha:
+  enabled: false
+  leaderElection: true
+
+# Container-level security context for the operator
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 65532
+  capabilities:
+    drop:
+      - ALL
+
+# Pod-level security context for the operator
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+# Name overrides
+nameOverride: ""
+fullnameOverride: ""
+
+# Image pull secrets
+imagePullSecrets: []
+
+# Global labels
+labels: {}
+
+# Global annotations
+annotations: {}

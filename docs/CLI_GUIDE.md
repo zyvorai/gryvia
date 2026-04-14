@@ -399,6 +399,146 @@ Validates the YAML file structure and checks that `apiVersion` and `kind` match 
 tensorreaper validate -f job.yaml
 ```
 
+## Network Intelligence Commands
+
+### Network Tracing
+
+```bash
+# Start a live trace session for a pod
+tensorreaper network trace --pod training-worker-0 --duration 5m
+
+# Trace with protocol and port filters
+tensorreaper network trace --pod training-worker-0 \
+  --protocol TCP --port 29500 --duration 2m
+
+# Trace across a namespace
+tensorreaper network trace --namespace ml-research --duration 1m
+
+# View results from a completed trace session
+tensorreaper network trace --session debug-training-latency --results
+```
+
+### Flow Analysis
+
+```bash
+# View real-time flows for a namespace
+tensorreaper network flows --namespace ml-research
+
+# Top flows by volume
+tensorreaper network flows --top 20 --sort bytes
+
+# Flows for a specific pod
+tensorreaper network flows --pod training-worker-0
+
+# Export flows as JSON
+tensorreaper network flows --namespace ml-research --output json
+```
+
+### Service Graph
+
+```bash
+# View ASCII service dependency graph
+tensorreaper network graph --namespace ml-research
+
+# Multiple namespaces
+tensorreaper network graph --namespace ml-research,ml-platform,storage
+
+# Export as DOT format for Graphviz
+tensorreaper network graph --namespace ml-research --output dot > graph.dot
+
+# Include external endpoints
+tensorreaper network graph --namespace ml-research --external
+```
+
+### Network Policy Management
+
+```bash
+# List active flow policies
+tensorreaper network policy list
+
+# Apply a flow policy
+tensorreaper network policy apply -f flow-policy.yaml
+
+# Audit mode (log but don't enforce)
+tensorreaper network policy audit --namespace ml-research
+
+# View autopolicy suggestions
+tensorreaper network policy suggestions
+
+# Accept an autopolicy suggestion
+tensorreaper network policy accept suggestion-name
+
+# View blocked traffic
+tensorreaper network policy blocked --namespace ml-research
+```
+
+### Anomaly Detection
+
+```bash
+# View active network anomalies
+tensorreaper network anomalies
+
+# Filter by severity
+tensorreaper network anomalies --severity critical
+
+# View anomaly details
+tensorreaper network anomalies --name latency-degradation --details
+
+# Acknowledge an anomaly
+tensorreaper network anomalies ack latency-degradation
+
+# View anomaly history
+tensorreaper network anomalies --history --days 7
+```
+
+For full documentation on network intelligence features, see [Network Intelligence Guide](NETWORK_INTELLIGENCE.md).
+
+## Security Commands
+
+```bash
+# View security alerts
+tensorreaper security alerts
+
+# Filter by severity
+tensorreaper security alerts --severity critical
+
+# View security policy status
+tensorreaper security status
+
+# Apply a security policy
+tensorreaper security policy apply -f security-policy.yaml
+
+# View blocked threats
+tensorreaper security alerts --type blocked
+
+# Export security report
+tensorreaper security alerts --output json --days 30 > security-report.json
+```
+
+## GPU Network Analysis Commands
+
+```bash
+# View NCCL communication metrics for a training job
+tensorreaper gpu nccl --job llm-distributed-training
+
+# Monitor GPU memory usage per pod
+tensorreaper gpu memory --namespace ml-research
+
+# View RDMA statistics for a node
+tensorreaper gpu rdma --node gpu-node-01
+
+# Training communication analysis
+tensorreaper gpu training --job llm-distributed-training
+
+# Straggler detection
+tensorreaper gpu training --job llm-distributed-training --stragglers
+
+# Gradient compression analysis
+tensorreaper gpu training --job llm-distributed-training --gradients
+```
+
+For full documentation on GPU-level network analysis, see [Network Intelligence Guide](NETWORK_INTELLIGENCE.md#gpu-programs).
+
 ## Advanced Usage
 
 ### Using Different Contexts

@@ -1,0 +1,5 @@
+apiVersion: v2
+name: tensorreaper-network-intelligence
+description: TensorReaper Network Intelligence Operator with eBPF
+version: 1.0.0
+appVersion: "1.0.0"

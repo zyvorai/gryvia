@@ -1,0 +1,213 @@
+{
+  "dashboard": {
+    "uid": "tensorreaper-gpu-training",
+    "title": "TensorReaper - GPU Training Communications",
+    "tags": ["tensorreaper", "gpu", "training", "nccl"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 1,
+    "refresh": "10s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "templating": {
+      "list": [
+        {
+          "name": "DS_PROMETHEUS",
+          "type": "datasource",
+          "query": "prometheus"
+        },
+        {
+          "name": "job_name",
+          "type": "query",
+          "datasource": "${DS_PROMETHEUS}",
+          "query": "label_values(tensorreaper_nccl_operation_latency_seconds_bucket, job_name)",
+          "refresh": 2,
+          "includeAll": true,
+          "multi": true
+        }
+      ]
+    },
+    "panels": [
+      {
+        "title": "NCCL Operation Latency by Type",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+        "datasource": "${DS_PROMETHEUS}",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, sum(rate(tensorreaper_nccl_operation_latency_seconds_bucket{job_name=~\"$job_name\"}[5m])) by (le, operation))",
+            "legendFormat": "{{operation}} p50"
+          },
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(tensorreaper_nccl_operation_latency_seconds_bucket{job_name=~\"$job_name\"}[5m])) by (le, operation))",
+            "legendFormat": "{{operation}} p95"
+          },
+          {
+            "expr": "histogram_quantile(0.99, sum(rate(tensorreaper_nccl_operation_latency_seconds_bucket{job_name=~\"$job_name\"}[5m])) by (le, operation))",
+            "legendFormat": "{{operation}} p99"
+          }
+        ],
+        "yaxes": [
+          {"format": "s", "min": 0},
+          {"format": "short"}
+        ],
+        "lines": true,
+        "fill": 0,
+        "linewidth": 2
+      },
+      {
+        "title": "NCCL Bytes Transferred",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+        "datasource": "${DS_PROMETHEUS}",
+        "targets": [
+          {
+            "expr": "sum(rate(tensorreaper_nccl_bytes_total{job_name=~\"$job_name\"}[5m])) by (operation)",
+            "legendFormat": "{{operation}}"
+          }
+        ],
+        "yaxes": [
+          {"format": "Bps", "min": 0},
+          {"format": "short"}
+        ],
+        "lines": true,
+        "fill": 1,
+        "linewidth": 2,
+        "stack": true
+      },
+      {
+        "title": "GPU Memory Transfer Bandwidth",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 8, "x": 0, "y": 8},
+        "datasource": "${DS_PROMETHEUS}",
+        "targets": [
+          {
+            "expr": "sum(rate(tensorreaper_gpu_memory_transfer_bytes_total{job_name=~\"$job_name\", direction=\"H2D\"}[5m]))",
+            "legendFormat": "Host to Device (H2D)"
+          },
+          {
+            "expr": "sum(rate(tensorreaper_gpu_memory_transfer_bytes_total{job_name=~\"$job_name\", direction=\"D2H\"}[5m]))",
+            "legendFormat": "Device to Host (D2H)"
+          },
+          {
+            "expr": "sum(rate(tensorreaper_gpu_memory_transfer_bytes_total{job_name=~\"$job_name\", direction=\"D2D\"}[5m]))",
+            "legendFormat": "Device to Device (D2D)"
+          }
+        ],
+        "yaxes": [
+          {"format": "Bps", "min": 0},
+          {"format": "short"}
+        ],
+        "lines": true,
+        "fill": 1,
+        "linewidth": 2,
+        "seriesOverrides": [
+          {"alias": "Host to Device (H2D)", "color": "#73BF69"},
+          {"alias": "Device to Host (D2H)", "color": "#FF9830"},
+          {"alias": "Device to Device (D2D)", "color": "#5794F2"}
+        ]
+      },
+      {
+        "title": "RDMA Send/Recv Bandwidth",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 8, "x": 8, "y": 8},
+        "datasource": "${DS_PROMETHEUS}",
+        "targets": [
+          {
+            "expr": "sum(rate(tensorreaper_rdma_bytes_total{job_name=~\"$job_name\", direction=\"send\"}[5m]))",
+            "legendFormat": "RDMA Send"
+          },
+          {
+            "expr": "sum(rate(tensorreaper_rdma_bytes_total{job_name=~\"$job_name\", direction=\"recv\"}[5m]))",
+            "legendFormat": "RDMA Recv"
+          }
+        ],
+        "yaxes": [
+          {"format": "Bps", "min": 0},
+          {"format": "short"}
+        ],
+        "lines": true,
+        "fill": 1,
+        "linewidth": 2,
+        "seriesOverrides": [
+          {"alias": "RDMA Send", "color": "#B877D9"},
+          {"alias": "RDMA Recv", "color": "#8AB8FF"}
+        ]
+      },
+      {
+        "title": "Communication / Compute Ratio",
+        "type": "stat",
+        "gridPos": {"h": 8, "w": 8, "x": 16, "y": 8},
+        "datasource": "${DS_PROMETHEUS}",
+        "targets": [
+          {
+            "expr": "sum(rate(tensorreaper_training_communication_seconds_total{job_name=~\"$job_name\"}[5m])) / sum(rate(tensorreaper_training_compute_seconds_total{job_name=~\"$job_name\"}[5m]))",
+            "legendFormat": "Comm/Compute Ratio"
+          }
+        ],
+        "options": {
+          "colorMode": "background",
+          "graphMode": "area",
+          "textMode": "value_and_name"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "decimals": 2,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 0.3, "color": "yellow"},
+                {"value": 0.6, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "title": "Straggler Events Timeline",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+        "datasource": "${DS_PROMETHEUS}",
+        "targets": [
+          {
+            "expr": "sum(rate(tensorreaper_training_straggler_events_total{job_name=~\"$job_name\"}[5m])) by (gpu_id)",
+            "legendFormat": "GPU {{gpu_id}}"
+          }
+        ],
+        "yaxes": [
+          {"format": "short", "min": 0, "label": "Events/s"},
+          {"format": "short"}
+        ],
+        "lines": false,
+        "bars": true,
+        "fill": 1,
+        "stack": true
+      },
+      {
+        "title": "Pipeline Bottleneck Indicator",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+        "datasource": "${DS_PROMETHEUS}",
+        "targets": [
+          {
+            "expr": "tensorreaper_training_pipeline_stage_duration_seconds{job_name=~\"$job_name\"}",
+            "legendFormat": "{{stage}} (rank {{rank}})"
+          }
+        ],
+        "yaxes": [
+          {"format": "s", "min": 0, "label": "Stage Duration"},
+          {"format": "short"}
+        ],
+        "lines": true,
+        "fill": 1,
+        "linewidth": 2,
+        "thresholds": [
+          {"value": null, "colorMode": "warning", "fill": false, "line": false, "op": "gt"}
+        ]
+      }
+    ]
+  }
+}

@@ -12,6 +12,11 @@ Complete guide to TensorReaper's advanced capabilities for enterprise GPU infras
 6. [Auto-Scaling](#auto-scaling)
 7. [Budget Management](#budget-management)
 8. [Priority & Preemption](#priority--preemption)
+9. [ML Workflows](#ml-workflows)
+10. [Network Intelligence](#network-intelligence)
+11. [Advanced Scheduling](#advanced-scheduling)
+12. [OIDC/SSO Authentication](#oidcsso-authentication)
+13. [Python and Go SDKs](#python-and-go-sdks)
 
 ---
 
@@ -522,6 +527,145 @@ spec:
     enabled: true  # Required for preemption
     frequency: 10m
 ```
+
+---
+
+## ML Workflows
+
+TensorReaper provides a complete ML workflow toolkit for managing the full lifecycle of machine learning projects.
+
+- **FabricAutoTuner**: Hyperparameter optimization with Grid, Random, Bayesian (TPE), and ASHA early stopping strategies.
+- **FabricWorkflow**: DAG-based multi-step ML pipelines with dependency management, conditional execution, and fan-out/fan-in patterns.
+- **FabricModelRegistry**: Model versioning with dev, staging, and production stage promotion. Supports auto-deploy on production promotion.
+- **FabricInferenceService**: Production model serving with Triton, vLLM, TensorRT-LLM, and TorchServe backends. Includes canary deployments and auto-rollback.
+- **FabricWorkspace**: Managed interactive Jupyter and VS Code environments with GPU access, persistent storage, and idle pause/resume.
+
+For full documentation, examples, and CLI usage, see the **[ML Workflows Guide](ML_WORKFLOWS.md)**.
+
+---
+
+## Network Intelligence
+
+eBPF-powered network observability, security, and performance optimization for GPU clusters.
+
+- **24 eBPF programs** covering GPU communication (NCCL, RDMA), security (container escape, crypto mining, exfiltration), performance (TCP tuning, NUMA path optimization), and AI-specific analysis (training patterns, data pipeline bottlenecks, gradient compression).
+- **Intent-based network policies** (FabricFlowPolicy) for high-level traffic control.
+- **Self-healing firewall** (FabricAutoPolicy) that learns traffic patterns and generates policies automatically.
+- **Anomaly detection** (FabricNetworkAnomaly) with baseline-driven alerting.
+- **Service dependency graphs** (FabricServiceGraph) generated from observed traffic.
+- **Cost attribution** (FabricNetworkCost) per team, job, and service.
+- **Training insights** (FabricTrainingInsight) with straggler detection and communication analysis.
+
+For full documentation, CRD examples, and CLI commands, see the **[Network Intelligence Guide](NETWORK_INTELLIGENCE.md)**.
+
+---
+
+## Advanced Scheduling
+
+Sophisticated scheduling capabilities for GPU workloads.
+
+- **Gang Scheduling**: Atomic multi-pod placement to prevent deadlocks in distributed training.
+- **DRF Fair-Share Queue**: Dominant Resource Fairness with hierarchical queues, backfill, and borrowing.
+- **Elastic Training**: Dynamic worker scaling via PyTorch Elastic integration with fault tolerance.
+- **Admission Webhooks**: Validating webhook for quota/budget enforcement and mutating webhook for automatic NCCL environment injection.
+- **Priority Preemption**: Checkpoint-aware preemption with automatic requeueing.
+
+For full documentation and configuration examples, see the **[Advanced Scheduling Guide](SCHEDULING.md)**.
+
+---
+
+## OIDC/SSO Authentication
+
+TensorReaper supports enterprise authentication via OIDC (OpenID Connect) and SSO providers.
+
+- **Supported Providers**: Okta, Azure AD, Google Workspace, Keycloak, Auth0, and any OIDC-compliant provider.
+- **RBAC Integration**: OIDC groups are mapped to TensorReaper roles (admin, member, viewer) for team-based access control.
+- **Token Refresh**: Automatic token refresh for long-running CLI sessions and API access.
+- **MFA Support**: Multi-factor authentication enforced through the identity provider.
+
+Configure OIDC via the operator ConfigMap:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tensorreaper-operator-config
+  namespace: tensorreaper
+data:
+  auth.yaml: |
+    oidc:
+      enabled: true
+      issuerURL: https://auth.example.com
+      clientID: tensorreaper
+      clientSecret:
+        secretRef: oidc-client-secret
+      scopes: [openid, profile, email, groups]
+      groupsClaim: groups
+      roleMapping:
+        admin: ["platform-admins"]
+        member: ["ml-engineers", "data-scientists"]
+        viewer: ["ml-viewers"]
+```
+
+---
+
+## Python and Go SDKs
+
+TensorReaper provides official SDKs for programmatic access to all platform features.
+
+### Python SDK
+
+```bash
+pip install tensorreaper
+```
+
+```python
+from tensorreaper import TensorReaperClient
+
+client = TensorReaperClient(
+    api_url="http://tensorreaper-api:8000",
+    api_key="your-api-key"
+)
+
+# Submit a job
+job = client.jobs.create(namespace="default", spec={...})
+
+# List models in registry
+models = client.models.list(stage="production")
+
+# Get training insights
+insight = client.insights.training(job="llm-training")
+
+# Stream logs
+for line in client.jobs.logs("default", "my-job", follow=True):
+    print(line)
+```
+
+### Go SDK
+
+```bash
+go get github.com/ssahani/TensorReaper/sdk/go/tensorreaper
+```
+
+```go
+import "github.com/ssahani/TensorReaper/sdk/go/tensorreaper"
+
+client := tensorreaper.NewClient(tensorreaper.Config{
+    APIURL: "http://tensorreaper-api:8000",
+    APIKey: "your-api-key",
+})
+
+// Submit a job
+job, err := client.Jobs.Create(ctx, "default", &tensorreaper.JobSpec{...})
+
+// List models in registry
+models, err := client.Models.List(ctx, tensorreaper.ModelFilter{Stage: "production"})
+
+// Get training insights
+insight, err := client.Insights.Training(ctx, "llm-training")
+```
+
+For full SDK documentation and examples, see the [API Reference](developer-guide/api-reference.md#sdks).
 
 ---
 

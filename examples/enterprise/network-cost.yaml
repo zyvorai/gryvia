@@ -1,0 +1,42 @@
+# FabricNetworkCost - Track and report network costs per team and zone
+# Monitors network traffic across production namespaces, applies zone-based
+# pricing, and generates hourly cost reports attributed to specific teams.
+apiVersion: tensorreaper.ai/v1
+kind: FabricNetworkCost
+metadata:
+  name: production-network-costs
+  namespace: tensorreaper-system
+spec:
+  # Namespaces to track network costs for
+  targetNamespaces:
+    - ml-training
+    - ml-inference
+    - ml-serving
+    - data-pipeline
+
+  # Cost rates per GB by traffic zone
+  costPerGB:
+    sameZone: 0.00              # Free within same availability zone
+    crossZone: 0.01             # $0.01/GB for cross-zone traffic
+    internetEgress: 0.09        # $0.09/GB for internet egress
+
+  # How often to generate cost reports
+  reportingInterval: "1h"
+
+  # Map namespaces to teams and cost centers for chargeback
+  costCenters:
+    - namespace: ml-training
+      team: ml-research
+      costCenter: "CC-4001"
+
+    - namespace: ml-inference
+      team: ml-platform
+      costCenter: "CC-4002"
+
+    - namespace: ml-serving
+      team: ml-platform
+      costCenter: "CC-4002"
+
+    - namespace: data-pipeline
+      team: data-engineering
+      costCenter: "CC-3001"
