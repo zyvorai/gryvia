@@ -191,6 +191,18 @@ enum Commands {
         #[command(subcommand)]
         action: NetworkCommands,
     },
+
+    /// Security detection and enforcement commands
+    Security {
+        #[command(subcommand)]
+        action: SecurityCommands,
+    },
+
+    /// GPU communication and training analysis commands
+    Gpu {
+        #[command(subcommand)]
+        action: GpuCommands,
+    },
 }
 
 #[derive(Subcommand)]
@@ -308,6 +320,124 @@ enum PolicyCommands {
         /// Output format (table, json, yaml)
         #[arg(short, long, default_value = "table")]
         output: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum SecurityCommands {
+    /// Show security alerts
+    Alerts {
+        /// Filter by severity (critical, high, medium, low)
+        #[arg(long)]
+        severity: Option<String>,
+
+        /// Filter by alert type (escape, mining, exfiltration, privesc)
+        #[arg(long, name = "type")]
+        alert_type: Option<String>,
+
+        /// Target namespace
+        #[arg(long, default_value = "default")]
+        security_namespace: String,
+    },
+
+    /// Show security status overview
+    Status {
+        /// Target namespace
+        #[arg(long, default_value = "default")]
+        security_namespace: String,
+    },
+
+    /// Manage security policies
+    Policy {
+        #[command(subcommand)]
+        action: SecurityPolicyCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum SecurityPolicyCommands {
+    /// List security policies
+    List {
+        /// Target namespace
+        #[arg(long, default_value = "default")]
+        security_namespace: String,
+
+        /// Output format (table, json)
+        #[arg(short, long, default_value = "table")]
+        output: String,
+    },
+
+    /// Create a security policy
+    Create {
+        /// Policy name
+        name: String,
+
+        /// Target namespaces (comma-separated)
+        #[arg(long)]
+        namespaces: String,
+
+        /// Detection rules to enable (comma-separated: escape,mining,exfiltration,privesc,driver_fim)
+        #[arg(long)]
+        rules: String,
+
+        /// Enable automatic blocking of detected threats
+        #[arg(long)]
+        auto_block: bool,
+
+        /// Target namespace for the policy CR
+        #[arg(long, default_value = "default")]
+        security_namespace: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum GpuCommands {
+    /// Show NCCL collective operation stats for a job
+    Nccl {
+        /// Job name
+        #[arg(long)]
+        job: String,
+
+        /// Follow / live stream mode
+        #[arg(short, long)]
+        follow: bool,
+
+        /// Target namespace
+        #[arg(long, default_value = "default")]
+        gpu_namespace: String,
+    },
+
+    /// Show GPU memory transfer stats for a node
+    Memory {
+        /// Node name
+        #[arg(long)]
+        node: String,
+
+        /// Target namespace
+        #[arg(long, default_value = "default")]
+        gpu_namespace: String,
+    },
+
+    /// Show RDMA stats for a node
+    Rdma {
+        /// Node name
+        #[arg(long)]
+        node: String,
+
+        /// Target namespace
+        #[arg(long, default_value = "default")]
+        gpu_namespace: String,
+    },
+
+    /// Show training insights for a job
+    Training {
+        /// Job name
+        #[arg(long)]
+        job: String,
+
+        /// Target namespace
+        #[arg(long, default_value = "default")]
+        gpu_namespace: String,
     },
 }
 
@@ -460,6 +590,142 @@ async fn main() -> Result<()> {
                         service.as_deref(),
                         severity.as_deref(),
                         &output,
+                    )
+                    .await?;
+                }
+            }
+        }
+        Commands::Security { action } => {
+            let has_ns_flag = namespace_flag.is_some();
+            let ns_default = client.namespace().to_string();
+            match action {
+                SecurityCommands::Alerts {
+                    severity,
+                    alert_type,
+                    security_namespace,
+                } => {
+                    let effective_ns = if has_ns_flag { &ns_default } else { &security_namespace };
+                    commands::security::execute(
+                        &client,
+                        commands::security::SecurityAction::Alerts {
+                            severity,
+                            alert_type,
+                            namespace: effective_ns.to_string(),
+                        },
+                    )
+                    .await?;
+                }
+                SecurityCommands::Status { security_namespace } => {
+                    let effective_ns = if has_ns_flag { &ns_default } else { &security_namespace };
+                    commands::security::execute(
+                        &client,
+                        commands::security::SecurityAction::Status {
+                            namespace: effective_ns.to_string(),
+                        },
+                    )
+                    .await?;
+                }
+                SecurityCommands::Policy { action: policy_action } => {
+                    match policy_action {
+                        SecurityPolicyCommands::List {
+                            security_namespace,
+                            output,
+                        } => {
+                            let effective_ns = if has_ns_flag { &ns_default } else { &security_namespace };
+                            commands::security::execute(
+                                &client,
+                                commands::security::SecurityAction::PolicyList {
+                                    namespace: effective_ns.to_string(),
+                                    output,
+                                },
+                            )
+                            .await?;
+                        }
+                        SecurityPolicyCommands::Create {
+                            name,
+                            namespaces,
+                            rules,
+                            auto_block,
+                            security_namespace,
+                        } => {
+                            let effective_ns = if has_ns_flag { &ns_default } else { &security_namespace };
+                            let ns_list: Vec<String> = namespaces.split(',').map(|s| s.trim().to_string()).collect();
+                            let rule_list: Vec<String> = rules.split(',').map(|s| s.trim().to_string()).collect();
+                            commands::security::execute(
+                                &client,
+                                commands::security::SecurityAction::PolicyCreate {
+                                    name,
+                                    namespaces: ns_list,
+                                    rules: rule_list,
+                                    auto_block,
+                                    namespace: effective_ns.to_string(),
+                                },
+                            )
+                            .await?;
+                        }
+                    }
+                }
+            }
+        }
+        Commands::Gpu { action } => {
+            let has_ns_flag = namespace_flag.is_some();
+            let ns_default = client.namespace().to_string();
+            match action {
+                GpuCommands::Nccl {
+                    job,
+                    follow,
+                    gpu_namespace,
+                } => {
+                    let effective_ns = if has_ns_flag { &ns_default } else { &gpu_namespace };
+                    commands::gpu_trace::execute(
+                        &client,
+                        commands::gpu_trace::GpuAction::Nccl {
+                            job,
+                            follow,
+                            namespace: effective_ns.to_string(),
+                        },
+                    )
+                    .await?;
+                }
+                GpuCommands::Memory {
+                    node,
+                    gpu_namespace,
+                } => {
+                    let effective_ns = if has_ns_flag { &ns_default } else { &gpu_namespace };
+                    commands::gpu_trace::execute(
+                        &client,
+                        commands::gpu_trace::GpuAction::Memory {
+                            node,
+                            namespace: effective_ns.to_string(),
+                        },
+                    )
+                    .await?;
+                }
+                GpuCommands::Rdma {
+                    node,
+                    gpu_namespace,
+                } => {
+                    let effective_ns = if has_ns_flag { &ns_default } else { &gpu_namespace };
+                    commands::gpu_trace::execute(
+                        &client,
+                        commands::gpu_trace::GpuAction::Rdma {
+                            node,
+                            namespace: effective_ns.to_string(),
+                        },
+                    )
+                    .await?;
+                }
+                GpuCommands::Training {
+                    job,
+                    gpu_namespace,
+                } => {
+                    let effective_ns = if has_ns_flag { &ns_default } else { &gpu_namespace };
+                    commands::gpu_trace::execute(
+                        &client,
+                        commands::gpu_trace::GpuAction::Training {
+                            job,
+                            namespace: effective_ns.to_string(),
+                        },
                     )
                     .await?;
                 }

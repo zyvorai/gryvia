@@ -17,6 +17,9 @@ import SubmitJob from './pages/SubmitJob'
 import NetworkOverview from './pages/NetworkOverview'
 import NetworkFlows from './pages/NetworkFlows'
 import NetworkPolicies from './pages/NetworkPolicies'
+import SecurityOverview from './pages/SecurityOverview'
+import GpuCommunication from './pages/GpuCommunication'
+import NetworkCost from './pages/NetworkCost'
 import Login from './pages/Login'
 import AuthCallback from './pages/AuthCallback'
 
@@ -134,6 +137,26 @@ function App() {
             <Route path="/network/policies" element={
               <RequireAuth>
                 <Layout><NetworkPolicies /></Layout>
+              </RequireAuth>
+            } />
+            <Route path="/network/costs" element={
+              <RequireAuth>
+                <Layout><NetworkCost /></Layout>
+              </RequireAuth>
+            } />
+            <Route path="/security" element={
+              <RequireAuth>
+                <Layout><SecurityOverview /></Layout>
+              </RequireAuth>
+            } />
+            <Route path="/gpu" element={
+              <RequireAuth>
+                <Layout><GpuCommunication /></Layout>
+              </RequireAuth>
+            } />
+            <Route path="/gpu/communication" element={
+              <RequireAuth>
+                <Layout><GpuCommunication /></Layout>
               </RequireAuth>
             } />
             <Route path="/costs" element={

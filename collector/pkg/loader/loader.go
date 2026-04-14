@@ -6,24 +6,28 @@ package loader
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/perf"
+	"github.com/cilium/ebpf/ringbuf"
 	"go.uber.org/zap"
 )
 
 // Manager owns the lifecycle of all loaded eBPF programs.
 type Manager struct {
-	dir   string
-	iface string
-	log   *zap.SugaredLogger
+	dir       string
+	iface     string
+	cgroupDir string
+	log       *zap.SugaredLogger
 
 	collections []*ebpf.Collection
 	links       []link.Link
 	readers     []*perf.Reader
+	ringReaders []*ringbuf.Reader
 }
 
 // New creates a Manager that will load programs from dir and attach
@@ -33,10 +37,16 @@ func New(dir, iface string, log *zap.SugaredLogger) (*Manager, error) {
 		return nil, fmt.Errorf("ebpf directory not found: %w", err)
 	}
 	return &Manager{
-		dir:   dir,
-		iface: iface,
-		log:   log,
+		dir:       dir,
+		iface:     iface,
+		cgroupDir: "/sys/fs/cgroup",
+		log:       log,
 	}, nil
+}
+
+// SetCgroupDir sets the cgroup path used for SockOps attachment.
+func (m *Manager) SetCgroupDir(path string) {
+	m.cgroupDir = path
 }
 
 // LoadAndAttach discovers and loads every eBPF object file in the
@@ -84,13 +94,15 @@ func (m *Manager) loadObject(path string) error {
 		m.log.Infow("attached program", "name", name, "type", prog.Type().String())
 	}
 
-	// Open perf readers for any PERF_EVENT_ARRAY maps.
+	// Open perf readers for PERF_EVENT_ARRAY maps and ring buffer readers
+	// for RINGBUF maps.
 	for name, mp := range coll.Maps {
 		info, err := mp.Info()
 		if err != nil {
 			continue
 		}
-		if info.Type == ebpf.PerfEventArray {
+		switch info.Type {
+		case ebpf.PerfEventArray:
 			reader, err := perf.NewReader(mp, os.Getpagesize()*64)
 			if err != nil {
 				m.log.Warnw("failed to create perf reader",
@@ -99,6 +111,16 @@ func (m *Manager) loadObject(path string) error {
 			}
 			m.readers = append(m.readers, reader)
 			m.log.Infow("opened perf reader", "map", name)
+
+		case ebpf.RingBuf:
+			reader, err := ringbuf.NewReader(mp)
+			if err != nil {
+				m.log.Warnw("failed to create ring buffer reader",
+					"map", name, "error", err)
+				continue
+			}
+			m.ringReaders = append(m.ringReaders, reader)
+			m.log.Infow("opened ring buffer reader", "map", name)
 		}
 	}
 
@@ -139,6 +161,76 @@ func (m *Manager) attachProgram(name string, prog *ebpf.Program, coll *ebpf.Coll
 		}
 		m.links = append(m.links, l)
 
+	case ebpf.Tracing:
+		// fentry/fexit programs.
+		l, err := link.AttachTracing(link.TracingOptions{
+			Program: prog,
+		})
+		if err != nil {
+			return fmt.Errorf("tracing attach %s: %w", name, err)
+		}
+		m.links = append(m.links, l)
+
+	case ebpf.SchedCLS:
+		// TC classifier programs via TCX.
+		iface, err := net.InterfaceByName(m.iface)
+		if err != nil {
+			return fmt.Errorf("interface lookup for tc %s: %w", m.iface, err)
+		}
+		l, err := link.AttachTCX(link.TCXOptions{
+			Program:   prog,
+			Attach:    ebpf.AttachTCXIngress,
+			Interface: iface.Index,
+		})
+		if err != nil {
+			return fmt.Errorf("tcx attach %s: %w", name, err)
+		}
+		m.links = append(m.links, l)
+
+	case ebpf.SockOps:
+		// Attach to the cgroup root for socket-level interception.
+		cgroupF, err := os.Open(m.cgroupDir)
+		if err != nil {
+			return fmt.Errorf("open cgroup %s: %w", m.cgroupDir, err)
+		}
+		defer cgroupF.Close()
+		l, err := link.AttachCgroup(link.CgroupOptions{
+			Path:    m.cgroupDir,
+			Program: prog,
+			Attach:  ebpf.AttachCGroupSockOps,
+		})
+		if err != nil {
+			return fmt.Errorf("sockops cgroup attach %s: %w", name, err)
+		}
+		m.links = append(m.links, l)
+
+	case ebpf.SkMsg:
+		// SkMsg programs attach to a sock_map via raw link.
+		// Look for a sock_map in the same collection.
+		var sockMap *ebpf.Map
+		for _, mp := range coll.Maps {
+			info, err := mp.Info()
+			if err != nil {
+				continue
+			}
+			if info.Type == ebpf.SockHash || info.Type == ebpf.Array {
+				sockMap = mp
+				break
+			}
+		}
+		if sockMap == nil {
+			return fmt.Errorf("sk_msg %s: no suitable sock_map found in collection", name)
+		}
+		l, err := link.AttachRawLink(link.RawLinkOptions{
+			Program: prog,
+			Attach:  ebpf.AttachSkMsgVerdict,
+			Target:  sockMap.FD(),
+		})
+		if err != nil {
+			return fmt.Errorf("sk_msg attach %s: %w", name, err)
+		}
+		m.links = append(m.links, l)
+
 	default:
 		return fmt.Errorf("unsupported program type: %s", prog.Type())
 	}
@@ -148,6 +240,11 @@ func (m *Manager) attachProgram(name string, prog *ebpf.Program, coll *ebpf.Coll
 // PerfReaders returns all perf-event readers opened during loading.
 func (m *Manager) PerfReaders() []*perf.Reader {
 	return m.readers
+}
+
+// RingBufReaders returns all ring buffer readers opened during loading.
+func (m *Manager) RingBufReaders() []*ringbuf.Reader {
+	return m.ringReaders
 }
 
 // Close detaches all programs and frees resources.
@@ -160,6 +257,11 @@ func (m *Manager) Close() {
 	for _, r := range m.readers {
 		if err := r.Close(); err != nil {
 			m.log.Warnw("closing perf reader", "error", err)
+		}
+	}
+	for _, r := range m.ringReaders {
+		if err := r.Close(); err != nil {
+			m.log.Warnw("closing ring buffer reader", "error", err)
 		}
 	}
 	for _, c := range m.collections {

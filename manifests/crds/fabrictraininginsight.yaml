@@ -1,0 +1,82 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: fabrictraininginsights.tensorreaper.ai
+spec:
+  group: tensorreaper.ai
+  names:
+    kind: FabricTrainingInsight
+    listKind: FabricTrainingInsightList
+    plural: fabrictraininginsights
+    singular: fabrictraininginsight
+    shortNames: [fti]
+    categories: [tensorreaper, all]
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                targetJob:
+                  type: string
+                  description: "Name of the FabricAIJob to analyze"
+                analysisWindow:
+                  type: string
+                  description: "Time window for analysis (e.g., 5m, 1h)"
+                metrics:
+                  type: array
+                  items:
+                    type: string
+                    enum: [collective_timing, straggler_detection, communication_ratio, pattern_analysis]
+            status:
+              type: object
+              properties:
+                phase:
+                  type: string
+                rankStats:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      rank:
+                        type: integer
+                      avgLatencyNs:
+                        type: integer
+                        format: int64
+                      totalBytes:
+                        type: integer
+                        format: int64
+                      isStraggler:
+                        type: boolean
+                commPattern:
+                  type: string
+                  enum: [ring_allreduce, tree_allreduce, pipelined]
+                commComputeRatio:
+                  type: number
+                  format: double
+                stragglers:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      rank:
+                        type: integer
+                      slowdownFactor:
+                        type: number
+                        format: double
+                      reason:
+                        type: string
+                bottleneck:
+                  type: string
+                  enum: [compute, communication, data_loading]
+                lastAnalysis:
+                  type: string
+                  format: date-time
+      subresources:
+        status: {}

@@ -514,6 +514,347 @@ type FabricNetworkAnomalyList struct {
 	Items           []FabricNetworkAnomaly `json:"items"`
 }
 
+// =============================================================================
+// FabricSecurityPolicy - eBPF-based security detection and enforcement
+// =============================================================================
+
+// SecurityDetectionRule defines a single security detection rule
+type SecurityDetectionRule struct {
+	// Type is the detection type (escape, mining, exfiltration, privesc, driver_fim)
+	Type string `json:"type,omitempty"`
+
+	// Enabled indicates whether this detection rule is active
+	Enabled bool `json:"enabled,omitempty"`
+
+	// Sensitivity controls the detection sensitivity (low, medium, high)
+	Sensitivity string `json:"sensitivity,omitempty"`
+}
+
+// FabricSecurityPolicySpec defines the desired state of FabricSecurityPolicy
+type FabricSecurityPolicySpec struct {
+	// TargetNamespaces is the list of namespaces to monitor
+	TargetNamespaces []string `json:"targetNamespaces,omitempty"`
+
+	// DetectionRules defines the security detection rules to apply
+	DetectionRules []SecurityDetectionRule `json:"detectionRules,omitempty"`
+
+	// AlertWebhook is the URL to send security alerts to
+	AlertWebhook string `json:"alertWebhook,omitempty"`
+
+	// AutoBlock enables automatic blocking of detected threats
+	AutoBlock bool `json:"autoBlock,omitempty"`
+}
+
+// FabricSecurityPolicyStatus defines the observed state of FabricSecurityPolicy
+type FabricSecurityPolicyStatus struct {
+	// Phase is the current reconciliation phase
+	Phase string `json:"phase,omitempty"`
+
+	// ActiveDetections is the number of active detection rules
+	ActiveDetections int `json:"activeDetections,omitempty"`
+
+	// AlertsTriggered is the total number of alerts triggered
+	AlertsTriggered int `json:"alertsTriggered,omitempty"`
+
+	// LastAlert is the timestamp of the last alert
+	LastAlert metav1.Time `json:"lastAlert,omitempty"`
+
+	// DetectionCounts maps detection type to count of triggered alerts
+	DetectionCounts map[string]int `json:"detectionCounts,omitempty"`
+}
+
+//+kubebuilder:object:root=true
+//+kubebuilder:subresource:status
+
+// FabricSecurityPolicy is the Schema for the fabricsecuritypolicies API
+type FabricSecurityPolicy struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   FabricSecurityPolicySpec   `json:"spec,omitempty"`
+	Status FabricSecurityPolicyStatus `json:"status,omitempty"`
+}
+
+//+kubebuilder:object:root=true
+
+// FabricSecurityPolicyList contains a list of FabricSecurityPolicy
+type FabricSecurityPolicyList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []FabricSecurityPolicy `json:"items"`
+}
+
+// =============================================================================
+// FabricNetworkCost - Network cost tracking and reporting
+// =============================================================================
+
+// CostPerGB defines the cost rates for different traffic zones
+type CostPerGB struct {
+	// SameZone is the cost per GB for same-zone traffic
+	SameZone float64 `json:"sameZone,omitempty"`
+
+	// CrossZone is the cost per GB for cross-zone traffic
+	CrossZone float64 `json:"crossZone,omitempty"`
+
+	// InternetEgress is the cost per GB for internet egress traffic
+	InternetEgress float64 `json:"internetEgress,omitempty"`
+}
+
+// CostCenterMapping maps a namespace to a team and cost center
+type CostCenterMapping struct {
+	// Namespace is the Kubernetes namespace
+	Namespace string `json:"namespace,omitempty"`
+
+	// Team is the team responsible for this namespace
+	Team string `json:"team,omitempty"`
+
+	// CostCenter is the cost center identifier
+	CostCenter string `json:"costCenter,omitempty"`
+}
+
+// NetworkCostReport contains a periodic cost report for a namespace/team
+type NetworkCostReport struct {
+	// Period is the reporting period (e.g., "2024-01-15")
+	Period string `json:"period,omitempty"`
+
+	// Namespace is the Kubernetes namespace
+	Namespace string `json:"namespace,omitempty"`
+
+	// Team is the team responsible
+	Team string `json:"team,omitempty"`
+
+	// SameZoneBytes is the total bytes for same-zone traffic
+	SameZoneBytes int64 `json:"sameZoneBytes,omitempty"`
+
+	// CrossZoneBytes is the total bytes for cross-zone traffic
+	CrossZoneBytes int64 `json:"crossZoneBytes,omitempty"`
+
+	// ExternalBytes is the total bytes for external traffic
+	ExternalBytes int64 `json:"externalBytes,omitempty"`
+
+	// TotalCostUSD is the total cost in USD for this period
+	TotalCostUSD float64 `json:"totalCostUSD,omitempty"`
+}
+
+// FabricNetworkCostSpec defines the desired state of FabricNetworkCost
+type FabricNetworkCostSpec struct {
+	// TargetNamespaces is the list of namespaces to track costs for
+	TargetNamespaces []string `json:"targetNamespaces,omitempty"`
+
+	// CostPerGB defines the cost rates for different traffic zones
+	CostPerGB CostPerGB `json:"costPerGB,omitempty"`
+
+	// ReportingInterval is the interval between cost reports (e.g., "1h", "24h")
+	ReportingInterval string `json:"reportingInterval,omitempty"`
+
+	// CostCenters maps namespaces to teams and cost centers
+	CostCenters []CostCenterMapping `json:"costCenters,omitempty"`
+}
+
+// FabricNetworkCostStatus defines the observed state of FabricNetworkCost
+type FabricNetworkCostStatus struct {
+	// Phase is the current reconciliation phase
+	Phase string `json:"phase,omitempty"`
+
+	// Reports is the list of generated cost reports
+	Reports []NetworkCostReport `json:"reports,omitempty"`
+
+	// LastReport is the timestamp of the last cost report
+	LastReport metav1.Time `json:"lastReport,omitempty"`
+}
+
+//+kubebuilder:object:root=true
+//+kubebuilder:subresource:status
+
+// FabricNetworkCost is the Schema for the fabricnetworkcosts API
+type FabricNetworkCost struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   FabricNetworkCostSpec   `json:"spec,omitempty"`
+	Status FabricNetworkCostStatus `json:"status,omitempty"`
+}
+
+//+kubebuilder:object:root=true
+
+// FabricNetworkCostList contains a list of FabricNetworkCost
+type FabricNetworkCostList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []FabricNetworkCost `json:"items"`
+}
+
+// =============================================================================
+// FabricTrainingInsight - NCCL/training communication analysis
+// =============================================================================
+
+// RankStat contains per-rank communication statistics
+type RankStat struct {
+	// Rank is the distributed training rank
+	Rank int `json:"rank,omitempty"`
+
+	// AvgLatencyNs is the average communication latency in nanoseconds
+	AvgLatencyNs int64 `json:"avgLatencyNs,omitempty"`
+
+	// TotalBytes is the total bytes communicated by this rank
+	TotalBytes int64 `json:"totalBytes,omitempty"`
+
+	// IsStraggler indicates whether this rank is identified as a straggler
+	IsStraggler bool `json:"isStraggler,omitempty"`
+}
+
+// StragglerInfo provides details about a detected straggler rank
+type StragglerInfo struct {
+	// Rank is the straggler rank
+	Rank int `json:"rank,omitempty"`
+
+	// SlowdownFactor is how much slower this rank is compared to the median
+	SlowdownFactor float64 `json:"slowdownFactor,omitempty"`
+
+	// Reason describes the suspected cause of the slowdown
+	Reason string `json:"reason,omitempty"`
+}
+
+// FabricTrainingInsightSpec defines the desired state of FabricTrainingInsight
+type FabricTrainingInsightSpec struct {
+	// TargetJob is the name of the FabricAIJob to analyze
+	TargetJob string `json:"targetJob,omitempty"`
+
+	// AnalysisWindow is the time window for analysis (e.g., "5m", "1h")
+	AnalysisWindow string `json:"analysisWindow,omitempty"`
+
+	// Metrics is the list of analysis metrics to collect
+	// Supported: collective_timing, straggler_detection, communication_ratio, pattern_analysis
+	Metrics []string `json:"metrics,omitempty"`
+}
+
+// FabricTrainingInsightStatus defines the observed state of FabricTrainingInsight
+type FabricTrainingInsightStatus struct {
+	// Phase is the current analysis phase
+	Phase string `json:"phase,omitempty"`
+
+	// RankStats contains per-rank communication statistics
+	RankStats []RankStat `json:"rankStats,omitempty"`
+
+	// CommPattern is the detected communication pattern (ring_allreduce, tree_allreduce, pipelined)
+	CommPattern string `json:"commPattern,omitempty"`
+
+	// CommComputeRatio is the ratio of communication time to compute time
+	CommComputeRatio float64 `json:"commComputeRatio,omitempty"`
+
+	// Stragglers lists detected straggler ranks
+	Stragglers []StragglerInfo `json:"stragglers,omitempty"`
+
+	// Bottleneck identifies the primary bottleneck (compute, communication, data_loading)
+	Bottleneck string `json:"bottleneck,omitempty"`
+
+	// LastAnalysis is the timestamp of the last analysis
+	LastAnalysis metav1.Time `json:"lastAnalysis,omitempty"`
+}
+
+//+kubebuilder:object:root=true
+//+kubebuilder:subresource:status
+
+// FabricTrainingInsight is the Schema for the fabrictraininginsights API
+type FabricTrainingInsight struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   FabricTrainingInsightSpec   `json:"spec,omitempty"`
+	Status FabricTrainingInsightStatus `json:"status,omitempty"`
+}
+
+//+kubebuilder:object:root=true
+
+// FabricTrainingInsightList contains a list of FabricTrainingInsight
+type FabricTrainingInsightList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []FabricTrainingInsight `json:"items"`
+}
+
+// =============================================================================
+// FabricInferenceInsight - Inference latency breakdown analysis
+// =============================================================================
+
+// LatencyBreakdown provides per-phase latency measurements
+type LatencyBreakdown struct {
+	// DNSNs is the DNS resolution latency in nanoseconds
+	DNSNs int64 `json:"dnsNs,omitempty"`
+
+	// TCPConnectNs is the TCP connection establishment latency in nanoseconds
+	TCPConnectNs int64 `json:"tcpConnectNs,omitempty"`
+
+	// TLSHandshakeNs is the TLS handshake latency in nanoseconds
+	TLSHandshakeNs int64 `json:"tlsHandshakeNs,omitempty"`
+
+	// GPUQueueNs is the GPU queue waiting latency in nanoseconds
+	GPUQueueNs int64 `json:"gpuQueueNs,omitempty"`
+
+	// GPUExecNs is the GPU execution latency in nanoseconds
+	GPUExecNs int64 `json:"gpuExecNs,omitempty"`
+
+	// PostprocessNs is the post-processing latency in nanoseconds
+	PostprocessNs int64 `json:"postprocessNs,omitempty"`
+
+	// TotalNs is the total end-to-end latency in nanoseconds
+	TotalNs int64 `json:"totalNs,omitempty"`
+}
+
+// FabricInferenceInsightSpec defines the desired state of FabricInferenceInsight
+type FabricInferenceInsightSpec struct {
+	// TargetService is the name of the FabricInferenceService to analyze
+	TargetService string `json:"targetService,omitempty"`
+
+	// AnalysisWindow is the time window for analysis (e.g., "5m", "1h")
+	AnalysisWindow string `json:"analysisWindow,omitempty"`
+}
+
+// FabricInferenceInsightStatus defines the observed state of FabricInferenceInsight
+type FabricInferenceInsightStatus struct {
+	// Phase is the current analysis phase
+	Phase string `json:"phase,omitempty"`
+
+	// LatencyBreakdown provides per-phase latency measurements
+	LatencyBreakdown LatencyBreakdown `json:"latencyBreakdown,omitempty"`
+
+	// P50TotalNs is the 50th percentile total latency in nanoseconds
+	P50TotalNs int64 `json:"p50TotalNs,omitempty"`
+
+	// P95TotalNs is the 95th percentile total latency in nanoseconds
+	P95TotalNs int64 `json:"p95TotalNs,omitempty"`
+
+	// P99TotalNs is the 99th percentile total latency in nanoseconds
+	P99TotalNs int64 `json:"p99TotalNs,omitempty"`
+
+	// Bottleneck identifies the phase with the highest latency contribution
+	Bottleneck string `json:"bottleneck,omitempty"`
+
+	// LastAnalysis is the timestamp of the last analysis
+	LastAnalysis metav1.Time `json:"lastAnalysis,omitempty"`
+}
+
+//+kubebuilder:object:root=true
+//+kubebuilder:subresource:status
+
+// FabricInferenceInsight is the Schema for the fabricinferenceinsights API
+type FabricInferenceInsight struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   FabricInferenceInsightSpec   `json:"spec,omitempty"`
+	Status FabricInferenceInsightStatus `json:"status,omitempty"`
+}
+
+//+kubebuilder:object:root=true
+
+// FabricInferenceInsightList contains a list of FabricInferenceInsight
+type FabricInferenceInsightList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []FabricInferenceInsight `json:"items"`
+}
+
 func init() {
 	SchemeBuilder.Register(
 		&FabricFlowPolicy{}, &FabricFlowPolicyList{},
@@ -522,5 +863,9 @@ func init() {
 		&FabricTraceSession{}, &FabricTraceSessionList{},
 		&FabricServiceGraph{}, &FabricServiceGraphList{},
 		&FabricNetworkAnomaly{}, &FabricNetworkAnomalyList{},
+		&FabricSecurityPolicy{}, &FabricSecurityPolicyList{},
+		&FabricNetworkCost{}, &FabricNetworkCostList{},
+		&FabricTrainingInsight{}, &FabricTrainingInsightList{},
+		&FabricInferenceInsight{}, &FabricInferenceInsightList{},
 	)
 }

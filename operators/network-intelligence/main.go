@@ -112,6 +112,42 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Register FabricSecurityPolicy controller
+	if err = (&controllers.FabricSecurityPolicyReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "FabricSecurityPolicy")
+		os.Exit(1)
+	}
+
+	// Register FabricNetworkCost controller
+	if err = (&controllers.FabricNetworkCostReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "FabricNetworkCost")
+		os.Exit(1)
+	}
+
+	// Register FabricTrainingInsight controller
+	if err = (&controllers.FabricTrainingInsightReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "FabricTrainingInsight")
+		os.Exit(1)
+	}
+
+	// Register FabricInferenceInsight controller
+	if err = (&controllers.FabricInferenceInsightReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "FabricInferenceInsight")
+		os.Exit(1)
+	}
+
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up health check")
 		os.Exit(1)

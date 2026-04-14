@@ -17,3 +17,5 @@ pub mod flows;
 pub mod graph;
 pub mod policy;
 pub mod network;
+pub mod security;
+pub mod gpu_trace;

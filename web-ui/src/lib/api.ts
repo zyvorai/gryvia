@@ -140,6 +140,110 @@ export interface CreateTraceSessionRequest {
   namespace: string
 }
 
+// Security types
+export interface SecurityAlert {
+  type: string
+  severity: 'critical' | 'high' | 'medium' | 'low'
+  process: string
+  path: string
+  sourceIP: string
+  message: string
+  timestamp: string
+}
+
+export interface SecurityPolicy {
+  metadata: { name: string; namespace?: string; creationTimestamp?: string }
+  spec: {
+    targetNamespaces: string[]
+    detectionRules: Array<{
+      type: string
+      enabled: boolean
+      sensitivity: string
+    }>
+    alertWebhook?: string
+    autoBlock: boolean
+  }
+  status?: {
+    phase: string
+    activeDetections: number
+    alertsTriggered: number
+    lastAlert?: string
+    detectionCounts?: Record<string, number>
+  }
+}
+
+export interface CreateSecurityPolicyRequest {
+  name: string
+  targetNamespaces: string[]
+  detectionRules: Array<{
+    type: string
+    enabled: boolean
+    sensitivity: string
+  }>
+  autoBlock: boolean
+  alertWebhook?: string
+}
+
+// Network cost types
+export interface NetworkCostReport {
+  period: string
+  namespace: string
+  team: string
+  sameZoneBytes: number
+  crossZoneBytes: number
+  externalBytes: number
+  totalCostUSD: number
+}
+
+export interface NetworkCostData {
+  reports: NetworkCostReport[]
+  costPerGB: {
+    sameZone: number
+    crossZone: number
+    internetEgress: number
+  }
+}
+
+// Training insight types
+export interface TrainingInsight {
+  rankStats: Array<{
+    rank: number
+    avgLatencyNs: number
+    totalBytes: number
+    isStraggler: boolean
+  }>
+  commPattern: string
+  commComputeRatio: number
+  stragglers: Array<{
+    rank: number
+    slowdownFactor: number
+    reason: string
+  }>
+  bottleneck: string
+  lastAnalysis?: string
+}
+
+// NCCL stats types
+export interface NCCLStats {
+  operations: Array<{
+    opType: string
+    count: number
+    avgLatencyNs: number
+    p99LatencyNs: number
+    totalBytes: number
+  }>
+}
+
+// GPU memory stats types
+export interface GPUMemStats {
+  h2dBytes: number
+  d2hBytes: number
+  d2dBytes: number
+  h2dCount: number
+  d2hCount: number
+  d2dCount: number
+}
+
 const apiClient = axios.create({
   baseURL: '/api',
   timeout: 30000,
@@ -281,6 +385,46 @@ export const api = {
 
   getTraceSession: async (name: string): Promise<TraceSession> => {
     const { data } = await apiClient.get(`/network/traces/${encodeURIComponent(name)}`)
+    return data
+  },
+
+  // Security
+  getSecurityAlerts: async (): Promise<SecurityAlert[]> => {
+    const { data } = await apiClient.get('/security/alerts')
+    return data.items || []
+  },
+
+  getSecurityPolicies: async (): Promise<SecurityPolicy[]> => {
+    const { data } = await apiClient.get('/security/policies')
+    return data.items || []
+  },
+
+  createSecurityPolicy: async (policy: CreateSecurityPolicyRequest): Promise<SecurityPolicy> => {
+    const { data } = await apiClient.post('/security/policies', policy)
+    return data
+  },
+
+  // Network costs
+  getNetworkCosts: async (): Promise<NetworkCostData> => {
+    const { data } = await apiClient.get('/network/costs')
+    return data
+  },
+
+  // Training insights
+  getTrainingInsight: async (): Promise<TrainingInsight> => {
+    const { data } = await apiClient.get('/ai/training/insight')
+    return data
+  },
+
+  // NCCL stats
+  getNCCLStats: async (): Promise<NCCLStats> => {
+    const { data } = await apiClient.get('/ai/training/nccl')
+    return data
+  },
+
+  // GPU memory stats
+  getGPUMemoryStats: async (): Promise<GPUMemStats> => {
+    const { data } = await apiClient.get('/gpu/memory')
     return data
   },
 }

@@ -13,6 +13,8 @@ import {
   LogOut,
   ChevronDown,
   Network,
+  Shield,
+  Cpu,
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 
@@ -26,6 +28,8 @@ const navigation = [
   { name: 'Quotas', href: '/quotas', icon: Users },
   { name: 'Nodes', href: '/nodes', icon: Server },
   { name: 'Network', href: '/network', icon: Network },
+  { name: 'Security', href: '/security', icon: Shield },
+  { name: 'GPU', href: '/gpu', icon: Cpu },
   { name: 'Costs', href: '/costs', icon: DollarSign },
 ]
 
