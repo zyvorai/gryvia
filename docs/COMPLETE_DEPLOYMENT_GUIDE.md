@@ -1,6 +1,6 @@
 ## TensorReaper Complete Deployment Guide
 
-This guide walks through deploying a complete TensorReaper cluster with all five operators on bare metal infrastructure.
+This guide walks through deploying a complete TensorReaper cluster with all six operators on bare metal infrastructure.
 
 ## Prerequisites
 
@@ -106,6 +106,7 @@ ai-operator-7b9f8c6d4e-y8l3n       1/1     Running   0          2m
 storage-operator-8c7d9f5e6g-z9m4o  1/1     Running   0          2m
 network-operator-9d8e0g6f7h-a0n5p  1/1     Running   0          2m
 quota-operator-0e9f1h7g8i-b1o6q    1/1     Running   0          2m
+net-intel-operator-1f0g2i8h9j-c2p7r 1/1   Running   0          2m
 nvidia-device-plugin-daemonset-... 8/8     Running   0          2m
 dcgm-exporter-...                  8/8     Running   0          2m
 ```
@@ -122,6 +123,12 @@ kubectl apply -f operators/ai-operator/config/
 kubectl apply -f operators/storage-operator/config/
 kubectl apply -f operators/network-operator/config/
 kubectl apply -f operators/quota-operator/config/
+
+# Deploy Network Intelligence Operator
+kubectl apply -f operators/network-intelligence/config/
+
+# Deploy eBPF Collector DaemonSet
+kubectl apply -f collector/deploy/daemonset.yaml
 ```
 
 ### 4. Configure Storage Backend
@@ -305,7 +312,7 @@ kubectl logs -n ml-training test-training-0
 
 ```bash
 kubectl get pods -n tensorreaper-system
-# All 5 operators should be Running
+# All 6 operators should be Running
 ```
 
 ### ✅ GPUs Discovered
@@ -373,7 +380,8 @@ helm upgrade tensorreaper ./helm/tensorreaper-core \
   --set aiOperator.replicas=3 \
   --set storageOperator.replicas=2 \
   --set networkOperator.replicas=2 \
-  --set quotaOperator.replicas=2
+  --set quotaOperator.replicas=2 \
+  --set networkIntelligenceOperator.replicas=2
 ```
 
 ### Configure GPU Pricing

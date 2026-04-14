@@ -4,7 +4,7 @@ Complete implementation of TensorReaper - Enterprise GPU Compute Platform for AI
 
 ## Project Overview
 
-TensorReaper is a production-ready Kubernetes platform for managing GPU clusters, optimized for AI/ML workloads on bare metal infrastructure. Built with 5 specialized operators managing GPU resources, AI workloads, storage, networking, and quotas.
+TensorReaper is a production-ready Kubernetes platform for managing GPU clusters, optimized for AI/ML workloads on bare metal infrastructure. Built with 6 specialized operators managing GPU resources, AI workloads, storage, networking, quotas, and network intelligence.
 
 ## Implementation Statistics
 
@@ -15,6 +15,7 @@ TensorReaper is a production-ready Kubernetes platform for managing GPU clusters
 | **Storage Operator** | 12 | ~1,200 | Go |
 | **Network Operator** | 13 | ~1,100 | Go |
 | **Quota Operator** | 11 | ~1,000 | Go |
+| **Network Intelligence Operator** | 10 | ~1,100 | Go |
 | **CLI Tool** | 18 | ~2,500 | Rust |
 | **Web UI** | 28 | ~3,500 | TypeScript/React |
 | **API Gateway** | 5 | ~400 | Python |
@@ -49,6 +50,7 @@ TensorReaper is a production-ready Kubernetes platform for managing GPU clusters
    │ • FabricStorage      • Storage Operator       Inference  │
    │ • FabricNetwork      • Network Operator       Services   │
    │ • FabricQuota        • Quota Operator         Complete   │
+   │ • NetworkIntelligence • Net Intelligence Op   eBPF       │
    └─────────────────────────────────────────────────────────┘
                                  │
         ┌────────────────────────┼────────────────────────┐
@@ -166,7 +168,7 @@ TensorReaper is a production-ready Kubernetes platform for managing GPU clusters
 
 **LOC:** ~1,100 Go
 
-### 5. Quota Operator ✅ COMPLETE (NEW!)
+### 5. Quota Operator ✅ COMPLETE
 
 **Purpose**: Manages GPU quotas and budgets per team with cost tracking
 
@@ -195,7 +197,33 @@ TensorReaper is a production-ready Kubernetes platform for managing GPU clusters
 
 **LOC:** ~1,000 Go
 
-### 6. CLI Tool ✅ COMPLETE (NEW!)
+### 6. Network Intelligence Operator ✅ COMPLETE
+
+**Purpose**: eBPF-based network observability and traffic intelligence
+
+**Files Created:**
+- `operators/network-intelligence/main.go` - Controller manager
+- `operators/network-intelligence/api/v1/types.go` - CRD types
+- `operators/network-intelligence/controllers/controller.go` - Reconciler
+- `operators/network-intelligence/pkg/ebpf/collector.go` - eBPF program loader
+- `operators/network-intelligence/Dockerfile` - Container build
+- `operators/network-intelligence/Makefile` - Build automation
+- `operators/network-intelligence/config/deployment.yaml` - K8s deployment
+- `operators/network-intelligence/README.md` - Documentation
+- `collector/deploy/daemonset.yaml` - eBPF collector DaemonSet
+- `collector/bpf/` - eBPF programs (24 programs)
+
+**Features:**
+- eBPF-based packet capture and flow analysis
+- Network topology discovery
+- Traffic classification and anomaly detection
+- Latency measurement for RDMA and TCP flows
+- Integration with Prometheus for metrics export
+- DaemonSet-based collector deployment
+
+**LOC:** ~1,100 Go
+
+### 7. CLI Tool ✅ COMPLETE
 
 **Purpose**: Command-line interface for managing TensorReaper clusters
 
@@ -242,7 +270,7 @@ tensorreaper health      # Health checks
 
 **LOC:** ~2,500 Rust
 
-### 7. Monitoring & Observability ✅ COMPLETE (NEW!)
+### 8. Monitoring & Observability ✅ COMPLETE
 
 **Purpose**: Comprehensive monitoring with Prometheus and Grafana
 
@@ -286,7 +314,7 @@ tensorreaper health      # Health checks
 
 **LOC:** ~2,000 JSON/YAML
 
-### 8. Web UI Dashboard ✅ COMPLETE (NEW!)
+### 9. Web UI Dashboard ✅ COMPLETE
 
 **Purpose**: Modern React-based web dashboard for cluster management
 
@@ -358,7 +386,7 @@ tensorreaper health      # Health checks
 
 **LOC:** ~3,500 TypeScript/React
 
-### 9. API Gateway ✅ COMPLETE (NEW!)
+### 10. API Gateway ✅ COMPLETE
 
 **Purpose**: REST API service providing aggregated metrics for Web UI
 
@@ -501,7 +529,7 @@ spec:
 
 ### tensorreaper-core
 Complete operator deployment with:
-- All 5 operators (GPU, AI, Storage, Network, Quota)
+- All 6 operators (GPU, AI, Storage, Network, Quota, Network Intelligence)
 - NVIDIA device plugin
 - DCGM exporter
 - RBAC configurations
@@ -633,12 +661,13 @@ tensor-reaper/
 │   ├── fabricstorage.yaml
 │   ├── fabricnetwork.yaml
 │   └── fabricquota.yaml
-├── operators/                     # 5 Operators
+├── operators/                     # 6 Operators
 │   ├── gpu-operator/             # 8 files, ~1000 LOC
 │   ├── ai-operator/              # 9 files, ~1500 LOC
 │   ├── storage-operator/         # 12 files, ~1200 LOC
 │   ├── network-operator/         # 13 files, ~1100 LOC
-│   └── quota-operator/           # 11 files, ~1000 LOC
+│   ├── quota-operator/           # 11 files, ~1000 LOC
+│   └── network-intelligence/     # 10 files, ~1100 LOC
 ├── cli/                           # CLI Tool
 │   ├── src/                      # 18 files, ~2500 LOC Rust
 │   ├── Cargo.toml
@@ -728,7 +757,7 @@ tensor-reaper/
 
 TensorReaper provides a complete, production-ready platform for bare metal GPU infrastructure:
 
-- **5 Operators**: ~5,800 LOC of production Go code
+- **6 Operators**: ~6,900 LOC of production Go code
 - **CLI Tool**: ~2,500 LOC of Rust for cluster management
 - **Web UI Dashboard**: ~3,500 LOC of React/TypeScript for visual management
 - **API Gateway**: ~400 LOC of Python/FastAPI for metrics aggregation

@@ -127,6 +127,9 @@ networkOperator:
 quotaOperator:
   replicaCount: 3
 
+networkIntelligenceOperator:
+  replicaCount: 2
+
 postgresql:
   replicaCount: 3
   persistence:
@@ -491,6 +494,7 @@ kubectl get pods -n tensorreaper
 # tensorreaper-storage-operator-xxx   1/1   Running
 # tensorreaper-network-operator-xxx   1/1   Running
 # tensorreaper-quota-operator-xxx     1/1   Running
+# tensorreaper-net-intel-operator-xxx 1/1   Running
 ```
 
 ### Check CRDs

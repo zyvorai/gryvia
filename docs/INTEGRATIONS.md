@@ -470,6 +470,50 @@ spec:
                 - nvcr.io/nvidia/pytorch:24.01-py3
 ```
 
+## SDKs
+
+### Python SDK
+
+Install: `pip install tensorreaper`
+
+```python
+from tensorreaper import TensorReaper
+
+async with TensorReaper(api_url="https://api.example.com", token="...") as tr:
+    # Submit a training job
+    job = await tr.jobs.create({
+        "spec": {"model": "llama-70b", "gpus": 8, "gpuType": "H100"}
+    })
+    
+    # Wait for completion
+    await tr.jobs.wait_for_completion(job["metadata"]["name"])
+    
+    # Stream logs
+    async for line in tr.jobs.stream_logs(job["metadata"]["name"]):
+        print(line)
+```
+
+### Go SDK
+
+Install: `go get github.com/ssahani/TensorReaper/sdk/go`
+
+```go
+import sdk "github.com/ssahani/TensorReaper/sdk/go"
+
+client := sdk.NewTensorReaperClient(mgr.GetClient())
+
+// Create a job
+job, err := client.CreateJob(ctx, &v1.FabricAIJob{
+    Spec: v1.FabricAIJobSpec{
+        Model: "llama-70b",
+        Resources: v1.ResourceSpec{GPUCount: 8, GPUType: "H100"},
+    },
+})
+
+// Promote a model to production
+err = client.PromoteModel(ctx, "my-model", "production")
+```
+
 ## API Integration Examples
 
 ### Python SDK
