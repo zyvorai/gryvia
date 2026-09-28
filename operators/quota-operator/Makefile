@@ -1,4 +1,4 @@
-IMG ?= tensorreaper/quota-operator:latest
+IMG ?= gryvia/quota-operator:latest
 
 .PHONY: all
 all: build

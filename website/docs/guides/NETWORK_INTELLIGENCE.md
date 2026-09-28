@@ -1,0 +1,823 @@
+# Network Intelligence Guide
+
+Complete guide to Gryvia's eBPF-powered network intelligence system for deep observability, security, and performance optimization of GPU clusters.
+
+## Table of Contents
+
+1. [Architecture](#architecture)
+2. [eBPF Programs](#ebpf-programs)
+3. [CRDs](#crds)
+4. [CLI Commands](#cli-commands)
+5. [Deployment](#deployment)
+6. [Best Practices](#best-practices)
+
+---
+
+## Architecture
+
+Gryvia's network intelligence stack uses eBPF programs attached to kernel hooks to collect fine-grained telemetry without application modification. The data flows through four layers:
+
+```
++--------------------+     +------------------+     +-------------------+     +--------+
+|   eBPF Programs    | --> |  Flow Collector  | --> |     Operator      | --> |  CRDs  |
+| (kernel-attached)  |     | (per-node agent) |     | (control plane)   |     |        |
++--------------------+     +------------------+     +-------------------+     +--------+
+        |                         |                         |                     |
+  Kernel hooks              Aggregates &              Reconciles CRDs,      User-facing
+  (TC, XDP, kprobe,        enriches flows            generates policies,    resources &
+   tracepoint, cgroup)     with pod metadata          detects anomalies     status
+```
+
+**eBPF Programs** run in the kernel on every node and capture packet, socket, syscall, and GPU-level events with negligible overhead.
+
+**Flow Collector** is a per-node DaemonSet that reads eBPF map data, enriches flows with Kubernetes pod/service metadata, and exports to the operator.
+
+**Operator** runs as a Deployment in the control plane. It reconciles network intelligence CRDs, correlates cross-node flows, detects anomalies, and generates or enforces network policies.
+
+**CRDs** are the user-facing interface for configuring network policies, viewing traffic insights, running trace sessions, and managing security rules.
+
+---
+
+## eBPF Programs
+
+Gryvia ships 24 eBPF programs organized into six categories. All programs are loaded and managed by the Flow Collector DaemonSet.
+
+### GPU Programs
+
+| Program | Hook Type | Description |
+|---------|-----------|-------------|
+| `nccl_trace` | uprobe | Traces NCCL collective operations (AllReduce, AllGather, Broadcast) with timing, message size, and ring/tree algorithm details. Identifies communication bottlenecks in distributed training. |
+| `gpu_mem_trace` | kprobe | Monitors GPU memory allocations and deallocations via the NVIDIA kernel driver. Detects memory leaks, fragmentation, and OOM patterns before they cause job failures. |
+| `rdma_trace` | tracepoint | Traces RDMA/InfiniBand verbs (post_send, post_recv, poll_cq) for RoCE and IB fabrics. Measures RDMA latency, throughput, and error rates per queue pair. |
+
+### Security Programs
+
+| Program | Hook Type | Description |
+|---------|-----------|-------------|
+| `container_escape` | kprobe | Detects container escape attempts by monitoring namespace changes, capability escalation, and suspicious mount operations. |
+| `crypto_detect` | kprobe | Identifies cryptocurrency mining by detecting specific instruction patterns and connections to known mining pools. |
+| `exfil_detect` | TC | Detects data exfiltration patterns including large outbound transfers, DNS tunneling, and connections to suspicious external destinations. |
+| `privesc_monitor` | kprobe | Monitors privilege escalation attempts including setuid calls, capability changes, and kernel module loading from containers. |
+| `driver_fim` | kprobe | File integrity monitoring for GPU driver files and kernel modules. Alerts on unauthorized modifications to critical driver components. |
+
+### Performance Programs
+
+| Program | Hook Type | Description |
+|---------|-----------|-------------|
+| `tcp_tuning` | sockops | Dynamically tunes TCP parameters (buffer sizes, congestion control, window scaling) per connection based on observed traffic patterns. |
+| `connpool_analyze` | kprobe | Analyzes connection pooling behavior to detect connection storms, idle connection waste, and suboptimal pool sizing. |
+| `numa_path` | tracepoint | Tracks NUMA-aware memory access patterns and identifies cross-NUMA traffic that degrades GPU-to-GPU communication. |
+| `sockops_optimize` | sockops | Accelerates local pod-to-pod communication by short-circuiting the TCP stack for connections within the same node. |
+
+### Observability Programs
+
+| Program | Hook Type | Description |
+|---------|-----------|-------------|
+| `trace_correlator` | kprobe | Correlates distributed traces across pods by extracting and propagating trace context (W3C Trace Context, B3) from network packets. |
+| `latency_breakdown` | kprobe/TC | Decomposes end-to-end latency into kernel, network, and application components. Identifies which layer contributes most to tail latency. |
+| `cost_tracker` | TC | Tracks per-flow byte counts and maps them to cost attribution. Enables accurate network cost allocation per team, job, and service. |
+| `fingerprint` | TC | Generates traffic fingerprints for services based on packet size distributions, timing patterns, and protocol usage. Used for anomaly detection baselines. |
+
+### AI-Specific Programs
+
+| Program | Hook Type | Description |
+|---------|-----------|-------------|
+| `training_pattern` | uprobe/TC | Analyzes distributed training communication patterns to identify synchronization barriers, straggler nodes, and gradient aggregation inefficiencies. |
+| `datapipe_bottleneck` | kprobe | Detects data pipeline bottlenecks by monitoring data loader throughput, storage I/O patterns, and prefetch queue depths. |
+| `gradient_compress` | TC | Monitors gradient compression ratios and communication volume in distributed training. Identifies opportunities for gradient compression optimization. |
+
+### Core Programs
+
+| Program | Hook Type | Description |
+|---------|-----------|-------------|
+| `tcp_trace` | kprobe | Core TCP flow tracing with connection state tracking, retransmit monitoring, and per-flow byte/packet counters. |
+| `packet_filter` | XDP | High-performance packet filtering at the XDP layer for early-drop of unauthorized traffic. Used by FabricFlowPolicy enforcement. |
+| `latency_probe` | TC | Measures per-packet network latency using kernel timestamps. Provides P50/P90/P99 latency distributions per flow. |
+| `syscall_monitor` | tracepoint | Monitors network-related syscalls (connect, accept, sendmsg, recvmsg) with per-container attribution. |
+| `dns_tracker` | TC | Tracks DNS queries and responses with latency. Detects DNS-based service discovery issues and resolution failures. |
+
+---
+
+## CRDs
+
+### FabricFlowPolicy
+
+Intent-based network policies that describe allowed traffic using high-level semantics rather than raw IP/port rules.
+
+```yaml
+apiVersion: gryvia.io/v1
+kind: FabricFlowPolicy
+metadata:
+  name: training-data-access
+  namespace: ml-research
+spec:
+  # Intent-based policy definition
+  intent: allow
+  description: "Allow training jobs to access data lake and model registry"
+
+  # Source selector
+  source:
+    matchLabels:
+      app: training-job
+      team: ml-research
+
+  # Destination rules
+  destination:
+    - service: data-lake
+      namespace: storage
+      ports: [8080, 443]
+      protocol: TCP
+
+    - service: model-registry
+      namespace: ml-platform
+      ports: [443]
+      protocol: TCP
+
+  # Traffic shaping
+  rateLimit:
+    requestsPerSecond: 10000
+    burstSize: 5000
+
+  # Logging
+  logging:
+    enabled: true
+    sampleRate: 100   # Log 1 in 100 flows
+
+  # Enforcement mode
+  enforcement: enforce   # audit | enforce
+```
+
+### FabricTrafficInsight
+
+Per-service traffic metrics aggregated from eBPF flow data.
+
+```yaml
+apiVersion: gryvia.io/v1
+kind: FabricTrafficInsight
+metadata:
+  name: training-cluster-insight
+  namespace: ml-research
+spec:
+  # Target service or workload
+  target:
+    kind: Deployment
+    name: training-coordinator
+    namespace: ml-research
+
+  # Metrics collection interval
+  interval: 30s
+
+  # Metrics to collect
+  metrics:
+    - bytesIn
+    - bytesOut
+    - packetsIn
+    - packetsOut
+    - connections
+    - latencyP50
+    - latencyP99
+    - retransmits
+    - dnsLatency
+
+  # Retention period
+  retention: 7d
+
+status:
+  lastUpdated: "2024-01-15T12:30:00Z"
+  metrics:
+    bytesIn: 1.2Ti
+    bytesOut: 856Gi
+    connections: 45230
+    latencyP50ms: 0.8
+    latencyP99ms: 12.5
+    retransmitRate: 0.02%
+  topSources:
+    - service: data-loader
+      bytesOut: 800Gi
+    - service: gradient-aggregator
+      bytesOut: 56Gi
+  topDestinations:
+    - service: parameter-server
+      bytesIn: 1.1Ti
+```
+
+### FabricAutoPolicy
+
+Self-healing firewall that learns traffic patterns and generates or enforces network policies automatically.
+
+```yaml
+apiVersion: gryvia.io/v1
+kind: FabricAutoPolicy
+metadata:
+  name: ml-namespace-autopolicy
+  namespace: ml-research
+spec:
+  # Operating mode
+  # learn: Observe traffic and build baseline (no enforcement)
+  # suggest: Generate policy recommendations for review
+  # enforce: Automatically apply learned policies
+  mode: suggest
+
+  # Scope
+  scope:
+    namespaces: [ml-research, ml-staging]
+
+  # Learning configuration
+  learning:
+    duration: 7d
+    minConfidence: 0.95
+    excludePorts: [53, 443]   # Don't restrict DNS and HTTPS
+
+  # Policy generation
+  policyGeneration:
+    defaultDeny: true
+    granularity: service      # service | pod | namespace
+    mergeThreshold: 0.8       # Merge similar rules above this similarity
+
+  # Notifications
+  notifications:
+    slack: "#ml-security"
+    onNewPolicy: true
+    onBlockedTraffic: true
+
+status:
+  phase: Suggesting
+  learnedFlows: 12450
+  generatedPolicies: 23
+  lastSuggestion: "2024-01-15T12:00:00Z"
+  suggestions:
+    - name: allow-training-to-datastore
+      confidence: 0.98
+      description: "Training pods regularly access datastore on port 6379"
+```
+
+### FabricTraceSession
+
+On-demand network debugging sessions for troubleshooting connectivity and performance issues.
+
+```yaml
+apiVersion: gryvia.io/v1
+kind: FabricTraceSession
+metadata:
+  name: debug-training-latency
+  namespace: ml-research
+spec:
+  # Trace target
+  target:
+    pod: training-worker-0
+    namespace: ml-research
+
+  # Capture filters
+  filters:
+    - protocol: TCP
+      destPort: 29500      # PyTorch distributed port
+    - protocol: TCP
+      destPort: 2049       # NFS
+
+  # Capture duration
+  duration: 5m
+
+  # Packet capture settings
+  capture:
+    maxPackets: 100000
+    snapLength: 256        # Bytes per packet to capture
+    includePayload: false
+
+  # Analysis options
+  analysis:
+    latencyBreakdown: true
+    retransmitAnalysis: true
+    flowCorrelation: true
+
+status:
+  phase: Completed
+  startTime: "2024-01-15T12:00:00Z"
+  endTime: "2024-01-15T12:05:00Z"
+  capturedPackets: 45230
+  results:
+    avgLatency: 2.3ms
+    p99Latency: 15.8ms
+    retransmitRate: 0.5%
+    findings:
+      - severity: warning
+        message: "High retransmit rate on NFS connections from training-worker-0 to nfs-server"
+        recommendation: "Check NFS server disk I/O and network MTU settings"
+```
+
+### FabricServiceGraph
+
+Service dependency visualization generated from observed network traffic.
+
+```yaml
+apiVersion: gryvia.io/v1
+kind: FabricServiceGraph
+metadata:
+  name: ml-platform-graph
+spec:
+  # Scope
+  namespaces: [ml-research, ml-platform, storage]
+
+  # Discovery settings
+  discovery:
+    includeExternal: true
+    protocol: true          # Include protocol-level details
+    refreshInterval: 5m
+
+  # Display options
+  layout: hierarchical
+  groupBy: namespace
+
+status:
+  lastUpdated: "2024-01-15T12:30:00Z"
+  services: 24
+  edges: 67
+  externalEndpoints: 5
+  graph:
+    nodes:
+      - name: training-coordinator
+        namespace: ml-research
+        type: Deployment
+        replicas: 1
+      - name: data-lake
+        namespace: storage
+        type: StatefulSet
+        replicas: 3
+    edges:
+      - source: training-coordinator
+        destination: data-lake
+        protocol: TCP
+        port: 8080
+        bytesPerSecond: 125000000
+        requestsPerSecond: 450
+```
+
+### FabricNetworkAnomaly
+
+Anomaly detection rules and alerts for network traffic patterns.
+
+```yaml
+apiVersion: gryvia.io/v1
+kind: FabricNetworkAnomaly
+metadata:
+  name: training-anomaly-detector
+  namespace: ml-research
+spec:
+  # Detection scope
+  scope:
+    namespaces: [ml-research]
+
+  # Detection rules
+  rules:
+    - name: traffic-spike
+      type: volumeAnomaly
+      baseline: 7d
+      threshold: 3.0         # Standard deviations from baseline
+      severity: warning
+
+    - name: new-external-connection
+      type: newDestination
+      scope: external
+      severity: critical
+      action: alert
+
+    - name: latency-degradation
+      type: latencyAnomaly
+      metric: p99
+      baseline: 24h
+      threshold: 2.0
+      severity: warning
+
+    - name: connection-storm
+      type: connectionRate
+      maxNewConnections: 1000
+      window: 1m
+      severity: critical
+
+  # Alerting
+  alerts:
+    slack: "#ml-security"
+    email: ml-team@example.com
+    webhook: https://pagerduty.example.com/webhook
+
+status:
+  activeAnomalies: 2
+  anomalies:
+    - rule: latency-degradation
+      detected: "2024-01-15T11:45:00Z"
+      severity: warning
+      description: "P99 latency for training-coordinator increased from 5ms to 18ms"
+      affectedPods: [training-worker-0, training-worker-3]
+```
+
+### FabricSecurityPolicy
+
+Security detection rules for identifying threats and policy violations.
+
+```yaml
+apiVersion: gryvia.io/v1
+kind: FabricSecurityPolicy
+metadata:
+  name: gpu-cluster-security
+  namespace: gryvia-system
+spec:
+  # Detection rules
+  rules:
+    - name: crypto-mining-detection
+      program: crypto_detect
+      enabled: true
+      action: block
+      severity: critical
+      alert: true
+
+    - name: container-escape-detection
+      program: container_escape
+      enabled: true
+      action: alert
+      severity: critical
+
+    - name: data-exfiltration
+      program: exfil_detect
+      enabled: true
+      action: alert
+      severity: high
+      config:
+        maxOutboundMB: 1000    # Alert on large outbound transfers
+        suspiciousDomains: true
+        dnsExfiltration: true
+
+    - name: privilege-escalation
+      program: privesc_monitor
+      enabled: true
+      action: block
+      severity: critical
+
+    - name: driver-integrity
+      program: driver_fim
+      enabled: true
+      action: alert
+      severity: high
+      config:
+        paths:
+          - /usr/lib/x86_64-linux-gnu/libnvidia-*
+          - /usr/lib/modules/*/nvidia*
+
+  # Global alert configuration
+  alerting:
+    slack: "#security-alerts"
+    pagerduty:
+      serviceKey: "abc123"
+      severity: critical
+```
+
+### FabricNetworkCost
+
+Network cost attribution per team, job, and service.
+
+```yaml
+apiVersion: gryvia.io/v1
+kind: FabricNetworkCost
+metadata:
+  name: monthly-network-costs
+spec:
+  # Reporting period
+  period:
+    type: monthly
+
+  # Cost rates
+  rates:
+    intraNode: 0.00          # Free within a node
+    intraCluster: 0.01       # $0.01/GB within cluster
+    crossZone: 0.02          # $0.02/GB cross-zone
+    internet: 0.09           # $0.09/GB to internet
+    rdma: 0.005              # $0.005/GB RDMA traffic
+
+  # Scope
+  scope:
+    groupBy: [team, job, namespace]
+
+status:
+  lastCalculated: "2024-01-15T00:00:00Z"
+  totalCost: 1234.56
+  breakdown:
+    byTeam:
+      - team: ml-research
+        cost: 890.12
+        trafficGB: 45230
+      - team: ml-production
+        cost: 344.44
+        trafficGB: 12340
+    byType:
+      intraCluster: 452.30
+      crossZone: 246.80
+      internet: 111.06
+      rdma: 424.40
+```
+
+### FabricTrainingInsight
+
+AI training-specific network analysis for distributed training jobs.
+
+```yaml
+apiVersion: gryvia.io/v1
+kind: FabricTrainingInsight
+metadata:
+  name: llm-training-insight
+  namespace: ml-research
+spec:
+  # Target training job
+  jobRef:
+    name: llm-distributed-training
+    namespace: ml-research
+
+  # Analysis options
+  analysis:
+    ncclProfiling: true
+    stragglerDetection: true
+    gradientAnalysis: true
+    communicationPattern: true
+
+status:
+  lastUpdated: "2024-01-15T12:30:00Z"
+  workers: 8
+  communicationPattern: ring-allreduce
+  ncclMetrics:
+    allReduceTimeMs: 12.5
+    allGatherTimeMs: 8.3
+    broadcastTimeMs: 2.1
+    totalCommTimePercent: 18.5
+  stragglers:
+    - worker: training-worker-3
+      avgIterationMs: 245
+      clusterAvgMs: 220
+      delta: 11.4%
+      cause: "Cross-NUMA GPU memory access"
+  gradientMetrics:
+    avgGradientSizeMB: 125
+    compressionRatio: 1.0
+    recommendation: "Enable gradient compression for 2.3x communication speedup"
+  bottleneck:
+    type: communication
+    component: allreduce
+    recommendation: "Switch to hierarchical allreduce for 8+ node jobs"
+```
+
+### FabricInferenceInsight
+
+Serving latency breakdown and optimization analysis for inference services.
+
+```yaml
+apiVersion: gryvia.io/v1
+kind: FabricInferenceInsight
+metadata:
+  name: llm-serving-insight
+  namespace: ml-production
+spec:
+  # Target inference service
+  serviceRef:
+    name: llama-3-serving
+    namespace: ml-production
+
+  # Analysis options
+  analysis:
+    latencyBreakdown: true
+    batchingAnalysis: true
+    cacheAnalysis: true
+    throughputProfiling: true
+
+status:
+  lastUpdated: "2024-01-15T12:30:00Z"
+  requestsPerSecond: 450
+  latency:
+    total:
+      p50ms: 35
+      p90ms: 62
+      p99ms: 95
+    breakdown:
+      networkIngress: 1.2ms
+      queueWait: 5.3ms
+      tokenization: 2.1ms
+      inference: 24.5ms
+      detokenization: 0.8ms
+      networkEgress: 1.1ms
+  batching:
+    avgBatchSize: 12
+    maxBatchSize: 64
+    batchUtilization: 18.7%
+    recommendation: "Increase max_batch_wait to 10ms to improve batch utilization to ~45%"
+  kvCache:
+    hitRate: 78.5%
+    memoryUsedGB: 24.3
+    evictions: 1250
+  throughput:
+    tokensPerSecond: 12500
+    peakTokensPerSecond: 18200
+```
+
+---
+
+## CLI Commands
+
+### Network Tracing
+
+```bash
+# Start a live trace session
+gryvia network trace --pod training-worker-0 --duration 5m
+
+# Trace with filters
+gryvia network trace --pod training-worker-0 \
+  --protocol TCP --port 29500 --duration 2m
+
+# Trace across a namespace
+gryvia network trace --namespace ml-research --duration 1m
+
+# View trace results
+gryvia network trace --session debug-training-latency --results
+```
+
+### Flow Analysis
+
+```bash
+# View real-time flows
+gryvia network flows --namespace ml-research
+
+# Top flows by volume
+gryvia network flows --top 20 --sort bytes
+
+# Flows for a specific pod
+gryvia network flows --pod training-worker-0
+
+# Export flows as JSON
+gryvia network flows --namespace ml-research --output json
+```
+
+### Service Graph
+
+```bash
+# View service dependency graph (ASCII)
+gryvia network graph --namespace ml-research
+
+# Generate graph for multiple namespaces
+gryvia network graph --namespace ml-research,ml-platform,storage
+
+# Export graph as DOT format
+gryvia network graph --namespace ml-research --output dot > graph.dot
+
+# Include external endpoints
+gryvia network graph --namespace ml-research --external
+```
+
+### Policy Management
+
+```bash
+# List active flow policies
+gryvia network policy list
+
+# Apply a flow policy
+gryvia network policy apply -f flow-policy.yaml
+
+# Audit mode (log but don't enforce)
+gryvia network policy audit --namespace ml-research
+
+# View autopolicy suggestions
+gryvia network policy suggestions
+
+# Accept an autopolicy suggestion
+gryvia network policy accept suggestion-name
+
+# View blocked traffic
+gryvia network policy blocked --namespace ml-research
+```
+
+### Anomaly Detection
+
+```bash
+# View active anomalies
+gryvia network anomalies
+
+# Filter by severity
+gryvia network anomalies --severity critical
+
+# View anomaly details
+gryvia network anomalies --name latency-degradation --details
+
+# Acknowledge an anomaly
+gryvia network anomalies ack latency-degradation
+
+# View anomaly history
+gryvia network anomalies --history --days 7
+```
+
+### Security
+
+```bash
+# View security alerts
+gryvia security alerts
+
+# Filter by severity
+gryvia security alerts --severity critical
+
+# View security policy status
+gryvia security status
+
+# Apply security policy
+gryvia security policy apply -f security-policy.yaml
+
+# View blocked threats
+gryvia security alerts --type blocked
+
+# Export security report
+gryvia security alerts --output json --days 30 > security-report.json
+```
+
+### GPU Network Analysis
+
+```bash
+# View NCCL communication metrics
+gryvia gpu nccl --job llm-distributed-training
+
+# Monitor GPU memory usage per pod
+gryvia gpu memory --namespace ml-research
+
+# View RDMA statistics
+gryvia gpu rdma --node gpu-node-01
+
+# Training communication analysis
+gryvia gpu training --job llm-distributed-training
+
+# Straggler detection
+gryvia gpu training --job llm-distributed-training --stragglers
+
+# Gradient compression analysis
+gryvia gpu training --job llm-distributed-training --gradients
+```
+
+---
+
+## Deployment
+
+### Prerequisites
+
+- Linux kernel 5.10+ (for full eBPF feature support)
+- BTF (BPF Type Format) enabled in kernel (`CONFIG_DEBUG_INFO_BTF=y`)
+- CAP_BPF and CAP_SYS_ADMIN for the Flow Collector DaemonSet
+- NVIDIA GPU drivers for GPU-specific eBPF programs
+
+### Install Flow Collector
+
+The Flow Collector is deployed as a DaemonSet on every node:
+
+```bash
+gryvia install network-intelligence
+
+# Verify deployment
+kubectl get daemonset -n gryvia-system flow-collector
+kubectl get pods -n gryvia-system -l app=flow-collector
+```
+
+### Verify eBPF Programs
+
+```bash
+# Check loaded eBPF programs
+gryvia network status
+
+# View per-program status
+gryvia network status --programs
+
+# Check for program errors
+gryvia network status --errors
+```
+
+---
+
+## Best Practices
+
+### Performance
+
+- Start with core programs (`tcp_trace`, `latency_probe`, `dns_tracker`) and add specialized programs as needed.
+- Use `sampleRate` in FabricFlowPolicy logging to reduce overhead on high-throughput flows.
+- Set appropriate `retention` periods on FabricTrafficInsight to control storage usage.
+
+### Security
+
+- Begin with FabricAutoPolicy in `learn` mode for at least 7 days before switching to `suggest` or `enforce`.
+- Enable `container_escape` and `privesc_monitor` on all GPU nodes.
+- Review auto-policy suggestions before accepting, especially in multi-tenant clusters.
+
+### Troubleshooting
+
+- Use FabricTraceSession for targeted debugging rather than enabling cluster-wide capture.
+- Check FabricTrainingInsight for straggler detection when distributed training performance degrades.
+- Review FabricInferenceInsight latency breakdown to identify which layer (network, queue, compute) is causing tail latency.
+
+---
+
+## Support
+
+- **Documentation**: https://gryvia.io/docs
+- **Issues**: https://github.com/zyvorai/gryvia/issues
+- **Discussions**: https://github.com/zyvorai/gryvia/discussions
+- **Slack**: #gryvia-users
+
+---
+
+*Gryvia - Enterprise GPU Infrastructure Management*

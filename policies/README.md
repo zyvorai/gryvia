@@ -1,6 +1,6 @@
 # Scheduling Policies
 
-Advanced scheduling policies for optimizing GPU resource allocation in TensorReaper.
+Advanced scheduling policies for optimizing GPU resource allocation in Gryvia.
 
 ## Available Policies
 
@@ -9,12 +9,12 @@ Advanced scheduling policies for optimizing GPU resource allocation in TensorRea
 Schedule jobs based on priority levels (critical, high, medium, low).
 
 ```yaml
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricAIJob
 metadata:
   name: critical-training
   annotations:
-    tensorreaper.ai/priority: critical
+    gryvia.io/priority: critical
 spec:
   # ... job spec
 ```
@@ -232,18 +232,18 @@ Guarantee service level agreements.
 kubectl apply -f policies/scheduling-policies.yaml
 
 # Set default policy
-kubectl patch configmap tensorreaper-config -n tensorreaper \
+kubectl patch configmap gryvia-config -n gryvia-system \
   -p '{"data":{"default-scheduling-policy":"fair-share"}}'
 ```
 
 ### Per-Job Policy
 
 ```yaml
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricAIJob
 metadata:
   annotations:
-    tensorreaper.ai/scheduling-policy: cost-optimized
+    gryvia.io/scheduling-policy: cost-optimized
 spec:
   # ... job spec
 ```
@@ -251,7 +251,7 @@ spec:
 ### Per-Team Policy
 
 ```yaml
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricQuota
 metadata:
   name: ml-research
@@ -374,7 +374,7 @@ kfctl quota <team-name>
 kubectl get schedulingpolicy <policy-name>
 
 # Check controller logs
-kubectl logs -n tensorreaper deployment/tensorreaper-gpu-operator
+kubectl logs -n gryvia-system deployment/gryvia-gpu-operator
 
 # Test policy
 kfctl policy test <policy-name>
@@ -387,7 +387,7 @@ kfctl policy test <policy-name>
 Create custom scheduling policies:
 
 ```yaml
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: SchedulingPolicy
 metadata:
   name: custom-ml-policy
@@ -415,5 +415,5 @@ spec:
 
 ## Support
 
-- Policy Questions: https://github.com/ssahani/TensorReaper/discussions
-- Issues: https://github.com/ssahani/TensorReaper/issues
+- Policy Questions: https://github.com/zyvorai/gryvia/discussions
+- Issues: https://github.com/zyvorai/gryvia/issues

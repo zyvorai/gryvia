@@ -1,7 +1,7 @@
 {
   "dashboard": {
-    "title": "TensorReaper - GPU Cluster Overview",
-    "tags": ["tensorreaper", "gpu", "nvidia"],
+    "title": "Gryvia - GPU Cluster Overview",
+    "tags": ["gryvia", "gpu", "nvidia"],
     "timezone": "browser",
     "panels": [
       {
@@ -43,7 +43,7 @@
         "type": "stat",
         "targets": [
           {
-            "expr": "count(kube_pod_labels{label_tensorreaper_ai_type=\"training\", phase=\"Running\"})"
+            "expr": "count(kube_pod_labels{label_gryvia_ai_type=\"training\", phase=\"Running\"})"
           }
         ],
         "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0}

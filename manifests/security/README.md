@@ -1,6 +1,6 @@
-# TensorReaper Security Policies
+# Gryvia Security Policies
 
-Security configurations for TensorReaper platform.
+Security configurations for Gryvia platform.
 
 ## Components
 
@@ -10,7 +10,7 @@ Security configurations for TensorReaper platform.
 
 Two PSPs are defined:
 
-#### tensorreaper-restricted
+#### gryvia-restricted
 For operator and control plane pods:
 - Non-privileged
 - No privilege escalation
@@ -18,7 +18,7 @@ For operator and control plane pods:
 - RunAsNonRoot enforced
 - Read-only root filesystem
 
-#### tensorreaper-gpu-workload
+#### gryvia-gpu-workload
 For GPU training jobs:
 - Allows privilege escalation (required for GPU access)
 - Allows SYS_ADMIN capability (required for NVIDIA drivers)
@@ -31,7 +31,7 @@ For GPU training jobs:
 
 Network segmentation for:
 
-#### Operators (targets `tensorreaper-system` namespace)
+#### Operators (targets `gryvia-system` namespace)
 - Allow Kubernetes API access
 - Allow Prometheus metrics scraping
 - Allow webhook traffic
@@ -55,7 +55,7 @@ Network segmentation for:
 - Deny unnecessary traffic
 
 #### Default Deny
-- Deny all ingress by default in tensorreaper namespace
+- Deny all ingress by default in gryvia namespace
 - Explicit allow required for all traffic
 
 ### 3. RBAC Policies
@@ -111,13 +111,13 @@ kubectl apply -f manifests/security/rbac-policies.yaml
 ```bash
 # Create RoleBinding for team user
 kubectl create rolebinding alice-ml-user \
-  --clusterrole=tensorreaper:team-user \
+  --clusterrole=gryvia:team-user \
   --user=alice@example.com \
   --namespace=default
 
 # Create RoleBinding for team admin
 kubectl create rolebinding bob-ml-admin \
-  --clusterrole=tensorreaper:team-admin \
+  --clusterrole=gryvia:team-admin \
   --user=bob@example.com \
   --namespace=default
 ```
@@ -127,7 +127,7 @@ kubectl create rolebinding bob-ml-admin \
 ```bash
 # Bind role to OIDC group
 kubectl create rolebinding ml-research-users \
-  --clusterrole=tensorreaper:team-user \
+  --clusterrole=gryvia:team-user \
   --group=ml-research-users \
   --namespace=default
 ```
@@ -135,12 +135,12 @@ kubectl create rolebinding ml-research-users \
 ### Use service account in jobs
 
 ```yaml
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricAIJob
 metadata:
   name: my-job
 spec:
-  serviceAccountName: tensorreaper-job-runner
+  serviceAccountName: gryvia-job-runner
   # ... rest of spec
 ```
 
@@ -173,7 +173,7 @@ Store sensitive data in Secrets:
 kubectl create secret generic vast-credentials \
   --from-literal=username=admin \
   --from-literal=password=secret \
-  --namespace=tensorreaper
+  --namespace=gryvia
 ```
 
 Reference in jobs:
@@ -209,7 +209,7 @@ kind: Policy
 rules:
   - level: RequestResponse
     resources:
-      - group: tensorreaper.ai
+      - group: gryvia.io
         resources: ["fabricaijobs", "fabricquotas"]
 ```
 
@@ -316,7 +316,7 @@ kubectl auth can-i --list --as alice@example.com
 kubectl get networkpolicies -A
 
 # Verify policy is applied
-kubectl describe networkpolicy tensorreaper-operators-policy
+kubectl describe networkpolicy gryvia-operators-policy
 ```
 
 ### Review PSP usage
@@ -347,7 +347,7 @@ kubectl get pod <pod-name> -o yaml | grep psp
 kubectl delete rolebinding alice-ml-user
 
 # Disable ServiceAccount
-kubectl patch serviceaccount tensorreaper-job-runner \
+kubectl patch serviceaccount gryvia-job-runner \
   -p '{"secrets": []}'
 
 # Block pod network access
@@ -357,6 +357,6 @@ kubectl label pod <pod-name> network-policy=deny
 ## Support
 
 For security issues:
-- Report to: security@tensorreaper.ai
+- Report to: security@gryvia.io
 - Include: Description, impact, reproduction steps
 - Response time: Critical issues within 4 hours

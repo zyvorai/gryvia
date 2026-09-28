@@ -13,7 +13,7 @@ import (
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/network-operator/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/network-operator/api/v1"
 )
 
 const (
@@ -38,7 +38,7 @@ func SRIOVConfigMapName(networkName string) string {
 // InstallDevicePlugin installs the SR-IOV device plugin.
 // networkName is the owning FabricNetwork's name, used to scope resource names
 // so that multiple FabricNetworks don't conflict.
-func InstallDevicePlugin(ctx context.Context, k8sClient client.Client, networkName string, sriovConfig *tensorreaperv1.SRIOVConfig) error {
+func InstallDevicePlugin(ctx context.Context, k8sClient client.Client, networkName string, sriovConfig *gryviav1.SRIOVConfig) error {
 	// Install SR-IOV CNI first
 	if err := installSRIOVCNI(ctx, k8sClient, networkName); err != nil {
 		return fmt.Errorf("failed to install SR-IOV CNI: %w", err)
@@ -58,8 +58,8 @@ func InstallDevicePlugin(ctx context.Context, k8sClient client.Client, networkNa
 			Name:      dsName,
 			Namespace: SRIOVDevicePluginNamespace,
 			Labels: map[string]string{
-				"app":                   dsName,
-				"tensorreaper.ai/network": networkName,
+				"app":               dsName,
+				"gryvia.io/network": networkName,
 			},
 		},
 		Spec: appsv1.DaemonSetSpec{
@@ -145,8 +145,8 @@ func installSRIOVCNI(ctx context.Context, k8sClient client.Client, networkName s
 			Name:      cniName,
 			Namespace: SRIOVDevicePluginNamespace,
 			Labels: map[string]string{
-				"app":                   cniName,
-				"tensorreaper.ai/network": networkName,
+				"app":               cniName,
+				"gryvia.io/network": networkName,
 			},
 		},
 		Spec: appsv1.DaemonSetSpec{
@@ -206,7 +206,7 @@ func installSRIOVCNI(ctx context.Context, k8sClient client.Client, networkName s
 	return nil
 }
 
-func createSRIOVConfigMap(ctx context.Context, k8sClient client.Client, networkName string, sriovConfig *tensorreaperv1.SRIOVConfig) error {
+func createSRIOVConfigMap(ctx context.Context, k8sClient client.Client, networkName string, sriovConfig *gryviav1.SRIOVConfig) error {
 	resourceName := sriovConfig.ResourceName
 	if resourceName == "" {
 		resourceName = "intel_sriov_netdevice"
@@ -233,7 +233,7 @@ func createSRIOVConfigMap(ctx context.Context, k8sClient client.Client, networkN
 			Name:      SRIOVConfigMapName(networkName),
 			Namespace: SRIOVDevicePluginNamespace,
 			Labels: map[string]string{
-				"tensorreaper.ai/network": networkName,
+				"gryvia.io/network": networkName,
 			},
 		},
 		Data: map[string]string{
@@ -255,7 +255,7 @@ func createSRIOVConfigMap(ctx context.Context, k8sClient client.Client, networkN
 }
 
 // ConfigureNode configures SR-IOV on a specific node
-func ConfigureNode(ctx context.Context, k8sClient client.Client, node *corev1.Node, sriovConfig *tensorreaperv1.SRIOVConfig) error {
+func ConfigureNode(ctx context.Context, k8sClient client.Client, node *corev1.Node, sriovConfig *gryviav1.SRIOVConfig) error {
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		if err := k8sClient.Get(ctx, types.NamespacedName{Name: node.Name}, node); err != nil {
 			return err
@@ -265,15 +265,15 @@ func ConfigureNode(ctx context.Context, k8sClient client.Client, node *corev1.No
 			node.Labels = make(map[string]string)
 		}
 
-		node.Labels["tensorreaper.ai/sriov"] = "true"
-		node.Labels[fmt.Sprintf("tensorreaper.ai/sriov-%s", sriovConfig.ResourceName)] = "true"
+		node.Labels["gryvia.io/sriov"] = "true"
+		node.Labels[fmt.Sprintf("gryvia.io/sriov-%s", sriovConfig.ResourceName)] = "true"
 
 		if node.Annotations == nil {
 			node.Annotations = make(map[string]string)
 		}
 
-		node.Annotations["tensorreaper.ai/sriov-interface"] = sriovConfig.PhysicalInterface
-		node.Annotations["tensorreaper.ai/sriov-numvfs"] = fmt.Sprintf("%d", sriovConfig.NumVFs)
+		node.Annotations["gryvia.io/sriov-interface"] = sriovConfig.PhysicalInterface
+		node.Annotations["gryvia.io/sriov-numvfs"] = fmt.Sprintf("%d", sriovConfig.NumVFs)
 
 		return k8sClient.Update(ctx, node)
 	})
@@ -281,7 +281,7 @@ func ConfigureNode(ctx context.Context, k8sClient client.Client, node *corev1.No
 
 // EnsureVFConfigDaemonSet deploys a DaemonSet that enables Virtual Functions
 // on matching nodes by writing to the sysfs sriov_numvfs file.
-func EnsureVFConfigDaemonSet(ctx context.Context, k8sClient client.Client, sriovConfig *tensorreaperv1.SRIOVConfig) error {
+func EnsureVFConfigDaemonSet(ctx context.Context, k8sClient client.Client, sriovConfig *gryviav1.SRIOVConfig) error {
 	name := fmt.Sprintf("sriov-vf-config-%s", sriovConfig.ResourceName)
 	enableScript := fmt.Sprintf(
 		`#!/bin/sh
@@ -330,9 +330,9 @@ sleep infinity`,
 			Name:      name,
 			Namespace: SRIOVDevicePluginNamespace,
 			Labels: map[string]string{
-				"app":                          name,
-				"tensorreaper.ai/component":      "sriov-vf-config",
-				"tensorreaper.ai/sriov-resource": sriovConfig.ResourceName,
+				"app":                      name,
+				"gryvia.io/component":      "sriov-vf-config",
+				"gryvia.io/sriov-resource": sriovConfig.ResourceName,
 			},
 		},
 		Spec: appsv1.DaemonSetSpec{
@@ -351,7 +351,7 @@ sleep infinity`,
 					HostNetwork: true,
 					HostPID:     true,
 					NodeSelector: map[string]string{
-						"tensorreaper.ai/sriov": "true",
+						"gryvia.io/sriov": "true",
 					},
 					Containers: []corev1.Container{
 						{

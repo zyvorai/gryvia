@@ -1,6 +1,6 @@
-# Contributing to TensorReaper
+# Contributing to Gryvia
 
-Thank you for your interest in contributing to TensorReaper!
+Thank you for your interest in contributing to Gryvia!
 
 ## Code of Conduct
 
@@ -39,8 +39,8 @@ Types: feat, fix, docs, style, refactor, test, chore
 ## Development Setup
 
 ```bash
-git clone https://github.com/ssahani/TensorReaper.git
-cd tensor-reaper
+git clone https://github.com/zyvorai/gryvia.git
+cd gryvia
 make build          # Build all operators + CLI + Web UI
 make test           # Run all tests
 make lint           # Run linters
@@ -90,6 +90,6 @@ make lint           # Run linters
 
 - GitHub Issues: Bug reports
 - GitHub Discussions: Questions
-- Documentation: https://github.com/ssahani/TensorReaper/docs
+- Documentation: https://github.com/zyvorai/gryvia/docs
 
 Thank you for contributing! 🚀

@@ -1,16 +1,16 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: fabricinferenceinsights.tensorreaper.ai
+  name: fabricinferenceinsights.gryvia.io
 spec:
-  group: tensorreaper.ai
+  group: gryvia.io
   names:
     kind: FabricInferenceInsight
     listKind: FabricInferenceInsightList
     plural: fabricinferenceinsights
     singular: fabricinferenceinsight
     shortNames: [fii]
-    categories: [tensorreaper, all]
+    categories: [gryvia, all]
   scope: Namespaced
   versions:
     - name: v1

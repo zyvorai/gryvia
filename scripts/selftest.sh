@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================================
-# selftest.sh — TensorReaper end-to-end self-test
+# selftest.sh — Gryvia end-to-end self-test
 # ============================================================================
 # Runs a quick smoke test: creates a test job, waits for scheduling,
 # verifies quota tracking, then cleans up.
@@ -28,7 +28,7 @@ done
 
 PASS=0
 FAIL=0
-TEST_NS="tensorreaper-selftest"
+TEST_NS="gryvia-selftest"
 TEST_JOB="selftest-$(date +%s)"
 
 ok()   { echo "  ✅ $*"; ((PASS++)); }
@@ -47,7 +47,7 @@ trap cleanup EXIT
 
 echo ""
 echo "  ╔══════════════════════════════════════════════════╗"
-echo "  ║     🧪 TensorReaper Self-Test                      ║"
+echo "  ║     🧪 Gryvia Self-Test                      ║"
 echo "  ╚══════════════════════════════════════════════════╝"
 echo ""
 
@@ -71,10 +71,10 @@ step "Test 2: CRDs installed"
 
 ALL_CRDS=true
 for crd in fabricaijobs fabricgpunodes fabricquotas fabricstorages fabricnetworks; do
-    if kubectl get crd "${crd}.tensorreaper.ai" &>/dev/null 2>&1; then
-        ok "${crd}.tensorreaper.ai exists"
+    if kubectl get crd "${crd}.gryvia.io" &>/dev/null 2>&1; then
+        ok "${crd}.gryvia.io exists"
     else
-        fail "${crd}.tensorreaper.ai missing"
+        fail "${crd}.gryvia.io missing"
         ALL_CRDS=false
     fi
 done
@@ -97,7 +97,7 @@ fi
 step "Test 4: Submit test FabricAIJob"
 
 JOB_YAML=$(cat <<EOF
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricAIJob
 metadata:
   name: $TEST_JOB
@@ -110,7 +110,7 @@ spec:
   command:
     - python3
     - -c
-    - "print('TensorReaper selftest OK'); import time; time.sleep(5)"
+    - "print('Gryvia selftest OK'); import time; time.sleep(5)"
 EOF
 )
 
@@ -144,9 +144,9 @@ fi
 # ── Test 6: Check API gateway (if running) ──
 step "Test 6: API gateway health"
 
-API_POD=$(kubectl get pods -n tensorreaper -l app=tensorreaper-api-gateway --no-headers 2>/dev/null | head -1 | awk '{print $1}' || true)
+API_POD=$(kubectl get pods -n gryvia-system -l app=gryvia-api-gateway --no-headers 2>/dev/null | head -1 | awk '{print $1}' || true)
 if [ -n "$API_POD" ]; then
-    HEALTH=$(kubectl exec -n tensorreaper "$API_POD" -- curl -s http://localhost:8080/health 2>/dev/null || echo "")
+    HEALTH=$(kubectl exec -n gryvia-system "$API_POD" -- curl -s http://localhost:8080/health 2>/dev/null || echo "")
     if echo "$HEALTH" | grep -q "ok"; then
         ok "API gateway healthy"
     else

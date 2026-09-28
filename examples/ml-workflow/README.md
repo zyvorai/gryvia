@@ -1,6 +1,6 @@
 # ML Workflow Examples
 
-Example YAML manifests for TensorReaper ML workflow CRDs.
+Example YAML manifests for Gryvia ML workflow CRDs.
 
 ## Examples
 

@@ -1,3 +1,6 @@
+// +kubebuilder:object:generate=true
+// +groupName=gryvia.io
+
 package v1
 
 import (
@@ -6,7 +9,7 @@ import (
 )
 
 var (
-	GroupVersion = schema.GroupVersion{Group: "tensorreaper.ai", Version: "v1"}
+	GroupVersion  = schema.GroupVersion{Group: "gryvia.io", Version: "v1"}
 	SchemeBuilder = &scheme.Builder{GroupVersion: GroupVersion}
-	AddToScheme = SchemeBuilder.AddToScheme
+	AddToScheme   = SchemeBuilder.AddToScheme
 )

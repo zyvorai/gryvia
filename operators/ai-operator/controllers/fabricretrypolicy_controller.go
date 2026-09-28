@@ -14,7 +14,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/ai-operator/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 )
 
 // FabricRetryPolicyReconciler reconciles a FabricRetryPolicy object
@@ -24,17 +24,17 @@ type FabricRetryPolicyReconciler struct {
 	Log    logr.Logger
 }
 
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricretrypolicies,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricretrypolicies/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricretrypolicies/finalizers,verbs=update
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricaijobs,verbs=get;list;watch;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricretrypolicies,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricretrypolicies/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricretrypolicies/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch;update;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop
 func (r *FabricRetryPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("fabricretrypolicy", req.NamespacedName)
 
 	// Fetch the FabricRetryPolicy instance
-	policy := &tensorreaperv1.FabricRetryPolicy{}
+	policy := &gryviav1.FabricRetryPolicy{}
 	err := r.Get(ctx, req.NamespacedName, policy)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -70,7 +70,7 @@ func (r *FabricRetryPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	return result, nil
 }
 
-func (r *FabricRetryPolicyReconciler) reconcileRetryPolicy(ctx context.Context, policy *tensorreaperv1.FabricRetryPolicy) (ctrl.Result, error) {
+func (r *FabricRetryPolicyReconciler) reconcileRetryPolicy(ctx context.Context, policy *gryviav1.FabricRetryPolicy) (ctrl.Result, error) {
 	log := r.Log.WithValues("fabricretrypolicy", policy.Name)
 
 	// Check circuit breaker state
@@ -97,7 +97,7 @@ func (r *FabricRetryPolicyReconciler) reconcileRetryPolicy(ctx context.Context, 
 	}
 
 	// List failed jobs that reference this retry policy
-	jobList := &tensorreaperv1.FabricAIJobList{}
+	jobList := &gryviav1.FabricAIJobList{}
 	if err := r.List(ctx, jobList); err != nil {
 		log.Error(err, "Failed to list FabricAIJobs")
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
@@ -195,18 +195,18 @@ func (r *FabricRetryPolicyReconciler) reconcileRetryPolicy(ctx context.Context, 
 	return ctrl.Result{RequeueAfter: requeueAfter}, nil
 }
 
-func (r *FabricRetryPolicyReconciler) shouldRetryJob(policy *tensorreaperv1.FabricRetryPolicy, job *tensorreaperv1.FabricAIJob) bool {
+func (r *FabricRetryPolicyReconciler) shouldRetryJob(policy *gryviav1.FabricRetryPolicy, job *gryviav1.FabricAIJob) bool {
 	// Check if job has a label or annotation referencing this policy
 	labels := job.GetLabels()
 	if labels != nil {
-		if labels["tensorreaper.ai/retry-policy"] == policy.Name {
+		if labels["gryvia.io/retry-policy"] == policy.Name {
 			return true
 		}
 	}
 
 	annotations := job.GetAnnotations()
 	if annotations != nil {
-		if annotations["tensorreaper.ai/retry-policy"] == policy.Name {
+		if annotations["gryvia.io/retry-policy"] == policy.Name {
 			return true
 		}
 	}
@@ -214,7 +214,7 @@ func (r *FabricRetryPolicyReconciler) shouldRetryJob(policy *tensorreaperv1.Fabr
 	return false
 }
 
-func (r *FabricRetryPolicyReconciler) matchesRetryConditions(policy *tensorreaperv1.FabricRetryPolicy, job *tensorreaperv1.FabricAIJob) bool {
+func (r *FabricRetryPolicyReconciler) matchesRetryConditions(policy *gryviav1.FabricRetryPolicy, job *gryviav1.FabricAIJob) bool {
 	// Check noRetryOn conditions first
 	if policy.Spec.NoRetryOn != nil {
 		// Check exit codes to NOT retry on
@@ -285,7 +285,7 @@ func (r *FabricRetryPolicyReconciler) matchesRetryConditions(policy *tensorreape
 	return true
 }
 
-func (r *FabricRetryPolicyReconciler) calculateBackoff(policy *tensorreaperv1.FabricRetryPolicy, retryCount int32) time.Duration {
+func (r *FabricRetryPolicyReconciler) calculateBackoff(policy *gryviav1.FabricRetryPolicy, retryCount int32) time.Duration {
 	if policy.Spec.Backoff == nil {
 		return 1 * time.Minute
 	}
@@ -347,7 +347,7 @@ func fibonacci(n int) int {
 	return b
 }
 
-func (r *FabricRetryPolicyReconciler) shouldOpenCircuitBreaker(policy *tensorreaperv1.FabricRetryPolicy, jobList *tensorreaperv1.FabricAIJobList) bool {
+func (r *FabricRetryPolicyReconciler) shouldOpenCircuitBreaker(policy *gryviav1.FabricRetryPolicy, jobList *gryviav1.FabricAIJobList) bool {
 	if policy.Spec.CircuitBreaker == nil || !policy.Spec.CircuitBreaker.Enabled {
 		return false
 	}
@@ -368,7 +368,7 @@ func (r *FabricRetryPolicyReconciler) shouldOpenCircuitBreaker(policy *tensorrea
 	return consecutiveFailures >= threshold
 }
 
-func (r *FabricRetryPolicyReconciler) shouldResetCircuitBreaker(policy *tensorreaperv1.FabricRetryPolicy) bool {
+func (r *FabricRetryPolicyReconciler) shouldResetCircuitBreaker(policy *gryviav1.FabricRetryPolicy) bool {
 	if policy.Spec.CircuitBreaker == nil || policy.Status.LastAttemptTime == nil {
 		return true
 	}
@@ -386,6 +386,6 @@ func (r *FabricRetryPolicyReconciler) shouldResetCircuitBreaker(policy *tensorre
 // SetupWithManager sets up the controller with the Manager.
 func (r *FabricRetryPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tensorreaperv1.FabricRetryPolicy{}).
+		For(&gryviav1.FabricRetryPolicy{}).
 		Complete(r)
 }

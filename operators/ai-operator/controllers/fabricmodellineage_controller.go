@@ -14,8 +14,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/ai-operator/api/v1"
-	"github.com/ssahani/TensorReaper/operators/ai-operator/pkg/lineage"
+	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
+	"github.com/zyvorai/gryvia/operators/ai-operator/pkg/lineage"
 )
 
 // FabricModelLineageReconciler reconciles a FabricModelLineage object
@@ -24,16 +24,16 @@ type FabricModelLineageReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricmodellineages,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricmodellineages/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricmodellineages/finalizers,verbs=update
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricaijobs,verbs=get;list;watch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricmodellineages,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricmodellineages/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricmodellineages/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch
 
 func (r *FabricModelLineageReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	// Fetch the FabricModelLineage instance
-	ml := &tensorreaperv1.FabricModelLineage{}
+	ml := &gryviav1.FabricModelLineage{}
 	err := r.Get(ctx, req.NamespacedName, ml)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -122,7 +122,7 @@ func (r *FabricModelLineageReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 // autoCollectProvenance uses the lineage collector to gather provenance data
 // from referenced FabricAIJob and related resources.
-func (r *FabricModelLineageReconciler) autoCollectProvenance(ctx context.Context, ml *tensorreaperv1.FabricModelLineage) error {
+func (r *FabricModelLineageReconciler) autoCollectProvenance(ctx context.Context, ml *gryviav1.FabricModelLineage) error {
 	logger := log.FromContext(ctx)
 	collector := lineage.NewCollector(r.Client)
 
@@ -182,10 +182,13 @@ func (r *FabricModelLineageReconciler) autoCollectProvenance(ctx context.Context
 		ml.Spec.Provenance.Events.Interventions = collected.Events.Interventions
 	}
 
-	// Update the spec with collected data
+	// Update the spec with collected data. Update overwrites ml with the
+	// server's copy, which drops in-memory status changes, so restore them.
+	status := ml.Status.DeepCopy()
 	if err := r.Update(ctx, ml); err != nil {
 		return err
 	}
+	ml.Status = *status
 
 	logger.Info("Auto-collected provenance from job",
 		"jobRef", ml.Spec.Provenance.Training.JobRef,
@@ -196,7 +199,7 @@ func (r *FabricModelLineageReconciler) autoCollectProvenance(ctx context.Context
 	return nil
 }
 
-func (r *FabricModelLineageReconciler) setCondition(ml *tensorreaperv1.FabricModelLineage, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *FabricModelLineageReconciler) setCondition(ml *gryviav1.FabricModelLineage, condType string, status metav1.ConditionStatus, reason, message string) {
 	meta.SetStatusCondition(&ml.Status.Conditions, metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -209,12 +212,12 @@ func (r *FabricModelLineageReconciler) setCondition(ml *tensorreaperv1.FabricMod
 // SetupWithManager sets up the controller with the Manager
 func (r *FabricModelLineageReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tensorreaperv1.FabricModelLineage{}).
-		Watches(&tensorreaperv1.FabricAIJob{}, handler.EnqueueRequestsFromMapFunc(
+		For(&gryviav1.FabricModelLineage{}).
+		Watches(&gryviav1.FabricAIJob{}, handler.EnqueueRequestsFromMapFunc(
 			func(ctx context.Context, obj client.Object) []reconcile.Request {
 				// When a FabricAIJob completes, re-reconcile lineages that
 				// reference it so provenance can be auto-collected.
-				job, ok := obj.(*tensorreaperv1.FabricAIJob)
+				job, ok := obj.(*gryviav1.FabricAIJob)
 				if !ok {
 					return nil
 				}
@@ -225,7 +228,7 @@ func (r *FabricModelLineageReconciler) SetupWithManager(mgr ctrl.Manager) error 
 				}
 
 				// Find lineages that reference this job
-				lineageList := &tensorreaperv1.FabricModelLineageList{}
+				lineageList := &gryviav1.FabricModelLineageList{}
 				if err := mgr.GetClient().List(ctx, lineageList,
 					client.InNamespace(job.Namespace)); err != nil {
 					return nil

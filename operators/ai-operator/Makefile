@@ -1,5 +1,5 @@
 # Image URL to use for building/pushing image targets
-IMG ?= tensorreaper/ai-operator:latest
+IMG ?= gryvia/ai-operator:latest
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))

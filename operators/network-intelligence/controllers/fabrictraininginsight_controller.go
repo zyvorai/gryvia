@@ -16,7 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/network-intelligence/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/network-intelligence/api/v1"
 )
 
 const (
@@ -30,17 +30,17 @@ type FabricTrainingInsightReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabrictraininginsights,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabrictraininginsights/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabrictraininginsights/finalizers,verbs=update
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricaijobs,verbs=get;list;watch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabrictraininginsights,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabrictraininginsights/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabrictraininginsights/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 
 func (r *FabricTrainingInsightReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	// Fetch the FabricTrainingInsight instance
-	insight := &tensorreaperv1.FabricTrainingInsight{}
+	insight := &gryviav1.FabricTrainingInsight{}
 	if err := r.Get(ctx, req.NamespacedName, insight); err != nil {
 		if errors.IsNotFound(err) {
 			logger.Info("FabricTrainingInsight resource not found, ignoring since object must be deleted")
@@ -60,9 +60,9 @@ func (r *FabricTrainingInsightReconciler) Reconcile(ctx context.Context, req ctr
 	trainingData := r.queryTrainingStats(ctx, insight)
 
 	// Populate rank stats
-	var rankStats []tensorreaperv1.RankStat
+	var rankStats []gryviav1.RankStat
 	for _, rd := range trainingData.RankStats {
-		rankStats = append(rankStats, tensorreaperv1.RankStat{
+		rankStats = append(rankStats, gryviav1.RankStat{
 			Rank:         rd.Rank,
 			AvgLatencyNs: rd.AvgLatencyNs,
 			TotalBytes:   rd.TotalBytes,
@@ -111,7 +111,7 @@ type collectorTrainingResponse struct {
 }
 
 // queryTrainingStats fetches NCCL training stats from the collector API
-func (r *FabricTrainingInsightReconciler) queryTrainingStats(ctx context.Context, insight *tensorreaperv1.FabricTrainingInsight) collectorTrainingResponse {
+func (r *FabricTrainingInsightReconciler) queryTrainingStats(ctx context.Context, insight *gryviav1.FabricTrainingInsight) collectorTrainingResponse {
 	logger := log.FromContext(ctx)
 
 	httpClient := &http.Client{Timeout: 10 * time.Second}
@@ -142,7 +142,7 @@ func (r *FabricTrainingInsightReconciler) queryTrainingStats(ctx context.Context
 }
 
 // detectStragglers analyzes rank stats to identify straggler ranks
-func (r *FabricTrainingInsightReconciler) detectStragglers(rankStats []tensorreaperv1.RankStat) []tensorreaperv1.StragglerInfo {
+func (r *FabricTrainingInsightReconciler) detectStragglers(rankStats []gryviav1.RankStat) []gryviav1.StragglerInfo {
 	if len(rankStats) < 2 {
 		return nil
 	}
@@ -159,7 +159,7 @@ func (r *FabricTrainingInsightReconciler) detectStragglers(rankStats []tensorrea
 	}
 
 	// Identify ranks that are significantly slower than the median
-	var stragglers []tensorreaperv1.StragglerInfo
+	var stragglers []gryviav1.StragglerInfo
 	for _, rs := range rankStats {
 		slowdownFactor := float64(rs.AvgLatencyNs) / float64(medianLatency)
 		if slowdownFactor > 1.5 {
@@ -170,7 +170,7 @@ func (r *FabricTrainingInsightReconciler) detectStragglers(rankStats []tensorrea
 					reason = "excessive_data_transfer"
 				}
 			}
-			stragglers = append(stragglers, tensorreaperv1.StragglerInfo{
+			stragglers = append(stragglers, gryviav1.StragglerInfo{
 				Rank:           rs.Rank,
 				SlowdownFactor: slowdownFactor,
 				Reason:         reason,
@@ -194,9 +194,9 @@ func (r *FabricTrainingInsightReconciler) identifyBottleneck(commComputeRatio fl
 }
 
 // updateTrainingInsightStatus updates the FabricTrainingInsight status subresource
-func (r *FabricTrainingInsightReconciler) updateTrainingInsightStatus(ctx context.Context, namespacedName types.NamespacedName, phase string, rankStats []tensorreaperv1.RankStat, commPattern string, commComputeRatio float64, stragglers []tensorreaperv1.StragglerInfo, bottleneck string) {
+func (r *FabricTrainingInsightReconciler) updateTrainingInsightStatus(ctx context.Context, namespacedName types.NamespacedName, phase string, rankStats []gryviav1.RankStat, commPattern string, commComputeRatio float64, stragglers []gryviav1.StragglerInfo, bottleneck string) {
 	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		insight := &tensorreaperv1.FabricTrainingInsight{}
+		insight := &gryviav1.FabricTrainingInsight{}
 		if err := r.Get(ctx, namespacedName, insight); err != nil {
 			return err
 		}
@@ -216,6 +216,6 @@ func (r *FabricTrainingInsightReconciler) updateTrainingInsightStatus(ctx contex
 // SetupWithManager sets up the controller with the Manager
 func (r *FabricTrainingInsightReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tensorreaperv1.FabricTrainingInsight{}).
+		For(&gryviav1.FabricTrainingInsight{}).
 		Complete(r)
 }

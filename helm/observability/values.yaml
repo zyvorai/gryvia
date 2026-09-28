@@ -12,14 +12,14 @@ grafana:
     dashboardproviders.yaml:
       apiVersion: 1
       providers:
-        - name: 'tensorreaper'
+        - name: 'gryvia'
           orgId: 1
-          folder: 'TensorReaper'
+          folder: 'Gryvia'
           type: file
           disableDeletion: false
           editable: true
           options:
-            path: /var/lib/grafana/dashboards/tensorreaper
+            path: /var/lib/grafana/dashboards/gryvia
 
 kube-prometheus-stack:
   prometheus:
@@ -39,7 +39,7 @@ kube-prometheus-stack:
             - role: endpoints
               namespaces:
                 names:
-                  - tensorreaper-system
+                  - gryvia-system
           relabel_configs:
             - source_labels: [__meta_kubernetes_service_name]
               action: keep
@@ -53,16 +53,16 @@ kube-prometheus-stack:
       dashboardproviders.yaml:
         apiVersion: 1
         providers:
-          - name: 'tensorreaper'
+          - name: 'gryvia'
             orgId: 1
-            folder: 'TensorReaper'
+            folder: 'Gryvia'
             type: file
             disableDeletion: false
             editable: true
             options:
-              path: /var/lib/grafana/dashboards/tensorreaper
+              path: /var/lib/grafana/dashboards/gryvia
     dashboards:
-      tensorreaper:
+      gryvia:
         gpu-overview:
           gnetId: 12239
           revision: 1
@@ -85,7 +85,7 @@ kube-prometheus-stack:
           # Example:
           # slack_configs:
           #   - api_url: '<webhook-url>'
-          #     channel: '#tensorreaper-alerts'
+          #     channel: '#gryvia-alerts'
           webhook_configs:
-            - url: 'http://alertmanager-webhook.tensorreaper-system.svc:9093/api/v1/alerts'
+            - url: 'http://alertmanager-webhook.gryvia-system.svc:9093/api/v1/alerts'
               send_resolved: true

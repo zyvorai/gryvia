@@ -62,12 +62,5 @@ jobs:
             helm package "$chart" -d .helm-repo
           done
 
-      - name: Generate index
-        run: |
-          helm repo index .helm-repo --url https://${{ github.repository_owner }}.github.io/tensor-reaper
-
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@4f9cc6602d3f66b9c108549d475ec49e8ef4d45e # v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: .helm-repo
+      # The chart repository is published together with the docs site (see
+      # pages.yml), at https://zyvorai.github.io/gryvia/charts.

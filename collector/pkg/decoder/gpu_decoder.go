@@ -29,13 +29,13 @@ const (
 
 // NCCLOpType constants for NCCL collective operations.
 const (
-	NCCLOpAllReduce  uint8 = 0
-	NCCLOpBroadcast  uint8 = 1
-	NCCLOpReduce     uint8 = 2
-	NCCLOpAllGather  uint8 = 3
+	NCCLOpAllReduce     uint8 = 0
+	NCCLOpBroadcast     uint8 = 1
+	NCCLOpReduce        uint8 = 2
+	NCCLOpAllGather     uint8 = 3
 	NCCLOpReduceScatter uint8 = 4
-	NCCLOpSend       uint8 = 5
-	NCCLOpRecv       uint8 = 6
+	NCCLOpSend          uint8 = 5
+	NCCLOpRecv          uint8 = 6
 )
 
 // GPUEvent matches the gpu_event struct from ebpf/headers/gpu_common.h.

@@ -1,16 +1,16 @@
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: tensorreaper-collector
-  namespace: tensorreaper-system
+  name: gryvia-collector
+  namespace: gryvia-system
   labels:
-    app.kubernetes.io/name: tensorreaper-collector
+    app.kubernetes.io/name: gryvia-collector
     app.kubernetes.io/component: network-intelligence
-    app.kubernetes.io/part-of: tensorreaper
+    app.kubernetes.io/part-of: gryvia
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: tensorreaper-collector
+      app.kubernetes.io/name: gryvia-collector
   updateStrategy:
     type: RollingUpdate
     rollingUpdate:
@@ -18,7 +18,7 @@ spec:
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: tensorreaper-collector
+        app.kubernetes.io/name: gryvia-collector
         app.kubernetes.io/component: network-intelligence
       annotations:
         prometheus.io/scrape: "true"
@@ -28,15 +28,15 @@ spec:
       hostNetwork: true
       hostPID: true
       dnsPolicy: ClusterFirstWithHostNet
-      serviceAccountName: tensorreaper-collector
+      serviceAccountName: gryvia-collector
       tolerations:
         - operator: Exists
       containers:
         - name: collector
-          image: ghcr.io/ssahani/tensorreaper-collector:latest
+          image: ghcr.io/zyvorai/gryvia-collector:latest
           args:
             - --metrics-addr=:9090
-            - --ebpf-dir=/opt/tensorreaper/ebpf
+            - --ebpf-dir=/opt/gryvia/ebpf
             - --iface=eth0
           ports:
             - name: metrics
@@ -111,15 +111,15 @@ spec:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: tensorreaper-collector
-  namespace: tensorreaper-system
+  name: gryvia-collector
+  namespace: gryvia-system
   labels:
-    app.kubernetes.io/name: tensorreaper-collector
+    app.kubernetes.io/name: gryvia-collector
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: tensorreaper-collector
+  name: gryvia-collector
 rules:
   - apiGroups: [""]
     resources: ["pods", "services", "namespaces"]
@@ -131,27 +131,27 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: tensorreaper-collector
+  name: gryvia-collector
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: tensorreaper-collector
+  name: gryvia-collector
 subjects:
   - kind: ServiceAccount
-    name: tensorreaper-collector
-    namespace: tensorreaper-system
+    name: gryvia-collector
+    namespace: gryvia-system
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: tensorreaper-collector
-  namespace: tensorreaper-system
+  name: gryvia-collector
+  namespace: gryvia-system
   labels:
-    app.kubernetes.io/name: tensorreaper-collector
+    app.kubernetes.io/name: gryvia-collector
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: tensorreaper-collector
+      app.kubernetes.io/name: gryvia-collector
   endpoints:
     - port: metrics
       interval: 15s
@@ -160,14 +160,14 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: tensorreaper-collector
-  namespace: tensorreaper-system
+  name: gryvia-collector
+  namespace: gryvia-system
   labels:
-    app.kubernetes.io/name: tensorreaper-collector
+    app.kubernetes.io/name: gryvia-collector
 spec:
   clusterIP: None
   selector:
-    app.kubernetes.io/name: tensorreaper-collector
+    app.kubernetes.io/name: gryvia-collector
   ports:
     - name: metrics
       port: 9090

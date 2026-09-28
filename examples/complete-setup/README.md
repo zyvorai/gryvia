@@ -1,6 +1,6 @@
-# Complete TensorReaper Setup Example
+# Complete Gryvia Setup Example
 
-This directory contains a complete example setup for TensorReaper with all components configured.
+This directory contains a complete example setup for Gryvia with all components configured.
 
 ## Prerequisites
 
@@ -12,11 +12,11 @@ This directory contains a complete example setup for TensorReaper with all compo
 ## Quick Start
 
 ```bash
-# 1. Install TensorReaper
+# 1. Install Gryvia
 ./deploy.sh
 
 # 2. Verify installation
-kubectl get pods -n tensorreaper
+kubectl get pods -n gryvia-system
 
 # 3. Submit example job
 kubectl apply -f example-job.yaml
@@ -40,7 +40,7 @@ kubectl get fabricaijobs -n default
 
 ```bash
 # Create namespace
-kubectl create namespace tensorreaper
+kubectl create namespace gryvia-system
 
 # Deploy CRDs
 kubectl apply -f ../../crds/
@@ -133,7 +133,7 @@ Example jobs:
 ### Web UI
 
 ```bash
-kubectl port-forward -n tensorreaper svc/tensorreaper-ui 8080:80
+kubectl port-forward -n gryvia-system svc/gryvia-ui 8080:80
 ```
 
 Open http://localhost:8080
@@ -142,24 +142,24 @@ Open http://localhost:8080
 
 ```bash
 # Install CLI
-curl -L https://github.com/ssahani/TensorReaper/releases/latest/download/tensorreaper-linux-amd64 -o tensorreaper
-chmod +x tensorreaper
-sudo mv tensorreaper /usr/local/bin/
+curl -L https://github.com/zyvorai/gryvia/releases/latest/download/gryvia-linux-amd64 -o gryvia
+chmod +x gryvia
+sudo mv gryvia /usr/local/bin/
 
 # Check cluster status
-tensorreaper cluster
+gryvia cluster
 
 # List jobs
-tensorreaper list jobs
+gryvia list jobs
 
 # Get quota information
-tensorreaper quota
+gryvia quota
 ```
 
 ### Grafana Dashboards
 
 ```bash
-kubectl port-forward -n tensorreaper svc/prometheus-grafana 3000:80
+kubectl port-forward -n gryvia-system svc/prometheus-grafana 3000:80
 ```
 
 Open http://localhost:3000
@@ -167,7 +167,7 @@ Open http://localhost:3000
 - Password: (get from secret)
 
 ```bash
-kubectl get secret -n tensorreaper prometheus-grafana -o jsonpath="{.data.admin-password}" | base64 -d
+kubectl get secret -n gryvia-system prometheus-grafana -o jsonpath="{.data.admin-password}" | base64 -d
 ```
 
 ## Example Workflows
@@ -175,7 +175,7 @@ kubectl get secret -n tensorreaper prometheus-grafana -o jsonpath="{.data.admin-
 ### Submit a Training Job
 
 ```yaml
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricAIJob
 metadata:
   name: llama-training
@@ -208,8 +208,8 @@ spec:
 
 ```bash
 kubectl apply -f llama-training.yaml
-tensorreaper status llama-training
-tensorreaper logs llama-training
+gryvia status llama-training
+gryvia logs llama-training
 ```
 
 ### Monitor GPU Utilization
@@ -226,7 +226,7 @@ kubectl describe fabricgpunode gpu-worker-01
 
 ```bash
 # Via CLI
-tensorreaper quota
+gryvia quota
 
 # Via kubectl
 kubectl get fabricquotas
@@ -241,10 +241,10 @@ kubectl describe fabricquota ml-research-quota
 
 ```bash
 # Check operator logs
-kubectl logs -n tensorreaper -l app=tensorreaper-gpu-operator --tail=50
+kubectl logs -n gryvia-system -l app=gryvia-gpu-operator --tail=50
 
 # Check RBAC
-kubectl auth can-i --list --as=system:serviceaccount:tensorreaper:tensorreaper-gpu-operator
+kubectl auth can-i --list --as=system:serviceaccount:gryvia:gryvia-gpu-operator
 ```
 
 ### Jobs stuck in Pending
@@ -264,10 +264,10 @@ kubectl describe fabricaijob <job-name>
 
 ```bash
 # Check storage operator
-kubectl logs -n tensorreaper -l app=tensorreaper-storage-operator
+kubectl logs -n gryvia-system -l app=gryvia-storage-operator
 
 # Check CSI driver
-kubectl get pods -n tensorreaper | grep vast-csi
+kubectl get pods -n gryvia-system | grep vast-csi
 
 # Verify storage backend
 kubectl get fabricstorage
@@ -282,9 +282,9 @@ kubectl delete fabricaijobs --all
 # Delete example resources
 kubectl delete -f .
 
-# Uninstall TensorReaper
-helm uninstall tensorreaper -n tensorreaper
-kubectl delete namespace tensorreaper
+# Uninstall Gryvia
+helm uninstall gryvia -n gryvia-system
+kubectl delete namespace gryvia-system
 ```
 
 ## Production Considerations
@@ -323,6 +323,6 @@ kubectl delete namespace tensorreaper
 
 ## Support
 
-- Documentation: https://github.com/ssahani/TensorReaper
-- Issues: https://github.com/ssahani/TensorReaper/issues
-- Discussions: https://github.com/ssahani/TensorReaper/discussions
+- Documentation: https://github.com/zyvorai/gryvia
+- Issues: https://github.com/zyvorai/gryvia/issues
+- Discussions: https://github.com/zyvorai/gryvia/discussions

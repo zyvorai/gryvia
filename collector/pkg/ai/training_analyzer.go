@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/ssahani/TensorReaper/collector/pkg/decoder"
+	"github.com/zyvorai/gryvia/collector/pkg/decoder"
 )
 
 // RankPair identifies a directional communication pair between two ranks.

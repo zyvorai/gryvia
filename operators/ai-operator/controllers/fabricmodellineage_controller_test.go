@@ -11,12 +11,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/ai-operator/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 )
 
 func newModelLineageTestScheme() *runtime.Scheme {
 	s := runtime.NewScheme()
-	_ = tensorreaperv1.AddToScheme(s)
+	_ = gryviav1.AddToScheme(s)
 	return s
 }
 
@@ -25,7 +25,7 @@ func newModelLineageReconciler(objs ...client.Object) (*FabricModelLineageReconc
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(objs...).
-		WithStatusSubresource(&tensorreaperv1.FabricModelLineage{}, &tensorreaperv1.FabricAIJob{}).
+		WithStatusSubresource(&gryviav1.FabricModelLineage{}, &gryviav1.FabricAIJob{}).
 		Build()
 	r := &FabricModelLineageReconciler{
 		Client: fakeClient,
@@ -34,27 +34,27 @@ func newModelLineageReconciler(objs ...client.Object) (*FabricModelLineageReconc
 	return r, fakeClient
 }
 
-func newTestModelLineage(name, namespace string) *tensorreaperv1.FabricModelLineage {
-	return &tensorreaperv1.FabricModelLineage{
+func newTestModelLineage(name, namespace string) *gryviav1.FabricModelLineage {
+	return &gryviav1.FabricModelLineage{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
 		},
-		Spec: tensorreaperv1.FabricModelLineageSpec{
-			Model: tensorreaperv1.ModelIdentity{
+		Spec: gryviav1.FabricModelLineageSpec{
+			Model: gryviav1.ModelIdentity{
 				Name:     "llama-70b",
 				Version:  "1.0.0",
 				Registry: "registry.example.com/models",
 				Format:   "pytorch",
 			},
-			Provenance: tensorreaperv1.ProvenanceSpec{
+			Provenance: gryviav1.ProvenanceSpec{
 				AutoCapture: false,
-				Code: tensorreaperv1.CodeProvenance{
+				Code: gryviav1.CodeProvenance{
 					GitRepo:   "https://github.com/example/ml-training",
 					GitCommit: "abc123",
 					GitBranch: "main",
 				},
-				Training: tensorreaperv1.TrainingProvenance{
+				Training: gryviav1.TrainingProvenance{
 					JobRef: "training-job-1",
 					Hyperparameters: map[string]string{
 						"learning_rate": "0.001",
@@ -62,10 +62,10 @@ func newTestModelLineage(name, namespace string) *tensorreaperv1.FabricModelLine
 					},
 				},
 			},
-			Compliance: tensorreaperv1.ComplianceSpec{
+			Compliance: gryviav1.ComplianceSpec{
 				ImmutableRecord:    true,
 				CryptographicChain: true,
-				Attestation: tensorreaperv1.AttestationSpec{
+				Attestation: gryviav1.AttestationSpec{
 					Format:           "in-toto",
 					AttachToRegistry: true,
 				},
@@ -97,7 +97,7 @@ func TestModelLineage_Reconcile_SetsCreationTimestamp(t *testing.T) {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
-	updated := &tensorreaperv1.FabricModelLineage{}
+	updated := &gryviav1.FabricModelLineage{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-lineage", Namespace: "default"}, updated); err != nil {
 		t.Fatalf("failed to get updated lineage: %v", err)
 	}
@@ -116,7 +116,7 @@ func TestModelLineage_Reconcile_SetsReadyCondition(t *testing.T) {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
-	updated := &tensorreaperv1.FabricModelLineage{}
+	updated := &gryviav1.FabricModelLineage{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-lineage", Namespace: "default"}, updated); err != nil {
 		t.Fatalf("failed to get updated lineage: %v", err)
 	}
@@ -138,12 +138,12 @@ func TestModelLineage_Reconcile_WithAutoCapture(t *testing.T) {
 	ml.Spec.Provenance.AutoCapture = true
 
 	// Create a referenced job
-	job := &tensorreaperv1.FabricAIJob{
+	job := &gryviav1.FabricAIJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "training-job-1",
 			Namespace: "default",
 		},
-		Spec: tensorreaperv1.FabricAIJobSpec{
+		Spec: gryviav1.FabricAIJobSpec{
 			Type:    "training",
 			Image:   "pytorch:latest",
 			GPUs:    8,
@@ -151,7 +151,7 @@ func TestModelLineage_Reconcile_WithAutoCapture(t *testing.T) {
 			Network: "rdma",
 			Storage: "fast-storage",
 		},
-		Status: tensorreaperv1.FabricAIJobStatus{
+		Status: gryviav1.FabricAIJobStatus{
 			Phase:          "Succeeded",
 			NodesAllocated: []string{"node-1", "node-2"},
 		},
@@ -165,7 +165,7 @@ func TestModelLineage_Reconcile_WithAutoCapture(t *testing.T) {
 	// but the reconcile should still proceed
 	_ = err
 
-	updated := &tensorreaperv1.FabricModelLineage{}
+	updated := &gryviav1.FabricModelLineage{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-lineage", Namespace: "default"}, updated); err != nil {
 		t.Fatalf("failed to get updated lineage: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestModelLineage_Reconcile_ComplianceStatus(t *testing.T) {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
-	updated := &tensorreaperv1.FabricModelLineage{}
+	updated := &gryviav1.FabricModelLineage{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-lineage", Namespace: "default"}, updated); err != nil {
 		t.Fatalf("failed to get updated lineage: %v", err)
 	}

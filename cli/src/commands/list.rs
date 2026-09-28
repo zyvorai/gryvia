@@ -2,11 +2,11 @@ use anyhow::{Context, Result};
 use kube::api::{Api, ListParams};
 use serde_json;
 
-use crate::client::TensorReaperClient;
+use crate::client::GryviaClient;
 use crate::types::*;
 use crate::display;
 
-pub async fn execute(client: &TensorReaperClient, resource: &str, all_namespaces: bool, output: &str) -> Result<()> {
+pub async fn execute(client: &GryviaClient, resource: &str, all_namespaces: bool, output: &str) -> Result<()> {
     // Validate output format
     match output {
         "table" | "json" | "yaml" => {}
@@ -35,7 +35,7 @@ pub async fn execute(client: &TensorReaperClient, resource: &str, all_namespaces
     Ok(())
 }
 
-async fn list_jobs(client: &TensorReaperClient, all_namespaces: bool, output: &str) -> Result<()> {
+async fn list_jobs(client: &GryviaClient, all_namespaces: bool, output: &str) -> Result<()> {
     let api: Api<FabricAIJob> = if all_namespaces {
         Api::all(client.kube_client.clone())
     } else {
@@ -60,7 +60,7 @@ async fn list_jobs(client: &TensorReaperClient, all_namespaces: bool, output: &s
     Ok(())
 }
 
-async fn list_quotas(client: &TensorReaperClient, output: &str) -> Result<()> {
+async fn list_quotas(client: &GryviaClient, output: &str) -> Result<()> {
     let api: Api<FabricQuota> = Api::all(client.kube_client.clone());
 
     let quotas = api.list(&ListParams::default()).await
@@ -81,7 +81,7 @@ async fn list_quotas(client: &TensorReaperClient, output: &str) -> Result<()> {
     Ok(())
 }
 
-async fn list_nodes(client: &TensorReaperClient, output: &str) -> Result<()> {
+async fn list_nodes(client: &GryviaClient, output: &str) -> Result<()> {
     let api: Api<FabricGpuNode> = Api::all(client.kube_client.clone());
 
     let nodes = api.list(&ListParams::default()).await

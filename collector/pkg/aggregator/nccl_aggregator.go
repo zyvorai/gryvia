@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ssahani/TensorReaper/collector/pkg/decoder"
+	"github.com/zyvorai/gryvia/collector/pkg/decoder"
 )
 
 // NCCLOpStats holds aggregated statistics for a single NCCL operation type.

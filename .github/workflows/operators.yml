@@ -22,7 +22,7 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: tensorreaper
+  IMAGE_PREFIX: gryvia
 
 jobs:
   test-operators:

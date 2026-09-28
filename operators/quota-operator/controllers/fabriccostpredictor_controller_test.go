@@ -12,12 +12,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/quota-operator/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/quota-operator/api/v1"
 )
 
 func newCostPredictorTestScheme() *runtime.Scheme {
 	s := runtime.NewScheme()
-	_ = tensorreaperv1.AddToScheme(s)
+	_ = gryviav1.AddToScheme(s)
 	return s
 }
 
@@ -26,7 +26,7 @@ func newCostPredictorReconciler(objs ...client.Object) (*FabricCostPredictorReco
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(objs...).
-		WithStatusSubresource(&tensorreaperv1.FabricCostPredictor{}, &tensorreaperv1.FabricAIJob{}).
+		WithStatusSubresource(&gryviav1.FabricCostPredictor{}, &gryviav1.FabricAIJob{}).
 		Build()
 	r := &FabricCostPredictorReconciler{
 		Client: fakeClient,
@@ -35,22 +35,22 @@ func newCostPredictorReconciler(objs ...client.Object) (*FabricCostPredictorReco
 	return r, fakeClient
 }
 
-func newTestCostPredictor(name string) *tensorreaperv1.FabricCostPredictor {
-	return &tensorreaperv1.FabricCostPredictor{
+func newTestCostPredictor(name string) *gryviav1.FabricCostPredictor {
+	return &gryviav1.FabricCostPredictor{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
-		Spec: tensorreaperv1.FabricCostPredictorSpec{
-			HistoricalData: tensorreaperv1.HistoricalDataSpec{
+		Spec: gryviav1.FabricCostPredictorSpec{
+			HistoricalData: gryviav1.HistoricalDataSpec{
 				LookbackDays:      30,
 				MinimumSamples:    5,
 				SimilarityFactors: []string{"gpuType", "model", "gpuCount"},
 			},
-			Integration: tensorreaperv1.IntegrationSpec{
-				DryRunMode:              false,
+			Integration: gryviav1.IntegrationSpec{
+				DryRunMode:               false,
 				InjectEstimateAnnotation: true,
 			},
-			Pricing: tensorreaperv1.PricingSpec{
+			Pricing: gryviav1.PricingSpec{
 				PerGpuHour: map[string]float64{
 					"H100":    3.50,
 					"A100":    2.00,
@@ -87,7 +87,7 @@ func TestCostPredictor_Reconcile_Basic(t *testing.T) {
 		t.Errorf("expected requeue after 2m, got %v", result.RequeueAfter)
 	}
 
-	updated := &tensorreaperv1.FabricCostPredictor{}
+	updated := &gryviav1.FabricCostPredictor{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-predictor"}, updated); err != nil {
 		t.Fatalf("failed to get predictor: %v", err)
 	}
@@ -112,7 +112,7 @@ func TestCostPredictor_Reconcile_SkipsAnnotatedJobs(t *testing.T) {
 	predictor := newTestCostPredictor("test-predictor")
 
 	// Job already has estimate annotation - should be skipped
-	job := &tensorreaperv1.FabricAIJob{
+	job := &gryviav1.FabricAIJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "already-estimated",
 			Namespace: "default",
@@ -120,11 +120,11 @@ func TestCostPredictor_Reconcile_SkipsAnnotatedJobs(t *testing.T) {
 				annotationEstimatedCost: "100.00",
 			},
 		},
-		Spec: tensorreaperv1.FabricAIJobSpec{
+		Spec: gryviav1.FabricAIJobSpec{
 			GPUs:    4,
 			GpuType: "H100",
 		},
-		Status: tensorreaperv1.FabricAIJobStatus{
+		Status: gryviav1.FabricAIJobStatus{
 			Phase: "Pending",
 		},
 	}
@@ -137,7 +137,7 @@ func TestCostPredictor_Reconcile_SkipsAnnotatedJobs(t *testing.T) {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
-	updated := &tensorreaperv1.FabricCostPredictor{}
+	updated := &gryviav1.FabricCostPredictor{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-predictor"}, updated); err != nil {
 		t.Fatalf("failed to get predictor: %v", err)
 	}
@@ -155,8 +155,8 @@ func TestCostPredictor_GetJobGPURate(t *testing.T) {
 	}{
 		{"H100", 3.50},
 		{"A100", 2.00},
-		{"V100", 1.50},     // Falls back to "default"
-		{"unknown", 1.50},  // Falls back to "default"
+		{"V100", 1.50},    // Falls back to "default"
+		{"unknown", 1.50}, // Falls back to "default"
 	}
 
 	for _, tt := range tests {
@@ -199,9 +199,9 @@ func TestCostPredictor_UpdateAccuracyMetrics_NoCompletedJobs(t *testing.T) {
 	r, _ := newCostPredictorReconciler(predictor)
 
 	// No completed jobs - accuracy should stay zero
-	jobs := []tensorreaperv1.FabricAIJob{
+	jobs := []gryviav1.FabricAIJob{
 		{
-			Status: tensorreaperv1.FabricAIJobStatus{Phase: "Running"},
+			Status: gryviav1.FabricAIJobStatus{Phase: "Running"},
 		},
 	}
 
@@ -218,7 +218,7 @@ func TestCostPredictor_UpdateAccuracyMetrics_WithCompletedJobs(t *testing.T) {
 	startTime := metav1.NewTime(time.Now().Add(-2 * time.Hour))
 	completionTime := metav1.Now()
 
-	jobs := []tensorreaperv1.FabricAIJob{
+	jobs := []gryviav1.FabricAIJob{
 		{
 			ObjectMeta: metav1.ObjectMeta{
 				Annotations: map[string]string{
@@ -226,11 +226,11 @@ func TestCostPredictor_UpdateAccuracyMetrics_WithCompletedJobs(t *testing.T) {
 					annotationEstimatedDuration: "2h",
 				},
 			},
-			Spec: tensorreaperv1.FabricAIJobSpec{
+			Spec: gryviav1.FabricAIJobSpec{
 				GPUs:    4,
 				GpuType: "H100",
 			},
-			Status: tensorreaperv1.FabricAIJobStatus{
+			Status: gryviav1.FabricAIJobStatus{
 				Phase:          "Succeeded",
 				StartTime:      &startTime,
 				CompletionTime: &completionTime,
@@ -250,7 +250,7 @@ func TestCostPredictor_ProcessNewJobs_DryRunMode(t *testing.T) {
 	predictor := newTestCostPredictor("test")
 	predictor.Spec.Integration.DryRunMode = true
 
-	job := &tensorreaperv1.FabricAIJob{
+	job := &gryviav1.FabricAIJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "dry-run-job",
 			Namespace: "default",
@@ -258,25 +258,25 @@ func TestCostPredictor_ProcessNewJobs_DryRunMode(t *testing.T) {
 				annotationDryRun: "true",
 			},
 		},
-		Spec: tensorreaperv1.FabricAIJobSpec{
+		Spec: gryviav1.FabricAIJobSpec{
 			GPUs:    4,
 			GpuType: "H100",
 		},
-		Status: tensorreaperv1.FabricAIJobStatus{
+		Status: gryviav1.FabricAIJobStatus{
 			Phase: "Pending",
 		},
 	}
 
 	r, fakeClient := newCostPredictorReconciler(predictor, job)
 
-	allJobs := []tensorreaperv1.FabricAIJob{*job}
+	allJobs := []gryviav1.FabricAIJob{*job}
 	err := r.processNewJobs(context.Background(), predictor, allJobs)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
 	// In dry-run mode, job should NOT be updated with annotations
-	updated := &tensorreaperv1.FabricAIJob{}
+	updated := &gryviav1.FabricAIJob{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "dry-run-job", Namespace: "default"}, updated); err != nil {
 		t.Fatalf("failed to get job: %v", err)
 	}

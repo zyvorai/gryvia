@@ -14,7 +14,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/quota-operator/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/quota-operator/api/v1"
 )
 
 const (
@@ -27,18 +27,18 @@ type FabricSLAReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricslas,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricslas/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricslas/finalizers,verbs=update
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricaijobs,verbs=get;list;watch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricquotas,verbs=get;list;watch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricslas,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricslas/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricslas/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricquotas,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 func (r *FabricSLAReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	// Fetch the FabricSLA instance
-	sla := &tensorreaperv1.FabricSLA{}
+	sla := &gryviav1.FabricSLA{}
 	err := r.Get(ctx, req.NamespacedName, sla)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -76,7 +76,7 @@ func (r *FabricSLAReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 }
 
-func (r *FabricSLAReconciler) reconcileSLA(ctx context.Context, sla *tensorreaperv1.FabricSLA) (ctrl.Result, error) {
+func (r *FabricSLAReconciler) reconcileSLA(ctx context.Context, sla *gryviav1.FabricSLA) (ctrl.Result, error) {
 	// Get jobs matching the SLA scope
 	jobs, err := r.getScopeJobs(ctx, sla)
 	if err != nil {
@@ -99,26 +99,26 @@ func (r *FabricSLAReconciler) reconcileSLA(ctx context.Context, sla *tensorreape
 	return ctrl.Result{}, nil
 }
 
-func (r *FabricSLAReconciler) getScopeJobs(ctx context.Context, sla *tensorreaperv1.FabricSLA) ([]tensorreaperv1.FabricAIJob, error) {
-	var allJobs []tensorreaperv1.FabricAIJob
+func (r *FabricSLAReconciler) getScopeJobs(ctx context.Context, sla *gryviav1.FabricSLA) ([]gryviav1.FabricAIJob, error) {
+	var allJobs []gryviav1.FabricAIJob
 
 	switch sla.Spec.Scope.Type {
 	case "namespace":
-		jobList := &tensorreaperv1.FabricAIJobList{}
+		jobList := &gryviav1.FabricAIJobList{}
 		if err := r.List(ctx, jobList, client.InNamespace(sla.Spec.Scope.Name)); err != nil {
 			return nil, err
 		}
 		allJobs = jobList.Items
 
 	case "team":
-		quotaList := &tensorreaperv1.FabricQuotaList{}
+		quotaList := &gryviav1.FabricQuotaList{}
 		if err := r.List(ctx, quotaList); err != nil {
 			return nil, err
 		}
 		for _, quota := range quotaList.Items {
 			if quota.Spec.Team == sla.Spec.Scope.Name {
 				for _, ns := range quota.Spec.Namespaces {
-					jobList := &tensorreaperv1.FabricAIJobList{}
+					jobList := &gryviav1.FabricAIJobList{}
 					if err := r.List(ctx, jobList, client.InNamespace(ns)); err != nil {
 						continue
 					}
@@ -128,7 +128,7 @@ func (r *FabricSLAReconciler) getScopeJobs(ctx context.Context, sla *tensorreape
 		}
 
 	default:
-		jobList := &tensorreaperv1.FabricAIJobList{}
+		jobList := &gryviav1.FabricAIJobList{}
 		if err := r.List(ctx, jobList); err != nil {
 			return nil, err
 		}
@@ -138,8 +138,8 @@ func (r *FabricSLAReconciler) getScopeJobs(ctx context.Context, sla *tensorreape
 	return allJobs, nil
 }
 
-func (r *FabricSLAReconciler) calculateMetrics(sla *tensorreaperv1.FabricSLA, jobs []tensorreaperv1.FabricAIJob) *tensorreaperv1.SLAMetricsStatus {
-	metrics := &tensorreaperv1.SLAMetricsStatus{}
+func (r *FabricSLAReconciler) calculateMetrics(sla *gryviav1.FabricSLA, jobs []gryviav1.FabricAIJob) *gryviav1.SLAMetricsStatus {
+	metrics := &gryviav1.SLAMetricsStatus{}
 
 	// Calculate queue times
 	var queueTimes []time.Duration
@@ -212,7 +212,7 @@ func (r *FabricSLAReconciler) calculateMetrics(sla *tensorreaperv1.FabricSLA, jo
 	return metrics
 }
 
-func (r *FabricSLAReconciler) checkBreaches(sla *tensorreaperv1.FabricSLA, jobs []tensorreaperv1.FabricAIJob) {
+func (r *FabricSLAReconciler) checkBreaches(sla *gryviav1.FabricSLA, jobs []gryviav1.FabricAIJob) {
 	// Check queue time SLA
 	if sla.Spec.Performance != nil && sla.Spec.Performance.MaxQueueTime != "" {
 		maxQueueTime, err := time.ParseDuration(sla.Spec.Performance.MaxQueueTime)
@@ -226,7 +226,7 @@ func (r *FabricSLAReconciler) checkBreaches(sla *tensorreaperv1.FabricSLA, jobs 
 				}
 
 				if queueTime > maxQueueTime {
-					breach := tensorreaperv1.SLABreach{
+					breach := gryviav1.SLABreach{
 						Timestamp:   metav1.Now(),
 						Type:        "queue-time-exceeded",
 						Severity:    r.breachSeverity(sla),
@@ -242,7 +242,7 @@ func (r *FabricSLAReconciler) checkBreaches(sla *tensorreaperv1.FabricSLA, jobs 
 	// Check availability SLA
 	if sla.Spec.Availability != nil && sla.Spec.Availability.Uptime > 0 {
 		if sla.Status.Metrics != nil && sla.Status.Metrics.Uptime < sla.Spec.Availability.Uptime {
-			breach := tensorreaperv1.SLABreach{
+			breach := gryviav1.SLABreach{
 				Timestamp:   metav1.Now(),
 				Type:        "availability-breach",
 				Severity:    r.breachSeverity(sla),
@@ -254,7 +254,7 @@ func (r *FabricSLAReconciler) checkBreaches(sla *tensorreaperv1.FabricSLA, jobs 
 	}
 }
 
-func (r *FabricSLAReconciler) addBreach(sla *tensorreaperv1.FabricSLA, breach tensorreaperv1.SLABreach) {
+func (r *FabricSLAReconciler) addBreach(sla *gryviav1.FabricSLA, breach gryviav1.SLABreach) {
 	// Avoid duplicate breaches of the same type within 5 minutes
 	for _, existing := range sla.Status.Breaches {
 		if existing.Type == breach.Type {
@@ -273,7 +273,7 @@ func (r *FabricSLAReconciler) addBreach(sla *tensorreaperv1.FabricSLA, breach te
 	}
 }
 
-func (r *FabricSLAReconciler) breachSeverity(sla *tensorreaperv1.FabricSLA) string {
+func (r *FabricSLAReconciler) breachSeverity(sla *gryviav1.FabricSLA) string {
 	switch sla.Spec.Tier {
 	case "platinum":
 		return "critical"
@@ -286,8 +286,8 @@ func (r *FabricSLAReconciler) breachSeverity(sla *tensorreaperv1.FabricSLA) stri
 	}
 }
 
-func (r *FabricSLAReconciler) calculateCompliance(sla *tensorreaperv1.FabricSLA) *tensorreaperv1.SLAComplianceStatus {
-	compliance := &tensorreaperv1.SLAComplianceStatus{}
+func (r *FabricSLAReconciler) calculateCompliance(sla *gryviav1.FabricSLA) *gryviav1.SLAComplianceStatus {
+	compliance := &gryviav1.SLAComplianceStatus{}
 
 	// Calculate compliance based on breaches in the current month
 	now := time.Now()
@@ -325,7 +325,7 @@ func (r *FabricSLAReconciler) calculateCompliance(sla *tensorreaperv1.FabricSLA)
 	return compliance
 }
 
-func (r *FabricSLAReconciler) updateCondition(sla *tensorreaperv1.FabricSLA, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *FabricSLAReconciler) updateCondition(sla *gryviav1.FabricSLA, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -339,6 +339,6 @@ func (r *FabricSLAReconciler) updateCondition(sla *tensorreaperv1.FabricSLA, con
 // SetupWithManager sets up the controller with the Manager.
 func (r *FabricSLAReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tensorreaperv1.FabricSLA{}).
+		For(&gryviav1.FabricSLA{}).
 		Complete(r)
 }

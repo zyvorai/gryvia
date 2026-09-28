@@ -1,8 +1,8 @@
 #!/bin/bash
 # ============================================================================
-# doctor.sh — TensorReaper health diagnostic
+# doctor.sh — Gryvia health diagnostic
 # ============================================================================
-# Checks all components and prerequisites for a working TensorReaper installation.
+# Checks all components and prerequisites for a working Gryvia installation.
 #
 # Usage:
 #   ./scripts/doctor.sh
@@ -24,7 +24,7 @@ fail() { echo "  ❌ $*"; ((FAIL++)); }
 
 echo ""
 echo "  ╔══════════════════════════════════════════════════╗"
-echo "  ║     🩺 TensorReaper Doctor                         ║"
+echo "  ║     🩺 Gryvia Doctor                         ║"
 echo "  ╚══════════════════════════════════════════════════╝"
 echo ""
 
@@ -94,10 +94,10 @@ echo ""
 echo "  ── CRDs ──"
 
 for crd in fabricaijobs fabricgpunodes fabricquotas fabricstorages fabricnetworks; do
-    if kubectl get crd "${crd}.tensorreaper.ai" &>/dev/null 2>&1; then
-        ok "${crd}.tensorreaper.ai"
+    if kubectl get crd "${crd}.gryvia.io" &>/dev/null 2>&1; then
+        ok "${crd}.gryvia.io"
     else
-        fail "${crd}.tensorreaper.ai: not installed"
+        fail "${crd}.gryvia.io: not installed"
     fi
 done
 
@@ -106,7 +106,7 @@ echo ""
 # ── Namespace & Pods ──
 echo "  ── Namespace & Pods ──"
 
-for ns in tensorreaper tensorreaper-system; do
+for ns in gryvia gryvia-system; do
     if kubectl get namespace "$ns" &>/dev/null 2>&1; then
         PODS=$(kubectl get pods -n "$ns" --no-headers 2>/dev/null | wc -l)
         RUNNING=$(kubectl get pods -n "$ns" --no-headers 2>/dev/null | grep -c Running || true)

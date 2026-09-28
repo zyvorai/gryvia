@@ -8,7 +8,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/ssahani/TensorReaper/collector/pkg/decoder"
+	"github.com/zyvorai/gryvia/collector/pkg/decoder"
 )
 
 // Metrics holds all Prometheus metric handles.
@@ -21,18 +21,18 @@ type Metrics struct {
 	dnsLatency     *prometheus.HistogramVec
 
 	// GPU / NCCL metrics.
-	ncclOpDuration          *prometheus.HistogramVec
-	ncclBytesTotal          *prometheus.CounterVec
-	ncclStragglerTotal      prometheus.Counter
-	gpuMemcpyBytes          *prometheus.CounterVec
-	gpuMemcpyDuration       *prometheus.HistogramVec
-	rdmaSendBytesTotal      prometheus.Counter
-	rdmaRecvBytesTotal      prometheus.Counter
-	rdmaCompletionLatency   prometheus.Histogram
+	ncclOpDuration        *prometheus.HistogramVec
+	ncclBytesTotal        *prometheus.CounterVec
+	ncclStragglerTotal    prometheus.Counter
+	gpuMemcpyBytes        *prometheus.CounterVec
+	gpuMemcpyDuration     *prometheus.HistogramVec
+	rdmaSendBytesTotal    prometheus.Counter
+	rdmaRecvBytesTotal    prometheus.Counter
+	rdmaCompletionLatency prometheus.Histogram
 
 	// Security metrics.
-	securityAlertsTotal     *prometheus.CounterVec
-	securityEscapeAttempts  prometheus.Counter
+	securityAlertsTotal      *prometheus.CounterVec
+	securityEscapeAttempts   prometheus.Counter
 	securityMiningDetections prometheus.Counter
 
 	// AI training metrics.
@@ -41,9 +41,9 @@ type Metrics struct {
 	pipelineBottleneck       *prometheus.GaugeVec
 
 	// Performance / TCP metrics.
-	tcpCwndHistogram     prometheus.Histogram
-	tcpRTTHistogram      prometheus.Histogram
-	networkCostBytes     *prometheus.CounterVec
+	tcpCwndHistogram prometheus.Histogram
+	tcpRTTHistogram  prometheus.Histogram
+	networkCostBytes *prometheus.CounterVec
 }
 
 // NewMetrics registers and returns all collector metrics.
@@ -53,123 +53,123 @@ func NewMetrics() *Metrics {
 	return &Metrics{
 		// ---- Network metrics ----
 		flowBytes: promauto.NewCounterVec(prometheus.CounterOpts{
-			Name: "tensorreaper_network_flow_bytes_total",
+			Name: "gryvia_network_flow_bytes_total",
 			Help: "Total bytes transferred between services.",
 		}, labels),
 
 		latency: promauto.NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "tensorreaper_network_latency_seconds",
+			Name:    "gryvia_network_latency_seconds",
 			Help:    "Network latency between services in seconds.",
 			Buckets: []float64{0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0},
 		}, labels),
 
 		connectionsAct: promauto.NewGaugeVec(prometheus.GaugeOpts{
-			Name: "tensorreaper_network_connections_active",
+			Name: "gryvia_network_connections_active",
 			Help: "Number of currently active connections between services.",
 		}, labels),
 
 		drops: promauto.NewCounterVec(prometheus.CounterOpts{
-			Name: "tensorreaper_network_drops_total",
+			Name: "gryvia_network_drops_total",
 			Help: "Total dropped packets/connections between services.",
 		}, labels),
 
 		dnsLatency: promauto.NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "tensorreaper_network_dns_latency_seconds",
+			Name:    "gryvia_network_dns_latency_seconds",
 			Help:    "DNS resolution latency in seconds.",
 			Buckets: []float64{0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0},
 		}, []string{"namespace"}),
 
 		// ---- GPU / NCCL metrics ----
 		ncclOpDuration: promauto.NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "tensorreaper_nccl_operation_duration_seconds",
+			Name:    "gryvia_nccl_operation_duration_seconds",
 			Help:    "Duration of NCCL collective operations in seconds.",
 			Buckets: []float64{0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0},
 		}, []string{"op_type", "rank"}),
 
 		ncclBytesTotal: promauto.NewCounterVec(prometheus.CounterOpts{
-			Name: "tensorreaper_nccl_bytes_total",
+			Name: "gryvia_nccl_bytes_total",
 			Help: "Total bytes transferred by NCCL operations.",
 		}, []string{"op_type"}),
 
 		ncclStragglerTotal: promauto.NewCounter(prometheus.CounterOpts{
-			Name: "tensorreaper_nccl_stragglers_detected_total",
+			Name: "gryvia_nccl_stragglers_detected_total",
 			Help: "Total number of NCCL straggler events detected.",
 		}),
 
 		gpuMemcpyBytes: promauto.NewCounterVec(prometheus.CounterOpts{
-			Name: "tensorreaper_gpu_memcpy_bytes_total",
+			Name: "gryvia_gpu_memcpy_bytes_total",
 			Help: "Total bytes transferred by GPU memcpy operations.",
 		}, []string{"direction"}),
 
 		gpuMemcpyDuration: promauto.NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "tensorreaper_gpu_memcpy_duration_seconds",
+			Name:    "gryvia_gpu_memcpy_duration_seconds",
 			Help:    "Duration of GPU memcpy operations in seconds.",
 			Buckets: []float64{0.00001, 0.0001, 0.001, 0.01, 0.1, 1.0},
 		}, []string{"direction"}),
 
 		rdmaSendBytesTotal: promauto.NewCounter(prometheus.CounterOpts{
-			Name: "tensorreaper_rdma_send_bytes_total",
+			Name: "gryvia_rdma_send_bytes_total",
 			Help: "Total bytes sent via RDMA.",
 		}),
 
 		rdmaRecvBytesTotal: promauto.NewCounter(prometheus.CounterOpts{
-			Name: "tensorreaper_rdma_recv_bytes_total",
+			Name: "gryvia_rdma_recv_bytes_total",
 			Help: "Total bytes received via RDMA.",
 		}),
 
 		rdmaCompletionLatency: promauto.NewHistogram(prometheus.HistogramOpts{
-			Name:    "tensorreaper_rdma_completion_latency_seconds",
+			Name:    "gryvia_rdma_completion_latency_seconds",
 			Help:    "RDMA completion latency in seconds.",
 			Buckets: []float64{0.000001, 0.00001, 0.0001, 0.001, 0.01},
 		}),
 
 		// ---- Security metrics ----
 		securityAlertsTotal: promauto.NewCounterVec(prometheus.CounterOpts{
-			Name: "tensorreaper_security_alerts_total",
+			Name: "gryvia_security_alerts_total",
 			Help: "Total security alerts by event type and severity.",
 		}, []string{"event_type", "severity"}),
 
 		securityEscapeAttempts: promauto.NewCounter(prometheus.CounterOpts{
-			Name: "tensorreaper_security_escape_attempts_total",
+			Name: "gryvia_security_escape_attempts_total",
 			Help: "Total container escape attempts detected.",
 		}),
 
 		securityMiningDetections: promauto.NewCounter(prometheus.CounterOpts{
-			Name: "tensorreaper_security_mining_detections_total",
+			Name: "gryvia_security_mining_detections_total",
 			Help: "Total crypto mining activity detections.",
 		}),
 
 		// ---- AI training metrics ----
 		trainingCommComputeRatio: promauto.NewGaugeVec(prometheus.GaugeOpts{
-			Name: "tensorreaper_training_comm_compute_ratio",
+			Name: "gryvia_training_comm_compute_ratio",
 			Help: "Ratio of communication time to compute time for training jobs.",
 		}, []string{"job"}),
 
 		trainingStragglerEvents: promauto.NewCounter(prometheus.CounterOpts{
-			Name: "tensorreaper_training_straggler_events_total",
+			Name: "gryvia_training_straggler_events_total",
 			Help: "Total straggler events detected during training.",
 		}),
 
 		pipelineBottleneck: promauto.NewGaugeVec(prometheus.GaugeOpts{
-			Name: "tensorreaper_pipeline_bottleneck",
+			Name: "gryvia_pipeline_bottleneck",
 			Help: "Current pipeline bottleneck indicator (1.0 = bottleneck).",
 		}, []string{"phase"}),
 
 		// ---- Performance / TCP metrics ----
 		tcpCwndHistogram: promauto.NewHistogram(prometheus.HistogramOpts{
-			Name:    "tensorreaper_tcp_cwnd_histogram",
+			Name:    "gryvia_tcp_cwnd_histogram",
 			Help:    "Distribution of TCP congestion window sizes.",
 			Buckets: []float64{1, 5, 10, 20, 50, 100, 200, 500, 1000},
 		}),
 
 		tcpRTTHistogram: promauto.NewHistogram(prometheus.HistogramOpts{
-			Name:    "tensorreaper_tcp_rtt_seconds",
+			Name:    "gryvia_tcp_rtt_seconds",
 			Help:    "Distribution of TCP round-trip times in seconds.",
 			Buckets: []float64{0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5},
 		}),
 
 		networkCostBytes: promauto.NewCounterVec(prometheus.CounterOpts{
-			Name: "tensorreaper_network_cost_bytes_total",
+			Name: "gryvia_network_cost_bytes_total",
 			Help: "Total network bytes by zone type and namespace for cost analysis.",
 		}, []string{"zone_type", "namespace"}),
 	}

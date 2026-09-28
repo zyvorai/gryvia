@@ -1,10 +1,10 @@
-# TensorReaper Build Summary
+# Gryvia Build Summary
 
-Complete implementation of TensorReaper - Enterprise GPU Compute Platform for AI Infrastructure on Bare Metal.
+Complete implementation of Gryvia - Enterprise GPU Compute Platform for AI Infrastructure on Bare Metal.
 
 ## Project Overview
 
-TensorReaper is a production-ready Kubernetes platform for managing GPU clusters, optimized for AI/ML workloads on bare metal infrastructure. Built with 6 specialized operators managing GPU resources, AI workloads, storage, networking, quotas, and network intelligence.
+Gryvia is a production-ready Kubernetes platform for managing GPU clusters, optimized for AI/ML workloads on bare metal infrastructure. Built with 6 specialized operators managing GPU resources, AI workloads, storage, networking, quotas, and network intelligence.
 
 ## Implementation Statistics
 
@@ -34,7 +34,7 @@ TensorReaper is a production-ready Kubernetes platform for managing GPU clusters
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        TensorReaper Platform                       │
+│                        Gryvia Platform                       │
 │                    Bare Metal GPU Infrastructure                 │
 └─────────────────────────────────────────────────────────────────┘
                                  │
@@ -225,7 +225,7 @@ TensorReaper is a production-ready Kubernetes platform for managing GPU clusters
 
 ### 7. CLI Tool ✅ COMPLETE
 
-**Purpose**: Command-line interface for managing TensorReaper clusters
+**Purpose**: Command-line interface for managing Gryvia clusters
 
 **Files Created:**
 - `cli/src/main.rs` - Main CLI entry point with clap
@@ -252,20 +252,20 @@ TensorReaper is a production-ready Kubernetes platform for managing GPU clusters
 
 **Commands (14 total):**
 ```bash
-tensorreaper submit      # Submit jobs from YAML
-tensorreaper list        # List jobs/quotas/nodes
-tensorreaper get         # Get resource details
-tensorreaper delete      # Delete resources
-tensorreaper status      # Show job status
-tensorreaper logs        # View job logs
-tensorreaper cancel      # Cancel running jobs
-tensorreaper cluster     # Cluster overview
-tensorreaper quota       # Team quotas
-tensorreaper cost        # Cost analysis
-tensorreaper queue       # Job queue status
-tensorreaper create      # Interactive creation
-tensorreaper validate    # Validate YAML
-tensorreaper health      # Health checks
+gryvia submit      # Submit jobs from YAML
+gryvia list        # List jobs/quotas/nodes
+gryvia get         # Get resource details
+gryvia delete      # Delete resources
+gryvia status      # Show job status
+gryvia logs        # View job logs
+gryvia cancel      # Cancel running jobs
+gryvia cluster     # Cluster overview
+gryvia quota       # Team quotas
+gryvia cost        # Cost analysis
+gryvia queue       # Job queue status
+gryvia create      # Interactive creation
+gryvia validate    # Validate YAML
+gryvia health      # Health checks
 ```
 
 **LOC:** ~2,500 Rust
@@ -277,10 +277,10 @@ tensorreaper health      # Health checks
 **Files Created:**
 - `monitoring/prometheus-rules.yaml` - 40+ alert rules
 - `monitoring/servicemonitor.yaml` - Prometheus ServiceMonitors
-- `monitoring/grafana-dashboards/tensorreaper-overview.json` - Cluster dashboard
-- `monitoring/grafana-dashboards/tensorreaper-quotas.json` - Quota dashboard
-- `monitoring/grafana-dashboards/tensorreaper-gpus.json` - GPU metrics dashboard
-- `monitoring/grafana-dashboards/tensorreaper-costs.json` - Cost analysis dashboard
+- `monitoring/grafana-dashboards/gryvia-overview.json` - Cluster dashboard
+- `monitoring/grafana-dashboards/gryvia-quotas.json` - Quota dashboard
+- `monitoring/grafana-dashboards/gryvia-gpus.json` - GPU metrics dashboard
+- `monitoring/grafana-dashboards/gryvia-costs.json` - Cost analysis dashboard
 - `monitoring/README.md` - Complete monitoring guide
 
 **Metrics Categories (50+ metrics):**
@@ -440,7 +440,7 @@ GET /docs                      # Swagger UI
 
 ### FabricGpuNode
 ```yaml
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricGpuNode
 spec:
   nodeName: gpu-worker-01
@@ -452,7 +452,7 @@ spec:
 
 ### FabricAIJob
 ```yaml
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricAIJob
 spec:
   framework: pytorch
@@ -467,7 +467,7 @@ spec:
 
 ### FabricStorage
 ```yaml
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricStorage
 spec:
   backendType: vast
@@ -477,7 +477,7 @@ spec:
 
 ### FabricNetwork
 ```yaml
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricNetwork
 spec:
   networkType: rdma
@@ -488,7 +488,7 @@ spec:
 
 ### FabricQuota
 ```yaml
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricQuota
 spec:
   team: ml-research
@@ -522,12 +522,12 @@ spec:
 3. `rdma` - InfiniBand/RoCE configuration
 4. `kubernetes` - K8s cluster deployment
 5. `gpu-optimization` - Performance tuning
-6. `tensorreaper-install` - Operator deployment
+6. `gryvia-install` - Operator deployment
 7. `monitoring` - Prometheus/Grafana
 
 ## Helm Charts
 
-### tensorreaper-core
+### gryvia-core
 Complete operator deployment with:
 - All 6 operators (GPU, AI, Storage, Network, Quota, Network Intelligence)
 - NVIDIA device plugin
@@ -654,7 +654,7 @@ Monitoring stack:
 ## Repository Structure
 
 ```
-tensor-reaper/
+gryvia/
 ├── crds/                          # 5 CRDs
 │   ├── fabricgpunode.yaml
 │   ├── fabricaijob.yaml
@@ -704,13 +704,13 @@ tensor-reaper/
 │   ├── prometheus-rules.yaml     # 40+ alert rules
 │   ├── servicemonitor.yaml       # Metric scraping
 │   ├── grafana-dashboards/       # 4 dashboards
-│   │   ├── tensorreaper-overview.json
-│   │   ├── tensorreaper-quotas.json
-│   │   ├── tensorreaper-gpus.json
-│   │   └── tensorreaper-costs.json
+│   │   ├── gryvia-overview.json
+│   │   ├── gryvia-quotas.json
+│   │   ├── gryvia-gpus.json
+│   │   └── gryvia-costs.json
 │   └── README.md
 ├── helm/                          # Helm charts
-│   ├── tensorreaper-core/          # Main chart
+│   ├── gryvia-core/          # Main chart
 │   └── observability/            # Monitoring stack
 ├── terraform/                     # Infrastructure
 │   └── bare-metal/               # Bare metal provisioning
@@ -755,7 +755,7 @@ tensor-reaper/
 
 ## Conclusion
 
-TensorReaper provides a complete, production-ready platform for bare metal GPU infrastructure:
+Gryvia provides a complete, production-ready platform for bare metal GPU infrastructure:
 
 - **6 Operators**: ~6,900 LOC of production Go code
 - **CLI Tool**: ~2,500 LOC of Rust for cluster management

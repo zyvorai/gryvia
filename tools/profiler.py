@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-TensorReaper GPU Profiler
+Gryvia GPU Profiler
 Analyzes GPU utilization and provides optimization recommendations
 """
 
@@ -36,7 +36,7 @@ class GPUProfiler:
         """Get GPU metrics for a specific job"""
         try:
             job = self.api.get_namespaced_custom_object(
-                group="tensorreaper.ai",
+                group="gryvia.io",
                 version="v1",
                 namespace=self.namespace,
                 plural="fabricaijobs",
@@ -243,7 +243,7 @@ class GPUProfiler:
     def profile_job(self, job_name: str, gpu_type: str, gpu_count: int):
         """Profile a specific job"""
         print(f"{BLUE}╔════════════════════════════════════════════════════════════════╗{NC}")
-        print(f"{BLUE}║          TensorReaper GPU Profiler                              ║{NC}")
+        print(f"{BLUE}║          Gryvia GPU Profiler                              ║{NC}")
         print(f"{BLUE}╚════════════════════════════════════════════════════════════════╝{NC}")
         print()
 
@@ -316,7 +316,7 @@ class GPUProfiler:
         """Profile all running jobs"""
         try:
             jobs = self.api.list_namespaced_custom_object(
-                group="tensorreaper.ai",
+                group="gryvia.io",
                 version="v1",
                 namespace=self.namespace,
                 plural="fabricaijobs"
@@ -363,7 +363,7 @@ class GPUProfiler:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="TensorReaper GPU Profiler")
+    parser = argparse.ArgumentParser(description="Gryvia GPU Profiler")
     parser.add_argument("--job", help="Job name to profile")
     parser.add_argument("--gpu-type", default="A100-80G", help="GPU type")
     parser.add_argument("--gpu-count", type=int, default=1, help="Number of GPUs")

@@ -9,18 +9,18 @@ import (
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/ai-operator/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 )
 
 const (
 	// Default NCCL environment variable values.
-	defaultNCCLDebug       = "WARN"
-	defaultNCCLIBDisable   = "1"  // Disabled by default; enabled for RDMA.
-	defaultNCCLNetGDRLevel = "0"  // Disabled by default; set for RDMA.
+	defaultNCCLDebug        = "WARN"
+	defaultNCCLIBDisable    = "1" // Disabled by default; enabled for RDMA.
+	defaultNCCLNetGDRLevel  = "0" // Disabled by default; set for RDMA.
 	defaultNCCLSocketIfname = "eth0"
 
 	// Default resource limits when not specified by the user.
@@ -29,10 +29,10 @@ const (
 
 	// Annotations for SR-IOV and RDMA.
 	annotationSRIOVNetwork = "k8s.v1.cni.cncf.io/networks"
-	annotationRDMA         = "tensorreaper.ai/rdma"
-	annotationSRIOV        = "tensorreaper.ai/sriov"
-	annotationTopology     = "tensorreaper.ai/topology-aware"
-	annotationGPUAffinity  = "tensorreaper.ai/gpu-affinity"
+	annotationRDMA         = "gryvia.io/rdma"
+	annotationSRIOV        = "gryvia.io/sriov"
+	annotationTopology     = "gryvia.io/topology-aware"
+	annotationGPUAffinity  = "gryvia.io/gpu-affinity"
 )
 
 // FabricAIJobMutator implements a MutatingWebhook for FabricAIJob.
@@ -54,7 +54,7 @@ func NewFabricAIJobMutator(c client.Client) *FabricAIJobMutator {
 
 // Handle processes an admission request for FabricAIJob mutation.
 func (m *FabricAIJobMutator) Handle(ctx context.Context, req admission.Request) admission.Response {
-	job := &tensorreaperv1.FabricAIJob{}
+	job := &gryviav1.FabricAIJob{}
 
 	if err := m.decoder.Decode(req, job); err != nil {
 		m.log.Error(err, "Failed to decode FabricAIJob")
@@ -82,7 +82,7 @@ func (m *FabricAIJobMutator) Handle(ctx context.Context, req admission.Request) 
 
 // injectNCCLEnvVars adds NCCL-related environment variables to the job spec.
 // These are critical for distributed GPU training performance.
-func (m *FabricAIJobMutator) injectNCCLEnvVars(job *tensorreaperv1.FabricAIJob) {
+func (m *FabricAIJobMutator) injectNCCLEnvVars(job *gryviav1.FabricAIJob) {
 	// Only inject NCCL vars for distributed jobs or multi-GPU jobs.
 	if job.Spec.GPUs <= 1 && (job.Spec.Distributed == nil || !job.Spec.Distributed.Enabled) {
 		return
@@ -90,7 +90,7 @@ func (m *FabricAIJobMutator) injectNCCLEnvVars(job *tensorreaperv1.FabricAIJob) 
 
 	ncclVars := map[string]string{
 		"NCCL_DEBUG":         defaultNCCLDebug,
-		"NCCL_IB_DISABLE":   defaultNCCLIBDisable,
+		"NCCL_IB_DISABLE":    defaultNCCLIBDisable,
 		"NCCL_SOCKET_IFNAME": defaultNCCLSocketIfname,
 	}
 
@@ -139,7 +139,7 @@ func (m *FabricAIJobMutator) injectNCCLEnvVars(job *tensorreaperv1.FabricAIJob) 
 
 // injectTopologyAnnotations adds scheduling annotations that influence
 // topology-aware placement.
-func (m *FabricAIJobMutator) injectTopologyAnnotations(job *tensorreaperv1.FabricAIJob) {
+func (m *FabricAIJobMutator) injectTopologyAnnotations(job *gryviav1.FabricAIJob) {
 	if job.Annotations == nil {
 		job.Annotations = make(map[string]string)
 	}
@@ -160,19 +160,19 @@ func (m *FabricAIJobMutator) injectTopologyAnnotations(job *tensorreaperv1.Fabri
 
 	// For distributed training, add inter-node topology hints.
 	if job.Spec.Distributed != nil && job.Spec.Distributed.Enabled {
-		job.Annotations["tensorreaper.ai/distributed-framework"] = job.Spec.Distributed.Framework
+		job.Annotations["gryvia.io/distributed-framework"] = job.Spec.Distributed.Framework
 		if job.Spec.Distributed.Backend != "" {
-			job.Annotations["tensorreaper.ai/distributed-backend"] = job.Spec.Distributed.Backend
+			job.Annotations["gryvia.io/distributed-backend"] = job.Spec.Distributed.Backend
 		}
 
 		// Prefer nodes on the same switch/rack for reduced latency.
-		job.Annotations["tensorreaper.ai/prefer-same-rack"] = "true"
+		job.Annotations["gryvia.io/prefer-same-rack"] = "true"
 	}
 }
 
 // setDefaultResourceLimits sets CPU and memory limits if the user has not
 // specified them. This prevents unbounded resource consumption.
-func (m *FabricAIJobMutator) setDefaultResourceLimits(job *tensorreaperv1.FabricAIJob) {
+func (m *FabricAIJobMutator) setDefaultResourceLimits(job *gryviav1.FabricAIJob) {
 	// Set default requests.
 	if job.Spec.Resources.Requests == nil {
 		job.Spec.Resources.Requests = corev1.ResourceList{}
@@ -212,7 +212,7 @@ func (m *FabricAIJobMutator) setDefaultResourceLimits(job *tensorreaperv1.Fabric
 
 // addNetworkAnnotations adds SR-IOV and RDMA annotations for jobs that
 // require specialized networking.
-func (m *FabricAIJobMutator) addNetworkAnnotations(job *tensorreaperv1.FabricAIJob) {
+func (m *FabricAIJobMutator) addNetworkAnnotations(job *gryviav1.FabricAIJob) {
 	if job.Annotations == nil {
 		job.Annotations = make(map[string]string)
 	}
@@ -228,7 +228,7 @@ func (m *FabricAIJobMutator) addNetworkAnnotations(job *tensorreaperv1.FabricAIJ
 		if job.Spec.NodeSelector == nil {
 			job.Spec.NodeSelector = make(map[string]string)
 		}
-		job.Spec.NodeSelector["tensorreaper.ai/rdma"] = "true"
+		job.Spec.NodeSelector["gryvia.io/rdma"] = "true"
 
 	case "sriov":
 		job.Annotations[annotationSRIOV] = "true"
@@ -240,7 +240,7 @@ func (m *FabricAIJobMutator) addNetworkAnnotations(job *tensorreaperv1.FabricAIJ
 		if job.Spec.NodeSelector == nil {
 			job.Spec.NodeSelector = make(map[string]string)
 		}
-		job.Spec.NodeSelector["tensorreaper.ai/sriov"] = "true"
+		job.Spec.NodeSelector["gryvia.io/sriov"] = "true"
 
 		// Request SR-IOV VF resources.
 		if job.Spec.Resources.Limits == nil {
@@ -256,7 +256,7 @@ func (m *FabricAIJobMutator) addNetworkAnnotations(job *tensorreaperv1.FabricAIJ
 }
 
 // setDefaultImagePullPolicy sets a default image pull policy if not specified.
-func (m *FabricAIJobMutator) setDefaultImagePullPolicy(job *tensorreaperv1.FabricAIJob) {
+func (m *FabricAIJobMutator) setDefaultImagePullPolicy(job *gryviav1.FabricAIJob) {
 	if job.Spec.ImagePullPolicy == "" {
 		job.Spec.ImagePullPolicy = corev1.PullIfNotPresent
 	}

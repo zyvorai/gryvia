@@ -13,11 +13,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/network-operator/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/network-operator/api/v1"
 )
 
 // CreateNetworkAttachment creates a Multus NetworkAttachmentDefinition
-func CreateNetworkAttachment(ctx context.Context, k8sClient client.Client, network *tensorreaperv1.FabricNetwork) error {
+func CreateNetworkAttachment(ctx context.Context, k8sClient client.Client, network *gryviav1.FabricNetwork) error {
 	config, err := generateNetworkConfig(network)
 	if err != nil {
 		return fmt.Errorf("failed to generate network config: %w", err)
@@ -43,8 +43,8 @@ func CreateNetworkAttachment(ctx context.Context, k8sClient client.Client, netwo
 				"name":      network.Name,
 				"namespace": namespace,
 				"labels": map[string]interface{}{
-					"tensorreaper.ai/network": network.Name,
-					"tensorreaper.ai/type":    network.Spec.NetworkType,
+					"gryvia.io/network": network.Name,
+					"gryvia.io/type":    network.Spec.NetworkType,
 				},
 			},
 			"spec": map[string]interface{}{
@@ -75,7 +75,7 @@ func CreateNetworkAttachment(ctx context.Context, k8sClient client.Client, netwo
 	return k8sClient.Update(ctx, nad)
 }
 
-func generateNetworkConfig(network *tensorreaperv1.FabricNetwork) (string, error) {
+func generateNetworkConfig(network *gryviav1.FabricNetwork) (string, error) {
 	switch network.Spec.NetworkType {
 	case "rdma":
 		return generateRDMAConfig(network)
@@ -88,7 +88,7 @@ func generateNetworkConfig(network *tensorreaperv1.FabricNetwork) (string, error
 	}
 }
 
-func generateRDMAConfig(network *tensorreaperv1.FabricNetwork) (string, error) {
+func generateRDMAConfig(network *gryviav1.FabricNetwork) (string, error) {
 	if network.Spec.RDMA == nil {
 		return "", fmt.Errorf("RDMA configuration required")
 	}
@@ -124,7 +124,7 @@ func generateRDMAConfig(network *tensorreaperv1.FabricNetwork) (string, error) {
 	return string(configBytes), nil
 }
 
-func generateSRIOVConfig(network *tensorreaperv1.FabricNetwork) (string, error) {
+func generateSRIOVConfig(network *gryviav1.FabricNetwork) (string, error) {
 	if network.Spec.SRIOV == nil {
 		return "", fmt.Errorf("SR-IOV configuration required")
 	}
@@ -158,9 +158,9 @@ func generateSRIOVConfig(network *tensorreaperv1.FabricNetwork) (string, error) 
 		"vlan":       0,
 		"mtu":        mtu,
 		"ipam": map[string]interface{}{
-			"type":   "host-local",
-			"subnet": subnet,
-			"routes": []map[string]string{{"dst": "0.0.0.0/0"}},
+			"type":    "host-local",
+			"subnet":  subnet,
+			"routes":  []map[string]string{{"dst": "0.0.0.0/0"}},
 			"gateway": gateway,
 		},
 	}
@@ -172,7 +172,7 @@ func generateSRIOVConfig(network *tensorreaperv1.FabricNetwork) (string, error) 
 	return string(configBytes), nil
 }
 
-func generateStandardConfig(network *tensorreaperv1.FabricNetwork) (string, error) {
+func generateStandardConfig(network *gryviav1.FabricNetwork) (string, error) {
 	// Default MTU for standard networks is 1500.
 	// Valid range: 1280 (IPv6 minimum) to 9216 (common jumbo frame max).
 	mtu := network.Spec.MTU
@@ -187,7 +187,7 @@ func generateStandardConfig(network *tensorreaperv1.FabricNetwork) (string, erro
 		"cniVersion": "0.3.1",
 		"name":       network.Name,
 		"type":       "bridge",
-		"bridge":     "tensorreaper0",
+		"bridge":     "gryvia0",
 		"mtu":        mtu,
 		"ipam": map[string]interface{}{
 			"type":   "host-local",

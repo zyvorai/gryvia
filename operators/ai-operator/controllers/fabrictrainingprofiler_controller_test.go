@@ -12,12 +12,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/ai-operator/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 )
 
 func newProfilerTestScheme() *runtime.Scheme {
 	s := runtime.NewScheme()
-	_ = tensorreaperv1.AddToScheme(s)
+	_ = gryviav1.AddToScheme(s)
 	_ = corev1.AddToScheme(s)
 	return s
 }
@@ -27,7 +27,7 @@ func newProfilerReconciler(objs ...client.Object) (*FabricTrainingProfilerReconc
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(objs...).
-		WithStatusSubresource(&tensorreaperv1.FabricTrainingProfiler{}, &tensorreaperv1.FabricAIJob{}).
+		WithStatusSubresource(&gryviav1.FabricTrainingProfiler{}, &gryviav1.FabricAIJob{}).
 		Build()
 	r := &FabricTrainingProfilerReconciler{
 		Client: fakeClient,
@@ -37,18 +37,18 @@ func newProfilerReconciler(objs ...client.Object) (*FabricTrainingProfilerReconc
 	return r, fakeClient
 }
 
-func newTestProfiler(name, namespace string) *tensorreaperv1.FabricTrainingProfiler {
-	return &tensorreaperv1.FabricTrainingProfiler{
+func newTestProfiler(name, namespace string) *gryviav1.FabricTrainingProfiler {
+	return &gryviav1.FabricTrainingProfiler{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
 		},
-		Spec: tensorreaperv1.FabricTrainingProfilerSpec{
-			Target: tensorreaperv1.ProfilerTarget{
+		Spec: gryviav1.FabricTrainingProfilerSpec{
+			Target: gryviav1.ProfilerTarget{
 				Type:        "auto",
 				JobSelector: map[string]string{"team": "ml"},
 			},
-			Output: tensorreaperv1.ProfilerOutput{
+			Output: gryviav1.ProfilerOutput{
 				StoreInJobStatus:  true,
 				EmitEvents:        false,
 				PrometheusMetrics: true,
@@ -101,7 +101,7 @@ func TestProfiler_Reconcile_NoMatchingJobs(t *testing.T) {
 		t.Errorf("expected requeue after %v, got %v", profilerRequeueInterval, result.RequeueAfter)
 	}
 
-	updated := &tensorreaperv1.FabricTrainingProfiler{}
+	updated := &gryviav1.FabricTrainingProfiler{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-profiler", Namespace: "default"}, updated); err != nil {
 		t.Fatalf("failed to get updated profiler: %v", err)
 	}
@@ -118,25 +118,25 @@ func TestProfiler_Reconcile_NoMatchingJobs(t *testing.T) {
 }
 
 func TestProfiler_FindMatchingJobs_JobRef(t *testing.T) {
-	job := &tensorreaperv1.FabricAIJob{
+	job := &gryviav1.FabricAIJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "target-job",
 			Namespace: "default",
 		},
-		Spec: tensorreaperv1.FabricAIJobSpec{
+		Spec: gryviav1.FabricAIJobSpec{
 			Type:  "training",
 			Image: "pytorch:latest",
 			GPUs:  4,
 		},
 	}
 
-	fp := &tensorreaperv1.FabricTrainingProfiler{
+	fp := &gryviav1.FabricTrainingProfiler{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-profiler",
 			Namespace: "default",
 		},
-		Spec: tensorreaperv1.FabricTrainingProfilerSpec{
-			Target: tensorreaperv1.ProfilerTarget{
+		Spec: gryviav1.FabricTrainingProfilerSpec{
+			Target: gryviav1.ProfilerTarget{
 				Type:   "job-ref",
 				JobRef: "target-job",
 			},
@@ -158,13 +158,13 @@ func TestProfiler_FindMatchingJobs_JobRef(t *testing.T) {
 }
 
 func TestProfiler_FindMatchingJobs_JobRefNotFound(t *testing.T) {
-	fp := &tensorreaperv1.FabricTrainingProfiler{
+	fp := &gryviav1.FabricTrainingProfiler{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-profiler",
 			Namespace: "default",
 		},
-		Spec: tensorreaperv1.FabricTrainingProfilerSpec{
-			Target: tensorreaperv1.ProfilerTarget{
+		Spec: gryviav1.FabricTrainingProfilerSpec{
+			Target: gryviav1.ProfilerTarget{
 				Type:   "job-ref",
 				JobRef: "nonexistent",
 			},
@@ -183,13 +183,13 @@ func TestProfiler_FindMatchingJobs_JobRefNotFound(t *testing.T) {
 }
 
 func TestProfiler_FindMatchingJobs_EmptyJobRef(t *testing.T) {
-	fp := &tensorreaperv1.FabricTrainingProfiler{
+	fp := &gryviav1.FabricTrainingProfiler{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-profiler",
 			Namespace: "default",
 		},
-		Spec: tensorreaperv1.FabricTrainingProfilerSpec{
-			Target: tensorreaperv1.ProfilerTarget{
+		Spec: gryviav1.FabricTrainingProfilerSpec{
+			Target: gryviav1.ProfilerTarget{
 				Type:   "job-ref",
 				JobRef: "",
 			},
@@ -206,18 +206,18 @@ func TestProfiler_FindMatchingJobs_EmptyJobRef(t *testing.T) {
 
 func TestProfiler_ShouldProfileJob_WarmupNotReached(t *testing.T) {
 	fp := newTestProfiler("test-profiler", "default")
-	fp.Spec.Target.AutoProfile = &tensorreaperv1.AutoProfileConfig{
+	fp.Spec.Target.AutoProfile = &gryviav1.AutoProfileConfig{
 		WarmupSteps:     200,
 		CooldownMinutes: 30,
 	}
 
-	job := &tensorreaperv1.FabricAIJob{
+	job := &gryviav1.FabricAIJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-job",
 			Namespace: "default",
 		},
-		Status: tensorreaperv1.FabricAIJobStatus{
-			Metrics: &tensorreaperv1.JobMetrics{
+		Status: gryviav1.FabricAIJobStatus{
+			Metrics: &gryviav1.JobMetrics{
 				Step: 50, // Below warmup threshold
 			},
 		},
@@ -252,10 +252,10 @@ func TestProfiler_UpdateCondition(t *testing.T) {
 
 func TestProfiler_MergeRecommendations(t *testing.T) {
 	now := metav1.Now()
-	existing := []tensorreaperv1.ProfilerRecommendation{
+	existing := []gryviav1.ProfilerRecommendation{
 		{JobName: "old-job", Category: "batchSize", Severity: "info", Description: "old", EstimatedImpact: "5%", Timestamp: now},
 	}
-	newRecs := []tensorreaperv1.ProfilerRecommendation{
+	newRecs := []gryviav1.ProfilerRecommendation{
 		{JobName: "new-job", Category: "dataLoading", Severity: "warning", Description: "new", EstimatedImpact: "20%", Timestamp: now},
 	}
 

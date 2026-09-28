@@ -1,6 +1,6 @@
-## TensorReaper Examples
+## Gryvia Examples
 
-This directory contains example configurations for running AI workloads on TensorReaper.
+This directory contains example configurations for running AI workloads on Gryvia.
 
 ### Training Examples
 
@@ -8,7 +8,7 @@ This directory contains example configurations for running AI workloads on Tenso
 ```bash
 kubectl apply -f training/simple-pytorch-training.yaml
 kubectl get fabricaijob pytorch-simple-training
-kubectl logs -f $(kubectl get pod -l tensorreaper.ai/job=pytorch-simple-training -o name)
+kubectl logs -f $(kubectl get pod -l gryvia.io/job=pytorch-simple-training -o name)
 ```
 
 #### Multi-GPU Distributed Training
@@ -89,11 +89,11 @@ kubectl get fabricaijob -w
 
 Check GPU utilization:
 ```bash
-kubectl top node -l tensorreaper.ai/gpu=true
+kubectl top node -l gryvia.io/gpu=true
 ```
 
 View metrics in Grafana:
 ```bash
-kubectl port-forward -n tensorreaper-system svc/tensorreaper-observability-grafana 3000:80
+kubectl port-forward -n gryvia-system svc/gryvia-observability-grafana 3000:80
 # Open http://localhost:3000
 ```

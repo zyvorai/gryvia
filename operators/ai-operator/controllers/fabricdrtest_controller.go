@@ -12,7 +12,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/ai-operator/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 )
 
 // FabricDRTestReconciler reconciles a FabricDRTest object
@@ -22,11 +22,11 @@ type FabricDRTestReconciler struct {
 	Log    logr.Logger
 }
 
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricdrtests,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricdrtests/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricdrtests/finalizers,verbs=update
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricaijobs,verbs=get;list;watch;create;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricgpunodes,verbs=get;list;watch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricdrtests,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricdrtests/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricdrtests/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch;create;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricgpunodes,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
@@ -35,7 +35,7 @@ func (r *FabricDRTestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	log := r.Log.WithValues("fabricdrtest", req.NamespacedName)
 
 	// Fetch the FabricDRTest instance
-	drtest := &tensorreaperv1.FabricDRTest{}
+	drtest := &gryviav1.FabricDRTest{}
 	err := r.Get(ctx, req.NamespacedName, drtest)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -77,7 +77,7 @@ func (r *FabricDRTestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	return result, nil
 }
 
-func (r *FabricDRTestReconciler) reconcileDRTest(ctx context.Context, drtest *tensorreaperv1.FabricDRTest) (ctrl.Result, error) {
+func (r *FabricDRTestReconciler) reconcileDRTest(ctx context.Context, drtest *gryviav1.FabricDRTest) (ctrl.Result, error) {
 	log := r.Log.WithValues("drtest", drtest.Name)
 
 	switch drtest.Status.State {
@@ -90,7 +90,7 @@ func (r *FabricDRTestReconciler) reconcileDRTest(ctx context.Context, drtest *te
 		log.Info("Starting DR test", "type", drtest.Spec.Type)
 		drtest.Status.State = "running"
 		now := metav1.Now()
-		drtest.Status.Execution = &tensorreaperv1.DRTestExecution{
+		drtest.Status.Execution = &gryviav1.DRTestExecution{
 			StartTime: &now,
 		}
 		r.updateDRCondition(drtest, "Running", metav1.ConditionTrue, "TestStarted",
@@ -118,10 +118,10 @@ func (r *FabricDRTestReconciler) reconcileDRTest(ctx context.Context, drtest *te
 	return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 }
 
-func (r *FabricDRTestReconciler) executeDRTest(ctx context.Context, drtest *tensorreaperv1.FabricDRTest) (ctrl.Result, error) {
+func (r *FabricDRTestReconciler) executeDRTest(ctx context.Context, drtest *gryviav1.FabricDRTest) (ctrl.Result, error) {
 	log := r.Log.WithValues("drtest", drtest.Name)
 
-	var results *tensorreaperv1.DRTestResults
+	var results *gryviav1.DRTestResults
 	var err error
 
 	switch drtest.Spec.Type {
@@ -154,9 +154,9 @@ func (r *FabricDRTestReconciler) executeDRTest(ctx context.Context, drtest *tens
 	if err != nil {
 		log.Error(err, "DR test failed")
 		drtest.Status.State = "failed"
-		drtest.Status.Results = &tensorreaperv1.DRTestResults{
+		drtest.Status.Results = &gryviav1.DRTestResults{
 			Passed: false,
-			Issues: []tensorreaperv1.DRTestIssue{
+			Issues: []gryviav1.DRTestIssue{
 				{
 					Severity:       "critical",
 					Description:    err.Error(),
@@ -180,12 +180,12 @@ func (r *FabricDRTestReconciler) executeDRTest(ctx context.Context, drtest *tens
 	return ctrl.Result{}, nil
 }
 
-func (r *FabricDRTestReconciler) executeBackupRestoreTest(ctx context.Context, drtest *tensorreaperv1.FabricDRTest) (*tensorreaperv1.DRTestResults, error) {
+func (r *FabricDRTestReconciler) executeBackupRestoreTest(ctx context.Context, drtest *gryviav1.FabricDRTest) (*gryviav1.DRTestResults, error) {
 	log := r.Log.WithValues("drtest", drtest.Name, "type", "backup-restore")
-	results := &tensorreaperv1.DRTestResults{Passed: true}
+	results := &gryviav1.DRTestResults{Passed: true}
 
 	// Step 1: Verify backup location is accessible
-	stepResult := tensorreaperv1.DRTestStepResult{
+	stepResult := gryviav1.DRTestStepResult{
 		Step:    "verify-backup-location",
 		Status:  "completed",
 		Message: "Backup location verified",
@@ -198,11 +198,11 @@ func (r *FabricDRTestReconciler) executeBackupRestoreTest(ctx context.Context, d
 	results.Details = append(results.Details, stepResult)
 
 	// Step 2: Verify jobs can be listed
-	jobList := &tensorreaperv1.FabricAIJobList{}
+	jobList := &gryviav1.FabricAIJobList{}
 	if err := r.List(ctx, jobList); err != nil {
 		return nil, fmt.Errorf("failed to list jobs for backup verification: %w", err)
 	}
-	results.Details = append(results.Details, tensorreaperv1.DRTestStepResult{
+	results.Details = append(results.Details, gryviav1.DRTestStepResult{
 		Step:    "list-jobs",
 		Status:  "completed",
 		Message: fmt.Sprintf("Found %d jobs for backup", len(jobList.Items)),
@@ -211,7 +211,7 @@ func (r *FabricDRTestReconciler) executeBackupRestoreTest(ctx context.Context, d
 	// Step 3: Simulate checkpoint verification
 	if drtest.Spec.BackupRestore != nil && drtest.Spec.BackupRestore.Validation != nil {
 		if drtest.Spec.BackupRestore.Validation.VerifyCheckpoints {
-			results.Details = append(results.Details, tensorreaperv1.DRTestStepResult{
+			results.Details = append(results.Details, gryviav1.DRTestStepResult{
 				Step:    "verify-checkpoints",
 				Status:  "completed",
 				Message: "Checkpoint verification completed",
@@ -219,7 +219,7 @@ func (r *FabricDRTestReconciler) executeBackupRestoreTest(ctx context.Context, d
 		}
 	}
 
-	results.Metrics = &tensorreaperv1.DRTestMetrics{
+	results.Metrics = &gryviav1.DRTestMetrics{
 		JobsRecovered: len(jobList.Items),
 		JobsFailed:    0,
 		DataIntegrity: "100%",
@@ -229,28 +229,28 @@ func (r *FabricDRTestReconciler) executeBackupRestoreTest(ctx context.Context, d
 	return results, nil
 }
 
-func (r *FabricDRTestReconciler) executeFailoverTest(ctx context.Context, drtest *tensorreaperv1.FabricDRTest) (*tensorreaperv1.DRTestResults, error) {
+func (r *FabricDRTestReconciler) executeFailoverTest(ctx context.Context, drtest *gryviav1.FabricDRTest) (*gryviav1.DRTestResults, error) {
 	log := r.Log.WithValues("drtest", drtest.Name, "type", "failover")
-	results := &tensorreaperv1.DRTestResults{Passed: true}
+	results := &gryviav1.DRTestResults{Passed: true}
 
 	// Step 1: Simulate node failure detection
-	results.Details = append(results.Details, tensorreaperv1.DRTestStepResult{
-		Step:    "simulate-failure",
-		Status:  "completed",
+	results.Details = append(results.Details, gryviav1.DRTestStepResult{
+		Step:     "simulate-failure",
+		Status:   "completed",
 		Duration: "30s",
-		Message: fmt.Sprintf("Simulated %s failure", drtest.Spec.Failover.Scenario),
+		Message:  fmt.Sprintf("Simulated %s failure", drtest.Spec.Failover.Scenario),
 	})
 
 	// Step 2: Verify detection
-	results.Details = append(results.Details, tensorreaperv1.DRTestStepResult{
-		Step:    "detect-failure",
-		Status:  "completed",
+	results.Details = append(results.Details, gryviav1.DRTestStepResult{
+		Step:     "detect-failure",
+		Status:   "completed",
 		Duration: "15s",
-		Message: "Failure detected by monitoring",
+		Message:  "Failure detected by monitoring",
 	})
 
 	// Step 3: Count recoverable jobs
-	jobList := &tensorreaperv1.FabricAIJobList{}
+	jobList := &gryviav1.FabricAIJobList{}
 	if err := r.List(ctx, jobList); err != nil {
 		return nil, fmt.Errorf("failed to list jobs: %w", err)
 	}
@@ -262,14 +262,14 @@ func (r *FabricDRTestReconciler) executeFailoverTest(ctx context.Context, drtest
 		}
 	}
 
-	results.Details = append(results.Details, tensorreaperv1.DRTestStepResult{
-		Step:    "recover-jobs",
-		Status:  "completed",
+	results.Details = append(results.Details, gryviav1.DRTestStepResult{
+		Step:     "recover-jobs",
+		Status:   "completed",
 		Duration: "2m",
-		Message: fmt.Sprintf("Verified %d jobs can be recovered", runningJobs),
+		Message:  fmt.Sprintf("Verified %d jobs can be recovered", runningJobs),
 	})
 
-	results.Metrics = &tensorreaperv1.DRTestMetrics{
+	results.Metrics = &gryviav1.DRTestMetrics{
 		RpoAchieved:   "2m30s",
 		RtoAchieved:   "5m",
 		JobsRecovered: runningJobs,
@@ -281,40 +281,40 @@ func (r *FabricDRTestReconciler) executeFailoverTest(ctx context.Context, drtest
 	return results, nil
 }
 
-func (r *FabricDRTestReconciler) executeDataIntegrityTest(ctx context.Context, drtest *tensorreaperv1.FabricDRTest) (*tensorreaperv1.DRTestResults, error) {
-	results := &tensorreaperv1.DRTestResults{Passed: true}
+func (r *FabricDRTestReconciler) executeDataIntegrityTest(ctx context.Context, drtest *gryviav1.FabricDRTest) (*gryviav1.DRTestResults, error) {
+	results := &gryviav1.DRTestResults{Passed: true}
 
-	results.Details = append(results.Details, tensorreaperv1.DRTestStepResult{
-		Step:    "verify-checksums",
-		Status:  "completed",
+	results.Details = append(results.Details, gryviav1.DRTestStepResult{
+		Step:     "verify-checksums",
+		Status:   "completed",
 		Duration: "1m",
-		Message: "All checksums verified",
+		Message:  "All checksums verified",
 	})
 
-	results.Metrics = &tensorreaperv1.DRTestMetrics{
+	results.Metrics = &gryviav1.DRTestMetrics{
 		DataIntegrity: "100%",
 	}
 
 	return results, nil
 }
 
-func (r *FabricDRTestReconciler) executeRpoRtoTest(ctx context.Context, drtest *tensorreaperv1.FabricDRTest) (*tensorreaperv1.DRTestResults, error) {
-	results := &tensorreaperv1.DRTestResults{Passed: true}
+func (r *FabricDRTestReconciler) executeRpoRtoTest(ctx context.Context, drtest *gryviav1.FabricDRTest) (*gryviav1.DRTestResults, error) {
+	results := &gryviav1.DRTestResults{Passed: true}
 
 	// Execute each scenario
 	if drtest.Spec.RpoRto != nil {
 		for _, scenario := range drtest.Spec.RpoRto.Scenarios {
-			results.Details = append(results.Details, tensorreaperv1.DRTestStepResult{
-				Step:    scenario.Name,
-				Status:  "completed",
+			results.Details = append(results.Details, gryviav1.DRTestStepResult{
+				Step:     scenario.Name,
+				Status:   "completed",
 				Duration: "3m",
-				Message: fmt.Sprintf("Scenario %s: %s completed", scenario.Name, scenario.Description),
+				Message:  fmt.Sprintf("Scenario %s: %s completed", scenario.Name, scenario.Description),
 			})
 		}
 
 		// Validate against targets
 		if drtest.Spec.RpoRto.Targets != nil {
-			results.Metrics = &tensorreaperv1.DRTestMetrics{
+			results.Metrics = &gryviav1.DRTestMetrics{
 				RpoAchieved: fmt.Sprintf("%dm", drtest.Spec.RpoRto.Targets.RpoMinutes-1),
 				RtoAchieved: fmt.Sprintf("%dm", drtest.Spec.RpoRto.Targets.RtoMinutes-2),
 			}
@@ -324,23 +324,23 @@ func (r *FabricDRTestReconciler) executeRpoRtoTest(ctx context.Context, drtest *
 	return results, nil
 }
 
-func (r *FabricDRTestReconciler) executeFullDrillTest(ctx context.Context, drtest *tensorreaperv1.FabricDRTest) (*tensorreaperv1.DRTestResults, error) {
-	results := &tensorreaperv1.DRTestResults{Passed: true}
+func (r *FabricDRTestReconciler) executeFullDrillTest(ctx context.Context, drtest *gryviav1.FabricDRTest) (*gryviav1.DRTestResults, error) {
+	results := &gryviav1.DRTestResults{Passed: true}
 
 	if drtest.Spec.FullDrill != nil {
 		// Execute each step
 		for _, step := range drtest.Spec.FullDrill.Steps {
-			results.Details = append(results.Details, tensorreaperv1.DRTestStepResult{
-				Step:    step.Name,
-				Status:  "completed",
+			results.Details = append(results.Details, gryviav1.DRTestStepResult{
+				Step:     step.Name,
+				Status:   "completed",
 				Duration: step.Timeout,
-				Message: fmt.Sprintf("Step %s: %s", step.Name, step.Validation),
+				Message:  fmt.Sprintf("Step %s: %s", step.Name, step.Validation),
 			})
 		}
 
 		// Verify success criteria
 		for _, criterion := range drtest.Spec.FullDrill.SuccessCriteria {
-			results.Details = append(results.Details, tensorreaperv1.DRTestStepResult{
+			results.Details = append(results.Details, gryviav1.DRTestStepResult{
 				Step:    fmt.Sprintf("criterion-%s", criterion.Metric),
 				Status:  "completed",
 				Message: fmt.Sprintf("Criterion %s %s %.0f: PASSED", criterion.Metric, criterion.Operator, criterion.Value),
@@ -351,14 +351,14 @@ func (r *FabricDRTestReconciler) executeFullDrillTest(ctx context.Context, drtes
 	return results, nil
 }
 
-func (r *FabricDRTestReconciler) executeChaosTest(ctx context.Context, drtest *tensorreaperv1.FabricDRTest) (*tensorreaperv1.DRTestResults, error) {
-	results := &tensorreaperv1.DRTestResults{Passed: true}
+func (r *FabricDRTestReconciler) executeChaosTest(ctx context.Context, drtest *gryviav1.FabricDRTest) (*gryviav1.DRTestResults, error) {
+	results := &gryviav1.DRTestResults{Passed: true}
 
 	if drtest.Spec.ChaosEngineering != nil {
 		for _, experiment := range drtest.Spec.ChaosEngineering.Experiments {
-			results.Details = append(results.Details, tensorreaperv1.DRTestStepResult{
-				Step:    fmt.Sprintf("chaos-%s", experiment.Type),
-				Status:  "completed",
+			results.Details = append(results.Details, gryviav1.DRTestStepResult{
+				Step:     fmt.Sprintf("chaos-%s", experiment.Type),
+				Status:   "completed",
 				Duration: experiment.Duration,
 				Message: fmt.Sprintf("Chaos experiment %s completed with blast radius %s",
 					experiment.Type, drtest.Spec.ChaosEngineering.BlastRadius),
@@ -369,7 +369,7 @@ func (r *FabricDRTestReconciler) executeChaosTest(ctx context.Context, drtest *t
 	return results, nil
 }
 
-func (r *FabricDRTestReconciler) updateDRCondition(drtest *tensorreaperv1.FabricDRTest, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *FabricDRTestReconciler) updateDRCondition(drtest *gryviav1.FabricDRTest, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -395,6 +395,6 @@ func (r *FabricDRTestReconciler) updateDRCondition(drtest *tensorreaperv1.Fabric
 // SetupWithManager sets up the controller with the Manager.
 func (r *FabricDRTestReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tensorreaperv1.FabricDRTest{}).
+		For(&gryviav1.FabricDRTest{}).
 		Complete(r)
 }

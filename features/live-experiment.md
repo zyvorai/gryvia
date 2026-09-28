@@ -25,7 +25,7 @@ FabricLiveExperiment enables running multiple training jobs simultaneously and c
 ### Basic Example
 
 ```yaml
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricLiveExperiment
 metadata:
   name: lr-sweep
@@ -51,7 +51,7 @@ spec:
 ### With Early Stopping
 
 ```yaml
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricLiveExperiment
 metadata:
   name: architecture-search
@@ -242,7 +242,7 @@ comparison:
 ### No Metrics Appearing
 
 1. Verify your log patterns match the training output format
-2. Check that pods are in Running state: `kubectl get pods -l tensorreaper.ai/job=<jobRef>`
+2. Check that pods are in Running state: `kubectl get pods -l gryvia.io/job=<jobRef>`
 3. Inspect pod logs manually: `kubectl logs <pod-name>`
 
 ### Early Termination Too Aggressive
@@ -263,5 +263,5 @@ See `examples/training/live-experiment-example.yaml` for a complete working exam
 
 ## Support
 
-- Issues: https://github.com/ssahani/TensorReaper/issues
-- Discussions: https://github.com/ssahani/TensorReaper/discussions
+- Issues: https://github.com/zyvorai/gryvia/issues
+- Discussions: https://github.com/zyvorai/gryvia/discussions

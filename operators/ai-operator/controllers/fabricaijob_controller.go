@@ -17,8 +17,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/ai-operator/api/v1"
-	"github.com/ssahani/TensorReaper/operators/ai-operator/pkg/scheduler"
+	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
+	"github.com/zyvorai/gryvia/operators/ai-operator/pkg/scheduler"
 )
 
 const (
@@ -42,9 +42,9 @@ type FabricAIJobReconciler struct {
 	Log    logr.Logger
 }
 
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricaijobs,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricaijobs/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricaijobs/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs/finalizers,verbs=update
 //+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
@@ -55,7 +55,7 @@ func (r *FabricAIJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	log := r.Log.WithValues("fabricaijob", req.NamespacedName)
 
 	// Fetch the FabricAIJob instance
-	job := &tensorreaperv1.FabricAIJob{}
+	job := &gryviav1.FabricAIJob{}
 	err := r.Get(ctx, req.NamespacedName, job)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -92,7 +92,7 @@ func (r *FabricAIJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	return result, nil
 }
 
-func (r *FabricAIJobReconciler) reconcileAIJob(ctx context.Context, job *tensorreaperv1.FabricAIJob) (ctrl.Result, error) {
+func (r *FabricAIJobReconciler) reconcileAIJob(ctx context.Context, job *gryviav1.FabricAIJob) (ctrl.Result, error) {
 	log := r.Log.WithValues("fabricaijob", job.Name)
 
 	// Phase 1: Scheduling - Find suitable GPU nodes
@@ -174,7 +174,7 @@ func (r *FabricAIJobReconciler) reconcileAIJob(ctx context.Context, job *tensorr
 	// Check for job completion by examining pod status
 	if job.Status.Phase == PhaseRunning {
 		pods := &corev1.PodList{}
-		if err := r.List(ctx, pods, client.InNamespace(job.Namespace), client.MatchingLabels{"tensorreaper.ai/job": job.Name}); err == nil {
+		if err := r.List(ctx, pods, client.InNamespace(job.Namespace), client.MatchingLabels{"gryvia.io/job": job.Name}); err == nil {
 			completedPods := 0
 			failedPods := 0
 			for _, pod := range pods.Items {
@@ -214,7 +214,7 @@ func (r *FabricAIJobReconciler) reconcileAIJob(ctx context.Context, job *tensorr
 	return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 }
 
-func (r *FabricAIJobReconciler) ensurePVC(ctx context.Context, job *tensorreaperv1.FabricAIJob) error {
+func (r *FabricAIJobReconciler) ensurePVC(ctx context.Context, job *gryviav1.FabricAIJob) error {
 	pvcName := fmt.Sprintf("%s-data", job.Name)
 
 	pvc := &corev1.PersistentVolumeClaim{}
@@ -236,7 +236,7 @@ func (r *FabricAIJobReconciler) ensurePVC(ctx context.Context, job *tensorreaper
 				Name:      pvcName,
 				Namespace: job.Namespace,
 				Labels: map[string]string{
-					"tensorreaper.ai/job": job.Name,
+					"gryvia.io/job": job.Name,
 				},
 			},
 			Spec: corev1.PersistentVolumeClaimSpec{
@@ -262,7 +262,7 @@ func (r *FabricAIJobReconciler) ensurePVC(ctx context.Context, job *tensorreaper
 	return err
 }
 
-func (r *FabricAIJobReconciler) ensureHeadlessService(ctx context.Context, job *tensorreaperv1.FabricAIJob) error {
+func (r *FabricAIJobReconciler) ensureHeadlessService(ctx context.Context, job *gryviav1.FabricAIJob) error {
 	svcName := fmt.Sprintf("%s-headless", job.Name)
 
 	svc := &corev1.Service{}
@@ -278,13 +278,13 @@ func (r *FabricAIJobReconciler) ensureHeadlessService(ctx context.Context, job *
 				Name:      svcName,
 				Namespace: job.Namespace,
 				Labels: map[string]string{
-					"tensorreaper.ai/job": job.Name,
+					"gryvia.io/job": job.Name,
 				},
 			},
 			Spec: corev1.ServiceSpec{
 				ClusterIP: "None",
 				Selector: map[string]string{
-					"tensorreaper.ai/job": job.Name,
+					"gryvia.io/job": job.Name,
 				},
 				Ports: []corev1.ServicePort{
 					{
@@ -305,7 +305,7 @@ func (r *FabricAIJobReconciler) ensureHeadlessService(ctx context.Context, job *
 	return err
 }
 
-func (r *FabricAIJobReconciler) ensureStatefulSet(ctx context.Context, job *tensorreaperv1.FabricAIJob) error {
+func (r *FabricAIJobReconciler) ensureStatefulSet(ctx context.Context, job *gryviav1.FabricAIJob) error {
 	stsName := r.getStatefulSetName(job)
 
 	sts := &appsv1.StatefulSet{}
@@ -394,10 +394,10 @@ func (r *FabricAIJobReconciler) ensureStatefulSet(ctx context.Context, job *tens
 	return nil
 }
 
-func (r *FabricAIJobReconciler) buildStatefulSet(job *tensorreaperv1.FabricAIJob) *appsv1.StatefulSet {
+func (r *FabricAIJobReconciler) buildStatefulSet(job *gryviav1.FabricAIJob) *appsv1.StatefulSet {
 	labels := map[string]string{
-		"tensorreaper.ai/job":  job.Name,
-		"tensorreaper.ai/type": job.Spec.Type,
+		"gryvia.io/job":  job.Name,
+		"gryvia.io/type": job.Spec.Type,
 	}
 
 	replicas := r.getReplicaCount(job)
@@ -425,18 +425,18 @@ func (r *FabricAIJobReconciler) buildStatefulSet(job *tensorreaperv1.FabricAIJob
 	return sts
 }
 
-func (r *FabricAIJobReconciler) buildPodTemplate(job *tensorreaperv1.FabricAIJob, labels map[string]string, gpusPerPod int32) corev1.PodTemplateSpec {
+func (r *FabricAIJobReconciler) buildPodTemplate(job *gryviav1.FabricAIJob, labels map[string]string, gpusPerPod int32) corev1.PodTemplateSpec {
 	annotations := make(map[string]string)
 
 	// Add RDMA annotation if network mode is RDMA
 	if job.Spec.Network == "rdma" {
-		annotations["tensorreaper.ai/rdma"] = "true"
+		annotations["gryvia.io/rdma"] = "true"
 		annotations["k8s.v1.cni.cncf.io/networks"] = "rdma-network"
 	}
 
 	// Add SR-IOV annotation if network mode is SR-IOV
 	if job.Spec.Network == "sriov" {
-		annotations["tensorreaper.ai/sriov"] = "true"
+		annotations["gryvia.io/sriov"] = "true"
 		annotations["k8s.v1.cni.cncf.io/networks"] = "sriov-network"
 	}
 
@@ -474,7 +474,7 @@ func (r *FabricAIJobReconciler) buildPodTemplate(job *tensorreaperv1.FabricAIJob
 	}
 }
 
-func (r *FabricAIJobReconciler) buildEnvVars(job *tensorreaperv1.FabricAIJob) []corev1.EnvVar {
+func (r *FabricAIJobReconciler) buildEnvVars(job *gryviav1.FabricAIJob) []corev1.EnvVar {
 	// Copy to avoid mutating the spec
 	envVars := make([]corev1.EnvVar, len(job.Spec.Env))
 	copy(envVars, job.Spec.Env)
@@ -500,7 +500,7 @@ func (r *FabricAIJobReconciler) buildEnvVars(job *tensorreaperv1.FabricAIJob) []
 	return envVars
 }
 
-func (r *FabricAIJobReconciler) buildVolumeMounts(job *tensorreaperv1.FabricAIJob) []corev1.VolumeMount {
+func (r *FabricAIJobReconciler) buildVolumeMounts(job *gryviav1.FabricAIJob) []corev1.VolumeMount {
 	// Copy to avoid mutating the spec
 	volumeMounts := make([]corev1.VolumeMount, len(job.Spec.VolumeMounts))
 	copy(volumeMounts, job.Spec.VolumeMounts)
@@ -524,7 +524,7 @@ func (r *FabricAIJobReconciler) buildVolumeMounts(job *tensorreaperv1.FabricAIJo
 	return volumeMounts
 }
 
-func (r *FabricAIJobReconciler) buildVolumes(job *tensorreaperv1.FabricAIJob) []corev1.Volume {
+func (r *FabricAIJobReconciler) buildVolumes(job *gryviav1.FabricAIJob) []corev1.Volume {
 	// Copy to avoid mutating the spec
 	volumes := make([]corev1.Volume, len(job.Spec.Volumes))
 	copy(volumes, job.Spec.Volumes)
@@ -556,7 +556,7 @@ func (r *FabricAIJobReconciler) buildVolumes(job *tensorreaperv1.FabricAIJob) []
 	return volumes
 }
 
-func (r *FabricAIJobReconciler) buildResources(job *tensorreaperv1.FabricAIJob, gpusPerPod int32) corev1.ResourceRequirements {
+func (r *FabricAIJobReconciler) buildResources(job *gryviav1.FabricAIJob, gpusPerPod int32) corev1.ResourceRequirements {
 	resources := job.Spec.Resources
 
 	// Add GPU resource limits
@@ -568,7 +568,7 @@ func (r *FabricAIJobReconciler) buildResources(job *tensorreaperv1.FabricAIJob, 
 	return resources
 }
 
-func (r *FabricAIJobReconciler) buildNodeSelector(job *tensorreaperv1.FabricAIJob) map[string]string {
+func (r *FabricAIJobReconciler) buildNodeSelector(job *gryviav1.FabricAIJob) map[string]string {
 	// Copy to avoid mutating the spec
 	nodeSelector := make(map[string]string)
 	for k, v := range job.Spec.NodeSelector {
@@ -577,22 +577,22 @@ func (r *FabricAIJobReconciler) buildNodeSelector(job *tensorreaperv1.FabricAIJo
 
 	// Add GPU type selector if specified
 	if job.Spec.GpuType != "" && job.Spec.GpuType != "any" {
-		nodeSelector["tensorreaper.ai/gpu"] = job.Spec.GpuType
+		nodeSelector["gryvia.io/gpu"] = job.Spec.GpuType
 	}
 
 	// Add RDMA selector if network mode is RDMA
 	if job.Spec.Network == "rdma" {
-		nodeSelector["tensorreaper.ai/rdma"] = "true"
+		nodeSelector["gryvia.io/rdma"] = "true"
 	}
 
 	return nodeSelector
 }
 
-func (r *FabricAIJobReconciler) getStatefulSetName(job *tensorreaperv1.FabricAIJob) string {
+func (r *FabricAIJobReconciler) getStatefulSetName(job *gryviav1.FabricAIJob) string {
 	return fmt.Sprintf("%s-training", job.Name)
 }
 
-func (r *FabricAIJobReconciler) getReplicaCount(job *tensorreaperv1.FabricAIJob) int32 {
+func (r *FabricAIJobReconciler) getReplicaCount(job *gryviav1.FabricAIJob) int32 {
 	if job.Spec.Distributed != nil && job.Spec.Distributed.Enabled {
 		if job.Spec.Distributed.Nodes > 0 {
 			return job.Spec.Distributed.Nodes
@@ -602,7 +602,7 @@ func (r *FabricAIJobReconciler) getReplicaCount(job *tensorreaperv1.FabricAIJob)
 	return 1
 }
 
-func (r *FabricAIJobReconciler) getGPUsPerPod(job *tensorreaperv1.FabricAIJob) int32 {
+func (r *FabricAIJobReconciler) getGPUsPerPod(job *gryviav1.FabricAIJob) int32 {
 	if job.Spec.Distributed != nil && job.Spec.Distributed.Enabled {
 		if job.Spec.Distributed.GpusPerNode > 0 {
 			return job.Spec.Distributed.GpusPerNode
@@ -615,7 +615,7 @@ func (r *FabricAIJobReconciler) getGPUsPerPod(job *tensorreaperv1.FabricAIJob) i
 	return 1
 }
 
-func (r *FabricAIJobReconciler) updateCondition(job *tensorreaperv1.FabricAIJob, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *FabricAIJobReconciler) updateCondition(job *gryviav1.FabricAIJob, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -690,7 +690,7 @@ func mapsEqual(a, b map[string]string) bool {
 // SetupWithManager sets up the controller with the Manager.
 func (r *FabricAIJobReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tensorreaperv1.FabricAIJob{}).
+		For(&gryviav1.FabricAIJob{}).
 		Owns(&appsv1.StatefulSet{}).
 		Owns(&corev1.Service{}).
 		Owns(&corev1.PersistentVolumeClaim{}).

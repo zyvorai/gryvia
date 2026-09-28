@@ -8,7 +8,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/ai-operator/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 )
 
 // ForkHandler creates new FabricAIJob resources from checkpoint state
@@ -24,7 +24,7 @@ func NewForkHandler(c client.Client) *ForkHandler {
 // CreateForkedJob creates a new FabricAIJob from a source job and a fork specification.
 // It clones the source job spec, applies overrides from the fork, and sets environment
 // variables to resume from the specified checkpoint step.
-func (f *ForkHandler) CreateForkedJob(ctx context.Context, sourceJob *tensorreaperv1.FabricAIJob, fork tensorreaperv1.ForkSpec, checkpointStep int) (string, error) {
+func (f *ForkHandler) CreateForkedJob(ctx context.Context, sourceJob *gryviav1.FabricAIJob, fork gryviav1.ForkSpec, checkpointStep int) (string, error) {
 	// Determine the new job name
 	newJobName := fork.NewJobName
 	if newJobName == "" {
@@ -35,15 +35,15 @@ func (f *ForkHandler) CreateForkedJob(ctx context.Context, sourceJob *tensorreap
 	forkedSpec := buildForkedSpec(sourceJob.Spec, fork, checkpointStep)
 
 	// Create the forked FabricAIJob
-	forkedJob := &tensorreaperv1.FabricAIJob{
+	forkedJob := &gryviav1.FabricAIJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      newJobName,
 			Namespace: sourceJob.Namespace,
 			Labels:    buildForkLabels(sourceJob, fork),
 			Annotations: map[string]string{
-				"tensorreaper.ai/forked-from":       sourceJob.Name,
-				"tensorreaper.ai/fork-name":         fork.Name,
-				"tensorreaper.ai/fork-step":         fmt.Sprintf("%d", checkpointStep),
+				"gryvia.io/forked-from": sourceJob.Name,
+				"gryvia.io/fork-name":   fork.Name,
+				"gryvia.io/fork-step":   fmt.Sprintf("%d", checkpointStep),
 			},
 		},
 		Spec: forkedSpec,
@@ -57,22 +57,22 @@ func (f *ForkHandler) CreateForkedJob(ctx context.Context, sourceJob *tensorreap
 }
 
 // buildForkedSpec creates a new FabricAIJobSpec by cloning the source and applying overrides
-func buildForkedSpec(sourceSpec tensorreaperv1.FabricAIJobSpec, fork tensorreaperv1.ForkSpec, checkpointStep int) tensorreaperv1.FabricAIJobSpec {
+func buildForkedSpec(sourceSpec gryviav1.FabricAIJobSpec, fork gryviav1.ForkSpec, checkpointStep int) gryviav1.FabricAIJobSpec {
 	// Deep clone the source spec
 	spec := cloneJobSpec(sourceSpec)
 
 	// Add checkpoint resume environment variables
 	resumeEnvVars := []corev1.EnvVar{
 		{
-			Name:  "TENSORREAPER_RESUME_FROM_CHECKPOINT",
+			Name:  "GRYVIA_RESUME_FROM_CHECKPOINT",
 			Value: "true",
 		},
 		{
-			Name:  "TENSORREAPER_CHECKPOINT_STEP",
+			Name:  "GRYVIA_CHECKPOINT_STEP",
 			Value: fmt.Sprintf("%d", checkpointStep),
 		},
 		{
-			Name:  "TENSORREAPER_FORK_NAME",
+			Name:  "GRYVIA_FORK_NAME",
 			Value: fork.Name,
 		},
 	}
@@ -95,8 +95,8 @@ func buildForkedSpec(sourceSpec tensorreaperv1.FabricAIJobSpec, fork tensorreape
 }
 
 // cloneJobSpec creates a deep copy of a FabricAIJobSpec
-func cloneJobSpec(src tensorreaperv1.FabricAIJobSpec) tensorreaperv1.FabricAIJobSpec {
-	spec := tensorreaperv1.FabricAIJobSpec{
+func cloneJobSpec(src gryviav1.FabricAIJobSpec) gryviav1.FabricAIJobSpec {
+	spec := gryviav1.FabricAIJobSpec{
 		Type:            src.Type,
 		Model:           src.Model,
 		GPUs:            src.GPUs,
@@ -128,7 +128,7 @@ func cloneJobSpec(src tensorreaperv1.FabricAIJobSpec) tensorreaperv1.FabricAIJob
 
 	// Clone distributed config
 	if src.Distributed != nil {
-		spec.Distributed = &tensorreaperv1.DistributedConfig{
+		spec.Distributed = &gryviav1.DistributedConfig{
 			Enabled:     src.Distributed.Enabled,
 			Framework:   src.Distributed.Framework,
 			Nodes:       src.Distributed.Nodes,
@@ -181,7 +181,7 @@ func cloneJobSpec(src tensorreaperv1.FabricAIJobSpec) tensorreaperv1.FabricAIJob
 
 // applyEnvOverride applies an environment variable override. If the variable
 // already exists, its value is updated. Otherwise, the variable is appended.
-func applyEnvOverride(envVars []corev1.EnvVar, override tensorreaperv1.EnvOverride) []corev1.EnvVar {
+func applyEnvOverride(envVars []corev1.EnvVar, override gryviav1.EnvOverride) []corev1.EnvVar {
 	for i, env := range envVars {
 		if env.Name == override.Name {
 			envVars[i].Value = override.Value
@@ -196,20 +196,20 @@ func applyEnvOverride(envVars []corev1.EnvVar, override tensorreaperv1.EnvOverri
 }
 
 // buildForkLabels creates labels for a forked job
-func buildForkLabels(sourceJob *tensorreaperv1.FabricAIJob, fork tensorreaperv1.ForkSpec) map[string]string {
+func buildForkLabels(sourceJob *gryviav1.FabricAIJob, fork gryviav1.ForkSpec) map[string]string {
 	labels := map[string]string{
-		"tensorreaper.ai/forked-from": sourceJob.Name,
-		"tensorreaper.ai/fork":       fork.Name,
-		"tensorreaper.ai/type":       sourceJob.Spec.Type,
+		"gryvia.io/forked-from": sourceJob.Name,
+		"gryvia.io/fork":        fork.Name,
+		"gryvia.io/type":        sourceJob.Spec.Type,
 	}
 
 	// Copy relevant labels from the source job
 	if sourceJob.Labels != nil {
-		if model, ok := sourceJob.Labels["tensorreaper.ai/model"]; ok {
-			labels["tensorreaper.ai/model"] = model
+		if model, ok := sourceJob.Labels["gryvia.io/model"]; ok {
+			labels["gryvia.io/model"] = model
 		}
-		if team, ok := sourceJob.Labels["tensorreaper.ai/team"]; ok {
-			labels["tensorreaper.ai/team"] = team
+		if team, ok := sourceJob.Labels["gryvia.io/team"]; ok {
+			labels["gryvia.io/team"] = team
 		}
 	}
 
@@ -217,7 +217,7 @@ func buildForkLabels(sourceJob *tensorreaperv1.FabricAIJob, fork tensorreaperv1.
 }
 
 // ValidateForkSpec validates a fork specification
-func ValidateForkSpec(fork tensorreaperv1.ForkSpec) error {
+func ValidateForkSpec(fork gryviav1.ForkSpec) error {
 	if fork.Name == "" {
 		return fmt.Errorf("fork name is required")
 	}

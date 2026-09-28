@@ -3,11 +3,11 @@ use kube::api::{Api, ListParams};
 use prettytable::{Table, Row, Cell, format};
 use colored::*;
 
-use crate::client::TensorReaperClient;
+use crate::client::GryviaClient;
 use crate::types::*;
 
 pub async fn execute(
-    client: &TensorReaperClient,
+    client: &GryviaClient,
     team: Option<String>,
     period: &str,
     detailed: bool,

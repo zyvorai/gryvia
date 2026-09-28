@@ -1,8 +1,8 @@
-# TensorReaper - Complete Platform Summary
+# Gryvia - Complete Platform Summary
 
 ## 🎯 Project Overview
 
-**TensorReaper** is an enterprise-grade GPU compute platform for AI infrastructure, built from scratch over 22 development iterations.
+**Gryvia** is an enterprise-grade GPU compute platform for AI infrastructure, built from scratch over 22 development iterations.
 
 ### Stats
 - **Total Commits**: 26
@@ -118,7 +118,7 @@ RESTful API (~2,000 LOC):
 **Apache Airflow**:
 - ML data pipelines
 - GPU-aware scheduling
-- TensorReaper job submission
+- Gryvia job submission
 - Workflow orchestration
 
 **Auto-Tuner**:
@@ -471,9 +471,9 @@ Two-pass code review across the entire codebase, finding and fixing 110+ issues:
 
 ## 🚀 Ready for Production
 
-TensorReaper is a complete, production-ready platform for managing GPU compute infrastructure at enterprise scale.
+Gryvia is a complete, production-ready platform for managing GPU compute infrastructure at enterprise scale.
 
-**Repository**: https://github.com/ssahani/TensorReaper
+**Repository**: https://github.com/zyvorai/gryvia
 **License**: Apache 2.0
 **Version**: 1.0.0
 

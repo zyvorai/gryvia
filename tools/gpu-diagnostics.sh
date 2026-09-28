@@ -1,5 +1,5 @@
 #!/bin/bash
-# GPU Diagnostics Tool for TensorReaper
+# GPU Diagnostics Tool for Gryvia
 # Comprehensive GPU health and performance checking
 
 set -euo pipefail
@@ -11,7 +11,7 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 echo -e "${BLUE}╔════════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║          TensorReaper GPU Diagnostics Tool                      ║${NC}"
+echo -e "${BLUE}║          Gryvia GPU Diagnostics Tool                      ║${NC}"
 echo -e "${BLUE}╚════════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
@@ -206,7 +206,7 @@ generate_report() {
     HOSTNAME=$(hostname)
 
     cat > /tmp/gpu_diagnostics_$HOSTNAME.txt << EOF
-TensorReaper GPU Diagnostics Report
+Gryvia GPU Diagnostics Report
 ==================================
 Timestamp: $TIMESTAMP
 Hostname: $HOSTNAME

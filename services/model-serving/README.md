@@ -1,13 +1,13 @@
-# Model Serving with TensorReaper
+# Model Serving with Gryvia
 
-Deploy and serve models trained with TensorReaper using KServe, vLLM, TensorRT-LLM, and Triton.
+Deploy and serve models trained with Gryvia using KServe, vLLM, TensorRT-LLM, and Triton.
 
 ## Overview
 
 ```
 ┌──────────────────┐
 │  Training Jobs   │
-│  (TensorReaper)    │
+│  (Gryvia)    │
 └────────┬─────────┘
          │
          ↓
@@ -61,7 +61,7 @@ spec:
           limits:
             nvidia.com/gpu: "2"
     nodeSelector:
-      tensorreaper.ai/gpu-type: A100-80G
+      gryvia.io/gpu-type: A100-80G
 ```
 
 **Usage:**
@@ -98,7 +98,7 @@ Optimized inference with NVIDIA TensorRT.
 ```bash
 # Submit build job
 kubectl apply -f - <<EOF
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricAIJob
 metadata:
   name: build-trt-llm
@@ -216,7 +216,7 @@ import mlflow
 import torch
 import os
 
-mlflow.set_tracking_uri("http://mlflow.tensorreaper.svc.cluster.local:5000")
+mlflow.set_tracking_uri("http://mlflow.gryvia.svc.cluster.local:5000")
 
 # Load production model
 model_uri = "models:/llama-7b/Production"
@@ -247,7 +247,7 @@ print(f"Model exported to {output_dir}")
 
 ```bash
 kubectl apply -f - <<EOF
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricAIJob
 metadata:
   name: export-llama-7b
@@ -459,15 +459,15 @@ args:
 ```yaml
 # Development/testing - T4
 nodeSelector:
-  tensorreaper.ai/gpu-type: T4
+  gryvia.io/gpu-type: T4
 
 # Production - A100
 nodeSelector:
-  tensorreaper.ai/gpu-type: A100-40G
+  gryvia.io/gpu-type: A100-40G
 
 # High throughput - H100
 nodeSelector:
-  tensorreaper.ai/gpu-type: H100
+  gryvia.io/gpu-type: H100
 ```
 
 ### Cost Tracking
@@ -569,4 +569,4 @@ See `examples/model-serving/` for:
 ## Support
 
 - KServe Docs: https://kserve.github.io/website/
-- TensorReaper Issues: https://github.com/ssahani/TensorReaper/issues
+- Gryvia Issues: https://github.com/zyvorai/gryvia/issues

@@ -459,8 +459,8 @@ func (p *Predictor) AnalyzeUtilization(gpuKey string) *UtilizationAnalysis {
 	// Steady-state utilization: use median of the middle 60% of samples (sorted by time)
 	// This filters out startup spikes and temporary peaks
 	if len(samples) >= 5 {
-		start := len(samples) / 5       // skip first 20%
-		end := len(samples) * 4 / 5     // skip last 20%
+		start := len(samples) / 5   // skip first 20%
+		end := len(samples) * 4 / 5 // skip last 20%
 		steadySamples := samples[start:end]
 
 		var steadyTotal float64

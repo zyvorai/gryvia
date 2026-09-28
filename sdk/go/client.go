@@ -1,4 +1,4 @@
-package tensorreaper
+package gryvia
 
 import (
 	"context"
@@ -11,19 +11,19 @@ import (
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/ai-operator/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 )
 
-// TensorReaperClient provides typed methods for managing TensorReaper resources.
-type TensorReaperClient struct {
+// GryviaClient provides typed methods for managing Gryvia resources.
+type GryviaClient struct {
 	client client.Client
 }
 
-// NewClient creates a new TensorReaperClient using the provided Kubernetes REST config.
-func NewClient(cfg *rest.Config) (*TensorReaperClient, error) {
+// NewClient creates a new GryviaClient using the provided Kubernetes REST config.
+func NewClient(cfg *rest.Config) (*GryviaClient, error) {
 	scheme := runtime.NewScheme()
-	if err := tensorreaperv1.AddToScheme(scheme); err != nil {
-		return nil, fmt.Errorf("failed to add TensorReaper types to scheme: %w", err)
+	if err := gryviav1.AddToScheme(scheme); err != nil {
+		return nil, fmt.Errorf("failed to add Gryvia types to scheme: %w", err)
 	}
 
 	c, err := client.New(cfg, client.Options{Scheme: scheme})
@@ -31,24 +31,24 @@ func NewClient(cfg *rest.Config) (*TensorReaperClient, error) {
 		return nil, fmt.Errorf("failed to create client: %w", err)
 	}
 
-	return &TensorReaperClient{client: c}, nil
+	return &GryviaClient{client: c}, nil
 }
 
 // NewClientFromExisting wraps an existing controller-runtime client.
-// The caller must ensure that TensorReaper types are registered in the client's scheme.
-func NewClientFromExisting(c client.Client) *TensorReaperClient {
-	return &TensorReaperClient{client: c}
+// The caller must ensure that Gryvia types are registered in the client's scheme.
+func NewClientFromExisting(c client.Client) *GryviaClient {
+	return &GryviaClient{client: c}
 }
 
 // --- FabricAIJob operations ---
 
 // CreateJob creates a new FabricAIJob in the given namespace.
-func (t *TensorReaperClient) CreateJob(ctx context.Context, job *FabricAIJob) error {
+func (t *GryviaClient) CreateJob(ctx context.Context, job *FabricAIJob) error {
 	return t.client.Create(ctx, job)
 }
 
 // GetJob retrieves a FabricAIJob by name and namespace.
-func (t *TensorReaperClient) GetJob(ctx context.Context, namespace, name string) (*FabricAIJob, error) {
+func (t *GryviaClient) GetJob(ctx context.Context, namespace, name string) (*FabricAIJob, error) {
 	job := &FabricAIJob{}
 	err := t.client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, job)
 	if err != nil {
@@ -58,7 +58,7 @@ func (t *TensorReaperClient) GetJob(ctx context.Context, namespace, name string)
 }
 
 // ListJobs returns all FabricAIJobs in the given namespace.
-func (t *TensorReaperClient) ListJobs(ctx context.Context, namespace string, opts ...client.ListOption) (*FabricAIJobList, error) {
+func (t *GryviaClient) ListJobs(ctx context.Context, namespace string, opts ...client.ListOption) (*FabricAIJobList, error) {
 	list := &FabricAIJobList{}
 	allOpts := append([]client.ListOption{client.InNamespace(namespace)}, opts...)
 	err := t.client.List(ctx, list, allOpts...)
@@ -69,7 +69,7 @@ func (t *TensorReaperClient) ListJobs(ctx context.Context, namespace string, opt
 }
 
 // DeleteJob deletes a FabricAIJob by name and namespace.
-func (t *TensorReaperClient) DeleteJob(ctx context.Context, namespace, name string) error {
+func (t *GryviaClient) DeleteJob(ctx context.Context, namespace, name string) error {
 	job := &FabricAIJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -80,14 +80,14 @@ func (t *TensorReaperClient) DeleteJob(ctx context.Context, namespace, name stri
 }
 
 // UpdateJobStatus updates the status of a FabricAIJob.
-func (t *TensorReaperClient) UpdateJobStatus(ctx context.Context, job *FabricAIJob) error {
+func (t *GryviaClient) UpdateJobStatus(ctx context.Context, job *FabricAIJob) error {
 	return t.client.Status().Update(ctx, job)
 }
 
 // WatchJob returns a watch.Interface that receives events for FabricAIJob changes.
 // Note: This requires the client to support watching (e.g., a cached client from a Manager).
 // For non-cached clients, consider using an informer instead.
-func (t *TensorReaperClient) WatchJob(ctx context.Context, namespace string) (watch.Interface, error) {
+func (t *GryviaClient) WatchJob(ctx context.Context, namespace string) (watch.Interface, error) {
 	// controller-runtime's client.Client does not natively expose Watch.
 	// Callers using a manager should use the informer cache.
 	// This method documents the intended interface; a full implementation
@@ -98,12 +98,12 @@ func (t *TensorReaperClient) WatchJob(ctx context.Context, namespace string) (wa
 // --- FabricAutoTuner operations ---
 
 // CreateAutoTuner creates a new FabricAutoTuner.
-func (t *TensorReaperClient) CreateAutoTuner(ctx context.Context, tuner *FabricAutoTuner) error {
+func (t *GryviaClient) CreateAutoTuner(ctx context.Context, tuner *FabricAutoTuner) error {
 	return t.client.Create(ctx, tuner)
 }
 
 // GetAutoTuner retrieves a FabricAutoTuner by name and namespace.
-func (t *TensorReaperClient) GetAutoTuner(ctx context.Context, namespace, name string) (*FabricAutoTuner, error) {
+func (t *GryviaClient) GetAutoTuner(ctx context.Context, namespace, name string) (*FabricAutoTuner, error) {
 	tuner := &FabricAutoTuner{}
 	err := t.client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, tuner)
 	if err != nil {
@@ -113,7 +113,7 @@ func (t *TensorReaperClient) GetAutoTuner(ctx context.Context, namespace, name s
 }
 
 // ListAutoTuners returns all FabricAutoTuners in the given namespace.
-func (t *TensorReaperClient) ListAutoTuners(ctx context.Context, namespace string, opts ...client.ListOption) (*FabricAutoTunerList, error) {
+func (t *GryviaClient) ListAutoTuners(ctx context.Context, namespace string, opts ...client.ListOption) (*FabricAutoTunerList, error) {
 	list := &FabricAutoTunerList{}
 	allOpts := append([]client.ListOption{client.InNamespace(namespace)}, opts...)
 	err := t.client.List(ctx, list, allOpts...)
@@ -124,7 +124,7 @@ func (t *TensorReaperClient) ListAutoTuners(ctx context.Context, namespace strin
 }
 
 // DeleteAutoTuner deletes a FabricAutoTuner by name and namespace.
-func (t *TensorReaperClient) DeleteAutoTuner(ctx context.Context, namespace, name string) error {
+func (t *GryviaClient) DeleteAutoTuner(ctx context.Context, namespace, name string) error {
 	tuner := &FabricAutoTuner{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -137,12 +137,12 @@ func (t *TensorReaperClient) DeleteAutoTuner(ctx context.Context, namespace, nam
 // --- FabricWorkflow operations ---
 
 // CreateWorkflow creates a new FabricWorkflow.
-func (t *TensorReaperClient) CreateWorkflow(ctx context.Context, wf *FabricWorkflow) error {
+func (t *GryviaClient) CreateWorkflow(ctx context.Context, wf *FabricWorkflow) error {
 	return t.client.Create(ctx, wf)
 }
 
 // GetWorkflow retrieves a FabricWorkflow by name and namespace.
-func (t *TensorReaperClient) GetWorkflow(ctx context.Context, namespace, name string) (*FabricWorkflow, error) {
+func (t *GryviaClient) GetWorkflow(ctx context.Context, namespace, name string) (*FabricWorkflow, error) {
 	wf := &FabricWorkflow{}
 	err := t.client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, wf)
 	if err != nil {
@@ -152,7 +152,7 @@ func (t *TensorReaperClient) GetWorkflow(ctx context.Context, namespace, name st
 }
 
 // ListWorkflows returns all FabricWorkflows in the given namespace.
-func (t *TensorReaperClient) ListWorkflows(ctx context.Context, namespace string, opts ...client.ListOption) (*FabricWorkflowList, error) {
+func (t *GryviaClient) ListWorkflows(ctx context.Context, namespace string, opts ...client.ListOption) (*FabricWorkflowList, error) {
 	list := &FabricWorkflowList{}
 	allOpts := append([]client.ListOption{client.InNamespace(namespace)}, opts...)
 	err := t.client.List(ctx, list, allOpts...)
@@ -163,7 +163,7 @@ func (t *TensorReaperClient) ListWorkflows(ctx context.Context, namespace string
 }
 
 // DeleteWorkflow deletes a FabricWorkflow by name and namespace.
-func (t *TensorReaperClient) DeleteWorkflow(ctx context.Context, namespace, name string) error {
+func (t *GryviaClient) DeleteWorkflow(ctx context.Context, namespace, name string) error {
 	wf := &FabricWorkflow{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -176,12 +176,12 @@ func (t *TensorReaperClient) DeleteWorkflow(ctx context.Context, namespace, name
 // --- FabricModelRegistry operations ---
 
 // CreateModelRegistry creates a new FabricModelRegistry entry.
-func (t *TensorReaperClient) CreateModelRegistry(ctx context.Context, model *FabricModelRegistry) error {
+func (t *GryviaClient) CreateModelRegistry(ctx context.Context, model *FabricModelRegistry) error {
 	return t.client.Create(ctx, model)
 }
 
 // GetModelRegistry retrieves a FabricModelRegistry by name and namespace.
-func (t *TensorReaperClient) GetModelRegistry(ctx context.Context, namespace, name string) (*FabricModelRegistry, error) {
+func (t *GryviaClient) GetModelRegistry(ctx context.Context, namespace, name string) (*FabricModelRegistry, error) {
 	model := &FabricModelRegistry{}
 	err := t.client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, model)
 	if err != nil {
@@ -191,7 +191,7 @@ func (t *TensorReaperClient) GetModelRegistry(ctx context.Context, namespace, na
 }
 
 // ListModelRegistries returns all FabricModelRegistry entries in the given namespace.
-func (t *TensorReaperClient) ListModelRegistries(ctx context.Context, namespace string, opts ...client.ListOption) (*FabricModelRegistryList, error) {
+func (t *GryviaClient) ListModelRegistries(ctx context.Context, namespace string, opts ...client.ListOption) (*FabricModelRegistryList, error) {
 	list := &FabricModelRegistryList{}
 	allOpts := append([]client.ListOption{client.InNamespace(namespace)}, opts...)
 	err := t.client.List(ctx, list, allOpts...)
@@ -202,7 +202,7 @@ func (t *TensorReaperClient) ListModelRegistries(ctx context.Context, namespace 
 }
 
 // DeleteModelRegistry deletes a FabricModelRegistry by name and namespace.
-func (t *TensorReaperClient) DeleteModelRegistry(ctx context.Context, namespace, name string) error {
+func (t *GryviaClient) DeleteModelRegistry(ctx context.Context, namespace, name string) error {
 	model := &FabricModelRegistry{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -213,7 +213,7 @@ func (t *TensorReaperClient) DeleteModelRegistry(ctx context.Context, namespace,
 }
 
 // PromoteModel updates the stage of a model registry entry.
-func (t *TensorReaperClient) PromoteModel(ctx context.Context, namespace, name string, stage tensorreaperv1.ModelStage) error {
+func (t *GryviaClient) PromoteModel(ctx context.Context, namespace, name string, stage gryviav1.ModelStage) error {
 	model, err := t.GetModelRegistry(ctx, namespace, name)
 	if err != nil {
 		return err
@@ -225,12 +225,12 @@ func (t *TensorReaperClient) PromoteModel(ctx context.Context, namespace, name s
 // --- FabricInferenceService operations ---
 
 // CreateInferenceService creates a new FabricInferenceService.
-func (t *TensorReaperClient) CreateInferenceService(ctx context.Context, svc *FabricInferenceService) error {
+func (t *GryviaClient) CreateInferenceService(ctx context.Context, svc *FabricInferenceService) error {
 	return t.client.Create(ctx, svc)
 }
 
 // GetInferenceService retrieves a FabricInferenceService by name and namespace.
-func (t *TensorReaperClient) GetInferenceService(ctx context.Context, namespace, name string) (*FabricInferenceService, error) {
+func (t *GryviaClient) GetInferenceService(ctx context.Context, namespace, name string) (*FabricInferenceService, error) {
 	svc := &FabricInferenceService{}
 	err := t.client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, svc)
 	if err != nil {
@@ -240,7 +240,7 @@ func (t *TensorReaperClient) GetInferenceService(ctx context.Context, namespace,
 }
 
 // ListInferenceServices returns all FabricInferenceServices in the given namespace.
-func (t *TensorReaperClient) ListInferenceServices(ctx context.Context, namespace string, opts ...client.ListOption) (*FabricInferenceServiceList, error) {
+func (t *GryviaClient) ListInferenceServices(ctx context.Context, namespace string, opts ...client.ListOption) (*FabricInferenceServiceList, error) {
 	list := &FabricInferenceServiceList{}
 	allOpts := append([]client.ListOption{client.InNamespace(namespace)}, opts...)
 	err := t.client.List(ctx, list, allOpts...)
@@ -251,7 +251,7 @@ func (t *TensorReaperClient) ListInferenceServices(ctx context.Context, namespac
 }
 
 // DeleteInferenceService deletes a FabricInferenceService by name and namespace.
-func (t *TensorReaperClient) DeleteInferenceService(ctx context.Context, namespace, name string) error {
+func (t *GryviaClient) DeleteInferenceService(ctx context.Context, namespace, name string) error {
 	svc := &FabricInferenceService{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -264,12 +264,12 @@ func (t *TensorReaperClient) DeleteInferenceService(ctx context.Context, namespa
 // --- FabricWorkspace operations ---
 
 // CreateWorkspace creates a new FabricWorkspace.
-func (t *TensorReaperClient) CreateWorkspace(ctx context.Context, ws *FabricWorkspace) error {
+func (t *GryviaClient) CreateWorkspace(ctx context.Context, ws *FabricWorkspace) error {
 	return t.client.Create(ctx, ws)
 }
 
 // GetWorkspace retrieves a FabricWorkspace by name and namespace.
-func (t *TensorReaperClient) GetWorkspace(ctx context.Context, namespace, name string) (*FabricWorkspace, error) {
+func (t *GryviaClient) GetWorkspace(ctx context.Context, namespace, name string) (*FabricWorkspace, error) {
 	ws := &FabricWorkspace{}
 	err := t.client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, ws)
 	if err != nil {
@@ -279,7 +279,7 @@ func (t *TensorReaperClient) GetWorkspace(ctx context.Context, namespace, name s
 }
 
 // ListWorkspaces returns all FabricWorkspaces in the given namespace.
-func (t *TensorReaperClient) ListWorkspaces(ctx context.Context, namespace string, opts ...client.ListOption) (*FabricWorkspaceList, error) {
+func (t *GryviaClient) ListWorkspaces(ctx context.Context, namespace string, opts ...client.ListOption) (*FabricWorkspaceList, error) {
 	list := &FabricWorkspaceList{}
 	allOpts := append([]client.ListOption{client.InNamespace(namespace)}, opts...)
 	err := t.client.List(ctx, list, allOpts...)
@@ -290,7 +290,7 @@ func (t *TensorReaperClient) ListWorkspaces(ctx context.Context, namespace strin
 }
 
 // DeleteWorkspace deletes a FabricWorkspace by name and namespace.
-func (t *TensorReaperClient) DeleteWorkspace(ctx context.Context, namespace, name string) error {
+func (t *GryviaClient) DeleteWorkspace(ctx context.Context, namespace, name string) error {
 	ws := &FabricWorkspace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -301,7 +301,7 @@ func (t *TensorReaperClient) DeleteWorkspace(ctx context.Context, namespace, nam
 }
 
 // PauseWorkspace sets the workspace to paused state, freeing GPU resources while retaining data.
-func (t *TensorReaperClient) PauseWorkspace(ctx context.Context, namespace, name string) error {
+func (t *GryviaClient) PauseWorkspace(ctx context.Context, namespace, name string) error {
 	ws, err := t.GetWorkspace(ctx, namespace, name)
 	if err != nil {
 		return err
@@ -311,7 +311,7 @@ func (t *TensorReaperClient) PauseWorkspace(ctx context.Context, namespace, name
 }
 
 // ResumeWorkspace resumes a paused workspace, recreating the pod with the existing PVC.
-func (t *TensorReaperClient) ResumeWorkspace(ctx context.Context, namespace, name string) error {
+func (t *GryviaClient) ResumeWorkspace(ctx context.Context, namespace, name string) error {
 	ws, err := t.GetWorkspace(ctx, namespace, name)
 	if err != nil {
 		return err
@@ -323,7 +323,7 @@ func (t *TensorReaperClient) ResumeWorkspace(ctx context.Context, namespace, nam
 // --- FabricGPUNode operations ---
 
 // GetGPUNode retrieves a FabricGPUNode by name.
-func (t *TensorReaperClient) GetGPUNode(ctx context.Context, name string) (*FabricGPUNode, error) {
+func (t *GryviaClient) GetGPUNode(ctx context.Context, name string) (*FabricGPUNode, error) {
 	node := &FabricGPUNode{}
 	err := t.client.Get(ctx, types.NamespacedName{Name: name}, node)
 	if err != nil {
@@ -333,7 +333,7 @@ func (t *TensorReaperClient) GetGPUNode(ctx context.Context, name string) (*Fabr
 }
 
 // ListGPUNodes returns all FabricGPUNodes.
-func (t *TensorReaperClient) ListGPUNodes(ctx context.Context, opts ...client.ListOption) (*FabricGPUNodeList, error) {
+func (t *GryviaClient) ListGPUNodes(ctx context.Context, opts ...client.ListOption) (*FabricGPUNodeList, error) {
 	list := &FabricGPUNodeList{}
 	err := t.client.List(ctx, list, opts...)
 	if err != nil {
@@ -345,12 +345,12 @@ func (t *TensorReaperClient) ListGPUNodes(ctx context.Context, opts ...client.Li
 // --- FabricCheckpointGuard operations ---
 
 // CreateCheckpointGuard creates a new FabricCheckpointGuard.
-func (t *TensorReaperClient) CreateCheckpointGuard(ctx context.Context, guard *FabricCheckpointGuard) error {
+func (t *GryviaClient) CreateCheckpointGuard(ctx context.Context, guard *FabricCheckpointGuard) error {
 	return t.client.Create(ctx, guard)
 }
 
 // GetCheckpointGuard retrieves a FabricCheckpointGuard by name and namespace.
-func (t *TensorReaperClient) GetCheckpointGuard(ctx context.Context, namespace, name string) (*FabricCheckpointGuard, error) {
+func (t *GryviaClient) GetCheckpointGuard(ctx context.Context, namespace, name string) (*FabricCheckpointGuard, error) {
 	guard := &FabricCheckpointGuard{}
 	err := t.client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, guard)
 	if err != nil {
@@ -360,7 +360,7 @@ func (t *TensorReaperClient) GetCheckpointGuard(ctx context.Context, namespace, 
 }
 
 // ListCheckpointGuards returns all FabricCheckpointGuards in the given namespace.
-func (t *TensorReaperClient) ListCheckpointGuards(ctx context.Context, namespace string, opts ...client.ListOption) (*FabricCheckpointGuardList, error) {
+func (t *GryviaClient) ListCheckpointGuards(ctx context.Context, namespace string, opts ...client.ListOption) (*FabricCheckpointGuardList, error) {
 	list := &FabricCheckpointGuardList{}
 	allOpts := append([]client.ListOption{client.InNamespace(namespace)}, opts...)
 	err := t.client.List(ctx, list, allOpts...)
@@ -371,7 +371,7 @@ func (t *TensorReaperClient) ListCheckpointGuards(ctx context.Context, namespace
 }
 
 // DeleteCheckpointGuard deletes a FabricCheckpointGuard by name and namespace.
-func (t *TensorReaperClient) DeleteCheckpointGuard(ctx context.Context, namespace, name string) error {
+func (t *GryviaClient) DeleteCheckpointGuard(ctx context.Context, namespace, name string) error {
 	guard := &FabricCheckpointGuard{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,

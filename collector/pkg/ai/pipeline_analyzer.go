@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ssahani/TensorReaper/collector/pkg/decoder"
+	"github.com/zyvorai/gryvia/collector/pkg/decoder"
 )
 
 // PipelineAnalyzer identifies bottlenecks in the data-to-GPU pipeline.
@@ -20,14 +20,14 @@ type PipelineAnalyzer struct {
 	recommendation string
 
 	// Internal tracking.
-	ioBytes      uint64
-	ioSamples    int64
-	netBytes     uint64
-	netSamples   int64
-	gpuBusyNs    uint64
-	gpuTotalNs   uint64
-	commTotalNs  uint64
-	startTime    time.Time
+	ioBytes     uint64
+	ioSamples   int64
+	netBytes    uint64
+	netSamples  int64
+	gpuBusyNs   uint64
+	gpuTotalNs  uint64
+	commTotalNs uint64
+	startTime   time.Time
 }
 
 // NewPipelineAnalyzer creates a PipelineAnalyzer.

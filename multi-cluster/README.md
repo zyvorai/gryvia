@@ -1,6 +1,6 @@
 # Multi-Cluster Federation
 
-Deploy and manage TensorReaper across multiple Kubernetes clusters for high availability, disaster recovery, and geographic distribution.
+Deploy and manage Gryvia across multiple Kubernetes clusters for high availability, disaster recovery, and geographic distribution.
 
 ## Architecture
 
@@ -36,14 +36,14 @@ Deploy and manage TensorReaper across multiple Kubernetes clusters for high avai
 
 - Multiple Kubernetes clusters (v1.28+)
 - Network connectivity between clusters
-- TensorReaper installed on each cluster
+- Gryvia installed on each cluster
 
 ### Install Federation Control Plane
 
 ```bash
 # On management cluster
-helm install tensorreaper-federation tensorreaper/tensorreaper-federation \
-  --namespace tensorreaper-system \
+helm install gryvia-federation gryvia/gryvia-federation \
+  --namespace gryvia-system \
   --create-namespace
 ```
 
@@ -51,11 +51,11 @@ helm install tensorreaper-federation tensorreaper/tensorreaper-federation \
 
 ```yaml
 # cluster-a.yaml
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricCluster
 metadata:
   name: cluster-a
-  namespace: tensorreaper-system
+  namespace: gryvia-system
 spec:
   apiEndpoint: https://cluster-a.example.com:6443
   region: us-west-2
@@ -88,7 +88,7 @@ spec:
 # Create secret with kubeconfig
 kubectl create secret generic cluster-a-kubeconfig \
   --from-file=kubeconfig=~/.kube/cluster-a.yaml \
-  -n tensorreaper-system
+  -n gryvia-system
 
 # Register cluster
 kubectl apply -f cluster-a.yaml
@@ -100,7 +100,7 @@ kubectl apply -f cluster-a.yaml
 
 ```bash
 # List registered clusters
-kubectl get fabricclusters -n tensorreaper-system
+kubectl get fabricclusters -n gryvia-system
 
 # Check cluster status
 kubectl describe fabriccluster cluster-a
@@ -121,12 +121,12 @@ Jobs are automatically placed based on:
 5. Team preferences
 
 ```yaml
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricAIJob
 metadata:
   name: training-job
   annotations:
-    tensorreaper.ai/placement: auto
+    gryvia.io/placement: auto
 spec:
   framework: pytorch
   resources:
@@ -140,7 +140,7 @@ spec:
 ```yaml
 metadata:
   annotations:
-    tensorreaper.ai/target-cluster: cluster-a
+    gryvia.io/target-cluster: cluster-a
 ```
 
 ### Cluster Affinity
@@ -148,7 +148,7 @@ metadata:
 ```yaml
 metadata:
   annotations:
-    tensorreaper.ai/cluster-affinity: |
+    gryvia.io/cluster-affinity: |
       preferredClusters:
         - cluster-a
         - cluster-b
@@ -161,8 +161,8 @@ metadata:
 ```yaml
 metadata:
   annotations:
-    tensorreaper.ai/region: us-west-2
-    tensorreaper.ai/region-affinity: required  # or preferred
+    gryvia.io/region: us-west-2
+    gryvia.io/region-affinity: required  # or preferred
 ```
 
 ### Cost-Optimized Placement
@@ -170,8 +170,8 @@ metadata:
 ```yaml
 metadata:
   annotations:
-    tensorreaper.ai/placement-strategy: cost-optimized
-    tensorreaper.ai/max-cost-per-hour: "200.00"
+    gryvia.io/placement-strategy: cost-optimized
+    gryvia.io/max-cost-per-hour: "200.00"
 ```
 
 ## Data Management
@@ -180,7 +180,7 @@ metadata:
 
 ```yaml
 # Replicate dataset across clusters
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricDataset
 metadata:
   name: imagenet
@@ -201,7 +201,7 @@ spec:
 
 ```yaml
 # Schedule job where data exists
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricAIJob
 metadata:
   name: training-with-data
@@ -218,13 +218,13 @@ spec:
 
 ```yaml
 # Enable automatic failover
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricAIJob
 metadata:
   name: critical-job
   annotations:
-    tensorreaper.ai/failover: enabled
-    tensorreaper.ai/max-failover-attempts: "3"
+    gryvia.io/failover: enabled
+    gryvia.io/max-failover-attempts: "3"
 spec:
   checkpointing:
     enabled: true
@@ -282,7 +282,7 @@ kfctl federation costs --by-team ml-research
 ### Budget Allocation
 
 ```yaml
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricFederatedQuota
 metadata:
   name: ml-research-federated
@@ -341,8 +341,8 @@ strategy: locality-aware
 
 ```bash
 # Access federation dashboard
-kubectl port-forward -n tensorreaper-system \
-  svc/tensorreaper-federation-ui 8080:80
+kubectl port-forward -n gryvia-system \
+  svc/gryvia-federation-ui 8080:80
 
 # Open browser
 open http://localhost:8080
@@ -359,17 +359,17 @@ open http://localhost:8080
 
 ```prometheus
 # Total GPUs across federation
-tensorreaper_federation_total_gpus 144
+gryvia_federation_total_gpus 144
 
 # Available GPUs by cluster
-tensorreaper_federation_available_gpus{cluster="cluster-a"} 16
-tensorreaper_federation_available_gpus{cluster="cluster-b"} 32
+gryvia_federation_available_gpus{cluster="cluster-a"} 16
+gryvia_federation_available_gpus{cluster="cluster-b"} 32
 
 # Jobs per cluster
-tensorreaper_federation_jobs{cluster="cluster-a",status="running"} 8
+gryvia_federation_jobs{cluster="cluster-a",status="running"} 8
 
 # Federated cost
-tensorreaper_federation_cost_total{team="ml-research"} 125432.50
+gryvia_federation_cost_total{team="ml-research"} 125432.50
 ```
 
 ## Network Configuration
@@ -388,10 +388,10 @@ spec:
       - settings:
           clusterLocal: false
         hosts:
-          - "*.tensorreaper-system.svc.cluster.local"
+          - "*.gryvia-system.svc.cluster.local"
   values:
     global:
-      meshID: tensorreaper-mesh
+      meshID: gryvia-mesh
       multiCluster:
         clusterName: cluster-a
       network: network-a
@@ -543,7 +543,7 @@ spec:
 kfctl federation ping cluster-a
 
 # Check credentials
-kubectl get secret cluster-a-kubeconfig -n tensorreaper-system
+kubectl get secret cluster-a-kubeconfig -n gryvia-system
 
 # Test API access
 kubectl --kubeconfig=<path> get nodes
@@ -559,8 +559,8 @@ kubectl describe fabricaijob <job-name> | grep -A 10 "Placement"
 kfctl federation capacity
 
 # View scheduler logs
-kubectl logs -n tensorreaper-system \
-  deployment/tensorreaper-federation-scheduler
+kubectl logs -n gryvia-system \
+  deployment/gryvia-federation-scheduler
 ```
 
 ### Data Sync Issues
@@ -573,7 +573,7 @@ kubectl get fabricdataset imagenet -o yaml
 kfctl federation sync-dataset imagenet
 
 # Check data transfer logs
-kubectl logs -n tensorreaper-system \
+kubectl logs -n gryvia-system \
   job/sync-imagenet-cluster-b
 ```
 
@@ -588,5 +588,5 @@ See `multi-cluster/examples/` for:
 
 ## Support
 
-- Federation Issues: https://github.com/ssahani/TensorReaper/issues
-- Multi-cluster Guide: https://github.com/ssahani/TensorReaper/docs/multi-cluster
+- Federation Issues: https://github.com/zyvorai/gryvia/issues
+- Multi-cluster Guide: https://github.com/zyvorai/gryvia/docs/multi-cluster

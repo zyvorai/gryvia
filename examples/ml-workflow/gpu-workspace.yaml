@@ -1,7 +1,7 @@
 # FabricWorkspace - GPU-attached JupyterLab environment for interactive ML work
 # Creates a persistent development workspace with 2 A100 GPUs, auto-pause on
 # idle, and pre-configured ML libraries.
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricWorkspace
 metadata:
   name: research-notebook

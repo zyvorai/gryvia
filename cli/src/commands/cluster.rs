@@ -4,11 +4,11 @@ use kube::api::{Api, ListParams};
 use prettytable::{Table, Row, Cell, format};
 use tokio::time::{sleep, Duration};
 
-use crate::client::TensorReaperClient;
+use crate::client::GryviaClient;
 use crate::types::*;
 use crate::display;
 
-pub async fn execute(client: &TensorReaperClient, detailed: bool, watch: Option<u64>) -> Result<()> {
+pub async fn execute(client: &GryviaClient, detailed: bool, watch: Option<u64>) -> Result<()> {
     if let Some(interval) = watch {
         if interval == 0 {
             anyhow::bail!("Watch interval must be greater than 0");
@@ -30,7 +30,7 @@ pub async fn execute(client: &TensorReaperClient, detailed: bool, watch: Option<
     Ok(())
 }
 
-async fn show_cluster_overview(client: &TensorReaperClient, detailed: bool) -> Result<()> {
+async fn show_cluster_overview(client: &GryviaClient, detailed: bool) -> Result<()> {
     let nodes_api: Api<FabricGpuNode> = Api::all(client.kube_client.clone());
     let jobs_api: Api<FabricAIJob> = Api::all(client.kube_client.clone());
 

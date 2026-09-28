@@ -9,15 +9,15 @@ import (
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/ai-operator/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 )
 
 // QueuedJob wraps a FabricAIJob with queue metadata.
 type QueuedJob struct {
-	Job        *tensorreaperv1.FabricAIJob
+	Job        *gryviav1.FabricAIJob
 	Team       string
 	Priority   int32
 	EnqueuedAt time.Time
@@ -99,7 +99,7 @@ func (jq *JobQueue) RegisterTeam(team string, weight float64) {
 }
 
 // Enqueue adds a job to the queue.
-func (jq *JobQueue) Enqueue(job *tensorreaperv1.FabricAIJob) error {
+func (jq *JobQueue) Enqueue(job *gryviav1.FabricAIJob) error {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 
@@ -296,7 +296,7 @@ func (jq *JobQueue) Backfill(availableGPUs int32, availableCPUs int64, available
 
 // FindPreemptionCandidates returns lower-priority jobs that could be preempted
 // to make room for the given high-priority job.
-func (jq *JobQueue) FindPreemptionCandidates(job *tensorreaperv1.FabricAIJob) []*QueuedJob {
+func (jq *JobQueue) FindPreemptionCandidates(job *gryviav1.FabricAIJob) []*QueuedJob {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 
@@ -358,7 +358,7 @@ func (jq *JobQueue) PreemptJobs(candidates []*QueuedJob) []*QueuedJob {
 
 // ReleaseJobResources should be called when a job completes or is deleted to
 // release its DRF allocation.
-func (jq *JobQueue) ReleaseJobResources(job *tensorreaperv1.FabricAIJob) {
+func (jq *JobQueue) ReleaseJobResources(job *gryviav1.FabricAIJob) {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 
@@ -426,12 +426,12 @@ func (jq *JobQueue) rebuildIndex() {
 }
 
 // jobKey returns a unique key for a job.
-func jobKey(job *tensorreaperv1.FabricAIJob) string {
+func jobKey(job *gryviav1.FabricAIJob) string {
 	return fmt.Sprintf("%s/%s", job.Namespace, job.Name)
 }
 
 // totalGPUs computes the total GPU count for a job.
-func totalGPUs(job *tensorreaperv1.FabricAIJob) int32 {
+func totalGPUs(job *gryviav1.FabricAIJob) int32 {
 	if job.Spec.Distributed != nil && job.Spec.Distributed.Enabled {
 		nodes := job.Spec.Distributed.Nodes
 		if nodes <= 0 {
@@ -449,8 +449,8 @@ func totalGPUs(job *tensorreaperv1.FabricAIJob) int32 {
 // teamForJob determines which team a job belongs to.
 // It uses the namespace as the team identifier. Operators can label
 // namespaces with team names for more granular control.
-func teamForJob(job *tensorreaperv1.FabricAIJob) string {
-	if team, ok := job.Labels["tensorreaper.ai/team"]; ok && team != "" {
+func teamForJob(job *gryviav1.FabricAIJob) string {
+	if team, ok := job.Labels["gryvia.io/team"]; ok && team != "" {
 		return team
 	}
 	return job.Namespace
@@ -458,7 +458,7 @@ func teamForJob(job *tensorreaperv1.FabricAIJob) string {
 
 // extractCPUMemory extracts CPU (millicores) and memory (bytes) from a job's
 // resource requests.
-func extractCPUMemory(job *tensorreaperv1.FabricAIJob) (cpuMillis int64, memBytes int64) {
+func extractCPUMemory(job *gryviav1.FabricAIJob) (cpuMillis int64, memBytes int64) {
 	if cpu, ok := job.Spec.Resources.Requests[corev1.ResourceCPU]; ok {
 		cpuMillis = cpu.MilliValue()
 	}

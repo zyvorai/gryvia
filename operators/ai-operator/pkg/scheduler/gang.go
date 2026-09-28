@@ -9,10 +9,10 @@ import (
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/ai-operator/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 )
 
 // PodGroupPhase represents the scheduling phase of a PodGroup.
@@ -55,10 +55,10 @@ type PodGroup struct {
 // GangScheduler wraps the existing GPU-aware scoring/filtering logic and
 // adds all-or-nothing semantics for distributed training jobs.
 type GangScheduler struct {
-	client   client.Client
-	log      logr.Logger
-	mu       sync.Mutex
-	groups   map[string]*PodGroup // key = namespace/jobName
+	client client.Client
+	log    logr.Logger
+	mu     sync.Mutex
+	groups map[string]*PodGroup // key = namespace/jobName
 	// heldResources tracks GPUs tentatively reserved by pending gangs.
 	// key = node name, value = GPUs held.
 	heldResources map[string]int64
@@ -75,7 +75,7 @@ func NewGangScheduler(c client.Client) *GangScheduler {
 }
 
 // GetOrCreatePodGroup returns an existing PodGroup or creates one for the job.
-func (gs *GangScheduler) GetOrCreatePodGroup(job *tensorreaperv1.FabricAIJob) *PodGroup {
+func (gs *GangScheduler) GetOrCreatePodGroup(job *gryviav1.FabricAIJob) *PodGroup {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
 
@@ -123,7 +123,7 @@ func (gs *GangScheduler) RemovePodGroup(namespace, jobName string) {
 
 // CanScheduleGang checks whether ALL pods in the gang can be placed on the
 // given set of nodes. It does not mutate any state.
-func (gs *GangScheduler) CanScheduleGang(ctx context.Context, job *tensorreaperv1.FabricAIJob, nodes []corev1.Node) (bool, error) {
+func (gs *GangScheduler) CanScheduleGang(ctx context.Context, job *gryviav1.FabricAIJob, nodes []corev1.Node) (bool, error) {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
 
@@ -179,7 +179,7 @@ func (gs *GangScheduler) CanScheduleGang(ctx context.Context, job *tensorreaperv
 // ScheduleGang attempts to atomically assign all pods in the gang to nodes.
 // Returns a map of pod ordinal -> node name, or an error if the gang cannot
 // be placed. On failure, any tentatively held resources are released.
-func (gs *GangScheduler) ScheduleGang(ctx context.Context, job *tensorreaperv1.FabricAIJob, nodes []corev1.Node) (map[int32]string, error) {
+func (gs *GangScheduler) ScheduleGang(ctx context.Context, job *gryviav1.FabricAIJob, nodes []corev1.Node) (map[int32]string, error) {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
 

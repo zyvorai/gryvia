@@ -3,24 +3,24 @@
 
 # Show cluster overview
 echo "=== Cluster Overview ==="
-tensorreaper cluster
+gryvia cluster
 
 echo ""
 echo "=== GPU Nodes ==="
-tensorreaper list nodes
+gryvia list nodes
 
 echo ""
 echo "=== Running Jobs ==="
-tensorreaper list jobs
+gryvia list jobs
 
 echo ""
 echo "=== Team Quotas ==="
-tensorreaper list quotas
+gryvia list quotas
 
 echo ""
 echo "=== Cost Analysis ==="
-tensorreaper cost
+gryvia cost
 
 echo ""
 echo "=== Health Check ==="
-tensorreaper health
+gryvia health

@@ -1,0 +1,22 @@
+apiVersion: v2
+name: gryvia-core
+description: Gryvia - Kubernetes-native GPU Compute Fabric for AI
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+kubeVersion: ">=1.30.0"
+keywords:
+  - gpu
+  - ai
+  - machine-learning
+  - kubernetes
+  - nvidia
+  - rdma
+  - distributed-training
+home: https://github.com/zyvorai/gryvia
+sources:
+  - https://github.com/zyvorai/gryvia
+maintainers:
+  - name: Gryvia Team
+    email: team@gryvia.io
+icon: https://gryvia.io/logo.png

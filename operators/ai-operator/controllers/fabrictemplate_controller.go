@@ -17,7 +17,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/ai-operator/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 )
 
 // FabricTemplateReconciler reconciles a FabricTemplate object
@@ -27,17 +27,17 @@ type FabricTemplateReconciler struct {
 	Log    logr.Logger
 }
 
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabrictemplates,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabrictemplates/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabrictemplates/finalizers,verbs=update
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricaijobs,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabrictemplates,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabrictemplates/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabrictemplates/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop
 func (r *FabricTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("fabrictemplate", req.NamespacedName)
 
 	// Fetch the FabricTemplate instance
-	template := &tensorreaperv1.FabricTemplate{}
+	template := &gryviav1.FabricTemplate{}
 	err := r.Get(ctx, req.NamespacedName, template)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -63,7 +63,7 @@ func (r *FabricTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	return result, nil
 }
 
-func (r *FabricTemplateReconciler) reconcileTemplate(ctx context.Context, template *tensorreaperv1.FabricTemplate) (ctrl.Result, error) {
+func (r *FabricTemplateReconciler) reconcileTemplate(ctx context.Context, template *gryviav1.FabricTemplate) (ctrl.Result, error) {
 	log := r.Log.WithValues("fabrictemplate", template.Name)
 
 	// Validate template parameters
@@ -79,7 +79,7 @@ func (r *FabricTemplateReconciler) reconcileTemplate(ctx context.Context, templa
 	r.updateCondition(template, "Valid", metav1.ConditionTrue, "Valid", "Template is valid")
 
 	// Count jobs instantiated from this template
-	jobList := &tensorreaperv1.FabricAIJobList{}
+	jobList := &gryviav1.FabricAIJobList{}
 	if err := r.List(ctx, jobList); err != nil {
 		log.Error(err, "Failed to list FabricAIJobs")
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
@@ -89,7 +89,7 @@ func (r *FabricTemplateReconciler) reconcileTemplate(ctx context.Context, templa
 	var lastInstantiatedTime *metav1.Time
 	for _, job := range jobList.Items {
 		labels := job.GetLabels()
-		if labels != nil && labels["tensorreaper.ai/template"] == template.Name {
+		if labels != nil && labels["gryvia.io/template"] == template.Name {
 			instantiatedCount++
 			if lastInstantiatedTime == nil || job.CreationTimestamp.After(lastInstantiatedTime.Time) {
 				t := job.CreationTimestamp
@@ -113,7 +113,7 @@ func (r *FabricTemplateReconciler) reconcileTemplate(ctx context.Context, templa
 	return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 }
 
-func (r *FabricTemplateReconciler) validateTemplate(template *tensorreaperv1.FabricTemplate) error {
+func (r *FabricTemplateReconciler) validateTemplate(template *gryviav1.FabricTemplate) error {
 	// Validate category
 	validCategories := map[string]bool{
 		"training": true, "inference": true, "development": true, "benchmark": true,
@@ -163,7 +163,7 @@ func (r *FabricTemplateReconciler) validateTemplate(template *tensorreaperv1.Fab
 
 // InstantiateJob creates a FabricAIJob from this template with the given parameters.
 // This method is intended to be called by external controllers or webhooks.
-func (r *FabricTemplateReconciler) InstantiateJob(ctx context.Context, template *tensorreaperv1.FabricTemplate, jobName, namespace string, params map[string]string) (*tensorreaperv1.FabricAIJob, error) {
+func (r *FabricTemplateReconciler) InstantiateJob(ctx context.Context, template *gryviav1.FabricTemplate, jobName, namespace string, params map[string]string) (*gryviav1.FabricAIJob, error) {
 	// Validate required parameters
 	for _, param := range template.Spec.Parameters {
 		if param.Required {
@@ -199,16 +199,16 @@ func (r *FabricTemplateReconciler) InstantiateJob(ctx context.Context, template 
 	}
 
 	// Create the job from template defaults
-	job := &tensorreaperv1.FabricAIJob{
+	job := &gryviav1.FabricAIJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      jobName,
 			Namespace: namespace,
 			Labels: map[string]string{
-				"tensorreaper.ai/template": template.Name,
-				"tensorreaper.ai/category": template.Spec.Category,
+				"gryvia.io/template": template.Name,
+				"gryvia.io/category": template.Spec.Category,
 			},
 		},
-		Spec: tensorreaperv1.FabricAIJobSpec{
+		Spec: gryviav1.FabricAIJobSpec{
 			Type:  template.Spec.Category,
 			Image: template.Spec.Defaults.Image,
 		},
@@ -256,7 +256,7 @@ func (r *FabricTemplateReconciler) InstantiateJob(ctx context.Context, template 
 	return job, nil
 }
 
-func (r *FabricTemplateReconciler) validateParameterValue(param tensorreaperv1.TemplateParameter, value string) error {
+func (r *FabricTemplateReconciler) validateParameterValue(param gryviav1.TemplateParameter, value string) error {
 	if param.Validation == nil {
 		return nil
 	}
@@ -302,7 +302,7 @@ func (r *FabricTemplateReconciler) substituteParams(template string, params map[
 	return result
 }
 
-func (r *FabricTemplateReconciler) updateCondition(template *tensorreaperv1.FabricTemplate, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *FabricTemplateReconciler) updateCondition(template *gryviav1.FabricTemplate, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -335,6 +335,6 @@ func (r *FabricTemplateReconciler) updateCondition(template *tensorreaperv1.Fabr
 // SetupWithManager sets up the controller with the Manager.
 func (r *FabricTemplateReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tensorreaperv1.FabricTemplate{}).
+		For(&gryviav1.FabricTemplate{}).
 		Complete(r)
 }

@@ -1,11 +1,11 @@
-# TensorReaper E2E Tests
+# Gryvia E2E Tests
 
-End-to-end tests for TensorReaper platform.
+End-to-end tests for Gryvia platform.
 
 ## Prerequisites
 
 - Running Kubernetes cluster
-- TensorReaper operators deployed
+- Gryvia operators deployed
 - `kubectl` configured
 - Go 1.22+
 
@@ -64,7 +64,7 @@ Tests storage backend:
 
 ## Test Environment
 
-The tests create a dedicated namespace `tensorreaper-e2e-test` for isolation.
+The tests create a dedicated namespace `gryvia-e2e-test` for isolation.
 
 All resources are cleaned up after tests complete.
 

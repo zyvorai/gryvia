@@ -1,6 +1,6 @@
 #!/bin/bash
-# TensorReaper Upgrade Tool
-# Safely upgrades TensorReaper to a new version
+# Gryvia Upgrade Tool
+# Safely upgrades Gryvia to a new version
 
 set -euo pipefail
 
@@ -10,7 +10,7 @@ RED='\033[0;31m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-NAMESPACE="${NAMESPACE:-tensorreaper}"
+NAMESPACE="${NAMESPACE:-gryvia}"
 CURRENT_VERSION=""
 TARGET_VERSION="${TARGET_VERSION:-latest}"
 BACKUP_ENABLED="${BACKUP_ENABLED:-true}"
@@ -30,13 +30,13 @@ log_error() {
 
 usage() {
     cat << EOF
-TensorReaper Upgrade Tool
+Gryvia Upgrade Tool
 
 Usage: $0 [OPTIONS]
 
 Options:
     -v, --version VERSION       Target version (default: latest)
-    -n, --namespace NAMESPACE   Namespace (default: tensorreaper)
+    -n, --namespace NAMESPACE   Namespace (default: gryvia)
     --skip-backup               Skip pre-upgrade backup
     --dry-run                   Show what would be upgraded
     -h, --help                  Show this help message
@@ -74,7 +74,7 @@ get_current_version() {
     log_info "Detecting current version..."
 
     # Try to get version from GPU operator deployment
-    CURRENT_VERSION=$(kubectl get deployment tensorreaper-gpu-operator \
+    CURRENT_VERSION=$(kubectl get deployment gryvia-gpu-operator \
         -n "${NAMESPACE}" \
         -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null | \
         grep -oP '(?<=:)[^:]+$' || echo "unknown")
@@ -133,10 +133,10 @@ backup_resources() {
 upgrade_crds() {
     log_info "Upgrading CRDs..."
 
-    local crd_url="https://raw.githubusercontent.com/ssahani/tensor-reaper/${TARGET_VERSION}/crds"
+    local crd_url="https://raw.githubusercontent.com/zyvorai/gryvia/${TARGET_VERSION}/crds"
 
     if [ "${TARGET_VERSION}" = "latest" ]; then
-        crd_url="https://raw.githubusercontent.com/ssahani/tensor-reaper/main/crds"
+        crd_url="https://raw.githubusercontent.com/zyvorai/gryvia/main/crds"
     fi
 
     local crd_tmpdir
@@ -178,13 +178,13 @@ upgrade_operators() {
     for operator in "${operators[@]}"; do
         log_info "  Upgrading ${operator}..."
 
-        kubectl set image deployment/tensorreaper-${operator} \
+        kubectl set image deployment/gryvia-${operator} \
             -n "${NAMESPACE}" \
-            manager=ghcr.io/ssahani/tensorreaper-${operator}:${TARGET_VERSION} \
+            manager=ghcr.io/zyvorai/gryvia-${operator}:${TARGET_VERSION} \
             2>/dev/null || log_warn "  Failed to upgrade ${operator}"
 
         # Wait for rollout
-        kubectl rollout status deployment/tensorreaper-${operator} \
+        kubectl rollout status deployment/gryvia-${operator} \
             -n "${NAMESPACE}" \
             --timeout=5m 2>/dev/null || log_warn "  Rollout timeout for ${operator}"
     done
@@ -195,14 +195,14 @@ upgrade_operators() {
 upgrade_web_ui() {
     log_info "Upgrading Web UI and API Gateway..."
 
-    kubectl set image deployment/tensorreaper-ui \
+    kubectl set image deployment/gryvia-ui \
         -n "${NAMESPACE}" \
-        ui=ghcr.io/ssahani/tensorreaper-ui:${TARGET_VERSION} \
+        ui=ghcr.io/zyvorai/gryvia-ui:${TARGET_VERSION} \
         2>/dev/null || log_warn "  Failed to upgrade Web UI"
 
-    kubectl set image deployment/tensorreaper-api-gateway \
+    kubectl set image deployment/gryvia-api-gateway \
         -n "${NAMESPACE}" \
-        api-gateway=ghcr.io/ssahani/tensorreaper-api-gateway:${TARGET_VERSION} \
+        api-gateway=ghcr.io/zyvorai/gryvia-api-gateway:${TARGET_VERSION} \
         2>/dev/null || log_warn "  Failed to upgrade API Gateway"
 
     log_info "✓ Web UI upgraded"
@@ -224,7 +224,7 @@ post_upgrade_checks() {
 
     # Verify CRDs
     log_info "Verifying CRDs..."
-    kubectl get crds | grep tensorreaper.ai
+    kubectl get crds | grep gryvia.io
 
     log_info "✓ Post-upgrade checks completed"
 }
@@ -232,7 +232,7 @@ post_upgrade_checks() {
 helm_upgrade() {
     log_info "Upgrading via Helm..."
 
-    helm upgrade tensorreaper tensorreaper/tensorreaper \
+    helm upgrade gryvia gryvia/gryvia \
         --namespace "${NAMESPACE}" \
         --version "${TARGET_VERSION}" \
         --wait \
@@ -243,7 +243,7 @@ helm_upgrade() {
 
 main() {
     echo -e "${BLUE}╔════════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}║          TensorReaper Upgrade Tool                              ║${NC}"
+    echo -e "${BLUE}║          Gryvia Upgrade Tool                              ║${NC}"
     echo -e "${BLUE}╚════════════════════════════════════════════════════════════════╝${NC}"
     echo ""
 
@@ -267,7 +267,7 @@ main() {
     backup_resources
 
     # Check if Helm release exists
-    if helm list -n "${NAMESPACE}" | grep -q "tensorreaper"; then
+    if helm list -n "${NAMESPACE}" | grep -q "gryvia"; then
         log_info "Detected Helm installation"
         helm_upgrade
     else

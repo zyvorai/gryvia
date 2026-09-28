@@ -4,15 +4,15 @@ use kube::core::DynamicObject;
 use prettytable::{Table, Row, Cell, format};
 use colored::*;
 
-use crate::client::TensorReaperClient;
+use crate::client::GryviaClient;
 
-pub async fn execute_status(client: &TensorReaperClient, namespace: &str) -> Result<()> {
+pub async fn execute_status(client: &GryviaClient, namespace: &str) -> Result<()> {
     println!("{}", "━━━ Network Health Overview ━━━".bold().cyan());
     println!();
 
     // Query flows
     let flow_ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
-        "tensorreaper.ai",
+        "gryvia.io",
         "v1",
         "FabricFlow",
     ));
@@ -29,7 +29,7 @@ pub async fn execute_status(client: &TensorReaperClient, namespace: &str) -> Res
 
     // Query policies
     let policy_ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
-        "tensorreaper.ai",
+        "gryvia.io",
         "v1",
         "FabricFlowPolicy",
     ));
@@ -60,7 +60,7 @@ pub async fn execute_status(client: &TensorReaperClient, namespace: &str) -> Res
 
     // Query anomalies
     let anomaly_ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
-        "tensorreaper.ai",
+        "gryvia.io",
         "v1",
         "FabricNetworkAnomaly",
     ));
@@ -92,7 +92,7 @@ pub async fn execute_status(client: &TensorReaperClient, namespace: &str) -> Res
 
     // Query trace sessions
     let trace_ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
-        "tensorreaper.ai",
+        "gryvia.io",
         "v1",
         "FabricTraceSession",
     ));
@@ -163,7 +163,7 @@ pub async fn execute_status(client: &TensorReaperClient, namespace: &str) -> Res
 }
 
 pub async fn execute_anomalies(
-    client: &TensorReaperClient,
+    client: &GryviaClient,
     namespace: &str,
     service: Option<&str>,
     severity: Option<&str>,
@@ -173,7 +173,7 @@ pub async fn execute_anomalies(
     println!();
 
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
-        "tensorreaper.ai",
+        "gryvia.io",
         "v1",
         "FabricNetworkAnomaly",
     ));
@@ -185,7 +185,7 @@ pub async fn execute_anomalies(
 
     let mut params = ListParams::default();
     if let Some(svc) = service {
-        let label_selector = format!("tensorreaper.ai/service={}", svc);
+        let label_selector = format!("gryvia.io/service={}", svc);
         params = params.labels(&label_selector);
     }
 

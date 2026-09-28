@@ -3,9 +3,9 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: fabrictrainingprofilers.tensorreaper.ai
+  name: fabrictrainingprofilers.gryvia.io
 spec:
-  group: tensorreaper.ai
+  group: gryvia.io
   versions:
     - name: v1
       served: true
@@ -257,7 +257,7 @@ spec:
 
 ---
 # Example: Automatic GPU Profiler for all training jobs
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricTrainingProfiler
 metadata:
   name: cluster-gpu-profiler
@@ -266,7 +266,7 @@ spec:
   target:
     type: auto
     jobSelector:
-      tensorreaper.ai/type: training
+      gryvia.io/type: training
     autoProfile:
       warmupSteps: 100
       profileSteps: 50

@@ -1,6 +1,6 @@
 ---
 # KServe Integration for Model Serving
-# Deploys models trained with TensorReaper
+# Deploys models trained with Gryvia
 
 # Install KServe
 # kubectl apply -f https://github.com/kserve/kserve/releases/download/v0.12.0/kserve.yaml
@@ -13,9 +13,9 @@ metadata:
   name: llama-7b
   namespace: default
   annotations:
-    tensorreaper.ai/model-source: "mlflow"
-    tensorreaper.ai/model-version: "production"
-    tensorreaper.ai/team: "ml-research"
+    gryvia.io/model-source: "mlflow"
+    gryvia.io/model-version: "production"
+    gryvia.io/team: "ml-research"
 spec:
   predictor:
     serviceAccountName: kserve-sa
@@ -60,7 +60,7 @@ spec:
           claimName: llama-7b-model
 
     nodeSelector:
-      tensorreaper.ai/gpu-type: A100-80G
+      gryvia.io/gpu-type: A100-80G
 
 ---
 # Model Storage PVC (copy from MLflow)
@@ -98,7 +98,7 @@ spec:
               import mlflow
               import os
 
-              mlflow.set_tracking_uri("http://mlflow.tensorreaper.svc.cluster.local:5000")
+              mlflow.set_tracking_uri("http://mlflow.gryvia.svc.cluster.local:5000")
 
               # Download production model
               model_uri = "models:/llama-7b/Production"
@@ -144,7 +144,7 @@ spec:
         - --strict-model-config=false
         - --log-verbose=1
     nodeSelector:
-      tensorreaper.ai/gpu-type: T4
+      gryvia.io/gpu-type: T4
 
 ---
 # TensorRT-LLM Inference
@@ -179,7 +179,7 @@ spec:
         persistentVolumeClaim:
           claimName: tensorrt-models
     nodeSelector:
-      tensorreaper.ai/gpu-type: A100-80G
+      gryvia.io/gpu-type: A100-80G
 
 ---
 # Auto-scaling configuration
@@ -237,7 +237,7 @@ spec:
 
 ---
 # Cost tracking for inference
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricQuota
 metadata:
   name: inference-quota
@@ -279,7 +279,7 @@ spec:
     - to:
         - namespaceSelector:
             matchLabels:
-              name: tensorreaper
+              name: gryvia
       ports:
         - protocol: TCP
           port: 5000  # MLflow

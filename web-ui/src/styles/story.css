@@ -1,0 +1,172 @@
+/* Copyright 2026 Zyvor AI Labs · https://zyvor.dev
+   SPDX-License-Identifier: LicenseRef-Zyvor-Production-1.0
+
+   apple.com UX contract primitives — see docs/design/APPLE-UX-CONTRACT.md.
+   Story tier: .apple-section / .apple-display / .apple-lede / .apple-metric-band.
+   Browse tier: .toolbar-pill / .table-wrap / .list-empty / .input-field.
+   Everything reads tokens from styles.css (:root and [data-theme="dark"]);
+   no hex values live here. */
+
+/* —— Story tier —— */
+.apple-section {
+  width: min(1120px, 100% - 48px);
+  margin: 0 auto;
+  padding: 56px 0 40px;
+}
+.apple-section--tight { padding: 32px 0 24px; }
+.apple-section--hero { padding: 40px 0 28px; text-align: center; }
+
+.apple-eyebrow {
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--apple-link);
+}
+
+.apple-display {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-h1);
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+.apple-lede {
+  margin: 16px 0 0;
+  max-width: 44ch;
+  font-size: var(--fs-lede);
+  line-height: 1.38;
+  letter-spacing: 0.005em;
+  color: var(--text-secondary);
+}
+.apple-section--hero .apple-lede { margin-inline: auto; }
+
+.apple-cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 24px;
+  margin-top: 28px;
+}
+.apple-section--hero .apple-cta-row { justify-content: center; }
+
+.apple-text-link {
+  color: var(--apple-link);
+  text-decoration: none;
+  font-size: var(--fs-link);
+}
+.apple-text-link:hover { text-decoration: underline; }
+
+.apple-story-stack { display: flex; flex-direction: column; gap: 40px; }
+
+/* Metric band: hairline-ruled figures instead of a wall of tiles. The child
+   structure <div><span>label</span><b>value</b></div> is load-bearing — the
+   browser smoke tests look values up as `div:has(> span) > b`. */
+.apple-metric-band {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0;
+  border-top: 1px solid var(--hairline-1);
+  border-bottom: 1px solid var(--hairline-1);
+}
+@media (min-width: 1024px) {
+  .apple-metric-band { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+.apple-metric-band > div {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 4px;
+  padding: 24px 20px;
+}
+.apple-metric-band > div > b {
+  font-family: var(--font-display);
+  font-size: var(--fs-figure);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+.apple-metric-band > div > span {
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+
+/* —— Browse tier —— */
+.toolbar-pill {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--hairline-1);
+  border-radius: var(--radius-pill);
+  background: var(--bg-glass);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+}
+.toolbar-pill .input-field { flex: 1 1 220px; border-radius: var(--radius-pill); }
+.toolbar-pill__trailing { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--hairline-1);
+  border-radius: var(--radius-xl);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-1);
+}
+.table-wrap table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.table-wrap th {
+  padding: 12px 16px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  border-bottom: 1px solid var(--hairline-1);
+}
+.table-wrap td { padding: 12px 16px; border-bottom: 1px solid var(--hairline-1); }
+.table-wrap tr:last-child td { border-bottom: 0; }
+.table-wrap tbody tr:hover { background: var(--surface-hover); }
+
+/* Inside a .card the card is already the frame: no second border/shadow (no
+   card-in-card), just the hairline row rules. */
+.card .table-wrap {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.card .table-wrap th:first-child,
+.card .table-wrap td:first-child { padding-left: 0; }
+
+.list-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--text-secondary);
+}
+.list-empty h3 { margin: 0; font-size: var(--fs-h3); font-weight: 600; color: var(--text-primary); }
+.list-empty p { margin: 0; max-width: 40ch; }
+
+/* One input for every Browse/Work surface. */
+.input-field {
+  width: 100%;
+  min-height: var(--hit-min);
+  padding: 10px 14px;
+  font: inherit;
+  color: var(--text-primary);
+  background: var(--fill-tertiary);
+  border: 1px solid var(--hairline-1);
+  border-radius: var(--radius-md);
+  transition: border-color 0.2s var(--ease-apple), box-shadow 0.2s var(--ease-apple);
+}
+.input-field::placeholder { color: var(--text-faint); }
+.input-field:focus-visible {
+  outline: none;
+  border-color: var(--apple-blue);
+  box-shadow: var(--focus-ring);
+}

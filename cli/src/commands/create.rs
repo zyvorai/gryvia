@@ -3,10 +3,10 @@ use dialoguer::{Input, Select, Confirm};
 use kube::api::{Api, PostParams};
 use serde_json::json;
 
-use crate::client::TensorReaperClient;
+use crate::client::GryviaClient;
 use crate::display;
 
-pub async fn execute(client: &TensorReaperClient, resource: &str) -> Result<()> {
+pub async fn execute(client: &GryviaClient, resource: &str) -> Result<()> {
     match resource {
         "job" => create_job(client).await?,
         "quota" => create_quota(client).await?,
@@ -18,7 +18,7 @@ pub async fn execute(client: &TensorReaperClient, resource: &str) -> Result<()> 
     Ok(())
 }
 
-async fn create_job(client: &TensorReaperClient) -> Result<()> {
+async fn create_job(client: &GryviaClient) -> Result<()> {
     display::print_info("Interactive Job Creation Wizard");
     println!();
 
@@ -151,7 +151,7 @@ async fn create_job(client: &TensorReaperClient) -> Result<()> {
     let cmd_parts: Vec<&str> = command.split_whitespace().collect();
 
     let job_spec = json!({
-        "apiVersion": "tensorreaper.ai/v1",
+        "apiVersion": "gryvia.io/v1",
         "kind": "FabricAIJob",
         "metadata": {
             "name": name,
@@ -187,7 +187,7 @@ async fn create_job(client: &TensorReaperClient) -> Result<()> {
     }
 
     let ar = kube::api::ApiResource::from_gvk(
-        &kube::api::GroupVersionKind::gvk("tensorreaper.ai", "v1", "FabricAIJob"),
+        &kube::api::GroupVersionKind::gvk("gryvia.io", "v1", "FabricAIJob"),
     );
     let api: Api<kube::core::DynamicObject> = Api::namespaced_with(
         client.kube_client.clone(),
@@ -206,7 +206,7 @@ async fn create_job(client: &TensorReaperClient) -> Result<()> {
     Ok(())
 }
 
-async fn create_quota(client: &TensorReaperClient) -> Result<()> {
+async fn create_quota(client: &GryviaClient) -> Result<()> {
     display::print_info("Interactive Quota Creation Wizard");
     println!();
 
@@ -279,7 +279,7 @@ async fn create_quota(client: &TensorReaperClient) -> Result<()> {
 
     let quota_name = format!("{}-quota", team);
     let mut quota_spec = json!({
-        "apiVersion": "tensorreaper.ai/v1",
+        "apiVersion": "gryvia.io/v1",
         "kind": "FabricQuota",
         "metadata": {
             "name": quota_name,
@@ -315,7 +315,7 @@ async fn create_quota(client: &TensorReaperClient) -> Result<()> {
     }
 
     let ar = kube::api::ApiResource::from_gvk(
-        &kube::api::GroupVersionKind::gvk("tensorreaper.ai", "v1", "FabricQuota"),
+        &kube::api::GroupVersionKind::gvk("gryvia.io", "v1", "FabricQuota"),
     );
     let api: Api<kube::core::DynamicObject> = Api::all_with(
         client.kube_client.clone(),

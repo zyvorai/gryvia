@@ -15,8 +15,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/ai-operator/api/v1"
-	"github.com/ssahani/TensorReaper/operators/ai-operator/pkg/tuner"
+	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
+	"github.com/zyvorai/gryvia/operators/ai-operator/pkg/tuner"
 )
 
 const (
@@ -35,17 +35,17 @@ type FabricAutoTunerReconciler struct {
 	Log    logr.Logger
 }
 
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricautotuners,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricautotuners/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricautotuners/finalizers,verbs=update
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricaijobs,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricautotuners,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricautotuners/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricautotuners/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop
 func (r *FabricAutoTunerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("fabricautotuner", req.NamespacedName)
 
 	// Fetch the FabricAutoTuner instance
-	at := &tensorreaperv1.FabricAutoTuner{}
+	at := &gryviav1.FabricAutoTuner{}
 	err := r.Get(ctx, req.NamespacedName, at)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -88,7 +88,7 @@ func (r *FabricAutoTunerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	return result, nil
 }
 
-func (r *FabricAutoTunerReconciler) reconcileAutoTuner(ctx context.Context, at *tensorreaperv1.FabricAutoTuner) (ctrl.Result, error) {
+func (r *FabricAutoTunerReconciler) reconcileAutoTuner(ctx context.Context, at *gryviav1.FabricAutoTuner) (ctrl.Result, error) {
 	log := r.Log.WithValues("fabricautotuner", at.Name)
 
 	// Update trial statuses from their corresponding FabricAIJobs
@@ -103,13 +103,13 @@ func (r *FabricAutoTunerReconciler) reconcileAutoTuner(ctx context.Context, at *
 	failed := int32(0)
 	for _, trial := range at.Status.Trials {
 		switch trial.Phase {
-		case tensorreaperv1.TrialPhaseRunning:
+		case gryviav1.TrialPhaseRunning:
 			running++
-		case tensorreaperv1.TrialPhaseSucceeded:
+		case gryviav1.TrialPhaseSucceeded:
 			completed++
-		case tensorreaperv1.TrialPhaseFailed:
+		case gryviav1.TrialPhaseFailed:
 			failed++
-		case tensorreaperv1.TrialPhaseStopped:
+		case gryviav1.TrialPhaseStopped:
 			completed++
 		}
 	}
@@ -146,7 +146,7 @@ func (r *FabricAutoTunerReconciler) reconcileAutoTuner(ctx context.Context, at *
 	}
 
 	// ASHA early stopping: check running trials for pruning
-	if at.Spec.SearchAlgorithm == tensorreaperv1.SearchAlgorithmASHA && at.Spec.ASHAConfig != nil {
+	if at.Spec.SearchAlgorithm == gryviav1.SearchAlgorithmASHA && at.Spec.ASHAConfig != nil {
 		if err := r.applyASHAEarlyStopping(ctx, at); err != nil {
 			log.Error(err, "Failed to apply ASHA early stopping")
 		}
@@ -183,10 +183,10 @@ func (r *FabricAutoTunerReconciler) reconcileAutoTuner(ctx context.Context, at *
 			}
 
 			now := metav1.Now()
-			at.Status.Trials = append(at.Status.Trials, tensorreaperv1.TrialResult{
+			at.Status.Trials = append(at.Status.Trials, gryviav1.TrialResult{
 				Name:       trialName,
 				Parameters: params,
-				Phase:      tensorreaperv1.TrialPhaseRunning,
+				Phase:      gryviav1.TrialPhaseRunning,
 				JobName:    trialName,
 				StartTime:  &now,
 			})
@@ -205,7 +205,7 @@ func (r *FabricAutoTunerReconciler) reconcileAutoTuner(ctx context.Context, at *
 }
 
 // launchTrial creates a FabricAIJob for a single trial with the given hyperparameters.
-func (r *FabricAutoTunerReconciler) launchTrial(ctx context.Context, at *tensorreaperv1.FabricAutoTuner, trialName string, params map[string]string) error {
+func (r *FabricAutoTunerReconciler) launchTrial(ctx context.Context, at *gryviav1.FabricAutoTuner, trialName string, params map[string]string) error {
 	// Build env vars from hyperparameters
 	envVars := make([]corev1.EnvVar, 0, len(params)+len(at.Spec.JobTemplate.Env))
 	// Copy template env vars
@@ -221,19 +221,19 @@ func (r *FabricAutoTunerReconciler) launchTrial(ctx context.Context, at *tensorr
 	envVars = append(envVars, corev1.EnvVar{Name: "TRIAL_NAME", Value: trialName})
 	envVars = append(envVars, corev1.EnvVar{Name: "TUNER_NAME", Value: at.Name})
 
-	job := &tensorreaperv1.FabricAIJob{
+	job := &gryviav1.FabricAIJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      trialName,
 			Namespace: at.Namespace,
 			Labels: map[string]string{
-				"tensorreaper.ai/tuner":     at.Name,
-				"tensorreaper.ai/component": "trial",
+				"gryvia.io/tuner":     at.Name,
+				"gryvia.io/component": "trial",
 			},
 			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(at, tensorreaperv1.GroupVersion.WithKind("FabricAutoTuner")),
+				*metav1.NewControllerRef(at, gryviav1.GroupVersion.WithKind("FabricAutoTuner")),
 			},
 		},
-		Spec: tensorreaperv1.FabricAIJobSpec{
+		Spec: gryviav1.FabricAIJobSpec{
 			Type:            at.Spec.JobTemplate.Type,
 			Model:           at.Spec.JobTemplate.Model,
 			GPUs:            at.Spec.JobTemplate.GPUs,
@@ -262,22 +262,22 @@ func (r *FabricAutoTunerReconciler) launchTrial(ctx context.Context, at *tensorr
 }
 
 // syncTrialStatuses updates trial results based on the status of their FabricAIJobs.
-func (r *FabricAutoTunerReconciler) syncTrialStatuses(ctx context.Context, at *tensorreaperv1.FabricAutoTuner) error {
+func (r *FabricAutoTunerReconciler) syncTrialStatuses(ctx context.Context, at *gryviav1.FabricAutoTuner) error {
 	for i, trial := range at.Status.Trials {
-		if trial.Phase == tensorreaperv1.TrialPhaseSucceeded ||
-			trial.Phase == tensorreaperv1.TrialPhaseFailed ||
-			trial.Phase == tensorreaperv1.TrialPhaseStopped {
+		if trial.Phase == gryviav1.TrialPhaseSucceeded ||
+			trial.Phase == gryviav1.TrialPhaseFailed ||
+			trial.Phase == gryviav1.TrialPhaseStopped {
 			continue
 		}
 
-		job := &tensorreaperv1.FabricAIJob{}
+		job := &gryviav1.FabricAIJob{}
 		err := r.Get(ctx, types.NamespacedName{
 			Namespace: at.Namespace,
 			Name:      trial.JobName,
 		}, job)
 		if err != nil {
 			if errors.IsNotFound(err) {
-				at.Status.Trials[i].Phase = tensorreaperv1.TrialPhaseFailed
+				at.Status.Trials[i].Phase = gryviav1.TrialPhaseFailed
 				at.Status.Trials[i].Message = "Trial job not found"
 			}
 			continue
@@ -285,7 +285,7 @@ func (r *FabricAutoTunerReconciler) syncTrialStatuses(ctx context.Context, at *t
 
 		switch job.Status.Phase {
 		case PhaseSucceeded:
-			at.Status.Trials[i].Phase = tensorreaperv1.TrialPhaseSucceeded
+			at.Status.Trials[i].Phase = gryviav1.TrialPhaseSucceeded
 			now := metav1.Now()
 			at.Status.Trials[i].CompletionTime = &now
 			// Extract metric from job annotations or metrics
@@ -294,23 +294,23 @@ func (r *FabricAutoTunerReconciler) syncTrialStatuses(ctx context.Context, at *t
 				at.Status.Trials[i].MetricValue = &metricValue
 			}
 			// Also check for metric in job annotations
-			if val, ok := job.Annotations[fmt.Sprintf("tensorreaper.ai/metric-%s", at.Spec.Objective.MetricName)]; ok {
+			if val, ok := job.Annotations[fmt.Sprintf("gryvia.io/metric-%s", at.Spec.Objective.MetricName)]; ok {
 				if parsed, err := strconv.ParseFloat(val, 64); err == nil {
 					at.Status.Trials[i].MetricValue = &parsed
 				}
 			}
 
 		case PhaseFailed:
-			at.Status.Trials[i].Phase = tensorreaperv1.TrialPhaseFailed
+			at.Status.Trials[i].Phase = gryviav1.TrialPhaseFailed
 			now := metav1.Now()
 			at.Status.Trials[i].CompletionTime = &now
 			at.Status.Trials[i].Message = job.Status.Message
 
 		case PhaseRunning:
-			at.Status.Trials[i].Phase = tensorreaperv1.TrialPhaseRunning
+			at.Status.Trials[i].Phase = gryviav1.TrialPhaseRunning
 			// Collect intermediate metrics for ASHA
 			if job.Status.Metrics != nil && job.Status.Metrics.Epoch > 0 {
-				im := tensorreaperv1.IntermediateMetric{
+				im := gryviav1.IntermediateMetric{
 					Step:  job.Status.Metrics.Epoch,
 					Value: job.Status.Metrics.Loss,
 				}
@@ -333,8 +333,8 @@ func (r *FabricAutoTunerReconciler) syncTrialStatuses(ctx context.Context, at *t
 }
 
 // updateBestTrial selects the best trial based on the objective.
-func (r *FabricAutoTunerReconciler) updateBestTrial(at *tensorreaperv1.FabricAutoTuner) {
-	var best *tensorreaperv1.TrialResult
+func (r *FabricAutoTunerReconciler) updateBestTrial(at *gryviav1.FabricAutoTuner) {
+	var best *gryviav1.TrialResult
 
 	for i := range at.Status.Trials {
 		trial := &at.Status.Trials[i]
@@ -346,7 +346,7 @@ func (r *FabricAutoTunerReconciler) updateBestTrial(at *tensorreaperv1.FabricAut
 			continue
 		}
 
-		if at.Spec.Objective.Direction == tensorreaperv1.ObjectiveMinimize {
+		if at.Spec.Objective.Direction == gryviav1.ObjectiveMinimize {
 			if *trial.MetricValue < *best.MetricValue {
 				best = trial
 			}
@@ -364,7 +364,7 @@ func (r *FabricAutoTunerReconciler) updateBestTrial(at *tensorreaperv1.FabricAut
 }
 
 // shouldStopEarly returns true if the last N completed trials showed no improvement.
-func (r *FabricAutoTunerReconciler) shouldStopEarly(at *tensorreaperv1.FabricAutoTuner) bool {
+func (r *FabricAutoTunerReconciler) shouldStopEarly(at *gryviav1.FabricAutoTuner) bool {
 	if at.Status.BestTrial == nil || at.Status.BestTrial.MetricValue == nil {
 		return false
 	}
@@ -393,7 +393,7 @@ func (r *FabricAutoTunerReconciler) shouldStopEarly(at *tensorreaperv1.FabricAut
 		}
 
 		improved := false
-		if at.Spec.Objective.Direction == tensorreaperv1.ObjectiveMinimize {
+		if at.Spec.Objective.Direction == gryviav1.ObjectiveMinimize {
 			improved = *trial.MetricValue < bestValue
 		} else {
 			improved = *trial.MetricValue > bestValue
@@ -409,7 +409,7 @@ func (r *FabricAutoTunerReconciler) shouldStopEarly(at *tensorreaperv1.FabricAut
 }
 
 // applyASHAEarlyStopping checks running trials and stops underperforming ones.
-func (r *FabricAutoTunerReconciler) applyASHAEarlyStopping(ctx context.Context, at *tensorreaperv1.FabricAutoTuner) error {
+func (r *FabricAutoTunerReconciler) applyASHAEarlyStopping(ctx context.Context, at *gryviav1.FabricAutoTuner) error {
 	scheduler := &tuner.ASHAScheduler{
 		MaxEpochs:       at.Spec.ASHAConfig.MaxEpochs,
 		ReductionFactor: at.Spec.ASHAConfig.ReductionFactor,
@@ -417,13 +417,13 @@ func (r *FabricAutoTunerReconciler) applyASHAEarlyStopping(ctx context.Context, 
 	}
 
 	for i, trial := range at.Status.Trials {
-		if trial.Phase != tensorreaperv1.TrialPhaseRunning {
+		if trial.Phase != gryviav1.TrialPhaseRunning {
 			continue
 		}
 
 		if scheduler.ShouldStop(trial, at.Status.Trials, at.Spec.Objective.Direction) {
 			// Delete the trial job to stop it
-			job := &tensorreaperv1.FabricAIJob{}
+			job := &gryviav1.FabricAIJob{}
 			err := r.Get(ctx, types.NamespacedName{
 				Namespace: at.Namespace,
 				Name:      trial.JobName,
@@ -434,7 +434,7 @@ func (r *FabricAutoTunerReconciler) applyASHAEarlyStopping(ctx context.Context, 
 				}
 			}
 
-			at.Status.Trials[i].Phase = tensorreaperv1.TrialPhaseStopped
+			at.Status.Trials[i].Phase = gryviav1.TrialPhaseStopped
 			at.Status.Trials[i].Message = "Stopped by ASHA early stopping"
 			now := metav1.Now()
 			at.Status.Trials[i].CompletionTime = &now
@@ -443,7 +443,7 @@ func (r *FabricAutoTunerReconciler) applyASHAEarlyStopping(ctx context.Context, 
 	return nil
 }
 
-func (r *FabricAutoTunerReconciler) updateCondition2(at *tensorreaperv1.FabricAutoTuner, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *FabricAutoTunerReconciler) updateCondition2(at *gryviav1.FabricAutoTuner, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -476,7 +476,7 @@ func (r *FabricAutoTunerReconciler) updateCondition2(at *tensorreaperv1.FabricAu
 // SetupWithManager sets up the controller with the Manager.
 func (r *FabricAutoTunerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tensorreaperv1.FabricAutoTuner{}).
-		Owns(&tensorreaperv1.FabricAIJob{}).
+		For(&gryviav1.FabricAutoTuner{}).
+		Owns(&gryviav1.FabricAIJob{}).
 		Complete(r)
 }

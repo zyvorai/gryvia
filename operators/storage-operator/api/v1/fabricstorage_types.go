@@ -33,25 +33,25 @@ type StorageClassSpec struct {
 }
 
 type PerformanceSpec struct {
-	Tier           string `json:"tier,omitempty"`
-	Caching        bool   `json:"caching,omitempty"`
-	Compression    bool   `json:"compression,omitempty"`
-	Deduplication  bool   `json:"deduplication,omitempty"`
-	Encryption     bool   `json:"encryption,omitempty"`
+	Tier          string `json:"tier,omitempty"`
+	Caching       bool   `json:"caching,omitempty"`
+	Compression   bool   `json:"compression,omitempty"`
+	Deduplication bool   `json:"deduplication,omitempty"`
+	Encryption    bool   `json:"encryption,omitempty"`
 }
 
 type FabricStorageStatus struct {
-	Phase                string             `json:"phase,omitempty"`
-	Conditions           []metav1.Condition `json:"conditions,omitempty"`
-	TotalCapacity        string             `json:"totalCapacity,omitempty"`
-	UsedCapacity         string             `json:"usedCapacity,omitempty"`
-	AvailableCapacity    string             `json:"availableCapacity,omitempty"`
-	CurrentIOPS          string             `json:"currentIOPS,omitempty"`
-	CurrentThroughput    string             `json:"currentThroughput,omitempty"`
-	StorageClassCreated  bool               `json:"storageClassCreated,omitempty"`
-	CSIDriverInstalled   bool               `json:"csiDriverInstalled,omitempty"`
-	LastHealthCheck      *metav1.Time       `json:"lastHealthCheck,omitempty"`
-	Metrics              *StorageMetrics    `json:"metrics,omitempty"`
+	Phase               string             `json:"phase,omitempty"`
+	Conditions          []metav1.Condition `json:"conditions,omitempty"`
+	TotalCapacity       string             `json:"totalCapacity,omitempty"`
+	UsedCapacity        string             `json:"usedCapacity,omitempty"`
+	AvailableCapacity   string             `json:"availableCapacity,omitempty"`
+	CurrentIOPS         string             `json:"currentIOPS,omitempty"`
+	CurrentThroughput   string             `json:"currentThroughput,omitempty"`
+	StorageClassCreated bool               `json:"storageClassCreated,omitempty"`
+	CSIDriverInstalled  bool               `json:"csiDriverInstalled,omitempty"`
+	LastHealthCheck     *metav1.Time       `json:"lastHealthCheck,omitempty"`
+	Metrics             *StorageMetrics    `json:"metrics,omitempty"`
 }
 
 type StorageMetrics struct {

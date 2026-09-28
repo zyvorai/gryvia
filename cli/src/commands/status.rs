@@ -3,10 +3,10 @@ use kube::api::Api;
 use colored::*;
 use tokio::time::{sleep, Duration};
 
-use crate::client::TensorReaperClient;
+use crate::client::GryviaClient;
 use crate::types::*;
 
-pub async fn execute(client: &TensorReaperClient, job: &str, follow: bool) -> Result<()> {
+pub async fn execute(client: &GryviaClient, job: &str, follow: bool) -> Result<()> {
     if follow {
         loop {
             // Clear screen using ANSI escape sequences. This works on POSIX-compliant

@@ -1,11 +1,11 @@
-# TensorReaper Python SDK
+# Gryvia Python SDK
 
-Python SDK for [TensorReaper](https://github.com/tensorreaper/kube-fabric) -- a Kubernetes-native GPU compute platform for AI/ML workloads.
+Python SDK for [Gryvia](https://github.com/zyvorai/gryvia) -- a Kubernetes-native GPU compute platform for AI/ML workloads.
 
 ## Installation
 
 ```bash
-pip install tensorreaper
+pip install gryvia
 ```
 
 Or install from source:
@@ -19,11 +19,11 @@ pip install -e .
 
 ```python
 import asyncio
-from tensorreaper import TensorReaper
+from gryvia import Gryvia
 
 async def main():
-    async with TensorReaper(
-        api_url="https://tensorreaper.example.com",
+    async with Gryvia(
+        api_url="https://gryvia.example.com",
         token="your-api-token",
     ) as tr:
         # Cluster overview
@@ -45,17 +45,17 @@ The client accepts explicit parameters or reads from environment variables:
 
 | Parameter | Env Var | Description |
 |-----------|---------|-------------|
-| `api_url` | `TENSORREAPER_API_URL` | Base URL of the API gateway |
-| `token` | `TENSORREAPER_TOKEN` | Bearer token for authentication |
+| `api_url` | `GRYVIA_API_URL` | Base URL of the API gateway |
+| `token` | `GRYVIA_TOKEN` | Bearer token for authentication |
 
 ```python
 # Explicit
-tr = TensorReaper(api_url="https://...", token="...")
+tr = Gryvia(api_url="https://...", token="...")
 
 # From environment
-# export TENSORREAPER_API_URL=https://...
-# export TENSORREAPER_TOKEN=...
-tr = TensorReaper()
+# export GRYVIA_API_URL=https://...
+# export GRYVIA_TOKEN=...
+tr = Gryvia()
 ```
 
 ## Usage
@@ -63,10 +63,10 @@ tr = TensorReaper()
 ### Job Management
 
 ```python
-async with TensorReaper(...) as tr:
+async with Gryvia(...) as tr:
     # Submit a job from a dict
     job = await tr.jobs.create({
-        "apiVersion": "tensorreaper.ai/v1",
+        "apiVersion": "gryvia.io/v1",
         "kind": "FabricAIJob",
         "metadata": {"name": "my-training"},
         "spec": {
@@ -99,7 +99,7 @@ async with TensorReaper(...) as tr:
 ### GPU Metrics
 
 ```python
-async with TensorReaper(...) as tr:
+async with Gryvia(...) as tr:
     # Cluster stats
     stats = await tr.metrics.cluster_stats()
 
@@ -112,7 +112,7 @@ async with TensorReaper(...) as tr:
 ### Nodes
 
 ```python
-async with TensorReaper(...) as tr:
+async with Gryvia(...) as tr:
     # List nodes
     nodes = await tr.nodes.list()
 
@@ -130,7 +130,7 @@ async with TensorReaper(...) as tr:
 ### Quotas
 
 ```python
-async with TensorReaper(...) as tr:
+async with Gryvia(...) as tr:
     # List quotas
     quotas = await tr.quotas.list()
 
@@ -147,7 +147,7 @@ async with TensorReaper(...) as tr:
 ### Cost Analysis
 
 ```python
-async with TensorReaper(...) as tr:
+async with Gryvia(...) as tr:
     # Full cost metrics
     costs = await tr.costs.get()
     print(f"Total cost: ${costs.total_cost:.2f}")
@@ -161,9 +161,9 @@ async with TensorReaper(...) as tr:
 ## Error Handling
 
 ```python
-from tensorreaper import TensorReaper, NotFoundError, AuthenticationError
+from gryvia import Gryvia, NotFoundError, AuthenticationError
 
-async with TensorReaper(...) as tr:
+async with Gryvia(...) as tr:
     try:
         job = await tr.jobs.get("nonexistent")
     except NotFoundError as e:
@@ -172,7 +172,7 @@ async with TensorReaper(...) as tr:
         print("Bad token")
 ```
 
-All exceptions inherit from `TensorReaperError`:
+All exceptions inherit from `GryviaError`:
 
 - `AuthenticationError` (401)
 - `AuthorizationError` (403)

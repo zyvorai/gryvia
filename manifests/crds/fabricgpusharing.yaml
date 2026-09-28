@@ -3,9 +3,9 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: fabricgpusharingpolicies.tensorreaper.ai
+  name: fabricgpusharingpolicies.gryvia.io
 spec:
-  group: tensorreaper.ai
+  group: gryvia.io
   versions:
     - name: v1
       served: true
@@ -214,13 +214,13 @@ spec:
 
 ---
 # Example: Time-Slicing for V100 GPUs
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricGPUSharingPolicy
 metadata:
   name: v100-time-slicing
 spec:
   nodeSelector:
-    tensorreaper.ai/gpu-type: V100
+    gryvia.io/gpu-type: V100
 
   strategy: time-slicing
 
@@ -238,13 +238,13 @@ spec:
 
 ---
 # Example: Fractional T4 GPUs
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricGPUSharingPolicy
 metadata:
   name: t4-fractional
 spec:
   nodeSelector:
-    tensorreaper.ai/gpu-type: T4
+    gryvia.io/gpu-type: T4
 
   strategy: fractional
 
@@ -261,13 +261,13 @@ spec:
 
 ---
 # Example: MIG Profiles for A100
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricGPUSharingPolicy
 metadata:
   name: a100-mig-mixed
 spec:
   nodeSelector:
-    tensorreaper.ai/gpu-type: A100-80G
+    gryvia.io/gpu-type: A100-80G
 
   strategy: mig
 
@@ -282,13 +282,13 @@ spec:
 
 ---
 # Example: Priority-Based Sharing
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricGPUSharingPolicy
 metadata:
   name: priority-based-sharing
 spec:
   nodeSelector:
-    tensorreaper.ai/node-pool: shared
+    gryvia.io/node-pool: shared
 
   strategy: time-slicing
 
@@ -303,7 +303,7 @@ spec:
 
 ---
 # Example: Job Requesting Fractional GPU
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricAIJob
 metadata:
   name: inference-fractional
@@ -323,7 +323,7 @@ spec:
 
 ---
 # Example: Job with Time-Sliced GPU
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricAIJob
 metadata:
   name: dev-environment
@@ -342,7 +342,7 @@ spec:
 
 ---
 # GPU Sharing Status Example
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricGPUSharingPolicy
 metadata:
   name: t4-fractional
@@ -372,14 +372,14 @@ status:
 # status:
 #   allocatable:
 #     nvidia.com/gpu: 4  # Physical GPUs
-#     tensorreaper.ai/gpu-1-8: 32  # 4 GPUs × 8 fractions
-#     tensorreaper.ai/gpu-1-4: 16  # 4 GPUs × 4 fractions
-#     tensorreaper.ai/gpu-1-2: 8   # 4 GPUs × 2 fractions
-#     tensorreaper.ai/gpu-memory: 65536  # MB, shared pool
+#     gryvia.io/gpu-1-8: 32  # 4 GPUs × 8 fractions
+#     gryvia.io/gpu-1-4: 16  # 4 GPUs × 4 fractions
+#     gryvia.io/gpu-1-2: 8   # 4 GPUs × 2 fractions
+#     gryvia.io/gpu-memory: 65536  # MB, shared pool
 
 ---
 # Multi-Tenant Sharing Example
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricGPUSharingPolicy
 metadata:
   name: multi-tenant-sharing

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "Building TensorReaper CLI..."
+echo "Building Gryvia CLI..."
 
 # Clean previous builds
 cargo clean
@@ -15,10 +15,10 @@ VERSION=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].vers
 echo ""
 echo "✓ Build complete!"
 echo "  Version: $VERSION"
-echo "  Binary: target/release/tensorreaper"
+echo "  Binary: target/release/gryvia"
 echo ""
 echo "To install:"
-echo "  sudo cp target/release/tensorreaper /usr/local/bin/"
+echo "  sudo cp target/release/gryvia /usr/local/bin/"
 echo ""
 echo "To test:"
-echo "  ./target/release/tensorreaper --help"
+echo "  ./target/release/gryvia --help"

@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ssahani/TensorReaper/collector/pkg/decoder"
+	"github.com/zyvorai/gryvia/collector/pkg/decoder"
 )
 
 // SecurityAlert is an enriched, human-readable security alert derived
@@ -151,8 +151,8 @@ func (a *SecurityAggregator) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	resp := struct {
-		Alerts []SecurityAlert    `json:"alerts"`
-		Counts map[string]int64   `json:"counts"`
+		Alerts []SecurityAlert  `json:"alerts"`
+		Counts map[string]int64 `json:"counts"`
 	}{
 		Alerts: alerts,
 		Counts: a.GetCounts(),

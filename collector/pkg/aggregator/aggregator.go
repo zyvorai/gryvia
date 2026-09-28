@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ssahani/TensorReaper/collector/pkg/decoder"
+	"github.com/zyvorai/gryvia/collector/pkg/decoder"
 )
 
 // ServicePair identifies directional traffic between two services.

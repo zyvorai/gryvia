@@ -17,7 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/ai-operator/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 )
 
 // FabricJobHookReconciler reconciles a FabricJobHook object
@@ -27,10 +27,10 @@ type FabricJobHookReconciler struct {
 	Log    logr.Logger
 }
 
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricjobhooks,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricjobhooks/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricjobhooks/finalizers,verbs=update
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricaijobs,verbs=get;list;watch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricjobhooks,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricjobhooks/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricjobhooks/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch
 //+kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop
@@ -38,7 +38,7 @@ func (r *FabricJobHookReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	log := r.Log.WithValues("fabricjobhook", req.NamespacedName)
 
 	// Fetch the FabricJobHook instance
-	hook := &tensorreaperv1.FabricJobHook{}
+	hook := &gryviav1.FabricJobHook{}
 	err := r.Get(ctx, req.NamespacedName, hook)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -64,11 +64,11 @@ func (r *FabricJobHookReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	return result, nil
 }
 
-func (r *FabricJobHookReconciler) reconcileJobHook(ctx context.Context, hook *tensorreaperv1.FabricJobHook) (ctrl.Result, error) {
+func (r *FabricJobHookReconciler) reconcileJobHook(ctx context.Context, hook *gryviav1.FabricJobHook) (ctrl.Result, error) {
 	log := r.Log.WithValues("fabricjobhook", hook.Name)
 
 	// List AI jobs matching the hook's selector
-	jobList := &tensorreaperv1.FabricAIJobList{}
+	jobList := &gryviav1.FabricAIJobList{}
 	if err := r.List(ctx, jobList); err != nil {
 		log.Error(err, "Failed to list FabricAIJobs")
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
@@ -128,7 +128,7 @@ func (r *FabricJobHookReconciler) reconcileJobHook(ctx context.Context, hook *te
 	return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 }
 
-func (r *FabricJobHookReconciler) matchesSelector(hook *tensorreaperv1.FabricJobHook, job *tensorreaperv1.FabricAIJob) bool {
+func (r *FabricJobHookReconciler) matchesSelector(hook *gryviav1.FabricJobHook, job *gryviav1.FabricAIJob) bool {
 	if hook.Spec.Selector == nil || len(hook.Spec.Selector.MatchLabels) == 0 {
 		return true // no selector means match all jobs
 	}
@@ -147,7 +147,7 @@ func (r *FabricJobHookReconciler) matchesSelector(hook *tensorreaperv1.FabricJob
 	return true
 }
 
-func (r *FabricJobHookReconciler) shouldTrigger(hook *tensorreaperv1.FabricJobHook, job *tensorreaperv1.FabricAIJob) bool {
+func (r *FabricJobHookReconciler) shouldTrigger(hook *gryviav1.FabricJobHook, job *gryviav1.FabricAIJob) bool {
 	switch hook.Spec.Trigger {
 	case "pre-start":
 		return job.Status.Phase == PhasePending
@@ -166,7 +166,7 @@ func (r *FabricJobHookReconciler) shouldTrigger(hook *tensorreaperv1.FabricJobHo
 	}
 }
 
-func (r *FabricJobHookReconciler) executeAction(ctx context.Context, hook *tensorreaperv1.FabricJobHook, job *tensorreaperv1.FabricAIJob) error {
+func (r *FabricJobHookReconciler) executeAction(ctx context.Context, hook *gryviav1.FabricJobHook, job *gryviav1.FabricAIJob) error {
 	switch hook.Spec.Action.Type {
 	case "webhook":
 		return r.executeWebhook(ctx, hook, job)
@@ -183,7 +183,7 @@ func (r *FabricJobHookReconciler) executeAction(ctx context.Context, hook *tenso
 	}
 }
 
-func (r *FabricJobHookReconciler) executeWebhook(ctx context.Context, hook *tensorreaperv1.FabricJobHook, job *tensorreaperv1.FabricAIJob) error {
+func (r *FabricJobHookReconciler) executeWebhook(ctx context.Context, hook *gryviav1.FabricJobHook, job *gryviav1.FabricAIJob) error {
 	if hook.Spec.Action.Webhook == nil {
 		return fmt.Errorf("webhook action configuration is missing")
 	}
@@ -234,7 +234,7 @@ func (r *FabricJobHookReconciler) executeWebhook(ctx context.Context, hook *tens
 	return nil
 }
 
-func (r *FabricJobHookReconciler) executeK8sJob(ctx context.Context, hook *tensorreaperv1.FabricJobHook, aiJob *tensorreaperv1.FabricAIJob) error {
+func (r *FabricJobHookReconciler) executeK8sJob(ctx context.Context, hook *gryviav1.FabricJobHook, aiJob *gryviav1.FabricAIJob) error {
 	if hook.Spec.Action.K8sJob == nil {
 		return fmt.Errorf("k8s-job action configuration is missing")
 	}
@@ -263,8 +263,8 @@ func (r *FabricJobHookReconciler) executeK8sJob(ctx context.Context, hook *tenso
 			Name:      jobName,
 			Namespace: aiJob.Namespace,
 			Labels: map[string]string{
-				"tensorreaper.ai/hook": hook.Name,
-				"tensorreaper.ai/job":  aiJob.Name,
+				"gryvia.io/hook": hook.Name,
+				"gryvia.io/job":  aiJob.Name,
 			},
 		},
 		Spec: batchv1.JobSpec{
@@ -295,7 +295,7 @@ func (r *FabricJobHookReconciler) executeK8sJob(ctx context.Context, hook *tenso
 	return nil
 }
 
-func (r *FabricJobHookReconciler) executeNotification(_ context.Context, hook *tensorreaperv1.FabricJobHook, job *tensorreaperv1.FabricAIJob) error {
+func (r *FabricJobHookReconciler) executeNotification(_ context.Context, hook *gryviav1.FabricJobHook, job *gryviav1.FabricAIJob) error {
 	if hook.Spec.Action.Notification == nil {
 		return fmt.Errorf("notification action configuration is missing")
 	}
@@ -321,7 +321,7 @@ func (r *FabricJobHookReconciler) executeNotification(_ context.Context, hook *t
 	return nil
 }
 
-func (r *FabricJobHookReconciler) executeExec(_ context.Context, hook *tensorreaperv1.FabricJobHook, job *tensorreaperv1.FabricAIJob) error {
+func (r *FabricJobHookReconciler) executeExec(_ context.Context, hook *gryviav1.FabricJobHook, job *gryviav1.FabricAIJob) error {
 	if hook.Spec.Action.Exec == nil {
 		return fmt.Errorf("exec action configuration is missing")
 	}
@@ -340,7 +340,7 @@ func (r *FabricJobHookReconciler) executeExec(_ context.Context, hook *tensorrea
 // SetupWithManager sets up the controller with the Manager.
 func (r *FabricJobHookReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tensorreaperv1.FabricJobHook{}).
+		For(&gryviav1.FabricJobHook{}).
 		Owns(&batchv1.Job{}).
 		Complete(r)
 }

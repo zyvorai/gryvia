@@ -16,24 +16,24 @@ import (
 )
 
 type BenchmarkResult struct {
-	Test              string        `json:"test"`
-	TotalJobs         int           `json:"total_jobs"`
-	SuccessfulJobs    int           `json:"successful_jobs"`
-	FailedJobs        int           `json:"failed_jobs"`
-	AvgTimeToScheduleMs int64 `json:"avg_time_to_schedule_ms"`
-	AvgTimeToCompleteMs int64 `json:"avg_time_to_complete_ms"`
-	TotalDurationMs     int64 `json:"total_duration_ms"`
-	JobsPerSecond     float64       `json:"jobs_per_second"`
+	Test                string  `json:"test"`
+	TotalJobs           int     `json:"total_jobs"`
+	SuccessfulJobs      int     `json:"successful_jobs"`
+	FailedJobs          int     `json:"failed_jobs"`
+	AvgTimeToScheduleMs int64   `json:"avg_time_to_schedule_ms"`
+	AvgTimeToCompleteMs int64   `json:"avg_time_to_complete_ms"`
+	TotalDurationMs     int64   `json:"total_duration_ms"`
+	JobsPerSecond       float64 `json:"jobs_per_second"`
 }
 
 type JobMetrics struct {
-	Name            string
-	Created         time.Time
-	Scheduled       time.Time
-	Completed       time.Time
-	TimeToSchedule  time.Duration
-	TimeToComplete  time.Duration
-	Success         bool
+	Name           string
+	Created        time.Time
+	Scheduled      time.Time
+	Completed      time.Time
+	TimeToSchedule time.Duration
+	TimeToComplete time.Duration
+	Success        bool
 }
 
 var dynamicClient dynamic.Interface
@@ -51,7 +51,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Println("TensorReaper Performance Benchmark")
+	fmt.Println("Gryvia Performance Benchmark")
 	fmt.Println("=================================")
 
 	// Run benchmarks
@@ -91,7 +91,7 @@ func main() {
 
 func benchmarkSequentialSubmission(count int) BenchmarkResult {
 	ctx := context.Background()
-	namespace := "tensorreaper-bench"
+	namespace := "gryvia-bench"
 
 	startTime := time.Now()
 	metrics := []JobMetrics{}
@@ -107,7 +107,7 @@ func benchmarkSequentialSubmission(count int) BenchmarkResult {
 
 func benchmarkParallelSubmission(count, parallelism int) BenchmarkResult {
 	ctx := context.Background()
-	namespace := "tensorreaper-bench"
+	namespace := "gryvia-bench"
 
 	startTime := time.Now()
 	metrics := []JobMetrics{}
@@ -140,7 +140,7 @@ func benchmarkParallelSubmission(count, parallelism int) BenchmarkResult {
 
 func benchmarkBurstSubmission(count int) BenchmarkResult {
 	ctx := context.Background()
-	namespace := "tensorreaper-bench"
+	namespace := "gryvia-bench"
 
 	startTime := time.Now()
 	metrics := []JobMetrics{}
@@ -171,7 +171,7 @@ func benchmarkBurstSubmission(count int) BenchmarkResult {
 
 func benchmarkLargeScale(count, parallelism int) BenchmarkResult {
 	ctx := context.Background()
-	namespace := "tensorreaper-bench"
+	namespace := "gryvia-bench"
 
 	startTime := time.Now()
 	metrics := []JobMetrics{}
@@ -204,7 +204,7 @@ func benchmarkLargeScale(count, parallelism int) BenchmarkResult {
 
 func submitAndTrackJob(ctx context.Context, namespace, jobName string) JobMetrics {
 	gvr := schema.GroupVersionResource{
-		Group:    "tensorreaper.ai",
+		Group:    "gryvia.io",
 		Version:  "v1",
 		Resource: "fabricaijobs",
 	}
@@ -217,7 +217,7 @@ func submitAndTrackJob(ctx context.Context, namespace, jobName string) JobMetric
 
 	job := &unstructured.Unstructured{
 		Object: map[string]interface{}{
-			"apiVersion": "tensorreaper.ai/v1",
+			"apiVersion": "gryvia.io/v1",
 			"kind":       "FabricAIJob",
 			"metadata": map[string]interface{}{
 				"name":      jobName,

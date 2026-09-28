@@ -15,7 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/network-intelligence/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/network-intelligence/api/v1"
 )
 
 // FabricTrafficInsightReconciler reconciles a FabricTrafficInsight object
@@ -24,9 +24,9 @@ type FabricTrafficInsightReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabrictrafficinsights,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabrictrafficinsights/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabrictrafficinsights/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabrictrafficinsights,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabrictrafficinsights/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabrictrafficinsights/finalizers,verbs=update
 //+kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=endpoints,verbs=get;list;watch
@@ -36,7 +36,7 @@ func (r *FabricTrafficInsightReconciler) Reconcile(ctx context.Context, req ctrl
 	logger := log.FromContext(ctx)
 
 	// Fetch the FabricTrafficInsight instance
-	insight := &tensorreaperv1.FabricTrafficInsight{}
+	insight := &gryviav1.FabricTrafficInsight{}
 	if err := r.Get(ctx, req.NamespacedName, insight); err != nil {
 		if errors.IsNotFound(err) {
 			logger.Info("FabricTrafficInsight resource not found, ignoring since object must be deleted")
@@ -109,7 +109,7 @@ type trafficMetrics struct {
 
 // collectTrafficMetrics queries Prometheus and Hubble for traffic metrics.
 // In production this would issue PromQL queries to the Prometheus service.
-func (r *FabricTrafficInsightReconciler) collectTrafficMetrics(ctx context.Context, insight *tensorreaperv1.FabricTrafficInsight) trafficMetrics {
+func (r *FabricTrafficInsightReconciler) collectTrafficMetrics(ctx context.Context, insight *gryviav1.FabricTrafficInsight) trafficMetrics {
 	logger := log.FromContext(ctx)
 
 	metrics := trafficMetrics{}
@@ -147,7 +147,7 @@ func (r *FabricTrafficInsightReconciler) collectTrafficMetrics(ctx context.Conte
 
 // identifyTopTalkers finds services with the highest traffic volume to the target service.
 // In production this would query Hubble flow logs aggregated by source service.
-func (r *FabricTrafficInsightReconciler) identifyTopTalkers(ctx context.Context, insight *tensorreaperv1.FabricTrafficInsight) []tensorreaperv1.TopTalker {
+func (r *FabricTrafficInsightReconciler) identifyTopTalkers(ctx context.Context, insight *gryviav1.FabricTrafficInsight) []gryviav1.TopTalker {
 	// In a production implementation, this would query Hubble for flow data
 	// grouped by source service, sorted by total bytes transferred.
 	// Example PromQL: topk(10, sum by (source) (rate(hubble_flows_processed_bytes_total{destination=<svc>}[<window>])))
@@ -157,8 +157,8 @@ func (r *FabricTrafficInsightReconciler) identifyTopTalkers(ctx context.Context,
 }
 
 // detectAnomalies identifies unusual traffic patterns for the target service.
-func (r *FabricTrafficInsightReconciler) detectAnomalies(ctx context.Context, insight *tensorreaperv1.FabricTrafficInsight, metrics trafficMetrics) []tensorreaperv1.TrafficAnomaly {
-	var anomalies []tensorreaperv1.TrafficAnomaly
+func (r *FabricTrafficInsightReconciler) detectAnomalies(ctx context.Context, insight *gryviav1.FabricTrafficInsight, metrics trafficMetrics) []gryviav1.TrafficAnomaly {
+	var anomalies []gryviav1.TrafficAnomaly
 
 	// In a production implementation, anomaly detection would compare current
 	// metrics against historical baselines and detect:
@@ -180,9 +180,9 @@ func (r *FabricTrafficInsightReconciler) detectAnomalies(ctx context.Context, in
 }
 
 // updateStatus updates the FabricTrafficInsight status subresource
-func (r *FabricTrafficInsightReconciler) updateStatus(ctx context.Context, namespacedName types.NamespacedName, metrics trafficMetrics, topTalkers []tensorreaperv1.TopTalker, anomalies []tensorreaperv1.TrafficAnomaly) {
+func (r *FabricTrafficInsightReconciler) updateStatus(ctx context.Context, namespacedName types.NamespacedName, metrics trafficMetrics, topTalkers []gryviav1.TopTalker, anomalies []gryviav1.TrafficAnomaly) {
 	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		insight := &tensorreaperv1.FabricTrafficInsight{}
+		insight := &gryviav1.FabricTrafficInsight{}
 		if err := r.Get(ctx, namespacedName, insight); err != nil {
 			return err
 		}
@@ -202,6 +202,6 @@ func (r *FabricTrafficInsightReconciler) updateStatus(ctx context.Context, names
 // SetupWithManager sets up the controller with the Manager
 func (r *FabricTrafficInsightReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tensorreaperv1.FabricTrafficInsight{}).
+		For(&gryviav1.FabricTrafficInsight{}).
 		Complete(r)
 }

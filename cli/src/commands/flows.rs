@@ -4,10 +4,10 @@ use kube::core::DynamicObject;
 use prettytable::{Table, Row, Cell, format};
 use colored::*;
 
-use crate::client::TensorReaperClient;
+use crate::client::GryviaClient;
 
 pub async fn execute(
-    client: &TensorReaperClient,
+    client: &GryviaClient,
     service: Option<&str>,
     namespace: &str,
     last: &str,
@@ -24,7 +24,7 @@ pub async fn execute(
     println!();
 
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
-        "tensorreaper.ai",
+        "gryvia.io",
         "v1",
         "FabricFlow",
     ));
@@ -35,7 +35,7 @@ pub async fn execute(
     );
 
     let params = if let Some(svc) = service {
-        let label_selector = format!("tensorreaper.ai/service={}", svc);
+        let label_selector = format!("gryvia.io/service={}", svc);
         ListParams::default().labels(&label_selector)
     } else {
         ListParams::default()

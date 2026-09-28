@@ -1,9 +1,9 @@
-# Complete TensorReaper Production Setup
+# Complete Gryvia Production Setup
 # This example shows all operators working together for a full AI infrastructure
 
 ---
 # 1. Storage Backend - VAST Data for training data
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricStorage
 metadata:
   name: vast-production
@@ -12,17 +12,17 @@ spec:
   endpoint: vast-mgmt.example.com
   capacity: 500Ti
   nodeSelector:
-    tensorreaper.ai/storage: "true"
+    gryvia.io/storage: "true"
   credentials:
     secretName: vast-credentials
-    secretNamespace: tensorreaper-system
+    secretNamespace: gryvia-system
   config:
     vipPool: "10.0.0.0/24"
     mountOptions: ["rw", "relatime", "vers=3"]
 
 ---
 # 2. Network Configuration - RDMA InfiniBand for distributed training
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricNetwork
 metadata:
   name: rdma-training-network
@@ -30,7 +30,7 @@ spec:
   networkType: rdma
   mtu: 9000
   nodeSelector:
-    tensorreaper.ai/rdma: "true"
+    gryvia.io/rdma: "true"
   rdma:
     mode: infiniband
     devices: [mlx5_0, mlx5_1]
@@ -39,7 +39,7 @@ spec:
 
 ---
 # 3. GPU Nodes - Register H100 cluster
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricGpuNode
 metadata:
   name: gpu-node-01
@@ -56,7 +56,7 @@ spec:
 
 ---
 # 4. Team Quotas - ML Research Team
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricQuota
 metadata:
   name: team-ml-research
@@ -77,7 +77,7 @@ spec:
 
 ---
 # 5. Team Quotas - Computer Vision Team
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricQuota
 metadata:
   name: team-cv
@@ -103,8 +103,8 @@ kind: Namespace
 metadata:
   name: ml-training
   labels:
-    tensorreaper.ai/team: ml-research
-    tensorreaper.ai/quota: team-ml-research
+    gryvia.io/team: ml-research
+    gryvia.io/quota: team-ml-research
 
 ---
 apiVersion: v1
@@ -112,8 +112,8 @@ kind: Namespace
 metadata:
   name: cv-training
   labels:
-    tensorreaper.ai/team: computer-vision
-    tensorreaper.ai/quota: team-cv
+    gryvia.io/team: computer-vision
+    gryvia.io/quota: team-cv
 
 ---
 # 7. Storage Secrets
@@ -123,7 +123,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: vast-credentials
-  namespace: tensorreaper-system
+  namespace: gryvia-system
 type: Opaque
 stringData:
   username: <REPLACE_WITH_USERNAME>
@@ -131,7 +131,7 @@ stringData:
 
 ---
 # 8. Distributed Training Job - LLM on 32x H100
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricAIJob
 metadata:
   name: llm-pretraining
@@ -194,7 +194,7 @@ spec:
 
 ---
 # 9. Inference Service - Computer Vision Model
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricAIJob
 metadata:
   name: cv-inference-service

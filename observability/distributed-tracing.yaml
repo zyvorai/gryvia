@@ -6,7 +6,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: otel-collector-config
-  namespace: tensorreaper
+  namespace: gryvia-system
 data:
   otel-collector-config.yaml: |
     receivers:
@@ -30,7 +30,7 @@ data:
       resource:
         attributes:
           - key: cluster
-            value: tensorreaper
+            value: gryvia
             action: upsert
 
     exporters:
@@ -44,7 +44,7 @@ data:
       # Prometheus
       prometheus:
         endpoint: "0.0.0.0:8889"
-        namespace: tensorreaper
+        namespace: gryvia-system
 
       # Logging for debugging
       logging:
@@ -67,7 +67,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: otel-collector
-  namespace: tensorreaper
+  namespace: gryvia-system
 spec:
   replicas: 2
   selector:
@@ -108,7 +108,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: otel-collector
-  namespace: tensorreaper
+  namespace: gryvia-system
 spec:
   selector:
     app: otel-collector
@@ -129,7 +129,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: jaeger
-  namespace: tensorreaper
+  namespace: gryvia-system
 spec:
   replicas: 1
   selector:
@@ -176,7 +176,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: jaeger-query
-  namespace: tensorreaper
+  namespace: gryvia-system
 spec:
   type: ClusterIP
   selector:
@@ -191,7 +191,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: jaeger-collector
-  namespace: tensorreaper
+  namespace: gryvia-system
 spec:
   selector:
     app: jaeger
@@ -212,7 +212,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: jaeger-collector-prod
-  namespace: tensorreaper
+  namespace: gryvia-system
 spec:
   replicas: 3
   selector:
@@ -253,7 +253,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: jaeger-query-prod
-  namespace: tensorreaper
+  namespace: gryvia-system
 spec:
   replicas: 2
   selector:
@@ -283,13 +283,13 @@ spec:
 
 ---
 # Example: Instrumented Job
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricAIJob
 metadata:
   name: traced-training
   namespace: default
   annotations:
-    tensorreaper.ai/tracing: enabled
+    gryvia.io/tracing: enabled
 spec:
   framework: pytorch
   resources:
@@ -302,7 +302,7 @@ spec:
   env:
     # OpenTelemetry configuration
     - name: OTEL_EXPORTER_OTLP_ENDPOINT
-      value: "http://otel-collector.tensorreaper:4317"
+      value: "http://otel-collector.gryvia:4317"
     - name: OTEL_SERVICE_NAME
       value: "training-job"
     - name: OTEL_RESOURCE_ATTRIBUTES
@@ -318,7 +318,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: trace-sampling-config
-  namespace: tensorreaper
+  namespace: gryvia-system
 data:
   sampling.yaml: |
     # Sampling strategies
@@ -357,7 +357,7 @@ apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: otel-collector-metrics
-  namespace: tensorreaper
+  namespace: gryvia-system
 spec:
   selector:
     matchLabels:

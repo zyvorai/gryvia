@@ -5,10 +5,10 @@ use colored::*;
 use tokio::time::{sleep, Duration};
 use serde_json::json;
 
-use crate::client::TensorReaperClient;
+use crate::client::GryviaClient;
 
 pub async fn execute(
-    client: &TensorReaperClient,
+    client: &GryviaClient,
     service: &str,
     duration: &str,
     level: &str,
@@ -32,7 +32,7 @@ pub async fn execute(
 
     // Create trace session via CRD
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
-        "tensorreaper.ai",
+        "gryvia.io",
         "v1",
         "FabricTraceSession",
     ));
@@ -44,7 +44,7 @@ pub async fn execute(
 
     let session_name = format!("trace-{}-{}", service, chrono::Utc::now().timestamp());
     let trace_obj = serde_json::from_value(json!({
-        "apiVersion": "tensorreaper.ai/v1",
+        "apiVersion": "gryvia.io/v1",
         "kind": "FabricTraceSession",
         "metadata": {
             "name": session_name,
@@ -138,12 +138,12 @@ struct FlowEntry {
 }
 
 async fn fetch_flows(
-    client: &TensorReaperClient,
+    client: &GryviaClient,
     namespace: &str,
     service: &str,
 ) -> Vec<FlowEntry> {
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
-        "tensorreaper.ai",
+        "gryvia.io",
         "v1",
         "FabricFlow",
     ));
@@ -153,7 +153,7 @@ async fn fetch_flows(
         &ar,
     );
 
-    let label_selector = format!("tensorreaper.ai/service={}", service);
+    let label_selector = format!("gryvia.io/service={}", service);
     let params = ListParams::default().labels(&label_selector);
 
     match api.list(&params).await {

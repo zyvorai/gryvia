@@ -134,27 +134,27 @@ type FabricAIJobSpec struct {
 	StorageRequest string                      `json:"storageRequest,omitempty"`
 	Network        string                      `json:"network,omitempty"`
 	Priority       int32                       `json:"priority,omitempty"`
-	Distributed    *FabricAIJobDistributedSpec  `json:"distributed,omitempty"`
+	Distributed    *FabricAIJobDistributedSpec `json:"distributed,omitempty"`
 }
 
 // FabricAIJobDistributedSpec is a minimal distributed config used by the predictor
 type FabricAIJobDistributedSpec struct {
-	Enabled    bool   `json:"enabled,omitempty"`
-	Framework  string `json:"framework,omitempty"`
-	Nodes      int32  `json:"nodes,omitempty"`
-	GpusPerNode int32 `json:"gpusPerNode,omitempty"`
-	Backend    string `json:"backend,omitempty"`
+	Enabled     bool   `json:"enabled,omitempty"`
+	Framework   string `json:"framework,omitempty"`
+	Nodes       int32  `json:"nodes,omitempty"`
+	GpusPerNode int32  `json:"gpusPerNode,omitempty"`
+	Backend     string `json:"backend,omitempty"`
 }
 
 // FabricAIJobStatus is a minimal struct for quota tracking and cost prediction.
 // Go JSON unmarshaling ignores unknown fields by default.
 type FabricAIJobStatus struct {
-	Phase          string       `json:"phase,omitempty"`
-	StartTime      *metav1.Time `json:"startTime,omitempty"`
-	CompletionTime *metav1.Time `json:"completionTime,omitempty"`
+	Phase          string             `json:"phase,omitempty"`
+	StartTime      *metav1.Time       `json:"startTime,omitempty"`
+	CompletionTime *metav1.Time       `json:"completionTime,omitempty"`
 	Conditions     []metav1.Condition `json:"conditions,omitempty"`
-	NodesAllocated []string     `json:"nodesAllocated,omitempty"`
-	Retries        int32        `json:"retries,omitempty"`
+	NodesAllocated []string           `json:"nodesAllocated,omitempty"`
+	Retries        int32              `json:"retries,omitempty"`
 }
 
 //+kubebuilder:object:root=true

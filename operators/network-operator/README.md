@@ -1,6 +1,6 @@
-# TensorReaper Network Operator
+# Gryvia Network Operator
 
-The Network Operator manages high-performance networking for AI workloads in TensorReaper. It automates RDMA and SR-IOV configuration for ultra-low latency distributed training.
+The Network Operator manages high-performance networking for AI workloads in Gryvia. It automates RDMA and SR-IOV configuration for ultra-low latency distributed training.
 
 ## Supported Network Types
 
@@ -43,7 +43,7 @@ kubectl apply -f crds/fabricnetwork.yaml
 kubectl apply -f operators/network-operator/config/
 
 # Verify deployment
-kubectl get pods -n tensorreaper -l app=network-operator
+kubectl get pods -n gryvia-system -l app=network-operator
 ```
 
 ## Prerequisites
@@ -78,7 +78,7 @@ echo 32 > /sys/class/net/ens1f0/device/sriov_numvfs
 ### RDMA InfiniBand Network
 
 ```yaml
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricNetwork
 metadata:
   name: rdma-infiniband
@@ -86,7 +86,7 @@ spec:
   networkType: rdma
   mtu: 9000
   nodeSelector:
-    tensorreaper.ai/rdma: "true"
+    gryvia.io/rdma: "true"
   rdma:
     mode: infiniband
     devices:
@@ -99,7 +99,7 @@ spec:
 ### SR-IOV Network
 
 ```yaml
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricNetwork
 metadata:
   name: sriov-highspeed
@@ -107,7 +107,7 @@ spec:
   networkType: sriov
   mtu: 9000
   nodeSelector:
-    tensorreaper.ai/sriov: "true"
+    gryvia.io/sriov: "true"
   sriov:
     physicalInterface: ens1f0
     numVfs: 32

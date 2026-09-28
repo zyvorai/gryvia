@@ -1,6 +1,6 @@
-# TensorReaper Network Intelligence Helm Chart
+# Gryvia Network Intelligence Helm Chart
 
-Deploy the TensorReaper Network Intelligence Operator with eBPF-based network monitoring for Kubernetes GPU clusters.
+Deploy the Gryvia Network Intelligence Operator with eBPF-based network monitoring for Kubernetes GPU clusters.
 
 ## Prerequisites
 
@@ -14,15 +14,15 @@ Deploy the TensorReaper Network Intelligence Operator with eBPF-based network mo
 ### Add the Helm repository
 
 ```bash
-helm repo add tensorreaper https://charts.tensorreaper.ai
+helm repo add gryvia https://zyvorai.github.io/gryvia/charts
 helm repo update
 ```
 
 ### Install the chart
 
 ```bash
-helm install network-intelligence tensorreaper/tensorreaper-network-intelligence \
-  --namespace tensorreaper-network \
+helm install network-intelligence gryvia/gryvia-network-intelligence \
+  --namespace gryvia-network \
   --create-namespace
 ```
 
@@ -30,7 +30,7 @@ helm install network-intelligence tensorreaper/tensorreaper-network-intelligence
 
 ```bash
 helm install network-intelligence ./helm/network-intelligence \
-  --namespace tensorreaper-network \
+  --namespace gryvia-network \
   --create-namespace
 ```
 
@@ -40,10 +40,10 @@ helm install network-intelligence ./helm/network-intelligence \
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `operator.image.repository` | Operator image | `tensorreaper/network-intelligence-operator` |
+| `operator.image.repository` | Operator image | `gryvia/network-intelligence-operator` |
 | `operator.replicas` | Operator replicas | `1` |
 | `operator.resources` | Operator resource limits | `500m CPU, 512Mi memory` |
-| `collector.image.repository` | Collector image | `tensorreaper/ebpf-collector` |
+| `collector.image.repository` | Collector image | `gryvia/ebpf-collector` |
 | `collector.hostNetwork` | Use host networking | `true` |
 | `collector.resources` | Collector resource limits | `500m CPU, 512Mi memory` |
 | `ebpf.enabled` | Enable eBPF programs | `true` |
@@ -102,7 +102,7 @@ helm upgrade network-intelligence ./helm/network-intelligence
 
 ```bash
 helm uninstall network-intelligence
-kubectl delete namespace tensorreaper-network
+kubectl delete namespace gryvia-network
 ```
 
 ## Architecture

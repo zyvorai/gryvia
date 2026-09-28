@@ -19,14 +19,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/network-operator/api/v1"
-	"github.com/ssahani/TensorReaper/operators/network-operator/pkg/multus"
-	"github.com/ssahani/TensorReaper/operators/network-operator/pkg/rdma"
-	"github.com/ssahani/TensorReaper/operators/network-operator/pkg/sriov"
+	gryviav1 "github.com/zyvorai/gryvia/operators/network-operator/api/v1"
+	"github.com/zyvorai/gryvia/operators/network-operator/pkg/multus"
+	"github.com/zyvorai/gryvia/operators/network-operator/pkg/rdma"
+	"github.com/zyvorai/gryvia/operators/network-operator/pkg/sriov"
 )
 
 const (
-	fabricNetworkFinalizer = "tensorreaper.ai/network-finalizer"
+	fabricNetworkFinalizer = "gryvia.io/network-finalizer"
 )
 
 // FabricNetworkReconciler reconciles a FabricNetwork object
@@ -35,9 +35,9 @@ type FabricNetworkReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricnetworks,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricnetworks/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricnetworks/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricnetworks,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricnetworks/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricnetworks/finalizers,verbs=update
 //+kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch;update;patch
 //+kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=apps,resources=daemonsets,verbs=get;list;watch;create;update;patch;delete
@@ -47,7 +47,7 @@ func (r *FabricNetworkReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	logger := log.FromContext(ctx)
 
 	// Fetch the FabricNetwork instance
-	network := &tensorreaperv1.FabricNetwork{}
+	network := &gryviav1.FabricNetwork{}
 	err := r.Get(ctx, req.NamespacedName, network)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -96,7 +96,7 @@ func (r *FabricNetworkReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 }
 
-func (r *FabricNetworkReconciler) reconcileNetwork(ctx context.Context, network *tensorreaperv1.FabricNetwork) (ctrl.Result, error) {
+func (r *FabricNetworkReconciler) reconcileNetwork(ctx context.Context, network *gryviav1.FabricNetwork) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	// Get matching nodes
@@ -141,7 +141,7 @@ func (r *FabricNetworkReconciler) reconcileNetwork(ctx context.Context, network 
 	return ctrl.Result{}, nil
 }
 
-func (r *FabricNetworkReconciler) getMatchingNodes(ctx context.Context, network *tensorreaperv1.FabricNetwork) ([]corev1.Node, error) {
+func (r *FabricNetworkReconciler) getMatchingNodes(ctx context.Context, network *gryviav1.FabricNetwork) ([]corev1.Node, error) {
 	nodeList := &corev1.NodeList{}
 
 	listOpts := []client.ListOption{}
@@ -156,7 +156,7 @@ func (r *FabricNetworkReconciler) getMatchingNodes(ctx context.Context, network 
 	return nodeList.Items, nil
 }
 
-func (r *FabricNetworkReconciler) configureRDMA(ctx context.Context, network *tensorreaperv1.FabricNetwork, nodes []corev1.Node) error {
+func (r *FabricNetworkReconciler) configureRDMA(ctx context.Context, network *gryviav1.FabricNetwork, nodes []corev1.Node) error {
 	logger := log.FromContext(ctx)
 
 	if network.Spec.RDMA == nil {
@@ -188,7 +188,7 @@ func (r *FabricNetworkReconciler) configureRDMA(ctx context.Context, network *te
 	return nil
 }
 
-func (r *FabricNetworkReconciler) configureSRIOV(ctx context.Context, network *tensorreaperv1.FabricNetwork, nodes []corev1.Node) error {
+func (r *FabricNetworkReconciler) configureSRIOV(ctx context.Context, network *gryviav1.FabricNetwork, nodes []corev1.Node) error {
 	logger := log.FromContext(ctx)
 
 	if network.Spec.SRIOV == nil {
@@ -220,7 +220,7 @@ func (r *FabricNetworkReconciler) configureSRIOV(ctx context.Context, network *t
 	return nil
 }
 
-func (r *FabricNetworkReconciler) ensureNetworkAttachment(ctx context.Context, network *tensorreaperv1.FabricNetwork) error {
+func (r *FabricNetworkReconciler) ensureNetworkAttachment(ctx context.Context, network *gryviav1.FabricNetwork) error {
 	logger := log.FromContext(ctx)
 
 	logger.Info("Creating NetworkAttachmentDefinition", "name", network.Name)
@@ -232,7 +232,7 @@ func (r *FabricNetworkReconciler) ensureNetworkAttachment(ctx context.Context, n
 	return nil
 }
 
-func (r *FabricNetworkReconciler) handleDeletion(ctx context.Context, network *tensorreaperv1.FabricNetwork) (ctrl.Result, error) {
+func (r *FabricNetworkReconciler) handleDeletion(ctx context.Context, network *gryviav1.FabricNetwork) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	if controllerutil.ContainsFinalizer(network, fabricNetworkFinalizer) {
@@ -277,22 +277,22 @@ func (r *FabricNetworkReconciler) handleDeletion(ctx context.Context, network *t
 		} else {
 			for _, node := range nodes {
 				// Clean up RDMA labels
-				delete(node.Labels, "tensorreaper.ai/rdma")
-				delete(node.Labels, "tensorreaper.ai/rdma-mode")
+				delete(node.Labels, "gryvia.io/rdma")
+				delete(node.Labels, "gryvia.io/rdma-mode")
 				// Clean up SR-IOV labels: exact match for the base key plus
 				// prefix match with trailing "-" for dynamic keys like
-				// "tensorreaper.ai/sriov-<resourceName>".
-				delete(node.Labels, "tensorreaper.ai/sriov")
+				// "gryvia.io/sriov-<resourceName>".
+				delete(node.Labels, "gryvia.io/sriov")
 				for k := range node.Labels {
-					if strings.HasPrefix(k, "tensorreaper.ai/sriov-") {
+					if strings.HasPrefix(k, "gryvia.io/sriov-") {
 						delete(node.Labels, k)
 					}
 				}
 				// Clean up annotations (nil-safe)
 				if node.Annotations != nil {
-					delete(node.Annotations, "tensorreaper.ai/rdma-devices")
-					delete(node.Annotations, "tensorreaper.ai/sriov-interface")
-					delete(node.Annotations, "tensorreaper.ai/sriov-numvfs")
+					delete(node.Annotations, "gryvia.io/rdma-devices")
+					delete(node.Annotations, "gryvia.io/sriov-interface")
+					delete(node.Annotations, "gryvia.io/sriov-numvfs")
 				}
 				if updateErr := r.Update(ctx, &node); updateErr != nil {
 					logger.Error(updateErr, "Failed to remove labels from node", "node", node.Name)
@@ -317,7 +317,7 @@ func (r *FabricNetworkReconciler) handleDeletion(ctx context.Context, network *t
 	return ctrl.Result{}, nil
 }
 
-func (r *FabricNetworkReconciler) updateStatus(ctx context.Context, network *tensorreaperv1.FabricNetwork, phase, message string) {
+func (r *FabricNetworkReconciler) updateStatus(ctx context.Context, network *gryviav1.FabricNetwork, phase, message string) {
 	network.Status.Phase = phase
 	network.Status.LastUpdated = metav1.Now()
 
@@ -347,6 +347,6 @@ func (r *FabricNetworkReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	// Cross-namespace owner references cannot be set, so cleanup is handled
 	// via the finalizer in handleDeletion instead.
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tensorreaperv1.FabricNetwork{}).
+		For(&gryviav1.FabricNetwork{}).
 		Complete(r)
 }

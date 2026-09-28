@@ -7,6 +7,7 @@ import ErrorBoundary from './components/ErrorBoundary'
 import AuthProvider from './components/AuthProvider'
 import { useAuth } from './lib/auth'
 import Layout from './components/Layout'
+import PageHero from './components/PageHero'
 import Dashboard from './pages/Dashboard'
 import Jobs from './pages/Jobs'
 import JobDetails from './pages/JobDetails'
@@ -47,30 +48,9 @@ function RequireAuth({ children }: { children: ReactNode }) {
   const location = useLocation()
 
   if (isLoading) {
-    // Brief loading state while validating stored token
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: '#0a0e14' }}>
-        <div className="flex flex-col items-center gap-3 animate-fade-in">
-          <div
-            className="w-10 h-10 rounded-lg flex items-center justify-center"
-            style={{
-              background: 'linear-gradient(135deg, #d4764e 0%, #e8a87c 50%, #d4764e 100%)',
-              boxShadow: '0 2px 8px rgba(212,118,78,0.3)',
-            }}
-          >
-            <span className="text-[#0a0e14] font-bold text-sm">TR</span>
-          </div>
-          <div className="h-1 w-24 rounded-full overflow-hidden" style={{ background: 'rgba(192,204,224,0.06)' }}>
-            <div
-              className="h-full rounded-full"
-              style={{
-                background: 'linear-gradient(90deg, #d4764e, #e8a87c)',
-                animation: 'shimmer 1.5s infinite',
-                width: '40%',
-              }}
-            />
-          </div>
-        </div>
+      <div className="login-shell">
+        <div className="spinner" role="status" aria-label="Loading" />
       </div>
     )
   }
@@ -197,17 +177,15 @@ function App() {
             <Route path="*" element={
               <RequireAuth>
                 <Layout>
-                  <div className="p-8 text-center">
-                    <h1 className="text-2xl font-bold text-white">404 - Page Not Found</h1>
-                    <Link to="/dashboard" className="text-blue-400 hover:text-blue-300 mt-4 inline-block text-sm">Go to Dashboard</Link>
-                  </div>
+                  <PageHero eyebrow="404" title="Page not found." lede="That page doesn't exist." />
+                  <Link to="/dashboard" className="apple-text-link">Go to Dashboard</Link>
                 </Layout>
               </RequireAuth>
             } />
           </Routes>
         </AuthProvider>
       </Router>
-      <Toaster position="top-right" />
+      <Toaster position="top-right" toastOptions={{ style: { background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--hairline-1)' } }} />
     </QueryClientProvider>
     </ErrorBoundary>
   )

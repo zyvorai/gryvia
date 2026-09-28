@@ -1,4 +1,4 @@
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricNetwork
 metadata:
   name: sriov-highspeed
@@ -6,7 +6,7 @@ spec:
   networkType: sriov
   mtu: 9000
   nodeSelector:
-    tensorreaper.ai/sriov: "true"
+    gryvia.io/sriov: "true"
   sriov:
     physicalInterface: ens1f0
     numVfs: 32

@@ -1,10 +1,10 @@
-# TensorReaper CLI - Build Summary
+# Gryvia CLI - Build Summary
 
-Complete Rust-based command-line interface for TensorReaper GPU cluster management.
+Complete Rust-based command-line interface for Gryvia GPU cluster management.
 
 ## Overview
 
-The TensorReaper CLI is a production-ready command-line tool built with Rust that provides comprehensive management capabilities for GPU clusters. It offers beautiful output, real-time monitoring, and seamless integration with Kubernetes.
+The Gryvia CLI is a production-ready command-line tool built with Rust that provides comprehensive management capabilities for GPU clusters. It offers beautiful output, real-time monitoring, and seamless integration with Kubernetes.
 
 ## Implementation Statistics
 
@@ -17,7 +17,7 @@ The TensorReaper CLI is a production-ready command-line tool built with Rust tha
 ## Architecture
 
 ```
-tensorreaper (binary)
+gryvia (binary)
     ├── main.rs           - CLI entry point with clap
     ├── client.rs         - Kubernetes client wrapper
     ├── types.rs          - CRD type definitions
@@ -158,32 +158,32 @@ dialoguer = "0.11"        # Interactive prompts
 
 ```bash
 # Submit job
-tensorreaper submit -f job.yaml
+gryvia submit -f job.yaml
 
 # List jobs
-tensorreaper list jobs
+gryvia list jobs
 
 # View cluster
-tensorreaper cluster
+gryvia cluster
 
 # Check quota
-tensorreaper quota --team ml-research
+gryvia quota --team ml-research
 ```
 
 ### Advanced Usage
 
 ```bash
 # Watch cluster with 5-second refresh
-tensorreaper cluster --watch 5
+gryvia cluster --watch 5
 
 # Submit and wait for completion
-tensorreaper submit -f job.yaml --wait
+gryvia submit -f job.yaml --wait
 
 # Cost analysis with details
-tensorreaper cost --team ml-research --detailed
+gryvia cost --team ml-research --detailed
 
 # Delete with confirmation skip
-tensorreaper delete job old-experiment --yes
+gryvia delete job old-experiment --yes
 ```
 
 ## Output Examples
@@ -253,19 +253,19 @@ cd cli
 cargo build --release
 ```
 
-Binary will be at: `target/release/tensorreaper`
+Binary will be at: `target/release/gryvia`
 
 ### Install
 
 ```bash
-sudo cp target/release/tensorreaper /usr/local/bin/
+sudo cp target/release/gryvia /usr/local/bin/
 ```
 
 ### Verify
 
 ```bash
-tensorreaper --version
-tensorreaper --help
+gryvia --version
+gryvia --help
 ```
 
 ## Performance
@@ -279,7 +279,7 @@ tensorreaper --help
 
 ### Works With
 - Kubernetes 1.24+
-- TensorReaper operators
+- Gryvia operators
 - kubectl contexts
 - All major terminal emulators
 
@@ -310,9 +310,9 @@ tensorreaper --help
 
 ## Comparison with kubectl
 
-| Feature | kubectl | tensorreaper CLI |
+| Feature | kubectl | gryvia CLI |
 |---------|---------|----------------|
-| CRD Management | ✅ Generic | ✅ TensorReaper-specific |
+| CRD Management | ✅ Generic | ✅ Gryvia-specific |
 | Pretty Tables | ❌ Basic | ✅ Colored tables |
 | GPU Awareness | ❌ No | ✅ Full GPU metrics |
 | Cost Tracking | ❌ No | ✅ Built-in |
@@ -339,7 +339,7 @@ enum Commands {
 }
 
 // Implement in commands/mycommand.rs
-pub async fn execute(client: &TensorReaperClient, option: &str) -> Result<()> {
+pub async fn execute(client: &GryviaClient, option: &str) -> Result<()> {
     // Implementation
     Ok(())
 }
@@ -366,7 +366,7 @@ src/
 
 ## Conclusion
 
-The TensorReaper CLI provides a production-ready, user-friendly interface for managing GPU clusters:
+The Gryvia CLI provides a production-ready, user-friendly interface for managing GPU clusters:
 
 - **Complete**: 14 commands covering all major operations
 - **Fast**: Rust performance with <100ms startup

@@ -18,7 +18,7 @@ Build complex ML workflows with job dependencies and conditional execution.
 ### Simple Linear Workflow
 
 ```yaml
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricWorkflow
 metadata:
   name: training-pipeline
@@ -107,7 +107,7 @@ jobs:
 ### Scheduled Workflows
 
 ```yaml
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricWorkflow
 metadata:
   name: daily-retraining
@@ -277,13 +277,13 @@ A ─┼─> B3 ─┼─> C
     {
       "title": "Workflow Status",
       "targets": [{
-        "expr": "sum(tensorreaper_workflow_jobs_total) by (status)"
+        "expr": "sum(gryvia_workflow_jobs_total) by (status)"
       }]
     },
     {
       "title": "Workflow Duration",
       "targets": [{
-        "expr": "histogram_quantile(0.95, tensorreaper_workflow_duration_seconds_bucket)"
+        "expr": "histogram_quantile(0.95, gryvia_workflow_duration_seconds_bucket)"
       }]
     }
   ]
@@ -294,21 +294,21 @@ A ─┼─> B3 ─┼─> C
 
 ```prometheus
 # Total workflows
-tensorreaper_workflows_total 150
+gryvia_workflows_total 150
 
 # Workflow status
-tensorreaper_workflow_status{workflow="training-pipeline",status="running"} 1
+gryvia_workflow_status{workflow="training-pipeline",status="running"} 1
 
 # Job dependencies
-tensorreaper_workflow_dependencies_total{workflow="training-pipeline"} 7
+gryvia_workflow_dependencies_total{workflow="training-pipeline"} 7
 
 # Workflow duration
-tensorreaper_workflow_duration_seconds{workflow="training-pipeline"} 3600
+gryvia_workflow_duration_seconds{workflow="training-pipeline"} 3600
 ```
 
 ## Integration with Argo
 
-TensorReaper workflows are compatible with Argo Workflows:
+Gryvia workflows are compatible with Argo Workflows:
 
 ```bash
 # Convert to Argo
@@ -331,5 +331,5 @@ See `features/job-dependencies.yaml` for complete examples:
 
 ## Support
 
-- Workflow Issues: https://github.com/ssahani/TensorReaper/issues
-- Workflow Patterns: https://github.com/ssahani/TensorReaper/discussions
+- Workflow Issues: https://github.com/zyvorai/gryvia/issues
+- Workflow Patterns: https://github.com/zyvorai/gryvia/discussions

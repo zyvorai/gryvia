@@ -16,21 +16,21 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/quota-operator/api/v1"
-	"github.com/ssahani/TensorReaper/operators/quota-operator/pkg/predictor"
+	gryviav1 "github.com/zyvorai/gryvia/operators/quota-operator/api/v1"
+	"github.com/zyvorai/gryvia/operators/quota-operator/pkg/predictor"
 )
 
 const (
 	// Annotation keys for cost/time estimates injected into jobs
-	annotationEstimatedCost     = "tensorreaper.ai/estimated-cost"
-	annotationEstimatedDuration = "tensorreaper.ai/estimated-duration"
-	annotationEstimatedQueue    = "tensorreaper.ai/estimated-queue-wait"
-	annotationDryRun            = "tensorreaper.ai/dry-run"
-	annotationCostConfidence    = "tensorreaper.ai/cost-confidence"
+	annotationEstimatedCost     = "gryvia.io/estimated-cost"
+	annotationEstimatedDuration = "gryvia.io/estimated-duration"
+	annotationEstimatedQueue    = "gryvia.io/estimated-queue-wait"
+	annotationDryRun            = "gryvia.io/dry-run"
+	annotationCostConfidence    = "gryvia.io/cost-confidence"
 
 	// Annotation for tracking actual vs estimated for accuracy metrics
-	annotationActualCost     = "tensorreaper.ai/actual-cost"
-	annotationActualDuration = "tensorreaper.ai/actual-duration"
+	annotationActualCost     = "gryvia.io/actual-cost"
+	annotationActualDuration = "gryvia.io/actual-duration"
 )
 
 // FabricCostPredictorReconciler reconciles a FabricCostPredictor object
@@ -39,16 +39,16 @@ type FabricCostPredictorReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabriccostpredictors,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabriccostpredictors/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabriccostpredictors/finalizers,verbs=update
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricaijobs,verbs=get;list;watch;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabriccostpredictors,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabriccostpredictors/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabriccostpredictors/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch;update;patch
 
 func (r *FabricCostPredictorReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	// Fetch the FabricCostPredictor instance
-	costPredictor := &tensorreaperv1.FabricCostPredictor{}
+	costPredictor := &gryviav1.FabricCostPredictor{}
 	err := r.Get(ctx, req.NamespacedName, costPredictor)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -62,7 +62,7 @@ func (r *FabricCostPredictorReconciler) Reconcile(ctx context.Context, req ctrl.
 	logger.Info("Reconciling FabricCostPredictor", "name", costPredictor.Name)
 
 	// List all FabricAIJobs across all namespaces for historical data
-	allJobs := &tensorreaperv1.FabricAIJobList{}
+	allJobs := &gryviav1.FabricAIJobList{}
 	if err := r.List(ctx, allJobs); err != nil {
 		logger.Error(err, "Failed to list FabricAIJobs")
 		return ctrl.Result{}, err
@@ -93,8 +93,8 @@ func (r *FabricCostPredictorReconciler) Reconcile(ctx context.Context, req ctrl.
 // processNewJobs finds jobs that need cost/time estimates and annotates them
 func (r *FabricCostPredictorReconciler) processNewJobs(
 	ctx context.Context,
-	costPredictor *tensorreaperv1.FabricCostPredictor,
-	allJobs []tensorreaperv1.FabricAIJob,
+	costPredictor *gryviav1.FabricCostPredictor,
+	allJobs []gryviav1.FabricAIJob,
 ) error {
 	logger := log.FromContext(ctx)
 
@@ -150,9 +150,9 @@ func (r *FabricCostPredictorReconciler) processNewJobs(
 				}
 			}
 			if bestSaving.CostSavings > 0 {
-				job.Annotations["tensorreaper.ai/alternative-gpu"] = bestSaving.GPUType
-				job.Annotations["tensorreaper.ai/alternative-cost"] = fmt.Sprintf("%.2f", bestSaving.EstimatedCost)
-				job.Annotations["tensorreaper.ai/potential-savings"] = fmt.Sprintf("%.2f", bestSaving.CostSavings)
+				job.Annotations["gryvia.io/alternative-gpu"] = bestSaving.GPUType
+				job.Annotations["gryvia.io/alternative-cost"] = fmt.Sprintf("%.2f", bestSaving.EstimatedCost)
+				job.Annotations["gryvia.io/potential-savings"] = fmt.Sprintf("%.2f", bestSaving.CostSavings)
 			}
 		}
 
@@ -185,8 +185,8 @@ func (r *FabricCostPredictorReconciler) processNewJobs(
 // updateAccuracyMetrics compares estimates with actual results from completed jobs
 func (r *FabricCostPredictorReconciler) updateAccuracyMetrics(
 	ctx context.Context,
-	costPredictor *tensorreaperv1.FabricCostPredictor,
-	allJobs []tensorreaperv1.FabricAIJob,
+	costPredictor *gryviav1.FabricCostPredictor,
+	allJobs []gryviav1.FabricAIJob,
 ) {
 	var timeErrors []float64
 	var costErrors []float64
@@ -257,8 +257,8 @@ func (r *FabricCostPredictorReconciler) updateAccuracyMetrics(
 		}
 
 		// Track savings from recommendations
-		if savingsStr, ok := job.Annotations["tensorreaper.ai/potential-savings"]; ok {
-			if altGPU, altOK := job.Annotations["tensorreaper.ai/alternative-gpu"]; altOK && altGPU == job.Spec.GpuType {
+		if savingsStr, ok := job.Annotations["gryvia.io/potential-savings"]; ok {
+			if altGPU, altOK := job.Annotations["gryvia.io/alternative-gpu"]; altOK && altGPU == job.Spec.GpuType {
 				// User followed the recommendation
 				var savings float64
 				fmt.Sscanf(savingsStr, "%f", &savings)
@@ -288,7 +288,7 @@ func (r *FabricCostPredictorReconciler) updateAccuracyMetrics(
 }
 
 // getJobGPURate returns the GPU rate from predictor pricing for a given GPU type
-func getJobGPURate(p *tensorreaperv1.FabricCostPredictor, gpuType string) float64 {
+func getJobGPURate(p *gryviav1.FabricCostPredictor, gpuType string) float64 {
 	if len(p.Spec.Pricing.PerGpuHour) > 0 {
 		if rate, ok := p.Spec.Pricing.PerGpuHour[gpuType]; ok {
 			return rate
@@ -303,7 +303,7 @@ func getJobGPURate(p *tensorreaperv1.FabricCostPredictor, gpuType string) float6
 
 func (r *FabricCostPredictorReconciler) updateStatusCondition(
 	ctx context.Context,
-	costPredictor *tensorreaperv1.FabricCostPredictor,
+	costPredictor *gryviav1.FabricCostPredictor,
 	condType string,
 	status metav1.ConditionStatus,
 	reason, message string,
@@ -320,12 +320,12 @@ func (r *FabricCostPredictorReconciler) updateStatusCondition(
 // SetupWithManager sets up the controller with the Manager
 func (r *FabricCostPredictorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tensorreaperv1.FabricCostPredictor{}).
-		Watches(&tensorreaperv1.FabricAIJob{}, handler.EnqueueRequestsFromMapFunc(
+		For(&gryviav1.FabricCostPredictor{}).
+		Watches(&gryviav1.FabricAIJob{}, handler.EnqueueRequestsFromMapFunc(
 			func(ctx context.Context, obj client.Object) []reconcile.Request {
 				// When a FabricAIJob changes, re-reconcile all predictors
 				// to process new jobs and update accuracy metrics.
-				job := obj.(*tensorreaperv1.FabricAIJob)
+				job := obj.(*gryviav1.FabricAIJob)
 
 				// Only trigger for relevant job state changes
 				isDryRun := job.Annotations != nil && job.Annotations[annotationDryRun] == "true"
@@ -337,7 +337,7 @@ func (r *FabricCostPredictorReconciler) SetupWithManager(mgr ctrl.Manager) error
 					return nil
 				}
 
-				predictorList := &tensorreaperv1.FabricCostPredictorList{}
+				predictorList := &gryviav1.FabricCostPredictorList{}
 				if err := mgr.GetClient().List(ctx, predictorList); err != nil {
 					return nil
 				}

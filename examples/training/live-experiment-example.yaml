@@ -10,7 +10,7 @@
 #
 
 # Job 1: Learning rate 0.001
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricAIJob
 metadata:
   name: resnet-lr-001
@@ -34,7 +34,7 @@ spec:
 
 ---
 # Job 2: Learning rate 0.01
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricAIJob
 metadata:
   name: resnet-lr-01
@@ -58,7 +58,7 @@ spec:
 
 ---
 # Job 3: Learning rate 0.1
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricAIJob
 metadata:
   name: resnet-lr-1
@@ -82,7 +82,7 @@ spec:
 
 ---
 # Live Experiment: Compare all three jobs
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricLiveExperiment
 metadata:
   name: lr-sweep

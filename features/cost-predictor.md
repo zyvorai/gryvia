@@ -17,7 +17,7 @@ FabricCostPredictor analyzes historical job data to provide accurate estimates f
 ### Create a Cost Predictor
 
 ```yaml
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricCostPredictor
 metadata:
   name: default-predictor
@@ -75,12 +75,12 @@ kubectl apply -f cost-predictor.yaml
 Submit a job with the dry-run annotation to get an estimate without running it:
 
 ```yaml
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricAIJob
 metadata:
   name: llm-training-estimate
   annotations:
-    tensorreaper.ai/dry-run: "true"
+    gryvia.io/dry-run: "true"
 spec:
   type: training
   model: llama-70b
@@ -98,14 +98,14 @@ kubectl get fabricaijob llm-training-estimate -o jsonpath='{.metadata.annotation
 Output:
 ```json
 {
-  "tensorreaper.ai/dry-run": "true",
-  "tensorreaper.ai/estimated-cost": "384.00",
-  "tensorreaper.ai/estimated-duration": "6h0m0s",
-  "tensorreaper.ai/estimated-queue-wait": "12m30s",
-  "tensorreaper.ai/cost-confidence": "0.75",
-  "tensorreaper.ai/alternative-gpu": "A100-80G",
-  "tensorreaper.ai/alternative-cost": "192.00",
-  "tensorreaper.ai/potential-savings": "192.00"
+  "gryvia.io/dry-run": "true",
+  "gryvia.io/estimated-cost": "384.00",
+  "gryvia.io/estimated-duration": "6h0m0s",
+  "gryvia.io/estimated-queue-wait": "12m30s",
+  "gryvia.io/cost-confidence": "0.75",
+  "gryvia.io/alternative-gpu": "A100-80G",
+  "gryvia.io/alternative-cost": "192.00",
+  "gryvia.io/potential-savings": "192.00"
 }
 ```
 
@@ -327,5 +327,5 @@ Status fields:
 
 ## Support
 
-- Issues: https://github.com/ssahani/TensorReaper/issues
-- Discussions: https://github.com/ssahani/TensorReaper/discussions
+- Issues: https://github.com/zyvorai/gryvia/issues
+- Discussions: https://github.com/zyvorai/gryvia/discussions

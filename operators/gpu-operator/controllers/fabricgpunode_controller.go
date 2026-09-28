@@ -18,12 +18,12 @@ import (
 
 	"k8s.io/client-go/util/retry"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/gpu-operator/api/v1"
-	"github.com/ssahani/TensorReaper/operators/gpu-operator/pkg/gpu"
+	gryviav1 "github.com/zyvorai/gryvia/operators/gpu-operator/api/v1"
+	"github.com/zyvorai/gryvia/operators/gpu-operator/pkg/gpu"
 )
 
 const (
-	fabricGpuNodeFinalizer = "tensorreaper.ai/finalizer"
+	fabricGpuNodeFinalizer = "gryvia.io/finalizer"
 
 	// Status phases
 	PhaseInitializing = "Initializing"
@@ -44,9 +44,9 @@ type FabricGpuNodeReconciler struct {
 	Log    logr.Logger
 }
 
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricgpunodes,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricgpunodes/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricgpunodes/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricgpunodes,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricgpunodes/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricgpunodes/finalizers,verbs=update
 //+kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch;update;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop
@@ -54,7 +54,7 @@ func (r *FabricGpuNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	log := r.Log.WithValues("fabricgpunode", req.NamespacedName)
 
 	// Fetch the FabricGpuNode instance
-	fabricNode := &tensorreaperv1.FabricGpuNode{}
+	fabricNode := &gryviav1.FabricGpuNode{}
 	err := r.Get(ctx, req.NamespacedName, fabricNode)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -113,7 +113,7 @@ func (r *FabricGpuNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	return ctrl.Result{RequeueAfter: interval}, nil
 }
 
-func (r *FabricGpuNodeReconciler) reconcileGpuNode(ctx context.Context, fabricNode *tensorreaperv1.FabricGpuNode) (ctrl.Result, error) {
+func (r *FabricGpuNodeReconciler) reconcileGpuNode(ctx context.Context, fabricNode *gryviav1.FabricGpuNode) (ctrl.Result, error) {
 	log := r.Log.WithValues("fabricgpunode", fabricNode.Name)
 
 	// Get the Kubernetes node
@@ -189,7 +189,7 @@ func (r *FabricGpuNodeReconciler) reconcileGpuNode(ctx context.Context, fabricNo
 	return ctrl.Result{}, nil
 }
 
-func (r *FabricGpuNodeReconciler) ensureDrivers(ctx context.Context, fabricNode *tensorreaperv1.FabricGpuNode) error {
+func (r *FabricGpuNodeReconciler) ensureDrivers(ctx context.Context, fabricNode *gryviav1.FabricGpuNode) error {
 	// Check if NVIDIA drivers are installed
 	driverVersion, cudaVersion, err := gpu.GetDriverInfo()
 	if err != nil {
@@ -211,16 +211,16 @@ func (r *FabricGpuNodeReconciler) ensureDrivers(ctx context.Context, fabricNode 
 	return nil
 }
 
-func (r *FabricGpuNodeReconciler) checkGpuHealth(ctx context.Context, fabricNode *tensorreaperv1.FabricGpuNode) ([]tensorreaperv1.GpuStatus, error) {
+func (r *FabricGpuNodeReconciler) checkGpuHealth(ctx context.Context, fabricNode *gryviav1.FabricGpuNode) ([]gryviav1.GpuStatus, error) {
 	// Use NVML to get GPU information
 	gpuInfoList, err := gpu.GetGpuInfo(fabricNode.Spec.GpuCount)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get GPU info: %w", err)
 	}
 
-	gpuStatus := make([]tensorreaperv1.GpuStatus, 0, len(gpuInfoList))
+	gpuStatus := make([]gryviav1.GpuStatus, 0, len(gpuInfoList))
 	for _, gpuInfo := range gpuInfoList {
-		status := tensorreaperv1.GpuStatus{
+		status := gryviav1.GpuStatus{
 			Index:       gpuInfo.Index,
 			UUID:        gpuInfo.UUID,
 			Health:      gpuInfo.Health,
@@ -236,7 +236,7 @@ func (r *FabricGpuNodeReconciler) checkGpuHealth(ctx context.Context, fabricNode
 	return gpuStatus, nil
 }
 
-func (r *FabricGpuNodeReconciler) labelNode(ctx context.Context, fabricNode *tensorreaperv1.FabricGpuNode, node *corev1.Node) error {
+func (r *FabricGpuNodeReconciler) labelNode(ctx context.Context, fabricNode *gryviav1.FabricGpuNode, node *corev1.Node) error {
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		// Re-fetch node to get latest version
 		if err := r.Get(ctx, types.NamespacedName{Name: node.Name}, node); err != nil {
@@ -248,19 +248,19 @@ func (r *FabricGpuNodeReconciler) labelNode(ctx context.Context, fabricNode *ten
 			node.Labels = make(map[string]string)
 		}
 
-		// Standard TensorReaper labels
-		node.Labels["tensorreaper.ai/gpu"] = fabricNode.Spec.GpuType
-		node.Labels["tensorreaper.ai/gpu-count"] = fmt.Sprintf("%d", fabricNode.Spec.GpuCount)
-		node.Labels["tensorreaper.ai/rdma"] = fmt.Sprintf("%t", fabricNode.Spec.RDMA)
-		node.Labels["tensorreaper.ai/sriov"] = fmt.Sprintf("%t", fabricNode.Spec.SRIOV)
+		// Standard Gryvia labels
+		node.Labels["gryvia.io/gpu"] = fabricNode.Spec.GpuType
+		node.Labels["gryvia.io/gpu-count"] = fmt.Sprintf("%d", fabricNode.Spec.GpuCount)
+		node.Labels["gryvia.io/rdma"] = fmt.Sprintf("%t", fabricNode.Spec.RDMA)
+		node.Labels["gryvia.io/sriov"] = fmt.Sprintf("%t", fabricNode.Spec.SRIOV)
 
 		if fabricNode.Spec.Interconnect != "" {
-			node.Labels["tensorreaper.ai/interconnect"] = fabricNode.Spec.Interconnect
+			node.Labels["gryvia.io/interconnect"] = fabricNode.Spec.Interconnect
 		}
 
-		// Apply custom labels from spec (only allow tensorreaper.ai/ prefix)
+		// Apply custom labels from spec (only allow gryvia.io/ prefix)
 		for k, v := range fabricNode.Spec.Labels {
-			if strings.HasPrefix(k, "tensorreaper.ai/") {
+			if strings.HasPrefix(k, "gryvia.io/") {
 				node.Labels[k] = v
 			}
 		}
@@ -270,7 +270,7 @@ func (r *FabricGpuNodeReconciler) labelNode(ctx context.Context, fabricNode *ten
 	})
 }
 
-func (r *FabricGpuNodeReconciler) handleDeletion(ctx context.Context, fabricNode *tensorreaperv1.FabricGpuNode) (ctrl.Result, error) {
+func (r *FabricGpuNodeReconciler) handleDeletion(ctx context.Context, fabricNode *gryviav1.FabricGpuNode) (ctrl.Result, error) {
 	if controllerutil.ContainsFinalizer(fabricNode, fabricGpuNodeFinalizer) {
 		// Cleanup: remove labels from node
 		node := &corev1.Node{}
@@ -280,17 +280,17 @@ func (r *FabricGpuNodeReconciler) handleDeletion(ctx context.Context, fabricNode
 				if err := r.Get(ctx, types.NamespacedName{Name: fabricNode.Spec.NodeName}, node); err != nil {
 					return err
 				}
-				// Remove TensorReaper labels
+				// Remove Gryvia labels
 				if node.Labels != nil {
-					delete(node.Labels, "tensorreaper.ai/gpu")
-					delete(node.Labels, "tensorreaper.ai/gpu-count")
-					delete(node.Labels, "tensorreaper.ai/rdma")
-					delete(node.Labels, "tensorreaper.ai/sriov")
-					delete(node.Labels, "tensorreaper.ai/interconnect")
+					delete(node.Labels, "gryvia.io/gpu")
+					delete(node.Labels, "gryvia.io/gpu-count")
+					delete(node.Labels, "gryvia.io/rdma")
+					delete(node.Labels, "gryvia.io/sriov")
+					delete(node.Labels, "gryvia.io/interconnect")
 
-					// Remove custom labels with tensorreaper.ai/ prefix from spec
+					// Remove custom labels with gryvia.io/ prefix from spec
 					for k := range fabricNode.Spec.Labels {
-						if strings.HasPrefix(k, "tensorreaper.ai/") {
+						if strings.HasPrefix(k, "gryvia.io/") {
 							delete(node.Labels, k)
 						}
 					}
@@ -314,7 +314,7 @@ func (r *FabricGpuNodeReconciler) handleDeletion(ctx context.Context, fabricNode
 	return ctrl.Result{}, nil
 }
 
-func (r *FabricGpuNodeReconciler) updateCondition(fabricNode *tensorreaperv1.FabricGpuNode, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *FabricGpuNodeReconciler) updateCondition(fabricNode *gryviav1.FabricGpuNode, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -347,7 +347,7 @@ func (r *FabricGpuNodeReconciler) updateCondition(fabricNode *tensorreaperv1.Fab
 
 // calculateBackoff returns an exponential backoff duration based on the number
 // of consecutive health check failures (indicated by the Healthy condition being False).
-func (r *FabricGpuNodeReconciler) calculateBackoff(fabricNode *tensorreaperv1.FabricGpuNode) time.Duration {
+func (r *FabricGpuNodeReconciler) calculateBackoff(fabricNode *gryviav1.FabricGpuNode) time.Duration {
 	const (
 		minBackoff = 30 * time.Second
 		maxBackoff = 10 * time.Minute
@@ -368,7 +368,7 @@ func (r *FabricGpuNodeReconciler) calculateBackoff(fabricNode *tensorreaperv1.Fa
 	return backoff
 }
 
-func (r *FabricGpuNodeReconciler) allConditionsTrue(fabricNode *tensorreaperv1.FabricGpuNode) bool {
+func (r *FabricGpuNodeReconciler) allConditionsTrue(fabricNode *gryviav1.FabricGpuNode) bool {
 	requiredConditions := []string{ConditionDriversInstalled, ConditionNodeLabeled, ConditionHealthy}
 	for _, reqCond := range requiredConditions {
 		found := false
@@ -385,7 +385,7 @@ func (r *FabricGpuNodeReconciler) allConditionsTrue(fabricNode *tensorreaperv1.F
 	return true
 }
 
-func (r *FabricGpuNodeReconciler) anyConditionFalse(fabricNode *tensorreaperv1.FabricGpuNode) bool {
+func (r *FabricGpuNodeReconciler) anyConditionFalse(fabricNode *gryviav1.FabricGpuNode) bool {
 	for _, cond := range fabricNode.Status.Conditions {
 		if cond.Status == metav1.ConditionFalse {
 			return true
@@ -397,6 +397,6 @@ func (r *FabricGpuNodeReconciler) anyConditionFalse(fabricNode *tensorreaperv1.F
 // SetupWithManager sets up the controller with the Manager.
 func (r *FabricGpuNodeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tensorreaperv1.FabricGpuNode{}).
+		For(&gryviav1.FabricGpuNode{}).
 		Complete(r)
 }

@@ -175,9 +175,16 @@ pub fn colorize_status(status: &str) -> String {
     }
 }
 
+/// Time elapsed since a Kubernetes timestamp.
+pub fn age_since(ts: &k8s_openapi::apimachinery::pkg::apis::meta::v1::Time) -> chrono::Duration {
+    chrono::Utc::now().signed_duration_since(
+        chrono::DateTime::from_timestamp(ts.0.as_second(), 0).unwrap_or_default(),
+    )
+}
+
 fn format_age(timestamp: Option<&k8s_openapi::apimachinery::pkg::apis::meta::v1::Time>) -> String {
     if let Some(ts) = timestamp {
-        let age = chrono::Utc::now().signed_duration_since(ts.0);
+        let age = age_since(ts);
 
         if age.num_seconds() < 0 {
             "clock skew".to_string()

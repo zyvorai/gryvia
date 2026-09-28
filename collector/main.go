@@ -1,4 +1,4 @@
-// Package main is the entry point for the TensorReaper flow collector.
+// Package main is the entry point for the Gryvia flow collector.
 //
 // It loads compiled eBPF programs, attaches them to the appropriate
 // kernel hooks, starts perf-event readers, exposes Prometheus metrics
@@ -18,22 +18,22 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
 
-	"github.com/ssahani/TensorReaper/collector/pkg/aggregator"
-	"github.com/ssahani/TensorReaper/collector/pkg/ai"
-	"github.com/ssahani/TensorReaper/collector/pkg/anomaly"
-	"github.com/ssahani/TensorReaper/collector/pkg/decoder"
-	"github.com/ssahani/TensorReaper/collector/pkg/exporter"
-	"github.com/ssahani/TensorReaper/collector/pkg/graph"
-	"github.com/ssahani/TensorReaper/collector/pkg/loader"
-	"github.com/ssahani/TensorReaper/collector/pkg/security"
-	"github.com/ssahani/TensorReaper/collector/pkg/tuning"
+	"github.com/zyvorai/gryvia/collector/pkg/aggregator"
+	"github.com/zyvorai/gryvia/collector/pkg/ai"
+	"github.com/zyvorai/gryvia/collector/pkg/anomaly"
+	"github.com/zyvorai/gryvia/collector/pkg/decoder"
+	"github.com/zyvorai/gryvia/collector/pkg/exporter"
+	"github.com/zyvorai/gryvia/collector/pkg/graph"
+	"github.com/zyvorai/gryvia/collector/pkg/loader"
+	"github.com/zyvorai/gryvia/collector/pkg/security"
+	"github.com/zyvorai/gryvia/collector/pkg/tuning"
 )
 
 func main() {
 	var (
 		metricsAddr = flag.String("metrics-addr", ":9090", "Prometheus metrics listen address")
 		natsURL     = flag.String("nats-url", "", "NATS server URL (optional)")
-		ebpfDir     = flag.String("ebpf-dir", "/opt/tensorreaper/ebpf", "Directory containing compiled eBPF .o files")
+		ebpfDir     = flag.String("ebpf-dir", "/opt/gryvia/ebpf", "Directory containing compiled eBPF .o files")
 		iface       = flag.String("iface", "eth0", "Network interface for XDP attachment")
 		windowSec   = flag.Int("window", 300, "Aggregation sliding window in seconds")
 	)
@@ -47,7 +47,7 @@ func main() {
 	defer func() { _ = logger.Sync() }()
 	log := logger.Sugar()
 
-	log.Infow("starting TensorReaper collector",
+	log.Infow("starting Gryvia collector",
 		"metrics_addr", *metricsAddr,
 		"ebpf_dir", *ebpfDir,
 		"iface", *iface,
@@ -185,7 +185,7 @@ func main() {
 	if *natsURL != "" {
 		log.Infow("NATS streaming enabled", "url", *natsURL)
 		// NATS connection would be established here.
-		// Events would be published to "tensorreaper.flows" subject.
+		// Events would be published to "gryvia.flows" subject.
 	}
 
 	// ---- HTTP server for metrics and API endpoints ----

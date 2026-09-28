@@ -9,8 +9,8 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/quota-operator/api/v1"
-	"github.com/ssahani/TensorReaper/operators/quota-operator/pkg/budget"
+	gryviav1 "github.com/zyvorai/gryvia/operators/quota-operator/api/v1"
+	"github.com/zyvorai/gryvia/operators/quota-operator/pkg/budget"
 )
 
 // JobEstimate holds cost/time/queue predictions for a job
@@ -70,7 +70,7 @@ type AlternativeConfig struct {
 // SimilarJob represents a historical job matched by similarity
 type SimilarJob struct {
 	// Job is the historical FabricAIJob
-	Job tensorreaperv1.FabricAIJob
+	Job gryviav1.FabricAIJob
 
 	// SimilarityScore is how similar this job is to the query (0-1)
 	SimilarityScore float64
@@ -90,9 +90,9 @@ const spotDiscount = 0.4
 func EstimateJobCost(
 	ctx context.Context,
 	k8sClient client.Client,
-	predictor *tensorreaperv1.FabricCostPredictor,
-	job *tensorreaperv1.FabricAIJob,
-	allJobs []tensorreaperv1.FabricAIJob,
+	predictor *gryviav1.FabricCostPredictor,
+	job *gryviav1.FabricAIJob,
+	allJobs []gryviav1.FabricAIJob,
 ) (*JobEstimate, error) {
 	// Find similar historical jobs
 	similarJobs := FindSimilarJobs(predictor, job, allJobs)
@@ -151,9 +151,9 @@ func EstimateJobCost(
 // FindSimilarJobs finds historical jobs similar to the given job based on
 // the configured similarity factors.
 func FindSimilarJobs(
-	predictor *tensorreaperv1.FabricCostPredictor,
-	job *tensorreaperv1.FabricAIJob,
-	allJobs []tensorreaperv1.FabricAIJob,
+	predictor *gryviav1.FabricCostPredictor,
+	job *gryviav1.FabricAIJob,
+	allJobs []gryviav1.FabricAIJob,
 ) []SimilarJob {
 	lookbackDays := predictor.Spec.HistoricalData.LookbackDays
 	if lookbackDays <= 0 {
@@ -211,9 +211,9 @@ func FindSimilarJobs(
 func GenerateAlternatives(
 	ctx context.Context,
 	k8sClient client.Client,
-	predictor *tensorreaperv1.FabricCostPredictor,
-	job *tensorreaperv1.FabricAIJob,
-	allJobs []tensorreaperv1.FabricAIJob,
+	predictor *gryviav1.FabricCostPredictor,
+	job *gryviav1.FabricAIJob,
+	allJobs []gryviav1.FabricAIJob,
 	baseEstimate *JobEstimate,
 ) ([]AlternativeConfig, error) {
 	if !predictor.Spec.Alternatives.Enabled {
@@ -227,7 +227,7 @@ func GenerateAlternatives(
 
 	strategies := predictor.Spec.Alternatives.Strategies
 	if len(strategies) == 0 {
-		strategies = []tensorreaperv1.AlternativeStrategy{
+		strategies = []gryviav1.AlternativeStrategy{
 			{Name: "cost-optimized", Constraint: "minimize-cost"},
 			{Name: "speed-optimized", Constraint: "minimize-time"},
 		}
@@ -262,9 +262,9 @@ func GenerateAlternatives(
 func QueueWaitEstimate(
 	ctx context.Context,
 	k8sClient client.Client,
-	predictor *tensorreaperv1.FabricCostPredictor,
-	job *tensorreaperv1.FabricAIJob,
-	allJobs []tensorreaperv1.FabricAIJob,
+	predictor *gryviav1.FabricCostPredictor,
+	job *gryviav1.FabricAIJob,
+	allJobs []gryviav1.FabricAIJob,
 ) time.Duration {
 	// Collect queue wait times from recent jobs
 	lookbackDays := predictor.Spec.HistoricalData.LookbackDays
@@ -363,7 +363,7 @@ func QueueWaitEstimate(
 }
 
 // computeSimilarity calculates a similarity score between a target job and a candidate
-func computeSimilarity(factors map[string]bool, target *tensorreaperv1.FabricAIJob, candidate *tensorreaperv1.FabricAIJob) float64 {
+func computeSimilarity(factors map[string]bool, target *gryviav1.FabricAIJob, candidate *gryviav1.FabricAIJob) float64 {
 	if len(factors) == 0 {
 		return 0
 	}
@@ -436,7 +436,7 @@ func computeSimilarity(factors map[string]bool, target *tensorreaperv1.FabricAIJ
 }
 
 // estimateTrainingTime estimates training duration from similar historical jobs
-func estimateTrainingTime(predictor *tensorreaperv1.FabricCostPredictor, similarJobs []SimilarJob) time.Duration {
+func estimateTrainingTime(predictor *gryviav1.FabricCostPredictor, similarJobs []SimilarJob) time.Duration {
 	if len(similarJobs) == 0 {
 		return time.Hour
 	}
@@ -522,12 +522,12 @@ func calculateConfidence(similarJobs []SimilarJob, minSamples int) float64 {
 func findBestAlternative(
 	ctx context.Context,
 	k8sClient client.Client,
-	predictor *tensorreaperv1.FabricCostPredictor,
-	job *tensorreaperv1.FabricAIJob,
-	allJobs []tensorreaperv1.FabricAIJob,
+	predictor *gryviav1.FabricCostPredictor,
+	job *gryviav1.FabricAIJob,
+	allJobs []gryviav1.FabricAIJob,
 	baseEstimate *JobEstimate,
 	gpuTypes []string,
-	strategy tensorreaperv1.AlternativeStrategy,
+	strategy gryviav1.AlternativeStrategy,
 ) (*AlternativeConfig, error) {
 	var best *AlternativeConfig
 	var bestScore float64
@@ -539,7 +539,7 @@ func findBestAlternative(
 		}
 
 		// Create a hypothetical job with this GPU type
-		altJob := &tensorreaperv1.FabricAIJob{}
+		altJob := &gryviav1.FabricAIJob{}
 		*altJob = *job
 		altJob.Spec.GpuType = gpuType
 
@@ -629,7 +629,7 @@ func scoreAlternative(alt *AlternativeConfig, base *JobEstimate, constraint stri
 }
 
 // getGPURate returns the per-hour rate for a GPU type from predictor pricing config
-func getGPURate(predictor *tensorreaperv1.FabricCostPredictor, gpuType string) float64 {
+func getGPURate(predictor *gryviav1.FabricCostPredictor, gpuType string) float64 {
 	if len(predictor.Spec.Pricing.PerGpuHour) > 0 {
 		if rate, exists := predictor.Spec.Pricing.PerGpuHour[gpuType]; exists {
 			return rate
@@ -683,7 +683,7 @@ func parseStorageGB(storageRequest string) float64 {
 }
 
 // getFramework extracts the framework from a job's distributed config
-func getFramework(job *tensorreaperv1.FabricAIJob) string {
+func getFramework(job *gryviav1.FabricAIJob) string {
 	if job.Spec.Distributed != nil {
 		return job.Spec.Distributed.Framework
 	}

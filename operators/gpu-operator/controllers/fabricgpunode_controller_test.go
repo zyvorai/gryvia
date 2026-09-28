@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"testing"
 	"time"
 
@@ -14,12 +15,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/gpu-operator/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/gpu-operator/api/v1"
 )
 
 func newGpuNodeTestScheme() *runtime.Scheme {
 	s := runtime.NewScheme()
-	_ = tensorreaperv1.AddToScheme(s)
+	_ = gryviav1.AddToScheme(s)
 	_ = corev1.AddToScheme(s)
 	return s
 }
@@ -29,7 +30,7 @@ func newGpuNodeReconciler(objs ...client.Object) (*FabricGpuNodeReconciler, clie
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(objs...).
-		WithStatusSubresource(&tensorreaperv1.FabricGpuNode{}).
+		WithStatusSubresource(&gryviav1.FabricGpuNode{}).
 		Build()
 	r := &FabricGpuNodeReconciler{
 		Client: fakeClient,
@@ -39,18 +40,18 @@ func newGpuNodeReconciler(objs ...client.Object) (*FabricGpuNodeReconciler, clie
 	return r, fakeClient
 }
 
-func newTestFabricGpuNode(name string) *tensorreaperv1.FabricGpuNode {
-	return &tensorreaperv1.FabricGpuNode{
+func newTestFabricGpuNode(name string) *gryviav1.FabricGpuNode {
+	return &gryviav1.FabricGpuNode{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
-		Spec: tensorreaperv1.FabricGpuNodeSpec{
+		Spec: gryviav1.FabricGpuNodeSpec{
 			NodeName: "gpu-node-1",
 			GpuType:  "H100",
 			GpuCount: 8,
 			RDMA:     true,
 			SRIOV:    false,
-			HealthCheck: &tensorreaperv1.HealthCheckConfig{
+			HealthCheck: &gryviav1.HealthCheckConfig{
 				Enabled:         true,
 				IntervalSeconds: 120,
 			},
@@ -90,7 +91,7 @@ func TestGpuNode_Reconcile_AddsFinalizer(t *testing.T) {
 	}
 
 	// Verify finalizer was added
-	updated := &tensorreaperv1.FabricGpuNode{}
+	updated := &gryviav1.FabricGpuNode{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-gpu-node"}, updated); err != nil {
 		t.Fatalf("failed to get updated resource: %v", err)
 	}
@@ -118,7 +119,7 @@ func TestGpuNode_Reconcile_InitializesStatus(t *testing.T) {
 		t.Error("expected requeue after status initialization")
 	}
 
-	updated := &tensorreaperv1.FabricGpuNode{}
+	updated := &gryviav1.FabricGpuNode{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-gpu-node"}, updated); err != nil {
 		t.Fatalf("failed to get updated resource: %v", err)
 	}
@@ -137,11 +138,11 @@ func TestGpuNode_Reconcile_DeletionRemovesLabels(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "gpu-node-1",
 			Labels: map[string]string{
-				"tensorreaper.ai/gpu":       "H100",
-				"tensorreaper.ai/gpu-count": "8",
-				"tensorreaper.ai/rdma":      "true",
-				"tensorreaper.ai/sriov":     "false",
-				"other-label":              "keep-me",
+				"gryvia.io/gpu":       "H100",
+				"gryvia.io/gpu-count": "8",
+				"gryvia.io/rdma":      "true",
+				"gryvia.io/sriov":     "false",
+				"other-label":         "keep-me",
 			},
 		},
 	}
@@ -161,19 +162,22 @@ func TestGpuNode_Reconcile_DeletionRemovesLabels(t *testing.T) {
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "gpu-node-1"}, updatedNode); err != nil {
 		t.Fatalf("failed to get updated node: %v", err)
 	}
-	if _, exists := updatedNode.Labels["tensorreaper.ai/gpu"]; exists {
-		t.Error("expected tensorreaper.ai/gpu label to be removed")
+	if _, exists := updatedNode.Labels["gryvia.io/gpu"]; exists {
+		t.Error("expected gryvia.io/gpu label to be removed")
 	}
-	if _, exists := updatedNode.Labels["tensorreaper.ai/gpu-count"]; exists {
-		t.Error("expected tensorreaper.ai/gpu-count label to be removed")
+	if _, exists := updatedNode.Labels["gryvia.io/gpu-count"]; exists {
+		t.Error("expected gryvia.io/gpu-count label to be removed")
 	}
 	if val, exists := updatedNode.Labels["other-label"]; !exists || val != "keep-me" {
-		t.Error("expected non-tensorreaper labels to be preserved")
+		t.Error("expected non-gryvia labels to be preserved")
 	}
 
 	// Verify finalizer was removed
-	updatedGpu := &tensorreaperv1.FabricGpuNode{}
+	updatedGpu := &gryviav1.FabricGpuNode{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-gpu-node"}, updatedGpu); err != nil {
+		if apierrors.IsNotFound(err) {
+			return // object is gone once its last finalizer is removed
+		}
 		t.Fatalf("failed to get updated gpu node: %v", err)
 	}
 	if controllerutil.ContainsFinalizer(updatedGpu, fabricGpuNodeFinalizer) {
@@ -303,8 +307,8 @@ func TestGpuNode_LabelNode(t *testing.T) {
 	node := newTestFabricGpuNode("test-gpu-node")
 	node.Spec.Interconnect = "nvlink"
 	node.Spec.Labels = map[string]string{
-		"tensorreaper.ai/custom": "value",
-		"disallowed/label":       "should-not-be-set",
+		"gryvia.io/custom": "value",
+		"disallowed/label": "should-not-be-set",
 	}
 
 	k8sNode := &corev1.Node{
@@ -326,12 +330,12 @@ func TestGpuNode_LabelNode(t *testing.T) {
 	}
 
 	expectedLabels := map[string]string{
-		"tensorreaper.ai/gpu":       "H100",
-		"tensorreaper.ai/gpu-count": "8",
-		"tensorreaper.ai/rdma":      "true",
-		"tensorreaper.ai/sriov":     "false",
-		"tensorreaper.ai/interconnect": "nvlink",
-		"tensorreaper.ai/custom":    "value",
+		"gryvia.io/gpu":          "H100",
+		"gryvia.io/gpu-count":    "8",
+		"gryvia.io/rdma":         "true",
+		"gryvia.io/sriov":        "false",
+		"gryvia.io/interconnect": "nvlink",
+		"gryvia.io/custom":       "value",
 	}
 	for key, expectedVal := range expectedLabels {
 		if val, ok := updatedNode.Labels[key]; !ok || val != expectedVal {

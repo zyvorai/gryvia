@@ -5,7 +5,7 @@ use prettytable::{Table, Row, Cell, format};
 use colored::*;
 use serde_json::json;
 
-use crate::client::TensorReaperClient;
+use crate::client::GryviaClient;
 
 pub enum SecurityAction {
     Alerts {
@@ -29,7 +29,7 @@ pub enum SecurityAction {
     },
 }
 
-pub async fn execute(client: &TensorReaperClient, action: SecurityAction) -> Result<()> {
+pub async fn execute(client: &GryviaClient, action: SecurityAction) -> Result<()> {
     match action {
         SecurityAction::Alerts { severity, alert_type, namespace } => {
             execute_alerts(client, &namespace, severity.as_deref(), alert_type.as_deref()).await
@@ -47,7 +47,7 @@ pub async fn execute(client: &TensorReaperClient, action: SecurityAction) -> Res
 }
 
 async fn execute_alerts(
-    client: &TensorReaperClient,
+    client: &GryviaClient,
     namespace: &str,
     severity: Option<&str>,
     alert_type: Option<&str>,
@@ -56,7 +56,7 @@ async fn execute_alerts(
     println!();
 
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
-        "tensorreaper.ai",
+        "gryvia.io",
         "v1",
         "FabricSecurityPolicy",
     ));
@@ -188,12 +188,12 @@ fn classify_alert_severity(alert_type: &str, count: i64) -> &'static str {
     }
 }
 
-async fn execute_status(client: &TensorReaperClient, namespace: &str) -> Result<()> {
+async fn execute_status(client: &GryviaClient, namespace: &str) -> Result<()> {
     println!("{}", "━━━ Security Status Overview ━━━".bold().cyan());
     println!();
 
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
-        "tensorreaper.ai",
+        "gryvia.io",
         "v1",
         "FabricSecurityPolicy",
     ));
@@ -278,7 +278,7 @@ async fn execute_status(client: &TensorReaperClient, namespace: &str) -> Result<
 }
 
 async fn execute_policy_list(
-    client: &TensorReaperClient,
+    client: &GryviaClient,
     namespace: &str,
     output: &str,
 ) -> Result<()> {
@@ -286,7 +286,7 @@ async fn execute_policy_list(
     println!();
 
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
-        "tensorreaper.ai",
+        "gryvia.io",
         "v1",
         "FabricSecurityPolicy",
     ));
@@ -400,7 +400,7 @@ async fn execute_policy_list(
 }
 
 async fn execute_policy_create(
-    client: &TensorReaperClient,
+    client: &GryviaClient,
     namespace: &str,
     name: &str,
     target_namespaces: &[String],
@@ -411,7 +411,7 @@ async fn execute_policy_create(
     println!();
 
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
-        "tensorreaper.ai",
+        "gryvia.io",
         "v1",
         "FabricSecurityPolicy",
     ));
@@ -433,7 +433,7 @@ async fn execute_policy_create(
         .collect();
 
     let policy_obj = serde_json::from_value(json!({
-        "apiVersion": "tensorreaper.ai/v1",
+        "apiVersion": "gryvia.io/v1",
         "kind": "FabricSecurityPolicy",
         "metadata": {
             "name": name,

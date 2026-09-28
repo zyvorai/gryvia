@@ -19,7 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/ai-operator/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 )
 
 const (
@@ -29,9 +29,9 @@ const (
 	PhaseRollingBack    = "RollingBack"
 
 	// Condition types for inference service
-	ConditionInferenceReady  = "InferenceReady"
-	ConditionCanaryActive    = "CanaryActive"
-	ConditionHealthy         = "Healthy"
+	ConditionInferenceReady = "InferenceReady"
+	ConditionCanaryActive   = "CanaryActive"
+	ConditionHealthy        = "Healthy"
 )
 
 // FabricInferenceServiceReconciler reconciles a FabricInferenceService object
@@ -41,9 +41,9 @@ type FabricInferenceServiceReconciler struct {
 	Log    logr.Logger
 }
 
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricinferenceservices,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricinferenceservices/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricinferenceservices/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricinferenceservices,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricinferenceservices/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricinferenceservices/finalizers,verbs=update
 //+kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=autoscaling,resources=horizontalpodautoscalers,verbs=get;list;watch;create;update;patch;delete
@@ -53,7 +53,7 @@ func (r *FabricInferenceServiceReconciler) Reconcile(ctx context.Context, req ct
 	log := r.Log.WithValues("fabricinferenceservice", req.NamespacedName)
 
 	// Fetch the FabricInferenceService instance
-	svc := &tensorreaperv1.FabricInferenceService{}
+	svc := &gryviav1.FabricInferenceService{}
 	err := r.Get(ctx, req.NamespacedName, svc)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -89,7 +89,7 @@ func (r *FabricInferenceServiceReconciler) Reconcile(ctx context.Context, req ct
 	return result, nil
 }
 
-func (r *FabricInferenceServiceReconciler) reconcileInferenceService(ctx context.Context, svc *tensorreaperv1.FabricInferenceService) (ctrl.Result, error) {
+func (r *FabricInferenceServiceReconciler) reconcileInferenceService(ctx context.Context, svc *gryviav1.FabricInferenceService) (ctrl.Result, error) {
 	log := r.Log.WithValues("fabricinferenceservice", svc.Name)
 
 	// Phase 1: Ensure primary Deployment
@@ -138,7 +138,7 @@ func (r *FabricInferenceServiceReconciler) reconcileInferenceService(ctx context
 }
 
 // ensureDeployment creates or updates the inference Deployment.
-func (r *FabricInferenceServiceReconciler) ensureDeployment(ctx context.Context, svc *tensorreaperv1.FabricInferenceService) error {
+func (r *FabricInferenceServiceReconciler) ensureDeployment(ctx context.Context, svc *gryviav1.FabricInferenceService) error {
 	deployName := fmt.Sprintf("%s-inference", svc.Name)
 	deploy := &appsv1.Deployment{}
 	err := r.Get(ctx, types.NamespacedName{Namespace: svc.Namespace, Name: deployName}, deploy)
@@ -177,13 +177,13 @@ func (r *FabricInferenceServiceReconciler) ensureDeployment(ctx context.Context,
 }
 
 // buildDeployment constructs the Deployment spec for the inference service.
-func (r *FabricInferenceServiceReconciler) buildDeployment(svc *tensorreaperv1.FabricInferenceService, name string, isCanary bool) *appsv1.Deployment {
+func (r *FabricInferenceServiceReconciler) buildDeployment(svc *gryviav1.FabricInferenceService, name string, isCanary bool) *appsv1.Deployment {
 	labels := map[string]string{
-		"tensorreaper.ai/inference": svc.Name,
-		"tensorreaper.ai/component": "inference-server",
+		"gryvia.io/inference": svc.Name,
+		"gryvia.io/component": "inference-server",
 	}
 	if isCanary {
-		labels["tensorreaper.ai/canary"] = "true"
+		labels["gryvia.io/canary"] = "true"
 	}
 
 	image := r.getBackendImage(svc)
@@ -248,7 +248,7 @@ func (r *FabricInferenceServiceReconciler) buildDeployment(svc *tensorreaperv1.F
 
 	nodeSelector := map[string]string{}
 	if svc.Spec.GPUType != "" && svc.Spec.GPUType != "any" {
-		nodeSelector["tensorreaper.ai/gpu"] = svc.Spec.GPUType
+		nodeSelector["gryvia.io/gpu"] = svc.Spec.GPUType
 	}
 
 	deploy := &appsv1.Deployment{
@@ -281,19 +281,19 @@ func (r *FabricInferenceServiceReconciler) buildDeployment(svc *tensorreaperv1.F
 }
 
 // getBackendImage returns the default container image for the given backend.
-func (r *FabricInferenceServiceReconciler) getBackendImage(svc *tensorreaperv1.FabricInferenceService) string {
+func (r *FabricInferenceServiceReconciler) getBackendImage(svc *gryviav1.FabricInferenceService) string {
 	if svc.Spec.Image != "" {
 		return svc.Spec.Image
 	}
 
 	switch svc.Spec.Backend {
-	case tensorreaperv1.BackendVLLM:
+	case gryviav1.BackendVLLM:
 		return "vllm/vllm-openai:latest"
-	case tensorreaperv1.BackendTriton:
+	case gryviav1.BackendTriton:
 		return "nvcr.io/nvidia/tritonserver:24.01-py3"
-	case tensorreaperv1.BackendTensorRTLLM:
+	case gryviav1.BackendTensorRTLLM:
 		return "nvcr.io/nvidia/tritonserver:24.01-trtllm-python-py3"
-	case tensorreaperv1.BackendTorchServe:
+	case gryviav1.BackendTorchServe:
 		return "pytorch/torchserve:latest-gpu"
 	default:
 		return "vllm/vllm-openai:latest"
@@ -301,7 +301,7 @@ func (r *FabricInferenceServiceReconciler) getBackendImage(svc *tensorreaperv1.F
 }
 
 // getHealthPath returns the health check path.
-func (r *FabricInferenceServiceReconciler) getHealthPath(svc *tensorreaperv1.FabricInferenceService) string {
+func (r *FabricInferenceServiceReconciler) getHealthPath(svc *gryviav1.FabricInferenceService) string {
 	if svc.Spec.HealthCheck != nil && svc.Spec.HealthCheck.Path != "" {
 		return svc.Spec.HealthCheck.Path
 	}
@@ -309,7 +309,7 @@ func (r *FabricInferenceServiceReconciler) getHealthPath(svc *tensorreaperv1.Fab
 }
 
 // ensureService creates or updates the Kubernetes Service for inference.
-func (r *FabricInferenceServiceReconciler) ensureService(ctx context.Context, svc *tensorreaperv1.FabricInferenceService) error {
+func (r *FabricInferenceServiceReconciler) ensureService(ctx context.Context, svc *gryviav1.FabricInferenceService) error {
 	svcName := fmt.Sprintf("%s-inference", svc.Name)
 	k8sSvc := &corev1.Service{}
 	err := r.Get(ctx, types.NamespacedName{Namespace: svc.Namespace, Name: svcName}, k8sSvc)
@@ -325,14 +325,14 @@ func (r *FabricInferenceServiceReconciler) ensureService(ctx context.Context, sv
 				Name:      svcName,
 				Namespace: svc.Namespace,
 				Labels: map[string]string{
-					"tensorreaper.ai/inference":  svc.Name,
-					"tensorreaper.ai/component": "inference-service",
+					"gryvia.io/inference": svc.Name,
+					"gryvia.io/component": "inference-service",
 				},
 			},
 			Spec: corev1.ServiceSpec{
 				Selector: map[string]string{
-					"tensorreaper.ai/inference":  svc.Name,
-					"tensorreaper.ai/component": "inference-server",
+					"gryvia.io/inference": svc.Name,
+					"gryvia.io/component": "inference-server",
 				},
 				Ports: []corev1.ServicePort{
 					{
@@ -365,7 +365,7 @@ func (r *FabricInferenceServiceReconciler) ensureService(ctx context.Context, sv
 }
 
 // ensureHPA creates or updates the HorizontalPodAutoscaler.
-func (r *FabricInferenceServiceReconciler) ensureHPA(ctx context.Context, svc *tensorreaperv1.FabricInferenceService) error {
+func (r *FabricInferenceServiceReconciler) ensureHPA(ctx context.Context, svc *gryviav1.FabricInferenceService) error {
 	hpaName := fmt.Sprintf("%s-inference-hpa", svc.Name)
 	hpa := &autoscalingv2.HorizontalPodAutoscaler{}
 	err := r.Get(ctx, types.NamespacedName{Namespace: svc.Namespace, Name: hpaName}, hpa)
@@ -396,7 +396,7 @@ func (r *FabricInferenceServiceReconciler) ensureHPA(ctx context.Context, svc *t
 				Name:      hpaName,
 				Namespace: svc.Namespace,
 				Labels: map[string]string{
-					"tensorreaper.ai/inference": svc.Name,
+					"gryvia.io/inference": svc.Name,
 				},
 			},
 			Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
@@ -422,7 +422,7 @@ func (r *FabricInferenceServiceReconciler) ensureHPA(ctx context.Context, svc *t
 }
 
 // reconcileCanary manages the canary deployment.
-func (r *FabricInferenceServiceReconciler) reconcileCanary(ctx context.Context, svc *tensorreaperv1.FabricInferenceService) error {
+func (r *FabricInferenceServiceReconciler) reconcileCanary(ctx context.Context, svc *gryviav1.FabricInferenceService) error {
 	canaryName := fmt.Sprintf("%s-canary", svc.Name)
 
 	// Ensure canary deployment exists
@@ -456,7 +456,7 @@ func (r *FabricInferenceServiceReconciler) reconcileCanary(ctx context.Context, 
 	// Update canary status
 	if svc.Status.CanaryStatus == nil {
 		now := metav1.Now()
-		svc.Status.CanaryStatus = &tensorreaperv1.CanaryStatus{
+		svc.Status.CanaryStatus = &gryviav1.CanaryStatus{
 			Active:         true,
 			Weight:         svc.Spec.Canary.Weight,
 			DeploymentName: canaryName,
@@ -499,7 +499,7 @@ func (r *FabricInferenceServiceReconciler) reconcileCanary(ctx context.Context, 
 }
 
 // syncDeploymentStatus updates the inference service status based on the Deployment.
-func (r *FabricInferenceServiceReconciler) syncDeploymentStatus(ctx context.Context, svc *tensorreaperv1.FabricInferenceService) error {
+func (r *FabricInferenceServiceReconciler) syncDeploymentStatus(ctx context.Context, svc *gryviav1.FabricInferenceService) error {
 	deployName := fmt.Sprintf("%s-inference", svc.Name)
 	deploy := &appsv1.Deployment{}
 	err := r.Get(ctx, types.NamespacedName{Namespace: svc.Namespace, Name: deployName}, deploy)
@@ -526,7 +526,7 @@ func (r *FabricInferenceServiceReconciler) syncDeploymentStatus(ctx context.Cont
 }
 
 // checkHealthAndRollback implements automatic rollback on consecutive health check failures.
-func (r *FabricInferenceServiceReconciler) checkHealthAndRollback(ctx context.Context, svc *tensorreaperv1.FabricInferenceService) {
+func (r *FabricInferenceServiceReconciler) checkHealthAndRollback(ctx context.Context, svc *gryviav1.FabricInferenceService) {
 	threshold := svc.Spec.HealthCheck.FailureThreshold
 	if threshold <= 0 {
 		threshold = 3
@@ -549,7 +549,7 @@ func (r *FabricInferenceServiceReconciler) checkHealthAndRollback(ctx context.Co
 	svc.Status.LastHealthCheck = &now
 }
 
-func (r *FabricInferenceServiceReconciler) updateInferCondition(svc *tensorreaperv1.FabricInferenceService, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *FabricInferenceServiceReconciler) updateInferCondition(svc *gryviav1.FabricInferenceService, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -582,7 +582,7 @@ func (r *FabricInferenceServiceReconciler) updateInferCondition(svc *tensorreape
 // SetupWithManager sets up the controller with the Manager.
 func (r *FabricInferenceServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tensorreaperv1.FabricInferenceService{}).
+		For(&gryviav1.FabricInferenceService{}).
 		Owns(&appsv1.Deployment{}).
 		Owns(&corev1.Service{}).
 		Owns(&autoscalingv2.HorizontalPodAutoscaler{}).

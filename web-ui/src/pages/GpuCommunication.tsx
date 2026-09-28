@@ -1,11 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
-import {
-  Cpu, Activity, AlertTriangle, BarChart3, Clock,
-} from 'lucide-react'
 import { api } from '@/lib/api'
-import type { NCCLStats, TrainingInsight, GPUMemStats } from '@/lib/api'
-import StatCard from '@/components/StatCard'
+import type { TrainingInsight, GPUMemStats } from '@/lib/api'
 import LoadingSpinner from '@/components/LoadingSpinner'
+import PageHero from '@/components/PageHero'
 
 export default function GpuCommunication() {
   const { data: ncclStats, isLoading: ncclLoading, isError: ncclError } = useQuery({
@@ -30,13 +27,12 @@ export default function GpuCommunication() {
 
   if (ncclError) {
     return (
-      <div className="p-4 rounded-xl text-sm" style={{
-        background: 'rgba(239,68,68,0.06)',
-        border: '1px solid rgba(239,68,68,0.15)',
-        color: '#f87171',
-      }}>
-        Failed to load GPU communication data. Please check your API connection.
-      </div>
+      <>
+        <PageHero eyebrow="GPU communication" title="Communication data unavailable." tint="red" />
+        <p className="login-error" role="alert">
+          Failed to load GPU communication data. Please check your API connection.
+        </p>
+      </>
     )
   }
 
@@ -46,157 +42,98 @@ export default function GpuCommunication() {
   const bottleneck = trainingInsight?.bottleneck ?? '-'
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="apple-story-stack">
+      <PageHero
+        eyebrow="GPU communication"
+        title="How your GPUs talk."
+        lede="NCCL collective operations, memory transfers, and training analysis"
+      />
+
+      <div className="apple-metric-band">
         <div>
-          <h2 className="text-2xl font-bold text-gradient-purple">GPU Communication</h2>
-          <p className="text-sm text-[#5a7a9e] mt-1">NCCL collective operations, memory transfers, and training analysis</p>
+          <span>NCCL Operations</span>
+          <b>{totalOps}</b>
+        </div>
+        <div>
+          <span>Stragglers</span>
+          <b className={stragglerCount > 0 ? 'text-bad' : undefined}>{stragglerCount}</b>
+        </div>
+        <div>
+          <span>Comm Pattern</span>
+          <b>{commPattern.replace('_', ' ')}</b>
+        </div>
+        <div>
+          <span>Bottleneck</span>
+          <b className={bottleneck === 'communication' ? 'text-warn' : undefined}>{bottleneck.replace('_', ' ')}</b>
         </div>
       </div>
 
-      {/* Stat Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          icon={Activity}
-          title="NCCL Operations"
-          value={totalOps}
-          color="purple"
-        />
-        <StatCard
-          icon={AlertTriangle}
-          title="Stragglers"
-          value={stragglerCount}
-          color={stragglerCount > 0 ? 'red' : 'green'}
-        />
-        <StatCard
-          icon={Cpu}
-          title="Comm Pattern"
-          value={commPattern.replace('_', ' ')}
-          color="blue"
-        />
-        <StatCard
-          icon={BarChart3}
-          title="Bottleneck"
-          value={bottleneck.replace('_', ' ')}
-          color={bottleneck === 'communication' ? 'orange' : 'cyan'}
-        />
-      </div>
-
-      {/* Main content grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* NCCL Collective Operation Stats */}
-        <div className="rounded-xl p-5" style={{
-          background: 'linear-gradient(165deg, #151d28 0%, #111820 100%)',
-          border: '1px solid rgba(192,204,224,0.06)',
-          boxShadow: 'inset 0 1px 0 rgba(192,204,224,0.04)',
-        }}>
-          <div className="flex items-center gap-2 mb-4">
-            <Activity className="h-4 w-4 text-purple-400" />
-            <h3 className="text-sm font-semibold text-[#e8ecf1]">NCCL Collective Operations</h3>
-          </div>
+        <section className="card">
+          <h2>NCCL Collective Operations</h2>
           {(!ncclStats?.operations || ncclStats.operations.length === 0) ? (
-            <div className="text-center py-8 text-sm text-[#344e6a]">
+            <div className="list-empty">
               No NCCL operation data available. Ensure training jobs are running with eBPF tracing.
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
+            <div className="table-wrap">
+              <table>
                 <thead>
-                  <tr style={{ borderBottom: '1px solid rgba(192,204,224,0.06)' }}>
-                    <th className="text-left py-2 px-2 text-[#5a7a9e] font-medium">OP TYPE</th>
-                    <th className="text-right py-2 px-2 text-[#5a7a9e] font-medium">COUNT</th>
-                    <th className="text-right py-2 px-2 text-[#5a7a9e] font-medium">AVG LATENCY</th>
-                    <th className="text-right py-2 px-2 text-[#5a7a9e] font-medium">P99 LATENCY</th>
-                    <th className="text-right py-2 px-2 text-[#5a7a9e] font-medium">TOTAL BYTES</th>
+                  <tr>
+                    <th>Op type</th>
+                    <th style={{ textAlign: 'right' }}>Count</th>
+                    <th style={{ textAlign: 'right' }}>Avg latency</th>
+                    <th style={{ textAlign: 'right' }}>P99 latency</th>
+                    <th style={{ textAlign: 'right' }}>Total bytes</th>
                   </tr>
                 </thead>
                 <tbody>
                   {ncclStats.operations.map((op) => (
-                    <tr key={op.opType} className="table-row-hover" style={{ borderBottom: '1px solid rgba(192,204,224,0.03)' }}>
-                      <td className="py-2 px-2 text-[#c0cce0] font-mono text-[11px]">{op.opType}</td>
-                      <td className="py-2 px-2 text-right text-[#c0cce0]">{op.count.toLocaleString()}</td>
-                      <td className="py-2 px-2 text-right text-[#8ba4c0]">{formatNs(op.avgLatencyNs)}</td>
-                      <td className="py-2 px-2 text-right text-[#8ba4c0]">{formatNs(op.p99LatencyNs)}</td>
-                      <td className="py-2 px-2 text-right text-[#5a7a9e]">{formatBytes(op.totalBytes)}</td>
+                    <tr key={op.opType}>
+                      <td className="mono">{op.opType}</td>
+                      <td style={{ textAlign: 'right' }}>{op.count.toLocaleString()}</td>
+                      <td style={{ textAlign: 'right' }}>{formatNs(op.avgLatencyNs)}</td>
+                      <td style={{ textAlign: 'right' }}>{formatNs(op.p99LatencyNs)}</td>
+                      <td className="muted" style={{ textAlign: 'right' }}>{formatBytes(op.totalBytes)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           )}
-        </div>
+        </section>
 
-        {/* Rank-to-Rank Communication Heatmap */}
-        <div className="rounded-xl p-5" style={{
-          background: 'linear-gradient(165deg, #151d28 0%, #111820 100%)',
-          border: '1px solid rgba(192,204,224,0.06)',
-          boxShadow: 'inset 0 1px 0 rgba(192,204,224,0.04)',
-        }}>
-          <div className="flex items-center gap-2 mb-4">
-            <Cpu className="h-4 w-4 text-purple-400" />
-            <h3 className="text-sm font-semibold text-[#e8ecf1]">Rank Communication Heatmap</h3>
-          </div>
+        <section className="card">
+          <h2>Rank Communication Heatmap</h2>
           <RankHeatmap rankStats={trainingInsight?.rankStats} />
-        </div>
+        </section>
 
-        {/* Straggler Detection Panel */}
-        <div className="rounded-xl p-5" style={{
-          background: 'linear-gradient(165deg, #151d28 0%, #111820 100%)',
-          border: '1px solid rgba(192,204,224,0.06)',
-          boxShadow: 'inset 0 1px 0 rgba(192,204,224,0.04)',
-        }}>
-          <div className="flex items-center gap-2 mb-4">
-            <AlertTriangle className="h-4 w-4 text-[#fbbf24]" />
-            <h3 className="text-sm font-semibold text-[#e8ecf1]">Straggler Detection</h3>
-          </div>
+        <section className="card">
+          <h2>Straggler Detection</h2>
           {(!trainingInsight?.stragglers || trainingInsight.stragglers.length === 0) ? (
-            <div className="text-center py-6 text-sm text-[#344e6a]">
+            <div className="list-empty">
               No stragglers detected. All ranks performing within normal bounds.
             </div>
           ) : (
-            <div className="space-y-2">
-              {trainingInsight.stragglers.map((straggler) => (
-                <div key={straggler.rank} className="p-3 rounded-lg" style={{
-                  background: 'rgba(239,68,68,0.05)',
-                  border: '1px solid rgba(239,68,68,0.1)',
-                }}>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-medium text-[#f87171]">
-                      Rank {straggler.rank}
-                    </span>
-                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full" style={{
-                      background: 'rgba(239,68,68,0.1)',
-                      color: '#f87171',
-                    }}>
-                      {straggler.slowdownFactor.toFixed(1)}x slower
-                    </span>
-                  </div>
-                  <div className="text-[10px] text-[#5a7a9e]">{straggler.reason?.replace(/_/g, ' ') || 'Unknown cause'}</div>
+            trainingInsight.stragglers.map((straggler) => (
+              <div key={straggler.rank} className="list-row">
+                <div className="grow">
+                  <b>Rank {straggler.rank}</b>
+                  <small>{straggler.reason?.replace(/_/g, ' ') || 'Unknown cause'}</small>
                 </div>
-              ))}
-            </div>
+                <span className="pill bad">{straggler.slowdownFactor.toFixed(1)}x slower</span>
+              </div>
+            ))
           )}
 
-          {/* Bottleneck Indicator */}
-          <div className="mt-4 pt-4" style={{ borderTop: '1px solid rgba(192,204,224,0.06)' }}>
-            <div className="text-[10px] text-[#5a7a9e] uppercase tracking-wide mb-2">Training Bottleneck</div>
-            <BottleneckIndicator bottleneck={bottleneck} ratio={trainingInsight?.commComputeRatio ?? 0} />
-          </div>
-        </div>
+          <h3 style={{ marginTop: 20 }}>Training Bottleneck</h3>
+          <BottleneckIndicator bottleneck={bottleneck} ratio={trainingInsight?.commComputeRatio ?? 0} />
+        </section>
 
-        {/* GPU Memory Transfer Bandwidth */}
-        <div className="rounded-xl p-5" style={{
-          background: 'linear-gradient(165deg, #151d28 0%, #111820 100%)',
-          border: '1px solid rgba(192,204,224,0.06)',
-          boxShadow: 'inset 0 1px 0 rgba(192,204,224,0.04)',
-        }}>
-          <div className="flex items-center gap-2 mb-4">
-            <BarChart3 className="h-4 w-4 text-purple-400" />
-            <h3 className="text-sm font-semibold text-[#e8ecf1]">GPU Memory Transfers</h3>
-          </div>
+        <section className="card">
+          <h2>GPU Memory Transfers</h2>
           <GPUMemoryChart stats={gpuMemStats} />
-        </div>
+        </section>
       </div>
     </div>
   )
@@ -206,18 +143,14 @@ export default function GpuCommunication() {
 
 function RankHeatmap({ rankStats }: { rankStats?: TrainingInsight['rankStats'] }) {
   if (!rankStats || rankStats.length === 0) {
-    return (
-      <div className="text-center py-8 text-sm text-[#344e6a]">
-        No rank data available.
-      </div>
-    )
+    return <div className="list-empty">No rank data available.</div>
   }
 
   const maxLatency = Math.max(...rankStats.map(r => r.avgLatencyNs))
   const gridSize = Math.ceil(Math.sqrt(rankStats.length))
 
   return (
-    <div className="flex flex-col items-center gap-2">
+    <div className="stack" style={{ alignItems: 'center' }}>
       <div className="grid gap-1" style={{
         gridTemplateColumns: `repeat(${gridSize}, minmax(0, 1fr))`,
         width: '100%',
@@ -225,40 +158,39 @@ function RankHeatmap({ rankStats }: { rankStats?: TrainingInsight['rankStats'] }
       }}>
         {rankStats.map((rank) => {
           const intensity = maxLatency > 0 ? rank.avgLatencyNs / maxLatency : 0
-          const r = Math.round(168 + intensity * 71)
-          const g = Math.round(85 - intensity * 60)
-          const b = Math.round(247 - intensity * 120)
           return (
             <div
               key={rank.rank}
-              className="aspect-square rounded flex items-center justify-center text-[9px] font-mono"
+              className="aspect-square flex items-center justify-center mono"
               style={{
-                background: `rgba(${r}, ${g}, ${b}, ${0.15 + intensity * 0.45})`,
-                border: rank.isStraggler
-                  ? '1px solid rgba(239,68,68,0.5)'
-                  : '1px solid rgba(192,204,224,0.04)',
-                color: rank.isStraggler ? '#f87171' : '#8ba4c0',
+                position: 'relative',
+                borderRadius: 6,
+                fontSize: 11,
+                background: 'var(--fill-tertiary)',
+                border: rank.isStraggler ? '1px solid var(--danger)' : '1px solid var(--hairline-1)',
+                color: rank.isStraggler ? 'var(--danger)' : 'var(--text-secondary)',
+                overflow: 'hidden',
               }}
               title={`Rank ${rank.rank}: ${formatNs(rank.avgLatencyNs)} avg, ${formatBytes(rank.totalBytes)}`}
             >
-              {rank.rank}
+              <span
+                aria-hidden
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  background: 'var(--apple-blue)',
+                  opacity: 0.08 + intensity * 0.4,
+                }}
+              />
+              <span style={{ position: 'relative' }}>{rank.rank}</span>
             </div>
           )
         })}
       </div>
-      <div className="flex items-center gap-4 text-[10px] text-[#5a7a9e] mt-1">
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 rounded" style={{ background: 'rgba(168,85,247,0.2)' }} />
-          Fast
-        </div>
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 rounded" style={{ background: 'rgba(239,25,127,0.5)' }} />
-          Slow
-        </div>
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 rounded" style={{ background: 'rgba(239,68,68,0.4)', border: '1px solid rgba(239,68,68,0.5)' }} />
-          Straggler
-        </div>
+      <div className="row faint">
+        <span>Lighter = faster</span>
+        <span>Darker = slower</span>
+        <span className="text-bad">Outlined = straggler</span>
       </div>
     </div>
   )
@@ -266,27 +198,21 @@ function RankHeatmap({ rankStats }: { rankStats?: TrainingInsight['rankStats'] }
 
 function BottleneckIndicator({ bottleneck, ratio }: { bottleneck: string; ratio: number }) {
   const categories = [
-    { key: 'compute', label: 'Compute', color: '#fbbf24' },
-    { key: 'communication', label: 'Communication', color: '#f87171' },
-    { key: 'data_loading', label: 'Data Loading', color: '#60a5fa' },
+    { key: 'compute', label: 'Compute', tone: 'warn' },
+    { key: 'communication', label: 'Communication', tone: 'bad' },
+    { key: 'data_loading', label: 'Data Loading', tone: 'warn' },
   ]
 
   return (
-    <div className="space-y-2">
+    <div>
       {categories.map(cat => {
         const isActive = cat.key === bottleneck
         return (
-          <div key={cat.key} className="flex items-center gap-3">
-            <div className="w-3 h-3 rounded-full" style={{
-              background: isActive ? cat.color : '#1a2332',
-              border: `1px solid ${isActive ? cat.color : 'rgba(192,204,224,0.1)'}`,
-              boxShadow: isActive ? `0 0 6px ${cat.color}40` : 'none',
-            }} />
-            <span className="text-xs flex-1" style={{ color: isActive ? cat.color : '#5a7a9e' }}>
-              {cat.label}
-            </span>
+          <div key={cat.key} className="list-row">
+            <span className={`dot ${isActive ? cat.tone : ''}`} />
+            <span className={`grow ${isActive ? '' : 'muted'}`}>{cat.label}</span>
             {cat.key === 'communication' && (
-              <span className="text-[10px] text-[#5a7a9e]">{(ratio * 100).toFixed(0)}%</span>
+              <span className="faint">{(ratio * 100).toFixed(0)}%</span>
             )}
           </div>
         )
@@ -297,40 +223,30 @@ function BottleneckIndicator({ bottleneck, ratio }: { bottleneck: string; ratio:
 
 function GPUMemoryChart({ stats }: { stats?: GPUMemStats }) {
   const transfers = [
-    { label: 'H2D', sublabel: 'Host to Device', bytes: stats?.h2dBytes ?? 0, color: '#a855f7' },
-    { label: 'D2H', sublabel: 'Device to Host', bytes: stats?.d2hBytes ?? 0, color: '#7c3aed' },
-    { label: 'D2D', sublabel: 'Device to Device', bytes: stats?.d2dBytes ?? 0, color: '#6366f1' },
+    { label: 'H2D', sublabel: 'Host to Device', bytes: stats?.h2dBytes ?? 0 },
+    { label: 'D2H', sublabel: 'Device to Host', bytes: stats?.d2hBytes ?? 0 },
+    { label: 'D2D', sublabel: 'Device to Device', bytes: stats?.d2dBytes ?? 0 },
   ]
 
   const maxBytes = Math.max(...transfers.map(t => t.bytes), 1)
 
   return (
-    <div className="space-y-3">
+    <div className="stack">
       {transfers.map(t => (
         <div key={t.label}>
-          <div className="flex items-center justify-between mb-1">
-            <div>
-              <span className="text-xs font-medium text-[#c0cce0]">{t.label}</span>
-              <span className="text-[10px] text-[#5a7a9e] ml-2">{t.sublabel}</span>
-            </div>
-            <span className="text-xs font-mono text-[#8ba4c0]">{formatBytes(t.bytes)}</span>
+          <div className="stat-head" style={{ marginBottom: 6 }}>
+            <span>
+              <b>{t.label}</b> <span className="faint">{t.sublabel}</span>
+            </span>
+            <span className="mono muted">{formatBytes(t.bytes)}</span>
           </div>
-          <div className="h-3 rounded-full overflow-hidden" style={{ background: 'rgba(10,14,20,0.5)' }}>
-            <div
-              className="h-full rounded-full transition-all duration-500"
-              style={{
-                width: `${Math.max((t.bytes / maxBytes) * 100, 2)}%`,
-                background: `linear-gradient(90deg, ${t.color}80, ${t.color})`,
-                boxShadow: `0 0 8px ${t.color}30`,
-              }}
-            />
+          <div className="progress">
+            <span style={{ width: `${Math.max((t.bytes / maxBytes) * 100, 2)}%` }} />
           </div>
         </div>
       ))}
       {(!stats || (stats.h2dBytes === 0 && stats.d2hBytes === 0 && stats.d2dBytes === 0)) && (
-        <div className="text-center py-4 text-[10px] text-[#344e6a]">
-          No memory transfer data available yet.
-        </div>
+        <div className="list-empty">No memory transfer data available yet.</div>
       )}
     </div>
   )

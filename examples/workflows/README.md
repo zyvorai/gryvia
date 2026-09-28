@@ -1,4 +1,4 @@
-# TensorReaper Workflow Examples
+# Gryvia Workflow Examples
 
 Argo Workflows integration for complex ML pipelines.
 
@@ -248,9 +248,9 @@ gpuType: H100
         template: comparison
 ```
 
-## Integration with TensorReaper
+## Integration with Gryvia
 
-Workflows automatically use TensorReaper features:
+Workflows automatically use Gryvia features:
 
 - **GPU Scheduling**: Automatic optimal node placement
 - **Quotas**: Respect team GPU limits
@@ -323,4 +323,4 @@ train:
 ## Support
 
 - Argo Workflows Docs: https://argoproj.github.io/argo-workflows/
-- TensorReaper Issues: https://github.com/ssahani/TensorReaper/issues
+- Gryvia Issues: https://github.com/zyvorai/gryvia/issues

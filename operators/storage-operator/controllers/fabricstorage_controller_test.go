@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -14,12 +15,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/storage-operator/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/storage-operator/api/v1"
 )
 
 func newStorageTestScheme() *runtime.Scheme {
 	s := runtime.NewScheme()
-	_ = tensorreaperv1.AddToScheme(s)
+	_ = gryviav1.AddToScheme(s)
 	_ = corev1.AddToScheme(s)
 	_ = storagev1.AddToScheme(s)
 	return s
@@ -30,7 +31,7 @@ func newStorageReconciler(objs ...client.Object) (*FabricStorageReconciler, clie
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(objs...).
-		WithStatusSubresource(&tensorreaperv1.FabricStorage{}).
+		WithStatusSubresource(&gryviav1.FabricStorage{}).
 		Build()
 	r := &FabricStorageReconciler{
 		Client: fakeClient,
@@ -40,19 +41,19 @@ func newStorageReconciler(objs ...client.Object) (*FabricStorageReconciler, clie
 	return r, fakeClient
 }
 
-func newTestStorage(name string) *tensorreaperv1.FabricStorage {
-	return &tensorreaperv1.FabricStorage{
+func newTestStorage(name string) *gryviav1.FabricStorage {
+	return &gryviav1.FabricStorage{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
-		Spec: tensorreaperv1.FabricStorageSpec{
+		Spec: gryviav1.FabricStorageSpec{
 			Backend:  "vast",
 			Capacity: "100Ti",
 			IOPS:     "1000000",
 			RDMA:     true,
 			Protocol: "nfs",
 			Endpoint: "storage.example.com",
-			StorageClass: &tensorreaperv1.StorageClassSpec{
+			StorageClass: &gryviav1.StorageClassSpec{
 				Name:                 "fast-storage",
 				ReclaimPolicy:        "Retain",
 				VolumeBindingMode:    "WaitForFirstConsumer",
@@ -61,7 +62,7 @@ func newTestStorage(name string) *tensorreaperv1.FabricStorage {
 					"tier": "premium",
 				},
 			},
-			Performance: &tensorreaperv1.PerformanceSpec{
+			Performance: &gryviav1.PerformanceSpec{
 				Tier:        "ultra",
 				Caching:     true,
 				Compression: false,
@@ -97,7 +98,7 @@ func TestStorage_Reconcile_AddsFinalizer(t *testing.T) {
 		t.Error("expected requeue after adding finalizer")
 	}
 
-	updated := &tensorreaperv1.FabricStorage{}
+	updated := &gryviav1.FabricStorage{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-storage"}, updated); err != nil {
 		t.Fatalf("failed to get storage: %v", err)
 	}
@@ -121,7 +122,7 @@ func TestStorage_Reconcile_InitializesPhase(t *testing.T) {
 		t.Error("expected requeue after phase initialization")
 	}
 
-	updated := &tensorreaperv1.FabricStorage{}
+	updated := &gryviav1.FabricStorage{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-storage"}, updated); err != nil {
 		t.Fatalf("failed to get storage: %v", err)
 	}
@@ -162,8 +163,11 @@ func TestStorage_Reconcile_DeletionCleansUpStorageClass(t *testing.T) {
 	}
 
 	// Verify finalizer removed
-	updatedStorage := &tensorreaperv1.FabricStorage{}
+	updatedStorage := &gryviav1.FabricStorage{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-storage"}, updatedStorage); err != nil {
+		if apierrors.IsNotFound(err) {
+			return // object is gone once its last finalizer is removed
+		}
 		t.Fatalf("failed to get storage: %v", err)
 	}
 	if controllerutil.ContainsFinalizer(updatedStorage, storageFinalizer) {
@@ -264,11 +268,11 @@ func TestStorage_BuildStorageClass(t *testing.T) {
 	}
 
 	// Check labels
-	if sc.Labels["tensorreaper.ai/storage"] != "test-storage" {
-		t.Errorf("expected storage label, got %s", sc.Labels["tensorreaper.ai/storage"])
+	if sc.Labels["gryvia.io/storage"] != "test-storage" {
+		t.Errorf("expected storage label, got %s", sc.Labels["gryvia.io/storage"])
 	}
-	if sc.Labels["tensorreaper.ai/backend"] != "vast" {
-		t.Errorf("expected backend label, got %s", sc.Labels["tensorreaper.ai/backend"])
+	if sc.Labels["gryvia.io/backend"] != "vast" {
+		t.Errorf("expected backend label, got %s", sc.Labels["gryvia.io/backend"])
 	}
 }
 

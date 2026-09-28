@@ -17,11 +17,11 @@ import (
 
 	"k8s.io/client-go/util/retry"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/quota-operator/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/quota-operator/api/v1"
 )
 
 const (
-	reservationFinalizer = "tensorreaper.ai/reservation-finalizer"
+	reservationFinalizer = "gryvia.io/reservation-finalizer"
 
 	reservationStatePending   = "pending"
 	reservationStateActive    = "active"
@@ -35,10 +35,10 @@ type FabricReservationReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricreservations,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricreservations/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricreservations/finalizers,verbs=update
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricaijobs,verbs=get;list;watch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricreservations,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricreservations/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricreservations/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch;update;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop
@@ -46,7 +46,7 @@ func (r *FabricReservationReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	logger := log.FromContext(ctx)
 
 	// Fetch the FabricReservation instance
-	reservation := &tensorreaperv1.FabricReservation{}
+	reservation := &gryviav1.FabricReservation{}
 	err := r.Get(ctx, req.NamespacedName, reservation)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -97,7 +97,7 @@ func (r *FabricReservationReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	return result, nil
 }
 
-func (r *FabricReservationReconciler) reconcileReservation(ctx context.Context, reservation *tensorreaperv1.FabricReservation) (ctrl.Result, error) {
+func (r *FabricReservationReconciler) reconcileReservation(ctx context.Context, reservation *gryviav1.FabricReservation) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	now := time.Now()
 
@@ -180,7 +180,7 @@ func (r *FabricReservationReconciler) reconcileReservation(ctx context.Context, 
 	return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 }
 
-func (r *FabricReservationReconciler) allocateNodes(ctx context.Context, reservation *tensorreaperv1.FabricReservation) error {
+func (r *FabricReservationReconciler) allocateNodes(ctx context.Context, reservation *gryviav1.FabricReservation) error {
 	// If specific nodes are requested
 	if len(reservation.Spec.Resources.Nodes) > 0 {
 		reservation.Status.AllocatedNodes = reservation.Spec.Resources.Nodes
@@ -192,7 +192,7 @@ func (r *FabricReservationReconciler) allocateNodes(ctx context.Context, reserva
 				continue
 			}
 			// Count GPUs from node labels
-			if gpuCountStr, ok := node.Labels["tensorreaper.ai/gpu-count"]; ok {
+			if gpuCountStr, ok := node.Labels["gryvia.io/gpu-count"]; ok {
 				var gpuCount int
 				if _, err := fmt.Sscanf(gpuCountStr, "%d", &gpuCount); err == nil {
 					totalGPUs += int32(gpuCount)
@@ -207,7 +207,7 @@ func (r *FabricReservationReconciler) allocateNodes(ctx context.Context, reserva
 	if reservation.Spec.Resources.GpuType != "" && reservation.Spec.Resources.GpuCount > 0 {
 		nodeList := &corev1.NodeList{}
 		if err := r.List(ctx, nodeList, client.MatchingLabels{
-			"tensorreaper.ai/gpu": reservation.Spec.Resources.GpuType,
+			"gryvia.io/gpu": reservation.Spec.Resources.GpuType,
 		}); err != nil {
 			return fmt.Errorf("failed to list GPU nodes: %w", err)
 		}
@@ -221,7 +221,7 @@ func (r *FabricReservationReconciler) allocateNodes(ctx context.Context, reserva
 			}
 
 			// Check if already reserved by another reservation
-			if owner, ok := node.Labels["tensorreaper.ai/reserved-by"]; ok {
+			if owner, ok := node.Labels["gryvia.io/reserved-by"]; ok {
 				if owner != reservation.Name {
 					continue // skip nodes reserved by other reservations
 				}
@@ -230,7 +230,7 @@ func (r *FabricReservationReconciler) allocateNodes(ctx context.Context, reserva
 			allocatedNodes = append(allocatedNodes, node.Name)
 
 			// Count GPUs from node labels
-			if gpuCountStr, ok := node.Labels["tensorreaper.ai/gpu-count"]; ok {
+			if gpuCountStr, ok := node.Labels["gryvia.io/gpu-count"]; ok {
 				var gpuCount int
 				if _, err := fmt.Sscanf(gpuCountStr, "%d", &gpuCount); err == nil {
 					allocatedGPUs += int32(gpuCount)
@@ -247,7 +247,7 @@ func (r *FabricReservationReconciler) allocateNodes(ctx context.Context, reserva
 	return nil
 }
 
-func (r *FabricReservationReconciler) labelReservedNodes(ctx context.Context, reservation *tensorreaperv1.FabricReservation) error {
+func (r *FabricReservationReconciler) labelReservedNodes(ctx context.Context, reservation *gryviav1.FabricReservation) error {
 	for _, nodeName := range reservation.Status.AllocatedNodes {
 		if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 			node := &corev1.Node{}
@@ -262,22 +262,22 @@ func (r *FabricReservationReconciler) labelReservedNodes(ctx context.Context, re
 			needsUpdate := false
 
 			// Set reservation owner label
-			if node.Labels["tensorreaper.ai/reserved-by"] != reservation.Name {
-				node.Labels["tensorreaper.ai/reserved-by"] = reservation.Name
+			if node.Labels["gryvia.io/reserved-by"] != reservation.Name {
+				node.Labels["gryvia.io/reserved-by"] = reservation.Name
 				needsUpdate = true
 			}
 
 			// Set owner info
 			ownerLabel := fmt.Sprintf("%s/%s", reservation.Spec.Owner.Type, reservation.Spec.Owner.Name)
-			if node.Labels["tensorreaper.ai/reserved-for"] != ownerLabel {
-				node.Labels["tensorreaper.ai/reserved-for"] = ownerLabel
+			if node.Labels["gryvia.io/reserved-for"] != ownerLabel {
+				node.Labels["gryvia.io/reserved-for"] = ownerLabel
 				needsUpdate = true
 			}
 
 			// Mark exclusive if applicable
 			if reservation.Spec.Guarantees != nil && reservation.Spec.Guarantees.Exclusive {
-				if node.Labels["tensorreaper.ai/exclusive"] != "true" {
-					node.Labels["tensorreaper.ai/exclusive"] = "true"
+				if node.Labels["gryvia.io/exclusive"] != "true" {
+					node.Labels["gryvia.io/exclusive"] = "true"
 					needsUpdate = true
 				}
 			}
@@ -294,7 +294,7 @@ func (r *FabricReservationReconciler) labelReservedNodes(ctx context.Context, re
 	return nil
 }
 
-func (r *FabricReservationReconciler) removeReservationLabels(ctx context.Context, reservation *tensorreaperv1.FabricReservation) error {
+func (r *FabricReservationReconciler) removeReservationLabels(ctx context.Context, reservation *gryviav1.FabricReservation) error {
 	for _, nodeName := range reservation.Status.AllocatedNodes {
 		if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 			node := &corev1.Node{}
@@ -311,10 +311,10 @@ func (r *FabricReservationReconciler) removeReservationLabels(ctx context.Contex
 
 			needsUpdate := false
 
-			if node.Labels["tensorreaper.ai/reserved-by"] == reservation.Name {
-				delete(node.Labels, "tensorreaper.ai/reserved-by")
-				delete(node.Labels, "tensorreaper.ai/reserved-for")
-				delete(node.Labels, "tensorreaper.ai/exclusive")
+			if node.Labels["gryvia.io/reserved-by"] == reservation.Name {
+				delete(node.Labels, "gryvia.io/reserved-by")
+				delete(node.Labels, "gryvia.io/reserved-for")
+				delete(node.Labels, "gryvia.io/exclusive")
 				needsUpdate = true
 			}
 
@@ -330,9 +330,9 @@ func (r *FabricReservationReconciler) removeReservationLabels(ctx context.Contex
 	return nil
 }
 
-func (r *FabricReservationReconciler) updateUtilization(ctx context.Context, reservation *tensorreaperv1.FabricReservation) {
+func (r *FabricReservationReconciler) updateUtilization(ctx context.Context, reservation *gryviav1.FabricReservation) {
 	if reservation.Status.UtilizationMetrics == nil {
-		reservation.Status.UtilizationMetrics = &tensorreaperv1.ReservationUtilization{}
+		reservation.Status.UtilizationMetrics = &gryviav1.ReservationUtilization{}
 	}
 
 	// Calculate total reserved time
@@ -342,17 +342,17 @@ func (r *FabricReservationReconciler) updateUtilization(ctx context.Context, res
 	}
 
 	// Count running jobs using this reservation
-	jobList := &tensorreaperv1.FabricAIJobList{}
+	jobList := &gryviav1.FabricAIJobList{}
 	if err := r.List(ctx, jobList); err == nil {
 		var runningJobs int32
 		for _, job := range jobList.Items {
 			labels := job.GetLabels()
-			if labels != nil && labels["tensorreaper.ai/reservation"] == reservation.Name {
+			if labels != nil && labels["gryvia.io/reservation"] == reservation.Name {
 				runningJobs++
 			}
 			// Also check annotation
 			annotations := job.GetAnnotations()
-			if annotations != nil && annotations["tensorreaper.ai/reservation"] == reservation.Name {
+			if annotations != nil && annotations["gryvia.io/reservation"] == reservation.Name {
 				runningJobs++
 			}
 		}
@@ -360,8 +360,8 @@ func (r *FabricReservationReconciler) updateUtilization(ctx context.Context, res
 	}
 }
 
-func (r *FabricReservationReconciler) hasRunningJobs(ctx context.Context, reservation *tensorreaperv1.FabricReservation) (bool, error) {
-	jobList := &tensorreaperv1.FabricAIJobList{}
+func (r *FabricReservationReconciler) hasRunningJobs(ctx context.Context, reservation *gryviav1.FabricReservation) (bool, error) {
+	jobList := &gryviav1.FabricAIJobList{}
 	if err := r.List(ctx, jobList); err != nil {
 		return false, err
 	}
@@ -371,11 +371,11 @@ func (r *FabricReservationReconciler) hasRunningJobs(ctx context.Context, reserv
 			continue
 		}
 		labels := job.GetLabels()
-		if labels != nil && labels["tensorreaper.ai/reservation"] == reservation.Name {
+		if labels != nil && labels["gryvia.io/reservation"] == reservation.Name {
 			return true, nil
 		}
 		annotations := job.GetAnnotations()
-		if annotations != nil && annotations["tensorreaper.ai/reservation"] == reservation.Name {
+		if annotations != nil && annotations["gryvia.io/reservation"] == reservation.Name {
 			return true, nil
 		}
 	}
@@ -383,7 +383,7 @@ func (r *FabricReservationReconciler) hasRunningJobs(ctx context.Context, reserv
 	return false, nil
 }
 
-func (r *FabricReservationReconciler) expireReservation(ctx context.Context, reservation *tensorreaperv1.FabricReservation) (ctrl.Result, error) {
+func (r *FabricReservationReconciler) expireReservation(ctx context.Context, reservation *gryviav1.FabricReservation) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Expiring reservation", "name", reservation.Name)
 
@@ -405,7 +405,7 @@ func (r *FabricReservationReconciler) expireReservation(ctx context.Context, res
 	return ctrl.Result{}, nil
 }
 
-func (r *FabricReservationReconciler) handleDeletion(ctx context.Context, reservation *tensorreaperv1.FabricReservation) (ctrl.Result, error) {
+func (r *FabricReservationReconciler) handleDeletion(ctx context.Context, reservation *gryviav1.FabricReservation) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	if controllerutil.ContainsFinalizer(reservation, reservationFinalizer) {
@@ -439,6 +439,6 @@ func formatReservationDuration(d time.Duration) string {
 // SetupWithManager sets up the controller with the Manager.
 func (r *FabricReservationReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tensorreaperv1.FabricReservation{}).
+		For(&gryviav1.FabricReservation{}).
 		Complete(r)
 }

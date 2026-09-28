@@ -1,6 +1,6 @@
 # Enterprise & Cost Management Examples
 
-Example YAML manifests for TensorReaper enterprise CRDs covering cost tracking, observability, multi-tenancy, budgets, and SLAs.
+Example YAML manifests for Gryvia enterprise CRDs covering cost tracking, observability, multi-tenancy, budgets, and SLAs.
 
 ## Examples
 

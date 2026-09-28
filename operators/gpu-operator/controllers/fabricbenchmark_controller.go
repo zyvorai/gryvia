@@ -17,7 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/gpu-operator/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/gpu-operator/api/v1"
 )
 
 const (
@@ -35,9 +35,9 @@ type FabricBenchmarkReconciler struct {
 	Log    logr.Logger
 }
 
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricbenchmarks,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricbenchmarks/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricbenchmarks/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricbenchmarks,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricbenchmarks/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricbenchmarks/finalizers,verbs=update
 //+kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=pods/log,verbs=get
@@ -47,7 +47,7 @@ func (r *FabricBenchmarkReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	log := r.Log.WithValues("fabricbenchmark", req.NamespacedName)
 
 	// Fetch the FabricBenchmark instance
-	benchmark := &tensorreaperv1.FabricBenchmark{}
+	benchmark := &gryviav1.FabricBenchmark{}
 	err := r.Get(ctx, req.NamespacedName, benchmark)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -90,7 +90,7 @@ func (r *FabricBenchmarkReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	return result, nil
 }
 
-func (r *FabricBenchmarkReconciler) reconcileBenchmark(ctx context.Context, benchmark *tensorreaperv1.FabricBenchmark) (ctrl.Result, error) {
+func (r *FabricBenchmarkReconciler) reconcileBenchmark(ctx context.Context, benchmark *gryviav1.FabricBenchmark) (ctrl.Result, error) {
 	log := r.Log.WithValues("fabricbenchmark", benchmark.Name)
 
 	// Phase 1: Create the benchmark job
@@ -195,7 +195,7 @@ func (r *FabricBenchmarkReconciler) reconcileBenchmark(ctx context.Context, benc
 	return ctrl.Result{}, nil
 }
 
-func (r *FabricBenchmarkReconciler) ensureBenchmarkJob(ctx context.Context, benchmark *tensorreaperv1.FabricBenchmark) error {
+func (r *FabricBenchmarkReconciler) ensureBenchmarkJob(ctx context.Context, benchmark *gryviav1.FabricBenchmark) error {
 	jobName := r.getBenchmarkJobName(benchmark)
 
 	// Check if job already exists
@@ -221,7 +221,7 @@ func (r *FabricBenchmarkReconciler) ensureBenchmarkJob(ctx context.Context, benc
 	return r.Create(ctx, job)
 }
 
-func (r *FabricBenchmarkReconciler) buildBenchmarkJob(benchmark *tensorreaperv1.FabricBenchmark, jobName string) *batchv1.Job {
+func (r *FabricBenchmarkReconciler) buildBenchmarkJob(benchmark *gryviav1.FabricBenchmark, jobName string) *batchv1.Job {
 	var backoffLimit int32
 	gpuCount := benchmark.Spec.Target.GpuCount
 	if gpuCount <= 0 {
@@ -232,7 +232,7 @@ func (r *FabricBenchmarkReconciler) buildBenchmarkJob(benchmark *tensorreaperv1.
 
 	nodeSelector := make(map[string]string)
 	if benchmark.Spec.Target.GpuType != "" {
-		nodeSelector["tensorreaper.ai/gpu"] = benchmark.Spec.Target.GpuType
+		nodeSelector["gryvia.io/gpu"] = benchmark.Spec.Target.GpuType
 	}
 	for k, v := range benchmark.Spec.Target.NodeSelector {
 		nodeSelector[k] = v
@@ -243,8 +243,8 @@ func (r *FabricBenchmarkReconciler) buildBenchmarkJob(benchmark *tensorreaperv1.
 			Name:      jobName,
 			Namespace: benchmark.Namespace,
 			Labels: map[string]string{
-				"tensorreaper.ai/benchmark": benchmark.Name,
-				"tensorreaper.ai/type":      benchmark.Spec.Type,
+				"gryvia.io/benchmark": benchmark.Name,
+				"gryvia.io/type":      benchmark.Spec.Type,
 			},
 		},
 		Spec: batchv1.JobSpec{
@@ -252,7 +252,7 @@ func (r *FabricBenchmarkReconciler) buildBenchmarkJob(benchmark *tensorreaperv1.
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{
-						"tensorreaper.ai/benchmark": benchmark.Name,
+						"gryvia.io/benchmark": benchmark.Name,
 					},
 				},
 				Spec: corev1.PodSpec{
@@ -267,7 +267,7 @@ func (r *FabricBenchmarkReconciler) buildBenchmarkJob(benchmark *tensorreaperv1.
 	return job
 }
 
-func (r *FabricBenchmarkReconciler) buildBenchmarkContainer(benchmark *tensorreaperv1.FabricBenchmark, gpuCount int32) corev1.Container {
+func (r *FabricBenchmarkReconciler) buildBenchmarkContainer(benchmark *gryviav1.FabricBenchmark, gpuCount int32) corev1.Container {
 	var image string
 	var command []string
 	var args []string
@@ -352,37 +352,37 @@ func (r *FabricBenchmarkReconciler) buildBenchmarkContainer(benchmark *tensorrea
 	return container
 }
 
-func (r *FabricBenchmarkReconciler) collectResults(benchmark *tensorreaperv1.FabricBenchmark) map[string]tensorreaperv1.BenchmarkResultValue {
-	results := make(map[string]tensorreaperv1.BenchmarkResultValue)
+func (r *FabricBenchmarkReconciler) collectResults(benchmark *gryviav1.FabricBenchmark) map[string]gryviav1.BenchmarkResultValue {
+	results := make(map[string]gryviav1.BenchmarkResultValue)
 
 	// In a real implementation, these would be parsed from job logs.
 	// For now, return placeholder structure based on benchmark type.
 	switch benchmark.Spec.Type {
 	case "mlperf":
-		results["throughput"] = tensorreaperv1.BenchmarkResultValue{
+		results["throughput"] = gryviav1.BenchmarkResultValue{
 			Value: 0,
 			Unit:  "images/sec",
 		}
 	case "nccl":
-		results["bandwidth"] = tensorreaperv1.BenchmarkResultValue{
+		results["bandwidth"] = gryviav1.BenchmarkResultValue{
 			Value: 0,
 			Unit:  "GB/s",
 		}
 	case "gpu-memory":
-		results["h2d_bandwidth"] = tensorreaperv1.BenchmarkResultValue{
+		results["h2d_bandwidth"] = gryviav1.BenchmarkResultValue{
 			Value: 0,
 			Unit:  "GB/s",
 		}
-		results["d2h_bandwidth"] = tensorreaperv1.BenchmarkResultValue{
+		results["d2h_bandwidth"] = gryviav1.BenchmarkResultValue{
 			Value: 0,
 			Unit:  "GB/s",
 		}
 	case "io-throughput":
-		results["read_throughput"] = tensorreaperv1.BenchmarkResultValue{
+		results["read_throughput"] = gryviav1.BenchmarkResultValue{
 			Value: 0,
 			Unit:  "MB/s",
 		}
-		results["write_throughput"] = tensorreaperv1.BenchmarkResultValue{
+		results["write_throughput"] = gryviav1.BenchmarkResultValue{
 			Value: 0,
 			Unit:  "MB/s",
 		}
@@ -391,15 +391,15 @@ func (r *FabricBenchmarkReconciler) collectResults(benchmark *tensorreaperv1.Fab
 	return results
 }
 
-func (r *FabricBenchmarkReconciler) collectHardwareInfo(benchmark *tensorreaperv1.FabricBenchmark) *tensorreaperv1.BenchmarkHardwareInfo {
-	return &tensorreaperv1.BenchmarkHardwareInfo{
+func (r *FabricBenchmarkReconciler) collectHardwareInfo(benchmark *gryviav1.FabricBenchmark) *gryviav1.BenchmarkHardwareInfo {
+	return &gryviav1.BenchmarkHardwareInfo{
 		GpuModel: benchmark.Spec.Target.GpuType,
 		GpuCount: benchmark.Spec.Target.GpuCount,
 	}
 }
 
-func (r *FabricBenchmarkReconciler) compareBaseline(benchmark *tensorreaperv1.FabricBenchmark) *tensorreaperv1.BenchmarkComparison {
-	comparison := &tensorreaperv1.BenchmarkComparison{}
+func (r *FabricBenchmarkReconciler) compareBaseline(benchmark *gryviav1.FabricBenchmark) *gryviav1.BenchmarkComparison {
+	comparison := &gryviav1.BenchmarkComparison{}
 
 	if benchmark.Spec.Baseline == nil || benchmark.Status.Results == nil {
 		return comparison
@@ -435,7 +435,7 @@ func (r *FabricBenchmarkReconciler) compareBaseline(benchmark *tensorreaperv1.Fa
 	return comparison
 }
 
-func (r *FabricBenchmarkReconciler) getBenchmarkJobName(benchmark *tensorreaperv1.FabricBenchmark) string {
+func (r *FabricBenchmarkReconciler) getBenchmarkJobName(benchmark *gryviav1.FabricBenchmark) string {
 	return fmt.Sprintf("%s-bench", benchmark.Name)
 }
 
@@ -454,7 +454,7 @@ func formatDuration(d time.Duration) string {
 // SetupWithManager sets up the controller with the Manager.
 func (r *FabricBenchmarkReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tensorreaperv1.FabricBenchmark{}).
+		For(&gryviav1.FabricBenchmark{}).
 		Owns(&batchv1.Job{}).
 		Complete(r)
 }

@@ -39,10 +39,10 @@ export interface AuthContextType {
 
 // ── Constants ────────────────────────────────────────────────────────
 
-const TOKEN_KEY = 'tensorreaper_token'
-const AUTH_METHOD_KEY = 'tensorreaper_auth_method'
-const OIDC_STATE_KEY = 'tensorreaper_oidc_state'
-const OIDC_VERIFIER_KEY = 'tensorreaper_oidc_verifier'
+const TOKEN_KEY = 'gryvia_token'
+const AUTH_METHOD_KEY = 'gryvia_auth_method'
+const OIDC_STATE_KEY = 'gryvia_oidc_state'
+const OIDC_VERIFIER_KEY = 'gryvia_oidc_verifier'
 
 // ── Helpers ──────────────────────────────────────────────────────────
 

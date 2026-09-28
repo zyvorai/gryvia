@@ -8,10 +8,10 @@ use std::fs;
 use indicatif::{ProgressBar, ProgressStyle};
 use tokio::time::{sleep, Duration};
 
-use crate::client::TensorReaperClient;
+use crate::client::GryviaClient;
 use crate::display;
 
-pub async fn execute(client: &TensorReaperClient, file: &str, wait: bool, follow_logs: bool) -> Result<()> {
+pub async fn execute(client: &GryviaClient, file: &str, wait: bool, follow_logs: bool) -> Result<()> {
     // Read and parse YAML file
     let contents = fs::read_to_string(file)
         .with_context(|| format!("Failed to read file: {}", file))?;
@@ -24,7 +24,7 @@ pub async fn execute(client: &TensorReaperClient, file: &str, wait: bool, follow
     display::print_info(&format!("Submitting job: {}", job_name));
 
     // Submit job
-    let ar = ApiResource::from_gvk(&kube::api::GroupVersionKind::gvk("tensorreaper.ai", "v1", "FabricAIJob"));
+    let ar = ApiResource::from_gvk(&kube::api::GroupVersionKind::gvk("gryvia.io", "v1", "FabricAIJob"));
     let api: Api<DynamicObject> = Api::namespaced_with(
         client.kube_client.clone(),
         client.namespace(),
@@ -49,7 +49,7 @@ pub async fn execute(client: &TensorReaperClient, file: &str, wait: bool, follow
     Ok(())
 }
 
-async fn wait_for_completion(client: &TensorReaperClient, job_name: &str) -> Result<()> {
+async fn wait_for_completion(client: &GryviaClient, job_name: &str) -> Result<()> {
     let spinner = ProgressBar::new_spinner();
     spinner.set_style(
         ProgressStyle::default_spinner()
@@ -57,7 +57,7 @@ async fn wait_for_completion(client: &TensorReaperClient, job_name: &str) -> Res
             .expect("valid spinner template")
     );
 
-    let ar = ApiResource::from_gvk(&kube::api::GroupVersionKind::gvk("tensorreaper.ai", "v1", "FabricAIJob"));
+    let ar = ApiResource::from_gvk(&kube::api::GroupVersionKind::gvk("gryvia.io", "v1", "FabricAIJob"));
     let api: Api<DynamicObject> = Api::namespaced_with(
         client.kube_client.clone(),
         client.namespace(),
@@ -105,13 +105,13 @@ async fn wait_for_completion(client: &TensorReaperClient, job_name: &str) -> Res
     }
 }
 
-async fn follow_job_logs(client: &TensorReaperClient, job_name: &str) -> Result<()> {
+async fn follow_job_logs(client: &GryviaClient, job_name: &str) -> Result<()> {
     let pods_api: Api<Pod> = Api::namespaced(
         client.kube_client.clone(),
         client.namespace(),
     );
 
-    let label_selector = format!("tensorreaper.ai/job={}", job_name);
+    let label_selector = format!("gryvia.io/job={}", job_name);
     let lp = ListParams::default().labels(&label_selector);
 
     // Wait for pods to appear (up to 5 minutes)

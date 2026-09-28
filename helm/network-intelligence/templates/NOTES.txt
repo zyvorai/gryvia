@@ -48,4 +48,4 @@ Auto-blocking is disabled. Alerts will be generated but traffic will not be bloc
 {{- end }}
 {{- end }}
 
-For more information, visit: https://github.com/ssahani/TensorReaper
+For more information, visit: https://github.com/zyvorai/gryvia

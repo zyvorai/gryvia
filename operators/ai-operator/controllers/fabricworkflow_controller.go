@@ -13,14 +13,14 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/ai-operator/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 )
 
 const (
 	// Workflow condition types
-	ConditionDAGValid      = "DAGValid"
-	ConditionStepsRunning  = "StepsRunning"
-	ConditionWorkflowDone  = "WorkflowComplete"
+	ConditionDAGValid     = "DAGValid"
+	ConditionStepsRunning = "StepsRunning"
+	ConditionWorkflowDone = "WorkflowComplete"
 )
 
 // FabricWorkflowReconciler reconciles a FabricWorkflow object
@@ -30,10 +30,10 @@ type FabricWorkflowReconciler struct {
 	Log    logr.Logger
 }
 
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricworkflows,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricworkflows/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricworkflows/finalizers,verbs=update
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricaijobs,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricworkflows,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricworkflows/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricworkflows/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop
@@ -41,7 +41,7 @@ func (r *FabricWorkflowReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	log := r.Log.WithValues("fabricworkflow", req.NamespacedName)
 
 	// Fetch the FabricWorkflow instance
-	wf := &tensorreaperv1.FabricWorkflow{}
+	wf := &gryviav1.FabricWorkflow{}
 	err := r.Get(ctx, req.NamespacedName, wf)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -81,7 +81,7 @@ func (r *FabricWorkflowReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 }
 
 // initializeWorkflow sets up the initial status with all steps in Pending state.
-func (r *FabricWorkflowReconciler) initializeWorkflow(ctx context.Context, wf *tensorreaperv1.FabricWorkflow) error {
+func (r *FabricWorkflowReconciler) initializeWorkflow(ctx context.Context, wf *gryviav1.FabricWorkflow) error {
 	// Validate DAG (no cycles)
 	if err := r.validateDAG(wf); err != nil {
 		wf.Status.Phase = PhaseFailed
@@ -92,11 +92,11 @@ func (r *FabricWorkflowReconciler) initializeWorkflow(ctx context.Context, wf *t
 	wf.Status.Phase = PhasePending
 	now := metav1.Now()
 	wf.Status.StartTime = &now
-	wf.Status.StepStatuses = make([]tensorreaperv1.StepStatus, len(wf.Spec.Steps))
+	wf.Status.StepStatuses = make([]gryviav1.StepStatus, len(wf.Spec.Steps))
 	for i, step := range wf.Spec.Steps {
-		wf.Status.StepStatuses[i] = tensorreaperv1.StepStatus{
+		wf.Status.StepStatuses[i] = gryviav1.StepStatus{
 			Name:  step.Name,
-			Phase: tensorreaperv1.StepPhasePending,
+			Phase: gryviav1.StepPhasePending,
 		}
 	}
 
@@ -104,7 +104,7 @@ func (r *FabricWorkflowReconciler) initializeWorkflow(ctx context.Context, wf *t
 }
 
 // validateDAG checks for cycles in the dependency graph using DFS.
-func (r *FabricWorkflowReconciler) validateDAG(wf *tensorreaperv1.FabricWorkflow) error {
+func (r *FabricWorkflowReconciler) validateDAG(wf *gryviav1.FabricWorkflow) error {
 	// Build adjacency list
 	stepNames := make(map[string]bool, len(wf.Spec.Steps))
 	for _, step := range wf.Spec.Steps {
@@ -166,17 +166,17 @@ func (r *FabricWorkflowReconciler) validateDAG(wf *tensorreaperv1.FabricWorkflow
 	return nil
 }
 
-func (r *FabricWorkflowReconciler) reconcileWorkflow(ctx context.Context, wf *tensorreaperv1.FabricWorkflow) (ctrl.Result, error) {
+func (r *FabricWorkflowReconciler) reconcileWorkflow(ctx context.Context, wf *gryviav1.FabricWorkflow) (ctrl.Result, error) {
 	log := r.Log.WithValues("fabricworkflow", wf.Name)
 
 	// Build step status lookup
-	stepStatusMap := make(map[string]*tensorreaperv1.StepStatus, len(wf.Status.StepStatuses))
+	stepStatusMap := make(map[string]*gryviav1.StepStatus, len(wf.Status.StepStatuses))
 	for i := range wf.Status.StepStatuses {
 		stepStatusMap[wf.Status.StepStatuses[i].Name] = &wf.Status.StepStatuses[i]
 	}
 
 	// Build step spec lookup
-	stepSpecMap := make(map[string]*tensorreaperv1.WorkflowStep, len(wf.Spec.Steps))
+	stepSpecMap := make(map[string]*gryviav1.WorkflowStep, len(wf.Spec.Steps))
 	for i := range wf.Spec.Steps {
 		stepSpecMap[wf.Spec.Steps[i].Name] = &wf.Spec.Steps[i]
 	}
@@ -184,18 +184,18 @@ func (r *FabricWorkflowReconciler) reconcileWorkflow(ctx context.Context, wf *te
 	// Sync running steps with their job statuses
 	for i := range wf.Status.StepStatuses {
 		ss := &wf.Status.StepStatuses[i]
-		if ss.Phase != tensorreaperv1.StepPhaseRunning || ss.JobName == "" {
+		if ss.Phase != gryviav1.StepPhaseRunning || ss.JobName == "" {
 			continue
 		}
 
-		job := &tensorreaperv1.FabricAIJob{}
+		job := &gryviav1.FabricAIJob{}
 		err := r.Get(ctx, types.NamespacedName{
 			Namespace: wf.Namespace,
 			Name:      ss.JobName,
 		}, job)
 		if err != nil {
 			if errors.IsNotFound(err) {
-				ss.Phase = tensorreaperv1.StepPhaseFailed
+				ss.Phase = gryviav1.StepPhaseFailed
 				ss.Message = "Step job not found"
 				now := metav1.Now()
 				ss.CompletionTime = &now
@@ -205,7 +205,7 @@ func (r *FabricWorkflowReconciler) reconcileWorkflow(ctx context.Context, wf *te
 
 		switch job.Status.Phase {
 		case PhaseSucceeded:
-			ss.Phase = tensorreaperv1.StepPhaseSucceeded
+			ss.Phase = gryviav1.StepPhaseSucceeded
 			now := metav1.Now()
 			ss.CompletionTime = &now
 		case PhaseFailed:
@@ -213,14 +213,14 @@ func (r *FabricWorkflowReconciler) reconcileWorkflow(ctx context.Context, wf *te
 			spec := stepSpecMap[ss.Name]
 			if spec != nil && ss.RetriesAttempted < spec.Retries {
 				ss.RetriesAttempted++
-				ss.Phase = tensorreaperv1.StepPhasePending
+				ss.Phase = gryviav1.StepPhasePending
 				ss.Message = fmt.Sprintf("Retrying (%d/%d)", ss.RetriesAttempted, spec.Retries)
 				// Delete the failed job so it can be recreated
 				if deleteErr := r.Delete(ctx, job); deleteErr != nil && !errors.IsNotFound(deleteErr) {
 					log.Error(deleteErr, "Failed to delete failed step job for retry")
 				}
 			} else {
-				ss.Phase = tensorreaperv1.StepPhaseFailed
+				ss.Phase = gryviav1.StepPhaseFailed
 				ss.Message = job.Status.Message
 				now := metav1.Now()
 				ss.CompletionTime = &now
@@ -237,15 +237,15 @@ func (r *FabricWorkflowReconciler) reconcileWorkflow(ctx context.Context, wf *te
 		ss := &wf.Status.StepStatuses[i]
 
 		switch ss.Phase {
-		case tensorreaperv1.StepPhaseRunning:
+		case gryviav1.StepPhaseRunning:
 			anyRunning = true
 			allSucceeded = false
-		case tensorreaperv1.StepPhaseFailed:
+		case gryviav1.StepPhaseFailed:
 			anyFailed = true
 			allSucceeded = false
-		case tensorreaperv1.StepPhaseSkipped:
+		case gryviav1.StepPhaseSkipped:
 			// skipped steps don't block completion
-		case tensorreaperv1.StepPhasePending:
+		case gryviav1.StepPhasePending:
 			allSucceeded = false
 			spec := stepSpecMap[ss.Name]
 			if spec == nil {
@@ -261,10 +261,10 @@ func (r *FabricWorkflowReconciler) reconcileWorkflow(ctx context.Context, wf *te
 					depsReady = false
 					break
 				}
-				if depStatus.Phase == tensorreaperv1.StepPhaseSucceeded || depStatus.Phase == tensorreaperv1.StepPhaseSkipped {
+				if depStatus.Phase == gryviav1.StepPhaseSucceeded || depStatus.Phase == gryviav1.StepPhaseSkipped {
 					continue
 				}
-				if depStatus.Phase == tensorreaperv1.StepPhaseFailed {
+				if depStatus.Phase == gryviav1.StepPhaseFailed {
 					depsFailed = true
 				}
 				depsReady = false
@@ -272,7 +272,7 @@ func (r *FabricWorkflowReconciler) reconcileWorkflow(ctx context.Context, wf *te
 
 			if depsFailed {
 				// If any dependency failed, skip this step
-				ss.Phase = tensorreaperv1.StepPhaseSkipped
+				ss.Phase = gryviav1.StepPhaseSkipped
 				ss.Message = "Skipped: dependency failed"
 				continue
 			}
@@ -284,7 +284,7 @@ func (r *FabricWorkflowReconciler) reconcileWorkflow(ctx context.Context, wf *te
 			// Check condition if specified
 			if spec.Condition != "" {
 				if !r.evaluateCondition(spec.Condition, stepStatusMap) {
-					ss.Phase = tensorreaperv1.StepPhaseSkipped
+					ss.Phase = gryviav1.StepPhaseSkipped
 					ss.Message = "Skipped: condition not met"
 					continue
 				}
@@ -310,7 +310,7 @@ func (r *FabricWorkflowReconciler) reconcileWorkflow(ctx context.Context, wf *te
 		// Check if there are pending steps that could still run
 		hasPending := false
 		for _, ss := range wf.Status.StepStatuses {
-			if ss.Phase == tensorreaperv1.StepPhasePending {
+			if ss.Phase == gryviav1.StepPhasePending {
 				hasPending = true
 				break
 			}
@@ -342,7 +342,7 @@ func (r *FabricWorkflowReconciler) reconcileWorkflow(ctx context.Context, wf *te
 // evaluateCondition does a simple string-matching condition evaluation.
 // For production use this would use a proper CEL evaluator. Currently supports
 // checking step phase: "steps.<name>.status == 'Succeeded'" style patterns.
-func (r *FabricWorkflowReconciler) evaluateCondition(condition string, stepStatuses map[string]*tensorreaperv1.StepStatus) bool {
+func (r *FabricWorkflowReconciler) evaluateCondition(condition string, stepStatuses map[string]*gryviav1.StepStatus) bool {
 	// Simple heuristic: if condition references a step status, check it.
 	// In production this would use a full expression evaluator.
 	// For now, if we can't parse it, default to true (run the step).
@@ -352,34 +352,34 @@ func (r *FabricWorkflowReconciler) evaluateCondition(condition string, stepStatu
 }
 
 // launchStep creates a FabricAIJob for a job-type step, or a pod for a script-type step.
-func (r *FabricWorkflowReconciler) launchStep(ctx context.Context, wf *tensorreaperv1.FabricWorkflow, step *tensorreaperv1.WorkflowStep, ss *tensorreaperv1.StepStatus) error {
+func (r *FabricWorkflowReconciler) launchStep(ctx context.Context, wf *gryviav1.FabricWorkflow, step *gryviav1.WorkflowStep, ss *gryviav1.StepStatus) error {
 	jobName := fmt.Sprintf("%s-%s", wf.Name, step.Name)
 
 	stepType := step.Type
 	if stepType == "" && step.JobTemplate != nil {
-		stepType = tensorreaperv1.StepTypeJob
+		stepType = gryviav1.StepTypeJob
 	}
 	if stepType == "" && step.Script != nil {
-		stepType = tensorreaperv1.StepTypeScript
+		stepType = gryviav1.StepTypeScript
 	}
 
 	switch stepType {
-	case tensorreaperv1.StepTypeJob:
+	case gryviav1.StepTypeJob:
 		if step.JobTemplate == nil {
 			return fmt.Errorf("step %q has type 'job' but no jobTemplate", step.Name)
 		}
 		return r.launchJobStep(ctx, wf, step, ss, jobName)
 
-	case tensorreaperv1.StepTypeScript:
+	case gryviav1.StepTypeScript:
 		if step.Script == nil {
 			return fmt.Errorf("step %q has type 'script' but no script", step.Name)
 		}
 		return r.launchScriptStep(ctx, wf, step, ss, jobName)
 
-	case tensorreaperv1.StepTypeWebhook:
+	case gryviav1.StepTypeWebhook:
 		// Webhook steps are executed inline; mark as succeeded immediately.
 		// A production implementation would make the HTTP call and check the response.
-		ss.Phase = tensorreaperv1.StepPhaseSucceeded
+		ss.Phase = gryviav1.StepPhaseSucceeded
 		ss.Message = "Webhook executed"
 		now := metav1.Now()
 		ss.StartTime = &now
@@ -395,18 +395,18 @@ func (r *FabricWorkflowReconciler) launchStep(ctx context.Context, wf *tensorrea
 	}
 }
 
-func (r *FabricWorkflowReconciler) launchJobStep(ctx context.Context, wf *tensorreaperv1.FabricWorkflow, step *tensorreaperv1.WorkflowStep, ss *tensorreaperv1.StepStatus, jobName string) error {
-	job := &tensorreaperv1.FabricAIJob{
+func (r *FabricWorkflowReconciler) launchJobStep(ctx context.Context, wf *gryviav1.FabricWorkflow, step *gryviav1.WorkflowStep, ss *gryviav1.StepStatus, jobName string) error {
+	job := &gryviav1.FabricAIJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      jobName,
 			Namespace: wf.Namespace,
 			Labels: map[string]string{
-				"tensorreaper.ai/workflow":  wf.Name,
-				"tensorreaper.ai/step":      step.Name,
-				"tensorreaper.ai/component": "workflow-step",
+				"gryvia.io/workflow":  wf.Name,
+				"gryvia.io/step":      step.Name,
+				"gryvia.io/component": "workflow-step",
 			},
 			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(wf, tensorreaperv1.GroupVersion.WithKind("FabricWorkflow")),
+				*metav1.NewControllerRef(wf, gryviav1.GroupVersion.WithKind("FabricWorkflow")),
 			},
 		},
 		Spec: *step.JobTemplate.DeepCopy(),
@@ -414,7 +414,7 @@ func (r *FabricWorkflowReconciler) launchJobStep(ctx context.Context, wf *tensor
 
 	// Inject workflow parameters as env vars
 	for k, v := range wf.Spec.Parameters {
-		job.Spec.Env = append(job.Spec.Env, tensorreaperv1.EnvVarFromCoreV1(k, v))
+		job.Spec.Env = append(job.Spec.Env, gryviav1.EnvVarFromCoreV1(k, v))
 	}
 
 	if err := r.Create(ctx, job); err != nil {
@@ -425,29 +425,29 @@ func (r *FabricWorkflowReconciler) launchJobStep(ctx context.Context, wf *tensor
 		}
 	}
 
-	ss.Phase = tensorreaperv1.StepPhaseRunning
+	ss.Phase = gryviav1.StepPhaseRunning
 	ss.JobName = jobName
 	now := metav1.Now()
 	ss.StartTime = &now
 	return nil
 }
 
-func (r *FabricWorkflowReconciler) launchScriptStep(ctx context.Context, wf *tensorreaperv1.FabricWorkflow, step *tensorreaperv1.WorkflowStep, ss *tensorreaperv1.StepStatus, jobName string) error {
+func (r *FabricWorkflowReconciler) launchScriptStep(ctx context.Context, wf *gryviav1.FabricWorkflow, step *gryviav1.WorkflowStep, ss *gryviav1.StepStatus, jobName string) error {
 	// For script steps, create a simple FabricAIJob with the script's image and command
-	job := &tensorreaperv1.FabricAIJob{
+	job := &gryviav1.FabricAIJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      jobName,
 			Namespace: wf.Namespace,
 			Labels: map[string]string{
-				"tensorreaper.ai/workflow":  wf.Name,
-				"tensorreaper.ai/step":      step.Name,
-				"tensorreaper.ai/component": "workflow-script",
+				"gryvia.io/workflow":  wf.Name,
+				"gryvia.io/step":      step.Name,
+				"gryvia.io/component": "workflow-script",
 			},
 			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(wf, tensorreaperv1.GroupVersion.WithKind("FabricWorkflow")),
+				*metav1.NewControllerRef(wf, gryviav1.GroupVersion.WithKind("FabricWorkflow")),
 			},
 		},
-		Spec: tensorreaperv1.FabricAIJobSpec{
+		Spec: gryviav1.FabricAIJobSpec{
 			Type:    "script",
 			Image:   step.Script.Image,
 			Command: step.Script.Command,
@@ -464,7 +464,7 @@ func (r *FabricWorkflowReconciler) launchScriptStep(ctx context.Context, wf *ten
 		}
 	}
 
-	ss.Phase = tensorreaperv1.StepPhaseRunning
+	ss.Phase = gryviav1.StepPhaseRunning
 	ss.JobName = jobName
 	now := metav1.Now()
 	ss.StartTime = &now
@@ -474,7 +474,7 @@ func (r *FabricWorkflowReconciler) launchScriptStep(ctx context.Context, wf *ten
 // SetupWithManager sets up the controller with the Manager.
 func (r *FabricWorkflowReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tensorreaperv1.FabricWorkflow{}).
-		Owns(&tensorreaperv1.FabricAIJob{}).
+		For(&gryviav1.FabricWorkflow{}).
+		Owns(&gryviav1.FabricAIJob{}).
 		Complete(r)
 }

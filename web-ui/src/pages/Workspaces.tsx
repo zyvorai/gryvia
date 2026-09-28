@@ -1,12 +1,9 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import {
-  Monitor, Cpu, Clock, Pause, Play, Plus, ExternalLink,
-  RefreshCw, HardDrive, Activity, X,
-} from 'lucide-react'
+import { X } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { Workspace } from '@/lib/api'
-import StatCard from '@/components/StatCard'
+import PageHero from '@/components/PageHero'
 import LoadingSpinner from '@/components/LoadingSpinner'
 
 export default function Workspaces() {
@@ -35,9 +32,10 @@ export default function Workspaces() {
   })
 
   if (isError) return (
-    <div className="text-center py-12">
-      <p className="text-red-400">Failed to load workspaces. Please try again.</p>
-    </div>
+    <>
+      <PageHero eyebrow="Workspaces" title="Workspaces unavailable." tint="red" />
+      <p className="login-error" role="alert">Failed to load workspaces. Please try again.</p>
+    </>
   )
 
   const activeWorkspaces = workspaces?.filter(w => w.status?.phase === 'Running') || []
@@ -46,49 +44,31 @@ export default function Workspaces() {
   const totalGPUs = workspaces?.reduce((sum, w) => sum + (w.spec?.gpuCount || 0), 0) || 0
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gradient-copper">Workspaces</h2>
-          <p className="text-sm text-[#5a7a9e] mt-1">GPU-attached interactive environments</p>
-        </div>
-        <div className="flex gap-3">
-          <button
-            onClick={() => refetch()}
-            disabled={isRefetching}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-[#8ba4c0] transition-all duration-200 disabled:opacity-50 hover:text-[#c0cce0]"
-            style={{
-              border: '1px solid rgba(192,204,224,0.1)',
-              background: 'rgba(21,29,40,0.5)',
-            }}
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${isRefetching ? 'animate-spin' : ''}`} />
-            Refresh
-          </button>
-          <button
-            onClick={() => setShowCreateForm(true)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 btn-copper text-sm font-medium rounded-lg"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            New Workspace
-          </button>
-        </div>
+    <div className="apple-story-stack">
+      <PageHero eyebrow="Workspaces" title="Interactive GPU environments." lede="GPU-attached Jupyter and VS Code workspaces." />
+
+      <div className="page-actions">
+        <button className="primary" onClick={() => setShowCreateForm(true)}>
+          New Workspace
+        </button>
+        <button className="btn-secondary" onClick={() => refetch()} disabled={isRefetching}>
+          Refresh
+        </button>
       </div>
 
-      {/* Stat Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard icon={Monitor} title="Active Workspaces" value={activeWorkspaces.length} color="purple" />
-        <StatCard icon={Cpu} title="Total GPUs Allocated" value={totalGPUs} color="blue" />
-        <StatCard icon={Clock} title="Idle Workspaces" value={idleWorkspaces.length} subtitle={idleWorkspaces.length > 0 ? 'may auto-pause' : undefined} color="orange" />
-        <StatCard icon={Pause} title="Paused" value={pausedWorkspaces.length} color="cyan" />
+      <div className="apple-metric-band">
+        <div><span>Active Workspaces</span><b>{activeWorkspaces.length}</b></div>
+        <div><span>Total GPUs Allocated</span><b>{totalGPUs}</b></div>
+        <div><span>Idle Workspaces{idleWorkspaces.length > 0 ? ' · may auto-pause' : ''}</span><b>{idleWorkspaces.length}</b></div>
+        <div><span>Paused</span><b>{pausedWorkspaces.length}</b></div>
       </div>
 
-      {/* Workspace Grid */}
       {isLoading ? (
         <LoadingSpinner />
+      ) : (workspaces || []).length === 0 ? (
+        <div className="list-empty">No workspaces yet. Create one to get started.</div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="card-grid">
           {(workspaces || []).map((ws) => (
             <WorkspaceCard
               key={ws.metadata?.name}
@@ -100,16 +80,9 @@ export default function Workspaces() {
               isResuming={resumeMutation.isPending}
             />
           ))}
-          {(!workspaces || workspaces.length === 0) && (
-            <div className="col-span-full text-center py-12">
-              <Monitor className="h-12 w-12 mx-auto mb-3 text-[#344e6a]" />
-              <p className="text-sm text-[#5a7a9e]">No workspaces yet. Create one to get started.</p>
-            </div>
-          )}
         </div>
       )}
 
-      {/* Create Workspace Modal */}
       {showCreateForm && (
         <CreateWorkspaceModal onClose={() => setShowCreateForm(false)} />
       )}
@@ -131,108 +104,60 @@ function WorkspaceCard({ workspace, onPause, onResume, onDelete, isPausing, isRe
   const phase = workspace.status?.phase || 'Unknown'
   const wsType = workspace.spec?.type || 'jupyter'
 
-  const statusColors: Record<string, { dot: string; bg: string; text: string }> = {
-    Running: { dot: 'bg-emerald-400', bg: 'rgba(34,197,94,0.08)', text: 'text-emerald-400' },
-    Paused: { dot: 'bg-yellow-400', bg: 'rgba(251,191,36,0.08)', text: 'text-[#fbbf24]' },
-    Idle: { dot: 'bg-cyan-400', bg: 'rgba(6,182,212,0.08)', text: 'text-cyan-400' },
-    Pending: { dot: 'bg-[#fbbf24]', bg: 'rgba(251,191,36,0.08)', text: 'text-[#fbbf24]' },
-    Failed: { dot: 'bg-red-400', bg: 'rgba(239,68,68,0.08)', text: 'text-red-400' },
-  }
-  const sc = statusColors[phase] || statusColors.Pending
-
-  const typeIcons: Record<string, { label: string; color: string }> = {
-    jupyter: { label: 'Jupyter', color: 'text-[#f37626]' },
-    vscode: { label: 'VS Code', color: 'text-[#007acc]' },
-  }
-  const ti = typeIcons[wsType] || typeIcons.jupyter
+  const tone: Record<string, string> = { Running: 'ok', Paused: 'warn', Idle: 'info', Pending: 'warn', Failed: 'bad' }
+  const label: Record<string, string> = { jupyter: 'Jupyter', vscode: 'VS Code' }
 
   return (
-    <div className="rounded-xl p-5 metal-card card-glow transition-all duration-300 hover:scale-[1.01]">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <Monitor className={`h-4 w-4 ${ti.color}`} />
-          <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{
-            background: 'rgba(10,14,20,0.5)',
-            border: '1px solid rgba(192,204,224,0.08)',
-            color: ti.color === 'text-[#f37626]' ? '#f37626' : '#007acc',
-          }}>
-            {ti.label}
-          </span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className={`w-2 h-2 rounded-full ${sc.dot}`} style={{
-            boxShadow: `0 0 6px currentColor`,
-          }} />
-          <span className={`text-[10px] font-medium ${sc.text}`}>{phase}</span>
-        </div>
+    <section className="card">
+      <div className="stat-head">
+        <span className="pill">{label[wsType] || label.jupyter}</span>
+        <span className={`pill ${tone[phase] || ''}`}>{phase}</span>
       </div>
 
-      <h3 className="text-sm font-semibold text-[#e8ecf1] truncate mb-2">{name}</h3>
+      <h3 style={{ margin: '12px 0 8px' }}>{name}</h3>
 
-      <div className="space-y-1.5 mb-4">
-        <div className="flex items-center gap-2 text-xs text-[#8ba4c0]">
-          <Cpu className="h-3 w-3 text-[#5a7a9e]" />
-          <span>{workspace.spec?.gpuType || 'GPU'} x{workspace.spec?.gpuCount || 0}</span>
-        </div>
-        <div className="flex items-center gap-2 text-xs text-[#8ba4c0]">
-          <HardDrive className="h-3 w-3 text-[#5a7a9e]" />
-          <span>{workspace.spec?.storageSize || 'N/A'}</span>
-        </div>
-        <div className="flex items-center gap-2 text-xs text-[#8ba4c0]">
-          <Clock className="h-3 w-3 text-[#5a7a9e]" />
-          <span>Uptime: {workspace.status?.uptime || 'N/A'}</span>
-        </div>
+      <div className="stack" style={{ gap: 4, marginBottom: 16 }}>
+        <span className="muted">{workspace.spec?.gpuType || 'GPU'} x{workspace.spec?.gpuCount || 0}</span>
+        <span className="muted">Storage: {workspace.spec?.storageSize || 'N/A'}</span>
+        <span className="muted">Uptime: {workspace.status?.uptime || 'N/A'}</span>
         {workspace.status?.lastActivity && (
-          <div className="flex items-center gap-2 text-xs text-[#5a7a9e]">
-            <Activity className="h-3 w-3" />
-            <span>Last active: {new Date(workspace.status.lastActivity).toLocaleString()}</span>
-          </div>
+          <span className="faint">Last active: {new Date(workspace.status.lastActivity).toLocaleString()}</span>
         )}
       </div>
 
-      <div className="flex items-center gap-2 pt-3" style={{ borderTop: '1px solid rgba(192,204,224,0.06)' }}>
+      <div className="row">
         {phase === 'Running' && workspace.status?.url && (
           <a
             href={workspace.status.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 btn-copper rounded-lg text-xs font-medium"
+            className="buttonlike btn-secondary"
           >
-            <ExternalLink className="h-3 w-3" />
             Open
           </a>
         )}
         {phase === 'Running' || phase === 'Idle' ? (
-          <button
-            onClick={() => onPause(name)}
-            disabled={isPausing}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 btn-chrome rounded-lg text-xs font-medium disabled:opacity-50"
-          >
-            <Pause className="h-3 w-3" />
+          <button className="btn-secondary" onClick={() => onPause(name)} disabled={isPausing}>
             Pause
           </button>
         ) : phase === 'Paused' ? (
-          <button
-            onClick={() => onResume(name)}
-            disabled={isResuming}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 btn-chrome rounded-lg text-xs font-medium disabled:opacity-50"
-          >
-            <Play className="h-3 w-3" />
+          <button className="btn-secondary" onClick={() => onResume(name)} disabled={isResuming}>
             Resume
           </button>
         ) : null}
         <button
+          className="danger"
+          style={{ marginLeft: 'auto' }}
           onClick={() => {
             if (window.confirm(`Delete workspace "${name}"?`)) {
               onDelete(name)
             }
           }}
-          className="ml-auto p-1.5 text-[#5a7a9e] hover:text-red-400 transition-colors rounded-lg"
         >
-          <X className="h-3.5 w-3.5" />
+          Delete
         </button>
       </div>
-    </div>
+    </section>
   )
 }
 
@@ -269,62 +194,44 @@ function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
     createMutation.mutate(formData)
   }
 
-  const inputStyle = {
-    background: 'rgba(10,14,20,0.6)',
-    border: '1px solid rgba(192,204,224,0.08)',
-    boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.3)',
-    color: '#d0dae6',
-  }
-
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-card w-full max-w-lg mx-4" onClick={(e) => e.stopPropagation()}>
-        <div className="px-6 py-4" style={{
-          borderBottom: '1px solid rgba(192,204,224,0.06)',
-          background: 'rgba(10,14,20,0.3)',
-        }}>
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-bold text-gradient-copper">Create Workspace</h3>
-            <button onClick={onClose} className="text-[#5a7a9e] hover:text-[#c0cce0] transition-colors">
-              <X className="h-5 w-5" />
-            </button>
-          </div>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+        <div className="stat-head" style={{ marginBottom: 16 }}>
+          <h2 style={{ margin: 0 }}>Create Workspace</h2>
+          <button type="button" className="icon-button" onClick={onClose} aria-label="Close">
+            <X className="h-4 w-4" />
+          </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
+        <form onSubmit={handleSubmit} className="stack" style={{ gap: 16 }}>
           <div>
-            <label className="block text-xs font-medium text-[#8ba4c0] mb-1">Name</label>
+            <label className="faint" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Name</label>
             <input
               type="text"
               required
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="block w-full rounded-lg text-sm placeholder-[#344e6a] focus:ring-2 focus:ring-[#d4764e] focus:outline-none"
-              style={inputStyle}
               placeholder="my-workspace"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-[#8ba4c0] mb-1">Type</label>
+              <label className="faint" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Type</label>
               <select
                 value={formData.type}
                 onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-                className="block w-full rounded-lg text-sm focus:ring-2 focus:ring-[#d4764e] focus:outline-none"
-                style={inputStyle}
               >
                 <option value="jupyter">Jupyter</option>
                 <option value="vscode">VS Code</option>
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#8ba4c0] mb-1">GPU Type</label>
+              <label className="faint" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>GPU Type</label>
               <select
                 value={formData.gpuType}
                 onChange={(e) => setFormData({ ...formData, gpuType: e.target.value })}
-                className="block w-full rounded-lg text-sm focus:ring-2 focus:ring-[#d4764e] focus:outline-none"
-                style={inputStyle}
               >
                 <option value="H100">H100</option>
                 <option value="A100-80G">A100-80G</option>
@@ -338,7 +245,7 @@ function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
 
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <label className="block text-xs font-medium text-[#8ba4c0] mb-1">GPU Count</label>
+              <label className="faint" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>GPU Count</label>
               <input
                 type="number"
                 min="1"
@@ -346,73 +253,43 @@ function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
                 required
                 value={formData.gpuCount}
                 onChange={(e) => setFormData({ ...formData, gpuCount: parseInt(e.target.value, 10) || 1 })}
-                className="block w-full rounded-lg text-sm focus:ring-2 focus:ring-[#d4764e] focus:outline-none"
-                style={inputStyle}
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#8ba4c0] mb-1">Storage</label>
+              <label className="faint" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Storage</label>
               <input
                 type="text"
                 required
                 value={formData.storageSize}
                 onChange={(e) => setFormData({ ...formData, storageSize: e.target.value })}
-                className="block w-full rounded-lg text-sm placeholder-[#344e6a] focus:ring-2 focus:ring-[#d4764e] focus:outline-none"
-                style={inputStyle}
                 placeholder="50Gi"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#8ba4c0] mb-1">Idle Timeout</label>
+              <label className="faint" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Idle Timeout</label>
               <input
                 type="text"
                 required
                 value={formData.idleTimeout}
                 onChange={(e) => setFormData({ ...formData, idleTimeout: e.target.value })}
-                className="block w-full rounded-lg text-sm placeholder-[#344e6a] focus:ring-2 focus:ring-[#d4764e] focus:outline-none"
-                style={inputStyle}
                 placeholder="30m"
               />
             </div>
           </div>
 
-          {error && (
-            <div className="rounded-xl p-3" style={{
-              background: 'rgba(251,191,36,0.06)',
-              border: '1px solid rgba(251,191,36,0.12)',
-            }}>
-              <p className="text-xs text-[#fbbf24]">{error}</p>
-            </div>
-          )}
+          {error && <p className="text-warn">{error}</p>}
 
           {createMutation.isError && (
-            <div className="rounded-xl p-3" style={{
-              background: 'rgba(239,68,68,0.06)',
-              border: '1px solid rgba(239,68,68,0.12)',
-            }}>
-              <p className="text-xs text-[#f87171]">
-                Error creating workspace: {createMutation.error instanceof Error ? createMutation.error.message : 'Unknown error'}
-              </p>
-            </div>
+            <p className="login-error" role="alert">
+              Error creating workspace: {createMutation.error instanceof Error ? createMutation.error.message : 'Unknown error'}
+            </p>
           )}
 
-          <div className="flex justify-end gap-3 pt-4" style={{ borderTop: '1px solid rgba(192,204,224,0.04)' }}>
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 rounded-lg text-sm font-medium text-[#8ba4c0] hover:text-[#c0cce0] transition-all"
-              style={{
-                border: '1px solid rgba(192,204,224,0.1)',
-                background: 'rgba(21,29,40,0.5)',
-              }}
-            >
+          <div className="row" style={{ justifyContent: 'flex-end' }}>
+            <button type="button" className="btn-secondary" onClick={onClose}>
               Cancel
             </button>
-            <button
-              type="submit"
-              disabled={createMutation.isPending}
-              className="px-4 py-2 btn-copper rounded-lg text-sm font-medium disabled:opacity-50"
-            >
+            <button type="submit" className="primary" disabled={createMutation.isPending}>
               {createMutation.isPending ? 'Creating...' : 'Create Workspace'}
             </button>
           </div>

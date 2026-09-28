@@ -1,5 +1,5 @@
 ---
-# JupyterHub with TensorReaper GPU Integration
+# JupyterHub with Gryvia GPU Integration
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -48,7 +48,7 @@ data:
                     'nvidia.com/gpu': '1'
                 },
                 'node_selector': {
-                    'tensorreaper.ai/gpu-type': 'T4'
+                    'gryvia.io/gpu-type': 'T4'
                 }
             }
         },
@@ -67,7 +67,7 @@ data:
                     'nvidia.com/gpu': '1'
                 },
                 'node_selector': {
-                    'tensorreaper.ai/gpu-type': 'A100-40G'
+                    'gryvia.io/gpu-type': 'A100-40G'
                 }
             }
         },
@@ -86,7 +86,7 @@ data:
                     'nvidia.com/gpu': '1'
                 },
                 'node_selector': {
-                    'tensorreaper.ai/gpu-type': 'A100-80G'
+                    'gryvia.io/gpu-type': 'A100-80G'
                 }
             }
         },
@@ -105,7 +105,7 @@ data:
                     'nvidia.com/gpu': '4'
                 },
                 'node_selector': {
-                    'tensorreaper.ai/gpu-type': 'A100-80G'
+                    'gryvia.io/gpu-type': 'A100-80G'
                 }
             }
         }
@@ -118,7 +118,7 @@ data:
 
     # Environment variables
     c.KubeSpawner.environment = {
-        'MLFLOW_TRACKING_URI': 'http://mlflow.tensorreaper.svc.cluster.local:5000',
+        'MLFLOW_TRACKING_URI': 'http://mlflow.gryvia.svc.cluster.local:5000',
         'JUPYTER_ENABLE_LAB': 'yes'
     }
 
@@ -260,7 +260,7 @@ subjects:
 
 ---
 # GPU quota integration
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricQuota
 metadata:
   name: jupyterhub-users

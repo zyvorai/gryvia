@@ -18,12 +18,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/quota-operator/api/v1"
-	"github.com/ssahani/TensorReaper/operators/quota-operator/pkg/budget"
+	gryviav1 "github.com/zyvorai/gryvia/operators/quota-operator/api/v1"
+	"github.com/zyvorai/gryvia/operators/quota-operator/pkg/budget"
 )
 
 const (
-	fabricTenantFinalizer = "tensorreaper.ai/tenant-finalizer"
+	fabricTenantFinalizer = "gryvia.io/tenant-finalizer"
 )
 
 // FabricTenantReconciler reconciles a FabricTenant object
@@ -32,10 +32,10 @@ type FabricTenantReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabrictenants,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabrictenants/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabrictenants/finalizers,verbs=update
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricaijobs,verbs=get;list;watch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabrictenants,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabrictenants/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabrictenants/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch;create;update;patch
 //+kubebuilder:rbac:groups="",resources=resourcequotas,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=limitranges,verbs=get;list;watch;create;update;patch;delete
@@ -46,7 +46,7 @@ func (r *FabricTenantReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	logger := log.FromContext(ctx)
 
 	// Fetch the FabricTenant instance
-	tenant := &tensorreaperv1.FabricTenant{}
+	tenant := &gryviav1.FabricTenant{}
 	err := r.Get(ctx, req.NamespacedName, tenant)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -93,7 +93,7 @@ func (r *FabricTenantReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	return ctrl.Result{RequeueAfter: 2 * time.Minute}, nil
 }
 
-func (r *FabricTenantReconciler) reconcileTenant(ctx context.Context, tenant *tensorreaperv1.FabricTenant) (ctrl.Result, error) {
+func (r *FabricTenantReconciler) reconcileTenant(ctx context.Context, tenant *gryviav1.FabricTenant) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	// Ensure namespace exists for tenant
@@ -147,7 +147,7 @@ func (r *FabricTenantReconciler) reconcileTenant(ctx context.Context, tenant *te
 	return ctrl.Result{}, nil
 }
 
-func (r *FabricTenantReconciler) ensureNamespace(ctx context.Context, tenant *tensorreaperv1.FabricTenant, nsName string) error {
+func (r *FabricTenantReconciler) ensureNamespace(ctx context.Context, tenant *gryviav1.FabricTenant, nsName string) error {
 	ns := &corev1.Namespace{}
 	err := r.Get(ctx, types.NamespacedName{Name: nsName}, ns)
 	if err != nil {
@@ -157,14 +157,14 @@ func (r *FabricTenantReconciler) ensureNamespace(ctx context.Context, tenant *te
 				ObjectMeta: metav1.ObjectMeta{
 					Name: nsName,
 					Labels: map[string]string{
-						"tensorreaper.ai/tenant":       tenant.Name,
-						"tensorreaper.ai/managed-by":   "fabric-tenant-controller",
-						"tensorreaper.ai/display-name": tenant.Spec.DisplayName,
+						"gryvia.io/tenant":       tenant.Name,
+						"gryvia.io/managed-by":   "fabric-tenant-controller",
+						"gryvia.io/display-name": tenant.Spec.DisplayName,
 					},
 				},
 			}
 			if tenant.Spec.Governance != nil {
-				ns.Labels["tensorreaper.ai/data-classification"] = tenant.Spec.Governance.DataClassification
+				ns.Labels["gryvia.io/data-classification"] = tenant.Spec.Governance.DataClassification
 			}
 			return r.Create(ctx, ns)
 		}
@@ -175,12 +175,12 @@ func (r *FabricTenantReconciler) ensureNamespace(ctx context.Context, tenant *te
 	if ns.Labels == nil {
 		ns.Labels = make(map[string]string)
 	}
-	ns.Labels["tensorreaper.ai/tenant"] = tenant.Name
-	ns.Labels["tensorreaper.ai/managed-by"] = "fabric-tenant-controller"
+	ns.Labels["gryvia.io/tenant"] = tenant.Name
+	ns.Labels["gryvia.io/managed-by"] = "fabric-tenant-controller"
 	return r.Update(ctx, ns)
 }
 
-func (r *FabricTenantReconciler) ensureResourceQuota(ctx context.Context, tenant *tensorreaperv1.FabricTenant, nsName string) error {
+func (r *FabricTenantReconciler) ensureResourceQuota(ctx context.Context, tenant *gryviav1.FabricTenant, nsName string) error {
 	quotaName := fmt.Sprintf("%s-quota", tenant.Name)
 
 	rq := &corev1.ResourceQuota{}
@@ -203,8 +203,8 @@ func (r *FabricTenantReconciler) ensureResourceQuota(ctx context.Context, tenant
 				Name:      quotaName,
 				Namespace: nsName,
 				Labels: map[string]string{
-					"tensorreaper.ai/tenant":     tenant.Name,
-					"tensorreaper.ai/managed-by": "fabric-tenant-controller",
+					"gryvia.io/tenant":     tenant.Name,
+					"gryvia.io/managed-by": "fabric-tenant-controller",
 				},
 			},
 			Spec: corev1.ResourceQuotaSpec{
@@ -218,7 +218,7 @@ func (r *FabricTenantReconciler) ensureResourceQuota(ctx context.Context, tenant
 	return r.Update(ctx, rq)
 }
 
-func (r *FabricTenantReconciler) ensureLimitRange(ctx context.Context, tenant *tensorreaperv1.FabricTenant, nsName string) error {
+func (r *FabricTenantReconciler) ensureLimitRange(ctx context.Context, tenant *gryviav1.FabricTenant, nsName string) error {
 	lrName := fmt.Sprintf("%s-limits", tenant.Name)
 
 	lr := &corev1.LimitRange{}
@@ -247,8 +247,8 @@ func (r *FabricTenantReconciler) ensureLimitRange(ctx context.Context, tenant *t
 				Name:      lrName,
 				Namespace: nsName,
 				Labels: map[string]string{
-					"tensorreaper.ai/tenant":     tenant.Name,
-					"tensorreaper.ai/managed-by": "fabric-tenant-controller",
+					"gryvia.io/tenant":     tenant.Name,
+					"gryvia.io/managed-by": "fabric-tenant-controller",
 				},
 			},
 			Spec: corev1.LimitRangeSpec{
@@ -262,7 +262,7 @@ func (r *FabricTenantReconciler) ensureLimitRange(ctx context.Context, tenant *t
 	return r.Update(ctx, lr)
 }
 
-func (r *FabricTenantReconciler) ensureNetworkPolicy(ctx context.Context, tenant *tensorreaperv1.FabricTenant, nsName string) error {
+func (r *FabricTenantReconciler) ensureNetworkPolicy(ctx context.Context, tenant *gryviav1.FabricTenant, nsName string) error {
 	npName := fmt.Sprintf("%s-isolation", tenant.Name)
 
 	np := &networkingv1.NetworkPolicy{}
@@ -284,7 +284,7 @@ func (r *FabricTenantReconciler) ensureNetworkPolicy(ctx context.Context, tenant
 			ingressPeers = append(ingressPeers, networkingv1.NetworkPolicyPeer{
 				NamespaceSelector: &metav1.LabelSelector{
 					MatchLabels: map[string]string{
-						"tensorreaper.ai/tenant": allowedTenant,
+						"gryvia.io/tenant": allowedTenant,
 					},
 				},
 			})
@@ -311,8 +311,8 @@ func (r *FabricTenantReconciler) ensureNetworkPolicy(ctx context.Context, tenant
 				Name:      npName,
 				Namespace: nsName,
 				Labels: map[string]string{
-					"tensorreaper.ai/tenant":     tenant.Name,
-					"tensorreaper.ai/managed-by": "fabric-tenant-controller",
+					"gryvia.io/tenant":     tenant.Name,
+					"gryvia.io/managed-by": "fabric-tenant-controller",
 				},
 			},
 			Spec: spec,
@@ -324,10 +324,10 @@ func (r *FabricTenantReconciler) ensureNetworkPolicy(ctx context.Context, tenant
 	return r.Update(ctx, np)
 }
 
-func (r *FabricTenantReconciler) calculateUsage(ctx context.Context, tenant *tensorreaperv1.FabricTenant, nsName string) (*tensorreaperv1.TenantCurrentUsage, error) {
-	usage := &tensorreaperv1.TenantCurrentUsage{}
+func (r *FabricTenantReconciler) calculateUsage(ctx context.Context, tenant *gryviav1.FabricTenant, nsName string) (*gryviav1.TenantCurrentUsage, error) {
+	usage := &gryviav1.TenantCurrentUsage{}
 
-	jobList := &tensorreaperv1.FabricAIJobList{}
+	jobList := &gryviav1.FabricAIJobList{}
 	if err := r.List(ctx, jobList, client.InNamespace(nsName)); err != nil {
 		return nil, err
 	}
@@ -373,8 +373,8 @@ func (r *FabricTenantReconciler) calculateUsage(ctx context.Context, tenant *ten
 	return usage, nil
 }
 
-func (r *FabricTenantReconciler) calculateUtilization(tenant *tensorreaperv1.FabricTenant) *tensorreaperv1.TenantQuotaUtilization {
-	util := &tensorreaperv1.TenantQuotaUtilization{}
+func (r *FabricTenantReconciler) calculateUtilization(tenant *gryviav1.FabricTenant) *gryviav1.TenantQuotaUtilization {
+	util := &gryviav1.TenantQuotaUtilization{}
 
 	if tenant.Status.CurrentUsage == nil || tenant.Spec.Quotas == nil {
 		return util
@@ -395,7 +395,7 @@ func (r *FabricTenantReconciler) calculateUtilization(tenant *tensorreaperv1.Fab
 	return util
 }
 
-func (r *FabricTenantReconciler) determineHealth(tenant *tensorreaperv1.FabricTenant) string {
+func (r *FabricTenantReconciler) determineHealth(tenant *gryviav1.FabricTenant) string {
 	if tenant.Status.QuotaUtilization == nil {
 		return "healthy"
 	}
@@ -417,7 +417,7 @@ func (r *FabricTenantReconciler) determineHealth(tenant *tensorreaperv1.FabricTe
 	return "healthy"
 }
 
-func (r *FabricTenantReconciler) handleDeletion(ctx context.Context, tenant *tensorreaperv1.FabricTenant) (ctrl.Result, error) {
+func (r *FabricTenantReconciler) handleDeletion(ctx context.Context, tenant *gryviav1.FabricTenant) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	if controllerutil.ContainsFinalizer(tenant, fabricTenantFinalizer) {
@@ -429,8 +429,8 @@ func (r *FabricTenantReconciler) handleDeletion(ctx context.Context, tenant *ten
 		err := r.Get(ctx, types.NamespacedName{Name: nsName}, ns)
 		if err == nil {
 			if ns.Labels != nil {
-				delete(ns.Labels, "tensorreaper.ai/tenant")
-				delete(ns.Labels, "tensorreaper.ai/managed-by")
+				delete(ns.Labels, "gryvia.io/tenant")
+				delete(ns.Labels, "gryvia.io/managed-by")
 				if updateErr := r.Update(ctx, ns); updateErr != nil {
 					logger.Error(updateErr, "Failed to remove labels from namespace", "namespace", nsName)
 				}
@@ -447,7 +447,7 @@ func (r *FabricTenantReconciler) handleDeletion(ctx context.Context, tenant *ten
 	return ctrl.Result{}, nil
 }
 
-func (r *FabricTenantReconciler) updateCondition(tenant *tensorreaperv1.FabricTenant, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *FabricTenantReconciler) updateCondition(tenant *gryviav1.FabricTenant, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -461,6 +461,6 @@ func (r *FabricTenantReconciler) updateCondition(tenant *tensorreaperv1.FabricTe
 // SetupWithManager sets up the controller with the Manager.
 func (r *FabricTenantReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tensorreaperv1.FabricTenant{}).
+		For(&gryviav1.FabricTenant{}).
 		Complete(r)
 }

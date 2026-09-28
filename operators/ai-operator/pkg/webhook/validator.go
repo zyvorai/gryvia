@@ -9,11 +9,11 @@ import (
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/ai-operator/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 )
 
 // FabricAIJobValidator implements a ValidatingWebhook for FabricAIJob.
@@ -36,7 +36,7 @@ func NewFabricAIJobValidator(c client.Client) *FabricAIJobValidator {
 
 // Handle processes an admission request for FabricAIJob validation.
 func (v *FabricAIJobValidator) Handle(ctx context.Context, req admission.Request) admission.Response {
-	job := &tensorreaperv1.FabricAIJob{}
+	job := &gryviav1.FabricAIJob{}
 
 	if err := v.decoder.Decode(req, job); err != nil {
 		v.log.Error(err, "Failed to decode FabricAIJob")
@@ -75,7 +75,7 @@ func (v *FabricAIJobValidator) Handle(ctx context.Context, req admission.Request
 
 // validateGPUCount checks that the requested GPU count does not exceed any
 // single node's capacity in the cluster.
-func (v *FabricAIJobValidator) validateGPUCount(ctx context.Context, job *tensorreaperv1.FabricAIJob) error {
+func (v *FabricAIJobValidator) validateGPUCount(ctx context.Context, job *gryviav1.FabricAIJob) error {
 	if job.Spec.GPUs <= 0 {
 		return fmt.Errorf("spec.gpus must be greater than 0, got %d", job.Spec.GPUs)
 	}
@@ -103,7 +103,7 @@ func (v *FabricAIJobValidator) validateGPUCount(ctx context.Context, job *tensor
 		}
 
 		// Also check the label.
-		if countStr, exists := node.Labels["tensorreaper.ai/gpu-count"]; exists {
+		if countStr, exists := node.Labels["gryvia.io/gpu-count"]; exists {
 			if count, err := strconv.ParseInt(countStr, 10, 32); err == nil && int32(count) > nodeGPUs {
 				nodeGPUs = int32(count)
 			}
@@ -124,7 +124,7 @@ func (v *FabricAIJobValidator) validateGPUCount(ctx context.Context, job *tensor
 
 // validateGPUType checks that the requested GPU type exists on at least one
 // node in the cluster.
-func (v *FabricAIJobValidator) validateGPUType(ctx context.Context, job *tensorreaperv1.FabricAIJob) error {
+func (v *FabricAIJobValidator) validateGPUType(ctx context.Context, job *gryviav1.FabricAIJob) error {
 	if job.Spec.GpuType == "" || job.Spec.GpuType == "any" {
 		return nil
 	}
@@ -138,7 +138,7 @@ func (v *FabricAIJobValidator) validateGPUType(ctx context.Context, job *tensorr
 	// Collect available GPU types for the error message.
 	availableTypes := make(map[string]bool)
 	for _, node := range nodes.Items {
-		if gpuType, exists := node.Labels["tensorreaper.ai/gpu"]; exists {
+		if gpuType, exists := node.Labels["gryvia.io/gpu"]; exists {
 			availableTypes[gpuType] = true
 			if gpuType == job.Spec.GpuType {
 				return nil // Found a matching node.
@@ -147,7 +147,7 @@ func (v *FabricAIJobValidator) validateGPUType(ctx context.Context, job *tensorr
 	}
 
 	if len(availableTypes) == 0 {
-		return fmt.Errorf("requested GPU type %q, but no nodes have GPU type labels (tensorreaper.ai/gpu); "+
+		return fmt.Errorf("requested GPU type %q, but no nodes have GPU type labels (gryvia.io/gpu); "+
 			"ensure nodes are labeled correctly", job.Spec.GpuType)
 	}
 
@@ -161,7 +161,7 @@ func (v *FabricAIJobValidator) validateGPUType(ctx context.Context, job *tensorr
 
 // validateDistributedConfig checks that the distributed training configuration
 // is internally consistent.
-func (v *FabricAIJobValidator) validateDistributedConfig(job *tensorreaperv1.FabricAIJob) error {
+func (v *FabricAIJobValidator) validateDistributedConfig(job *gryviav1.FabricAIJob) error {
 	dist := job.Spec.Distributed
 	if dist == nil || !dist.Enabled {
 		return nil
@@ -216,7 +216,7 @@ func (v *FabricAIJobValidator) validateDistributedConfig(job *tensorreaperv1.Fab
 }
 
 // validateResourceRequests checks that resource requests are properly formed.
-func (v *FabricAIJobValidator) validateResourceRequests(job *tensorreaperv1.FabricAIJob) error {
+func (v *FabricAIJobValidator) validateResourceRequests(job *gryviav1.FabricAIJob) error {
 	// Validate CPU requests if specified.
 	if cpu, ok := job.Spec.Resources.Requests[corev1.ResourceCPU]; ok {
 		if cpu.Cmp(resource.MustParse("0")) <= 0 {
@@ -252,7 +252,7 @@ func (v *FabricAIJobValidator) validateResourceRequests(job *tensorreaperv1.Fabr
 }
 
 // validateImage checks that an image is specified.
-func (v *FabricAIJobValidator) validateImage(job *tensorreaperv1.FabricAIJob) error {
+func (v *FabricAIJobValidator) validateImage(job *gryviav1.FabricAIJob) error {
 	if job.Spec.Image == "" {
 		return fmt.Errorf("spec.image is required")
 	}
@@ -260,7 +260,7 @@ func (v *FabricAIJobValidator) validateImage(job *tensorreaperv1.FabricAIJob) er
 }
 
 // validatePriority checks that priority is within the valid range.
-func (v *FabricAIJobValidator) validatePriority(job *tensorreaperv1.FabricAIJob) error {
+func (v *FabricAIJobValidator) validatePriority(job *gryviav1.FabricAIJob) error {
 	if job.Spec.Priority < 0 || job.Spec.Priority > 100 {
 		return fmt.Errorf("spec.priority must be between 0 and 100, got %d", job.Spec.Priority)
 	}

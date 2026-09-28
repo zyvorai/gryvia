@@ -1,4 +1,4 @@
-# TensorReaper Job Examples
+# Gryvia Job Examples
 
 Production-ready job examples for various AI/ML workloads.
 
@@ -118,16 +118,16 @@ kubectl exec -it <pod-name> -- nvidia-smi
 ### Using the CLI
 ```bash
 # Submit job
-tensorreaper submit -f pytorch-distributed.yaml
+gryvia submit -f pytorch-distributed.yaml
 
 # Check status
-tensorreaper status pytorch-distributed-training
+gryvia status pytorch-distributed-training
 
 # Stream logs
-tensorreaper logs pytorch-distributed-training --follow
+gryvia logs pytorch-distributed-training --follow
 
 # Cancel job
-tensorreaper cancel pytorch-distributed-training
+gryvia cancel pytorch-distributed-training
 ```
 
 ### Job Dependencies
@@ -135,7 +135,7 @@ tensorreaper cancel pytorch-distributed-training
 Create job chains using dependencies:
 
 ```yaml
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricAIJob
 metadata:
   name: inference-job
@@ -150,7 +150,7 @@ spec:
 Set job priorities:
 
 ```yaml
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricAIJob
 metadata:
   name: urgent-job
@@ -164,7 +164,7 @@ spec:
 Allow job preemption for higher priority work:
 
 ```yaml
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricAIJob
 metadata:
   name: preemptible-job
@@ -213,8 +213,8 @@ env:
 Use node selectors for specific hardware:
 ```yaml
 nodeSelector:
-  tensorreaper.ai/gpu-type: H100
-  tensorreaper.ai/rdma-enabled: "true"
+  gryvia.io/gpu-type: H100
+  gryvia.io/rdma-enabled: "true"
 ```
 
 ### 5. Checkpointing
@@ -330,9 +330,9 @@ labels:
 Use spot instances:
 ```yaml
 nodeSelector:
-  tensorreaper.ai/spot: "true"
+  gryvia.io/spot: "true"
 tolerations:
-  - key: tensorreaper.ai/spot
+  - key: gryvia.io/spot
     operator: Exists
 ```
 
@@ -343,6 +343,6 @@ activeDeadlineSeconds: 3600  # 1 hour max
 
 ## Support
 
-- Documentation: https://github.com/ssahani/TensorReaper/docs
-- Issues: https://github.com/ssahani/TensorReaper/issues
-- Examples: https://github.com/ssahani/TensorReaper/tree/main/examples
+- Documentation: https://github.com/zyvorai/gryvia/docs
+- Issues: https://github.com/zyvorai/gryvia/issues
+- Examples: https://github.com/zyvorai/gryvia/tree/main/examples

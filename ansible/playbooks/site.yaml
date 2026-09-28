@@ -1,5 +1,5 @@
 ---
-# TensorReaper Bare Metal Deployment - Main Playbook
+# Gryvia Bare Metal Deployment - Main Playbook
 
 - name: Prepare all nodes
   hosts: all
@@ -29,14 +29,14 @@
   roles:
     - kubernetes-worker
 
-- name: Install TensorReaper operators
+- name: Install Gryvia operators
   hosts: control_plane[0]
   become: yes
   roles:
-    - tensorreaper-install
+    - gryvia-install
 
-- name: Configure GPU nodes in TensorReaper
+- name: Configure GPU nodes in Gryvia
   hosts: control_plane[0]
   become: yes
   roles:
-    - tensorreaper-configure
+    - gryvia-configure

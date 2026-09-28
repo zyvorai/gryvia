@@ -1,13 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import {
-  Activity, Network, Shield, AlertTriangle, Radio,
-  Clock, Eye,
-} from 'lucide-react'
 import { api } from '@/lib/api'
 import type { ServiceGraphNode, ServiceGraphEdge } from '@/lib/api'
-import StatCard from '@/components/StatCard'
 import LoadingSpinner from '@/components/LoadingSpinner'
+import PageHero from '@/components/PageHero'
 
 export default function NetworkOverview() {
   const { data: insights, isLoading: insightsLoading, isError: insightsError } = useQuery({
@@ -38,209 +34,127 @@ export default function NetworkOverview() {
 
   if (insightsError) {
     return (
-      <div className="p-4 rounded-xl text-sm" style={{
-        background: 'rgba(239,68,68,0.06)',
-        border: '1px solid rgba(239,68,68,0.15)',
-        color: '#f87171',
-      }}>
-        Failed to load network insights. Please check your API connection.
-      </div>
+      <>
+        <PageHero eyebrow="Network" title="Network insights unavailable." tint="red" />
+        <p className="login-error" role="alert">
+          Failed to load network insights. Please check your API connection.
+        </p>
+      </>
     )
   }
 
+  const anomalyCount = insights?.anomaliesDetected ?? 0
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="apple-story-stack">
+      <PageHero eyebrow="Network" title="Network intelligence." lede="Service mesh observability and flow management" />
+
+      <div className="row">
+        <Link to="/network/policies" className="buttonlike primary">
+          Policies
+        </Link>
+        <Link to="/network/flows" className="buttonlike btn-secondary">
+          View Flows
+        </Link>
+      </div>
+
+      <div className="apple-metric-band">
         <div>
-          <h2 className="text-2xl font-bold text-gradient-copper">Network Intelligence</h2>
-          <p className="text-sm text-[#5a7a9e] mt-1">Service mesh observability and flow management</p>
+          <span>Active Flows</span>
+          <b>{insights?.activeFlows ?? 0}</b>
         </div>
-        <div className="flex items-center gap-3">
-          <Link to="/network/flows" className="btn-chrome text-xs px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5">
-            <Eye className="h-3.5 w-3.5" />
-            View Flows
-          </Link>
-          <Link to="/network/policies" className="btn-copper text-xs px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5">
-            <Shield className="h-3.5 w-3.5" />
-            Policies
-          </Link>
+        <div>
+          <span>Policies Enforced</span>
+          <b>{insights?.policiesEnforced ?? 0}</b>
+        </div>
+        <div>
+          <span>Anomalies Detected</span>
+          <b className={anomalyCount > 0 ? 'text-warn' : undefined}>{anomalyCount}</b>
+        </div>
+        <div>
+          <span>Trace Sessions</span>
+          <b>{insights?.traceSessions ?? 0}</b>
         </div>
       </div>
 
-      {/* Stat Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          icon={Activity}
-          title="Active Flows"
-          value={insights?.activeFlows ?? 0}
-          color="blue"
-        />
-        <StatCard
-          icon={Shield}
-          title="Policies Enforced"
-          value={insights?.policiesEnforced ?? 0}
-          color="green"
-        />
-        <StatCard
-          icon={AlertTriangle}
-          title="Anomalies Detected"
-          value={insights?.anomaliesDetected ?? 0}
-          color={((insights?.anomaliesDetected ?? 0) > 0) ? 'orange' : 'cyan'}
-        />
-        <StatCard
-          icon={Radio}
-          title="Trace Sessions"
-          value={insights?.traceSessions ?? 0}
-          color="purple"
-        />
-      </div>
-
-      {/* Main content grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left: Service Graph */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Service Graph */}
-          <div className="rounded-xl p-5" style={{
-            background: 'linear-gradient(165deg, #151d28 0%, #111820 100%)',
-            border: '1px solid rgba(192,204,224,0.06)',
-            boxShadow: 'inset 0 1px 0 rgba(192,204,224,0.04)',
-          }}>
-            <div className="flex items-center gap-2 mb-4">
-              <Network className="h-4 w-4 text-[#7ecbf5]" />
-              <h3 className="text-sm font-semibold text-[#e8ecf1]">Service Dependency Graph</h3>
-            </div>
+        <div className="lg:col-span-2 stack">
+          <section className="card">
+            <h2>Service Dependency Graph</h2>
             <ServiceGraphView nodes={graph?.nodes || []} edges={graph?.edges || []} />
-          </div>
+          </section>
 
-          {/* Recent Anomalies */}
-          <div className="rounded-xl p-5" style={{
-            background: 'linear-gradient(165deg, #151d28 0%, #111820 100%)',
-            border: '1px solid rgba(192,204,224,0.06)',
-            boxShadow: 'inset 0 1px 0 rgba(192,204,224,0.04)',
-          }}>
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-[#fbbf24]" />
-                <h3 className="text-sm font-semibold text-[#e8ecf1]">Recent Anomalies</h3>
-              </div>
-              <span className="text-xs text-[#5a7a9e]">{anomalies?.length || 0} total</span>
+          <section className="card">
+            <div className="stat-head">
+              <h2>Recent Anomalies</h2>
+              <span className="faint">{anomalies?.length || 0} total</span>
             </div>
             {(!anomalies || anomalies.length === 0) ? (
-              <div className="text-center py-6 text-sm text-[#344e6a]">No anomalies detected</div>
+              <div className="list-empty">No anomalies detected</div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
+              <div className="table-wrap">
+                <table>
                   <thead>
-                    <tr style={{ borderBottom: '1px solid rgba(192,204,224,0.06)' }}>
-                      <th className="text-left py-2 px-2 text-[#5a7a9e] font-medium">SEVERITY</th>
-                      <th className="text-left py-2 px-2 text-[#5a7a9e] font-medium">SERVICE</th>
-                      <th className="text-left py-2 px-2 text-[#5a7a9e] font-medium">TYPE</th>
-                      <th className="text-left py-2 px-2 text-[#5a7a9e] font-medium">TIME</th>
+                    <tr>
+                      <th>Severity</th>
+                      <th>Service</th>
+                      <th>Type</th>
+                      <th>Time</th>
                     </tr>
                   </thead>
                   <tbody>
                     {anomalies.slice(0, 8).map((anomaly) => (
-                      <tr key={anomaly.metadata.name} className="table-row-hover" style={{ borderBottom: '1px solid rgba(192,204,224,0.03)' }}>
-                        <td className="py-2 px-2">
+                      <tr key={anomaly.metadata.name}>
+                        <td>
                           <SeverityBadge severity={anomaly.spec.severity} />
                         </td>
-                        <td className="py-2 px-2 text-[#c0cce0]">{anomaly.spec.service}</td>
-                        <td className="py-2 px-2 text-[#8ba4c0]">{anomaly.spec.type}</td>
-                        <td className="py-2 px-2 text-[#5a7a9e]">
-                          <div className="flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {new Date(anomaly.spec.detectedAt).toLocaleTimeString()}
-                          </div>
-                        </td>
+                        <td>{anomaly.spec.service}</td>
+                        <td className="muted">{anomaly.spec.type}</td>
+                        <td className="faint">{new Date(anomaly.spec.detectedAt).toLocaleTimeString()}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             )}
-          </div>
+          </section>
         </div>
 
-        {/* Right sidebar */}
-        <div className="space-y-6">
-          {/* Active Trace Sessions */}
-          <div className="rounded-xl p-5" style={{
-            background: 'linear-gradient(165deg, #151d28 0%, #111820 100%)',
-            border: '1px solid rgba(192,204,224,0.06)',
-            boxShadow: 'inset 0 1px 0 rgba(192,204,224,0.04)',
-          }}>
-            <div className="flex items-center gap-2 mb-4">
-              <Radio className="h-4 w-4 text-purple-400" />
-              <h3 className="text-sm font-semibold text-[#e8ecf1]">Active Traces</h3>
-            </div>
+        <div className="stack">
+          <section className="card">
+            <h2>Active Traces</h2>
             {(!traces || traces.length === 0) ? (
-              <div className="text-center py-6 text-sm text-[#344e6a]">No active trace sessions</div>
+              <div className="list-empty">No active trace sessions</div>
             ) : (
-              <div className="space-y-2">
-                {traces.slice(0, 6).map((trace) => {
-                  const isActive = trace.status?.phase === 'Running' || trace.status?.phase === 'Active'
-                  return (
-                    <div key={trace.metadata.name} className="p-2.5 rounded-lg" style={{
-                      background: 'rgba(10,14,20,0.5)',
-                      border: '1px solid rgba(192,204,224,0.04)',
-                    }}>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-medium text-[#c0cce0] truncate">{trace.spec.targetService}</span>
-                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full" style={{
-                          background: isActive ? 'rgba(34,197,94,0.08)' : 'rgba(95,168,211,0.08)',
-                          color: isActive ? '#4ade80' : '#7ecbf5',
-                        }}>
-                          {trace.status?.phase || 'Pending'}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-3 text-[10px] text-[#5a7a9e]">
-                        <span>Level: {trace.spec.captureLevel}</span>
-                        <span>Duration: {trace.spec.duration}</span>
-                      </div>
-                      {trace.status?.flowsCaptured !== undefined && (
-                        <div className="text-[10px] text-[#5a7a9e] mt-1">
-                          {trace.status.flowsCaptured} flows captured
-                        </div>
-                      )}
+              traces.slice(0, 6).map((trace) => {
+                const isActive = trace.status?.phase === 'Running' || trace.status?.phase === 'Active'
+                return (
+                  <div key={trace.metadata.name} className="list-row">
+                    <div className="grow">
+                      <b>{trace.spec.targetService}</b>
+                      <small>
+                        Level: {trace.spec.captureLevel} · Duration: {trace.spec.duration}
+                        {trace.status?.flowsCaptured !== undefined && ` · ${trace.status.flowsCaptured} flows captured`}
+                      </small>
                     </div>
-                  )
-                })}
-              </div>
+                    <span className={`pill ${isActive ? 'ok' : 'info'}`}>{trace.status?.phase || 'Pending'}</span>
+                  </div>
+                )
+              })
             )}
-          </div>
+          </section>
 
-          {/* Quick Links */}
-          <div className="rounded-xl p-5" style={{
-            background: 'linear-gradient(165deg, #151d28 0%, #111820 100%)',
-            border: '1px solid rgba(192,204,224,0.06)',
-            boxShadow: 'inset 0 1px 0 rgba(192,204,224,0.04)',
-          }}>
-            <div className="flex items-center gap-2 mb-4">
-              <Activity className="h-4 w-4 text-emerald-400" />
-              <h3 className="text-sm font-semibold text-[#e8ecf1]">Quick Actions</h3>
-            </div>
-            <div className="space-y-2">
-              <Link to="/network/flows" className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-200 text-[#e8a87c] hover:text-[#f0c4a0]"
-                style={{
-                  background: 'rgba(212,118,78,0.08)',
-                  border: '1px solid rgba(212,118,78,0.15)',
-                }}
-              >
-                <Eye className="h-4 w-4" />
-                View Network Flows
+          <section className="card">
+            <h2>Quick Actions</h2>
+            <div className="stack">
+              <Link to="/network/flows" className="card-link">
+                View Network Flows ›
               </Link>
-              <Link to="/network/policies" className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-[#8ba4c0] hover:text-[#c0cce0] transition-all duration-200"
-                style={{
-                  background: 'rgba(10,14,20,0.4)',
-                  border: '1px solid rgba(192,204,224,0.04)',
-                }}
-              >
-                <Shield className="h-4 w-4 text-emerald-400" />
-                Manage Policies
+              <Link to="/network/policies" className="card-link">
+                Manage Policies ›
               </Link>
             </div>
-          </div>
+          </section>
         </div>
       </div>
     </div>
@@ -252,7 +166,7 @@ export default function NetworkOverview() {
 function ServiceGraphView({ nodes, edges }: { nodes: ServiceGraphNode[]; edges: ServiceGraphEdge[] }) {
   if (nodes.length === 0) {
     return (
-      <div className="text-center py-12 text-sm text-[#344e6a]">
+      <div className="list-empty">
         No service graph data available. Deploy services with network policies to see the graph.
       </div>
     )
@@ -289,10 +203,10 @@ function ServiceGraphView({ nodes, edges }: { nodes: ServiceGraphNode[]; edges: 
     }
   }
 
-  const healthColors: Record<string, { fill: string; stroke: string; text: string; glow: string }> = {
-    healthy: { fill: '#0e2a1a', stroke: 'rgba(34,197,94,0.35)', text: '#4ade80', glow: 'rgba(34,197,94,0.15)' },
-    warning: { fill: '#2a1a0e', stroke: 'rgba(251,191,36,0.35)', text: '#fbbf24', glow: 'rgba(251,191,36,0.15)' },
-    critical: { fill: '#2a0e0e', stroke: 'rgba(239,68,68,0.35)', text: '#f87171', glow: 'rgba(239,68,68,0.15)' },
+  const healthColors: Record<string, { fill: string; stroke: string; text: string }> = {
+    healthy: { fill: 'var(--bg-elevated-2)', stroke: 'var(--accent-green)', text: 'var(--text-primary)' },
+    warning: { fill: 'var(--bg-elevated-2)', stroke: 'var(--accent-amber)', text: 'var(--text-primary)' },
+    critical: { fill: 'var(--bg-elevated-2)', stroke: 'var(--danger)', text: 'var(--danger)' },
   }
 
   return (
@@ -300,13 +214,13 @@ function ServiceGraphView({ nodes, edges }: { nodes: ServiceGraphNode[]; edges: 
       <svg width={svgWidth} height={svgHeight} className="mx-auto" style={{ minWidth: svgWidth }}>
         <defs>
           <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-            <polygon points="0 0, 8 3, 0 6" fill="#5a7a9e" />
+            <polygon points="0 0, 8 3, 0 6" fill="var(--text-tertiary)" />
           </marker>
           <marker id="arrowhead-green" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-            <polygon points="0 0, 8 3, 0 6" fill="#4ade80" />
+            <polygon points="0 0, 8 3, 0 6" fill="var(--accent-green)" />
           </marker>
           <marker id="arrowhead-red" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-            <polygon points="0 0, 8 3, 0 6" fill="#f87171" />
+            <polygon points="0 0, 8 3, 0 6" fill="var(--danger)" />
           </marker>
         </defs>
 
@@ -318,7 +232,7 @@ function ServiceGraphView({ nodes, edges }: { nodes: ServiceGraphNode[]; edges: 
           if (to.x === 0 && to.y === 0) return null
 
           const isForwarded = edge.verdict === 'FORWARDED' || edge.verdict === 'ALLOW'
-          const edgeColor = isForwarded ? 'rgba(34,197,94,0.4)' : 'rgba(239,68,68,0.4)'
+          const edgeColor = isForwarded ? 'var(--accent-green)' : 'var(--danger)'
           const markerId = isForwarded ? 'arrowhead-green' : 'arrowhead-red'
 
           // Offset endpoints to edge of node box
@@ -351,7 +265,7 @@ function ServiceGraphView({ nodes, edges }: { nodes: ServiceGraphNode[]; edges: 
                   y={midY - 6}
                   textAnchor="middle"
                   fontSize="9"
-                  fill="#5a7a9e"
+                  fill="var(--text-tertiary)"
                   fontFamily="monospace"
                 >
                   {edge.latency}
@@ -377,8 +291,7 @@ function ServiceGraphView({ nodes, edges }: { nodes: ServiceGraphNode[]; edges: 
                 rx="10" ry="10"
                 fill={colors.fill}
                 stroke={colors.stroke}
-                strokeWidth="1"
-                filter={`drop-shadow(0 0 6px ${colors.glow})`}
+                strokeWidth="1.5"
               />
               <text
                 x={x + nodeWidth / 2}
@@ -395,7 +308,7 @@ function ServiceGraphView({ nodes, edges }: { nodes: ServiceGraphNode[]; edges: 
                 y={y + nodeHeight / 2 + 12}
                 textAnchor="middle"
                 fontSize="9"
-                fill="#5a7a9e"
+                fill="var(--text-tertiary)"
               >
                 {node.flowCount} flows
               </text>
@@ -408,19 +321,11 @@ function ServiceGraphView({ nodes, edges }: { nodes: ServiceGraphNode[]; edges: 
 }
 
 function SeverityBadge({ severity }: { severity: string }) {
-  const styles: Record<string, { bg: string; color: string }> = {
-    critical: { bg: 'rgba(239,68,68,0.1)', color: '#f87171' },
-    high: { bg: 'rgba(239,68,68,0.08)', color: '#fb923c' },
-    medium: { bg: 'rgba(251,191,36,0.08)', color: '#fbbf24' },
-    low: { bg: 'rgba(6,182,212,0.08)', color: '#22d3ee' },
+  const tones: Record<string, string> = {
+    critical: 'bad',
+    high: 'bad',
+    medium: 'warn',
+    low: 'info',
   }
-  const s = styles[severity] || styles.low
-  return (
-    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full uppercase" style={{
-      background: s.bg,
-      color: s.color,
-    }}>
-      {severity}
-    </span>
-  )
+  return <span className={`pill ${tones[severity] ?? 'info'}`}>{severity}</span>
 }

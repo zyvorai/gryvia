@@ -1,9 +1,9 @@
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
-kubernetes==31.0.0
-prometheus-api-client==0.5.6
-pydantic==2.10.4
-python-dateutil==2.9.0
-slowapi==0.1.9
-python-jose[cryptography]==3.3.0
+fastapi==0.141.1
+uvicorn[standard]==0.54.0
+kubernetes==36.0.3
+prometheus-api-client==0.7.2
+pydantic==2.13.5
+python-dateutil==2.9.0.post0
+slowapi==0.1.10
+python-jose[cryptography]==3.5.0
 httpx==0.28.1

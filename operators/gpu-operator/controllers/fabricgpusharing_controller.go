@@ -13,7 +13,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/gpu-operator/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/gpu-operator/api/v1"
 )
 
 const (
@@ -27,10 +27,10 @@ type FabricGPUSharingPolicyReconciler struct {
 	Log    logr.Logger
 }
 
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricgpusharingpolicies,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricgpusharingpolicies/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricgpusharingpolicies/finalizers,verbs=update
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricgpunodes,verbs=get;list;watch;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricgpusharingpolicies,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricgpusharingpolicies/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricgpusharingpolicies/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricgpunodes,verbs=get;list;watch;update;patch
 //+kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch;update;patch
 //+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
@@ -40,7 +40,7 @@ func (r *FabricGPUSharingPolicyReconciler) Reconcile(ctx context.Context, req ct
 	log := r.Log.WithValues("fabricgpusharingpolicy", req.NamespacedName)
 
 	// Fetch the FabricGPUSharingPolicy instance
-	policy := &tensorreaperv1.FabricGPUSharingPolicy{}
+	policy := &gryviav1.FabricGPUSharingPolicy{}
 	err := r.Get(ctx, req.NamespacedName, policy)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -68,7 +68,7 @@ func (r *FabricGPUSharingPolicyReconciler) Reconcile(ctx context.Context, req ct
 	return result, nil
 }
 
-func (r *FabricGPUSharingPolicyReconciler) reconcileGPUSharing(ctx context.Context, policy *tensorreaperv1.FabricGPUSharingPolicy) (ctrl.Result, error) {
+func (r *FabricGPUSharingPolicyReconciler) reconcileGPUSharing(ctx context.Context, policy *gryviav1.FabricGPUSharingPolicy) (ctrl.Result, error) {
 	log := r.Log.WithValues("policy", policy.Name)
 
 	// Find matching GPU nodes
@@ -133,13 +133,13 @@ func (r *FabricGPUSharingPolicyReconciler) reconcileGPUSharing(ctx context.Conte
 	return ctrl.Result{RequeueAfter: defaultSharingReconcileInterval}, nil
 }
 
-func (r *FabricGPUSharingPolicyReconciler) findMatchingNodes(ctx context.Context, policy *tensorreaperv1.FabricGPUSharingPolicy) ([]tensorreaperv1.FabricGpuNode, error) {
-	gpuNodeList := &tensorreaperv1.FabricGpuNodeList{}
+func (r *FabricGPUSharingPolicyReconciler) findMatchingNodes(ctx context.Context, policy *gryviav1.FabricGPUSharingPolicy) ([]gryviav1.FabricGpuNode, error) {
+	gpuNodeList := &gryviav1.FabricGpuNodeList{}
 	if err := r.List(ctx, gpuNodeList); err != nil {
 		return nil, fmt.Errorf("failed to list FabricGpuNodes: %w", err)
 	}
 
-	var matching []tensorreaperv1.FabricGpuNode
+	var matching []gryviav1.FabricGpuNode
 	for _, node := range gpuNodeList.Items {
 		if r.nodeMatchesSelector(node, policy.Spec.NodeSelector) {
 			matching = append(matching, node)
@@ -149,7 +149,7 @@ func (r *FabricGPUSharingPolicyReconciler) findMatchingNodes(ctx context.Context
 	return matching, nil
 }
 
-func (r *FabricGPUSharingPolicyReconciler) nodeMatchesSelector(node tensorreaperv1.FabricGpuNode, selector map[string]string) bool {
+func (r *FabricGPUSharingPolicyReconciler) nodeMatchesSelector(node gryviav1.FabricGpuNode, selector map[string]string) bool {
 	if len(selector) == 0 {
 		return true
 	}
@@ -164,7 +164,7 @@ func (r *FabricGPUSharingPolicyReconciler) nodeMatchesSelector(node tensorreaper
 	for k, v := range nodeLabels {
 		effectiveLabels[k] = v
 	}
-	effectiveLabels["tensorreaper.ai/gpu-type"] = node.Spec.GpuType
+	effectiveLabels["gryvia.io/gpu-type"] = node.Spec.GpuType
 
 	for key, value := range selector {
 		if effectiveLabels[key] != value {
@@ -175,7 +175,7 @@ func (r *FabricGPUSharingPolicyReconciler) nodeMatchesSelector(node tensorreaper
 	return true
 }
 
-func (r *FabricGPUSharingPolicyReconciler) calculateEffectiveGPUs(policy *tensorreaperv1.FabricGPUSharingPolicy, totalPhysical int) int {
+func (r *FabricGPUSharingPolicyReconciler) calculateEffectiveGPUs(policy *gryviav1.FabricGPUSharingPolicy, totalPhysical int) int {
 	switch policy.Spec.Strategy {
 	case "time-slicing":
 		if policy.Spec.TimeSlicing != nil && policy.Spec.TimeSlicing.MaxPodsPerGPU > 0 {
@@ -216,7 +216,7 @@ func (r *FabricGPUSharingPolicyReconciler) calculateEffectiveGPUs(policy *tensor
 	}
 }
 
-func (r *FabricGPUSharingPolicyReconciler) configureTimeSlicing(ctx context.Context, policy *tensorreaperv1.FabricGPUSharingPolicy, nodes []tensorreaperv1.FabricGpuNode) error {
+func (r *FabricGPUSharingPolicyReconciler) configureTimeSlicing(ctx context.Context, policy *gryviav1.FabricGPUSharingPolicy, nodes []gryviav1.FabricGpuNode) error {
 	log := r.Log.WithValues("policy", policy.Name, "strategy", "time-slicing")
 
 	if policy.Spec.TimeSlicing == nil || !policy.Spec.TimeSlicing.Enabled {
@@ -239,8 +239,8 @@ func (r *FabricGPUSharingPolicyReconciler) configureTimeSlicing(ctx context.Cont
 		}
 
 		// Apply time-slicing labels
-		k8sNode.Labels["tensorreaper.ai/gpu-sharing"] = "time-slicing"
-		k8sNode.Labels["tensorreaper.ai/max-pods-per-gpu"] = fmt.Sprintf("%d", policy.Spec.TimeSlicing.MaxPodsPerGPU)
+		k8sNode.Labels["gryvia.io/gpu-sharing"] = "time-slicing"
+		k8sNode.Labels["gryvia.io/max-pods-per-gpu"] = fmt.Sprintf("%d", policy.Spec.TimeSlicing.MaxPodsPerGPU)
 
 		if err := r.Update(ctx, k8sNode); err != nil {
 			log.Error(err, "Failed to label node for time-slicing", "node", node.Spec.NodeName)
@@ -250,7 +250,7 @@ func (r *FabricGPUSharingPolicyReconciler) configureTimeSlicing(ctx context.Cont
 	return nil
 }
 
-func (r *FabricGPUSharingPolicyReconciler) configureMIG(ctx context.Context, policy *tensorreaperv1.FabricGPUSharingPolicy, nodes []tensorreaperv1.FabricGpuNode) error {
+func (r *FabricGPUSharingPolicyReconciler) configureMIG(ctx context.Context, policy *gryviav1.FabricGPUSharingPolicy, nodes []gryviav1.FabricGpuNode) error {
 	log := r.Log.WithValues("policy", policy.Name, "strategy", "mig")
 
 	if policy.Spec.MIG == nil || !policy.Spec.MIG.Enabled {
@@ -272,12 +272,12 @@ func (r *FabricGPUSharingPolicyReconciler) configureMIG(ctx context.Context, pol
 		}
 
 		// Apply MIG labels
-		k8sNode.Labels["tensorreaper.ai/gpu-sharing"] = "mig"
-		k8sNode.Labels["tensorreaper.ai/mig-enabled"] = "true"
+		k8sNode.Labels["gryvia.io/gpu-sharing"] = "mig"
+		k8sNode.Labels["gryvia.io/mig-enabled"] = "true"
 
 		// Encode MIG profiles in labels
 		for _, profile := range policy.Spec.MIG.Profiles {
-			labelKey := fmt.Sprintf("tensorreaper.ai/mig-%s", profile.Name)
+			labelKey := fmt.Sprintf("gryvia.io/mig-%s", profile.Name)
 			k8sNode.Labels[labelKey] = fmt.Sprintf("%d", profile.Count)
 		}
 
@@ -289,7 +289,7 @@ func (r *FabricGPUSharingPolicyReconciler) configureMIG(ctx context.Context, pol
 	return nil
 }
 
-func (r *FabricGPUSharingPolicyReconciler) configureFractional(ctx context.Context, policy *tensorreaperv1.FabricGPUSharingPolicy, nodes []tensorreaperv1.FabricGpuNode) error {
+func (r *FabricGPUSharingPolicyReconciler) configureFractional(ctx context.Context, policy *gryviav1.FabricGPUSharingPolicy, nodes []gryviav1.FabricGpuNode) error {
 	log := r.Log.WithValues("policy", policy.Name, "strategy", "fractional")
 
 	if policy.Spec.FractionalGPU == nil || !policy.Spec.FractionalGPU.Enabled {
@@ -311,12 +311,12 @@ func (r *FabricGPUSharingPolicyReconciler) configureFractional(ctx context.Conte
 		}
 
 		// Apply fractional GPU labels
-		k8sNode.Labels["tensorreaper.ai/gpu-sharing"] = "fractional"
-		k8sNode.Labels["tensorreaper.ai/gpu-granularity"] = policy.Spec.FractionalGPU.Granularity
+		k8sNode.Labels["gryvia.io/gpu-sharing"] = "fractional"
+		k8sNode.Labels["gryvia.io/gpu-granularity"] = policy.Spec.FractionalGPU.Granularity
 
 		if policy.Spec.FractionalGPU.Oversubscription != nil && policy.Spec.FractionalGPU.Oversubscription.Enabled {
-			k8sNode.Labels["tensorreaper.ai/gpu-oversubscription"] = "true"
-			k8sNode.Labels["tensorreaper.ai/gpu-oversubscription-ratio"] = fmt.Sprintf("%.1f", policy.Spec.FractionalGPU.Oversubscription.MaxRatio)
+			k8sNode.Labels["gryvia.io/gpu-oversubscription"] = "true"
+			k8sNode.Labels["gryvia.io/gpu-oversubscription-ratio"] = fmt.Sprintf("%.1f", policy.Spec.FractionalGPU.Oversubscription.MaxRatio)
 		}
 
 		if err := r.Update(ctx, k8sNode); err != nil {
@@ -327,8 +327,8 @@ func (r *FabricGPUSharingPolicyReconciler) configureFractional(ctx context.Conte
 	return nil
 }
 
-func (r *FabricGPUSharingPolicyReconciler) trackPerPodUtilization(ctx context.Context, policy *tensorreaperv1.FabricGPUSharingPolicy, nodes []tensorreaperv1.FabricGpuNode) {
-	var podUtils []tensorreaperv1.GPUPodUtilization
+func (r *FabricGPUSharingPolicyReconciler) trackPerPodUtilization(ctx context.Context, policy *gryviav1.FabricGPUSharingPolicy, nodes []gryviav1.FabricGpuNode) {
+	var podUtils []gryviav1.GPUPodUtilization
 
 	for _, node := range nodes {
 		// List pods running on this node
@@ -346,7 +346,7 @@ func (r *FabricGPUSharingPolicyReconciler) trackPerPodUtilization(ctx context.Co
 					for _, container := range pod.Spec.Containers {
 						if gpuReq, ok := container.Resources.Requests["nvidia.com/gpu"]; ok {
 							if gpuReq.Value() > 0 {
-								podUtils = append(podUtils, tensorreaperv1.GPUPodUtilization{
+								podUtils = append(podUtils, gryviav1.GPUPodUtilization{
 									PodName:   pod.Name,
 									Namespace: pod.Namespace,
 									NodeName:  node.Spec.NodeName,
@@ -366,7 +366,7 @@ func (r *FabricGPUSharingPolicyReconciler) trackPerPodUtilization(ctx context.Co
 			for _, container := range pod.Spec.Containers {
 				if gpuReq, ok := container.Resources.Requests["nvidia.com/gpu"]; ok {
 					if gpuReq.Value() > 0 {
-						podUtils = append(podUtils, tensorreaperv1.GPUPodUtilization{
+						podUtils = append(podUtils, gryviav1.GPUPodUtilization{
 							PodName:   pod.Name,
 							Namespace: pod.Namespace,
 							NodeName:  node.Spec.NodeName,
@@ -385,8 +385,8 @@ func (r *FabricGPUSharingPolicyReconciler) trackPerPodUtilization(ctx context.Co
 	policy.Status.PerPodUtilization = podUtils
 }
 
-func (r *FabricGPUSharingPolicyReconciler) calculateAllocations(ctx context.Context, policy *tensorreaperv1.FabricGPUSharingPolicy, nodes []tensorreaperv1.FabricGpuNode) *tensorreaperv1.GPUSharingAllocations {
-	allocs := &tensorreaperv1.GPUSharingAllocations{
+func (r *FabricGPUSharingPolicyReconciler) calculateAllocations(ctx context.Context, policy *gryviav1.FabricGPUSharingPolicy, nodes []gryviav1.FabricGpuNode) *gryviav1.GPUSharingAllocations {
+	allocs := &gryviav1.GPUSharingAllocations{
 		Physical: policy.Status.TotalGPUs,
 	}
 
@@ -409,7 +409,7 @@ func (r *FabricGPUSharingPolicyReconciler) calculateAllocations(ctx context.Cont
 	return allocs
 }
 
-func (r *FabricGPUSharingPolicyReconciler) enforceFairSharing(ctx context.Context, policy *tensorreaperv1.FabricGPUSharingPolicy, nodes []tensorreaperv1.FabricGpuNode) {
+func (r *FabricGPUSharingPolicyReconciler) enforceFairSharing(ctx context.Context, policy *gryviav1.FabricGPUSharingPolicy, nodes []gryviav1.FabricGpuNode) {
 	log := r.Log.WithValues("policy", policy.Name)
 
 	// Check tenant quotas
@@ -425,9 +425,9 @@ func (r *FabricGPUSharingPolicyReconciler) enforceFairSharing(ctx context.Contex
 		if err := r.Get(ctx, client.ObjectKey{Name: pu.PodName, Namespace: pu.Namespace}, pod); err != nil {
 			continue
 		}
-		tenant := pod.Labels["tensorreaper.ai/tenant"]
+		tenant := pod.Labels["gryvia.io/tenant"]
 		if tenant == "" {
-			tenant = pod.Labels["tensorreaper.ai/team"]
+			tenant = pod.Labels["gryvia.io/team"]
 		}
 		if tenant != "" {
 			tenantAllocations[tenant]++
@@ -447,7 +447,7 @@ func (r *FabricGPUSharingPolicyReconciler) enforceFairSharing(ctx context.Contex
 	}
 }
 
-func (r *FabricGPUSharingPolicyReconciler) updateSharingCondition(policy *tensorreaperv1.FabricGPUSharingPolicy, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *FabricGPUSharingPolicyReconciler) updateSharingCondition(policy *gryviav1.FabricGPUSharingPolicy, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -473,6 +473,6 @@ func (r *FabricGPUSharingPolicyReconciler) updateSharingCondition(policy *tensor
 // SetupWithManager sets up the controller with the Manager.
 func (r *FabricGPUSharingPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tensorreaperv1.FabricGPUSharingPolicy{}).
+		For(&gryviav1.FabricGPUSharingPolicy{}).
 		Complete(r)
 }

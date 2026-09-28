@@ -135,7 +135,7 @@ output "gpu_nodes" {
 
 output "deployment_instructions" {
   value = <<-EOT
-    TensorReaper Bare Metal Deployment
+    Gryvia Bare Metal Deployment
     =================================
 
     1. Review generated configuration:

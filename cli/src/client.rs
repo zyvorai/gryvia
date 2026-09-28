@@ -1,12 +1,12 @@
 use anyhow::{Context, Result};
 use kube::{Client, Config};
 
-pub struct TensorReaperClient {
+pub struct GryviaClient {
     pub kube_client: Client,
     pub namespace: String,
 }
 
-impl TensorReaperClient {
+impl GryviaClient {
     pub async fn new(context: Option<String>, namespace: Option<String>) -> Result<Self> {
         let config = if let Some(ctx) = context {
             Config::from_kubeconfig(&kube::config::KubeConfigOptions {

@@ -17,7 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/ai-operator/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 )
 
 const (
@@ -37,9 +37,9 @@ type FabricWorkspaceReconciler struct {
 	Log    logr.Logger
 }
 
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricworkspaces,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricworkspaces/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricworkspaces/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricworkspaces,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricworkspaces/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricworkspaces/finalizers,verbs=update
 //+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
@@ -49,7 +49,7 @@ func (r *FabricWorkspaceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	log := r.Log.WithValues("fabricworkspace", req.NamespacedName)
 
 	// Fetch the FabricWorkspace instance
-	ws := &tensorreaperv1.FabricWorkspace{}
+	ws := &gryviav1.FabricWorkspace{}
 	err := r.Get(ctx, req.NamespacedName, ws)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -67,7 +67,7 @@ func (r *FabricWorkspaceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	// Initialize status
 	if ws.Status.Phase == "" {
-		ws.Status.Phase = string(tensorreaperv1.WorkspacePhasePending)
+		ws.Status.Phase = string(gryviav1.WorkspacePhasePending)
 		if err := r.Status().Update(ctx, ws); err != nil {
 			log.Error(err, "Failed to initialize workspace status")
 			return ctrl.Result{}, err
@@ -90,7 +90,7 @@ func (r *FabricWorkspaceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	return result, nil
 }
 
-func (r *FabricWorkspaceReconciler) reconcileWorkspace(ctx context.Context, ws *tensorreaperv1.FabricWorkspace) (ctrl.Result, error) {
+func (r *FabricWorkspaceReconciler) reconcileWorkspace(ctx context.Context, ws *gryviav1.FabricWorkspace) (ctrl.Result, error) {
 	log := r.Log.WithValues("fabricworkspace", ws.Name)
 
 	// Phase 1: Ensure PVC for persistent workspace data
@@ -140,7 +140,7 @@ func (r *FabricWorkspaceReconciler) reconcileWorkspace(ctx context.Context, ws *
 }
 
 // ensureWorkspacePVC creates a PVC for persistent workspace storage.
-func (r *FabricWorkspaceReconciler) ensureWorkspacePVC(ctx context.Context, ws *tensorreaperv1.FabricWorkspace) error {
+func (r *FabricWorkspaceReconciler) ensureWorkspacePVC(ctx context.Context, ws *gryviav1.FabricWorkspace) error {
 	pvcName := fmt.Sprintf("%s-workspace", ws.Name)
 
 	pvc := &corev1.PersistentVolumeClaim{}
@@ -167,8 +167,8 @@ func (r *FabricWorkspaceReconciler) ensureWorkspacePVC(ctx context.Context, ws *
 			Name:      pvcName,
 			Namespace: ws.Namespace,
 			Labels: map[string]string{
-				"tensorreaper.ai/workspace": ws.Name,
-				"tensorreaper.ai/component": "workspace-data",
+				"gryvia.io/workspace": ws.Name,
+				"gryvia.io/component": "workspace-data",
 			},
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
@@ -196,7 +196,7 @@ func (r *FabricWorkspaceReconciler) ensureWorkspacePVC(ctx context.Context, ws *
 }
 
 // ensureWorkspacePod creates or manages the workspace pod.
-func (r *FabricWorkspaceReconciler) ensureWorkspacePod(ctx context.Context, ws *tensorreaperv1.FabricWorkspace) error {
+func (r *FabricWorkspaceReconciler) ensureWorkspacePod(ctx context.Context, ws *gryviav1.FabricWorkspace) error {
 	podName := fmt.Sprintf("%s-workspace", ws.Name)
 
 	pod := &corev1.Pod{}
@@ -213,7 +213,7 @@ func (r *FabricWorkspaceReconciler) ensureWorkspacePod(ctx context.Context, ws *
 	image := r.getWorkspaceImage(ws)
 
 	port := int32(8888) // JupyterLab
-	if ws.Spec.Type == tensorreaperv1.WorkspaceTypeVSCode {
+	if ws.Spec.Type == gryviav1.WorkspaceTypeVSCode {
 		port = 8080
 	}
 
@@ -307,7 +307,7 @@ func (r *FabricWorkspaceReconciler) ensureWorkspacePod(ctx context.Context, ws *
 	// Build node selector
 	nodeSelector := map[string]string{}
 	if ws.Spec.GPUType != "" && ws.Spec.GPUType != "any" {
-		nodeSelector["tensorreaper.ai/gpu"] = ws.Spec.GPUType
+		nodeSelector["gryvia.io/gpu"] = ws.Spec.GPUType
 	}
 
 	pod = &corev1.Pod{
@@ -315,9 +315,9 @@ func (r *FabricWorkspaceReconciler) ensureWorkspacePod(ctx context.Context, ws *
 			Name:      podName,
 			Namespace: ws.Namespace,
 			Labels: map[string]string{
-				"tensorreaper.ai/workspace": ws.Name,
-				"tensorreaper.ai/component": "workspace-pod",
-				"tensorreaper.ai/type":      string(ws.Spec.Type),
+				"gryvia.io/workspace": ws.Name,
+				"gryvia.io/component": "workspace-pod",
+				"gryvia.io/type":      string(ws.Spec.Type),
 			},
 		},
 		Spec: corev1.PodSpec{
@@ -337,7 +337,7 @@ func (r *FabricWorkspaceReconciler) ensureWorkspacePod(ctx context.Context, ws *
 }
 
 // ensureWorkspaceService creates a Service to expose the workspace.
-func (r *FabricWorkspaceReconciler) ensureWorkspaceService(ctx context.Context, ws *tensorreaperv1.FabricWorkspace) error {
+func (r *FabricWorkspaceReconciler) ensureWorkspaceService(ctx context.Context, ws *gryviav1.FabricWorkspace) error {
 	svcName := fmt.Sprintf("%s-workspace", ws.Name)
 
 	svc := &corev1.Service{}
@@ -351,7 +351,7 @@ func (r *FabricWorkspaceReconciler) ensureWorkspaceService(ctx context.Context, 
 	}
 
 	port := int32(8888)
-	if ws.Spec.Type == tensorreaperv1.WorkspaceTypeVSCode {
+	if ws.Spec.Type == gryviav1.WorkspaceTypeVSCode {
 		port = 8080
 	}
 
@@ -360,14 +360,14 @@ func (r *FabricWorkspaceReconciler) ensureWorkspaceService(ctx context.Context, 
 			Name:      svcName,
 			Namespace: ws.Namespace,
 			Labels: map[string]string{
-				"tensorreaper.ai/workspace": ws.Name,
-				"tensorreaper.ai/component": "workspace-service",
+				"gryvia.io/workspace": ws.Name,
+				"gryvia.io/component": "workspace-service",
 			},
 		},
 		Spec: corev1.ServiceSpec{
 			Selector: map[string]string{
-				"tensorreaper.ai/workspace": ws.Name,
-				"tensorreaper.ai/component": "workspace-pod",
+				"gryvia.io/workspace": ws.Name,
+				"gryvia.io/component": "workspace-pod",
 			},
 			Ports: []corev1.ServicePort{
 				{
@@ -391,7 +391,7 @@ func (r *FabricWorkspaceReconciler) ensureWorkspaceService(ctx context.Context, 
 }
 
 // syncPodStatus updates workspace status based on the pod state.
-func (r *FabricWorkspaceReconciler) syncPodStatus(ctx context.Context, ws *tensorreaperv1.FabricWorkspace) {
+func (r *FabricWorkspaceReconciler) syncPodStatus(ctx context.Context, ws *gryviav1.FabricWorkspace) {
 	if ws.Status.PodName == "" {
 		return
 	}
@@ -400,7 +400,7 @@ func (r *FabricWorkspaceReconciler) syncPodStatus(ctx context.Context, ws *tenso
 	err := r.Get(ctx, types.NamespacedName{Namespace: ws.Namespace, Name: ws.Status.PodName}, pod)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			ws.Status.Phase = string(tensorreaperv1.WorkspacePhasePending)
+			ws.Status.Phase = string(gryviav1.WorkspacePhasePending)
 			ws.Status.PodName = ""
 		}
 		return
@@ -408,7 +408,7 @@ func (r *FabricWorkspaceReconciler) syncPodStatus(ctx context.Context, ws *tenso
 
 	switch pod.Status.Phase {
 	case corev1.PodRunning:
-		ws.Status.Phase = string(tensorreaperv1.WorkspacePhaseRunning)
+		ws.Status.Phase = string(gryviav1.WorkspacePhaseRunning)
 		if ws.Status.StartTime == nil {
 			now := metav1.Now()
 			ws.Status.StartTime = &now
@@ -419,18 +419,18 @@ func (r *FabricWorkspaceReconciler) syncPodStatus(ctx context.Context, ws *tenso
 		r.updateWSCondition(ws, ConditionWorkspaceReady, metav1.ConditionTrue, "Running", "Workspace pod is running")
 
 	case corev1.PodPending:
-		ws.Status.Phase = string(tensorreaperv1.WorkspacePhasePending)
+		ws.Status.Phase = string(gryviav1.WorkspacePhasePending)
 
 	case corev1.PodFailed:
-		ws.Status.Phase = string(tensorreaperv1.WorkspacePhaseFailed)
+		ws.Status.Phase = string(gryviav1.WorkspacePhaseFailed)
 		ws.Status.Message = "Workspace pod failed"
 		r.updateWSCondition(ws, ConditionWorkspaceReady, metav1.ConditionFalse, "Failed", "Workspace pod failed")
 	}
 }
 
 // checkIdleTimeout checks if the workspace has been idle for too long.
-func (r *FabricWorkspaceReconciler) checkIdleTimeout(ws *tensorreaperv1.FabricWorkspace) {
-	if ws.Status.LastActivity == nil || ws.Status.Phase != string(tensorreaperv1.WorkspacePhaseRunning) {
+func (r *FabricWorkspaceReconciler) checkIdleTimeout(ws *gryviav1.FabricWorkspace) {
+	if ws.Status.LastActivity == nil || ws.Status.Phase != string(gryviav1.WorkspacePhaseRunning) {
 		return
 	}
 
@@ -438,7 +438,7 @@ func (r *FabricWorkspaceReconciler) checkIdleTimeout(ws *tensorreaperv1.FabricWo
 	timeout := time.Duration(ws.Spec.IdleTimeoutMinutes) * time.Minute
 
 	if idleDuration > timeout {
-		ws.Status.Phase = string(tensorreaperv1.WorkspacePhaseIdle)
+		ws.Status.Phase = string(gryviav1.WorkspacePhaseIdle)
 		ws.Status.Message = fmt.Sprintf("Workspace idle for %s (timeout: %s)", idleDuration.Truncate(time.Minute), timeout)
 		r.updateWSCondition(ws, ConditionWorkspaceIdle, metav1.ConditionTrue, "Idle",
 			fmt.Sprintf("No activity for %d minutes", ws.Spec.IdleTimeoutMinutes))
@@ -446,7 +446,7 @@ func (r *FabricWorkspaceReconciler) checkIdleTimeout(ws *tensorreaperv1.FabricWo
 }
 
 // checkMaxLifetime checks if the workspace has exceeded its maximum lifetime.
-func (r *FabricWorkspaceReconciler) checkMaxLifetime(ctx context.Context, ws *tensorreaperv1.FabricWorkspace) (bool, error) {
+func (r *FabricWorkspaceReconciler) checkMaxLifetime(ctx context.Context, ws *gryviav1.FabricWorkspace) (bool, error) {
 	if ws.Status.StartTime == nil {
 		return false, nil
 	}
@@ -468,7 +468,7 @@ func (r *FabricWorkspaceReconciler) checkMaxLifetime(ctx context.Context, ws *te
 			}
 		}
 
-		ws.Status.Phase = string(tensorreaperv1.WorkspacePhaseTerminating)
+		ws.Status.Phase = string(gryviav1.WorkspacePhaseTerminating)
 		ws.Status.Message = fmt.Sprintf("Workspace exceeded max lifetime of %d hours", ws.Spec.MaxLifetimeHours)
 		ws.Status.PodName = ""
 
@@ -482,8 +482,8 @@ func (r *FabricWorkspaceReconciler) checkMaxLifetime(ctx context.Context, ws *te
 }
 
 // reconcilePaused handles pausing a workspace by deleting its pod (PVC persists for resume).
-func (r *FabricWorkspaceReconciler) reconcilePaused(ctx context.Context, ws *tensorreaperv1.FabricWorkspace) (ctrl.Result, error) {
-	if ws.Status.Phase == string(tensorreaperv1.WorkspacePhasePaused) {
+func (r *FabricWorkspaceReconciler) reconcilePaused(ctx context.Context, ws *gryviav1.FabricWorkspace) (ctrl.Result, error) {
+	if ws.Status.Phase == string(gryviav1.WorkspacePhasePaused) {
 		return ctrl.Result{}, nil
 	}
 
@@ -501,7 +501,7 @@ func (r *FabricWorkspaceReconciler) reconcilePaused(ctx context.Context, ws *ten
 		ws.Status.PodName = ""
 	}
 
-	ws.Status.Phase = string(tensorreaperv1.WorkspacePhasePaused)
+	ws.Status.Phase = string(gryviav1.WorkspacePhasePaused)
 	ws.Status.Message = "Workspace paused - PVC retained for resume"
 	r.updateWSCondition(ws, ConditionWorkspaceReady, metav1.ConditionFalse, "Paused", "Workspace paused by user")
 
@@ -513,22 +513,22 @@ func (r *FabricWorkspaceReconciler) reconcilePaused(ctx context.Context, ws *ten
 }
 
 // getWorkspaceImage returns the container image for the workspace type.
-func (r *FabricWorkspaceReconciler) getWorkspaceImage(ws *tensorreaperv1.FabricWorkspace) string {
+func (r *FabricWorkspaceReconciler) getWorkspaceImage(ws *gryviav1.FabricWorkspace) string {
 	if ws.Spec.Image != "" {
 		return ws.Spec.Image
 	}
 
 	switch ws.Spec.Type {
-	case tensorreaperv1.WorkspaceTypeJupyter:
+	case gryviav1.WorkspaceTypeJupyter:
 		return defaultJupyterImage
-	case tensorreaperv1.WorkspaceTypeVSCode:
+	case gryviav1.WorkspaceTypeVSCode:
 		return defaultVSCodeImage
 	default:
 		return defaultJupyterImage
 	}
 }
 
-func (r *FabricWorkspaceReconciler) updateWSCondition(ws *tensorreaperv1.FabricWorkspace, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *FabricWorkspaceReconciler) updateWSCondition(ws *gryviav1.FabricWorkspace, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -561,7 +561,7 @@ func (r *FabricWorkspaceReconciler) updateWSCondition(ws *tensorreaperv1.FabricW
 // SetupWithManager sets up the controller with the Manager.
 func (r *FabricWorkspaceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tensorreaperv1.FabricWorkspace{}).
+		For(&gryviav1.FabricWorkspace{}).
 		Owns(&corev1.Pod{}).
 		Owns(&corev1.Service{}).
 		Owns(&corev1.PersistentVolumeClaim{}).

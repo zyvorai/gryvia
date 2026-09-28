@@ -1,7 +1,7 @@
 # FabricAIJob - Elastic distributed training with dynamic scaling
 # Starts with 4 nodes but can elastically scale between 2 and 8 nodes based
 # on cluster availability. Annotations configure the elastic scheduler behavior.
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricAIJob
 metadata:
   name: llama-elastic-training
@@ -9,10 +9,10 @@ metadata:
   annotations:
     # Elastic scheduling annotations - the scheduler uses these to dynamically
     # resize the job between minNodes and maxNodes based on cluster capacity
-    tensorreaper.ai/elastic: "true"
-    tensorreaper.ai/min-nodes: "2"       # Minimum nodes to start/continue training
-    tensorreaper.ai/max-nodes: "8"       # Maximum nodes when capacity is available
-    tensorreaper.ai/scale-policy: "gradual"  # gradual or immediate scaling
+    gryvia.io/elastic: "true"
+    gryvia.io/min-nodes: "2"       # Minimum nodes to start/continue training
+    gryvia.io/max-nodes: "8"       # Maximum nodes when capacity is available
+    gryvia.io/scale-policy: "gradual"  # gradual or immediate scaling
 spec:
   type: training
   model: llama-7b

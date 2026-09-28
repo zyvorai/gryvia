@@ -16,11 +16,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/storage-operator/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/storage-operator/api/v1"
 )
 
 const (
-	datasetFinalizer = "tensorreaper.ai/dataset-finalizer"
+	datasetFinalizer = "gryvia.io/dataset-finalizer"
 
 	datasetStateInitializing = "initializing"
 	datasetStateReady        = "ready"
@@ -28,7 +28,7 @@ const (
 	datasetStateSyncing      = "syncing"
 
 	// Namespace for dataset PVCs
-	datasetPVCNamespace = "tensorreaper-datasets"
+	datasetPVCNamespace = "gryvia-datasets"
 
 	// Cache garbage collection interval
 	cacheGCInterval = 24 * time.Hour
@@ -44,9 +44,9 @@ type FabricDatasetReconciler struct {
 	Log    logr.Logger
 }
 
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricdatasets,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricdatasets/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricdatasets/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricdatasets,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricdatasets/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricdatasets/finalizers,verbs=update
 //+kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=persistentvolumes,verbs=get;list;watch
 
@@ -55,7 +55,7 @@ func (r *FabricDatasetReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	log := r.Log.WithValues("fabricdataset", req.NamespacedName)
 
 	// Fetch the FabricDataset instance
-	dataset := &tensorreaperv1.FabricDataset{}
+	dataset := &gryviav1.FabricDataset{}
 	err := r.Get(ctx, req.NamespacedName, dataset)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -100,7 +100,7 @@ func (r *FabricDatasetReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	return result, nil
 }
 
-func (r *FabricDatasetReconciler) reconcileDataset(ctx context.Context, dataset *tensorreaperv1.FabricDataset) (ctrl.Result, error) {
+func (r *FabricDatasetReconciler) reconcileDataset(ctx context.Context, dataset *gryviav1.FabricDataset) (ctrl.Result, error) {
 	log := r.Log.WithValues("fabricdataset", dataset.Name)
 
 	// Step 1: Provision cache PVC if caching is enabled
@@ -142,7 +142,7 @@ func (r *FabricDatasetReconciler) reconcileDataset(ctx context.Context, dataset 
 	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 }
 
-func (r *FabricDatasetReconciler) ensureCachePVC(ctx context.Context, dataset *tensorreaperv1.FabricDataset) error {
+func (r *FabricDatasetReconciler) ensureCachePVC(ctx context.Context, dataset *gryviav1.FabricDataset) error {
 	pvcName := r.getCachePVCName(dataset)
 
 	pvc := &corev1.PersistentVolumeClaim{}
@@ -174,8 +174,8 @@ func (r *FabricDatasetReconciler) ensureCachePVC(ctx context.Context, dataset *t
 				Name:      pvcName,
 				Namespace: datasetPVCNamespace,
 				Labels: map[string]string{
-					"tensorreaper.ai/dataset":    dataset.Name,
-					"tensorreaper.ai/cache-type": "dataset",
+					"gryvia.io/dataset":    dataset.Name,
+					"gryvia.io/cache-type": "dataset",
 				},
 			},
 			Spec: corev1.PersistentVolumeClaimSpec{
@@ -206,7 +206,7 @@ func (r *FabricDatasetReconciler) ensureCachePVC(ctx context.Context, dataset *t
 	return err
 }
 
-func (r *FabricDatasetReconciler) updateVersionInfo(dataset *tensorreaperv1.FabricDataset) {
+func (r *FabricDatasetReconciler) updateVersionInfo(dataset *gryviav1.FabricDataset) {
 	// Set current version
 	if dataset.Spec.Version != "" {
 		dataset.Status.CurrentVersion = dataset.Spec.Version
@@ -224,7 +224,7 @@ func (r *FabricDatasetReconciler) updateVersionInfo(dataset *tensorreaperv1.Fabr
 	// Add new version if not present
 	if !versionExists && dataset.Spec.Version != "" {
 		now := metav1.Now()
-		versionInfo := tensorreaperv1.DatasetVersionInfo{
+		versionInfo := gryviav1.DatasetVersionInfo{
 			Version:   dataset.Spec.Version,
 			CreatedAt: &now,
 		}
@@ -242,7 +242,7 @@ func (r *FabricDatasetReconciler) updateVersionInfo(dataset *tensorreaperv1.Fabr
 	}
 }
 
-func (r *FabricDatasetReconciler) enforceRetentionPolicy(dataset *tensorreaperv1.FabricDataset) {
+func (r *FabricDatasetReconciler) enforceRetentionPolicy(dataset *gryviav1.FabricDataset) {
 	if dataset.Spec.Versioning == nil || dataset.Spec.Versioning.RetentionPolicy == nil {
 		return
 	}
@@ -257,7 +257,7 @@ func (r *FabricDatasetReconciler) enforceRetentionPolicy(dataset *tensorreaperv1
 	// Remove versions older than KeepDays
 	if retention.KeepDays > 0 {
 		cutoff := time.Now().AddDate(0, 0, -int(retention.KeepDays))
-		filtered := make([]tensorreaperv1.DatasetVersionInfo, 0)
+		filtered := make([]gryviav1.DatasetVersionInfo, 0)
 		for _, v := range dataset.Status.Versions {
 			if v.CreatedAt != nil && v.CreatedAt.Time.After(cutoff) {
 				filtered = append(filtered, v)
@@ -271,7 +271,7 @@ func (r *FabricDatasetReconciler) enforceRetentionPolicy(dataset *tensorreaperv1
 	}
 }
 
-func (r *FabricDatasetReconciler) updateCacheStatus(ctx context.Context, dataset *tensorreaperv1.FabricDataset) {
+func (r *FabricDatasetReconciler) updateCacheStatus(ctx context.Context, dataset *gryviav1.FabricDataset) {
 	pvcName := r.getCachePVCName(dataset)
 
 	pvc := &corev1.PersistentVolumeClaim{}
@@ -282,7 +282,7 @@ func (r *FabricDatasetReconciler) updateCacheStatus(ctx context.Context, dataset
 
 	if err == nil {
 		if dataset.Status.CacheStatus == nil {
-			dataset.Status.CacheStatus = &tensorreaperv1.DatasetCacheStatus{}
+			dataset.Status.CacheStatus = &gryviav1.DatasetCacheStatus{}
 		}
 		dataset.Status.CacheStatus.Cached = pvc.Status.Phase == corev1.ClaimBound
 	} else {
@@ -292,7 +292,7 @@ func (r *FabricDatasetReconciler) updateCacheStatus(ctx context.Context, dataset
 	}
 }
 
-func (r *FabricDatasetReconciler) garbageCollectCache(ctx context.Context, dataset *tensorreaperv1.FabricDataset) error {
+func (r *FabricDatasetReconciler) garbageCollectCache(ctx context.Context, dataset *gryviav1.FabricDataset) error {
 	if dataset.Spec.Cache == nil || !dataset.Spec.Cache.Enabled {
 		return nil
 	}
@@ -317,7 +317,7 @@ func (r *FabricDatasetReconciler) garbageCollectCache(ctx context.Context, datas
 	return nil
 }
 
-func (r *FabricDatasetReconciler) handleDeletion(ctx context.Context, dataset *tensorreaperv1.FabricDataset) (ctrl.Result, error) {
+func (r *FabricDatasetReconciler) handleDeletion(ctx context.Context, dataset *gryviav1.FabricDataset) (ctrl.Result, error) {
 	if controllerutil.ContainsFinalizer(dataset, datasetFinalizer) {
 		r.Log.Info("Running cleanup for FabricDataset", "name", dataset.Name)
 
@@ -349,14 +349,14 @@ func (r *FabricDatasetReconciler) handleDeletion(ctx context.Context, dataset *t
 	return ctrl.Result{}, nil
 }
 
-func (r *FabricDatasetReconciler) getCachePVCName(dataset *tensorreaperv1.FabricDataset) string {
+func (r *FabricDatasetReconciler) getCachePVCName(dataset *gryviav1.FabricDataset) string {
 	return fmt.Sprintf("dataset-cache-%s", dataset.Name)
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *FabricDatasetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tensorreaperv1.FabricDataset{}).
+		For(&gryviav1.FabricDataset{}).
 		Owns(&corev1.PersistentVolumeClaim{}).
 		Complete(r)
 }

@@ -13,12 +13,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/ai-operator/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 )
 
 func newTimeMachineTestScheme() *runtime.Scheme {
 	s := runtime.NewScheme()
-	_ = tensorreaperv1.AddToScheme(s)
+	_ = gryviav1.AddToScheme(s)
 	_ = corev1.AddToScheme(s)
 	return s
 }
@@ -28,7 +28,7 @@ func newTimeMachineReconciler(objs ...client.Object) (*FabricTrainingTimeMachine
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(objs...).
-		WithStatusSubresource(&tensorreaperv1.FabricTrainingTimeMachine{}, &tensorreaperv1.FabricAIJob{}).
+		WithStatusSubresource(&gryviav1.FabricTrainingTimeMachine{}, &gryviav1.FabricAIJob{}).
 		Build()
 	r := &FabricTrainingTimeMachineReconciler{
 		Client: fakeClient,
@@ -38,22 +38,22 @@ func newTimeMachineReconciler(objs ...client.Object) (*FabricTrainingTimeMachine
 	return r, fakeClient
 }
 
-func newTestTimeMachine(name, namespace string) *tensorreaperv1.FabricTrainingTimeMachine {
-	return &tensorreaperv1.FabricTrainingTimeMachine{
+func newTestTimeMachine(name, namespace string) *gryviav1.FabricTrainingTimeMachine {
+	return &gryviav1.FabricTrainingTimeMachine{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
 		},
-		Spec: tensorreaperv1.FabricTrainingTimeMachineSpec{
+		Spec: gryviav1.FabricTrainingTimeMachineSpec{
 			SourceJob: "source-job",
-			Timeline: &tensorreaperv1.TimelineConfig{
+			Timeline: &gryviav1.TimelineConfig{
 				Enabled:          true,
 				IndexCheckpoints: true,
 			},
-			Retention: &tensorreaperv1.RetentionConfig{
-				KeepBest:      5,
-				KeepEveryNth:  10,
-				MaxStorageGi:  100,
+			Retention: &gryviav1.RetentionConfig{
+				KeepBest:     5,
+				KeepEveryNth: 10,
+				MaxStorageGi: 100,
 			},
 		},
 	}
@@ -103,7 +103,7 @@ func TestTimeMachine_Reconcile_SourceJobNotFound(t *testing.T) {
 		t.Errorf("expected requeue after %v, got %v", timeMachineReconcileInterval, result.RequeueAfter)
 	}
 
-	updated := &tensorreaperv1.FabricTrainingTimeMachine{}
+	updated := &gryviav1.FabricTrainingTimeMachine{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-tm", Namespace: "default"}, updated); err != nil {
 		t.Fatalf("failed to get updated tm: %v", err)
 	}
@@ -120,12 +120,12 @@ func TestTimeMachine_Reconcile_SourceJobNotFound(t *testing.T) {
 }
 
 func TestTimeMachine_GetSourceJob(t *testing.T) {
-	sourceJob := &tensorreaperv1.FabricAIJob{
+	sourceJob := &gryviav1.FabricAIJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "source-job",
 			Namespace: "default",
 		},
-		Spec: tensorreaperv1.FabricAIJobSpec{
+		Spec: gryviav1.FabricAIJobSpec{
 			Type:  "training",
 			Image: "pytorch:latest",
 			GPUs:  4,
@@ -149,7 +149,7 @@ func TestTimeMachine_ResolveCheckpoint_ByStep(t *testing.T) {
 	r, _ := newTimeMachineReconciler()
 
 	step := 1000
-	resolved, err := r.resolveCheckpoint(tm, tensorreaperv1.CheckpointSelector{
+	resolved, err := r.resolveCheckpoint(tm, gryviav1.CheckpointSelector{
 		Step: &step,
 	})
 	if err != nil {
@@ -162,8 +162,8 @@ func TestTimeMachine_ResolveCheckpoint_ByStep(t *testing.T) {
 
 func TestTimeMachine_ResolveCheckpoint_ByEpoch(t *testing.T) {
 	tm := newTestTimeMachine("test-tm", "default")
-	tm.Status.CheckpointTimeline = &tensorreaperv1.CheckpointTimelineStatus{
-		LatestCheckpoint: &tensorreaperv1.CheckpointInfo{
+	tm.Status.CheckpointTimeline = &gryviav1.CheckpointTimelineStatus{
+		LatestCheckpoint: &gryviav1.CheckpointInfo{
 			Step:  5000,
 			Epoch: 10,
 		},
@@ -171,7 +171,7 @@ func TestTimeMachine_ResolveCheckpoint_ByEpoch(t *testing.T) {
 	r, _ := newTimeMachineReconciler()
 
 	epoch := 5
-	resolved, err := r.resolveCheckpoint(tm, tensorreaperv1.CheckpointSelector{
+	resolved, err := r.resolveCheckpoint(tm, gryviav1.CheckpointSelector{
 		Epoch: &epoch,
 	})
 	if err != nil {
@@ -185,8 +185,8 @@ func TestTimeMachine_ResolveCheckpoint_ByEpoch(t *testing.T) {
 
 func TestTimeMachine_ResolveCheckpoint_ByMetric(t *testing.T) {
 	tm := newTestTimeMachine("test-tm", "default")
-	tm.Status.CheckpointTimeline = &tensorreaperv1.CheckpointTimelineStatus{
-		BestCheckpoint: &tensorreaperv1.CheckpointInfo{
+	tm.Status.CheckpointTimeline = &gryviav1.CheckpointTimelineStatus{
+		BestCheckpoint: &gryviav1.CheckpointInfo{
 			Step:        3000,
 			MetricName:  "loss",
 			MetricValue: 0.1,
@@ -194,8 +194,8 @@ func TestTimeMachine_ResolveCheckpoint_ByMetric(t *testing.T) {
 	}
 	r, _ := newTimeMachineReconciler()
 
-	resolved, err := r.resolveCheckpoint(tm, tensorreaperv1.CheckpointSelector{
-		Metric: &tensorreaperv1.MetricSelector{
+	resolved, err := r.resolveCheckpoint(tm, gryviav1.CheckpointSelector{
+		Metric: &gryviav1.MetricSelector{
 			Name:     "val_loss",
 			Selector: "min",
 		},
@@ -212,7 +212,7 @@ func TestTimeMachine_ResolveCheckpoint_NoSelector(t *testing.T) {
 	tm := newTestTimeMachine("test-tm", "default")
 	r, _ := newTimeMachineReconciler()
 
-	_, err := r.resolveCheckpoint(tm, tensorreaperv1.CheckpointSelector{})
+	_, err := r.resolveCheckpoint(tm, gryviav1.CheckpointSelector{})
 	if err == nil {
 		t.Error("expected error with no selector")
 	}
@@ -251,21 +251,21 @@ func TestTimeMachine_SetForkStatus(t *testing.T) {
 }
 
 func TestTimeMachine_TrackForkedJobs(t *testing.T) {
-	forkedJob := &tensorreaperv1.FabricAIJob{
+	forkedJob := &gryviav1.FabricAIJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "forked-job-1",
 			Namespace: "default",
 		},
-		Status: tensorreaperv1.FabricAIJobStatus{
+		Status: gryviav1.FabricAIJobStatus{
 			Phase: PhaseSucceeded,
-			Metrics: &tensorreaperv1.JobMetrics{
+			Metrics: &gryviav1.JobMetrics{
 				Loss: 0.05,
 			},
 		},
 	}
 
 	tm := newTestTimeMachine("test-tm", "default")
-	tm.Status.Forks = []tensorreaperv1.ForkStatus{
+	tm.Status.Forks = []gryviav1.ForkStatus{
 		{Name: "fork-1", ForkedJob: "forked-job-1", Status: ForkStatusRunning},
 	}
 
@@ -285,7 +285,7 @@ func TestTimeMachine_UpdateStorageUsage(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "source-job-data",
 			Namespace: "default",
-			Labels:    map[string]string{"tensorreaper.ai/job": "source-job"},
+			Labels:    map[string]string{"gryvia.io/job": "source-job"},
 		},
 		Status: corev1.PersistentVolumeClaimStatus{
 			Capacity: corev1.ResourceList{

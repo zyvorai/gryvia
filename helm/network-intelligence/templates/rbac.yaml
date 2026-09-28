@@ -9,7 +9,7 @@ metadata:
 rules:
   # Manage FabricNetwork resources
   - apiGroups:
-      - tensorreaper.ai
+      - gryvia.io
     resources:
       - fabricnetworks
       - fabricnetworks/status

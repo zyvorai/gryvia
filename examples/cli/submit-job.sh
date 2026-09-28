@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Example: Submit a training job using TensorReaper CLI
+# Example: Submit a training job using Gryvia CLI
 
 set -e
 
 echo "Submitting LLM training job..."
 
-tensorreaper submit -f - <<EOF
-apiVersion: tensorreaper.ai/v1
+gryvia submit -f - <<EOF
+apiVersion: gryvia.io/v1
 kind: FabricAIJob
 metadata:
   name: llm-training
@@ -47,5 +47,5 @@ echo ""
 echo "✓ Job submitted!"
 echo ""
 echo "Monitor with:"
-echo "  tensorreaper status llm-training"
-echo "  tensorreaper logs llm-training --follow"
+echo "  gryvia status llm-training"
+echo "  gryvia logs llm-training --follow"

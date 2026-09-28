@@ -19,7 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/network-intelligence/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/network-intelligence/api/v1"
 )
 
 const (
@@ -30,7 +30,7 @@ const (
 	securityWebhookTimeout = 10 * time.Second
 
 	// collectorBaseURL is the base URL for the eBPF collector API
-	collectorBaseURL = "http://tensorreaper-collector.tensorreaper-system.svc.cluster.local:9090"
+	collectorBaseURL = "http://gryvia-collector.gryvia-system.svc.cluster.local:9090"
 )
 
 // FabricSecurityPolicyReconciler reconciles a FabricSecurityPolicy object
@@ -39,9 +39,9 @@ type FabricSecurityPolicyReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricsecuritypolicies,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricsecuritypolicies/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricsecuritypolicies/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricsecuritypolicies,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricsecuritypolicies/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricsecuritypolicies/finalizers,verbs=update
 //+kubebuilder:rbac:groups=cilium.io,resources=ciliumnetworkpolicies,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
@@ -49,7 +49,7 @@ func (r *FabricSecurityPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	logger := log.FromContext(ctx)
 
 	// Fetch the FabricSecurityPolicy instance
-	policy := &tensorreaperv1.FabricSecurityPolicy{}
+	policy := &gryviav1.FabricSecurityPolicy{}
 	if err := r.Get(ctx, req.NamespacedName, policy); err != nil {
 		if errors.IsNotFound(err) {
 			logger.Info("FabricSecurityPolicy resource not found, ignoring since object must be deleted")
@@ -126,7 +126,7 @@ type securityAlert struct {
 }
 
 // verifyEBPFPrograms checks that the eBPF collector is healthy and programs are loaded
-func (r *FabricSecurityPolicyReconciler) verifyEBPFPrograms(ctx context.Context, policy *tensorreaperv1.FabricSecurityPolicy) {
+func (r *FabricSecurityPolicyReconciler) verifyEBPFPrograms(ctx context.Context, policy *gryviav1.FabricSecurityPolicy) {
 	logger := log.FromContext(ctx)
 
 	httpClient := &http.Client{Timeout: 5 * time.Second}
@@ -143,7 +143,7 @@ func (r *FabricSecurityPolicyReconciler) verifyEBPFPrograms(ctx context.Context,
 }
 
 // querySecurityAlerts fetches security alerts from the collector API
-func (r *FabricSecurityPolicyReconciler) querySecurityAlerts(ctx context.Context, policy *tensorreaperv1.FabricSecurityPolicy) []securityAlert {
+func (r *FabricSecurityPolicyReconciler) querySecurityAlerts(ctx context.Context, policy *gryviav1.FabricSecurityPolicy) []securityAlert {
 	logger := log.FromContext(ctx)
 
 	httpClient := &http.Client{Timeout: 10 * time.Second}
@@ -184,7 +184,7 @@ func (r *FabricSecurityPolicyReconciler) querySecurityAlerts(ctx context.Context
 }
 
 // autoBlockThreats creates temporary CiliumNetworkPolicy to block detected threats
-func (r *FabricSecurityPolicyReconciler) autoBlockThreats(ctx context.Context, policy *tensorreaperv1.FabricSecurityPolicy, alerts []securityAlert) {
+func (r *FabricSecurityPolicyReconciler) autoBlockThreats(ctx context.Context, policy *gryviav1.FabricSecurityPolicy, alerts []securityAlert) {
 	logger := log.FromContext(ctx)
 
 	for _, alert := range alerts {
@@ -206,14 +206,14 @@ func (r *FabricSecurityPolicyReconciler) autoBlockThreats(ctx context.Context, p
 					"name":      policyName,
 					"namespace": policy.Namespace,
 					"annotations": map[string]interface{}{
-						"tensorreaper.ai/managed-by":  "security-policy",
-						"tensorreaper.ai/alert-type":  alert.Type,
-						"tensorreaper.ai/temporary":   "true",
-						"tensorreaper.ai/expires":     time.Now().Add(30 * time.Minute).Format(time.RFC3339),
-						"tensorreaper.ai/source-ip":   alert.SourceIP,
+						"gryvia.io/managed-by": "security-policy",
+						"gryvia.io/alert-type": alert.Type,
+						"gryvia.io/temporary":  "true",
+						"gryvia.io/expires":    time.Now().Add(30 * time.Minute).Format(time.RFC3339),
+						"gryvia.io/source-ip":  alert.SourceIP,
 					},
 					"labels": map[string]interface{}{
-						"tensorreaper.ai/security-block": "auto",
+						"gryvia.io/security-block": "auto",
 					},
 				},
 				"spec": map[string]interface{}{
@@ -260,7 +260,7 @@ func (r *FabricSecurityPolicyReconciler) autoBlockThreats(ctx context.Context, p
 }
 
 // cleanupExpiredBlockPolicies removes temporary block policies that have expired
-func (r *FabricSecurityPolicyReconciler) cleanupExpiredBlockPolicies(ctx context.Context, policy *tensorreaperv1.FabricSecurityPolicy) {
+func (r *FabricSecurityPolicyReconciler) cleanupExpiredBlockPolicies(ctx context.Context, policy *gryviav1.FabricSecurityPolicy) {
 	logger := log.FromContext(ctx)
 
 	policyList := &unstructured.UnstructuredList{}
@@ -272,7 +272,7 @@ func (r *FabricSecurityPolicyReconciler) cleanupExpiredBlockPolicies(ctx context
 
 	if err := r.List(ctx, policyList,
 		client.InNamespace(policy.Namespace),
-		client.MatchingLabels{"tensorreaper.ai/security-block": "auto"},
+		client.MatchingLabels{"gryvia.io/security-block": "auto"},
 	); err != nil {
 		logger.V(1).Info("Failed to list security block policies for cleanup", "error", err)
 		return
@@ -284,7 +284,7 @@ func (r *FabricSecurityPolicyReconciler) cleanupExpiredBlockPolicies(ctx context
 			continue
 		}
 
-		expiresStr, ok := annotations["tensorreaper.ai/expires"]
+		expiresStr, ok := annotations["gryvia.io/expires"]
 		if !ok {
 			continue
 		}
@@ -306,14 +306,14 @@ func (r *FabricSecurityPolicyReconciler) cleanupExpiredBlockPolicies(ctx context
 
 // securityWebhookPayload is the JSON payload sent to security alert webhooks
 type securityWebhookPayload struct {
-	PolicyName string           `json:"policyName"`
-	Namespace  string           `json:"namespace"`
-	Alerts     []securityAlert  `json:"alerts"`
-	Timestamp  string           `json:"timestamp"`
+	PolicyName string          `json:"policyName"`
+	Namespace  string          `json:"namespace"`
+	Alerts     []securityAlert `json:"alerts"`
+	Timestamp  string          `json:"timestamp"`
 }
 
 // sendSecurityWebhook sends security alerts to the configured webhook URL
-func (r *FabricSecurityPolicyReconciler) sendSecurityWebhook(ctx context.Context, policy *tensorreaperv1.FabricSecurityPolicy, alerts []securityAlert) {
+func (r *FabricSecurityPolicyReconciler) sendSecurityWebhook(ctx context.Context, policy *gryviav1.FabricSecurityPolicy, alerts []securityAlert) {
 	logger := log.FromContext(ctx)
 
 	payload := securityWebhookPayload{
@@ -353,7 +353,7 @@ func (r *FabricSecurityPolicyReconciler) sendSecurityWebhook(ctx context.Context
 // updateSecurityStatus updates the FabricSecurityPolicy status subresource
 func (r *FabricSecurityPolicyReconciler) updateSecurityStatus(ctx context.Context, namespacedName types.NamespacedName, phase string, activeDetections, alertsTriggered int, lastAlert metav1.Time, detectionCounts map[string]int) {
 	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		policy := &tensorreaperv1.FabricSecurityPolicy{}
+		policy := &gryviav1.FabricSecurityPolicy{}
 		if err := r.Get(ctx, namespacedName, policy); err != nil {
 			return err
 		}
@@ -371,6 +371,6 @@ func (r *FabricSecurityPolicyReconciler) updateSecurityStatus(ctx context.Contex
 // SetupWithManager sets up the controller with the Manager
 func (r *FabricSecurityPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tensorreaperv1.FabricSecurityPolicy{}).
+		For(&gryviav1.FabricSecurityPolicy{}).
 		Complete(r)
 }

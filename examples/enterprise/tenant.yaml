@@ -1,7 +1,7 @@
 # FabricTenant - Isolated multi-tenant team configuration
 # Creates the "ml-research" team with members, GPU quotas, storage limits,
 # network isolation, billing, and governance policies.
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricTenant
 metadata:
   name: ml-research

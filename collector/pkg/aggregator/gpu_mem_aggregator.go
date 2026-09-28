@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ssahani/TensorReaper/collector/pkg/decoder"
+	"github.com/zyvorai/gryvia/collector/pkg/decoder"
 )
 
 // DirectionStats holds aggregated metrics for a single memory transfer direction.

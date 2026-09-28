@@ -16,16 +16,16 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/storage-operator/api/v1"
-	"github.com/ssahani/TensorReaper/operators/storage-operator/pkg/ceph"
-	"github.com/ssahani/TensorReaper/operators/storage-operator/pkg/ddn"
-	"github.com/ssahani/TensorReaper/operators/storage-operator/pkg/lustre"
-	"github.com/ssahani/TensorReaper/operators/storage-operator/pkg/vast"
-	"github.com/ssahani/TensorReaper/operators/storage-operator/pkg/weka"
+	gryviav1 "github.com/zyvorai/gryvia/operators/storage-operator/api/v1"
+	"github.com/zyvorai/gryvia/operators/storage-operator/pkg/ceph"
+	"github.com/zyvorai/gryvia/operators/storage-operator/pkg/ddn"
+	"github.com/zyvorai/gryvia/operators/storage-operator/pkg/lustre"
+	"github.com/zyvorai/gryvia/operators/storage-operator/pkg/vast"
+	"github.com/zyvorai/gryvia/operators/storage-operator/pkg/weka"
 )
 
 const (
-	storageFinalizer = "tensorreaper.ai/storage-finalizer"
+	storageFinalizer = "gryvia.io/storage-finalizer"
 
 	PhasePending     = "Pending"
 	PhaseConfiguring = "Configuring"
@@ -44,16 +44,16 @@ type FabricStorageReconciler struct {
 	Log    logr.Logger
 }
 
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricstorages,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricstorages/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricstorages/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricstorages,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricstorages/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricstorages/finalizers,verbs=update
 //+kubebuilder:rbac:groups=storage.k8s.io,resources=storageclasses,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=persistentvolumes,verbs=get;list;watch;create;update;patch;delete
 
 func (r *FabricStorageReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("fabricstorage", req.NamespacedName)
 
-	storage := &tensorreaperv1.FabricStorage{}
+	storage := &gryviav1.FabricStorage{}
 	err := r.Get(ctx, req.NamespacedName, storage)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -101,7 +101,7 @@ func (r *FabricStorageReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	return ctrl.Result{RequeueAfter: 60 * time.Second}, nil
 }
 
-func (r *FabricStorageReconciler) reconcileStorage(ctx context.Context, storage *tensorreaperv1.FabricStorage) (ctrl.Result, error) {
+func (r *FabricStorageReconciler) reconcileStorage(ctx context.Context, storage *gryviav1.FabricStorage) (ctrl.Result, error) {
 	log := r.Log.WithValues("fabricstorage", storage.Name)
 
 	// Only set Configuring if this is the first reconciliation pass
@@ -165,7 +165,7 @@ func (r *FabricStorageReconciler) reconcileStorage(ctx context.Context, storage 
 	return ctrl.Result{}, nil
 }
 
-func (r *FabricStorageReconciler) ensureCSIDriver(ctx context.Context, storage *tensorreaperv1.FabricStorage) error {
+func (r *FabricStorageReconciler) ensureCSIDriver(ctx context.Context, storage *gryviav1.FabricStorage) error {
 	switch storage.Spec.Backend {
 	case "vast":
 		return vast.InstallCSIDriver(ctx, r.Client, storage)
@@ -182,7 +182,7 @@ func (r *FabricStorageReconciler) ensureCSIDriver(ctx context.Context, storage *
 	}
 }
 
-func (r *FabricStorageReconciler) ensureStorageClass(ctx context.Context, storage *tensorreaperv1.FabricStorage) error {
+func (r *FabricStorageReconciler) ensureStorageClass(ctx context.Context, storage *gryviav1.FabricStorage) error {
 	var scName string
 	if storage.Spec.StorageClass != nil {
 		scName = storage.Spec.StorageClass.Name
@@ -212,7 +212,7 @@ func (r *FabricStorageReconciler) ensureStorageClass(ctx context.Context, storag
 	return nil
 }
 
-func (r *FabricStorageReconciler) buildStorageClass(storage *tensorreaperv1.FabricStorage, name string) *storagev1.StorageClass {
+func (r *FabricStorageReconciler) buildStorageClass(storage *gryviav1.FabricStorage, name string) *storagev1.StorageClass {
 	reclaimPolicy := corev1.PersistentVolumeReclaimDelete
 	if storage.Spec.StorageClass != nil && storage.Spec.StorageClass.ReclaimPolicy == "Retain" {
 		reclaimPolicy = corev1.PersistentVolumeReclaimRetain
@@ -246,8 +246,8 @@ func (r *FabricStorageReconciler) buildStorageClass(storage *tensorreaperv1.Fabr
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 			Labels: map[string]string{
-				"tensorreaper.ai/storage": storage.Name,
-				"tensorreaper.ai/backend": storage.Spec.Backend,
+				"gryvia.io/storage": storage.Name,
+				"gryvia.io/backend": storage.Spec.Backend,
 			},
 		},
 		Provisioner:          provisioner,
@@ -275,7 +275,7 @@ func (r *FabricStorageReconciler) getProvisioner(backend string) string {
 	}
 }
 
-func (r *FabricStorageReconciler) healthCheckStorage(ctx context.Context, storage *tensorreaperv1.FabricStorage) error {
+func (r *FabricStorageReconciler) healthCheckStorage(ctx context.Context, storage *gryviav1.FabricStorage) error {
 	switch storage.Spec.Backend {
 	case "vast":
 		return vast.HealthCheck(ctx, storage.Spec.Endpoint)
@@ -293,7 +293,7 @@ func (r *FabricStorageReconciler) healthCheckStorage(ctx context.Context, storag
 	}
 }
 
-func (r *FabricStorageReconciler) handleDeletion(ctx context.Context, storage *tensorreaperv1.FabricStorage) (ctrl.Result, error) {
+func (r *FabricStorageReconciler) handleDeletion(ctx context.Context, storage *gryviav1.FabricStorage) (ctrl.Result, error) {
 	if controllerutil.ContainsFinalizer(storage, storageFinalizer) {
 		// Cleanup: delete StorageClass
 		var scName string
@@ -324,7 +324,7 @@ func (r *FabricStorageReconciler) handleDeletion(ctx context.Context, storage *t
 	return ctrl.Result{}, nil
 }
 
-func (r *FabricStorageReconciler) updateCondition(storage *tensorreaperv1.FabricStorage, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *FabricStorageReconciler) updateCondition(storage *gryviav1.FabricStorage, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -356,7 +356,7 @@ func (r *FabricStorageReconciler) updateCondition(storage *tensorreaperv1.Fabric
 
 func (r *FabricStorageReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tensorreaperv1.FabricStorage{}).
+		For(&gryviav1.FabricStorage{}).
 		Owns(&storagev1.StorageClass{}).
 		Complete(r)
 }

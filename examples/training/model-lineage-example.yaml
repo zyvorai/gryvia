@@ -1,6 +1,6 @@
 ---
 # Model Lineage: Track complete provenance for a fine-tuned LLM
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricModelLineage
 metadata:
   name: llama-70b-finetune-v1
@@ -115,7 +115,7 @@ spec:
 
 ---
 # The training job referenced by the lineage above
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricAIJob
 metadata:
   name: llama-70b-finetune-job

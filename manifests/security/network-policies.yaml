@@ -1,12 +1,12 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: tensorreaper-operators-policy
-  namespace: tensorreaper-system
+  name: gryvia-operators-policy
+  namespace: gryvia-system
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/part-of: tensorreaper
+      app.kubernetes.io/part-of: gryvia
   policyTypes:
     - Ingress
     - Egress
@@ -15,7 +15,7 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              name: tensorreaper
+              name: gryvia
         - podSelector:
             matchLabels:
               app: prometheus
@@ -63,12 +63,12 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: tensorreaper-web-ui-policy
-  namespace: tensorreaper
+  name: gryvia-web-ui-policy
+  namespace: gryvia-system
 spec:
   podSelector:
     matchLabels:
-      app: tensorreaper-ui
+      app: gryvia-ui
   policyTypes:
     - Ingress
     - Egress
@@ -81,7 +81,7 @@ spec:
       ports:
         - protocol: TCP
           port: 80
-    # Allow traffic from within tensorreaper namespace
+    # Allow traffic from within gryvia namespace
     - from:
         - podSelector: {}
       ports:
@@ -92,7 +92,7 @@ spec:
     - to:
         - podSelector:
             matchLabels:
-              app: tensorreaper-api-gateway
+              app: gryvia-api-gateway
       ports:
         - protocol: TCP
           port: 8080
@@ -108,12 +108,12 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: tensorreaper-api-gateway-policy
-  namespace: tensorreaper
+  name: gryvia-api-gateway-policy
+  namespace: gryvia-system
 spec:
   podSelector:
     matchLabels:
-      app: tensorreaper-api-gateway
+      app: gryvia-api-gateway
   policyTypes:
     - Ingress
     - Egress
@@ -122,11 +122,11 @@ spec:
     - from:
         - podSelector:
             matchLabels:
-              app: tensorreaper-ui
+              app: gryvia-ui
       ports:
         - protocol: TCP
           port: 8080
-    # Allow traffic from within tensorreaper namespace
+    # Allow traffic from within gryvia namespace
     - from:
         - podSelector: {}
       ports:
@@ -159,12 +159,12 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: tensorreaper-gpu-jobs-policy
+  name: gryvia-gpu-jobs-policy
   namespace: gpu-workloads
 spec:
   podSelector:
     matchLabels:
-      tensorreaper.ai/job-type: ai-training
+      gryvia.io/job-type: ai-training
   policyTypes:
     - Ingress
     - Egress
@@ -173,7 +173,7 @@ spec:
     - from:
         - podSelector:
             matchLabels:
-              tensorreaper.ai/job-type: ai-training
+              gryvia.io/job-type: ai-training
       ports:
         - protocol: TCP
           port: 29400  # PyTorch DDP
@@ -184,12 +184,12 @@ spec:
     - to:
         - podSelector:
             matchLabels:
-              tensorreaper.ai/job-type: ai-training
-    # Allow storage access (NFS/object storage) - restricted to tensorreaper namespace
+              gryvia.io/job-type: ai-training
+    # Allow storage access (NFS/object storage) - restricted to gryvia namespace
     - to:
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: tensorreaper
+              kubernetes.io/metadata.name: gryvia
       ports:
         - protocol: TCP
           port: 111   # NFS portmap
@@ -230,7 +230,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: default-deny-ingress
-  namespace: tensorreaper
+  namespace: gryvia-system
 spec:
   podSelector: {}
   policyTypes:

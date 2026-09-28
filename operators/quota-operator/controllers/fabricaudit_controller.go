@@ -16,7 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/quota-operator/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/quota-operator/api/v1"
 )
 
 const (
@@ -29,18 +29,18 @@ type FabricAuditReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricaudits,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricaudits/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricaudits/finalizers,verbs=update
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricaijobs,verbs=get;list;watch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricquotas,verbs=get;list;watch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaudits,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaudits/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaudits/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricquotas,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 func (r *FabricAuditReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	// Fetch the FabricAudit instance
-	audit := &tensorreaperv1.FabricAudit{}
+	audit := &gryviav1.FabricAudit{}
 	err := r.Get(ctx, req.NamespacedName, audit)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -78,7 +78,7 @@ func (r *FabricAuditReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	return ctrl.Result{RequeueAfter: 2 * time.Minute}, nil
 }
 
-func (r *FabricAuditReconciler) reconcileAudit(ctx context.Context, audit *tensorreaperv1.FabricAudit) (ctrl.Result, error) {
+func (r *FabricAuditReconciler) reconcileAudit(ctx context.Context, audit *gryviav1.FabricAudit) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	// Capture GPU resource events by watching FabricAIJob resources
@@ -109,11 +109,11 @@ func (r *FabricAuditReconciler) reconcileAudit(ctx context.Context, audit *tenso
 	return ctrl.Result{}, nil
 }
 
-func (r *FabricAuditReconciler) captureJobEvents(ctx context.Context, audit *tensorreaperv1.FabricAudit) error {
+func (r *FabricAuditReconciler) captureJobEvents(ctx context.Context, audit *gryviav1.FabricAudit) error {
 	logger := log.FromContext(ctx)
 
 	// List all FabricAIJob resources based on scope
-	jobList := &tensorreaperv1.FabricAIJobList{}
+	jobList := &gryviav1.FabricAIJobList{}
 	listOpts := []client.ListOption{}
 
 	if audit.Spec.Scope.Type == "namespace" && audit.Spec.Scope.Name != "" {
@@ -132,7 +132,7 @@ func (r *FabricAuditReconciler) captureJobEvents(ctx context.Context, audit *ten
 
 		// Create audit entry for running jobs
 		if job.Status.Phase == "Running" && audit.Spec.Events.JobCreated {
-			entry := tensorreaperv1.AuditEntry{
+			entry := gryviav1.AuditEntry{
 				Timestamp:    metav1.Now(),
 				Action:       "running",
 				ResourceType: "FabricAIJob",
@@ -146,7 +146,7 @@ func (r *FabricAuditReconciler) captureJobEvents(ctx context.Context, audit *ten
 
 		// Track quota exceeded events
 		if audit.Spec.Events.QuotaExceeded && job.Status.Phase == "Rejected" {
-			entry := tensorreaperv1.AuditEntry{
+			entry := gryviav1.AuditEntry{
 				Timestamp:    metav1.Now(),
 				Action:       "rejected",
 				ResourceType: "FabricAIJob",
@@ -165,9 +165,9 @@ func (r *FabricAuditReconciler) captureJobEvents(ctx context.Context, audit *ten
 	return nil
 }
 
-func (r *FabricAuditReconciler) captureQuotaEvents(ctx context.Context, audit *tensorreaperv1.FabricAudit) error {
+func (r *FabricAuditReconciler) captureQuotaEvents(ctx context.Context, audit *gryviav1.FabricAudit) error {
 	// List all FabricQuota resources
-	quotaList := &tensorreaperv1.FabricQuotaList{}
+	quotaList := &gryviav1.FabricQuotaList{}
 	if err := r.List(ctx, quotaList); err != nil {
 		return fmt.Errorf("failed to list FabricQuotas: %w", err)
 	}
@@ -175,7 +175,7 @@ func (r *FabricAuditReconciler) captureQuotaEvents(ctx context.Context, audit *t
 	for _, quota := range quotaList.Items {
 		// Check for quota exceeded
 		if audit.Spec.Events.QuotaExceeded && quota.Status.Phase == "QuotaExceeded" {
-			entry := tensorreaperv1.AuditEntry{
+			entry := gryviav1.AuditEntry{
 				Timestamp:    metav1.Now(),
 				Action:       "quota-exceeded",
 				ResourceType: "FabricQuota",
@@ -186,7 +186,7 @@ func (r *FabricAuditReconciler) captureQuotaEvents(ctx context.Context, audit *t
 			r.addAuditEntry(audit, entry)
 
 			// Record as violation
-			violation := tensorreaperv1.AuditViolation{
+			violation := gryviav1.AuditViolation{
 				Timestamp:   metav1.Now(),
 				Type:        "quota-exceeded",
 				Severity:    "medium",
@@ -198,7 +198,7 @@ func (r *FabricAuditReconciler) captureQuotaEvents(ctx context.Context, audit *t
 
 		// Check for budget exceeded
 		if audit.Spec.Events.BudgetExceeded && quota.Status.Phase == "BudgetExceeded" {
-			entry := tensorreaperv1.AuditEntry{
+			entry := gryviav1.AuditEntry{
 				Timestamp:    metav1.Now(),
 				Action:       "budget-exceeded",
 				ResourceType: "FabricQuota",
@@ -208,7 +208,7 @@ func (r *FabricAuditReconciler) captureQuotaEvents(ctx context.Context, audit *t
 			}
 			r.addAuditEntry(audit, entry)
 
-			violation := tensorreaperv1.AuditViolation{
+			violation := gryviav1.AuditViolation{
 				Timestamp:   metav1.Now(),
 				Type:        "budget-exceeded",
 				Severity:    "medium",
@@ -222,7 +222,7 @@ func (r *FabricAuditReconciler) captureQuotaEvents(ctx context.Context, audit *t
 	return nil
 }
 
-func (r *FabricAuditReconciler) matchesScope(audit *tensorreaperv1.FabricAudit, job *tensorreaperv1.FabricAIJob) bool {
+func (r *FabricAuditReconciler) matchesScope(audit *gryviav1.FabricAudit, job *gryviav1.FabricAIJob) bool {
 	switch audit.Spec.Scope.Type {
 	case "cluster":
 		return true
@@ -230,7 +230,7 @@ func (r *FabricAuditReconciler) matchesScope(audit *tensorreaperv1.FabricAudit, 
 		return job.Namespace == audit.Spec.Scope.Name
 	case "team":
 		// Check if the job's namespace has the team label
-		if teamLabel, ok := job.Labels["tensorreaper.ai/team"]; ok {
+		if teamLabel, ok := job.Labels["gryvia.io/team"]; ok {
 			return teamLabel == audit.Spec.Scope.Name
 		}
 		return false
@@ -239,7 +239,7 @@ func (r *FabricAuditReconciler) matchesScope(audit *tensorreaperv1.FabricAudit, 
 	}
 }
 
-func (r *FabricAuditReconciler) addAuditEntry(audit *tensorreaperv1.FabricAudit, entry tensorreaperv1.AuditEntry) {
+func (r *FabricAuditReconciler) addAuditEntry(audit *gryviav1.FabricAudit, entry gryviav1.AuditEntry) {
 	audit.Status.AuditEntries = append(audit.Status.AuditEntries, entry)
 
 	// Maintain rolling buffer
@@ -248,7 +248,7 @@ func (r *FabricAuditReconciler) addAuditEntry(audit *tensorreaperv1.FabricAudit,
 	}
 }
 
-func (r *FabricAuditReconciler) addViolation(audit *tensorreaperv1.FabricAudit, violation tensorreaperv1.AuditViolation) {
+func (r *FabricAuditReconciler) addViolation(audit *gryviav1.FabricAudit, violation gryviav1.AuditViolation) {
 	// Only add if not a duplicate of the most recent violation
 	if len(audit.Status.Violations) > 0 {
 		last := audit.Status.Violations[len(audit.Status.Violations)-1]
@@ -265,7 +265,7 @@ func (r *FabricAuditReconciler) addViolation(audit *tensorreaperv1.FabricAudit, 
 	}
 }
 
-func (r *FabricAuditReconciler) enforceRetention(audit *tensorreaperv1.FabricAudit) {
+func (r *FabricAuditReconciler) enforceRetention(audit *gryviav1.FabricAudit) {
 	if audit.Spec.Retention.Duration == "" {
 		return
 	}
@@ -286,7 +286,7 @@ func (r *FabricAuditReconciler) enforceRetention(audit *tensorreaperv1.FabricAud
 	cutoff := time.Now().Add(-time.Duration(retentionDays) * 24 * time.Hour)
 
 	// Remove old entries
-	var retained []tensorreaperv1.AuditEntry
+	var retained []gryviav1.AuditEntry
 	for _, entry := range audit.Status.AuditEntries {
 		if entry.Timestamp.Time.After(cutoff) {
 			retained = append(retained, entry)
@@ -295,7 +295,7 @@ func (r *FabricAuditReconciler) enforceRetention(audit *tensorreaperv1.FabricAud
 	audit.Status.AuditEntries = retained
 
 	// Remove old violations
-	var retainedViolations []tensorreaperv1.AuditViolation
+	var retainedViolations []gryviav1.AuditViolation
 	for _, v := range audit.Status.Violations {
 		if v.Timestamp.Time.After(cutoff) {
 			retainedViolations = append(retainedViolations, v)
@@ -304,7 +304,7 @@ func (r *FabricAuditReconciler) enforceRetention(audit *tensorreaperv1.FabricAud
 	audit.Status.Violations = retainedViolations
 }
 
-func (r *FabricAuditReconciler) calculateComplianceScore(audit *tensorreaperv1.FabricAudit) float64 {
+func (r *FabricAuditReconciler) calculateComplianceScore(audit *gryviav1.FabricAudit) float64 {
 	if len(audit.Spec.Compliance.Frameworks) == 0 {
 		return 0
 	}
@@ -338,7 +338,7 @@ func (r *FabricAuditReconciler) calculateComplianceScore(audit *tensorreaperv1.F
 	return score
 }
 
-func (r *FabricAuditReconciler) updateCondition(audit *tensorreaperv1.FabricAudit, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *FabricAuditReconciler) updateCondition(audit *gryviav1.FabricAudit, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -352,11 +352,11 @@ func (r *FabricAuditReconciler) updateCondition(audit *tensorreaperv1.FabricAudi
 // SetupWithManager sets up the controller with the Manager.
 func (r *FabricAuditReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tensorreaperv1.FabricAudit{}).
-		Watches(&tensorreaperv1.FabricAIJob{}, handler.EnqueueRequestsFromMapFunc(
+		For(&gryviav1.FabricAudit{}).
+		Watches(&gryviav1.FabricAIJob{}, handler.EnqueueRequestsFromMapFunc(
 			func(ctx context.Context, obj client.Object) []reconcile.Request {
 				// When a FabricAIJob changes, enqueue all FabricAudit objects
-				auditList := &tensorreaperv1.FabricAuditList{}
+				auditList := &gryviav1.FabricAuditList{}
 				if err := mgr.GetClient().List(ctx, auditList); err != nil {
 					return nil
 				}
@@ -371,9 +371,9 @@ func (r *FabricAuditReconciler) SetupWithManager(mgr ctrl.Manager) error {
 				return requests
 			},
 		)).
-		Watches(&tensorreaperv1.FabricQuota{}, handler.EnqueueRequestsFromMapFunc(
+		Watches(&gryviav1.FabricQuota{}, handler.EnqueueRequestsFromMapFunc(
 			func(ctx context.Context, obj client.Object) []reconcile.Request {
-				auditList := &tensorreaperv1.FabricAuditList{}
+				auditList := &gryviav1.FabricAuditList{}
 				if err := mgr.GetClient().List(ctx, auditList); err != nil {
 					return nil
 				}

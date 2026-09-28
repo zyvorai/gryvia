@@ -1,4 +1,4 @@
-# TensorReaper Flow Collector
+# Gryvia Flow Collector
 
 A Go-based userspace agent that loads eBPF programs into the kernel,
 consumes flow events from perf ring buffers, and exports enriched
@@ -38,27 +38,27 @@ graph.
 | `pkg/aggregator` | Sliding-window aggregation: p50/p95/p99 latency, bytes/sec, connections/sec per service pair |
 | `pkg/graph` | Builds in-memory service dependency graph (nodes = services, edges = traffic flows) |
 | `pkg/anomaly` | Statistical anomaly detection (EMA + stddev); detects latency spikes, traffic bursts, new connections |
-| `pkg/exporter` | Prometheus metrics: `tensorreaper_network_flow_bytes_total`, `_latency_seconds`, `_connections_active`, `_drops_total`, `_dns_latency_seconds` |
+| `pkg/exporter` | Prometheus metrics: `gryvia_network_flow_bytes_total`, `_latency_seconds`, `_connections_active`, `_drops_total`, `_dns_latency_seconds` |
 
 ## Metrics Reference
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `tensorreaper_network_flow_bytes_total` | Counter | src_service, dst_service, protocol, namespace | Total bytes transferred |
-| `tensorreaper_network_latency_seconds` | Histogram | src_service, dst_service, protocol, namespace | Network latency |
-| `tensorreaper_network_connections_active` | Gauge | src_service, dst_service, protocol, namespace | Active connections |
-| `tensorreaper_network_drops_total` | Counter | src_service, dst_service, protocol, namespace | Dropped packets |
-| `tensorreaper_network_dns_latency_seconds` | Histogram | namespace | DNS resolution latency |
+| `gryvia_network_flow_bytes_total` | Counter | src_service, dst_service, protocol, namespace | Total bytes transferred |
+| `gryvia_network_latency_seconds` | Histogram | src_service, dst_service, protocol, namespace | Network latency |
+| `gryvia_network_connections_active` | Gauge | src_service, dst_service, protocol, namespace | Active connections |
+| `gryvia_network_drops_total` | Counter | src_service, dst_service, protocol, namespace | Dropped packets |
+| `gryvia_network_dns_latency_seconds` | Histogram | namespace | DNS resolution latency |
 
 ## Building
 
 ```bash
 # Build the collector binary
 cd collector
-go build -o tensorreaper-collector .
+go build -o gryvia-collector .
 
 # Build the container image (includes eBPF compilation)
-docker build -f collector/Dockerfile -t tensorreaper-collector .
+docker build -f collector/Dockerfile -t gryvia-collector .
 ```
 
 ## Deployment
@@ -68,7 +68,7 @@ requires privileged access for eBPF operations.
 
 ```bash
 # Create namespace
-kubectl create namespace tensorreaper-system
+kubectl create namespace gryvia-system
 
 # Deploy
 kubectl apply -f collector/deploy/daemonset.yaml
@@ -85,7 +85,7 @@ kubectl apply -f collector/deploy/daemonset.yaml
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--metrics-addr` | `:9090` | Prometheus metrics listen address |
-| `--ebpf-dir` | `/opt/tensorreaper/ebpf` | Directory containing compiled `.o` files |
+| `--ebpf-dir` | `/opt/gryvia/ebpf` | Directory containing compiled `.o` files |
 | `--iface` | `eth0` | Network interface for XDP attachment |
 | `--nats-url` | (empty) | NATS server URL for event streaming |
 | `--window` | `300` | Aggregation window in seconds |

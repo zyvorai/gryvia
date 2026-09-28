@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ssahani/TensorReaper/collector/pkg/decoder"
+	"github.com/zyvorai/gryvia/collector/pkg/decoder"
 )
 
 // Node represents a service (or pod) in the dependency graph.
@@ -25,12 +25,12 @@ type Node struct {
 type Edge struct {
 	Source     string    `json:"source"`
 	Target     string    `json:"target"`
-	Protocol  string    `json:"protocol"`
-	Port      uint16    `json:"port"`
-	BytesTotal uint64   `json:"bytes_total"`
-	Latency   float64   `json:"latency_p50_ms"`
-	LastSeen  time.Time `json:"last_seen"`
-	FlowCount uint64    `json:"flow_count"`
+	Protocol   string    `json:"protocol"`
+	Port       uint16    `json:"port"`
+	BytesTotal uint64    `json:"bytes_total"`
+	Latency    float64   `json:"latency_p50_ms"`
+	LastSeen   time.Time `json:"last_seen"`
+	FlowCount  uint64    `json:"flow_count"`
 }
 
 // Graph is the full dependency graph snapshot.

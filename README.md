@@ -1,19 +1,19 @@
-# TensorReaper
+# Gryvia
 
-> **GPU is the new CPU. TensorReaper is its scheduler.**
+> **GPU is the new CPU. Gryvia is its scheduler.**
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)](https://go.dev/)
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-1.32+-326CE5?logo=kubernetes)](https://kubernetes.io/)
 [![NVIDIA](https://img.shields.io/badge/NVIDIA-GPU-76B900?logo=nvidia)](https://nvidia.com)
 
-**From cluster to fabric.** TensorReaper turns your GPU infrastructure into a high-performance compute fabric — optimizing not just GPU allocation, but GPU-to-GPU communication. Like DGX SuperPOD, but open-source and self-hosted.
+**From cluster to fabric.** Gryvia turns your GPU infrastructure into a high-performance compute fabric — optimizing not just GPU allocation, but GPU-to-GPU communication. Like DGX SuperPOD, but open-source and self-hosted.
 
 ---
 
 ## TL;DR
 
-TensorReaper is a Kubernetes-native GPU platform that:
+Gryvia is a Kubernetes-native GPU platform that:
 
 - Runs AI workloads at **95%+ GPU utilization** (vs 60-70% industry average)
 - Optimizes **RDMA + NVLink automatically** — no manual NCCL tuning
@@ -36,7 +36,7 @@ Modern AI infrastructure is broken:
 
 ## The Solution
 
-TensorReaper turns your infrastructure into a **high-performance GPU fabric**:
+Gryvia turns your infrastructure into a **high-performance GPU fabric**:
 
 - **GPUs communicate at hardware speed** — automatic RDMA, NVLink, and NCCL optimization
 - **Jobs are always optimally placed** — topology-aware scheduling with GPU affinity
@@ -45,9 +45,9 @@ TensorReaper turns your infrastructure into a **high-performance GPU fabric**:
 
 ---
 
-## TensorReaper vs Vanilla Kubernetes
+## Gryvia vs Vanilla Kubernetes
 
-| Metric | Vanilla K8s + GPU Operator | TensorReaper |
+| Metric | Vanilla K8s + GPU Operator | Gryvia |
 |--------|---------------------------|------------|
 | **GPU Utilization** | 60-70% | **95%+** |
 | **Multi-node distributed training setup** | Hours of manual config | **Automatic** |
@@ -62,27 +62,27 @@ TensorReaper turns your infrastructure into a **high-performance GPU fabric**:
 ## 5-Minute Demo
 
 ```bash
-# Deploy TensorReaper
-tensorreaper init --bare-metal
+# Deploy Gryvia
+gryvia init --bare-metal
 
 # Submit a distributed training job — that's it
-tensorreaper create job llama-70b \
+gryvia create job llama-70b \
   --gpus 64 \
   --gpu-type H100 \
   --distributed \
   --nodes 8
 
 # Watch it run
-tensorreaper status llama-70b --follow
+gryvia status llama-70b --follow
 ```
 
 No NCCL tuning. No topology config. No storage provisioning. **It just works.**
 
 ---
 
-## What Makes TensorReaper Different?
+## What Makes Gryvia Different?
 
-| **Platform** | **Weakness** | **TensorReaper Advantage** |
+| **Platform** | **Weakness** | **Gryvia Advantage** |
 |---|---|---|
 | **EKS/GKE/AKS** | Generic, cloud-only | GPU-first, multi-cloud + bare metal |
 | **OpenShift AI** | Heavy, complex | Lightweight, purpose-built |
@@ -121,7 +121,7 @@ Built-in support for the complete NVIDIA ecosystem:
 
 **Example:** Register an H100 GPU node:
 ```yaml
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricGpuNode
 spec:
   nodeName: gpu-worker-01
@@ -159,7 +159,7 @@ Custom scheduler that understands:
 ### 3. **Fix the #1 AI Training Bottleneck — GPU Communication**
 
 #### Automatic RDMA + SR-IOV
-TensorReaper automatically:
+Gryvia automatically:
 - Configures **SR-IOV Virtual Functions (VFs)**
 - Enables **RDMA for pod-to-pod traffic**
 - Tunes MTU, buffer sizes, congestion control
@@ -205,7 +205,7 @@ Native support for parallel filesystems:
 
 **One command gives you:**
 ```yaml
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricStorage
 spec:
   backend: vast
@@ -230,7 +230,7 @@ spec:
     gpusPerNode: 8
 ```
 
-TensorReaper automatically:
+Gryvia automatically:
 - Creates multi-node StatefulSet topology
 - Sets `WORLD_SIZE`, `MASTER_ADDR`, `MASTER_PORT` environment variables
 - Configures NCCL for optimal communication (RDMA when available)
@@ -257,7 +257,7 @@ Submit a model, get auto-deployed:
 
 ### 6. **Your Jobs Keep Running — Self-Healing Platform**
 
-If something breaks, TensorReaper auto-recovers:
+If something breaks, Gryvia auto-recovers:
 
 | Issue                  | Auto-Action             |
 |------------------------|-------------------------|
@@ -309,7 +309,7 @@ Enterprise-grade security:
 
 ### 9. **Run Anywhere, Same Experience — Multi-Cloud + Bare Metal**
 
-TensorReaper runs everywhere:
+Gryvia runs everywhere:
 - **AWS** (EKS with GPU nodes)
 - **GCP** (GKE with T4/A100)
 - **Azure** (AKS with NDv4)
@@ -357,10 +357,10 @@ eBPF-powered network visibility and control built on Cilium:
 
 ```bash
 # Debug network issues in real-time
-tensorreaper network trace payment-service --duration 2m --level l7
+gryvia network trace payment-service --duration 2m --level l7
 
 # Auto-generate security policies from observed traffic
-tensorreaper network policy suggest --namespace production
+gryvia network policy suggest --namespace production
 ```
 
 ---
@@ -369,7 +369,7 @@ tensorreaper network policy suggest --namespace production
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│               TensorReaper Control Plane                   │
+│               Gryvia Control Plane                   │
 │    (Multi-Cluster Management + Global Scheduling)        │
 └─────────────────────┬────────────────────────────────────┘
                       │
@@ -498,27 +498,27 @@ Dark-themed React dashboard with metallic design language:
 
 ### CLI
 
-Rust-based CLI (`tensorreaper`) for:
+Rust-based CLI (`gryvia`) for:
 - Job management: submit, list, status, cancel, logs, queue monitoring
-- Interactive wizards: `tensorreaper create job`, `tensorreaper create quota`
+- Interactive wizards: `gryvia create job`, `gryvia create quota`
 - Cluster overview with `--detailed` and `--watch`
-- Network intelligence: `tensorreaper network trace`, `flows`, `graph`, `policy`, `anomalies`
+- Network intelligence: `gryvia network trace`, `flows`, `graph`, `policy`, `anomalies`
 - GPU, storage, and network health checks
 
 ### SDKs
 
 **Python:**
 ```python
-from tensorreaper import TensorReaper
+from gryvia import Gryvia
 
-async with TensorReaper(api_url="https://...", token="...") as tr:
+async with Gryvia(api_url="https://...", token="...") as tr:
     job = await tr.jobs.create({"spec": {"model": "llama-70b", "gpus": 8}})
     await tr.jobs.wait_for_completion(job["metadata"]["name"])
 ```
 
 **Go:**
 ```go
-client := sdk.NewTensorReaperClient(mgr.GetClient())
+client := sdk.NewGryviaClient(mgr.GetClient())
 job, err := client.CreateJob(ctx, &v1.FabricAIJob{...})
 ```
 
@@ -571,7 +571,7 @@ Three-stage scheduling: filter, score, select.
 
 ## Security
 
-TensorReaper follows security best practices:
+Gryvia follows security best practices:
 - **OIDC/SSO authentication** - JWT validation with JWKS caching, PKCE flow, tenant-aware filtering
 - **Multi-tenant isolation** - Per-tenant namespaces, NetworkPolicies, ResourceQuotas via FabricTenant CRD
 - **Least-privilege RBAC** - Operators have scoped ClusterRoles per CRD
@@ -590,7 +590,7 @@ TensorReaper follows security best practices:
 
 ### Large Language Model Training
 ```yaml
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricAIJob
 spec:
   model: llama-70b
@@ -608,7 +608,7 @@ spec:
 
 ### Multi-Tenant GPU Sharing
 ```yaml
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricQuota
 spec:
   team: data-science
@@ -622,7 +622,7 @@ spec:
 
 ### Inference at Scale
 ```yaml
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricAIJob
 spec:
   type: inference
@@ -645,7 +645,7 @@ Apache License 2.0 - see [LICENSE](LICENSE).
 
 ---
 
-## Why Teams Choose TensorReaper
+## Why Teams Choose Gryvia
 
 1. **Maximum GPU Utilization** — 95%+ vs industry average of 60-70%
 2. **Bare Metal Performance** — No cloud overhead, full hardware access

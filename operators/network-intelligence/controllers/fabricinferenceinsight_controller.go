@@ -16,7 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/network-intelligence/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/network-intelligence/api/v1"
 )
 
 const (
@@ -30,15 +30,15 @@ type FabricInferenceInsightReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricinferenceinsights,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricinferenceinsights/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricinferenceinsights/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricinferenceinsights,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricinferenceinsights/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricinferenceinsights/finalizers,verbs=update
 
 func (r *FabricInferenceInsightReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	// Fetch the FabricInferenceInsight instance
-	insight := &tensorreaperv1.FabricInferenceInsight{}
+	insight := &gryviav1.FabricInferenceInsight{}
 	if err := r.Get(ctx, req.NamespacedName, insight); err != nil {
 		if errors.IsNotFound(err) {
 			logger.Info("FabricInferenceInsight resource not found, ignoring since object must be deleted")
@@ -57,7 +57,7 @@ func (r *FabricInferenceInsightReconciler) Reconcile(ctx context.Context, req ct
 	latencyData := r.queryLatencyBreakdown(ctx, insight)
 
 	// Populate latency breakdown
-	breakdown := tensorreaperv1.LatencyBreakdown{
+	breakdown := gryviav1.LatencyBreakdown{
 		DNSNs:          latencyData.DNSNs,
 		TCPConnectNs:   latencyData.TCPConnectNs,
 		TLSHandshakeNs: latencyData.TLSHandshakeNs,
@@ -98,7 +98,7 @@ type collectorLatencyResponse struct {
 }
 
 // queryLatencyBreakdown fetches latency breakdown data from the collector API
-func (r *FabricInferenceInsightReconciler) queryLatencyBreakdown(ctx context.Context, insight *tensorreaperv1.FabricInferenceInsight) collectorLatencyResponse {
+func (r *FabricInferenceInsightReconciler) queryLatencyBreakdown(ctx context.Context, insight *gryviav1.FabricInferenceInsight) collectorLatencyResponse {
 	logger := log.FromContext(ctx)
 
 	httpClient := &http.Client{Timeout: 10 * time.Second}
@@ -129,7 +129,7 @@ func (r *FabricInferenceInsightReconciler) queryLatencyBreakdown(ctx context.Con
 }
 
 // identifyLatencyBottleneck determines which phase contributes the most latency
-func (r *FabricInferenceInsightReconciler) identifyLatencyBottleneck(breakdown tensorreaperv1.LatencyBreakdown) string {
+func (r *FabricInferenceInsightReconciler) identifyLatencyBottleneck(breakdown gryviav1.LatencyBreakdown) string {
 	phases := map[string]int64{
 		"dns":           breakdown.DNSNs,
 		"tcp_connect":   breakdown.TCPConnectNs,
@@ -152,9 +152,9 @@ func (r *FabricInferenceInsightReconciler) identifyLatencyBottleneck(breakdown t
 }
 
 // updateInferenceInsightStatus updates the FabricInferenceInsight status subresource
-func (r *FabricInferenceInsightReconciler) updateInferenceInsightStatus(ctx context.Context, namespacedName types.NamespacedName, phase string, breakdown tensorreaperv1.LatencyBreakdown, p50, p95, p99 int64, bottleneck string) {
+func (r *FabricInferenceInsightReconciler) updateInferenceInsightStatus(ctx context.Context, namespacedName types.NamespacedName, phase string, breakdown gryviav1.LatencyBreakdown, p50, p95, p99 int64, bottleneck string) {
 	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		insight := &tensorreaperv1.FabricInferenceInsight{}
+		insight := &gryviav1.FabricInferenceInsight{}
 		if err := r.Get(ctx, namespacedName, insight); err != nil {
 			return err
 		}
@@ -174,6 +174,6 @@ func (r *FabricInferenceInsightReconciler) updateInferenceInsightStatus(ctx cont
 // SetupWithManager sets up the controller with the Manager
 func (r *FabricInferenceInsightReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tensorreaperv1.FabricInferenceInsight{}).
+		For(&gryviav1.FabricInferenceInsight{}).
 		Complete(r)
 }

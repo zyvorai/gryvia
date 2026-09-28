@@ -3,9 +3,9 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: fabrictemplates.tensorreaper.ai
+  name: fabrictemplates.gryvia.io
 spec:
-  group: tensorreaper.ai
+  group: gryvia.io
   versions:
     - name: v1
       served: true
@@ -123,7 +123,7 @@ spec:
 
 ---
 # Example: PyTorch DDP Training Template
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricTemplate
 metadata:
   name: pytorch-ddp-training
@@ -202,7 +202,7 @@ spec:
 
 ---
 # Example: LLM Inference Template
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricTemplate
 metadata:
   name: llm-inference-vllm
@@ -252,7 +252,7 @@ spec:
 
 ---
 # Example: Development Environment Template
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricTemplate
 metadata:
   name: jupyter-dev-env
@@ -296,7 +296,7 @@ spec:
 
 ---
 # Example: Benchmark Template
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricTemplate
 metadata:
   name: mlperf-training-benchmark
@@ -343,7 +343,7 @@ spec:
 
 ---
 # Using a Template
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricAIJob
 metadata:
   name: my-training-job

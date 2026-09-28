@@ -1,7 +1,7 @@
 # FabricTrafficInsight - Real-time traffic analysis for a service
 # Continuously monitors the payment service over a 5-minute rolling window,
 # collecting latency, throughput, drops, and retransmit metrics.
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricTrafficInsight
 metadata:
   name: payment-traffic-analysis

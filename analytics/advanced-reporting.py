@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Advanced Analytics and Reporting for TensorReaper
+Advanced Analytics and Reporting for Gryvia
 Generates insights, trends, and forecasts
 """
 
@@ -57,7 +57,7 @@ class AdvancedAnalytics:
         """Get high-level summary metrics"""
         try:
             jobs = self.api.list_cluster_custom_object(
-                group="tensorreaper.ai",
+                group="gryvia.io",
                 version="v1",
                 plural="fabricaijobs"
             )
@@ -357,7 +357,7 @@ class AdvancedAnalytics:
     def print_report(self, report: Dict):
         """Print formatted report"""
         print(f"\n{BLUE}╔══════════════════════════════════════════════════════════════╗{NC}")
-        print(f"{BLUE}║         TensorReaper Executive Analytics Report              ║{NC}")
+        print(f"{BLUE}║         Gryvia Executive Analytics Report              ║{NC}")
         print(f"{BLUE}╚══════════════════════════════════════════════════════════════╝{NC}\n")
 
         # Summary
@@ -443,7 +443,7 @@ class AdvancedAnalytics:
 <!DOCTYPE html>
 <html>
 <head>
-    <title>TensorReaper Analytics Report</title>
+    <title>Gryvia Analytics Report</title>
     <style>
         body {{ font-family: Arial, sans-serif; margin: 20px; }}
         h1 {{ color: #2c3e50; }}
@@ -458,7 +458,7 @@ class AdvancedAnalytics:
     </style>
 </head>
 <body>
-    <h1>TensorReaper Executive Analytics Report</h1>
+    <h1>Gryvia Executive Analytics Report</h1>
     <p>Generated: {datetime.now().isoformat()}</p>
 
     <h2>Executive Summary</h2>
@@ -481,7 +481,7 @@ class AdvancedAnalytics:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Advanced Analytics for TensorReaper")
+    parser = argparse.ArgumentParser(description="Advanced Analytics for Gryvia")
     parser.add_argument("--days", type=int, default=30, help="Days to analyze")
     parser.add_argument("--format", choices=["text", "json", "html", "pdf"], default="text")
     parser.add_argument("--output", help="Output file")

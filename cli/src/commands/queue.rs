@@ -4,12 +4,12 @@ use kube::api::{Api, ListParams};
 use prettytable::{Table, Row, Cell, format};
 use tokio::time::{sleep, Duration};
 
-use crate::client::TensorReaperClient;
+use crate::client::GryviaClient;
 use crate::types::*;
 use crate::display;
 
 pub async fn execute(
-    client: &TensorReaperClient,
+    client: &GryviaClient,
     name: Option<String>,
     watch: Option<u64>,
 ) -> Result<()> {
@@ -31,7 +31,7 @@ pub async fn execute(
     Ok(())
 }
 
-async fn show_queue(client: &TensorReaperClient, name: &Option<String>) -> Result<()> {
+async fn show_queue(client: &GryviaClient, name: &Option<String>) -> Result<()> {
     let api: Api<FabricAIJob> = Api::all(client.kube_client.clone());
 
     let jobs = api.list(&ListParams::default()).await
@@ -98,7 +98,7 @@ async fn show_queue(client: &TensorReaperClient, name: &Option<String>) -> Resul
         let status = display::colorize_status(&job_status.phase);
 
         let waiting = if let Some(ref ts) = job.metadata.creation_timestamp {
-            let age = chrono::Utc::now().signed_duration_since(ts.0);
+            let age = display::age_since(ts);
             if age.num_hours() > 0 {
                 format!("{}h{}m", age.num_hours(), age.num_minutes() % 60)
             } else if age.num_minutes() > 0 {

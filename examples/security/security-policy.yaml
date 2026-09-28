@@ -2,11 +2,11 @@
 # Monitors production and ml-training namespaces for container escapes,
 # crypto mining, data exfiltration, and privilege escalation. Automatically
 # blocks detected threats and sends alerts to a webhook.
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricSecurityPolicy
 metadata:
   name: gpu-workload-security
-  namespace: tensorreaper-system
+  namespace: gryvia-system
 spec:
   # Namespaces to protect with eBPF-based runtime monitoring
   targetNamespaces:

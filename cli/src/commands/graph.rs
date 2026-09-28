@@ -4,15 +4,15 @@ use kube::core::DynamicObject;
 use colored::*;
 use std::collections::{HashMap, HashSet};
 
-use crate::client::TensorReaperClient;
+use crate::client::GryviaClient;
 
 pub async fn execute(
-    client: &TensorReaperClient,
+    client: &GryviaClient,
     namespace: &str,
     format: &str,
 ) -> Result<()> {
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
-        "tensorreaper.ai",
+        "gryvia.io",
         "v1",
         "FabricFlow",
     ));

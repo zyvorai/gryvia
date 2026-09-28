@@ -1,14 +1,14 @@
 ---
 # FabricAIJob: Distributed LLM training job with checkpointing support
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricAIJob
 metadata:
   name: llama-70b-finetune
   namespace: default
   labels:
-    tensorreaper.ai/team: ml-research
-    tensorreaper.ai/type: training
-    tensorreaper.ai/model: llama-70b
+    gryvia.io/team: ml-research
+    gryvia.io/type: training
+    gryvia.io/model: llama-70b
 spec:
   type: training
   model: llama-70b
@@ -66,7 +66,7 @@ spec:
 
 ---
 # FabricCheckpointGuard: Monitors the above job and manages checkpoints
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricCheckpointGuard
 metadata:
   name: llama-training-guard
@@ -75,8 +75,8 @@ spec:
   # Match the training job above by its labels
   jobSelector:
     matchLabels:
-      tensorreaper.ai/team: ml-research
-      tensorreaper.ai/type: training
+      gryvia.io/team: ml-research
+      gryvia.io/type: training
 
   checkpointPolicy:
     # Take periodic checkpoints every 15 minutes

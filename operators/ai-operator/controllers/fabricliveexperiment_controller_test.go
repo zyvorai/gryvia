@@ -12,12 +12,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/ai-operator/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 )
 
 func newLiveExperimentTestScheme() *runtime.Scheme {
 	s := runtime.NewScheme()
-	_ = tensorreaperv1.AddToScheme(s)
+	_ = gryviav1.AddToScheme(s)
 	_ = corev1.AddToScheme(s)
 	return s
 }
@@ -27,7 +27,7 @@ func newLiveExperimentReconciler(objs ...client.Object) (*FabricLiveExperimentRe
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(objs...).
-		WithStatusSubresource(&tensorreaperv1.FabricLiveExperiment{}, &tensorreaperv1.FabricAIJob{}).
+		WithStatusSubresource(&gryviav1.FabricLiveExperiment{}, &gryviav1.FabricAIJob{}).
 		Build()
 	r := &FabricLiveExperimentReconciler{
 		Client: fakeClient,
@@ -37,19 +37,19 @@ func newLiveExperimentReconciler(objs ...client.Object) (*FabricLiveExperimentRe
 	return r, fakeClient
 }
 
-func newTestLiveExperiment(name, namespace string) *tensorreaperv1.FabricLiveExperiment {
-	return &tensorreaperv1.FabricLiveExperiment{
+func newTestLiveExperiment(name, namespace string) *gryviav1.FabricLiveExperiment {
+	return &gryviav1.FabricLiveExperiment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
 		},
-		Spec: tensorreaperv1.FabricLiveExperimentSpec{
+		Spec: gryviav1.FabricLiveExperimentSpec{
 			Description: "Test experiment",
-			Jobs: []tensorreaperv1.ExperimentJob{
+			Jobs: []gryviav1.ExperimentJob{
 				{Name: "baseline", JobRef: "job-baseline"},
 				{Name: "candidate", JobRef: "job-candidate"},
 			},
-			Comparison: tensorreaperv1.ComparisonConfig{
+			Comparison: gryviav1.ComparisonConfig{
 				PrimaryMetric: "loss",
 				Direction:     "minimize",
 			},
@@ -101,7 +101,7 @@ func TestLiveExperiment_Reconcile_InitializesPhase(t *testing.T) {
 		t.Error("expected requeue after phase initialization")
 	}
 
-	updated := &tensorreaperv1.FabricLiveExperiment{}
+	updated := &gryviav1.FabricLiveExperiment{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-exp", Namespace: "default"}, updated); err != nil {
 		t.Fatalf("failed to get updated experiment: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestLiveExperiment_GetMetricPatterns_CustomPatterns(t *testing.T) {
 	r, _ := newLiveExperimentReconciler()
 
 	exp := newTestLiveExperiment("test", "default")
-	exp.Spec.Comparison.MetricSource = &tensorreaperv1.MetricSourceConfig{
+	exp.Spec.Comparison.MetricSource = &gryviav1.MetricSourceConfig{
 		Type: "log-pattern",
 		Patterns: map[string]string{
 			"loss":     `train_loss: ([\d.]+)`,
@@ -179,7 +179,7 @@ func TestLiveExperiment_GetMetricPatterns_SecondaryMetrics(t *testing.T) {
 	r, _ := newLiveExperimentReconciler()
 
 	exp := newTestLiveExperiment("test", "default")
-	exp.Spec.Comparison.SecondaryMetrics = []tensorreaperv1.SecondaryMetric{
+	exp.Spec.Comparison.SecondaryMetrics = []gryviav1.SecondaryMetric{
 		{Name: "f1_score", Weight: 0.3},
 	}
 
@@ -192,17 +192,17 @@ func TestLiveExperiment_GetMetricPatterns_SecondaryMetrics(t *testing.T) {
 func TestLiveExperiment_TerminateJob(t *testing.T) {
 	exp := newTestLiveExperiment("test-exp", "default")
 
-	job := &tensorreaperv1.FabricAIJob{
+	job := &gryviav1.FabricAIJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "job-baseline",
 			Namespace: "default",
 		},
-		Spec: tensorreaperv1.FabricAIJobSpec{
+		Spec: gryviav1.FabricAIJobSpec{
 			Type:  "training",
 			Image: "pytorch:latest",
 			GPUs:  4,
 		},
-		Status: tensorreaperv1.FabricAIJobStatus{
+		Status: gryviav1.FabricAIJobStatus{
 			Phase: PhaseRunning,
 		},
 	}
@@ -214,7 +214,7 @@ func TestLiveExperiment_TerminateJob(t *testing.T) {
 		t.Fatalf("expected no error terminating job, got %v", err)
 	}
 
-	updated := &tensorreaperv1.FabricAIJob{}
+	updated := &gryviav1.FabricAIJob{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "job-baseline", Namespace: "default"}, updated); err != nil {
 		t.Fatalf("failed to get updated job: %v", err)
 	}

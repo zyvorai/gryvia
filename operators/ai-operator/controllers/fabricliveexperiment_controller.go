@@ -17,8 +17,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/ai-operator/api/v1"
-	"github.com/ssahani/TensorReaper/operators/ai-operator/pkg/experiment"
+	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
+	"github.com/zyvorai/gryvia/operators/ai-operator/pkg/experiment"
 )
 
 const (
@@ -29,7 +29,7 @@ const (
 	ExperimentPhaseFailed    = "Failed"
 
 	// Leaderboard entry statuses
-	EntryStatusRunning        = "Running"
+	EntryStatusRunning         = "Running"
 	EntryStatusTerminatedEarly = "TerminatedEarly"
 
 	// Default cost per GPU-hour in dollars (H100 on-demand pricing approximation)
@@ -61,11 +61,11 @@ func (r *k8sLogReader) ReadLogs(ctx context.Context, namespace, podName string, 
 	return io.ReadAll(stream)
 }
 
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricliveexperiments,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricliveexperiments/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricliveexperiments/finalizers,verbs=update
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricaijobs,verbs=get;list;watch;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricaijobs/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricliveexperiments,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricliveexperiments/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricliveexperiments/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=pods/log,verbs=get
 
@@ -74,7 +74,7 @@ func (r *FabricLiveExperimentReconciler) Reconcile(ctx context.Context, req ctrl
 	log := r.Log.WithValues("fabricliveexperiment", req.NamespacedName)
 
 	// Fetch the FabricLiveExperiment instance
-	exp := &tensorreaperv1.FabricLiveExperiment{}
+	exp := &gryviav1.FabricLiveExperiment{}
 	err := r.Get(ctx, req.NamespacedName, exp)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -115,7 +115,7 @@ func (r *FabricLiveExperimentReconciler) Reconcile(ctx context.Context, req ctrl
 	return result, nil
 }
 
-func (r *FabricLiveExperimentReconciler) reconcileExperiment(ctx context.Context, exp *tensorreaperv1.FabricLiveExperiment) (ctrl.Result, error) {
+func (r *FabricLiveExperimentReconciler) reconcileExperiment(ctx context.Context, exp *gryviav1.FabricLiveExperiment) (ctrl.Result, error) {
 	log := r.Log.WithValues("experiment", exp.Name)
 
 	// Track statuses and reasons for the leaderboard
@@ -143,7 +143,7 @@ func (r *FabricLiveExperimentReconciler) reconcileExperiment(ctx context.Context
 	logReader := &k8sLogReader{clientset: r.Clientset}
 
 	for _, jobDef := range exp.Spec.Jobs {
-		jobRef := &tensorreaperv1.FabricAIJob{}
+		jobRef := &gryviav1.FabricAIJob{}
 		err := r.Get(ctx, types.NamespacedName{
 			Namespace: exp.Namespace,
 			Name:      jobDef.JobRef,
@@ -177,7 +177,7 @@ func (r *FabricLiveExperimentReconciler) reconcileExperiment(ctx context.Context
 			// Find pods for this job
 			pods := &corev1.PodList{}
 			err := r.List(ctx, pods, client.InNamespace(exp.Namespace), client.MatchingLabels{
-				"tensorreaper.ai/job": jobDef.JobRef,
+				"gryvia.io/job": jobDef.JobRef,
 			})
 			if err != nil {
 				log.Error(err, "Failed to list pods for job", "job", jobDef.JobRef)
@@ -291,13 +291,13 @@ func (r *FabricLiveExperimentReconciler) reconcileExperiment(ctx context.Context
 			reasons,
 		)
 
-		leaderboard := make([]tensorreaperv1.LeaderboardEntry, 0, len(ranked))
+		leaderboard := make([]gryviav1.LeaderboardEntry, 0, len(ranked))
 		for _, entry := range ranked {
 			primaryVal := entry.PrimaryMetricValue
 			if math.IsNaN(primaryVal) {
 				primaryVal = 0
 			}
-			leaderboard = append(leaderboard, tensorreaperv1.LeaderboardEntry{
+			leaderboard = append(leaderboard, gryviav1.LeaderboardEntry{
 				Rank:               entry.Rank,
 				Job:                entry.JobName,
 				PrimaryMetricValue: primaryVal,
@@ -347,7 +347,7 @@ func (r *FabricLiveExperimentReconciler) reconcileExperiment(ctx context.Context
 
 // getMetricPatterns returns the metric regex patterns from the experiment spec.
 // If no patterns are configured, it returns sensible defaults for common metrics.
-func (r *FabricLiveExperimentReconciler) getMetricPatterns(exp *tensorreaperv1.FabricLiveExperiment) map[string]string {
+func (r *FabricLiveExperimentReconciler) getMetricPatterns(exp *gryviav1.FabricLiveExperiment) map[string]string {
 	if exp.Spec.Comparison.MetricSource != nil && exp.Spec.Comparison.MetricSource.Type == "log-pattern" {
 		if len(exp.Spec.Comparison.MetricSource.Patterns) > 0 {
 			return exp.Spec.Comparison.MetricSource.Patterns
@@ -377,7 +377,7 @@ func (r *FabricLiveExperimentReconciler) getMetricPatterns(exp *tensorreaperv1.F
 
 // terminateJob patches the referenced FabricAIJob to Failed status with the
 // given reason, causing the ai-operator to stop the workload.
-func (r *FabricLiveExperimentReconciler) terminateJob(ctx context.Context, exp *tensorreaperv1.FabricLiveExperiment, jobName string, reason string) error {
+func (r *FabricLiveExperimentReconciler) terminateJob(ctx context.Context, exp *gryviav1.FabricLiveExperiment, jobName string, reason string) error {
 	// Find the jobRef for this friendly name
 	var jobRef string
 	for _, j := range exp.Spec.Jobs {
@@ -390,7 +390,7 @@ func (r *FabricLiveExperimentReconciler) terminateJob(ctx context.Context, exp *
 		return fmt.Errorf("no jobRef found for job name %q", jobName)
 	}
 
-	job := &tensorreaperv1.FabricAIJob{}
+	job := &gryviav1.FabricAIJob{}
 	err := r.Get(ctx, types.NamespacedName{
 		Namespace: exp.Namespace,
 		Name:      jobRef,
@@ -415,6 +415,6 @@ func (r *FabricLiveExperimentReconciler) terminateJob(ctx context.Context, exp *
 // SetupWithManager sets up the controller with the Manager.
 func (r *FabricLiveExperimentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tensorreaperv1.FabricLiveExperiment{}).
+		For(&gryviav1.FabricLiveExperiment{}).
 		Complete(r)
 }

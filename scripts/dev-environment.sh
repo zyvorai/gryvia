@@ -9,9 +9,9 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-CLUSTER_NAME="${CLUSTER_NAME:-tensorreaper-dev}"
+CLUSTER_NAME="${CLUSTER_NAME:-gryvia-dev}"
 
-echo -e "${GREEN}Setting up TensorReaper development environment${NC}"
+echo -e "${GREEN}Setting up Gryvia development environment${NC}"
 
 # Check prerequisites
 echo -e "\n${YELLOW}Checking prerequisites...${NC}"
@@ -36,19 +36,19 @@ nodes:
     protocol: TCP
 - role: worker
   labels:
-    tensorreaper.ai/gpu: "true"
-    tensorreaper.ai/gpu-type: "H100"
-    tensorreaper.ai/gpu-count: "8"
+    gryvia.io/gpu: "true"
+    gryvia.io/gpu-type: "H100"
+    gryvia.io/gpu-count: "8"
 - role: worker
   labels:
-    tensorreaper.ai/gpu: "true"
-    tensorreaper.ai/gpu-type: "A100-80G"
-    tensorreaper.ai/gpu-count: "8"
+    gryvia.io/gpu: "true"
+    gryvia.io/gpu-type: "A100-80G"
+    gryvia.io/gpu-count: "8"
 - role: worker
   labels:
-    tensorreaper.ai/gpu: "true"
-    tensorreaper.ai/gpu-type: "L40"
-    tensorreaper.ai/gpu-count: "4"
+    gryvia.io/gpu: "true"
+    gryvia.io/gpu-type: "L40"
+    gryvia.io/gpu-count: "4"
 EOF
 
 echo -e "${GREEN}✓ Kind cluster created${NC}"
@@ -56,9 +56,9 @@ echo -e "${GREEN}✓ Kind cluster created${NC}"
 # Load local images (if built)
 echo -e "\n${YELLOW}Loading local Docker images...${NC}"
 for operator in gpu-operator ai-operator storage-operator network-operator quota-operator; do
-    if docker images | grep -q "tensorreaper-$operator"; then
-        echo "  - Loading tensorreaper-$operator..."
-        kind load docker-image tensorreaper-$operator:latest --name $CLUSTER_NAME
+    if docker images | grep -q "gryvia-$operator"; then
+        echo "  - Loading gryvia-$operator..."
+        kind load docker-image gryvia-$operator:latest --name $CLUSTER_NAME
     fi
 done
 echo -e "${GREEN}✓ Images loaded${NC}"
@@ -74,7 +74,7 @@ echo -e "\n${YELLOW}Installing Prometheus...${NC}"
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm repo update
 helm install prometheus prometheus-community/kube-prometheus-stack \
-    --namespace tensorreaper \
+    --namespace gryvia-system \
     --create-namespace \
     --set prometheus.service.type=NodePort \
     --set prometheus.service.nodePort=30090
@@ -96,7 +96,7 @@ echo "  Web UI:     http://localhost:8080 (after port-forward)"
 echo "  Prometheus: http://localhost:9090"
 echo ""
 echo "Useful commands:"
-echo "  kubectl get pods -n tensorreaper"
-echo "  kubectl logs -n tensorreaper -l app=tensorreaper-gpu-operator"
+echo "  kubectl get pods -n gryvia-system"
+echo "  kubectl logs -n gryvia-system -l app=gryvia-gpu-operator"
 echo "  kind delete cluster --name $CLUSTER_NAME"
 echo ""

@@ -1,6 +1,6 @@
-# TensorReaper API Gateway
+# Gryvia API Gateway
 
-REST API service that provides aggregated metrics and cluster data for the TensorReaper Web UI.
+REST API service that provides aggregated metrics and cluster data for the Gryvia Web UI.
 
 ## Features
 
@@ -27,7 +27,7 @@ GET  /api/jobs/{name}       # Get job details
 DELETE /api/jobs/{name}     # Delete a job
 ```
 
-- `create_job` (POST) validates `apiVersion` and `kind` against known TensorReaper types and enforces the namespace server-side.
+- `create_job` (POST) validates `apiVersion` and `kind` against known Gryvia types and enforces the namespace server-side.
 - List endpoint supports pagination via `limit` (default 100) and `offset` query parameters.
 
 ### Quotas
@@ -77,7 +77,7 @@ Returns GPU node health status.
 ### Prerequisites
 
 - Python 3.11+
-- Access to Kubernetes cluster with TensorReaper installed
+- Access to Kubernetes cluster with Gryvia installed
 - Prometheus with DCGM exporter (optional for detailed metrics)
 
 ### Local Development
@@ -101,12 +101,12 @@ API documentation (Swagger UI): `http://localhost:8080/docs`
 
 ```bash
 # Build the image
-docker build -t tensorreaper-api-gateway:1.0.0 .
+docker build -t gryvia-api-gateway:1.0.0 .
 
 # Run the container
 docker run -p 8080:8080 \
   -v ~/.kube/config:/home/apigateway/.kube/config:ro \
-  tensorreaper-api-gateway:1.0.0
+  gryvia-api-gateway:1.0.0
 ```
 
 ## Deployment
@@ -117,13 +117,13 @@ docker run -p 8080:8080 \
 kubectl apply -f ../../manifests/deploy/api-gateway-deployment.yaml
 ```
 
-The service will be exposed internally at `http://tensorreaper-api-gateway.tensorreaper:8080`.
+The service will be exposed internally at `http://gryvia-api-gateway.gryvia:8080`.
 
 ### Configuration
 
 The service is configured via environment variables:
 
-- `PROMETHEUS_URL`: Prometheus endpoint (default: `http://prometheus-operated.tensorreaper:9090`)
+- `PROMETHEUS_URL`: Prometheus endpoint (default: `http://prometheus-operated.gryvia:9090`)
 - `KUBERNETES_NAMESPACE`: Default namespace for jobs (default: `default`)
 - `LOG_LEVEL`: Logging level (default: `INFO`)
 

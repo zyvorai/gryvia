@@ -1,6 +1,6 @@
 # Security Examples
 
-Example YAML manifests for TensorReaper security CRDs providing eBPF-based runtime protection.
+Example YAML manifests for Gryvia security CRDs providing eBPF-based runtime protection.
 
 ## Examples
 

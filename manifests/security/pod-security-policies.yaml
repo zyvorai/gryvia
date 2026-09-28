@@ -7,7 +7,7 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: tensorreaper-system
+  name: gryvia-system
   labels:
     pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/enforce-version: latest
@@ -16,11 +16,11 @@ metadata:
     pod-security.kubernetes.io/warn: restricted
     pod-security.kubernetes.io/warn-version: latest
 ---
-# Baseline profile for tensorreaper namespace (UI, API gateway)
+# Baseline profile for gryvia namespace (UI, API gateway)
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: tensorreaper
+  name: gryvia
   labels:
     pod-security.kubernetes.io/enforce: baseline
     pod-security.kubernetes.io/enforce-version: latest
@@ -43,7 +43,7 @@ metadata:
     pod-security.kubernetes.io/audit-version: latest
     pod-security.kubernetes.io/warn: baseline
     pod-security.kubernetes.io/warn-version: latest
-    tensorreaper.ai/gpu-workloads: "true"
+    gryvia.io/gpu-workloads: "true"
 ---
 # ResourceQuota to limit privileged workloads in GPU namespace
 apiVersion: v1

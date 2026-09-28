@@ -4,7 +4,7 @@ Sophisticated job priority system with preemption support for efficient resource
 
 ## Overview
 
-TensorReaper provides a priority-based scheduling system that:
+Gryvia provides a priority-based scheduling system that:
 
 - **7 Priority Levels**: From system-critical to best-effort
 - **Smart Preemption**: Higher priority jobs can preempt lower priority jobs
@@ -19,7 +19,7 @@ TensorReaper provides a priority-based scheduling system that:
 For system and infrastructure jobs.
 
 ```yaml
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricAIJob
 metadata:
   name: system-job
@@ -142,7 +142,7 @@ spec:
 ### Basic Priority Assignment
 
 ```yaml
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricAIJob
 metadata:
   name: my-job
@@ -267,7 +267,7 @@ High-priority jobs can exceed team quotas:
 
 ```yaml
 # Priority class configuration
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricPriority
 metadata:
   name: high
@@ -343,19 +343,19 @@ kubectl get events --field-selector reason=Preempted
     {
       "title": "Jobs by Priority",
       "targets": [{
-        "expr": "sum(tensorreaper_jobs_total) by (priority)"
+        "expr": "sum(gryvia_jobs_total) by (priority)"
       }]
     },
     {
       "title": "Preemptions per Hour",
       "targets": [{
-        "expr": "rate(tensorreaper_preemptions_total[1h])"
+        "expr": "rate(gryvia_preemptions_total[1h])"
       }]
     },
     {
       "title": "Queue Time by Priority",
       "targets": [{
-        "expr": "histogram_quantile(0.95, tensorreaper_queue_time_seconds_bucket) by (priority)"
+        "expr": "histogram_quantile(0.95, gryvia_queue_time_seconds_bucket) by (priority)"
       }]
     }
   ]
@@ -425,7 +425,7 @@ spec:
 ### Custom Priority Classes
 
 ```yaml
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricPriority
 metadata:
   name: paper-deadline
@@ -509,5 +509,5 @@ See `manifests/crds/fabricpriority.yaml` for:
 
 ## Support
 
-- Priority Issues: https://github.com/ssahani/TensorReaper/issues
-- Preemption Discussion: https://github.com/ssahani/TensorReaper/discussions
+- Priority Issues: https://github.com/zyvorai/gryvia/issues
+- Preemption Discussion: https://github.com/zyvorai/gryvia/discussions

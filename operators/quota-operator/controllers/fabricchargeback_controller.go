@@ -13,7 +13,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/quota-operator/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/quota-operator/api/v1"
 )
 
 // FabricChargebackReconciler reconciles a FabricChargeback object
@@ -22,18 +22,18 @@ type FabricChargebackReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricchargebacks,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricchargebacks/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricchargebacks/finalizers,verbs=update
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricaijobs,verbs=get;list;watch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricquotas,verbs=get;list;watch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricchargebacks,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricchargebacks/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricchargebacks/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricquotas,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 func (r *FabricChargebackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	// Fetch the FabricChargeback instance
-	chargeback := &tensorreaperv1.FabricChargeback{}
+	chargeback := &gryviav1.FabricChargeback{}
 	err := r.Get(ctx, req.NamespacedName, chargeback)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -71,7 +71,7 @@ func (r *FabricChargebackReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 }
 
-func (r *FabricChargebackReconciler) reconcileChargeback(ctx context.Context, cb *tensorreaperv1.FabricChargeback) (ctrl.Result, error) {
+func (r *FabricChargebackReconciler) reconcileChargeback(ctx context.Context, cb *gryviav1.FabricChargeback) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	// Initialize current period
@@ -92,7 +92,7 @@ func (r *FabricChargebackReconciler) reconcileChargeback(ctx context.Context, cb
 	if cb.Spec.AllocationModel.IncludePlatformCosts && cb.Spec.AllocationModel.PlatformOverhead > 0 {
 		platformCost := totalCost * (cb.Spec.AllocationModel.PlatformOverhead / 100.0)
 		if currentPeriod.ByResourceType == nil {
-			currentPeriod.ByResourceType = &tensorreaperv1.ResourceTypeCosts{}
+			currentPeriod.ByResourceType = &gryviav1.ResourceTypeCosts{}
 		}
 		currentPeriod.ByResourceType.Platform = platformCost
 		totalCost += platformCost
@@ -114,9 +114,9 @@ func (r *FabricChargebackReconciler) reconcileChargeback(ctx context.Context, cb
 	return ctrl.Result{}, nil
 }
 
-func (r *FabricChargebackReconciler) initializeCurrentPeriod(cb *tensorreaperv1.FabricChargeback) *tensorreaperv1.ChargebackCurrentPeriod {
+func (r *FabricChargebackReconciler) initializeCurrentPeriod(cb *gryviav1.FabricChargeback) *gryviav1.ChargebackCurrentPeriod {
 	now := time.Now()
-	period := &tensorreaperv1.ChargebackCurrentPeriod{}
+	period := &gryviav1.ChargebackCurrentPeriod{}
 
 	switch cb.Spec.Period.Type {
 	case "monthly":
@@ -143,20 +143,20 @@ func (r *FabricChargebackReconciler) initializeCurrentPeriod(cb *tensorreaperv1.
 		period.EndDate = end.Format("2006-01-02")
 	}
 
-	period.ByResourceType = &tensorreaperv1.ResourceTypeCosts{}
+	period.ByResourceType = &gryviav1.ResourceTypeCosts{}
 
 	return period
 }
 
-func (r *FabricChargebackReconciler) calculateCostCenterCosts(ctx context.Context, cb *tensorreaperv1.FabricChargeback, period *tensorreaperv1.ChargebackCurrentPeriod) error {
+func (r *FabricChargebackReconciler) calculateCostCenterCosts(ctx context.Context, cb *gryviav1.FabricChargeback, period *gryviav1.ChargebackCurrentPeriod) error {
 	// Get all jobs to calculate costs
-	jobList := &tensorreaperv1.FabricAIJobList{}
+	jobList := &gryviav1.FabricAIJobList{}
 	if err := r.List(ctx, jobList); err != nil {
 		return fmt.Errorf("failed to list FabricAIJobs: %w", err)
 	}
 
 	// Find team-to-cost-center mapping
-	teamToCostCenter := make(map[string]*tensorreaperv1.CostCenter)
+	teamToCostCenter := make(map[string]*gryviav1.CostCenter)
 	for i := range cb.Spec.CostCenters {
 		cc := &cb.Spec.CostCenters[i]
 		for _, team := range cc.Teams {
@@ -165,7 +165,7 @@ func (r *FabricChargebackReconciler) calculateCostCenterCosts(ctx context.Contex
 	}
 
 	// Find team-to-namespace mapping via FabricQuota
-	quotaList := &tensorreaperv1.FabricQuotaList{}
+	quotaList := &gryviav1.FabricQuotaList{}
 	if err := r.List(ctx, quotaList); err != nil {
 		return fmt.Errorf("failed to list FabricQuotas: %w", err)
 	}
@@ -257,7 +257,7 @@ func (r *FabricChargebackReconciler) calculateCostCenterCosts(ctx context.Contex
 			percentUsed = (cost / budgetAmount) * 100
 		}
 
-		ccStatus := tensorreaperv1.CostCenterStatus{
+		ccStatus := gryviav1.CostCenterStatus{
 			ID:          cc.ID,
 			Name:        cc.Name,
 			Cost:        cost,
@@ -273,7 +273,7 @@ func (r *FabricChargebackReconciler) calculateCostCenterCosts(ctx context.Contex
 	return nil
 }
 
-func (r *FabricChargebackReconciler) getGPURate(cb *tensorreaperv1.FabricChargeback, gpuType string) float64 {
+func (r *FabricChargebackReconciler) getGPURate(cb *gryviav1.FabricChargeback, gpuType string) float64 {
 	if cb.Spec.Pricing.GPURates != nil {
 		if rate, ok := cb.Spec.Pricing.GPURates[gpuType]; ok {
 			return rate.HourlyRate
@@ -293,7 +293,7 @@ func (r *FabricChargebackReconciler) getGPURate(cb *tensorreaperv1.FabricChargeb
 	return 10.00
 }
 
-func (r *FabricChargebackReconciler) checkReportGeneration(cb *tensorreaperv1.FabricChargeback) {
+func (r *FabricChargebackReconciler) checkReportGeneration(cb *gryviav1.FabricChargeback) {
 	if cb.Spec.Reports == nil || !cb.Spec.Reports.Enabled {
 		return
 	}
@@ -320,7 +320,7 @@ func (r *FabricChargebackReconciler) checkReportGeneration(cb *tensorreaperv1.Fa
 
 	if generateReport {
 		reportTime := metav1.Now()
-		cb.Status.LastReport = &tensorreaperv1.ChargebackReportRef{
+		cb.Status.LastReport = &gryviav1.ChargebackReportRef{
 			Timestamp: &reportTime,
 			Period:    fmt.Sprintf("%s-%s", cb.Status.CurrentPeriod.StartDate, cb.Status.CurrentPeriod.EndDate),
 			Path:      fmt.Sprintf("/reports/chargeback/%s-%s.json", cb.Name, now.Format("2006-01")),
@@ -328,7 +328,7 @@ func (r *FabricChargebackReconciler) checkReportGeneration(cb *tensorreaperv1.Fa
 	}
 }
 
-func (r *FabricChargebackReconciler) updateCondition(cb *tensorreaperv1.FabricChargeback, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *FabricChargebackReconciler) updateCondition(cb *gryviav1.FabricChargeback, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -342,6 +342,6 @@ func (r *FabricChargebackReconciler) updateCondition(cb *tensorreaperv1.FabricCh
 // SetupWithManager sets up the controller with the Manager.
 func (r *FabricChargebackReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tensorreaperv1.FabricChargeback{}).
+		For(&gryviav1.FabricChargeback{}).
 		Complete(r)
 }

@@ -3,9 +3,9 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: fabricgpumemoryoptimizers.tensorreaper.ai
+  name: fabricgpumemoryoptimizers.gryvia.io
 spec:
-  group: tensorreaper.ai
+  group: gryvia.io
   versions:
     - name: v1
       served: true
@@ -223,7 +223,7 @@ spec:
 
 ---
 # Example: Cluster-wide GPU Memory Optimizer
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricGpuMemoryOptimizer
 metadata:
   name: cluster-memory-optimizer
@@ -256,7 +256,7 @@ spec:
 
 ---
 # Example: Namespace-scoped optimizer with inference packing
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricGpuMemoryOptimizer
 metadata:
   name: inference-ns-optimizer

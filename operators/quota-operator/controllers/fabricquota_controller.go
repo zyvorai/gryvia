@@ -18,13 +18,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/quota-operator/api/v1"
-	"github.com/ssahani/TensorReaper/operators/quota-operator/pkg/budget"
-	"github.com/ssahani/TensorReaper/operators/quota-operator/pkg/usage"
+	gryviav1 "github.com/zyvorai/gryvia/operators/quota-operator/api/v1"
+	"github.com/zyvorai/gryvia/operators/quota-operator/pkg/budget"
+	"github.com/zyvorai/gryvia/operators/quota-operator/pkg/usage"
 )
 
 const (
-	fabricQuotaFinalizer = "tensorreaper.ai/quota-finalizer"
+	fabricQuotaFinalizer = "gryvia.io/quota-finalizer"
 )
 
 // FabricQuotaReconciler reconciles a FabricQuota object
@@ -33,10 +33,10 @@ type FabricQuotaReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricquotas,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricquotas/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricquotas/finalizers,verbs=update
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricaijobs,verbs=get;list;watch;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricquotas,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricquotas/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricquotas/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch;update;patch
 //+kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch;update;patch
 //+kubebuilder:rbac:groups="",resources=resourcequotas,verbs=get;list;watch;create;update;patch;delete
 
@@ -44,7 +44,7 @@ func (r *FabricQuotaReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	logger := log.FromContext(ctx)
 
 	// Fetch the FabricQuota instance
-	quota := &tensorreaperv1.FabricQuota{}
+	quota := &gryviav1.FabricQuota{}
 	err := r.Get(ctx, req.NamespacedName, quota)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -89,7 +89,7 @@ func (r *FabricQuotaReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 }
 
-func (r *FabricQuotaReconciler) reconcileQuota(ctx context.Context, quota *tensorreaperv1.FabricQuota) (ctrl.Result, error) {
+func (r *FabricQuotaReconciler) reconcileQuota(ctx context.Context, quota *gryviav1.FabricQuota) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	// Ensure namespaces have correct labels
@@ -147,7 +147,7 @@ func (r *FabricQuotaReconciler) reconcileQuota(ctx context.Context, quota *tenso
 	return ctrl.Result{}, nil
 }
 
-func (r *FabricQuotaReconciler) labelNamespaces(ctx context.Context, quota *tensorreaperv1.FabricQuota) error {
+func (r *FabricQuotaReconciler) labelNamespaces(ctx context.Context, quota *gryviav1.FabricQuota) error {
 	logger := log.FromContext(ctx)
 
 	for _, nsName := range quota.Spec.Namespaces {
@@ -166,9 +166,9 @@ func (r *FabricQuotaReconciler) labelNamespaces(ctx context.Context, quota *tens
 		}
 
 		// Add team label
-		if ns.Labels["tensorreaper.ai/team"] != quota.Spec.Team {
-			ns.Labels["tensorreaper.ai/team"] = quota.Spec.Team
-			ns.Labels["tensorreaper.ai/quota"] = quota.Name
+		if ns.Labels["gryvia.io/team"] != quota.Spec.Team {
+			ns.Labels["gryvia.io/team"] = quota.Spec.Team
+			ns.Labels["gryvia.io/quota"] = quota.Name
 
 			if err := r.Update(ctx, ns); err != nil {
 				return fmt.Errorf("failed to update namespace %s: %w", nsName, err)
@@ -180,13 +180,13 @@ func (r *FabricQuotaReconciler) labelNamespaces(ctx context.Context, quota *tens
 	return nil
 }
 
-func (r *FabricQuotaReconciler) enforceQuota(ctx context.Context, quota *tensorreaperv1.FabricQuota) error {
+func (r *FabricQuotaReconciler) enforceQuota(ctx context.Context, quota *gryviav1.FabricQuota) error {
 	logger := log.FromContext(ctx)
 
 	// Get all AI jobs in quota namespaces
-	jobList := &tensorreaperv1.FabricAIJobList{}
+	jobList := &gryviav1.FabricAIJobList{}
 	for _, nsName := range quota.Spec.Namespaces {
-		jobs := &tensorreaperv1.FabricAIJobList{}
+		jobs := &gryviav1.FabricAIJobList{}
 		if err := r.List(ctx, jobs, client.InNamespace(nsName)); err != nil {
 			return fmt.Errorf("failed to list jobs in namespace %s: %w", nsName, err)
 		}
@@ -194,7 +194,7 @@ func (r *FabricQuotaReconciler) enforceQuota(ctx context.Context, quota *tensorr
 	}
 
 	// Sort jobs by priority and creation time
-	pendingJobs := []tensorreaperv1.FabricAIJob{}
+	pendingJobs := []gryviav1.FabricAIJob{}
 	for _, job := range jobList.Items {
 		if job.Status.Phase == "Pending" || job.Status.Phase == "Queued" {
 			pendingJobs = append(pendingJobs, job)
@@ -256,7 +256,7 @@ func (r *FabricQuotaReconciler) enforceQuota(ctx context.Context, quota *tensorr
 	return nil
 }
 
-func (r *FabricQuotaReconciler) updateStatus(ctx context.Context, quota *tensorreaperv1.FabricQuota, phase, message string) error {
+func (r *FabricQuotaReconciler) updateStatus(ctx context.Context, quota *gryviav1.FabricQuota, phase, message string) error {
 	quota.Status.Phase = phase
 	quota.Status.LastUpdated = metav1.Now()
 
@@ -281,13 +281,13 @@ func (r *FabricQuotaReconciler) updateStatus(ctx context.Context, quota *tensorr
 	return nil
 }
 
-func (r *FabricQuotaReconciler) handleDeletion(ctx context.Context, quota *tensorreaperv1.FabricQuota) (ctrl.Result, error) {
+func (r *FabricQuotaReconciler) handleDeletion(ctx context.Context, quota *gryviav1.FabricQuota) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	if controllerutil.ContainsFinalizer(quota, fabricQuotaFinalizer) {
 		logger.Info("Running cleanup for FabricQuota", "team", quota.Spec.Team)
 
-		// Remove tensorreaper labels from namespaces
+		// Remove gryvia labels from namespaces
 		for _, nsName := range quota.Spec.Namespaces {
 			ns := &corev1.Namespace{}
 			err := r.Get(ctx, types.NamespacedName{Name: nsName}, ns)
@@ -299,8 +299,8 @@ func (r *FabricQuotaReconciler) handleDeletion(ctx context.Context, quota *tenso
 			}
 
 			if ns.Labels != nil {
-				delete(ns.Labels, "tensorreaper.ai/team")
-				delete(ns.Labels, "tensorreaper.ai/quota")
+				delete(ns.Labels, "gryvia.io/team")
+				delete(ns.Labels, "gryvia.io/quota")
 				if err := r.Update(ctx, ns); err != nil {
 					logger.Error(err, "Failed to remove labels from namespace", "namespace", nsName)
 				}
@@ -319,12 +319,12 @@ func (r *FabricQuotaReconciler) handleDeletion(ctx context.Context, quota *tenso
 // SetupWithManager sets up the controller with the Manager
 func (r *FabricQuotaReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tensorreaperv1.FabricQuota{}).
-		Watches(&tensorreaperv1.FabricAIJob{}, handler.EnqueueRequestsFromMapFunc(
+		For(&gryviav1.FabricQuota{}).
+		Watches(&gryviav1.FabricAIJob{}, handler.EnqueueRequestsFromMapFunc(
 			func(ctx context.Context, obj client.Object) []reconcile.Request {
 				// When a FabricAIJob changes, enqueue all FabricQuota objects
 				// in the same namespace so quota usage is recalculated.
-				quotaList := &tensorreaperv1.FabricQuotaList{}
+				quotaList := &gryviav1.FabricQuotaList{}
 				if err := mgr.GetClient().List(ctx, quotaList); err != nil {
 					return nil
 				}

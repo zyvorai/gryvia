@@ -8,7 +8,7 @@ metadata:
     pipeline-type: hyperparameter-sweep
 spec:
   entrypoint: hyperparameter-sweep
-  serviceAccountName: tensorreaper-job-runner
+  serviceAccountName: gryvia-job-runner
 
   arguments:
     parameters:
@@ -69,7 +69,7 @@ spec:
         action: create
         setOwnerReference: true
         manifest: |
-          apiVersion: tensorreaper.ai/v1
+          apiVersion: gryvia.io/v1
           kind: FabricAIJob
           metadata:
             name: trial-{{inputs.parameters.trial-id}}

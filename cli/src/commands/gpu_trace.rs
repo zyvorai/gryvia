@@ -4,7 +4,7 @@ use kube::core::DynamicObject;
 use prettytable::{Table, Row, Cell, format};
 use colored::*;
 
-use crate::client::TensorReaperClient;
+use crate::client::GryviaClient;
 
 pub enum GpuAction {
     Nccl {
@@ -26,7 +26,7 @@ pub enum GpuAction {
     },
 }
 
-pub async fn execute(client: &TensorReaperClient, action: GpuAction) -> Result<()> {
+pub async fn execute(client: &GryviaClient, action: GpuAction) -> Result<()> {
     match action {
         GpuAction::Nccl { job, follow, namespace } => {
             execute_nccl(client, &job, follow, &namespace).await
@@ -44,7 +44,7 @@ pub async fn execute(client: &TensorReaperClient, action: GpuAction) -> Result<(
 }
 
 async fn execute_nccl(
-    client: &TensorReaperClient,
+    client: &GryviaClient,
     job: &str,
     _follow: bool,
     namespace: &str,
@@ -57,7 +57,7 @@ async fn execute_nccl(
 
     // Query FabricTrainingInsight for this job
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
-        "tensorreaper.ai",
+        "gryvia.io",
         "v1",
         "FabricTrainingInsight",
     ));
@@ -67,7 +67,7 @@ async fn execute_nccl(
         &ar,
     );
 
-    let label_selector = format!("tensorreaper.ai/job={}", job);
+    let label_selector = format!("gryvia.io/job={}", job);
     let params = ListParams::default().labels(&label_selector);
 
     let insights = match api.list(&params).await {
@@ -186,7 +186,7 @@ fn print_nccl_stats(insight: &DynamicObject) {
 }
 
 async fn execute_memory(
-    client: &TensorReaperClient,
+    client: &GryviaClient,
     node: &str,
     _namespace: &str,
 ) -> Result<()> {
@@ -198,7 +198,7 @@ async fn execute_memory(
 
     // Query node GPU metrics
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
-        "tensorreaper.ai",
+        "gryvia.io",
         "v1",
         "FabricGpuNode",
     ));
@@ -303,7 +303,7 @@ fn print_gpu_memory_stats(node: &DynamicObject) {
 }
 
 async fn execute_rdma(
-    _client: &TensorReaperClient,
+    _client: &GryviaClient,
     node: &str,
     _namespace: &str,
 ) -> Result<()> {
@@ -334,7 +334,7 @@ async fn execute_rdma(
 }
 
 async fn execute_training(
-    client: &TensorReaperClient,
+    client: &GryviaClient,
     job: &str,
     namespace: &str,
 ) -> Result<()> {
@@ -345,7 +345,7 @@ async fn execute_training(
     println!();
 
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
-        "tensorreaper.ai",
+        "gryvia.io",
         "v1",
         "FabricTrainingInsight",
     ));
@@ -360,7 +360,7 @@ async fn execute_training(
         Ok(i) => i,
         Err(_) => {
             // Try listing with label
-            let label_selector = format!("tensorreaper.ai/job={}", job);
+            let label_selector = format!("gryvia.io/job={}", job);
             let params = ListParams::default().labels(&label_selector);
             match api.list(&params).await {
                 Ok(list) if !list.items.is_empty() => list.items[0].clone(),

@@ -11,12 +11,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/gpu-operator/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/gpu-operator/api/v1"
 )
 
 func newMemoryOptimizerTestScheme() *runtime.Scheme {
 	s := runtime.NewScheme()
-	_ = tensorreaperv1.AddToScheme(s)
+	_ = gryviav1.AddToScheme(s)
 	return s
 }
 
@@ -25,7 +25,7 @@ func newMemoryOptimizerReconciler(objs ...client.Object) (*FabricGpuMemoryOptimi
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(objs...).
-		WithStatusSubresource(&tensorreaperv1.FabricGpuMemoryOptimizer{}).
+		WithStatusSubresource(&gryviav1.FabricGpuMemoryOptimizer{}).
 		Build()
 	r := &FabricGpuMemoryOptimizerReconciler{
 		Client: fakeClient,
@@ -35,19 +35,19 @@ func newMemoryOptimizerReconciler(objs ...client.Object) (*FabricGpuMemoryOptimi
 	return r, fakeClient
 }
 
-func newTestOptimizer(name string) *tensorreaperv1.FabricGpuMemoryOptimizer {
-	return &tensorreaperv1.FabricGpuMemoryOptimizer{
+func newTestOptimizer(name string) *gryviav1.FabricGpuMemoryOptimizer {
+	return &gryviav1.FabricGpuMemoryOptimizer{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
-		Spec: tensorreaperv1.FabricGpuMemoryOptimizerSpec{
-			Scope: tensorreaperv1.OptimizerScope{
+		Spec: gryviav1.FabricGpuMemoryOptimizerSpec{
+			Scope: gryviav1.OptimizerScope{
 				Type: "cluster",
 			},
-			OomPrevention: &tensorreaperv1.OomPreventionConfig{
+			OomPrevention: &gryviav1.OomPreventionConfig{
 				Enabled: true,
 			},
-			RightSizing: &tensorreaperv1.RightSizingConfig{
+			RightSizing: &gryviav1.RightSizingConfig{
 				Enabled: true,
 			},
 		},
@@ -88,18 +88,18 @@ func TestMemoryOptimizer_Reconcile_DeletionTimestamp(t *testing.T) {
 func TestMemoryOptimizer_Reconcile_CollectsGpuNodes(t *testing.T) {
 	optimizer := newTestOptimizer("test-optimizer")
 
-	gpuNode1 := &tensorreaperv1.FabricGpuNode{
+	gpuNode1 := &gryviav1.FabricGpuNode{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "gpu-node-1",
 		},
-		Spec: tensorreaperv1.FabricGpuNodeSpec{
+		Spec: gryviav1.FabricGpuNodeSpec{
 			NodeName: "node-1",
 			GpuType:  "H100",
 			GpuCount: 8,
 		},
-		Status: tensorreaperv1.FabricGpuNodeStatus{
+		Status: gryviav1.FabricGpuNodeStatus{
 			Phase: "Ready",
-			GpuStatus: []tensorreaperv1.GpuStatus{
+			GpuStatus: []gryviav1.GpuStatus{
 				{
 					Index:       0,
 					UUID:        "GPU-1234",
@@ -112,18 +112,18 @@ func TestMemoryOptimizer_Reconcile_CollectsGpuNodes(t *testing.T) {
 		},
 	}
 
-	gpuNode2 := &tensorreaperv1.FabricGpuNode{
+	gpuNode2 := &gryviav1.FabricGpuNode{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "gpu-node-2",
 		},
-		Spec: tensorreaperv1.FabricGpuNodeSpec{
+		Spec: gryviav1.FabricGpuNodeSpec{
 			NodeName: "node-2",
 			GpuType:  "A100",
 			GpuCount: 4,
 		},
-		Status: tensorreaperv1.FabricGpuNodeStatus{
+		Status: gryviav1.FabricGpuNodeStatus{
 			Phase: "Ready",
-			GpuStatus: []tensorreaperv1.GpuStatus{
+			GpuStatus: []gryviav1.GpuStatus{
 				{
 					Index:       0,
 					UUID:        "GPU-5678",
@@ -150,12 +150,12 @@ func TestMemoryOptimizer_Reconcile_CollectsGpuNodes(t *testing.T) {
 func TestMemoryOptimizer_NodeMatchesScope(t *testing.T) {
 	r, _ := newMemoryOptimizerReconciler()
 
-	node := tensorreaperv1.FabricGpuNode{
+	node := gryviav1.FabricGpuNode{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "node-1",
 			Labels: map[string]string{"team": "ml"},
 		},
-		Spec: tensorreaperv1.FabricGpuNodeSpec{
+		Spec: gryviav1.FabricGpuNodeSpec{
 			NodeName: "node-1",
 			GpuType:  "H100",
 		},
@@ -163,24 +163,24 @@ func TestMemoryOptimizer_NodeMatchesScope(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		scope    tensorreaperv1.OptimizerScope
+		scope    gryviav1.OptimizerScope
 		expected bool
 	}{
 		{
 			name:     "cluster scope matches all",
-			scope:    tensorreaperv1.OptimizerScope{Type: "cluster"},
+			scope:    gryviav1.OptimizerScope{Type: "cluster"},
 			expected: true,
 		},
 		{
 			name:     "namespace scope without label matches (cluster-scoped nodes serve all)",
-			scope:    tensorreaperv1.OptimizerScope{Type: "namespace", Namespace: "ml-team"},
+			scope:    gryviav1.OptimizerScope{Type: "namespace", Namespace: "ml-team"},
 			expected: true,
 		},
 		{
 			name: "job-selector matches",
-			scope: tensorreaperv1.OptimizerScope{
+			scope: gryviav1.OptimizerScope{
 				Type: "job-selector",
-				JobSelector: &tensorreaperv1.JobSelector{
+				JobSelector: &gryviav1.JobSelector{
 					MatchLabels: map[string]string{"team": "ml"},
 				},
 			},
@@ -188,9 +188,9 @@ func TestMemoryOptimizer_NodeMatchesScope(t *testing.T) {
 		},
 		{
 			name: "job-selector does not match",
-			scope: tensorreaperv1.OptimizerScope{
+			scope: gryviav1.OptimizerScope{
 				Type: "job-selector",
-				JobSelector: &tensorreaperv1.JobSelector{
+				JobSelector: &gryviav1.JobSelector{
 					MatchLabels: map[string]string{"team": "other"},
 				},
 			},
@@ -198,7 +198,7 @@ func TestMemoryOptimizer_NodeMatchesScope(t *testing.T) {
 		},
 		{
 			name:     "unknown scope matches all",
-			scope:    tensorreaperv1.OptimizerScope{Type: "unknown"},
+			scope:    gryviav1.OptimizerScope{Type: "unknown"},
 			expected: true,
 		},
 	}
@@ -216,26 +216,26 @@ func TestMemoryOptimizer_NodeMatchesScope(t *testing.T) {
 func TestMemoryOptimizer_ExtractMemorySamples(t *testing.T) {
 	r, _ := newMemoryOptimizerReconciler()
 
-	nodes := []tensorreaperv1.FabricGpuNode{
+	nodes := []gryviav1.FabricGpuNode{
 		{
-			Spec: tensorreaperv1.FabricGpuNodeSpec{
+			Spec: gryviav1.FabricGpuNodeSpec{
 				NodeName: "node-1",
 				GpuType:  "H100",
 			},
-			Status: tensorreaperv1.FabricGpuNodeStatus{
-				GpuStatus: []tensorreaperv1.GpuStatus{
+			Status: gryviav1.FabricGpuNodeStatus{
+				GpuStatus: []gryviav1.GpuStatus{
 					{Index: 0, MemoryUsed: 30000, MemoryTotal: 80000, Utilization: 75},
 					{Index: 1, MemoryUsed: 0, MemoryTotal: 0, Utilization: 0}, // Should be skipped
 				},
 			},
 		},
 		{
-			Spec: tensorreaperv1.FabricGpuNodeSpec{
+			Spec: gryviav1.FabricGpuNodeSpec{
 				NodeName: "node-2",
 				GpuType:  "A100",
 			},
-			Status: tensorreaperv1.FabricGpuNodeStatus{
-				GpuStatus: []tensorreaperv1.GpuStatus{
+			Status: gryviav1.FabricGpuNodeStatus{
+				GpuStatus: []gryviav1.GpuStatus{
 					{Index: 0, MemoryUsed: 20000, MemoryTotal: 40000, Utilization: 50},
 				},
 			},

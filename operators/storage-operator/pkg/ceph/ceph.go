@@ -16,7 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/storage-operator/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/storage-operator/api/v1"
 )
 
 const (
@@ -27,7 +27,7 @@ const (
 )
 
 // InstallCSIDriver installs the CephFS CSI driver
-func InstallCSIDriver(ctx context.Context, k8sClient client.Client, storage *tensorreaperv1.FabricStorage) error {
+func InstallCSIDriver(ctx context.Context, k8sClient client.Client, storage *gryviav1.FabricStorage) error {
 	if err := ensureServiceAccount(ctx, k8sClient); err != nil {
 		return fmt.Errorf("failed to create ServiceAccount: %w", err)
 	}
@@ -149,7 +149,7 @@ func ensureRBAC(ctx context.Context, k8sClient client.Client) error {
 	return err
 }
 
-func ensureCephConfigMap(ctx context.Context, k8sClient client.Client, storage *tensorreaperv1.FabricStorage) error {
+func ensureCephConfigMap(ctx context.Context, k8sClient client.Client, storage *gryviav1.FabricStorage) error {
 	configData := []map[string]interface{}{
 		{
 			"clusterID": storage.Name,
@@ -166,7 +166,7 @@ func ensureCephConfigMap(ctx context.Context, k8sClient client.Client, storage *
 			Name:      "ceph-csi-config",
 			Namespace: CephCSINamespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/managed-by": "tensorreaper",
+				"app.kubernetes.io/managed-by": "gryvia",
 			},
 		},
 		Data: map[string]string{
@@ -192,7 +192,7 @@ func ensureCephConfigMap(ctx context.Context, k8sClient client.Client, storage *
 	return k8sClient.Update(ctx, existing)
 }
 
-func ensureController(ctx context.Context, k8sClient client.Client, storage *tensorreaperv1.FabricStorage) error {
+func ensureController(ctx context.Context, k8sClient client.Client, storage *gryviav1.FabricStorage) error {
 	replicas := int32(1)
 
 	deployment := &appsv1.Deployment{

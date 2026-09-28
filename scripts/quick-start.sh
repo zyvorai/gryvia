@@ -1,6 +1,6 @@
 #!/bin/bash
-# Quick start script for TensorReaper
-# Deploys a minimal TensorReaper setup for development/testing
+# Quick start script for Gryvia
+# Deploys a minimal Gryvia setup for development/testing
 
 set -euo pipefail
 
@@ -9,7 +9,7 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-echo -e "${GREEN}TensorReaper Quick Start${NC}"
+echo -e "${GREEN}Gryvia Quick Start${NC}"
 echo "=================================="
 
 # Check prerequisites
@@ -22,8 +22,8 @@ kubectl cluster-info >/dev/null 2>&1 || { echo -e "${RED}Kubernetes cluster is n
 echo -e "${GREEN}✓ Prerequisites met${NC}"
 
 # Create namespace
-echo -e "\n${YELLOW}Creating tensorreaper namespace...${NC}"
-kubectl create namespace tensorreaper --dry-run=client -o yaml | kubectl apply -f -
+echo -e "\n${YELLOW}Creating gryvia namespace...${NC}"
+kubectl create namespace gryvia-system --dry-run=client -o yaml | kubectl apply -f -
 echo -e "${GREEN}✓ Namespace created${NC}"
 
 # Install CRDs
@@ -52,14 +52,14 @@ echo -e "${GREEN}✓ Web UI deployed${NC}"
 # Wait for deployments
 echo -e "\n${YELLOW}Waiting for deployments to be ready...${NC}"
 kubectl wait --for=condition=available --timeout=300s \
-    deployment/tensorreaper-gpu-operator \
-    deployment/tensorreaper-ai-operator \
-    deployment/tensorreaper-storage-operator \
-    deployment/tensorreaper-network-operator \
-    deployment/tensorreaper-quota-operator \
-    deployment/tensorreaper-api-gateway \
-    deployment/tensorreaper-ui \
-    -n tensorreaper
+    deployment/gryvia-gpu-operator \
+    deployment/gryvia-ai-operator \
+    deployment/gryvia-storage-operator \
+    deployment/gryvia-network-operator \
+    deployment/gryvia-quota-operator \
+    deployment/gryvia-api-gateway \
+    deployment/gryvia-ui \
+    -n gryvia-system
 
 echo -e "${GREEN}✓ All deployments ready${NC}"
 
@@ -70,18 +70,18 @@ echo -e "${GREEN}✓ Example quota created${NC}"
 
 # Get Web UI access info
 echo -e "\n${GREEN}=================================="
-echo "TensorReaper is ready!"
+echo "Gryvia is ready!"
 echo "==================================${NC}"
 echo ""
 echo "Access the Web UI:"
-echo "  kubectl port-forward -n tensorreaper svc/tensorreaper-ui 8080:80"
+echo "  kubectl port-forward -n gryvia-system svc/gryvia-ui 8080:80"
 echo "  Then open: http://localhost:8080"
 echo ""
 echo "Use the CLI:"
-echo "  ./cli/target/release/tensorreaper cluster"
+echo "  ./cli/target/release/gryvia cluster"
 echo ""
 echo "Check operator status:"
-echo "  kubectl get pods -n tensorreaper"
+echo "  kubectl get pods -n gryvia-system"
 echo ""
 echo "Submit a test job:"
 echo "  kubectl apply -f examples/jobs/pytorch-training.yaml"

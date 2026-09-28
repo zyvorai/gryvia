@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Capacity Planning Tool for TensorReaper
+Capacity Planning Tool for Gryvia
 Predicts future resource needs and provides recommendations
 """
 
@@ -88,7 +88,7 @@ class CapacityPlanner:
 
                 # Determine GPU type from label
                 labels = node.metadata.labels or {}
-                gpu_type = labels.get("tensorreaper.ai/gpu-type", "unknown")
+                gpu_type = labels.get("gryvia.io/gpu-type", "unknown")
 
                 if gpu_type not in capacity["gpus_by_type"]:
                     capacity["gpus_by_type"][gpu_type] = 0
@@ -136,7 +136,7 @@ class CapacityPlanner:
         """Get current resource usage"""
         try:
             jobs = self.api.list_cluster_custom_object(
-                group="tensorreaper.ai",
+                group="gryvia.io",
                 version="v1",
                 plural="fabricaijobs"
             )
@@ -311,7 +311,7 @@ class CapacityPlanner:
                     "1. Obtain budget approval",
                     "2. Purchase/provision GPU nodes",
                     "3. Install and configure nodes",
-                    "4. Add to TensorReaper cluster",
+                    "4. Add to Gryvia cluster",
                     "5. Validate and enable for production"
                 ]
             })
@@ -447,7 +447,7 @@ class CapacityPlanner:
     def print_analysis(self, analysis: Dict):
         """Print capacity analysis"""
         print(f"\n{BLUE}╔══════════════════════════════════════════════════════════════╗{NC}")
-        print(f"{BLUE}║           TensorReaper Capacity Planning Report              ║{NC}")
+        print(f"{BLUE}║           Gryvia Capacity Planning Report              ║{NC}")
         print(f"{BLUE}╚══════════════════════════════════════════════════════════════╝{NC}\n")
 
         # Current Capacity
@@ -532,7 +532,7 @@ class CapacityPlanner:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Capacity Planning for TensorReaper")
+    parser = argparse.ArgumentParser(description="Capacity Planning for Gryvia")
     parser.add_argument("--forecast-days", type=int, default=90,
                        help="Days to forecast (default: 90)")
     parser.add_argument("--output", help="Export plan to JSON file")

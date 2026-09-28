@@ -1,10 +1,10 @@
-# TensorReaper Makefile
+# Gryvia Makefile
 # Automates building, testing, and deploying all components
 
 .PHONY: all build test clean docker-build docker-push deploy install help
 
 # Variables
-REGISTRY ?= ghcr.io/ssahani
+REGISTRY ?= ghcr.io/zyvorai
 VERSION ?= $(shell git describe --tags --always --dirty)
 OPERATORS := gpu-operator ai-operator storage-operator network-operator quota-operator
 
@@ -68,37 +68,37 @@ docker-build-operators: ## Build operator Docker images
 	@echo "${GREEN}Building operator images...${RESET}"
 	@for op in $(OPERATORS); do \
 		echo "${YELLOW}Building $$op image...${RESET}"; \
-		docker build -t $(REGISTRY)/tensorreaper-$$op:$(VERSION) operators/$$op; \
-		docker tag $(REGISTRY)/tensorreaper-$$op:$(VERSION) $(REGISTRY)/tensorreaper-$$op:latest; \
+		docker build -t $(REGISTRY)/gryvia-$$op:$(VERSION) operators/$$op; \
+		docker tag $(REGISTRY)/gryvia-$$op:$(VERSION) $(REGISTRY)/gryvia-$$op:latest; \
 	done
 
 docker-build-cli: ## Build CLI Docker image
 	@echo "${GREEN}Building CLI image...${RESET}"
-	docker build -t $(REGISTRY)/tensorreaper-cli:$(VERSION) cli
-	docker tag $(REGISTRY)/tensorreaper-cli:$(VERSION) $(REGISTRY)/tensorreaper-cli:latest
+	docker build -t $(REGISTRY)/gryvia-cli:$(VERSION) cli
+	docker tag $(REGISTRY)/gryvia-cli:$(VERSION) $(REGISTRY)/gryvia-cli:latest
 
 docker-build-web-ui: ## Build Web UI Docker image
 	@echo "${GREEN}Building Web UI image...${RESET}"
-	docker build -t $(REGISTRY)/tensorreaper-ui:$(VERSION) -f docker/Dockerfile.ui .
-	docker tag $(REGISTRY)/tensorreaper-ui:$(VERSION) $(REGISTRY)/tensorreaper-ui:latest
+	docker build -t $(REGISTRY)/gryvia-ui:$(VERSION) -f docker/Dockerfile.ui .
+	docker tag $(REGISTRY)/gryvia-ui:$(VERSION) $(REGISTRY)/gryvia-ui:latest
 
 docker-build-api-gateway: ## Build API Gateway Docker image
 	@echo "${GREEN}Building API Gateway image...${RESET}"
-	docker build -t $(REGISTRY)/tensorreaper-api-gateway:$(VERSION) services/api-gateway
-	docker tag $(REGISTRY)/tensorreaper-api-gateway:$(VERSION) $(REGISTRY)/tensorreaper-api-gateway:latest
+	docker build -t $(REGISTRY)/gryvia-api-gateway:$(VERSION) services/api-gateway
+	docker tag $(REGISTRY)/gryvia-api-gateway:$(VERSION) $(REGISTRY)/gryvia-api-gateway:latest
 
 docker-push: ## Push all Docker images
 	@echo "${GREEN}Pushing Docker images...${RESET}"
 	@for op in $(OPERATORS); do \
-		docker push $(REGISTRY)/tensorreaper-$$op:$(VERSION); \
-		docker push $(REGISTRY)/tensorreaper-$$op:latest; \
+		docker push $(REGISTRY)/gryvia-$$op:$(VERSION); \
+		docker push $(REGISTRY)/gryvia-$$op:latest; \
 	done
-	docker push $(REGISTRY)/tensorreaper-cli:$(VERSION)
-	docker push $(REGISTRY)/tensorreaper-cli:latest
-	docker push $(REGISTRY)/tensorreaper-ui:$(VERSION)
-	docker push $(REGISTRY)/tensorreaper-ui:latest
-	docker push $(REGISTRY)/tensorreaper-api-gateway:$(VERSION)
-	docker push $(REGISTRY)/tensorreaper-api-gateway:latest
+	docker push $(REGISTRY)/gryvia-cli:$(VERSION)
+	docker push $(REGISTRY)/gryvia-cli:latest
+	docker push $(REGISTRY)/gryvia-ui:$(VERSION)
+	docker push $(REGISTRY)/gryvia-ui:latest
+	docker push $(REGISTRY)/gryvia-api-gateway:$(VERSION)
+	docker push $(REGISTRY)/gryvia-api-gateway:latest
 
 ## Deployment targets
 deploy: deploy-crds deploy-operators deploy-web-ui deploy-api-gateway ## Deploy all components to Kubernetes
@@ -126,12 +126,12 @@ deploy-monitoring: ## Deploy monitoring stack
 	kubectl apply -f monitoring/
 
 install: ## Install using Helm
-	@echo "${GREEN}Installing TensorReaper with Helm...${RESET}"
-	helm install tensorreaper helm/tensorreaper-core -n tensorreaper --create-namespace
+	@echo "${GREEN}Installing Gryvia with Helm...${RESET}"
+	helm install gryvia helm/gryvia-core -n gryvia-system --create-namespace
 
 uninstall: ## Uninstall using Helm
-	@echo "${GREEN}Uninstalling TensorReaper...${RESET}"
-	helm uninstall tensorreaper -n tensorreaper
+	@echo "${GREEN}Uninstalling Gryvia...${RESET}"
+	helm uninstall gryvia -n gryvia-system
 
 ## Development targets
 dev-setup: ## Set up development environment

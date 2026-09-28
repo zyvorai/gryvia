@@ -13,8 +13,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/quota-operator/api/v1"
-	"github.com/ssahani/TensorReaper/operators/quota-operator/pkg/budget"
+	gryviav1 "github.com/zyvorai/gryvia/operators/quota-operator/api/v1"
+	"github.com/zyvorai/gryvia/operators/quota-operator/pkg/budget"
 )
 
 // FabricQuotaPolicyReconciler reconciles a FabricQuotaPolicy object
@@ -23,18 +23,18 @@ type FabricQuotaPolicyReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricquotapolicies,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricquotapolicies/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricquotapolicies/finalizers,verbs=update
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricaijobs,verbs=get;list;watch;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricquotas,verbs=get;list;watch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricquotapolicies,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricquotapolicies/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricquotapolicies/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricquotas,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 func (r *FabricQuotaPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	// Fetch the FabricQuotaPolicy instance
-	policy := &tensorreaperv1.FabricQuotaPolicy{}
+	policy := &gryviav1.FabricQuotaPolicy{}
 	err := r.Get(ctx, req.NamespacedName, policy)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -72,7 +72,7 @@ func (r *FabricQuotaPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 }
 
-func (r *FabricQuotaPolicyReconciler) reconcileQuotaPolicy(ctx context.Context, policy *tensorreaperv1.FabricQuotaPolicy) (ctrl.Result, error) {
+func (r *FabricQuotaPolicyReconciler) reconcileQuotaPolicy(ctx context.Context, policy *gryviav1.FabricQuotaPolicy) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	// Calculate current usage
@@ -117,11 +117,11 @@ func (r *FabricQuotaPolicyReconciler) reconcileQuotaPolicy(ctx context.Context, 
 	return ctrl.Result{}, nil
 }
 
-func (r *FabricQuotaPolicyReconciler) calculatePolicyUsage(ctx context.Context, policy *tensorreaperv1.FabricQuotaPolicy) (*tensorreaperv1.QuotaPolicyUsage, error) {
-	policyUsage := &tensorreaperv1.QuotaPolicyUsage{
-		GPU:  &tensorreaperv1.QuotaPolicyGPUUsage{ByType: make(map[string]float64)},
-		Cost: &tensorreaperv1.QuotaPolicyCostUsage{},
-		Jobs: &tensorreaperv1.QuotaPolicyJobUsage{},
+func (r *FabricQuotaPolicyReconciler) calculatePolicyUsage(ctx context.Context, policy *gryviav1.FabricQuotaPolicy) (*gryviav1.QuotaPolicyUsage, error) {
+	policyUsage := &gryviav1.QuotaPolicyUsage{
+		GPU:  &gryviav1.QuotaPolicyGPUUsage{ByType: make(map[string]float64)},
+		Cost: &gryviav1.QuotaPolicyCostUsage{},
+		Jobs: &gryviav1.QuotaPolicyJobUsage{},
 	}
 
 	// Find namespaces matching the scope via FabricQuota
@@ -131,7 +131,7 @@ func (r *FabricQuotaPolicyReconciler) calculatePolicyUsage(ctx context.Context, 
 	startOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
 
 	for _, ns := range namespaces {
-		jobList := &tensorreaperv1.FabricAIJobList{}
+		jobList := &gryviav1.FabricAIJobList{}
 		if err := r.List(ctx, jobList, client.InNamespace(ns)); err != nil {
 			continue
 		}
@@ -183,7 +183,7 @@ func (r *FabricQuotaPolicyReconciler) calculatePolicyUsage(ctx context.Context, 
 	return policyUsage, nil
 }
 
-func (r *FabricQuotaPolicyReconciler) findPolicyNamespaces(ctx context.Context, policy *tensorreaperv1.FabricQuotaPolicy) []string {
+func (r *FabricQuotaPolicyReconciler) findPolicyNamespaces(ctx context.Context, policy *gryviav1.FabricQuotaPolicy) []string {
 	var namespaces []string
 
 	switch policy.Spec.Scope.Type {
@@ -191,7 +191,7 @@ func (r *FabricQuotaPolicyReconciler) findPolicyNamespaces(ctx context.Context, 
 		namespaces = append(namespaces, policy.Spec.Scope.Name)
 	case "team", "division", "organization":
 		// Find namespaces via FabricQuota team mappings
-		quotaList := &tensorreaperv1.FabricQuotaList{}
+		quotaList := &gryviav1.FabricQuotaList{}
 		if err := r.List(ctx, quotaList); err != nil {
 			return namespaces
 		}
@@ -202,7 +202,7 @@ func (r *FabricQuotaPolicyReconciler) findPolicyNamespaces(ctx context.Context, 
 		}
 	default:
 		// List all namespaces
-		quotaList := &tensorreaperv1.FabricQuotaList{}
+		quotaList := &gryviav1.FabricQuotaList{}
 		if err := r.List(ctx, quotaList); err != nil {
 			return namespaces
 		}
@@ -214,8 +214,8 @@ func (r *FabricQuotaPolicyReconciler) findPolicyNamespaces(ctx context.Context, 
 	return namespaces
 }
 
-func (r *FabricQuotaPolicyReconciler) calculatePolicyUtilization(policy *tensorreaperv1.FabricQuotaPolicy) *tensorreaperv1.QuotaPolicyUtilization {
-	util := &tensorreaperv1.QuotaPolicyUtilization{}
+func (r *FabricQuotaPolicyReconciler) calculatePolicyUtilization(policy *gryviav1.FabricQuotaPolicy) *gryviav1.QuotaPolicyUtilization {
+	util := &gryviav1.QuotaPolicyUtilization{}
 
 	if policy.Status.Usage == nil {
 		return util
@@ -241,7 +241,7 @@ func (r *FabricQuotaPolicyReconciler) calculatePolicyUtilization(policy *tensorr
 	return util
 }
 
-func (r *FabricQuotaPolicyReconciler) applyTimeBasedPolicy(policy *tensorreaperv1.FabricQuotaPolicy) {
+func (r *FabricQuotaPolicyReconciler) applyTimeBasedPolicy(policy *gryviav1.FabricQuotaPolicy) {
 	if policy.Spec.TimeBased == nil || !policy.Spec.TimeBased.Enabled {
 		policy.Status.EffectiveMultiplier = 1.0
 		return
@@ -281,7 +281,7 @@ func (r *FabricQuotaPolicyReconciler) applyTimeBasedPolicy(policy *tensorreaperv
 	policy.Status.EffectiveMultiplier = 1.0
 }
 
-func (r *FabricQuotaPolicyReconciler) determineState(policy *tensorreaperv1.FabricQuotaPolicy) string {
+func (r *FabricQuotaPolicyReconciler) determineState(policy *gryviav1.FabricQuotaPolicy) string {
 	if policy.Status.Utilization == nil {
 		return "under-quota"
 	}
@@ -311,14 +311,14 @@ func (r *FabricQuotaPolicyReconciler) determineState(policy *tensorreaperv1.Fabr
 	return "under-quota"
 }
 
-func (r *FabricQuotaPolicyReconciler) reconcileChildren(ctx context.Context, policy *tensorreaperv1.FabricQuotaPolicy) error {
+func (r *FabricQuotaPolicyReconciler) reconcileChildren(ctx context.Context, policy *gryviav1.FabricQuotaPolicy) error {
 	// Find child policies
-	policyList := &tensorreaperv1.FabricQuotaPolicyList{}
+	policyList := &gryviav1.FabricQuotaPolicyList{}
 	if err := r.List(ctx, policyList); err != nil {
 		return err
 	}
 
-	var children []tensorreaperv1.QuotaPolicyChildStatus
+	var children []gryviav1.QuotaPolicyChildStatus
 	for _, child := range policyList.Items {
 		if child.Spec.Hierarchy != nil && child.Spec.Hierarchy.ParentRef == policy.Name {
 			allocated := 0.0
@@ -330,7 +330,7 @@ func (r *FabricQuotaPolicyReconciler) reconcileChildren(ctx context.Context, pol
 				used = float64(child.Status.Usage.GPU.Concurrent)
 			}
 
-			children = append(children, tensorreaperv1.QuotaPolicyChildStatus{
+			children = append(children, gryviav1.QuotaPolicyChildStatus{
 				Name:      child.Name,
 				Allocated: allocated,
 				Used:      used,
@@ -342,7 +342,7 @@ func (r *FabricQuotaPolicyReconciler) reconcileChildren(ctx context.Context, pol
 	return nil
 }
 
-func (r *FabricQuotaPolicyReconciler) enforcePolicy(ctx context.Context, policy *tensorreaperv1.FabricQuotaPolicy) error {
+func (r *FabricQuotaPolicyReconciler) enforcePolicy(ctx context.Context, policy *gryviav1.FabricQuotaPolicy) error {
 	logger := log.FromContext(ctx)
 
 	if policy.Spec.Enforcement == nil {
@@ -352,7 +352,7 @@ func (r *FabricQuotaPolicyReconciler) enforcePolicy(ctx context.Context, policy 
 	namespaces := r.findPolicyNamespaces(ctx, policy)
 
 	for _, ns := range namespaces {
-		jobList := &tensorreaperv1.FabricAIJobList{}
+		jobList := &gryviav1.FabricAIJobList{}
 		if err := r.List(ctx, jobList, client.InNamespace(ns)); err != nil {
 			continue
 		}
@@ -393,7 +393,7 @@ func (r *FabricQuotaPolicyReconciler) enforcePolicy(ctx context.Context, policy 
 	return nil
 }
 
-func (r *FabricQuotaPolicyReconciler) updateCondition(policy *tensorreaperv1.FabricQuotaPolicy, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *FabricQuotaPolicyReconciler) updateCondition(policy *gryviav1.FabricQuotaPolicy, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -407,6 +407,6 @@ func (r *FabricQuotaPolicyReconciler) updateCondition(policy *tensorreaperv1.Fab
 // SetupWithManager sets up the controller with the Manager.
 func (r *FabricQuotaPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tensorreaperv1.FabricQuotaPolicy{}).
+		For(&gryviav1.FabricQuotaPolicy{}).
 		Complete(r)
 }

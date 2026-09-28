@@ -1,4 +1,4 @@
-IMG ?= tensorreaper/storage-operator:latest
+IMG ?= gryvia/storage-operator:latest
 
 .PHONY: all
 all: build

@@ -3,18 +3,18 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: tensorreaper:team-admin
+  name: gryvia:team-admin
 rules:
 # Full access to FabricAIJobs
-- apiGroups: ["tensorreaper.ai"]
+- apiGroups: ["gryvia.io"]
   resources: ["fabricaijobs"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 # Read access to quotas
-- apiGroups: ["tensorreaper.ai"]
+- apiGroups: ["gryvia.io"]
   resources: ["fabricquotas"]
   verbs: ["get", "list", "watch"]
 # Read access to nodes
-- apiGroups: ["tensorreaper.ai"]
+- apiGroups: ["gryvia.io"]
   resources: ["fabricgpunodes"]
   verbs: ["get", "list", "watch"]
 # Pod logs access
@@ -30,18 +30,18 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: tensorreaper:team-user
+  name: gryvia:team-user
 rules:
 # Create and manage own jobs
-- apiGroups: ["tensorreaper.ai"]
+- apiGroups: ["gryvia.io"]
   resources: ["fabricaijobs"]
   verbs: ["get", "list", "watch", "create", "delete"]
 # Read quotas
-- apiGroups: ["tensorreaper.ai"]
+- apiGroups: ["gryvia.io"]
   resources: ["fabricquotas"]
   verbs: ["get", "list", "watch"]
 # Read nodes
-- apiGroups: ["tensorreaper.ai"]
+- apiGroups: ["gryvia.io"]
   resources: ["fabricgpunodes"]
   verbs: ["get", "list", "watch"]
 # View own pods
@@ -53,18 +53,18 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: tensorreaper:team-viewer
+  name: gryvia:team-viewer
 rules:
 # Read jobs
-- apiGroups: ["tensorreaper.ai"]
+- apiGroups: ["gryvia.io"]
   resources: ["fabricaijobs"]
   verbs: ["get", "list", "watch"]
 # Read quotas
-- apiGroups: ["tensorreaper.ai"]
+- apiGroups: ["gryvia.io"]
   resources: ["fabricquotas"]
   verbs: ["get", "list", "watch"]
 # Read nodes
-- apiGroups: ["tensorreaper.ai"]
+- apiGroups: ["gryvia.io"]
   resources: ["fabricgpunodes"]
   verbs: ["get", "list", "watch"]
 # Read pods
@@ -76,13 +76,13 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: tensorreaper:platform-admin
+  name: gryvia:platform-admin
 rules:
-# Full access to all TensorReaper resources
-- apiGroups: ["tensorreaper.ai"]
+# Full access to all Gryvia resources
+- apiGroups: ["gryvia.io"]
   resources: ["fabricaijobs", "fabricquotas", "fabricgpunodes", "fabricstorages", "fabricnetworks"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-- apiGroups: ["tensorreaper.ai"]
+- apiGroups: ["gryvia.io"]
   resources: ["fabricaijobs/status", "fabricquotas/status", "fabricgpunodes/status", "fabricstorages/status", "fabricnetworks/status"]
   verbs: ["get", "update", "patch"]
 # Manage nodes
@@ -117,7 +117,7 @@ subjects:
   apiGroup: rbac.authorization.k8s.io
 roleRef:
   kind: ClusterRole
-  name: tensorreaper:team-admin
+  name: gryvia:team-admin
   apiGroup: rbac.authorization.k8s.io
 ---
 # Example: Bind team-user role to ml-research users
@@ -132,27 +132,27 @@ subjects:
   apiGroup: rbac.authorization.k8s.io
 roleRef:
   kind: ClusterRole
-  name: tensorreaper:team-user
+  name: gryvia:team-user
   apiGroup: rbac.authorization.k8s.io
 ---
 # ServiceAccount for GPU jobs
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: tensorreaper-job-runner
+  name: gryvia-job-runner
   namespace: default
 ---
 # RoleBinding for job runner
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: tensorreaper-job-runner
+  name: gryvia-job-runner
   namespace: default
 subjects:
 - kind: ServiceAccount
-  name: tensorreaper-job-runner
+  name: gryvia-job-runner
   namespace: default
 roleRef:
   kind: ClusterRole
-  name: tensorreaper:team-user
+  name: gryvia:team-user
   apiGroup: rbac.authorization.k8s.io

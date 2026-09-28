@@ -1,6 +1,6 @@
-# TensorReaper eBPF Programs
+# Gryvia eBPF Programs
 
-Kernel-space eBPF programs that form the data-plane of the TensorReaper
+Kernel-space eBPF programs that form the data-plane of the Gryvia
 network intelligence layer.  They run inside the Linux kernel and feed
 structured events to the userspace flow collector.
 

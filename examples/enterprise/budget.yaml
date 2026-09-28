@@ -1,7 +1,7 @@
 # FabricBudget - Monthly GPU compute budget with alert thresholds
 # Defines a $50,000/month budget for the ML research team with graduated
 # alerts at 50%, 80%, and 95% consumption, and hard enforcement at the limit.
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricBudget
 metadata:
   name: ml-research-monthly

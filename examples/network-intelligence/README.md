@@ -1,6 +1,6 @@
 # Network Intelligence Examples
 
-Example YAML manifests for TensorReaper network intelligence CRDs powered by eBPF and Cilium.
+Example YAML manifests for Gryvia network intelligence CRDs powered by eBPF and Cilium.
 
 ## Examples
 

@@ -14,8 +14,8 @@ import (
 
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/network-intelligence/api/v1"
-	"github.com/ssahani/TensorReaper/operators/network-intelligence/controllers"
+	gryviav1 "github.com/zyvorai/gryvia/operators/network-intelligence/api/v1"
+	"github.com/zyvorai/gryvia/operators/network-intelligence/controllers"
 )
 
 var (
@@ -25,7 +25,7 @@ var (
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-	utilruntime.Must(tensorreaperv1.AddToScheme(scheme))
+	utilruntime.Must(gryviav1.AddToScheme(scheme))
 }
 
 func main() {
@@ -51,7 +51,7 @@ func main() {
 		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "network-intelligence.tensorreaper.ai",
+		LeaderElectionID:       "network-intelligence.gryvia.io",
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")

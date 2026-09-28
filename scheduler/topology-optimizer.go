@@ -126,7 +126,7 @@ func (to *TopologyOptimizer) OptimizePlacement(gpuCount int, gpuType string) ([]
 
 	// Get all GPU nodes
 	nodes, err := to.clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{
-		LabelSelector: "tensorreaper.ai/gpu",
+		LabelSelector: "gryvia.io/gpu",
 	})
 	if err != nil {
 		return nil, err

@@ -1,6 +1,6 @@
 # GPU Benchmarking Suite
 
-Standard ML and GPU benchmarks for validating TensorReaper cluster performance.
+Standard ML and GPU benchmarks for validating Gryvia cluster performance.
 
 ## Available Benchmarks
 
@@ -63,7 +63,7 @@ spec:
           limits:
             nvidia.com/gpu: "8"
       nodeSelector:
-        tensorreaper.ai/gpu-type: A100-80G
+        gryvia.io/gpu-type: A100-80G
       restartPolicy: Never
 EOF
 ```
@@ -131,7 +131,7 @@ kubectl logs bench-resnet50-8gpu > results.txt
 #!/bin/bash
 # benchmarks/run-all.sh
 
-echo "Running TensorReaper Benchmark Suite..."
+echo "Running Gryvia Benchmark Suite..."
 
 # ResNet50
 echo "1. ResNet50 (8 GPU)"
@@ -300,7 +300,7 @@ apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: daily-benchmarks
-  namespace: tensorreaper
+  namespace: gryvia-system
 spec:
   schedule: "0 2 * * *"  # Daily at 2 AM
   jobTemplate:
@@ -309,7 +309,7 @@ spec:
         spec:
           containers:
           - name: benchmark
-            image: tensorreaper/benchmark-suite:1.0.0
+            image: gryvia/benchmark-suite:1.0.0
             command: ["/benchmarks/run-all.sh"]
           restartPolicy: OnFailure
 ```
@@ -406,7 +406,7 @@ nvidia-smi -lgc 1410
 ### Add Custom Benchmark
 
 ```yaml
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricAIJob
 metadata:
   name: custom-benchmark
@@ -431,5 +431,5 @@ spec:
 
 ## Support
 
-- Benchmark Issues: https://github.com/ssahani/TensorReaper/issues
-- Performance Discussions: https://github.com/ssahani/TensorReaper/discussions
+- Benchmark Issues: https://github.com/zyvorai/gryvia/issues
+- Performance Discussions: https://github.com/zyvorai/gryvia/discussions

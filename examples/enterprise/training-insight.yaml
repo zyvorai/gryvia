@@ -1,7 +1,7 @@
 # FabricTrainingInsight - Analyze NCCL communication in distributed training
 # Monitors a distributed training job for straggler ranks, communication
 # bottlenecks, and inefficient collective patterns over a 5-minute window.
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricTrainingInsight
 metadata:
   name: llm-training-analysis

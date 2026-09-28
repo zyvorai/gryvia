@@ -1,7 +1,7 @@
 variable "cluster_name" {
-  description = "Name of the TensorReaper cluster"
+  description = "Name of the Gryvia cluster"
   type        = string
-  default     = "tensorreaper-baremetal"
+  default     = "gryvia-baremetal"
 }
 
 variable "control_plane_endpoint" {
@@ -82,7 +82,7 @@ variable "storage_endpoint" {
 variable "storage_mountpath" {
   description = "Storage mount path on nodes"
   type        = string
-  default     = "/mnt/tensorreaper-storage"
+  default     = "/mnt/gryvia-storage"
 }
 
 variable "storage_rdma_enabled" {

@@ -20,7 +20,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/network-intelligence/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/network-intelligence/api/v1"
 )
 
 const (
@@ -37,9 +37,9 @@ type FabricNetworkAnomalyReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricnetworkanomalies,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricnetworkanomalies/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricnetworkanomalies/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricnetworkanomalies,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricnetworkanomalies/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricnetworkanomalies/finalizers,verbs=update
 //+kubebuilder:rbac:groups=cilium.io,resources=ciliumnetworkpolicies,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
@@ -48,7 +48,7 @@ func (r *FabricNetworkAnomalyReconciler) Reconcile(ctx context.Context, req ctrl
 	logger := log.FromContext(ctx)
 
 	// Fetch the FabricNetworkAnomaly instance
-	anomalyDetector := &tensorreaperv1.FabricNetworkAnomaly{}
+	anomalyDetector := &gryviav1.FabricNetworkAnomaly{}
 	if err := r.Get(ctx, req.NamespacedName, anomalyDetector); err != nil {
 		if errors.IsNotFound(err) {
 			logger.Info("FabricNetworkAnomaly resource not found, ignoring since object must be deleted")
@@ -95,7 +95,7 @@ func (r *FabricNetworkAnomalyReconciler) Reconcile(ctx context.Context, req ctrl
 }
 
 // getCheckInterval determines the reconciliation interval based on the shortest rule window
-func (r *FabricNetworkAnomalyReconciler) getCheckInterval(detector *tensorreaperv1.FabricNetworkAnomaly) time.Duration {
+func (r *FabricNetworkAnomalyReconciler) getCheckInterval(detector *gryviav1.FabricNetworkAnomaly) time.Duration {
 	shortest := 1 * time.Minute
 
 	for _, rule := range detector.Spec.DetectionRules {
@@ -121,9 +121,9 @@ type currentMetrics struct {
 }
 
 // evaluateRules checks each detection rule against current metrics
-func (r *FabricNetworkAnomalyReconciler) evaluateRules(ctx context.Context, detector *tensorreaperv1.FabricNetworkAnomaly) []tensorreaperv1.NetworkAnomalyEvent {
+func (r *FabricNetworkAnomalyReconciler) evaluateRules(ctx context.Context, detector *gryviav1.FabricNetworkAnomaly) []gryviav1.NetworkAnomalyEvent {
 	logger := log.FromContext(ctx)
-	var anomalies []tensorreaperv1.NetworkAnomalyEvent
+	var anomalies []gryviav1.NetworkAnomalyEvent
 
 	// Query current metrics from Prometheus/Hubble
 	metrics := r.queryCurrentMetrics(ctx, detector)
@@ -163,7 +163,7 @@ func (r *FabricNetworkAnomalyReconciler) evaluateRules(ctx context.Context, dete
 
 		if triggered {
 			severity := r.classifySeverity(rule, metricValue)
-			anomaly := tensorreaperv1.NetworkAnomalyEvent{
+			anomaly := gryviav1.NetworkAnomalyEvent{
 				Type:     fmt.Sprintf("%s_%s_threshold", rule.Metric, rule.Operator),
 				Severity: severity,
 				Detected: metav1.Now(),
@@ -195,7 +195,7 @@ func (r *FabricNetworkAnomalyReconciler) evaluateRules(ctx context.Context, dete
 
 // queryCurrentMetrics retrieves current network metrics for the target service.
 // In production, this queries Prometheus for Hubble and Cilium metrics.
-func (r *FabricNetworkAnomalyReconciler) queryCurrentMetrics(ctx context.Context, detector *tensorreaperv1.FabricNetworkAnomaly) currentMetrics {
+func (r *FabricNetworkAnomalyReconciler) queryCurrentMetrics(ctx context.Context, detector *gryviav1.FabricNetworkAnomaly) currentMetrics {
 	logger := log.FromContext(ctx)
 
 	// Look for Prometheus service
@@ -220,7 +220,7 @@ func (r *FabricNetworkAnomalyReconciler) queryCurrentMetrics(ctx context.Context
 
 // classifySeverity determines the anomaly severity based on how far the metric
 // exceeds the threshold
-func (r *FabricNetworkAnomalyReconciler) classifySeverity(rule tensorreaperv1.DetectionRule, value float64) string {
+func (r *FabricNetworkAnomalyReconciler) classifySeverity(rule gryviav1.DetectionRule, value float64) string {
 	if rule.Threshold == 0 {
 		return "medium"
 	}
@@ -239,9 +239,9 @@ func (r *FabricNetworkAnomalyReconciler) classifySeverity(rule tensorreaperv1.De
 }
 
 // mergeAnomalies combines existing and new anomalies, keeping only recent entries
-func (r *FabricNetworkAnomalyReconciler) mergeAnomalies(existing, newAnomalies []tensorreaperv1.NetworkAnomalyEvent) []tensorreaperv1.NetworkAnomalyEvent {
+func (r *FabricNetworkAnomalyReconciler) mergeAnomalies(existing, newAnomalies []gryviav1.NetworkAnomalyEvent) []gryviav1.NetworkAnomalyEvent {
 	// Filter existing anomalies to keep only those from the last 24 hours
-	var recent []tensorreaperv1.NetworkAnomalyEvent
+	var recent []gryviav1.NetworkAnomalyEvent
 	cutoff := time.Now().Add(-24 * time.Hour)
 	for _, a := range existing {
 		if !a.Detected.IsZero() && a.Detected.Time.After(cutoff) {
@@ -261,7 +261,7 @@ func (r *FabricNetworkAnomalyReconciler) mergeAnomalies(existing, newAnomalies [
 }
 
 // autoMitigate applies temporary deny policies for suspicious traffic
-func (r *FabricNetworkAnomalyReconciler) autoMitigate(ctx context.Context, detector *tensorreaperv1.FabricNetworkAnomaly, anomalies []tensorreaperv1.NetworkAnomalyEvent) {
+func (r *FabricNetworkAnomalyReconciler) autoMitigate(ctx context.Context, detector *gryviav1.FabricNetworkAnomaly, anomalies []gryviav1.NetworkAnomalyEvent) {
 	logger := log.FromContext(ctx)
 
 	for i, anomaly := range anomalies {
@@ -280,13 +280,13 @@ func (r *FabricNetworkAnomalyReconciler) autoMitigate(ctx context.Context, detec
 					"name":      policyName,
 					"namespace": detector.Namespace,
 					"annotations": map[string]interface{}{
-						"tensorreaper.ai/managed-by":   "netpredator-anomaly",
-						"tensorreaper.ai/anomaly-type": anomaly.Type,
-						"tensorreaper.ai/temporary":    "true",
-						"tensorreaper.ai/expires":      time.Now().Add(15 * time.Minute).Format(time.RFC3339),
+						"gryvia.io/managed-by":   "netpredator-anomaly",
+						"gryvia.io/anomaly-type": anomaly.Type,
+						"gryvia.io/temporary":    "true",
+						"gryvia.io/expires":      time.Now().Add(15 * time.Minute).Format(time.RFC3339),
 					},
 					"labels": map[string]interface{}{
-						"tensorreaper.ai/mitigation": "auto",
+						"gryvia.io/mitigation": "auto",
 					},
 				},
 				"spec": map[string]interface{}{
@@ -335,7 +335,7 @@ func (r *FabricNetworkAnomalyReconciler) autoMitigate(ctx context.Context, detec
 }
 
 // cleanupExpiredMitigations removes temporary mitigation policies that have expired
-func (r *FabricNetworkAnomalyReconciler) cleanupExpiredMitigations(ctx context.Context, detector *tensorreaperv1.FabricNetworkAnomaly) {
+func (r *FabricNetworkAnomalyReconciler) cleanupExpiredMitigations(ctx context.Context, detector *gryviav1.FabricNetworkAnomaly) {
 	logger := log.FromContext(ctx)
 
 	// List CiliumNetworkPolicies with mitigation label in the detector's namespace
@@ -348,7 +348,7 @@ func (r *FabricNetworkAnomalyReconciler) cleanupExpiredMitigations(ctx context.C
 
 	if err := r.List(ctx, policyList,
 		client.InNamespace(detector.Namespace),
-		client.MatchingLabels{"tensorreaper.ai/mitigation": "auto"},
+		client.MatchingLabels{"gryvia.io/mitigation": "auto"},
 	); err != nil {
 		logger.V(1).Info("Failed to list mitigation policies for cleanup", "error", err)
 		return
@@ -360,7 +360,7 @@ func (r *FabricNetworkAnomalyReconciler) cleanupExpiredMitigations(ctx context.C
 			continue
 		}
 
-		expiresStr, ok := annotations["tensorreaper.ai/expires"]
+		expiresStr, ok := annotations["gryvia.io/expires"]
 		if !ok {
 			continue
 		}
@@ -382,13 +382,13 @@ func (r *FabricNetworkAnomalyReconciler) cleanupExpiredMitigations(ctx context.C
 
 // webhookPayload is the JSON payload sent to alert webhooks
 type webhookPayload struct {
-	Service   string                              `json:"service"`
-	Anomalies []tensorreaperv1.NetworkAnomalyEvent `json:"anomalies"`
-	Timestamp string                              `json:"timestamp"`
+	Service   string                         `json:"service"`
+	Anomalies []gryviav1.NetworkAnomalyEvent `json:"anomalies"`
+	Timestamp string                         `json:"timestamp"`
 }
 
 // sendWebhookAlert sends anomaly alerts to the configured webhook URL
-func (r *FabricNetworkAnomalyReconciler) sendWebhookAlert(ctx context.Context, detector *tensorreaperv1.FabricNetworkAnomaly, anomalies []tensorreaperv1.NetworkAnomalyEvent) {
+func (r *FabricNetworkAnomalyReconciler) sendWebhookAlert(ctx context.Context, detector *gryviav1.FabricNetworkAnomaly, anomalies []gryviav1.NetworkAnomalyEvent) {
 	logger := log.FromContext(ctx)
 
 	payload := webhookPayload{
@@ -425,9 +425,9 @@ func (r *FabricNetworkAnomalyReconciler) sendWebhookAlert(ctx context.Context, d
 }
 
 // updateStatus updates the FabricNetworkAnomaly status subresource
-func (r *FabricNetworkAnomalyReconciler) updateStatus(ctx context.Context, namespacedName types.NamespacedName, anomalies []tensorreaperv1.NetworkAnomalyEvent) {
+func (r *FabricNetworkAnomalyReconciler) updateStatus(ctx context.Context, namespacedName types.NamespacedName, anomalies []gryviav1.NetworkAnomalyEvent) {
 	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		detector := &tensorreaperv1.FabricNetworkAnomaly{}
+		detector := &gryviav1.FabricNetworkAnomaly{}
 		if err := r.Get(ctx, namespacedName, detector); err != nil {
 			return err
 		}
@@ -442,6 +442,6 @@ func (r *FabricNetworkAnomalyReconciler) updateStatus(ctx context.Context, names
 // SetupWithManager sets up the controller with the Manager
 func (r *FabricNetworkAnomalyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tensorreaperv1.FabricNetworkAnomaly{}).
+		For(&gryviav1.FabricNetworkAnomaly{}).
 		Complete(r)
 }

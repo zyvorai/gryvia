@@ -11,14 +11,14 @@ import (
 
 // Security event type constants.
 const (
-	SecEvtContainerEscape   uint8 = 1
+	SecEvtContainerEscape     uint8 = 1
 	SecEvtPrivilegeEscalation uint8 = 2
-	SecEvtCryptoMining       uint8 = 3
-	SecEvtSensitiveMount     uint8 = 4
-	SecEvtSuspiciousExec     uint8 = 5
-	SecEvtNetworkViolation   uint8 = 6
-	SecEvtFileAccess         uint8 = 7
-	SecEvtSyscallAnomaly     uint8 = 8
+	SecEvtCryptoMining        uint8 = 3
+	SecEvtSensitiveMount      uint8 = 4
+	SecEvtSuspiciousExec      uint8 = 5
+	SecEvtNetworkViolation    uint8 = 6
+	SecEvtFileAccess          uint8 = 7
+	SecEvtSyscallAnomaly      uint8 = 8
 )
 
 // Security severity constants.

@@ -1,4 +1,4 @@
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricNetwork
 metadata:
   name: rdma-fabric
@@ -17,7 +17,7 @@ apiVersion: "k8s.cni.cncf.io/v1"
 kind: NetworkAttachmentDefinition
 metadata:
   name: rdma-network
-  namespace: tensorreaper-system
+  namespace: gryvia-system
 spec:
   config: '{
     "cniVersion": "0.3.1",

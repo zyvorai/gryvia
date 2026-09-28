@@ -1,4 +1,4 @@
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricAIJob
 metadata:
   name: pytorch-distributed-training
@@ -89,8 +89,8 @@ spec:
 
   # Node selection
   nodeSelector:
-    tensorreaper.ai/gpu-type: H100
-    tensorreaper.ai/rdma-enabled: "true"
+    gryvia.io/gpu-type: H100
+    gryvia.io/rdma-enabled: "true"
 
   # Tolerations
   tolerations:

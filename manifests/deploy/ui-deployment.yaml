@@ -1,24 +1,24 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: tensorreaper-ui
-  namespace: tensorreaper
+  name: gryvia-ui
+  namespace: gryvia-system
   labels:
-    app: tensorreaper-ui
+    app: gryvia-ui
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: tensorreaper-ui
+      app: gryvia-ui
   template:
     metadata:
       labels:
-        app: tensorreaper-ui
+        app: gryvia-ui
     spec:
-      serviceAccountName: tensorreaper-ui
+      serviceAccountName: gryvia-ui
       containers:
       - name: ui
-        image: tensorreaper/ui:1.0.0
+        image: gryvia/ui:1.0.0
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 80
@@ -68,14 +68,14 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: tensorreaper-ui
-  namespace: tensorreaper
+  name: gryvia-ui
+  namespace: gryvia-system
   labels:
-    app: tensorreaper-ui
+    app: gryvia-ui
 spec:
   type: ClusterIP
   selector:
-    app: tensorreaper-ui
+    app: gryvia-ui
   ports:
   - port: 80
     targetPort: http
@@ -85,15 +85,15 @@ spec:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: tensorreaper-ui
-  namespace: tensorreaper
+  name: gryvia-ui
+  namespace: gryvia-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: tensorreaper-ui
+  name: gryvia-ui
 rules:
-- apiGroups: ["tensorreaper.ai"]
+- apiGroups: ["gryvia.io"]
   resources: ["fabricaijobs", "fabricquotas", "fabricgpunodes", "fabricstorages", "fabricnetworks"]
   verbs: ["get", "list", "watch"]
 - apiGroups: [""]
@@ -103,21 +103,21 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: tensorreaper-ui
+  name: gryvia-ui
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: tensorreaper-ui
+  name: gryvia-ui
 subjects:
 - kind: ServiceAccount
-  name: tensorreaper-ui
-  namespace: tensorreaper
+  name: gryvia-ui
+  namespace: gryvia-system
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: tensorreaper-ui
-  namespace: tensorreaper
+  name: gryvia-ui
+  namespace: gryvia-system
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
@@ -125,16 +125,16 @@ spec:
   ingressClassName: nginx
   tls:
   - hosts:
-    - tensorreaper.example.com
-    secretName: tensorreaper-ui-tls
+    - gryvia.example.com
+    secretName: gryvia-ui-tls
   rules:
-  - host: tensorreaper.example.com
+  - host: gryvia.example.com
     http:
       paths:
       - path: /
         pathType: Prefix
         backend:
           service:
-            name: tensorreaper-ui
+            name: gryvia-ui
             port:
               number: 80

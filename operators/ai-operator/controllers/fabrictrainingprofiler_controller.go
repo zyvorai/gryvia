@@ -17,8 +17,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/ai-operator/api/v1"
-	"github.com/ssahani/TensorReaper/operators/ai-operator/pkg/profiler"
+	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
+	"github.com/zyvorai/gryvia/operators/ai-operator/pkg/profiler"
 )
 
 const (
@@ -29,7 +29,7 @@ const (
 	profilerRequeueInterval = 60 * time.Second
 
 	// Annotation keys
-	annotationLastProfileTime = "tensorreaper.ai/last-profile-time"
+	annotationLastProfileTime = "gryvia.io/last-profile-time"
 )
 
 // FabricTrainingProfilerReconciler reconciles a FabricTrainingProfiler object
@@ -46,11 +46,11 @@ type EventRecorder interface {
 	Eventf(object runtime.Object, eventtype, reason, messageFmt string, args ...interface{})
 }
 
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabrictrainingprofilers,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabrictrainingprofilers/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabrictrainingprofilers/finalizers,verbs=update
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricaijobs,verbs=get;list;watch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricaijobs/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabrictrainingprofilers,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabrictrainingprofilers/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabrictrainingprofilers/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
@@ -59,7 +59,7 @@ func (r *FabricTrainingProfilerReconciler) Reconcile(ctx context.Context, req ct
 	log := r.Log.WithValues("fabrictrainingprofiler", req.NamespacedName)
 
 	// Fetch the FabricTrainingProfiler instance
-	fp := &tensorreaperv1.FabricTrainingProfiler{}
+	fp := &gryviav1.FabricTrainingProfiler{}
 	err := r.Get(ctx, req.NamespacedName, fp)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -175,14 +175,14 @@ func (r *FabricTrainingProfilerReconciler) Reconcile(ctx context.Context, req ct
 }
 
 // findMatchingJobs discovers FabricAIJob resources matching the profiler target configuration
-func (r *FabricTrainingProfilerReconciler) findMatchingJobs(ctx context.Context, fp *tensorreaperv1.FabricTrainingProfiler) ([]tensorreaperv1.FabricAIJob, error) {
+func (r *FabricTrainingProfilerReconciler) findMatchingJobs(ctx context.Context, fp *gryviav1.FabricTrainingProfiler) ([]gryviav1.FabricAIJob, error) {
 	switch fp.Spec.Target.Type {
 	case "job-ref":
 		// Target a specific job by name
 		if fp.Spec.Target.JobRef == "" {
 			return nil, fmt.Errorf("target type is job-ref but jobRef is empty")
 		}
-		job := &tensorreaperv1.FabricAIJob{}
+		job := &gryviav1.FabricAIJob{}
 		err := r.Get(ctx, types.NamespacedName{
 			Namespace: fp.Namespace,
 			Name:      fp.Spec.Target.JobRef,
@@ -193,7 +193,7 @@ func (r *FabricTrainingProfilerReconciler) findMatchingJobs(ctx context.Context,
 			}
 			return nil, err
 		}
-		return []tensorreaperv1.FabricAIJob{*job}, nil
+		return []gryviav1.FabricAIJob{*job}, nil
 
 	case "on-demand":
 		// On-demand mode still uses the job selector, but only runs when triggered
@@ -206,8 +206,8 @@ func (r *FabricTrainingProfilerReconciler) findMatchingJobs(ctx context.Context,
 }
 
 // listJobsBySelector lists FabricAIJob resources matching the label selector
-func (r *FabricTrainingProfilerReconciler) listJobsBySelector(ctx context.Context, fp *tensorreaperv1.FabricTrainingProfiler) ([]tensorreaperv1.FabricAIJob, error) {
-	jobList := &tensorreaperv1.FabricAIJobList{}
+func (r *FabricTrainingProfilerReconciler) listJobsBySelector(ctx context.Context, fp *gryviav1.FabricTrainingProfiler) ([]gryviav1.FabricAIJob, error) {
+	jobList := &gryviav1.FabricAIJobList{}
 
 	listOpts := []client.ListOption{
 		client.InNamespace(fp.Namespace),
@@ -225,7 +225,7 @@ func (r *FabricTrainingProfilerReconciler) listJobsBySelector(ctx context.Contex
 }
 
 // shouldProfileJob checks if a specific job should be profiled based on warmup steps and cooldown
-func (r *FabricTrainingProfilerReconciler) shouldProfileJob(fp *tensorreaperv1.FabricTrainingProfiler, job *tensorreaperv1.FabricAIJob) bool {
+func (r *FabricTrainingProfilerReconciler) shouldProfileJob(fp *gryviav1.FabricTrainingProfiler, job *gryviav1.FabricAIJob) bool {
 	warmupSteps := int32(100)
 	cooldownMinutes := int32(30)
 
@@ -260,12 +260,12 @@ func (r *FabricTrainingProfilerReconciler) shouldProfileJob(fp *tensorreaperv1.F
 }
 
 // collectJobMetrics gathers GPU metrics from pod annotations for a job
-func (r *FabricTrainingProfilerReconciler) collectJobMetrics(ctx context.Context, fp *tensorreaperv1.FabricTrainingProfiler, job *tensorreaperv1.FabricAIJob) (*profiler.GpuMetrics, error) {
+func (r *FabricTrainingProfilerReconciler) collectJobMetrics(ctx context.Context, fp *gryviav1.FabricTrainingProfiler, job *gryviav1.FabricAIJob) (*profiler.GpuMetrics, error) {
 	// Find pods belonging to this job
 	pods := &corev1.PodList{}
 	if err := r.List(ctx, pods,
 		client.InNamespace(job.Namespace),
-		client.MatchingLabels{"tensorreaper.ai/job": job.Name},
+		client.MatchingLabels{"gryvia.io/job": job.Name},
 	); err != nil {
 		return nil, fmt.Errorf("failed to list pods for job %s: %w", job.Name, err)
 	}
@@ -276,20 +276,20 @@ func (r *FabricTrainingProfilerReconciler) collectJobMetrics(ctx context.Context
 
 	// Aggregate metrics from all pods
 	var (
-		totalSMUtil          float64
-		totalTensorUtil      float64
-		totalTFLOPS          float64
-		totalMemBWUtil       float64
-		totalPeakMem         float64
-		totalMem             float64
-		totalIoWait          float64
-		totalDataloaderTP    float64
-		totalNcclBW          float64
-		totalAllReduceTime   float64
-		totalCommOverlap     float64
-		podCount             float64
-		usesMixedPrecision   bool
-		usesCompilation      bool
+		totalSMUtil        float64
+		totalTensorUtil    float64
+		totalTFLOPS        float64
+		totalMemBWUtil     float64
+		totalPeakMem       float64
+		totalMem           float64
+		totalIoWait        float64
+		totalDataloaderTP  float64
+		totalNcclBW        float64
+		totalAllReduceTime float64
+		totalCommOverlap   float64
+		podCount           float64
+		usesMixedPrecision bool
+		usesCompilation    bool
 	)
 
 	gpuType := job.Spec.GpuType
@@ -345,29 +345,29 @@ func (r *FabricTrainingProfilerReconciler) collectJobMetrics(ctx context.Context
 
 	metrics := &profiler.GpuMetrics{
 		JobName:                    job.Name,
-		GpuType:                   gpuType,
-		GpuCount:                  gpuCount,
-		SMUtilization:             totalSMUtil / podCount,
-		TensorCoreUtilization:     totalTensorUtil / podCount,
-		AchievedTFLOPS:            totalTFLOPS, // sum across pods for total cluster TFLOPS
+		GpuType:                    gpuType,
+		GpuCount:                   gpuCount,
+		SMUtilization:              totalSMUtil / podCount,
+		TensorCoreUtilization:      totalTensorUtil / podCount,
+		AchievedTFLOPS:             totalTFLOPS, // sum across pods for total cluster TFLOPS
 		MemoryBandwidthUtilization: totalMemBWUtil / podCount,
-		PeakMemoryUsageGB:         totalPeakMem / podCount, // average per GPU
-		TotalMemoryGB:             totalMem / podCount,
-		IoWaitRatio:               totalIoWait / podCount,
-		DataloaderThroughput:      totalDataloaderTP, // sum across pods
-		NcclBandwidthGBps:         totalNcclBW / podCount,
-		AllReduceTimeFraction:     totalAllReduceTime / podCount,
-		ComputeCommOverlap:        totalCommOverlap / podCount,
-		IsDistributed:             isDistributed,
-		UsesMixedPrecision:        usesMixedPrecision,
-		UsesCompilation:           usesCompilation,
+		PeakMemoryUsageGB:          totalPeakMem / podCount, // average per GPU
+		TotalMemoryGB:              totalMem / podCount,
+		IoWaitRatio:                totalIoWait / podCount,
+		DataloaderThroughput:       totalDataloaderTP, // sum across pods
+		NcclBandwidthGBps:          totalNcclBW / podCount,
+		AllReduceTimeFraction:      totalAllReduceTime / podCount,
+		ComputeCommOverlap:         totalCommOverlap / podCount,
+		IsDistributed:              isDistributed,
+		UsesMixedPrecision:         usesMixedPrecision,
+		UsesCompilation:            usesCompilation,
 	}
 
 	return metrics, nil
 }
 
 // emitRecommendationEvents emits Kubernetes events for profiling recommendations
-func (r *FabricTrainingProfilerReconciler) emitRecommendationEvents(fp *tensorreaperv1.FabricTrainingProfiler, job *tensorreaperv1.FabricAIJob, result *profiler.AnalysisResult) {
+func (r *FabricTrainingProfilerReconciler) emitRecommendationEvents(fp *gryviav1.FabricTrainingProfiler, job *gryviav1.FabricAIJob, result *profiler.AnalysisResult) {
 	for _, rec := range result.Recommendations {
 		eventType := corev1.EventTypeNormal
 		if rec.Severity == profiler.SeverityCritical {
@@ -387,10 +387,10 @@ func (r *FabricTrainingProfilerReconciler) emitRecommendationEvents(fp *tensorre
 }
 
 // updateJobWithProfilingResults updates the FabricAIJob status with profiling data
-func (r *FabricTrainingProfilerReconciler) updateJobWithProfilingResults(ctx context.Context, log logr.Logger, job *tensorreaperv1.FabricAIJob, result *profiler.AnalysisResult) {
+func (r *FabricTrainingProfilerReconciler) updateJobWithProfilingResults(ctx context.Context, log logr.Logger, job *gryviav1.FabricAIJob, result *profiler.AnalysisResult) {
 	// Update GPU utilization in job metrics
 	if job.Status.Metrics == nil {
-		job.Status.Metrics = &tensorreaperv1.JobMetrics{}
+		job.Status.Metrics = &gryviav1.JobMetrics{}
 	}
 	job.Status.Metrics.GpuUtilization = result.EfficiencyScore
 
@@ -400,7 +400,7 @@ func (r *FabricTrainingProfilerReconciler) updateJobWithProfilingResults(ctx con
 }
 
 // markJobProfiled sets the last profile timestamp annotation on the job
-func (r *FabricTrainingProfilerReconciler) markJobProfiled(ctx context.Context, log logr.Logger, job *tensorreaperv1.FabricAIJob) {
+func (r *FabricTrainingProfilerReconciler) markJobProfiled(ctx context.Context, log logr.Logger, job *gryviav1.FabricAIJob) {
 	if job.Annotations == nil {
 		job.Annotations = make(map[string]string)
 	}
@@ -412,7 +412,7 @@ func (r *FabricTrainingProfilerReconciler) markJobProfiled(ctx context.Context, 
 }
 
 // updateCondition updates or appends a condition on the profiler status
-func (r *FabricTrainingProfilerReconciler) updateCondition(fp *tensorreaperv1.FabricTrainingProfiler, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *FabricTrainingProfilerReconciler) updateCondition(fp *gryviav1.FabricTrainingProfiler, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -445,7 +445,7 @@ func (r *FabricTrainingProfilerReconciler) updateCondition(fp *tensorreaperv1.Fa
 
 // mergeRecommendations merges new recommendations with existing ones,
 // keeping the most recent entries up to maxCount
-func mergeRecommendations(existing, new []tensorreaperv1.ProfilerRecommendation, maxCount int) []tensorreaperv1.ProfilerRecommendation {
+func mergeRecommendations(existing, new []gryviav1.ProfilerRecommendation, maxCount int) []gryviav1.ProfilerRecommendation {
 	// Prepend new recommendations (most recent first)
 	merged := append(new, existing...)
 	if len(merged) > maxCount {
@@ -465,13 +465,13 @@ func capitalize(s string) string {
 // mapJobToProfilers maps a FabricAIJob to its matching FabricTrainingProfiler CRs
 // so that changes to jobs trigger profiler reconciliation
 func (r *FabricTrainingProfilerReconciler) mapJobToProfilers(ctx context.Context, obj client.Object) []reconcile.Request {
-	job, ok := obj.(*tensorreaperv1.FabricAIJob)
+	job, ok := obj.(*gryviav1.FabricAIJob)
 	if !ok {
 		return nil
 	}
 
 	// List all profilers in the same namespace
-	profilerList := &tensorreaperv1.FabricTrainingProfilerList{}
+	profilerList := &gryviav1.FabricTrainingProfilerList{}
 	if err := r.List(ctx, profilerList, client.InNamespace(job.Namespace)); err != nil {
 		return nil
 	}
@@ -517,9 +517,9 @@ func labelsMatch(objectLabels, selector map[string]string) bool {
 // SetupWithManager sets up the controller with the Manager.
 func (r *FabricTrainingProfilerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tensorreaperv1.FabricTrainingProfiler{}).
+		For(&gryviav1.FabricTrainingProfiler{}).
 		Watches(
-			&tensorreaperv1.FabricAIJob{},
+			&gryviav1.FabricAIJob{},
 			handler.EnqueueRequestsFromMapFunc(r.mapJobToProfilers),
 		).
 		Complete(r)

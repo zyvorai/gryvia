@@ -1,5 +1,5 @@
 #!/bin/bash
-# Automated deployment script for complete TensorReaper setup
+# Automated deployment script for complete Gryvia setup
 
 set -e
 
@@ -8,7 +8,7 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-echo -e "${GREEN}TensorReaper Complete Setup Deployment${NC}"
+echo -e "${GREEN}Gryvia Complete Setup Deployment${NC}"
 echo "========================================"
 
 # Check prerequisites
@@ -18,7 +18,7 @@ command -v helm >/dev/null 2>&1 || { echo -e "${RED}helm required${NC}"; exit 1;
 
 # Create namespace
 echo -e "\n${YELLOW}Creating namespace...${NC}"
-kubectl create namespace tensorreaper --dry-run=client -o yaml | kubectl apply -f -
+kubectl create namespace gryvia-system --dry-run=client -o yaml | kubectl apply -f -
 
 # Deploy CRDs
 echo -e "\n${YELLOW}Deploying CRDs...${NC}"
@@ -35,12 +35,12 @@ done
 echo -e "\n${YELLOW}Waiting for operators to be ready...${NC}"
 sleep 10
 kubectl wait --for=condition=available --timeout=300s \
-    -n tensorreaper \
-    deployment/tensorreaper-gpu-operator \
-    deployment/tensorreaper-ai-operator \
-    deployment/tensorreaper-storage-operator \
-    deployment/tensorreaper-network-operator \
-    deployment/tensorreaper-quota-operator
+    -n gryvia-system \
+    deployment/gryvia-gpu-operator \
+    deployment/gryvia-ai-operator \
+    deployment/gryvia-storage-operator \
+    deployment/gryvia-network-operator \
+    deployment/gryvia-quota-operator
 
 # Deploy GPU nodes
 echo -e "\n${YELLOW}Configuring GPU nodes...${NC}"
@@ -72,7 +72,7 @@ echo "Deployment complete!"
 echo "========================================${NC}"
 echo ""
 echo "Next steps:"
-echo "  1. Access Web UI: kubectl port-forward -n tensorreaper svc/tensorreaper-ui 8080:80"
+echo "  1. Access Web UI: kubectl port-forward -n gryvia-system svc/gryvia-ui 8080:80"
 echo "  2. Submit example jobs: kubectl apply -f jobs/"
-echo "  3. Monitor: kubectl port-forward -n tensorreaper svc/prometheus-grafana 3000:80"
+echo "  3. Monitor: kubectl port-forward -n gryvia-system svc/prometheus-grafana 3000:80"
 echo ""

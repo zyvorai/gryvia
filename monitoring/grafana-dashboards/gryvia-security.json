@@ -1,0 +1,214 @@
+{
+  "dashboard": {
+    "uid": "gryvia-security",
+    "title": "Gryvia - Security Monitoring",
+    "tags": ["gryvia", "security"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 1,
+    "refresh": "10s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "templating": {
+      "list": [
+        {
+          "name": "DS_PROMETHEUS",
+          "type": "datasource",
+          "query": "prometheus"
+        },
+        {
+          "name": "namespace",
+          "type": "query",
+          "datasource": "${DS_PROMETHEUS}",
+          "query": "label_values(gryvia_security_alerts_total, namespace)",
+          "refresh": 2,
+          "includeAll": true,
+          "multi": true
+        }
+      ]
+    },
+    "panels": [
+      {
+        "title": "Security Alerts by Severity",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+        "datasource": "${DS_PROMETHEUS}",
+        "targets": [
+          {
+            "expr": "sum(rate(gryvia_security_alerts_total{namespace=~\"$namespace\", severity=\"critical\"}[5m])) * 60",
+            "legendFormat": "Critical"
+          },
+          {
+            "expr": "sum(rate(gryvia_security_alerts_total{namespace=~\"$namespace\", severity=\"high\"}[5m])) * 60",
+            "legendFormat": "High"
+          },
+          {
+            "expr": "sum(rate(gryvia_security_alerts_total{namespace=~\"$namespace\", severity=\"medium\"}[5m])) * 60",
+            "legendFormat": "Medium"
+          },
+          {
+            "expr": "sum(rate(gryvia_security_alerts_total{namespace=~\"$namespace\", severity=\"low\"}[5m])) * 60",
+            "legendFormat": "Low"
+          }
+        ],
+        "yaxes": [
+          {"format": "short", "min": 0, "label": "Alerts/min"},
+          {"format": "short"}
+        ],
+        "lines": false,
+        "bars": true,
+        "fill": 1,
+        "stack": true,
+        "seriesOverrides": [
+          {"alias": "Critical", "color": "#E02F44"},
+          {"alias": "High", "color": "#FF9830"},
+          {"alias": "Medium", "color": "#FADE2A"},
+          {"alias": "Low", "color": "#73BF69"}
+        ]
+      },
+      {
+        "title": "Escape Attempts",
+        "type": "stat",
+        "gridPos": {"h": 8, "w": 6, "x": 12, "y": 0},
+        "datasource": "${DS_PROMETHEUS}",
+        "targets": [
+          {
+            "expr": "sum(gryvia_security_escape_attempts_total{namespace=~\"$namespace\"})",
+            "legendFormat": "Escape Attempts"
+          }
+        ],
+        "options": {
+          "colorMode": "background",
+          "graphMode": "area",
+          "textMode": "value_and_name"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 1, "color": "yellow"},
+                {"value": 5, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "title": "Mining Detections",
+        "type": "stat",
+        "gridPos": {"h": 8, "w": 6, "x": 18, "y": 0},
+        "datasource": "${DS_PROMETHEUS}",
+        "targets": [
+          {
+            "expr": "sum(gryvia_security_mining_detections_total{namespace=~\"$namespace\"})",
+            "legendFormat": "Mining Detections"
+          }
+        ],
+        "options": {
+          "colorMode": "background",
+          "graphMode": "area",
+          "textMode": "value_and_name"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 1, "color": "orange"},
+                {"value": 3, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "title": "Active Security Policies",
+        "type": "stat",
+        "gridPos": {"h": 8, "w": 6, "x": 0, "y": 8},
+        "datasource": "${DS_PROMETHEUS}",
+        "targets": [
+          {
+            "expr": "sum(gryvia_security_policies_active{namespace=~\"$namespace\"})",
+            "legendFormat": "Active Policies"
+          }
+        ],
+        "options": {
+          "colorMode": "background",
+          "graphMode": "none",
+          "textMode": "value_and_name"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "blue"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "title": "Recent Security Alerts",
+        "type": "table",
+        "gridPos": {"h": 8, "w": 12, "x": 6, "y": 8},
+        "datasource": "${DS_PROMETHEUS}",
+        "targets": [
+          {
+            "expr": "topk(20, gryvia_security_alert_info{namespace=~\"$namespace\"})",
+            "legendFormat": "",
+            "instant": true,
+            "format": "table"
+          }
+        ],
+        "transformations": [
+          {
+            "id": "organize",
+            "options": {
+              "excludeByName": {
+                "__name__": true,
+                "instance": true,
+                "job": true
+              },
+              "renameByName": {
+                "severity": "Severity",
+                "alert_type": "Type",
+                "namespace": "Namespace",
+                "pod": "Pod",
+                "description": "Description"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "title": "Alert Rate Over Time",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 6, "x": 18, "y": 8},
+        "datasource": "${DS_PROMETHEUS}",
+        "targets": [
+          {
+            "expr": "sum(rate(gryvia_security_alerts_total{namespace=~\"$namespace\"}[5m])) * 60",
+            "legendFormat": "Total Alerts/min"
+          }
+        ],
+        "yaxes": [
+          {"format": "short", "min": 0, "label": "Alerts/min"},
+          {"format": "short"}
+        ],
+        "lines": true,
+        "fill": 1,
+        "linewidth": 2,
+        "thresholds": [
+          {"value": 10, "colorMode": "warning", "fill": false, "line": true, "op": "gt"},
+          {"value": 50, "colorMode": "critical", "fill": false, "line": true, "op": "gt"}
+        ]
+      }
+    ]
+  }
+}

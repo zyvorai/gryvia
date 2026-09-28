@@ -1,6 +1,6 @@
-# TensorReaper Tools
+# Gryvia Tools
 
-Collection of diagnostic and utility tools for TensorReaper platform.
+Collection of diagnostic and utility tools for Gryvia platform.
 
 ## Tools
 
@@ -64,7 +64,7 @@ python3 tools/cost-calculator.py --namespace production
 **Example Output:**
 ```
 ================================================================================
-                         TENSORREAPER COST REPORT
+                         GRYVIA COST REPORT
 ================================================================================
 
 📊 SUMMARY
@@ -90,7 +90,7 @@ nlp                           $7,456.80          88     $84.74
 
 ### 3. Backup and Restore (backup-restore.sh)
 
-Complete backup and restore solution for TensorReaper resources.
+Complete backup and restore solution for Gryvia resources.
 
 **Usage:**
 ```bash
@@ -104,10 +104,10 @@ Complete backup and restore solution for TensorReaper resources.
 ./tools/backup-restore.sh list
 
 # Verify backup
-./tools/backup-restore.sh verify --file /backups/tensorreaper-20240101-120000.tar.gz
+./tools/backup-restore.sh verify --file /backups/gryvia-20240101-120000.tar.gz
 
 # Restore from backup
-./tools/backup-restore.sh restore --file /backups/tensorreaper-20240101-120000.tar.gz
+./tools/backup-restore.sh restore --file /backups/gryvia-20240101-120000.tar.gz
 ```
 
 **What Gets Backed Up:**
@@ -128,7 +128,7 @@ Complete backup and restore solution for TensorReaper resources.
 
 ### 4. Upgrade Tool (upgrade.sh)
 
-Safe TensorReaper version upgrades with automatic backup.
+Safe Gryvia version upgrades with automatic backup.
 
 **Usage:**
 ```bash
@@ -236,7 +236,7 @@ python3 tools/profiler.py --job my-job --output report.json
 **Example Output:**
 ```
 ╔════════════════════════════════════════════════════════════════╗
-║          TensorReaper GPU Profiler                              ║
+║          Gryvia GPU Profiler                              ║
 ╚════════════════════════════════════════════════════════════════╝
 
 📊 UTILIZATION SUMMARY
@@ -295,14 +295,14 @@ chmod +x tools/*.py
 
 ```bash
 # Build tools container
-docker build -t tensorreaper-tools -f tools/Dockerfile tools/
+docker build -t gryvia-tools -f tools/Dockerfile tools/
 
 # Run cost calculator
-docker run -v ~/.kube:/root/.kube tensorreaper-tools \
+docker run -v ~/.kube:/root/.kube gryvia-tools \
   python3 cost-calculator.py
 
 # Run GPU diagnostics (on GPU node)
-docker run --gpus all tensorreaper-tools \
+docker run --gpus all gryvia-tools \
   bash gpu-diagnostics.sh
 ```
 
@@ -315,17 +315,17 @@ apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: daily-cost-report
-  namespace: tensorreaper
+  namespace: gryvia-system
 spec:
   schedule: "0 9 * * *"  # Daily at 9 AM
   jobTemplate:
     spec:
       template:
         spec:
-          serviceAccountName: tensorreaper-tools
+          serviceAccountName: gryvia-tools
           containers:
           - name: cost-calculator
-            image: tensorreaper-tools:1.0.0
+            image: gryvia-tools:1.0.0
             command:
               - python3
               - /tools/cost-calculator.py
@@ -348,7 +348,7 @@ apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: gpu-diagnostics
-  namespace: tensorreaper
+  namespace: gryvia-system
 spec:
   selector:
     matchLabels:
@@ -359,11 +359,11 @@ spec:
         app: gpu-diagnostics
     spec:
       nodeSelector:
-        tensorreaper.ai/gpu: "true"
+        gryvia.io/gpu: "true"
       hostPID: true
       containers:
       - name: diagnostics
-        image: tensorreaper-tools:1.0.0
+        image: gryvia-tools:1.0.0
         command:
           - /bin/bash
           - -c
@@ -405,7 +405,7 @@ export KUBECONFIG=~/.kube/config
 # Or copy into cluster
 kubectl create secret generic kubeconfig \
   --from-file=config=$HOME/.kube/config \
-  -n tensorreaper
+  -n gryvia-system
 ```
 
 ### GPU Diagnostics Issues
@@ -459,6 +459,6 @@ To add new tools:
 
 ## Support
 
-- Issues: https://github.com/ssahani/TensorReaper/issues
-- Documentation: https://github.com/ssahani/TensorReaper/docs
-- Discussions: https://github.com/ssahani/TensorReaper/discussions
+- Issues: https://github.com/zyvorai/gryvia/issues
+- Documentation: https://github.com/zyvorai/gryvia/docs
+- Discussions: https://github.com/zyvorai/gryvia/discussions

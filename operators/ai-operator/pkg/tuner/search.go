@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/ai-operator/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 )
 
 // SearchStrategy generates hyperparameter combinations for trials.
@@ -16,7 +16,7 @@ type SearchStrategy interface {
 	// GenerateCandidates returns the next batch of parameter sets to evaluate.
 	// completedTrials contains results of previously completed trials.
 	// count is the number of candidates requested.
-	GenerateCandidates(space []tensorreaperv1.ParameterSpec, completedTrials []tensorreaperv1.TrialResult, count int) []map[string]string
+	GenerateCandidates(space []gryviav1.ParameterSpec, completedTrials []gryviav1.TrialResult, count int) []map[string]string
 }
 
 // --- Grid Search ---------------------------------------------------------
@@ -25,7 +25,7 @@ type SearchStrategy interface {
 type GridSearch struct{}
 
 // GenerateCandidates returns up to count un-evaluated grid points.
-func (g *GridSearch) GenerateCandidates(space []tensorreaperv1.ParameterSpec, completedTrials []tensorreaperv1.TrialResult, count int) []map[string]string {
+func (g *GridSearch) GenerateCandidates(space []gryviav1.ParameterSpec, completedTrials []gryviav1.TrialResult, count int) []map[string]string {
 	allCombinations := enumerateGrid(space)
 
 	// Build a set of already-tried parameter combos for deduplication.
@@ -48,7 +48,7 @@ func (g *GridSearch) GenerateCandidates(space []tensorreaperv1.ParameterSpec, co
 }
 
 // enumerateGrid produces the Cartesian product of all parameter values.
-func enumerateGrid(space []tensorreaperv1.ParameterSpec) []map[string]string {
+func enumerateGrid(space []gryviav1.ParameterSpec) []map[string]string {
 	paramValues := make([][]string, len(space))
 	for i, p := range space {
 		paramValues[i] = expandParam(p)
@@ -78,7 +78,7 @@ func enumerateGrid(space []tensorreaperv1.ParameterSpec) []map[string]string {
 type RandomSearch struct{}
 
 // GenerateCandidates returns count random parameter sets.
-func (rs *RandomSearch) GenerateCandidates(space []tensorreaperv1.ParameterSpec, _ []tensorreaperv1.TrialResult, count int) []map[string]string {
+func (rs *RandomSearch) GenerateCandidates(space []gryviav1.ParameterSpec, _ []gryviav1.TrialResult, count int) []map[string]string {
 	candidates := make([]map[string]string, count)
 	for i := 0; i < count; i++ {
 		combo := make(map[string]string)
@@ -97,13 +97,13 @@ func (rs *RandomSearch) GenerateCandidates(space []tensorreaperv1.ParameterSpec,
 // objective and samples new candidates that look more like the good set.
 type BayesianSearch struct {
 	// Direction is the optimization direction (minimize or maximize).
-	Direction tensorreaperv1.ObjectiveDirection
+	Direction gryviav1.ObjectiveDirection
 	// GammaQuantile is the fraction of trials considered "good" (default 0.25).
 	GammaQuantile float64
 }
 
 // GenerateCandidates generates candidates biased toward high-performing regions.
-func (b *BayesianSearch) GenerateCandidates(space []tensorreaperv1.ParameterSpec, completedTrials []tensorreaperv1.TrialResult, count int) []map[string]string {
+func (b *BayesianSearch) GenerateCandidates(space []gryviav1.ParameterSpec, completedTrials []gryviav1.TrialResult, count int) []map[string]string {
 	// Fall back to random search until we have enough data points.
 	if len(completedTrials) < 4 {
 		rs := &RandomSearch{}
@@ -137,9 +137,9 @@ func (b *BayesianSearch) GenerateCandidates(space []tensorreaperv1.ParameterSpec
 }
 
 // partitionTrials splits trials into good (top gamma fraction) and bad.
-func partitionTrials(trials []tensorreaperv1.TrialResult, gamma float64, direction tensorreaperv1.ObjectiveDirection) (good, bad []tensorreaperv1.TrialResult) {
+func partitionTrials(trials []gryviav1.TrialResult, gamma float64, direction gryviav1.ObjectiveDirection) (good, bad []gryviav1.TrialResult) {
 	// Only consider trials with a metric value.
-	var scored []tensorreaperv1.TrialResult
+	var scored []gryviav1.TrialResult
 	for _, t := range trials {
 		if t.MetricValue != nil {
 			scored = append(scored, t)
@@ -150,7 +150,7 @@ func partitionTrials(trials []tensorreaperv1.TrialResult, gamma float64, directi
 	}
 
 	sort.Slice(scored, func(i, j int) bool {
-		if direction == tensorreaperv1.ObjectiveMinimize {
+		if direction == gryviav1.ObjectiveMinimize {
 			return *scored[i].MetricValue < *scored[j].MetricValue
 		}
 		return *scored[i].MetricValue > *scored[j].MetricValue
@@ -178,7 +178,7 @@ type ASHAScheduler struct {
 
 // ShouldStop returns true if the trial should be stopped at the given step
 // based on its intermediate metrics compared to other trials at the same rung.
-func (a *ASHAScheduler) ShouldStop(trial tensorreaperv1.TrialResult, allTrials []tensorreaperv1.TrialResult, direction tensorreaperv1.ObjectiveDirection) bool {
+func (a *ASHAScheduler) ShouldStop(trial gryviav1.TrialResult, allTrials []gryviav1.TrialResult, direction gryviav1.ObjectiveDirection) bool {
 	rf := a.ReductionFactor
 	if rf <= 1 {
 		rf = 3
@@ -233,7 +233,7 @@ func (a *ASHAScheduler) ShouldStop(trial tensorreaperv1.TrialResult, allTrials [
 	}
 
 	// Check if this trial's value falls within the promoted set.
-	if direction == tensorreaperv1.ObjectiveMinimize {
+	if direction == gryviav1.ObjectiveMinimize {
 		// Lower is better: promoted trials are the smallest values.
 		threshold := metricsAtRung[promotionCount-1]
 		return currentValue > threshold
@@ -246,12 +246,12 @@ func (a *ASHAScheduler) ShouldStop(trial tensorreaperv1.TrialResult, allTrials [
 // --- Helpers -------------------------------------------------------------
 
 // expandParam returns all discrete values for a parameter (used by grid search).
-func expandParam(p tensorreaperv1.ParameterSpec) []string {
+func expandParam(p gryviav1.ParameterSpec) []string {
 	switch p.Type {
-	case tensorreaperv1.ParameterTypeCategorical:
+	case gryviav1.ParameterTypeCategorical:
 		return p.Values
 
-	case tensorreaperv1.ParameterTypeInt:
+	case gryviav1.ParameterTypeInt:
 		if len(p.Values) > 0 {
 			return p.Values
 		}
@@ -268,7 +268,7 @@ func expandParam(p tensorreaperv1.ParameterSpec) []string {
 		}
 		return vals
 
-	case tensorreaperv1.ParameterTypeFloat:
+	case gryviav1.ParameterTypeFloat:
 		if len(p.Values) > 0 {
 			return p.Values
 		}
@@ -294,15 +294,15 @@ func expandParam(p tensorreaperv1.ParameterSpec) []string {
 }
 
 // sampleParam returns a random value for a parameter.
-func sampleParam(p tensorreaperv1.ParameterSpec) string {
+func sampleParam(p gryviav1.ParameterSpec) string {
 	switch p.Type {
-	case tensorreaperv1.ParameterTypeCategorical:
+	case gryviav1.ParameterTypeCategorical:
 		if len(p.Values) == 0 {
 			return ""
 		}
 		return p.Values[rand.Intn(len(p.Values))]
 
-	case tensorreaperv1.ParameterTypeInt:
+	case gryviav1.ParameterTypeInt:
 		if len(p.Values) > 0 {
 			return p.Values[rand.Intn(len(p.Values))]
 		}
@@ -322,7 +322,7 @@ func sampleParam(p tensorreaperv1.ParameterSpec) string {
 		v := lo + rand.Int31n(rangeSteps+1)*step
 		return strconv.FormatInt(int64(v), 10)
 
-	case tensorreaperv1.ParameterTypeFloat:
+	case gryviav1.ParameterTypeFloat:
 		if len(p.Values) > 0 {
 			return p.Values[rand.Intn(len(p.Values))]
 		}
@@ -343,16 +343,16 @@ func sampleParam(p tensorreaperv1.ParameterSpec) string {
 }
 
 // perturbParam generates a value near the given value for exploration.
-func perturbParam(p tensorreaperv1.ParameterSpec, val string) string {
+func perturbParam(p gryviav1.ParameterSpec, val string) string {
 	switch p.Type {
-	case tensorreaperv1.ParameterTypeCategorical:
+	case gryviav1.ParameterTypeCategorical:
 		// For categorical, occasionally return the same value or a random one.
 		if rand.Float64() < 0.5 {
 			return val
 		}
 		return sampleParam(p)
 
-	case tensorreaperv1.ParameterTypeFloat:
+	case gryviav1.ParameterTypeFloat:
 		parsed, err := strconv.ParseFloat(val, 64)
 		if err != nil {
 			return sampleParam(p)
@@ -372,7 +372,7 @@ func perturbParam(p tensorreaperv1.ParameterSpec, val string) string {
 		}
 		return strconv.FormatFloat(v, 'g', 6, 64)
 
-	case tensorreaperv1.ParameterTypeInt:
+	case gryviav1.ParameterTypeInt:
 		parsed, err := strconv.ParseInt(val, 10, 64)
 		if err != nil {
 			return sampleParam(p)
@@ -423,13 +423,13 @@ func copyMap(m map[string]string) map[string]string {
 }
 
 // NewSearchStrategy returns the appropriate search strategy for the given algorithm.
-func NewSearchStrategy(algo tensorreaperv1.SearchAlgorithm, direction tensorreaperv1.ObjectiveDirection) SearchStrategy {
+func NewSearchStrategy(algo gryviav1.SearchAlgorithm, direction gryviav1.ObjectiveDirection) SearchStrategy {
 	switch algo {
-	case tensorreaperv1.SearchAlgorithmGrid:
+	case gryviav1.SearchAlgorithmGrid:
 		return &GridSearch{}
-	case tensorreaperv1.SearchAlgorithmBayesian:
+	case gryviav1.SearchAlgorithmBayesian:
 		return &BayesianSearch{Direction: direction, GammaQuantile: 0.25}
-	case tensorreaperv1.SearchAlgorithmASHA:
+	case gryviav1.SearchAlgorithmASHA:
 		// ASHA uses random search for candidate generation; early stopping is handled separately.
 		return &RandomSearch{}
 	default:

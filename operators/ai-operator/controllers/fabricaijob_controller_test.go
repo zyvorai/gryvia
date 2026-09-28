@@ -13,12 +13,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/ai-operator/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 )
 
 func newAIJobTestScheme() *runtime.Scheme {
 	s := runtime.NewScheme()
-	_ = tensorreaperv1.AddToScheme(s)
+	_ = gryviav1.AddToScheme(s)
 	_ = corev1.AddToScheme(s)
 	_ = appsv1.AddToScheme(s)
 	return s
@@ -29,7 +29,7 @@ func newAIJobReconciler(objs ...client.Object) (*FabricAIJobReconciler, client.C
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(objs...).
-		WithStatusSubresource(&tensorreaperv1.FabricAIJob{}, &appsv1.StatefulSet{}).
+		WithStatusSubresource(&gryviav1.FabricAIJob{}, &appsv1.StatefulSet{}).
 		Build()
 	r := &FabricAIJobReconciler{
 		Client: fakeClient,
@@ -39,13 +39,13 @@ func newAIJobReconciler(objs ...client.Object) (*FabricAIJobReconciler, client.C
 	return r, fakeClient
 }
 
-func newTestAIJob(name, namespace string) *tensorreaperv1.FabricAIJob {
-	return &tensorreaperv1.FabricAIJob{
+func newTestAIJob(name, namespace string) *gryviav1.FabricAIJob {
+	return &gryviav1.FabricAIJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
 		},
-		Spec: tensorreaperv1.FabricAIJobSpec{
+		Spec: gryviav1.FabricAIJobSpec{
 			Type:    "training",
 			Image:   "pytorch/pytorch:latest",
 			GPUs:    4,
@@ -80,7 +80,7 @@ func TestAIJob_Reconcile_InitializesStatus(t *testing.T) {
 		t.Error("expected requeue after status initialization")
 	}
 
-	updated := &tensorreaperv1.FabricAIJob{}
+	updated := &gryviav1.FabricAIJob{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-job", Namespace: "default"}, updated); err != nil {
 		t.Fatalf("failed to get updated job: %v", err)
 	}
@@ -112,7 +112,7 @@ func TestAIJob_GetReplicaCount(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		job      *tensorreaperv1.FabricAIJob
+		job      *gryviav1.FabricAIJob
 		expected int32
 	}{
 		{
@@ -122,9 +122,9 @@ func TestAIJob_GetReplicaCount(t *testing.T) {
 		},
 		{
 			name: "distributed with nodes",
-			job: &tensorreaperv1.FabricAIJob{
-				Spec: tensorreaperv1.FabricAIJobSpec{
-					Distributed: &tensorreaperv1.DistributedConfig{
+			job: &gryviav1.FabricAIJob{
+				Spec: gryviav1.FabricAIJobSpec{
+					Distributed: &gryviav1.DistributedConfig{
 						Enabled: true,
 						Nodes:   4,
 					},
@@ -134,9 +134,9 @@ func TestAIJob_GetReplicaCount(t *testing.T) {
 		},
 		{
 			name: "distributed without nodes defaults to 1",
-			job: &tensorreaperv1.FabricAIJob{
-				Spec: tensorreaperv1.FabricAIJobSpec{
-					Distributed: &tensorreaperv1.DistributedConfig{
+			job: &gryviav1.FabricAIJob{
+				Spec: gryviav1.FabricAIJobSpec{
+					Distributed: &gryviav1.DistributedConfig{
 						Enabled: true,
 					},
 				},
@@ -145,9 +145,9 @@ func TestAIJob_GetReplicaCount(t *testing.T) {
 		},
 		{
 			name: "distributed disabled returns 1",
-			job: &tensorreaperv1.FabricAIJob{
-				Spec: tensorreaperv1.FabricAIJobSpec{
-					Distributed: &tensorreaperv1.DistributedConfig{
+			job: &gryviav1.FabricAIJob{
+				Spec: gryviav1.FabricAIJobSpec{
+					Distributed: &gryviav1.DistributedConfig{
 						Enabled: false,
 						Nodes:   4,
 					},
@@ -172,25 +172,25 @@ func TestAIJob_GetGPUsPerPod(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		job      *tensorreaperv1.FabricAIJob
+		job      *gryviav1.FabricAIJob
 		expected int32
 	}{
 		{
 			name:     "non-distributed uses spec GPUs",
-			job:      &tensorreaperv1.FabricAIJob{Spec: tensorreaperv1.FabricAIJobSpec{GPUs: 4}},
+			job:      &gryviav1.FabricAIJob{Spec: gryviav1.FabricAIJobSpec{GPUs: 4}},
 			expected: 4,
 		},
 		{
 			name:     "non-distributed zero GPUs defaults to 1",
-			job:      &tensorreaperv1.FabricAIJob{Spec: tensorreaperv1.FabricAIJobSpec{GPUs: 0}},
+			job:      &gryviav1.FabricAIJob{Spec: gryviav1.FabricAIJobSpec{GPUs: 0}},
 			expected: 1,
 		},
 		{
 			name: "distributed uses GpusPerNode",
-			job: &tensorreaperv1.FabricAIJob{
-				Spec: tensorreaperv1.FabricAIJobSpec{
+			job: &gryviav1.FabricAIJob{
+				Spec: gryviav1.FabricAIJobSpec{
 					GPUs: 8,
-					Distributed: &tensorreaperv1.DistributedConfig{
+					Distributed: &gryviav1.DistributedConfig{
 						Enabled:     true,
 						GpusPerNode: 4,
 					},
@@ -200,10 +200,10 @@ func TestAIJob_GetGPUsPerPod(t *testing.T) {
 		},
 		{
 			name: "distributed without GpusPerNode defaults to 1",
-			job: &tensorreaperv1.FabricAIJob{
-				Spec: tensorreaperv1.FabricAIJobSpec{
+			job: &gryviav1.FabricAIJob{
+				Spec: gryviav1.FabricAIJobSpec{
 					GPUs: 8,
-					Distributed: &tensorreaperv1.DistributedConfig{
+					Distributed: &gryviav1.DistributedConfig{
 						Enabled: true,
 					},
 				},
@@ -231,11 +231,11 @@ func TestAIJob_BuildNodeSelector(t *testing.T) {
 	job.Spec.NodeSelector = map[string]string{"zone": "us-east-1a"}
 
 	selector := r.buildNodeSelector(job)
-	if selector["tensorreaper.ai/gpu"] != "H100" {
-		t.Errorf("expected GPU selector H100, got %s", selector["tensorreaper.ai/gpu"])
+	if selector["gryvia.io/gpu"] != "H100" {
+		t.Errorf("expected GPU selector H100, got %s", selector["gryvia.io/gpu"])
 	}
-	if selector["tensorreaper.ai/rdma"] != "true" {
-		t.Errorf("expected RDMA selector true, got %s", selector["tensorreaper.ai/rdma"])
+	if selector["gryvia.io/rdma"] != "true" {
+		t.Errorf("expected RDMA selector true, got %s", selector["gryvia.io/rdma"])
 	}
 	if selector["zone"] != "us-east-1a" {
 		t.Errorf("expected zone selector us-east-1a, got %s", selector["zone"])
@@ -245,10 +245,10 @@ func TestAIJob_BuildNodeSelector(t *testing.T) {
 	job.Spec.GpuType = "any"
 	job.Spec.Network = "standard"
 	selector = r.buildNodeSelector(job)
-	if _, ok := selector["tensorreaper.ai/gpu"]; ok {
+	if _, ok := selector["gryvia.io/gpu"]; ok {
 		t.Error("expected no GPU selector for 'any' GPU type")
 	}
-	if _, ok := selector["tensorreaper.ai/rdma"]; ok {
+	if _, ok := selector["gryvia.io/rdma"]; ok {
 		t.Error("expected no RDMA selector for standard network")
 	}
 }
@@ -267,7 +267,7 @@ func TestAIJob_BuildEnvVars(t *testing.T) {
 	}
 
 	// Distributed: should add MASTER_ADDR, MASTER_PORT, WORLD_SIZE, NCCL_DEBUG
-	job.Spec.Distributed = &tensorreaperv1.DistributedConfig{
+	job.Spec.Distributed = &gryviav1.DistributedConfig{
 		Enabled:     true,
 		Nodes:       2,
 		GpusPerNode: 4,
@@ -325,7 +325,7 @@ func TestAIJob_BuildVolumeMounts(t *testing.T) {
 	}
 
 	// Distributed - should add shared memory
-	job.Spec.Distributed = &tensorreaperv1.DistributedConfig{Enabled: true}
+	job.Spec.Distributed = &gryviav1.DistributedConfig{Enabled: true}
 	mounts = r.buildVolumeMounts(job)
 	foundShm := false
 	for _, m := range mounts {
@@ -356,7 +356,7 @@ func TestAIJob_BuildStatefulSet(t *testing.T) {
 	}
 
 	// Check RDMA annotation
-	if sts.Spec.Template.Annotations["tensorreaper.ai/rdma"] != "true" {
+	if sts.Spec.Template.Annotations["gryvia.io/rdma"] != "true" {
 		t.Error("expected RDMA annotation on pod template")
 	}
 

@@ -12,7 +12,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/ai-operator/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 )
 
 // FabricFederationReconciler reconciles a FabricFederation object
@@ -22,10 +22,10 @@ type FabricFederationReconciler struct {
 	Log    logr.Logger
 }
 
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricfederations,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricfederations/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricfederations/finalizers,verbs=update
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricaijobs,verbs=get;list;watch;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricfederations,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricfederations/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricfederations/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch;update;patch
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
@@ -33,7 +33,7 @@ func (r *FabricFederationReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	log := r.Log.WithValues("fabricfederation", req.NamespacedName)
 
 	// Fetch the FabricFederation instance
-	federation := &tensorreaperv1.FabricFederation{}
+	federation := &gryviav1.FabricFederation{}
 	err := r.Get(ctx, req.NamespacedName, federation)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -61,7 +61,7 @@ func (r *FabricFederationReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	return result, nil
 }
 
-func (r *FabricFederationReconciler) reconcileFederation(ctx context.Context, federation *tensorreaperv1.FabricFederation) (ctrl.Result, error) {
+func (r *FabricFederationReconciler) reconcileFederation(ctx context.Context, federation *gryviav1.FabricFederation) (ctrl.Result, error) {
 	log := r.Log.WithValues("federation", federation.Name)
 
 	// Health check all member clusters
@@ -101,15 +101,15 @@ func (r *FabricFederationReconciler) reconcileFederation(ctx context.Context, fe
 	return ctrl.Result{RequeueAfter: requeueAfter}, nil
 }
 
-func (r *FabricFederationReconciler) healthCheckClusters(ctx context.Context, federation *tensorreaperv1.FabricFederation) []tensorreaperv1.FederationClusterStatus {
-	var statuses []tensorreaperv1.FederationClusterStatus
+func (r *FabricFederationReconciler) healthCheckClusters(ctx context.Context, federation *gryviav1.FabricFederation) []gryviav1.FederationClusterStatus {
+	var statuses []gryviav1.FederationClusterStatus
 
 	for _, cluster := range federation.Spec.Clusters {
 		if !cluster.Enabled {
 			continue
 		}
 
-		status := tensorreaperv1.FederationClusterStatus{
+		status := gryviav1.FederationClusterStatus{
 			Name: cluster.Name,
 		}
 
@@ -136,7 +136,7 @@ func (r *FabricFederationReconciler) healthCheckClusters(ctx context.Context, fe
 	return statuses
 }
 
-func (r *FabricFederationReconciler) checkClusterHealth(ctx context.Context, cluster tensorreaperv1.FederationCluster) bool {
+func (r *FabricFederationReconciler) checkClusterHealth(ctx context.Context, cluster gryviav1.FederationCluster) bool {
 	// In a production implementation, this would:
 	// 1. Load kubeconfig from the referenced secret
 	// 2. Create a client for the remote cluster
@@ -152,7 +152,7 @@ func (r *FabricFederationReconciler) checkClusterHealth(ctx context.Context, clu
 	return true
 }
 
-func (r *FabricFederationReconciler) calculateClusterUtilization(cluster tensorreaperv1.FederationCluster) *tensorreaperv1.FederationUtilization {
+func (r *FabricFederationReconciler) calculateClusterUtilization(cluster gryviav1.FederationCluster) *gryviav1.FederationUtilization {
 	if cluster.Capacity == nil {
 		return nil
 	}
@@ -170,14 +170,14 @@ func (r *FabricFederationReconciler) calculateClusterUtilization(cluster tensorr
 		percentage = float64(usedGPUs) / float64(totalGPUs) * 100
 	}
 
-	return &tensorreaperv1.FederationUtilization{
+	return &gryviav1.FederationUtilization{
 		GPUs:       usedGPUs,
 		Percentage: percentage,
 	}
 }
 
-func (r *FabricFederationReconciler) calculateAggregateStats(federation *tensorreaperv1.FabricFederation) *tensorreaperv1.FederationAggregateStats {
-	stats := &tensorreaperv1.FederationAggregateStats{}
+func (r *FabricFederationReconciler) calculateAggregateStats(federation *gryviav1.FabricFederation) *gryviav1.FederationAggregateStats {
+	stats := &gryviav1.FederationAggregateStats{}
 
 	for _, cluster := range federation.Spec.Clusters {
 		if !cluster.Enabled || cluster.Capacity == nil {
@@ -203,11 +203,11 @@ func (r *FabricFederationReconciler) calculateAggregateStats(federation *tensorr
 	return stats
 }
 
-func (r *FabricFederationReconciler) calculateJobDistribution(ctx context.Context, federation *tensorreaperv1.FabricFederation) map[string]int {
+func (r *FabricFederationReconciler) calculateJobDistribution(ctx context.Context, federation *gryviav1.FabricFederation) map[string]int {
 	distribution := make(map[string]int)
 
 	// List all jobs in the local cluster
-	jobList := &tensorreaperv1.FabricAIJobList{}
+	jobList := &gryviav1.FabricAIJobList{}
 	if err := r.List(ctx, jobList); err != nil {
 		return distribution
 	}
@@ -230,7 +230,7 @@ func (r *FabricFederationReconciler) calculateJobDistribution(ctx context.Contex
 	return distribution
 }
 
-func (r *FabricFederationReconciler) determineFederationState(statuses []tensorreaperv1.FederationClusterStatus) string {
+func (r *FabricFederationReconciler) determineFederationState(statuses []gryviav1.FederationClusterStatus) string {
 	if len(statuses) == 0 {
 		return "unavailable"
 	}
@@ -251,7 +251,7 @@ func (r *FabricFederationReconciler) determineFederationState(statuses []tensorr
 	return "degraded"
 }
 
-func (r *FabricFederationReconciler) updateFederationCondition(federation *tensorreaperv1.FabricFederation, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *FabricFederationReconciler) updateFederationCondition(federation *gryviav1.FabricFederation, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -277,6 +277,6 @@ func (r *FabricFederationReconciler) updateFederationCondition(federation *tenso
 // SetupWithManager sets up the controller with the Manager.
 func (r *FabricFederationReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tensorreaperv1.FabricFederation{}).
+		For(&gryviav1.FabricFederation{}).
 		Complete(r)
 }

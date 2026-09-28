@@ -18,40 +18,40 @@ import (
 
 // FlowEvent is the userspace representation of a kernel flow_event.
 type FlowEvent struct {
-	Timestamp  uint64
-	SrcIP      uint32
-	DstIP      uint32
-	SrcPort    uint16
-	DstPort    uint16
-	Protocol   uint8
-	Verdict    uint8
-	Bytes      uint32
-	LatencyNs  uint64
-	PID        uint32
-	Comm       string
+	Timestamp uint64
+	SrcIP     uint32
+	DstIP     uint32
+	SrcPort   uint16
+	DstPort   uint16
+	Protocol  uint8
+	Verdict   uint8
+	Bytes     uint32
+	LatencyNs uint64
+	PID       uint32
+	Comm      string
 
 	// Enriched fields (populated after decoding).
-	SrcPod       string
-	DstPod       string
-	SrcService   string
-	DstService   string
-	Namespace    string
+	SrcPod     string
+	DstPod     string
+	SrcService string
+	DstService string
+	Namespace  string
 }
 
 // rawFlowEvent mirrors the kernel struct layout for binary decoding.
 type rawFlowEvent struct {
-	Timestamp  uint64
-	SrcIP      uint32
-	DstIP      uint32
-	SrcPort    uint16
-	DstPort    uint16
-	Protocol   uint8
-	Verdict    uint8
-	_          [2]byte // padding
-	Bytes      uint32
-	LatencyNs  uint64
-	PID        uint32
-	Comm       [16]byte
+	Timestamp uint64
+	SrcIP     uint32
+	DstIP     uint32
+	SrcPort   uint16
+	DstPort   uint16
+	Protocol  uint8
+	Verdict   uint8
+	_         [2]byte // padding
+	Bytes     uint32
+	LatencyNs uint64
+	PID       uint32
+	Comm      [16]byte
 }
 
 // Decoder reads from one or more perf.Reader instances and emits

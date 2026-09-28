@@ -1,8 +1,8 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: tensorreaper-gpu-alerts
-  namespace: tensorreaper-system
+  name: gryvia-gpu-alerts
+  namespace: gryvia-system
 data:
   gpu-alerts.yaml: |
     groups:

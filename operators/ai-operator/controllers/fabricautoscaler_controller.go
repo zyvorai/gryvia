@@ -13,7 +13,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/ai-operator/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 )
 
 const (
@@ -35,10 +35,10 @@ type FabricAutoScalerReconciler struct {
 	Log    logr.Logger
 }
 
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricautoscalers,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricautoscalers/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricautoscalers/finalizers,verbs=update
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricaijobs,verbs=get;list;watch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricautoscalers,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricautoscalers/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricautoscalers/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop
@@ -46,7 +46,7 @@ func (r *FabricAutoScalerReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	log := r.Log.WithValues("fabricautoscaler", req.NamespacedName)
 
 	// Fetch the FabricAutoScaler instance
-	scaler := &tensorreaperv1.FabricAutoScaler{}
+	scaler := &gryviav1.FabricAutoScaler{}
 	err := r.Get(ctx, req.NamespacedName, scaler)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -72,7 +72,7 @@ func (r *FabricAutoScalerReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	return result, nil
 }
 
-func (r *FabricAutoScalerReconciler) reconcileAutoScaler(ctx context.Context, scaler *tensorreaperv1.FabricAutoScaler) (ctrl.Result, error) {
+func (r *FabricAutoScalerReconciler) reconcileAutoScaler(ctx context.Context, scaler *gryviav1.FabricAutoScaler) (ctrl.Result, error) {
 	log := r.Log.WithValues("fabricautoscaler", scaler.Name)
 
 	// Collect current metrics
@@ -187,11 +187,11 @@ func (r *FabricAutoScalerReconciler) reconcileAutoScaler(ctx context.Context, sc
 	return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 }
 
-func (r *FabricAutoScalerReconciler) collectMetrics(ctx context.Context, scaler *tensorreaperv1.FabricAutoScaler) (*tensorreaperv1.AutoScalerMetrics, error) {
-	metrics := &tensorreaperv1.AutoScalerMetrics{}
+func (r *FabricAutoScalerReconciler) collectMetrics(ctx context.Context, scaler *gryviav1.FabricAutoScaler) (*gryviav1.AutoScalerMetrics, error) {
+	metrics := &gryviav1.AutoScalerMetrics{}
 
 	// Count pending jobs for the referenced queue
-	jobList := &tensorreaperv1.FabricAIJobList{}
+	jobList := &gryviav1.FabricAIJobList{}
 	if err := r.List(ctx, jobList); err != nil {
 		return nil, fmt.Errorf("failed to list FabricAIJobs: %w", err)
 	}
@@ -209,7 +209,7 @@ func (r *FabricAutoScalerReconciler) collectMetrics(ctx context.Context, scaler 
 	// Calculate GPU utilization from nodes
 	nodeList := &corev1.NodeList{}
 	if err := r.List(ctx, nodeList, client.MatchingLabels{
-		"tensorreaper.ai/gpu": scaler.Spec.GpuType,
+		"gryvia.io/gpu": scaler.Spec.GpuType,
 	}); err != nil {
 		return nil, fmt.Errorf("failed to list nodes: %w", err)
 	}
@@ -239,7 +239,7 @@ func (r *FabricAutoScalerReconciler) countGPUNodes(ctx context.Context, gpuType 
 	nodeList := &corev1.NodeList{}
 	labels := map[string]string{}
 	if gpuType != "" {
-		labels["tensorreaper.ai/gpu"] = gpuType
+		labels["gryvia.io/gpu"] = gpuType
 	}
 
 	if err := r.List(ctx, nodeList, client.MatchingLabels(labels)); err != nil {
@@ -249,7 +249,7 @@ func (r *FabricAutoScalerReconciler) countGPUNodes(ctx context.Context, gpuType 
 	return int32(len(nodeList.Items)), nil
 }
 
-func (r *FabricAutoScalerReconciler) shouldScaleUp(scaler *tensorreaperv1.FabricAutoScaler, metrics *tensorreaperv1.AutoScalerMetrics) bool {
+func (r *FabricAutoScalerReconciler) shouldScaleUp(scaler *gryviav1.FabricAutoScaler, metrics *gryviav1.AutoScalerMetrics) bool {
 	if scaler.Spec.ScaleUpPolicy == nil || metrics == nil {
 		return false
 	}
@@ -274,7 +274,7 @@ func (r *FabricAutoScalerReconciler) shouldScaleUp(scaler *tensorreaperv1.Fabric
 	return false
 }
 
-func (r *FabricAutoScalerReconciler) shouldScaleDown(scaler *tensorreaperv1.FabricAutoScaler, metrics *tensorreaperv1.AutoScalerMetrics) bool {
+func (r *FabricAutoScalerReconciler) shouldScaleDown(scaler *gryviav1.FabricAutoScaler, metrics *gryviav1.AutoScalerMetrics) bool {
 	if scaler.Spec.ScaleDownPolicy == nil || metrics == nil {
 		return false
 	}
@@ -289,7 +289,7 @@ func (r *FabricAutoScalerReconciler) shouldScaleDown(scaler *tensorreaperv1.Fabr
 	return false
 }
 
-func (r *FabricAutoScalerReconciler) isCooldownExpired(scaler *tensorreaperv1.FabricAutoScaler, isScaleUp bool) bool {
+func (r *FabricAutoScalerReconciler) isCooldownExpired(scaler *gryviav1.FabricAutoScaler, isScaleUp bool) bool {
 	if scaler.Status.LastScaleTime == nil {
 		return true
 	}
@@ -310,7 +310,7 @@ func (r *FabricAutoScalerReconciler) isCooldownExpired(scaler *tensorreaperv1.Fa
 	return time.Since(scaler.Status.LastScaleTime.Time) >= cooldown
 }
 
-func (r *FabricAutoScalerReconciler) updateCondition(scaler *tensorreaperv1.FabricAutoScaler, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *FabricAutoScalerReconciler) updateCondition(scaler *gryviav1.FabricAutoScaler, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -343,6 +343,6 @@ func (r *FabricAutoScalerReconciler) updateCondition(scaler *tensorreaperv1.Fabr
 // SetupWithManager sets up the controller with the Manager.
 func (r *FabricAutoScalerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tensorreaperv1.FabricAutoScaler{}).
+		For(&gryviav1.FabricAutoScaler{}).
 		Complete(r)
 }

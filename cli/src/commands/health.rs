@@ -4,10 +4,10 @@ use kube::core::DynamicObject;
 use prettytable::{Table, Row, Cell, format};
 use colored::*;
 
-use crate::client::TensorReaperClient;
+use crate::client::GryviaClient;
 use crate::types::*;
 
-pub async fn execute(client: &TensorReaperClient, component: &str) -> Result<()> {
+pub async fn execute(client: &GryviaClient, component: &str) -> Result<()> {
     println!("{}", "━━━ Cluster Health Check ━━━".bold().cyan());
     println!();
 
@@ -28,7 +28,7 @@ pub async fn execute(client: &TensorReaperClient, component: &str) -> Result<()>
     Ok(())
 }
 
-async fn check_gpu_health(client: &TensorReaperClient) -> Result<()> {
+async fn check_gpu_health(client: &GryviaClient) -> Result<()> {
     println!("{}", "GPU Nodes:".bold().underline());
 
     let api: Api<FabricGpuNode> = Api::all(client.kube_client.clone());
@@ -73,10 +73,10 @@ async fn check_gpu_health(client: &TensorReaperClient) -> Result<()> {
     Ok(())
 }
 
-async fn check_storage_health(client: &TensorReaperClient) -> Result<()> {
+async fn check_storage_health(client: &GryviaClient) -> Result<()> {
     println!("{}", "Storage:".bold().underline());
 
-    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("tensorreaper.ai", "v1", "FabricStorage"));
+    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("gryvia.io", "v1", "FabricStorage"));
     let api: Api<DynamicObject> = Api::all_with(
         client.kube_client.clone(),
         &ar,
@@ -147,10 +147,10 @@ async fn check_storage_health(client: &TensorReaperClient) -> Result<()> {
     Ok(())
 }
 
-async fn check_network_health(client: &TensorReaperClient) -> Result<()> {
+async fn check_network_health(client: &GryviaClient) -> Result<()> {
     println!("{}", "Network:".bold().underline());
 
-    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("tensorreaper.ai", "v1", "FabricNetwork"));
+    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("gryvia.io", "v1", "FabricNetwork"));
     let api: Api<DynamicObject> = Api::all_with(
         client.kube_client.clone(),
         &ar,

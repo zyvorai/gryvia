@@ -20,7 +20,7 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: tensorreaper-api-gateway
+  IMAGE_NAME: gryvia-api-gateway
 
 jobs:
   test:

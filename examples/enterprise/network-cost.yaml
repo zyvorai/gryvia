@@ -1,11 +1,11 @@
 # FabricNetworkCost - Track and report network costs per team and zone
 # Monitors network traffic across production namespaces, applies zone-based
 # pricing, and generates hourly cost reports attributed to specific teams.
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricNetworkCost
 metadata:
   name: production-network-costs
-  namespace: tensorreaper-system
+  namespace: gryvia-system
 spec:
   # Namespaces to track network costs for
   targetNamespaces:

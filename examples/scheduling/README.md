@@ -1,6 +1,6 @@
 # Scheduling Examples
 
-Example YAML manifests for TensorReaper GPU scheduling CRDs covering elastic training, gang scheduling, and priority-based preemption.
+Example YAML manifests for Gryvia GPU scheduling CRDs covering elastic training, gang scheduling, and priority-based preemption.
 
 ## Examples
 

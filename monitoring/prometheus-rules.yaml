@@ -1,19 +1,19 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: tensorreaper-prometheus-rules
+  name: gryvia-prometheus-rules
   namespace: monitoring
   labels:
     app: prometheus
 data:
-  tensorreaper-alerts.yaml: |
+  gryvia-alerts.yaml: |
     groups:
-    - name: tensorreaper_gpu_alerts
+    - name: gryvia_gpu_alerts
       interval: 30s
       rules:
       # GPU Temperature Alerts
       - alert: GPUHighTemperature
-        expr: tensorreaper_gpu_temperature_celsius > 85
+        expr: gryvia_gpu_temperature_celsius > 85
         for: 5m
         labels:
           severity: warning
@@ -23,7 +23,7 @@ data:
           description: "GPU temperature is {{ $value }}°C (threshold: 85°C)"
 
       - alert: GPUCriticalTemperature
-        expr: tensorreaper_gpu_temperature_celsius > 90
+        expr: gryvia_gpu_temperature_celsius > 90
         for: 2m
         labels:
           severity: critical
@@ -34,7 +34,7 @@ data:
 
       # GPU Utilization Alerts
       - alert: GPULowUtilization
-        expr: tensorreaper_gpu_utilization_percent < 20 and tensorreaper_job_running == 1
+        expr: gryvia_gpu_utilization_percent < 20 and gryvia_job_running == 1
         for: 30m
         labels:
           severity: info
@@ -44,7 +44,7 @@ data:
           description: "GPU {{ $labels.gpu_id }} utilization is {{ $value }}% for 30 minutes"
 
       - alert: GPUMemoryHigh
-        expr: (tensorreaper_gpu_memory_used_bytes / tensorreaper_gpu_memory_total_bytes) > 0.95
+        expr: (gryvia_gpu_memory_used_bytes / gryvia_gpu_memory_total_bytes) > 0.95
         for: 5m
         labels:
           severity: warning
@@ -55,7 +55,7 @@ data:
 
       # GPU Health Alerts
       - alert: GPUUnhealthy
-        expr: tensorreaper_gpu_health_status != 1
+        expr: gryvia_gpu_health_status != 1
         for: 2m
         labels:
           severity: critical
@@ -65,7 +65,7 @@ data:
           description: "GPU {{ $labels.gpu_id }} health check failed"
 
       - alert: GPUNodeDown
-        expr: up{job="tensorreaper-gpu-metrics"} == 0
+        expr: up{job="gryvia-gpu-metrics"} == 0
         for: 2m
         labels:
           severity: critical
@@ -74,12 +74,12 @@ data:
           summary: "GPU node {{ $labels.node }} is down"
           description: "Cannot scrape GPU metrics from {{ $labels.node }}"
 
-    - name: tensorreaper_job_alerts
+    - name: gryvia_job_alerts
       interval: 30s
       rules:
       # Job Alerts
       - alert: JobFailed
-        expr: tensorreaper_job_failed_total > 0
+        expr: gryvia_job_failed_total > 0
         for: 1m
         labels:
           severity: warning
@@ -89,7 +89,7 @@ data:
           description: "Job has failed - check logs for details"
 
       - alert: JobStuckPending
-        expr: tensorreaper_job_pending_duration_seconds > 1800
+        expr: gryvia_job_pending_duration_seconds > 1800
         for: 5m
         labels:
           severity: warning
@@ -99,7 +99,7 @@ data:
           description: "Job pending for {{ $value | humanizeDuration }}"
 
       - alert: HighJobQueueDepth
-        expr: tensorreaper_queue_depth > 10
+        expr: gryvia_queue_depth > 10
         for: 15m
         labels:
           severity: info
@@ -109,7 +109,7 @@ data:
           description: "{{ $value }} jobs queued for more than 15 minutes"
 
       - alert: JobCompletionRateLow
-        expr: rate(tensorreaper_job_completed_total[1h]) < 0.1
+        expr: rate(gryvia_job_completed_total[1h]) < 0.1
         for: 30m
         labels:
           severity: info
@@ -118,12 +118,12 @@ data:
           summary: "Low job completion rate"
           description: "Only {{ $value }} jobs completed per second in the last hour"
 
-    - name: tensorreaper_quota_alerts
+    - name: gryvia_quota_alerts
       interval: 60s
       rules:
       # Quota Alerts
       - alert: QuotaAlmostExceeded
-        expr: (tensorreaper_quota_gpus_allocated / tensorreaper_quota_gpus_max) > 0.9
+        expr: (gryvia_quota_gpus_allocated / gryvia_quota_gpus_max) > 0.9
         for: 5m
         labels:
           severity: warning
@@ -133,7 +133,7 @@ data:
           description: "{{ $value | humanizePercentage }} of GPU quota used"
 
       - alert: QuotaExceeded
-        expr: tensorreaper_quota_gpus_allocated > tensorreaper_quota_gpus_max
+        expr: gryvia_quota_gpus_allocated > gryvia_quota_gpus_max
         for: 1m
         labels:
           severity: critical
@@ -144,7 +144,7 @@ data:
 
       # Budget Alerts
       - alert: BudgetAlertThreshold
-        expr: tensorreaper_budget_percent_used > tensorreaper_budget_alert_threshold
+        expr: gryvia_budget_percent_used > gryvia_budget_alert_threshold
         for: 5m
         labels:
           severity: warning
@@ -154,7 +154,7 @@ data:
           description: "{{ $value }}% of monthly budget used (threshold: {{ $labels.threshold }}%)"
 
       - alert: BudgetExceeded
-        expr: tensorreaper_budget_percent_used > 100
+        expr: gryvia_budget_percent_used > 100
         for: 1m
         labels:
           severity: critical
@@ -164,7 +164,7 @@ data:
           description: "Spent ${{ $labels.spent }} of ${{ $labels.budget }} budget"
 
       - alert: BudgetProjectedOverrun
-        expr: tensorreaper_budget_projected_spend > tensorreaper_budget_monthly_limit
+        expr: gryvia_budget_projected_spend > gryvia_budget_monthly_limit
         for: 1h
         labels:
           severity: warning
@@ -173,12 +173,12 @@ data:
           summary: "Team {{ $labels.team }} projected to exceed budget"
           description: "Projected spend: ${{ $value }}, Budget: ${{ $labels.budget }}"
 
-    - name: tensorreaper_storage_alerts
+    - name: gryvia_storage_alerts
       interval: 60s
       rules:
       # Storage Alerts
       - alert: StorageBackendUnhealthy
-        expr: tensorreaper_storage_health_status != 1
+        expr: gryvia_storage_health_status != 1
         for: 2m
         labels:
           severity: critical
@@ -188,7 +188,7 @@ data:
           description: "Health check failed for {{ $labels.backend_type }}"
 
       - alert: StorageHighLatency
-        expr: tensorreaper_storage_latency_ms > 50
+        expr: gryvia_storage_latency_ms > 50
         for: 10m
         labels:
           severity: warning
@@ -198,7 +198,7 @@ data:
           description: "Latency is {{ $value }}ms (threshold: 50ms)"
 
       - alert: StorageLowThroughput
-        expr: tensorreaper_storage_throughput_mbps < 1000
+        expr: gryvia_storage_throughput_mbps < 1000
         for: 15m
         labels:
           severity: warning
@@ -207,12 +207,12 @@ data:
           summary: "Low storage throughput on {{ $labels.backend_name }}"
           description: "Throughput is {{ $value }}MB/s (expected: >1000MB/s)"
 
-    - name: tensorreaper_network_alerts
+    - name: gryvia_network_alerts
       interval: 60s
       rules:
       # Network Alerts
       - alert: RDMADeviceDown
-        expr: tensorreaper_rdma_device_status != 1
+        expr: gryvia_rdma_device_status != 1
         for: 2m
         labels:
           severity: critical
@@ -222,7 +222,7 @@ data:
           description: "RDMA device is not operational"
 
       - alert: HighNetworkErrors
-        expr: rate(tensorreaper_network_errors_total[5m]) > 10
+        expr: rate(gryvia_network_errors_total[5m]) > 10
         for: 5m
         labels:
           severity: warning
@@ -232,7 +232,7 @@ data:
           description: "{{ $value }} errors/second on interface {{ $labels.interface }}"
 
       - alert: SRIOVVFExhausted
-        expr: tensorreaper_sriov_vf_available == 0
+        expr: gryvia_sriov_vf_available == 0
         for: 5m
         labels:
           severity: warning
@@ -241,22 +241,22 @@ data:
           summary: "SR-IOV VFs exhausted on {{ $labels.node }}"
           description: "No available VFs on interface {{ $labels.interface }}"
 
-    - name: tensorreaper_operator_alerts
+    - name: gryvia_operator_alerts
       interval: 60s
       rules:
       # Operator Health
       - alert: OperatorDown
-        expr: up{job=~"tensorreaper-.*-operator"} == 0
+        expr: up{job=~"gryvia-.*-operator"} == 0
         for: 2m
         labels:
           severity: critical
           component: operator
         annotations:
-          summary: "TensorReaper operator {{ $labels.job }} is down"
+          summary: "Gryvia operator {{ $labels.job }} is down"
           description: "Operator pod is not responding"
 
       - alert: OperatorHighErrorRate
-        expr: rate(tensorreaper_operator_errors_total[5m]) > 1
+        expr: rate(gryvia_operator_errors_total[5m]) > 1
         for: 5m
         labels:
           severity: warning
@@ -266,7 +266,7 @@ data:
           description: "{{ $value }} errors/second in reconciliation loop"
 
       - alert: OperatorReconcileSlowdown
-        expr: tensorreaper_operator_reconcile_duration_seconds > 10
+        expr: gryvia_operator_reconcile_duration_seconds > 10
         for: 5m
         labels:
           severity: warning

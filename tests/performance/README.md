@@ -1,6 +1,6 @@
-# TensorReaper Performance Benchmarks
+# Gryvia Performance Benchmarks
 
-Performance benchmarking tools for TensorReaper platform.
+Performance benchmarking tools for Gryvia platform.
 
 ## Benchmarks
 

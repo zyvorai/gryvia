@@ -71,3 +71,6 @@ _output/
 *.crt
 secrets/
 .env
+
+website/.docusaurus/
+website/build/

@@ -17,7 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/network-intelligence/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/network-intelligence/api/v1"
 )
 
 // FabricFlowPolicyReconciler reconciles a FabricFlowPolicy object
@@ -26,9 +26,9 @@ type FabricFlowPolicyReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricflowpolicies,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricflowpolicies/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricflowpolicies/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricflowpolicies,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricflowpolicies/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricflowpolicies/finalizers,verbs=update
 //+kubebuilder:rbac:groups=cilium.io,resources=ciliumnetworkpolicies,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
@@ -37,7 +37,7 @@ func (r *FabricFlowPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	logger := log.FromContext(ctx)
 
 	// Fetch the FabricFlowPolicy instance
-	policy := &tensorreaperv1.FabricFlowPolicy{}
+	policy := &gryviav1.FabricFlowPolicy{}
 	if err := r.Get(ctx, req.NamespacedName, policy); err != nil {
 		if errors.IsNotFound(err) {
 			logger.Info("FabricFlowPolicy resource not found, ignoring since object must be deleted")
@@ -108,7 +108,7 @@ func (r *FabricFlowPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Req
 }
 
 // buildCiliumNetworkPolicy translates a FabricFlowPolicy into an unstructured CiliumNetworkPolicy
-func (r *FabricFlowPolicyReconciler) buildCiliumNetworkPolicy(policy *tensorreaperv1.FabricFlowPolicy) (*unstructured.Unstructured, error) {
+func (r *FabricFlowPolicyReconciler) buildCiliumNetworkPolicy(policy *gryviav1.FabricFlowPolicy) (*unstructured.Unstructured, error) {
 	ciliumPolicyName := fmt.Sprintf("ffp-%s", policy.Name)
 
 	// Build endpoint selector from source labels
@@ -185,8 +185,8 @@ func (r *FabricFlowPolicyReconciler) buildCiliumNetworkPolicy(policy *tensorreap
 
 	// Build annotations based on intent
 	annotations := map[string]interface{}{
-		"tensorreaper.ai/managed-by": "netpredator",
-		"tensorreaper.ai/intent":     policy.Spec.Intent,
+		"gryvia.io/managed-by": "netpredator",
+		"gryvia.io/intent":     policy.Spec.Intent,
 	}
 	annotations = r.applyIntentAnnotations(annotations, policy.Spec.Intent)
 
@@ -211,18 +211,18 @@ func (r *FabricFlowPolicyReconciler) applyIntentAnnotations(annotations map[stri
 	switch intent {
 	case "low-latency":
 		annotations["cilium.io/priority"] = "high"
-		annotations["tensorreaper.ai/qos-class"] = "low-latency"
-		annotations["tensorreaper.ai/dscp"] = "46" // EF (Expedited Forwarding)
+		annotations["gryvia.io/qos-class"] = "low-latency"
+		annotations["gryvia.io/dscp"] = "46" // EF (Expedited Forwarding)
 	case "high-throughput":
 		annotations["cilium.io/priority"] = "normal"
-		annotations["tensorreaper.ai/qos-class"] = "high-throughput"
-		annotations["tensorreaper.ai/dscp"] = "34" // AF41
+		annotations["gryvia.io/qos-class"] = "high-throughput"
+		annotations["gryvia.io/dscp"] = "34" // AF41
 	case "secure":
 		annotations["cilium.io/priority"] = "high"
-		annotations["tensorreaper.ai/qos-class"] = "secure"
-		annotations["tensorreaper.ai/encryption"] = "wireguard"
+		annotations["gryvia.io/qos-class"] = "secure"
+		annotations["gryvia.io/encryption"] = "wireguard"
 	default:
-		annotations["tensorreaper.ai/qos-class"] = "default"
+		annotations["gryvia.io/qos-class"] = "default"
 	}
 	return annotations
 }
@@ -243,7 +243,7 @@ func mapProtocol(protocol string) string {
 
 // queryMatchedFlows queries Hubble for the number of flows matching this policy.
 // This is a best-effort operation; if Hubble is unavailable, returns 0.
-func (r *FabricFlowPolicyReconciler) queryMatchedFlows(ctx context.Context, policy *tensorreaperv1.FabricFlowPolicy) int64 {
+func (r *FabricFlowPolicyReconciler) queryMatchedFlows(ctx context.Context, policy *gryviav1.FabricFlowPolicy) int64 {
 	logger := log.FromContext(ctx)
 
 	// Look for the Hubble relay service to query flow counts
@@ -266,7 +266,7 @@ func (r *FabricFlowPolicyReconciler) queryMatchedFlows(ctx context.Context, poli
 // updateStatus updates the FabricFlowPolicy status subresource
 func (r *FabricFlowPolicyReconciler) updateStatus(ctx context.Context, namespacedName types.NamespacedName, phase, ciliumPolicyRef string, enforced bool, matchedFlows int64) {
 	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		policy := &tensorreaperv1.FabricFlowPolicy{}
+		policy := &gryviav1.FabricFlowPolicy{}
 		if err := r.Get(ctx, namespacedName, policy); err != nil {
 			return err
 		}
@@ -284,6 +284,6 @@ func (r *FabricFlowPolicyReconciler) updateStatus(ctx context.Context, namespace
 // SetupWithManager sets up the controller with the Manager
 func (r *FabricFlowPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tensorreaperv1.FabricFlowPolicy{}).
+		For(&gryviav1.FabricFlowPolicy{}).
 		Complete(r)
 }

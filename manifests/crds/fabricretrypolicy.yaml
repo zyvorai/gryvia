@@ -3,9 +3,9 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: fabricretrypolicies.tensorreaper.ai
+  name: fabricretrypolicies.gryvia.io
 spec:
-  group: tensorreaper.ai
+  group: gryvia.io
   versions:
     - name: v1
       served: true
@@ -185,7 +185,7 @@ spec:
 
 ---
 # Example: Standard Retry Policy
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricRetryPolicy
 metadata:
   name: standard-retry
@@ -217,7 +217,7 @@ spec:
 
 ---
 # Example: Aggressive Retry with Resource Adjustment
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricRetryPolicy
 metadata:
   name: adaptive-retry
@@ -258,7 +258,7 @@ spec:
 
 ---
 # Example: Spot Instance Retry Policy
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricRetryPolicy
 metadata:
   name: spot-retry
@@ -281,7 +281,7 @@ spec:
 
 ---
 # Example: Job Using Retry Policy
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricAIJob
 metadata:
   name: resilient-training
@@ -355,7 +355,7 @@ message: |
 
 ---
 # Retry with Different Resources
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricRetryPolicy
 metadata:
   name: escalating-resources
@@ -386,7 +386,7 @@ spec:
 
 ---
 # Fibonacci Backoff Example
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricRetryPolicy
 metadata:
   name: fibonacci-retry

@@ -1,6 +1,6 @@
-# TensorReaper Monitoring & Observability
+# Gryvia Monitoring & Observability
 
-Comprehensive monitoring setup for TensorReaper with Prometheus metrics, alerts, and Grafana dashboards.
+Comprehensive monitoring setup for Gryvia with Prometheus metrics, alerts, and Grafana dashboards.
 
 ## Overview
 
@@ -21,63 +21,63 @@ This monitoring stack provides complete visibility into:
 
 #### GPU Metrics
 ```
-tensorreaper_gpu_count                      # Total GPUs per node
-tensorreaper_gpu_utilization_percent        # GPU utilization (0-100)
-tensorreaper_gpu_temperature_celsius        # GPU temperature
-tensorreaper_gpu_memory_used_bytes          # GPU memory used
-tensorreaper_gpu_memory_total_bytes         # GPU memory total
-tensorreaper_gpu_power_watts                # GPU power draw
-tensorreaper_gpu_health_status              # 1=healthy, 0=unhealthy
+gryvia_gpu_count                      # Total GPUs per node
+gryvia_gpu_utilization_percent        # GPU utilization (0-100)
+gryvia_gpu_temperature_celsius        # GPU temperature
+gryvia_gpu_memory_used_bytes          # GPU memory used
+gryvia_gpu_memory_total_bytes         # GPU memory total
+gryvia_gpu_power_watts                # GPU power draw
+gryvia_gpu_health_status              # 1=healthy, 0=unhealthy
 ```
 
 #### Job Metrics
 ```
-tensorreaper_job_running                    # Running jobs count
-tensorreaper_job_pending                    # Pending jobs count
-tensorreaper_job_queued                     # Queued jobs count
-tensorreaper_job_completed_total            # Total completed jobs (counter)
-tensorreaper_job_failed_total               # Total failed jobs (counter)
-tensorreaper_job_duration_seconds           # Job duration histogram
-tensorreaper_job_pending_duration_seconds   # Time in pending state
+gryvia_job_running                    # Running jobs count
+gryvia_job_pending                    # Pending jobs count
+gryvia_job_queued                     # Queued jobs count
+gryvia_job_completed_total            # Total completed jobs (counter)
+gryvia_job_failed_total               # Total failed jobs (counter)
+gryvia_job_duration_seconds           # Job duration histogram
+gryvia_job_pending_duration_seconds   # Time in pending state
 ```
 
 #### Quota Metrics
 ```
-tensorreaper_quota_gpus_allocated           # GPUs allocated to team
-tensorreaper_quota_gpus_max                 # Max GPUs for team
-tensorreaper_quota_running_jobs             # Running jobs for team
-tensorreaper_quota_queued_jobs              # Queued jobs for team
-tensorreaper_quota_gpu_hours                # GPU hours consumed
+gryvia_quota_gpus_allocated           # GPUs allocated to team
+gryvia_quota_gpus_max                 # Max GPUs for team
+gryvia_quota_running_jobs             # Running jobs for team
+gryvia_quota_queued_jobs              # Queued jobs for team
+gryvia_quota_gpu_hours                # GPU hours consumed
 ```
 
 #### Budget Metrics
 ```
-tensorreaper_budget_spent_month             # Spent this month ($)
-tensorreaper_budget_monthly_limit           # Monthly budget limit ($)
-tensorreaper_budget_remaining               # Remaining budget ($)
-tensorreaper_budget_percent_used            # Budget % used
-tensorreaper_budget_projected_spend         # Projected month-end spend ($)
-tensorreaper_budget_alert_threshold         # Alert threshold %
+gryvia_budget_spent_month             # Spent this month ($)
+gryvia_budget_monthly_limit           # Monthly budget limit ($)
+gryvia_budget_remaining               # Remaining budget ($)
+gryvia_budget_percent_used            # Budget % used
+gryvia_budget_projected_spend         # Projected month-end spend ($)
+gryvia_budget_alert_threshold         # Alert threshold %
 ```
 
 #### Storage Metrics
 ```
-tensorreaper_storage_health_status          # 1=healthy, 0=unhealthy
-tensorreaper_storage_latency_ms             # Storage latency
-tensorreaper_storage_throughput_mbps        # Storage throughput
+gryvia_storage_health_status          # 1=healthy, 0=unhealthy
+gryvia_storage_latency_ms             # Storage latency
+gryvia_storage_throughput_mbps        # Storage throughput
 ```
 
 #### Network Metrics
 ```
-tensorreaper_rdma_device_status             # 1=up, 0=down
-tensorreaper_network_errors_total           # Network errors (counter)
-tensorreaper_sriov_vf_available             # Available SR-IOV VFs
+gryvia_rdma_device_status             # 1=up, 0=down
+gryvia_network_errors_total           # Network errors (counter)
+gryvia_sriov_vf_available             # Available SR-IOV VFs
 ```
 
 #### Operator Metrics
 ```
-tensorreaper_operator_errors_total          # Operator errors (counter)
-tensorreaper_operator_reconcile_duration_seconds  # Reconciliation time
+gryvia_operator_errors_total          # Operator errors (counter)
+gryvia_operator_reconcile_duration_seconds  # Reconciliation time
 ```
 
 ### Alert Rules
@@ -123,7 +123,7 @@ tensorreaper_operator_reconcile_duration_seconds  # Reconciliation time
 
 **4 comprehensive dashboards:**
 
-#### 1. Cluster Overview (`tensorreaper-overview.json`)
+#### 1. Cluster Overview (`gryvia-overview.json`)
 - GPU cluster summary stats
 - GPU utilization by node
 - GPU temperature trends
@@ -133,7 +133,7 @@ tensorreaper_operator_reconcile_duration_seconds  # Reconciliation time
 - Job completion rate
 - Average job duration
 
-#### 2. Team Quotas & Budgets (`tensorreaper-quotas.json`)
+#### 2. Team Quotas & Budgets (`gryvia-quotas.json`)
 - GPU quota usage by team (bar gauge)
 - Budget usage by team (bar gauge)
 - GPU allocation details (table)
@@ -143,7 +143,7 @@ tensorreaper_operator_reconcile_duration_seconds  # Reconciliation time
 - Running jobs by team
 - Queue depth by team
 
-#### 3. GPU Metrics (`tensorreaper-gpus.json`)
+#### 3. GPU Metrics (`gryvia-gpus.json`)
 - GPU health status
 - Average GPU utilization gauge
 - Peak GPU temperature gauge
@@ -153,7 +153,7 @@ tensorreaper_operator_reconcile_duration_seconds  # Reconciliation time
 - Temperature distribution
 - Power consumption trends
 
-#### 4. Cost Analysis (`tensorreaper-costs.json`)
+#### 4. Cost Analysis (`gryvia-costs.json`)
 - Total monthly spending
 - Budget remaining
 - Budget utilization rate
@@ -180,7 +180,7 @@ helm install prometheus-operator prometheus-community/kube-prometheus-stack \
   --set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false
 ```
 
-### 2. Apply TensorReaper Monitoring Configuration
+### 2. Apply Gryvia Monitoring Configuration
 
 ```bash
 # Alert rules
@@ -196,12 +196,12 @@ kubectl apply -f monitoring/servicemonitor.yaml
 # Via Grafana UI: Import each dashboard JSON
 # Or via ConfigMap:
 
-kubectl create configmap tensorreaper-dashboards \
+kubectl create configmap gryvia-dashboards \
   --from-file=monitoring/grafana-dashboards/ \
   -n monitoring
 
 # Label for auto-discovery
-kubectl label configmap tensorreaper-dashboards \
+kubectl label configmap gryvia-dashboards \
   grafana_dashboard=1 \
   -n monitoring
 ```
@@ -213,7 +213,7 @@ kubectl label configmap tensorreaper-dashboards \
 kubectl port-forward -n monitoring svc/prometheus-operated 9090:9090
 
 # Open http://localhost:9090
-# Query: tensorreaper_gpu_count
+# Query: gryvia_gpu_count
 
 # Port-forward Grafana
 kubectl port-forward -n monitoring svc/prometheus-grafana 3000:80
@@ -245,16 +245,16 @@ kubectl get prometheusrules -n monitoring
 
 ```promql
 # Average GPU utilization
-avg(tensorreaper_gpu_utilization_percent)
+avg(gryvia_gpu_utilization_percent)
 
 # Team GPU allocation percentage
-(tensorreaper_quota_gpus_allocated / tensorreaper_quota_gpus_max) * 100
+(gryvia_quota_gpus_allocated / gryvia_quota_gpus_max) * 100
 
 # Budget utilization rate
-tensorreaper_budget_percent_used
+gryvia_budget_percent_used
 
 # Job completion rate
-rate(tensorreaper_job_completed_total[5m])
+rate(gryvia_job_completed_total[5m])
 ```
 
 ## Alert Routing
@@ -289,15 +289,15 @@ data:
     - name: 'slack-notifications'
       slack_configs:
       - api_url_file: /etc/alertmanager/secrets/slack_api_url
-        channel: '#tensorreaper-alerts'
-        title: 'TensorReaper Alert'
+        channel: '#gryvia-alerts'
+        title: 'Gryvia Alert'
         text: '{{ .CommonAnnotations.summary }}'
 
     - name: 'slack-critical'
       slack_configs:
       - api_url_file: /etc/alertmanager/secrets/slack_api_url
-        channel: '#tensorreaper-critical'
-        title: 'CRITICAL: TensorReaper Alert'
+        channel: '#gryvia-critical'
+        title: 'CRITICAL: Gryvia Alert'
         text: '{{ .CommonAnnotations.summary }}'
 ```
 
@@ -308,9 +308,9 @@ receivers:
 - name: 'email'
   email_configs:
   - to: 'team@example.com'
-    from: 'tensorreaper@example.com'
+    from: 'gryvia@example.com'
     smarthost: 'smtp.example.com:587'
-    auth_username: 'tensorreaper'
+    auth_username: 'gryvia'
     auth_password: 'password'
 ```
 
@@ -355,7 +355,7 @@ kubectl get servicemonitor -n monitoring
 http://localhost:9090/targets
 
 # Check operator metrics endpoint
-kubectl port-forward -n tensorreaper-system svc/gpu-operator-metrics 8080:8080
+kubectl port-forward -n gryvia-system svc/gpu-operator-metrics 8080:8080
 curl http://localhost:8080/metrics
 ```
 
@@ -377,7 +377,7 @@ http://localhost:9093
 
 ```bash
 # Check ConfigMap
-kubectl get configmap tensorreaper-dashboards -n monitoring
+kubectl get configmap gryvia-dashboards -n monitoring
 
 # Verify Grafana can read it
 kubectl logs -n monitoring -l app.kubernetes.io/name=grafana | grep dashboard
@@ -389,9 +389,9 @@ kubectl logs -n monitoring -l app.kubernetes.io/name=grafana | grep dashboard
 
 ```yaml
 # Limit label cardinality in metrics
-tensorreaper_gpu_utilization_percent{node="worker-01", gpu_id="0"}
+gryvia_gpu_utilization_percent{node="worker-01", gpu_id="0"}
 # vs
-tensorreaper_gpu_utilization_percent{node="worker-01", gpu_id="0", uuid="GPU-xyz..."} # Too many labels
+gryvia_gpu_utilization_percent{node="worker-01", gpu_id="0", uuid="GPU-xyz..."} # Too many labels
 ```
 
 ### Scrape Intervals

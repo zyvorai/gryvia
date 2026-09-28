@@ -16,8 +16,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/quota-operator/api/v1"
-	"github.com/ssahani/TensorReaper/operators/quota-operator/pkg/budget"
+	gryviav1 "github.com/zyvorai/gryvia/operators/quota-operator/api/v1"
+	"github.com/zyvorai/gryvia/operators/quota-operator/pkg/budget"
 )
 
 // FabricBudgetReconciler reconciles a FabricBudget object
@@ -26,11 +26,11 @@ type FabricBudgetReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricbudgets,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricbudgets/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricbudgets/finalizers,verbs=update
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricaijobs,verbs=get;list;watch;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricquotas,verbs=get;list;watch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricbudgets,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricbudgets/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricbudgets/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricquotas,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 //+kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
 
@@ -38,7 +38,7 @@ func (r *FabricBudgetReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	logger := log.FromContext(ctx)
 
 	// Fetch the FabricBudget instance
-	fb := &tensorreaperv1.FabricBudget{}
+	fb := &gryviav1.FabricBudget{}
 	err := r.Get(ctx, req.NamespacedName, fb)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -76,7 +76,7 @@ func (r *FabricBudgetReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 }
 
-func (r *FabricBudgetReconciler) reconcileBudget(ctx context.Context, fb *tensorreaperv1.FabricBudget) (ctrl.Result, error) {
+func (r *FabricBudgetReconciler) reconcileBudget(ctx context.Context, fb *gryviav1.FabricBudget) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	// Calculate current period
@@ -141,9 +141,9 @@ func (r *FabricBudgetReconciler) reconcileBudget(ctx context.Context, fb *tensor
 	return ctrl.Result{}, nil
 }
 
-func (r *FabricBudgetReconciler) calculateCurrentPeriod(fb *tensorreaperv1.FabricBudget) {
+func (r *FabricBudgetReconciler) calculateCurrentPeriod(fb *gryviav1.FabricBudget) {
 	now := time.Now()
-	period := &tensorreaperv1.BudgetCurrentPeriod{}
+	period := &gryviav1.BudgetCurrentPeriod{}
 
 	switch fb.Spec.Period.Type {
 	case "daily":
@@ -184,8 +184,8 @@ func (r *FabricBudgetReconciler) calculateCurrentPeriod(fb *tensorreaperv1.Fabri
 	fb.Status.CurrentPeriod = period
 }
 
-func (r *FabricBudgetReconciler) calculateUsage(ctx context.Context, fb *tensorreaperv1.FabricBudget) (*tensorreaperv1.BudgetUsage, error) {
-	budgetUsage := &tensorreaperv1.BudgetUsage{
+func (r *FabricBudgetReconciler) calculateUsage(ctx context.Context, fb *gryviav1.FabricBudget) (*gryviav1.BudgetUsage, error) {
+	budgetUsage := &gryviav1.BudgetUsage{
 		GPUTypeHours: make(map[string]float64),
 	}
 
@@ -243,12 +243,12 @@ func (r *FabricBudgetReconciler) calculateUsage(ctx context.Context, fb *tensorr
 	return budgetUsage, nil
 }
 
-func (r *FabricBudgetReconciler) findScopeJobs(ctx context.Context, fb *tensorreaperv1.FabricBudget) ([]tensorreaperv1.FabricAIJob, error) {
-	var allJobs []tensorreaperv1.FabricAIJob
+func (r *FabricBudgetReconciler) findScopeJobs(ctx context.Context, fb *gryviav1.FabricBudget) ([]gryviav1.FabricAIJob, error) {
+	var allJobs []gryviav1.FabricAIJob
 
 	switch fb.Spec.Scope.Type {
 	case "namespace":
-		jobList := &tensorreaperv1.FabricAIJobList{}
+		jobList := &gryviav1.FabricAIJobList{}
 		if err := r.List(ctx, jobList, client.InNamespace(fb.Spec.Scope.Name)); err != nil {
 			return nil, fmt.Errorf("failed to list jobs in namespace %s: %w", fb.Spec.Scope.Name, err)
 		}
@@ -256,14 +256,14 @@ func (r *FabricBudgetReconciler) findScopeJobs(ctx context.Context, fb *tensorre
 
 	case "team":
 		// Find namespaces belonging to the team via FabricQuota
-		quotaList := &tensorreaperv1.FabricQuotaList{}
+		quotaList := &gryviav1.FabricQuotaList{}
 		if err := r.List(ctx, quotaList); err != nil {
 			return nil, fmt.Errorf("failed to list quotas: %w", err)
 		}
 		for _, quota := range quotaList.Items {
 			if quota.Spec.Team == fb.Spec.Scope.Name {
 				for _, ns := range quota.Spec.Namespaces {
-					jobList := &tensorreaperv1.FabricAIJobList{}
+					jobList := &gryviav1.FabricAIJobList{}
 					if err := r.List(ctx, jobList, client.InNamespace(ns)); err != nil {
 						continue
 					}
@@ -274,7 +274,7 @@ func (r *FabricBudgetReconciler) findScopeJobs(ctx context.Context, fb *tensorre
 
 	default:
 		// List all jobs
-		jobList := &tensorreaperv1.FabricAIJobList{}
+		jobList := &gryviav1.FabricAIJobList{}
 		if err := r.List(ctx, jobList); err != nil {
 			return nil, fmt.Errorf("failed to list all jobs: %w", err)
 		}
@@ -284,8 +284,8 @@ func (r *FabricBudgetReconciler) findScopeJobs(ctx context.Context, fb *tensorre
 	return allJobs, nil
 }
 
-func (r *FabricBudgetReconciler) calculateUtilization(fb *tensorreaperv1.FabricBudget) *tensorreaperv1.BudgetUtilization {
-	util := &tensorreaperv1.BudgetUtilization{}
+func (r *FabricBudgetReconciler) calculateUtilization(fb *gryviav1.FabricBudget) *gryviav1.BudgetUtilization {
+	util := &gryviav1.BudgetUtilization{}
 
 	if fb.Status.Usage == nil {
 		return util
@@ -306,8 +306,8 @@ func (r *FabricBudgetReconciler) calculateUtilization(fb *tensorreaperv1.FabricB
 	return util
 }
 
-func (r *FabricBudgetReconciler) calculateForecast(fb *tensorreaperv1.FabricBudget) *tensorreaperv1.BudgetForecast {
-	forecast := &tensorreaperv1.BudgetForecast{}
+func (r *FabricBudgetReconciler) calculateForecast(fb *gryviav1.FabricBudget) *gryviav1.BudgetForecast {
+	forecast := &gryviav1.BudgetForecast{}
 
 	if fb.Status.Usage == nil || fb.Status.CurrentPeriod == nil {
 		return forecast
@@ -352,7 +352,7 @@ func (r *FabricBudgetReconciler) calculateForecast(fb *tensorreaperv1.FabricBudg
 	return forecast
 }
 
-func (r *FabricBudgetReconciler) checkAndEmitAlert(ctx context.Context, fb *tensorreaperv1.FabricBudget, alert tensorreaperv1.BudgetAlert, currentPercent float64) {
+func (r *FabricBudgetReconciler) checkAndEmitAlert(ctx context.Context, fb *gryviav1.FabricBudget, alert gryviav1.BudgetAlert, currentPercent float64) {
 	logger := log.FromContext(ctx)
 
 	// Check if this threshold was already alerted
@@ -363,7 +363,7 @@ func (r *FabricBudgetReconciler) checkAndEmitAlert(ctx context.Context, fb *tens
 	}
 
 	// Record the alert
-	alertEvent := tensorreaperv1.BudgetAlertEvent{
+	alertEvent := gryviav1.BudgetAlertEvent{
 		Timestamp: metav1.Now(),
 		Threshold: alert.Threshold,
 		Message:   fmt.Sprintf("Budget %.0f%% consumed (threshold: %.0f%%)", currentPercent, alert.Threshold),
@@ -382,7 +382,7 @@ func (r *FabricBudgetReconciler) checkAndEmitAlert(ctx context.Context, fb *tens
 	)
 }
 
-func (r *FabricBudgetReconciler) enforceBudget(ctx context.Context, fb *tensorreaperv1.FabricBudget) error {
+func (r *FabricBudgetReconciler) enforceBudget(ctx context.Context, fb *gryviav1.FabricBudget) error {
 	logger := log.FromContext(ctx)
 
 	if fb.Spec.Enforcement == nil || fb.Spec.Enforcement.Action != "block" {
@@ -418,7 +418,7 @@ func (r *FabricBudgetReconciler) enforceBudget(ctx context.Context, fb *tensorre
 	return nil
 }
 
-func (r *FabricBudgetReconciler) updateCondition(fb *tensorreaperv1.FabricBudget, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *FabricBudgetReconciler) updateCondition(fb *gryviav1.FabricBudget, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -432,10 +432,10 @@ func (r *FabricBudgetReconciler) updateCondition(fb *tensorreaperv1.FabricBudget
 // SetupWithManager sets up the controller with the Manager.
 func (r *FabricBudgetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tensorreaperv1.FabricBudget{}).
-		Watches(&tensorreaperv1.FabricAIJob{}, handler.EnqueueRequestsFromMapFunc(
+		For(&gryviav1.FabricBudget{}).
+		Watches(&gryviav1.FabricAIJob{}, handler.EnqueueRequestsFromMapFunc(
 			func(ctx context.Context, obj client.Object) []reconcile.Request {
-				budgetList := &tensorreaperv1.FabricBudgetList{}
+				budgetList := &gryviav1.FabricBudgetList{}
 				if err := mgr.GetClient().List(ctx, budgetList); err != nil {
 					return nil
 				}

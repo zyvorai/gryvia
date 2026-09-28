@@ -11,10 +11,10 @@ import (
 
 const (
 	// ValidatingWebhookPath is the HTTP path for the validating webhook.
-	ValidatingWebhookPath = "/validate-tensorreaper-ai-v1-fabricaijob"
+	ValidatingWebhookPath = "/validate-gryvia-ai-v1-fabricaijob"
 
 	// MutatingWebhookPath is the HTTP path for the mutating webhook.
-	MutatingWebhookPath = "/mutate-tensorreaper-ai-v1-fabricaijob"
+	MutatingWebhookPath = "/mutate-gryvia-ai-v1-fabricaijob"
 
 	// DefaultWebhookPort is the default port for the webhook server.
 	DefaultWebhookPort = 9443
@@ -47,10 +47,10 @@ type WebhookConfig struct {
 //	spec:
 //	  secretName: ai-operator-webhook-cert
 //	  dnsNames:
-//	  - ai-operator-webhook.tensorreaper-system.svc
-//	  - ai-operator-webhook.tensorreaper-system.svc.cluster.local
+//	  - ai-operator-webhook.gryvia-system.svc
+//	  - ai-operator-webhook.gryvia-system.svc.cluster.local
 //	  issuerRef:
-//	    name: tensorreaper-ca-issuer
+//	    name: gryvia-ca-issuer
 //	    kind: ClusterIssuer
 func SetupWebhooks(mgr ctrl.Manager, config WebhookConfig) error {
 	log := ctrl.Log.WithName("webhook").WithName("setup")

@@ -7,8 +7,8 @@ use clap::{Parser, Subcommand};
 use anyhow::Result;
 
 #[derive(Parser)]
-#[command(name = "tensorreaper")]
-#[command(about = "TensorReaper CLI - Manage GPU clusters for AI workloads", long_about = None)]
+#[command(name = "gryvia")]
+#[command(about = "Gryvia CLI - Manage GPU clusters for AI workloads", long_about = None)]
 #[command(version)]
 struct Cli {
     #[command(subcommand)]
@@ -455,7 +455,7 @@ async fn main() -> Result<()> {
     let namespace_flag = cli.namespace.clone();
 
     // Create Kubernetes client
-    let client = client::TensorReaperClient::new(cli.context, cli.namespace).await?;
+    let client = client::GryviaClient::new(cli.context, cli.namespace).await?;
 
     // Execute command
     match cli.command {

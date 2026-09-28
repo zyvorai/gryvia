@@ -1,6 +1,6 @@
 ---
 # Cost Predictor: Predicts costs, training time, and queue wait for AI jobs
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricCostPredictor
 metadata:
   name: default-predictor
@@ -68,13 +68,13 @@ spec:
 
 ---
 # Example: Submit a dry-run job to get a cost estimate without running it
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricAIJob
 metadata:
   name: llm-training-cost-check
   namespace: ml-training
   annotations:
-    tensorreaper.ai/dry-run: "true"
+    gryvia.io/dry-run: "true"
 spec:
   type: training
   model: llama-70b
@@ -97,10 +97,10 @@ spec:
 #     -o jsonpath='{.metadata.annotations}' | jq
 #
 # Expected annotations:
-#   tensorreaper.ai/estimated-cost: "384.00"
-#   tensorreaper.ai/estimated-duration: "6h0m0s"
-#   tensorreaper.ai/estimated-queue-wait: "8m30s"
-#   tensorreaper.ai/cost-confidence: "0.72"
-#   tensorreaper.ai/alternative-gpu: "A100-80G"
-#   tensorreaper.ai/alternative-cost: "192.00"
-#   tensorreaper.ai/potential-savings: "192.00"
+#   gryvia.io/estimated-cost: "384.00"
+#   gryvia.io/estimated-duration: "6h0m0s"
+#   gryvia.io/estimated-queue-wait: "8m30s"
+#   gryvia.io/cost-confidence: "0.72"
+#   gryvia.io/alternative-gpu: "A100-80G"
+#   gryvia.io/alternative-cost: "192.00"
+#   gryvia.io/potential-savings: "192.00"

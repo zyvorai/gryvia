@@ -12,8 +12,8 @@ release:
 
 ## install: Install binary to /usr/local/bin
 install: release
-	sudo cp target/release/tensorreaper /usr/local/bin/
-	@echo "✓ Installed to /usr/local/bin/tensorreaper"
+	sudo cp target/release/gryvia /usr/local/bin/
+	@echo "✓ Installed to /usr/local/bin/gryvia"
 
 ## test: Run tests
 test:
@@ -37,5 +37,5 @@ run:
 
 ## help: Show this help message
 help:
-	@echo "TensorReaper CLI - Makefile commands:"
+	@echo "Gryvia CLI - Makefile commands:"
 	@sed -n 's/^##//p' ${MAKEFILE_LIST} | column -t -s ':' | sed -e 's/^/ /'

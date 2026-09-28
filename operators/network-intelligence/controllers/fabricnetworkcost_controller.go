@@ -16,7 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/network-intelligence/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/network-intelligence/api/v1"
 )
 
 const (
@@ -33,16 +33,16 @@ type FabricNetworkCostReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricnetworkcosts,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricnetworkcosts/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricnetworkcosts/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricnetworkcosts,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricnetworkcosts/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricnetworkcosts/finalizers,verbs=update
 //+kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch
 
 func (r *FabricNetworkCostReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	// Fetch the FabricNetworkCost instance
-	costTracker := &tensorreaperv1.FabricNetworkCost{}
+	costTracker := &gryviav1.FabricNetworkCost{}
 	if err := r.Get(ctx, req.NamespacedName, costTracker); err != nil {
 		if errors.IsNotFound(err) {
 			logger.Info("FabricNetworkCost resource not found, ignoring since object must be deleted")
@@ -69,13 +69,13 @@ func (r *FabricNetworkCostReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	byteCounters := r.queryNetworkCosts(ctx, costTracker)
 
 	// Build cost center lookup
-	costCenterLookup := make(map[string]tensorreaperv1.CostCenterMapping)
+	costCenterLookup := make(map[string]gryviav1.CostCenterMapping)
 	for _, cc := range costTracker.Spec.CostCenters {
 		costCenterLookup[cc.Namespace] = cc
 	}
 
 	// Generate cost reports per namespace
-	var newReports []tensorreaperv1.NetworkCostReport
+	var newReports []gryviav1.NetworkCostReport
 	period := time.Now().UTC().Format("2006-01-02T15:04")
 
 	for ns, counters := range byteCounters {
@@ -90,7 +90,7 @@ func (r *FabricNetworkCostReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		externalCost := float64(counters.externalBytes) / (1024 * 1024 * 1024) * costTracker.Spec.CostPerGB.InternetEgress
 		totalCost := sameZoneCost + crossZoneCost + externalCost
 
-		report := tensorreaperv1.NetworkCostReport{
+		report := gryviav1.NetworkCostReport{
 			Period:         period,
 			Namespace:      ns,
 			Team:           team,
@@ -136,7 +136,7 @@ type collectorCostResponse struct {
 }
 
 // queryNetworkCosts fetches per-namespace byte counters from the collector API
-func (r *FabricNetworkCostReconciler) queryNetworkCosts(ctx context.Context, costTracker *tensorreaperv1.FabricNetworkCost) map[string]namespaceByteCounts {
+func (r *FabricNetworkCostReconciler) queryNetworkCosts(ctx context.Context, costTracker *gryviav1.FabricNetworkCost) map[string]namespaceByteCounts {
 	logger := log.FromContext(ctx)
 	result := make(map[string]namespaceByteCounts)
 
@@ -180,9 +180,9 @@ func (r *FabricNetworkCostReconciler) queryNetworkCosts(ctx context.Context, cos
 }
 
 // updateCostStatus updates the FabricNetworkCost status subresource
-func (r *FabricNetworkCostReconciler) updateCostStatus(ctx context.Context, namespacedName types.NamespacedName, phase string, reports []tensorreaperv1.NetworkCostReport) {
+func (r *FabricNetworkCostReconciler) updateCostStatus(ctx context.Context, namespacedName types.NamespacedName, phase string, reports []gryviav1.NetworkCostReport) {
 	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		costTracker := &tensorreaperv1.FabricNetworkCost{}
+		costTracker := &gryviav1.FabricNetworkCost{}
 		if err := r.Get(ctx, namespacedName, costTracker); err != nil {
 			return err
 		}
@@ -198,6 +198,6 @@ func (r *FabricNetworkCostReconciler) updateCostStatus(ctx context.Context, name
 // SetupWithManager sets up the controller with the Manager
 func (r *FabricNetworkCostReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tensorreaperv1.FabricNetworkCost{}).
+		For(&gryviav1.FabricNetworkCost{}).
 		Complete(r)
 }

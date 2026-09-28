@@ -2,7 +2,7 @@
 # All 4 nodes must be allocated simultaneously (gang scheduling) to prevent
 # deadlocks where partial allocations block other jobs. Uses RDMA networking
 # and NCCL for high-performance inter-node communication.
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricAIJob
 metadata:
   name: gpt-distributed-training
@@ -10,9 +10,9 @@ metadata:
   annotations:
     # Gang scheduling: all nodes must be scheduled atomically
     # Prevents partial allocation that wastes resources while waiting
-    tensorreaper.ai/gang-schedule: "true"
-    tensorreaper.ai/gang-size: "4"       # All 4 nodes must be available
-    tensorreaper.ai/gang-timeout: "10m"  # Wait up to 10 min for all nodes
+    gryvia.io/gang-schedule: "true"
+    gryvia.io/gang-size: "4"       # All 4 nodes must be available
+    gryvia.io/gang-timeout: "10m"  # Wait up to 10 min for all nodes
 spec:
   type: training
   model: gpt-13b
@@ -62,5 +62,5 @@ spec:
 
   # Ensure all pods land on RDMA-capable nodes in the same rack
   nodeSelector:
-    tensorreaper.ai/rdma: "true"
+    gryvia.io/rdma: "true"
     topology.kubernetes.io/zone: "us-east-1a"

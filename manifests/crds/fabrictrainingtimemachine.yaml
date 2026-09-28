@@ -3,9 +3,9 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: fabrictrainingtimemachines.tensorreaper.ai
+  name: fabrictrainingtimemachines.gryvia.io
 spec:
-  group: tensorreaper.ai
+  group: gryvia.io
   versions:
     - name: v1
       served: true
@@ -248,7 +248,7 @@ spec:
 
 ---
 # Example: Time Machine for LLM fine-tuning job
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricTrainingTimeMachine
 metadata:
   name: llama-finetune-timemachine
@@ -303,7 +303,7 @@ spec:
 
 ---
 # Example: Time Machine with step-based fork
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricTrainingTimeMachine
 metadata:
   name: resnet-experiment-timemachine

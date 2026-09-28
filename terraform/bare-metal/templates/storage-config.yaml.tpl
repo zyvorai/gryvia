@@ -1,4 +1,4 @@
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricStorage
 metadata:
   name: ${storage_backend}-storage
@@ -24,7 +24,7 @@ spec:
     parameters:
       type: "nfs"
       server: "${storage_endpoint}"
-      path: "/tensorreaper"
+      path: "/gryvia"
   performance:
     tier: hot
     caching: true

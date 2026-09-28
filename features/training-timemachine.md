@@ -62,7 +62,7 @@ llama-70b-finetune (source)
 ### Basic Time Machine
 
 ```yaml
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricTrainingTimeMachine
 metadata:
   name: my-experiment-tm
@@ -223,17 +223,17 @@ Forked jobs automatically receive these environment variables:
 
 | Variable | Description |
 |----------|-------------|
-| `TENSORREAPER_RESUME_FROM_CHECKPOINT` | Set to `true` to indicate the job should resume |
-| `TENSORREAPER_CHECKPOINT_STEP` | The training step to resume from |
-| `TENSORREAPER_FORK_NAME` | The name of the fork |
+| `GRYVIA_RESUME_FROM_CHECKPOINT` | Set to `true` to indicate the job should resume |
+| `GRYVIA_CHECKPOINT_STEP` | The training step to resume from |
+| `GRYVIA_FORK_NAME` | The name of the fork |
 
 Training code should check these variables to resume correctly:
 
 ```python
 import os
 
-if os.getenv("TENSORREAPER_RESUME_FROM_CHECKPOINT") == "true":
-    step = int(os.getenv("TENSORREAPER_CHECKPOINT_STEP", "0"))
+if os.getenv("GRYVIA_RESUME_FROM_CHECKPOINT") == "true":
+    step = int(os.getenv("GRYVIA_CHECKPOINT_STEP", "0"))
     checkpoint_path = f"/checkpoints/step-{step}"
     model.load_state_dict(torch.load(f"{checkpoint_path}/model.pt"))
     optimizer.load_state_dict(torch.load(f"{checkpoint_path}/optimizer.pt"))
@@ -310,7 +310,7 @@ Fork names appear in job names and labels. Use descriptive names like `lower-lr-
 
 ### 4. Integrate Checkpoint Resume in Training Code
 
-Ensure your training code checks `TENSORREAPER_RESUME_FROM_CHECKPOINT` and handles checkpoint loading.
+Ensure your training code checks `GRYVIA_RESUME_FROM_CHECKPOINT` and handles checkpoint loading.
 
 ### 5. Keep Milestone Checkpoints
 
@@ -334,6 +334,6 @@ FabricAIJob (source) --> Time Machine Controller
 
 ## Support
 
-- Issues: https://github.com/ssahani/TensorReaper/issues
+- Issues: https://github.com/zyvorai/gryvia/issues
 - CRD Reference: `manifests/crds/fabrictrainingtimemachine.yaml`
 - Example: `examples/training/timemachine-example.yaml`

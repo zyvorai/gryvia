@@ -1,0 +1,213 @@
+
+::selection {
+  background: var(--apple-blue);
+  color: #fff;
+}
+
+* { box-sizing: border-box; }
+/* The hidden attribute must always win — otherwise a more specific rule
+   like ".toolbar input { display: block }" can defeat it and expose a
+   native control meant to stay behind a styled label (e.g. Policies'
+   hidden file input for "Import history"). */
+[hidden] { display: none !important; }
+body {
+  margin: 0;
+  background: var(--bg-page);
+  min-height: 100vh;
+  color: var(--text-primary);
+  font-size: var(--fs-body);
+  line-height: 1.5;
+}
+
+/* —— Apple.com button system —— */
+button,
+.buttonlike,
+.buildbutton {
+  font-family: inherit;
+  font-size: var(--fs-body);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 1.17648;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong);
+  padding: 10px 18px;
+  min-height: 44px;
+  cursor: pointer;
+  color: var(--text-primary);
+  background: transparent;
+  white-space: nowrap;
+  flex: 0 0 auto;
+  transition: background 0.28s var(--ease-apple), color 0.28s var(--ease-apple), border-color 0.28s var(--ease-apple), transform 0.16s var(--ease-apple), filter 0.28s var(--ease-apple), box-shadow 0.28s var(--ease-apple);
+}
+button:hover,
+.buttonlike:hover,
+.buildbutton:hover {
+  background: var(--hover-fill);
+}
+button:active,
+.buttonlike:active,
+.buildbutton:active {
+  transform: scale(0.98);
+}
+button:focus-visible,
+.buttonlike:focus-visible,
+.buildbutton:focus-visible {
+  outline: 2px solid var(--apple-blue);
+  outline-offset: 2px;
+}
+
+/* Same Apple-blue focus ring for form controls and nav links — the
+   browser default outline reads inconsistently against a black
+   dark-mode background. */
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+.navlinks button:focus-visible,
+.brand:focus-visible {
+  outline: 2px solid var(--apple-blue);
+  outline-offset: 2px;
+}
+
+/* Button variants — apple.com contract ("color is deviation").
+   Blue fill = the one primary action. Everything else is a quiet tinted or
+   neutral pill; solid red is reserved for destructive actions. The semantic
+   class names (btn-refresh/-next/-success/-warn/-secondary/-diag) predate the
+   contract and are kept so call sites don't change; they now map onto four
+   looks: primary, neutral, tinted-state and danger. All share the base
+   44px/17px pill, so nothing here changes sizing. No !important: variants
+   beat the base `button` rule on specificity, and the context rules
+   (.toolbar/.filters/.list button) only set layout. */
+button.primary,
+.primary,
+button.btn-next,
+.btn-next {
+  background: var(--apple-blue);
+  color: #fff;
+  border-color: transparent;
+}
+button.primary:hover,
+.primary:hover,
+button.btn-next:hover,
+.btn-next:hover {
+  background: var(--apple-blue-hover);
+  filter: brightness(1.06);
+}
+/* The glow is reserved for dark mode, where --card-shadow is off app-wide
+   and a bit of light around the primary action marks it as the one thing on
+   a black page that is meant to be touched. */
+[data-theme="dark"] button.primary:hover,
+[data-theme="dark"] .primary:hover {
+  box-shadow: 0 8px 24px rgba(0, 113, 227, 0.35);
+}
+
+/* Neutral: secondary actions, refresh. */
+button.btn-secondary,
+.btn-secondary,
+.buttonlike.btn-secondary,
+button.btn-refresh,
+.btn-refresh {
+  background: var(--fill-tertiary);
+  color: var(--text-primary);
+  border-color: var(--hairline-1);
+}
+button.btn-secondary:hover,
+.btn-secondary:hover,
+.buttonlike.btn-secondary:hover,
+button.btn-refresh:hover,
+.btn-refresh:hover {
+  background: var(--surface-hover);
+}
+
+/* Intent, not primary: explain / history / diagnose. */
+button.btn-diag,
+.btn-diag {
+  background: color-mix(in srgb, var(--apple-blue) 10%, transparent);
+  color: var(--apple-link);
+  border-color: transparent;
+}
+button.btn-diag:hover,
+.btn-diag:hover {
+  background: color-mix(in srgb, var(--apple-blue) 18%, transparent);
+}
+
+/* State pills — these mark a real state (observing / enforcing / rollback),
+   so they keep a semantic tint, but as a tint, never a solid fill. */
+button.btn-success,
+.btn-success {
+  background: var(--success-bg);
+  color: var(--success-text);
+  border-color: var(--success-border);
+}
+button.btn-warn,
+.btn-warn {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+  border-color: var(--warning-border);
+}
+button.btn-success:hover,
+.btn-success:hover,
+button.btn-warn:hover,
+.btn-warn:hover {
+  filter: brightness(0.97);
+}
+
+/* Destructive: the only solid non-blue fill. */
+button.danger,
+.danger,
+.policydelete {
+  background: var(--danger);
+  color: #fff;
+  border-color: transparent;
+}
+button.danger:hover,
+.danger:hover,
+.policydelete:hover {
+  filter: brightness(1.08);
+}
+
+/* Disabled buttons get one solid, theme-aware muted look regardless of
+   variant — never a faded/opacity-based tint of the enabled color, which
+   washes vivid fills into near-illegible pastels (especially in light mode:
+   a 40%-opacity --accent-amber or --accent-green over a white card reads as
+   a barely-visible pale blob, not "this button is off"). */
+button:disabled,
+.buttonlike:disabled,
+.buildbutton:disabled,
+.chips button:disabled {
+  background: var(--disabled-bg) !important;
+  color: var(--disabled-text) !important;
+  border-color: transparent !important;
+  opacity: 1;
+  cursor: not-allowed;
+  filter: none;
+  transform: none;
+}
+
+/* Chip remove controls — compact Apple red. Scoped to buttons labelled
+   "Remove …": other buttons inside .chips (tabs, filters) are navigation, and
+   red is reserved for deviation. */
+.chips button[aria-label^="Remove"] {
+  background: var(--danger-bg) !important;
+  color: var(--danger) !important;
+  border-color: var(--danger) !important;
+  white-space: normal;
+  max-width: 100%;
+  text-align: left;
+  line-height: 1.25;
+  height: auto;
+}
+.chips button[aria-label^="Remove"]:hover {
+  filter: brightness(0.97);
+  background: var(--danger-bg) !important;
+}
+
+.buttonlike {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text-primary);
+}
+.buttonlike:hover { background: var(--hover-fill); }
+

@@ -1,4 +1,4 @@
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricAIJob
 metadata:
   name: pytorch-simple-training
@@ -24,7 +24,7 @@ spec:
       import time
 
       print("=" * 60)
-      print("TensorReaper PyTorch Training Example")
+      print("Gryvia PyTorch Training Example")
       print("=" * 60)
 
       # Check GPU

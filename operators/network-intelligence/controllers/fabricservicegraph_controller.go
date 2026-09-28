@@ -15,7 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/network-intelligence/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/network-intelligence/api/v1"
 )
 
 // FabricServiceGraphReconciler reconciles a FabricServiceGraph object
@@ -24,9 +24,9 @@ type FabricServiceGraphReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricservicegraphs,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricservicegraphs/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricservicegraphs/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricservicegraphs,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricservicegraphs/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricservicegraphs/finalizers,verbs=update
 //+kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=endpoints,verbs=get;list;watch
@@ -37,7 +37,7 @@ func (r *FabricServiceGraphReconciler) Reconcile(ctx context.Context, req ctrl.R
 	logger := log.FromContext(ctx)
 
 	// Fetch the FabricServiceGraph instance
-	graph := &tensorreaperv1.FabricServiceGraph{}
+	graph := &gryviav1.FabricServiceGraph{}
 	if err := r.Get(ctx, req.NamespacedName, graph); err != nil {
 		if errors.IsNotFound(err) {
 			logger.Info("FabricServiceGraph resource not found, ignoring since object must be deleted")
@@ -82,9 +82,9 @@ func (r *FabricServiceGraphReconciler) Reconcile(ctx context.Context, req ctrl.R
 }
 
 // discoverServiceNodes enumerates services across target namespaces to build graph nodes
-func (r *FabricServiceGraphReconciler) discoverServiceNodes(ctx context.Context, graph *tensorreaperv1.FabricServiceGraph) []tensorreaperv1.ServiceGraphNode {
+func (r *FabricServiceGraphReconciler) discoverServiceNodes(ctx context.Context, graph *gryviav1.FabricServiceGraph) []gryviav1.ServiceGraphNode {
 	logger := log.FromContext(ctx)
-	var nodes []tensorreaperv1.ServiceGraphNode
+	var nodes []gryviav1.ServiceGraphNode
 
 	namespaces := graph.Spec.Namespaces
 	if len(namespaces) == 0 {
@@ -115,7 +115,7 @@ func (r *FabricServiceGraphReconciler) discoverServiceNodes(ctx context.Context,
 				nodeType = "external"
 			}
 
-			nodes = append(nodes, tensorreaperv1.ServiceGraphNode{
+			nodes = append(nodes, gryviav1.ServiceGraphNode{
 				Name:      svc.Name,
 				Namespace: svc.Namespace,
 				Type:      nodeType,
@@ -128,7 +128,7 @@ func (r *FabricServiceGraphReconciler) discoverServiceNodes(ctx context.Context,
 }
 
 // buildServiceEdges queries Hubble flow data to discover connections between services
-func (r *FabricServiceGraphReconciler) buildServiceEdges(ctx context.Context, graph *tensorreaperv1.FabricServiceGraph, nodes []tensorreaperv1.ServiceGraphNode) []tensorreaperv1.ServiceGraphEdge {
+func (r *FabricServiceGraphReconciler) buildServiceEdges(ctx context.Context, graph *gryviav1.FabricServiceGraph, nodes []gryviav1.ServiceGraphNode) []gryviav1.ServiceGraphEdge {
 	logger := log.FromContext(ctx)
 
 	// Check if Hubble is available
@@ -140,7 +140,7 @@ func (r *FabricServiceGraphReconciler) buildServiceEdges(ctx context.Context, gr
 	if err != nil {
 		logger.V(1).Info("Hubble relay not available, using existing edges from status")
 		// Preserve existing edges from status if Hubble is unavailable
-		existing := &tensorreaperv1.FabricServiceGraph{}
+		existing := &gryviav1.FabricServiceGraph{}
 		if getErr := r.Get(ctx, types.NamespacedName{
 			Name:      graph.Name,
 			Namespace: graph.Namespace,
@@ -168,7 +168,7 @@ func (r *FabricServiceGraphReconciler) buildServiceEdges(ctx context.Context, gr
 	}
 
 	// Preserve existing edges
-	existing := &tensorreaperv1.FabricServiceGraph{}
+	existing := &gryviav1.FabricServiceGraph{}
 	if getErr := r.Get(ctx, types.NamespacedName{
 		Name:      graph.Name,
 		Namespace: graph.Namespace,
@@ -181,7 +181,7 @@ func (r *FabricServiceGraphReconciler) buildServiceEdges(ctx context.Context, gr
 
 // evaluateNodeHealth determines the health status of each service node
 // based on error rates observed in the service edges
-func (r *FabricServiceGraphReconciler) evaluateNodeHealth(ctx context.Context, nodes []tensorreaperv1.ServiceGraphNode, edges []tensorreaperv1.ServiceGraphEdge) {
+func (r *FabricServiceGraphReconciler) evaluateNodeHealth(ctx context.Context, nodes []gryviav1.ServiceGraphNode, edges []gryviav1.ServiceGraphEdge) {
 	// Build a map of error/drop counts per destination service
 	errorCounts := make(map[string]int)
 	totalCounts := make(map[string]int)
@@ -217,9 +217,9 @@ func (r *FabricServiceGraphReconciler) evaluateNodeHealth(ctx context.Context, n
 }
 
 // updateStatus updates the FabricServiceGraph status subresource
-func (r *FabricServiceGraphReconciler) updateStatus(ctx context.Context, namespacedName types.NamespacedName, nodes []tensorreaperv1.ServiceGraphNode, edges []tensorreaperv1.ServiceGraphEdge) {
+func (r *FabricServiceGraphReconciler) updateStatus(ctx context.Context, namespacedName types.NamespacedName, nodes []gryviav1.ServiceGraphNode, edges []gryviav1.ServiceGraphEdge) {
 	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		graph := &tensorreaperv1.FabricServiceGraph{}
+		graph := &gryviav1.FabricServiceGraph{}
 		if err := r.Get(ctx, namespacedName, graph); err != nil {
 			return err
 		}
@@ -235,6 +235,6 @@ func (r *FabricServiceGraphReconciler) updateStatus(ctx context.Context, namespa
 // SetupWithManager sets up the controller with the Manager
 func (r *FabricServiceGraphReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tensorreaperv1.FabricServiceGraph{}).
+		For(&gryviav1.FabricServiceGraph{}).
 		Complete(r)
 }

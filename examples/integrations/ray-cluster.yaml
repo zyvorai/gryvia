@@ -46,9 +46,9 @@ spec:
                 mountPath: /tmp/ray
             env:
               - name: RAY_GRAFANA_HOST
-                value: "http://grafana.tensorreaper.svc.cluster.local:3000"
+                value: "http://grafana.gryvia.svc.cluster.local:3000"
               - name: RAY_PROMETHEUS_HOST
-                value: "http://prometheus.tensorreaper.svc.cluster.local:9090"
+                value: "http://prometheus.gryvia.svc.cluster.local:9090"
         volumes:
           - name: ray-logs
             emptyDir: {}
@@ -80,7 +80,7 @@ spec:
                 - name: ray-logs
                   mountPath: /tmp/ray
           nodeSelector:
-            tensorreaper.ai/gpu-type: T4
+            gryvia.io/gpu-type: T4
           volumes:
             - name: ray-logs
               emptyDir: {}
@@ -116,7 +116,7 @@ spec:
                 - name: NCCL_DEBUG
                   value: "INFO"
           nodeSelector:
-            tensorreaper.ai/gpu-type: A100-80G
+            gryvia.io/gpu-type: A100-80G
           volumes:
             - name: ray-logs
               emptyDir: {}
@@ -253,8 +253,8 @@ data:
     print(f"Training completed: {result}")
 
 ---
-# TensorReaper Quota for Ray cluster
-apiVersion: tensorreaper.ai/v1
+# Gryvia Quota for Ray cluster
+apiVersion: gryvia.io/v1
 kind: FabricQuota
 metadata:
   name: ray-cluster-quota

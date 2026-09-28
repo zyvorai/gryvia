@@ -13,7 +13,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/ai-operator/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 )
 
 const (
@@ -29,17 +29,17 @@ type FabricPriorityReconciler struct {
 	Log    logr.Logger
 }
 
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricpriorities,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricpriorities/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricpriorities/finalizers,verbs=update
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricaijobs,verbs=get;list;watch;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricpriorities,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricpriorities/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricpriorities/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch;update;patch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 func (r *FabricPriorityReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("fabricpriority", req.NamespacedName)
 
 	// Fetch the FabricPriority instance
-	priority := &tensorreaperv1.FabricPriority{}
+	priority := &gryviav1.FabricPriority{}
 	err := r.Get(ctx, req.NamespacedName, priority)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -67,11 +67,11 @@ func (r *FabricPriorityReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	return result, nil
 }
 
-func (r *FabricPriorityReconciler) reconcilePriority(ctx context.Context, priority *tensorreaperv1.FabricPriority) (ctrl.Result, error) {
+func (r *FabricPriorityReconciler) reconcilePriority(ctx context.Context, priority *gryviav1.FabricPriority) (ctrl.Result, error) {
 	log := r.Log.WithValues("priority", priority.Name)
 
 	// List all jobs
-	jobList := &tensorreaperv1.FabricAIJobList{}
+	jobList := &gryviav1.FabricAIJobList{}
 	if err := r.List(ctx, jobList); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to list FabricAIJobs: %w", err)
 	}
@@ -131,23 +131,23 @@ func (r *FabricPriorityReconciler) reconcilePriority(ctx context.Context, priori
 	return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 }
 
-func (r *FabricPriorityReconciler) getJobPriorityClass(job tensorreaperv1.FabricAIJob) string {
+func (r *FabricPriorityReconciler) getJobPriorityClass(job gryviav1.FabricAIJob) string {
 	// Check for priority class label or annotation
-	if pc, ok := job.Labels["tensorreaper.ai/priority-class"]; ok {
+	if pc, ok := job.Labels["gryvia.io/priority-class"]; ok {
 		return pc
 	}
-	if pc, ok := job.Annotations["tensorreaper.ai/priority-class"]; ok {
+	if pc, ok := job.Annotations["gryvia.io/priority-class"]; ok {
 		return pc
 	}
 	// Default to "normal"
 	return "normal"
 }
 
-func (r *FabricPriorityReconciler) evaluatePreemption(ctx context.Context, priority *tensorreaperv1.FabricPriority, jobList *tensorreaperv1.FabricAIJobList) {
+func (r *FabricPriorityReconciler) evaluatePreemption(ctx context.Context, priority *gryviav1.FabricPriority, jobList *gryviav1.FabricAIJobList) {
 	log := r.Log.WithValues("priority", priority.Name)
 
 	// Get all priority classes to build priority value map
-	priorityList := &tensorreaperv1.FabricPriorityList{}
+	priorityList := &gryviav1.FabricPriorityList{}
 	if err := r.List(ctx, priorityList); err != nil {
 		log.Error(err, "Failed to list priority classes")
 		return
@@ -159,7 +159,7 @@ func (r *FabricPriorityReconciler) evaluatePreemption(ctx context.Context, prior
 	}
 
 	// Find pending jobs with this priority that need resources
-	var pendingHighPriJobs []tensorreaperv1.FabricAIJob
+	var pendingHighPriJobs []gryviav1.FabricAIJob
 	for _, job := range jobList.Items {
 		jobPriority := r.getJobPriorityClass(job)
 		if jobPriority == priority.Name && (job.Status.Phase == "Pending" || job.Status.Phase == "Queued") {
@@ -179,7 +179,7 @@ func (r *FabricPriorityReconciler) evaluatePreemption(ctx context.Context, prior
 	}
 
 	// Find running lower-priority jobs that can be preempted
-	var preemptCandidates []tensorreaperv1.FabricAIJob
+	var preemptCandidates []gryviav1.FabricAIJob
 	for _, job := range jobList.Items {
 		if job.Status.Phase != "Running" {
 			continue
@@ -227,7 +227,7 @@ func (r *FabricPriorityReconciler) evaluatePreemption(ctx context.Context, prior
 			)
 
 			// Record preemption event
-			preemptionEvent := tensorreaperv1.PreemptionEvent{
+			preemptionEvent := gryviav1.PreemptionEvent{
 				Timestamp:            metav1.Now(),
 				PreemptedJob:         candidate.Name,
 				PreemptedJobPriority: priorityValues[r.getJobPriorityClass(*candidate)],
@@ -252,7 +252,7 @@ func (r *FabricPriorityReconciler) evaluatePreemption(ctx context.Context, prior
 	}
 }
 
-func (r *FabricPriorityReconciler) addPreemptionEvent(priority *tensorreaperv1.FabricPriority, event tensorreaperv1.PreemptionEvent) {
+func (r *FabricPriorityReconciler) addPreemptionEvent(priority *gryviav1.FabricPriority, event gryviav1.PreemptionEvent) {
 	priority.Status.PreemptionHistory = append(priority.Status.PreemptionHistory, event)
 
 	// Maintain rolling buffer
@@ -261,7 +261,7 @@ func (r *FabricPriorityReconciler) addPreemptionEvent(priority *tensorreaperv1.F
 	}
 }
 
-func (r *FabricPriorityReconciler) updatePriorityCondition(priority *tensorreaperv1.FabricPriority, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *FabricPriorityReconciler) updatePriorityCondition(priority *gryviav1.FabricPriority, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -287,6 +287,6 @@ func (r *FabricPriorityReconciler) updatePriorityCondition(priority *tensorreape
 // SetupWithManager sets up the controller with the Manager.
 func (r *FabricPriorityReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tensorreaperv1.FabricPriority{}).
+		For(&gryviav1.FabricPriority{}).
 		Complete(r)
 }

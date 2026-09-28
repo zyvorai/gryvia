@@ -1,4 +1,4 @@
-# 🎉 TensorReaper - PROJECT COMPLETE! 🎉
+# 🎉 Gryvia - PROJECT COMPLETE! 🎉
 
 ## ✨ **What You Just Built**
 
@@ -7,7 +7,7 @@ An **enterprise-grade, production-ready GPU compute platform** for AI infrastruc
 ```
 ╔══════════════════════════════════════════════════════════╗
 ║                                                          ║
-║            ✅ TENSORREAPER v1.0.0 - COMPLETE              ║
+║            ✅ GRYVIA v1.0.0 - COMPLETE              ║
 ║                                                          ║
 ║  "Bare-Metal GPU Fabric for AI Infrastructure"          ║
 ║                                                          ║
@@ -86,8 +86,8 @@ An **enterprise-grade, production-ready GPU compute platform** for AI infrastruc
 - [x] Interactive workspaces
 
 ### ✅ **SDKs**
-- [x] Python SDK (`pip install tensorreaper`)
-- [x] Go SDK (`go get github.com/ssahani/TensorReaper/sdk/go`)
+- [x] Python SDK (`pip install gryvia`)
+- [x] Go SDK (`go get github.com/zyvorai/gryvia/sdk/go`)
 
 ### ✅ **Authentication**
 - [x] OIDC/SSO authentication
@@ -245,7 +245,7 @@ Concurrent Jobs:       10,000+   ✅ Scalable
 ## 📝 **For Your Resume**
 
 ```
-TensorReaper - Enterprise GPU Compute Platform
+Gryvia - Enterprise GPU Compute Platform
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Role: Technical Lead / Principal Engineer
@@ -307,7 +307,7 @@ Impact:
 
 ## 🔥 **Competitive Advantages**
 
-| Aspect | TensorReaper | Alternatives |
+| Aspect | Gryvia | Alternatives |
 |--------|------------|--------------|
 | **Cost** | Self-hosted | 3-5x more expensive |
 | **Performance** | Bare metal | Cloud overhead |
@@ -331,7 +331,7 @@ Impact:
 - LLM inference deployment
 
 **Helm Charts:**
-- tensorreaper-core
+- gryvia-core
 - observability stack
 
 **Terraform:**

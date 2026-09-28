@@ -24,7 +24,7 @@ kubectl apply -f manifests/crds/fabrictrainingprofiler.yaml
 ### 2. Create a Profiler
 
 ```yaml
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricTrainingProfiler
 metadata:
   name: my-profiler
@@ -33,7 +33,7 @@ spec:
   target:
     type: auto
     jobSelector:
-      tensorreaper.ai/type: training
+      gryvia.io/type: training
     autoProfile:
       warmupSteps: 100
       profileSteps: 50
@@ -193,7 +193,7 @@ spec:
   target:
     type: auto
     jobSelector:
-      tensorreaper.ai/type: training
+      gryvia.io/type: training
 ```
 
 ### Job Reference
@@ -221,23 +221,23 @@ spec:
 
 ## Metrics Collection
 
-GPU metrics are collected from pod annotations set by the TensorReaper GPU monitoring sidecar or the GPU operator. The following annotations are read:
+GPU metrics are collected from pod annotations set by the Gryvia GPU monitoring sidecar or the GPU operator. The following annotations are read:
 
 | Annotation                               | Description                          |
 |------------------------------------------|--------------------------------------|
-| `tensorreaper.ai/gpu-sm-utilization`       | SM utilization (0-100)               |
-| `tensorreaper.ai/gpu-tensor-utilization`   | Tensor core utilization (0-100)      |
-| `tensorreaper.ai/gpu-tflops`              | Achieved TFLOPS                      |
-| `tensorreaper.ai/gpu-memory-bw-utilization`| Memory bandwidth utilization (0-100) |
-| `tensorreaper.ai/gpu-peak-memory-gb`       | Peak GPU memory usage (GB)           |
-| `tensorreaper.ai/gpu-total-memory-gb`      | Total GPU memory (GB)                |
-| `tensorreaper.ai/gpu-io-wait-ratio`        | IO wait ratio (0-1)                  |
-| `tensorreaper.ai/dataloader-throughput`    | Dataloader throughput (samples/sec)  |
-| `tensorreaper.ai/nccl-bandwidth-gbps`      | NCCL bandwidth (GB/s)               |
-| `tensorreaper.ai/allreduce-time-fraction`  | AllReduce time fraction (0-1)        |
-| `tensorreaper.ai/compute-comm-overlap`     | Compute-comm overlap (0-1)           |
-| `tensorreaper.ai/mixed-precision`          | "true" if AMP is enabled             |
-| `tensorreaper.ai/torch-compile`            | "true" if torch.compile is used      |
+| `gryvia.io/gpu-sm-utilization`       | SM utilization (0-100)               |
+| `gryvia.io/gpu-tensor-utilization`   | Tensor core utilization (0-100)      |
+| `gryvia.io/gpu-tflops`              | Achieved TFLOPS                      |
+| `gryvia.io/gpu-memory-bw-utilization`| Memory bandwidth utilization (0-100) |
+| `gryvia.io/gpu-peak-memory-gb`       | Peak GPU memory usage (GB)           |
+| `gryvia.io/gpu-total-memory-gb`      | Total GPU memory (GB)                |
+| `gryvia.io/gpu-io-wait-ratio`        | IO wait ratio (0-1)                  |
+| `gryvia.io/dataloader-throughput`    | Dataloader throughput (samples/sec)  |
+| `gryvia.io/nccl-bandwidth-gbps`      | NCCL bandwidth (GB/s)               |
+| `gryvia.io/allreduce-time-fraction`  | AllReduce time fraction (0-1)        |
+| `gryvia.io/compute-comm-overlap`     | Compute-comm overlap (0-1)           |
+| `gryvia.io/mixed-precision`          | "true" if AMP is enabled             |
+| `gryvia.io/torch-compile`            | "true" if torch.compile is used      |
 
 ## Severity Levels
 
@@ -277,11 +277,11 @@ Events:
 When `prometheusMetrics: true`, the following metrics are exposed:
 
 ```
-tensorreaper_profiler_mfu{job="resnet-train", gpu_type="A100"} 22.3
-tensorreaper_profiler_efficiency{job="resnet-train"} 45.2
-tensorreaper_profiler_recommendations_total{severity="critical"} 2
-tensorreaper_profiler_recommendations_total{severity="warning"} 5
-tensorreaper_profiler_jobs_profiled_total 12
+gryvia_profiler_mfu{job="resnet-train", gpu_type="A100"} 22.3
+gryvia_profiler_efficiency{job="resnet-train"} 45.2
+gryvia_profiler_recommendations_total{severity="critical"} 2
+gryvia_profiler_recommendations_total{severity="warning"} 5
+gryvia_profiler_jobs_profiled_total 12
 ```
 
 ## Examples
@@ -299,7 +299,7 @@ See `examples/training/profiler-example.yaml` for complete examples including:
 
 ```bash
 # Check that jobs match the selector
-kubectl get fabricaijobs -l tensorreaper.ai/type=training
+kubectl get fabricaijobs -l gryvia.io/type=training
 
 # Check profiler status
 kubectl describe fabrictrainingprofiler my-profiler
@@ -313,10 +313,10 @@ kubectl get fabricaijobs -o custom-columns=NAME:.metadata.name,PHASE:.status.pha
 If metrics show as 0, verify that pod annotations are being set:
 
 ```bash
-kubectl get pods -l tensorreaper.ai/job=my-job -o jsonpath='{.items[0].metadata.annotations}'
+kubectl get pods -l gryvia.io/job=my-job -o jsonpath='{.items[0].metadata.annotations}'
 ```
 
-The GPU monitoring sidecar or GPU operator must set the `tensorreaper.ai/gpu-*` annotations on training pods.
+The GPU monitoring sidecar or GPU operator must set the `gryvia.io/gpu-*` annotations on training pods.
 
 ### Recommendations Not Appearing
 
@@ -330,5 +330,5 @@ spec:
 
 ## Support
 
-- Issues: https://github.com/ssahani/TensorReaper/issues
-- Discussions: https://github.com/ssahani/TensorReaper/discussions
+- Issues: https://github.com/zyvorai/gryvia/issues
+- Discussions: https://github.com/zyvorai/gryvia/discussions

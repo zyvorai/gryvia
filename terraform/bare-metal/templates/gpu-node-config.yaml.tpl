@@ -1,4 +1,4 @@
-apiVersion: tensorreaper.ai/v1
+apiVersion: gryvia.io/v1
 kind: FabricGpuNode
 metadata:
   name: ${node_name}
@@ -16,9 +16,9 @@ spec:
     enabled: true
     intervalSeconds: 60
   labels:
-    tensorreaper.ai/gpu: "${gpu_type}"
-    tensorreaper.ai/gpu-count: "${gpu_count}"
-    tensorreaper.ai/rdma: "${rdma_enabled}"
+    gryvia.io/gpu: "${gpu_type}"
+    gryvia.io/gpu-count: "${gpu_count}"
+    gryvia.io/rdma: "${rdma_enabled}"
     %{ if rdma_enabled }
-    tensorreaper.ai/rdma-device: "${rdma_device}"
+    gryvia.io/rdma-device: "${rdma_device}"
     %{ endif }

@@ -5,7 +5,7 @@ use prettytable::{Table, Row, Cell, format};
 use colored::*;
 use serde_json::json;
 
-use crate::client::TensorReaperClient;
+use crate::client::GryviaClient;
 
 pub enum PolicyAction {
     Suggest { namespace: String },
@@ -13,7 +13,7 @@ pub enum PolicyAction {
     List { namespace: String, output: String },
 }
 
-pub async fn execute(client: &TensorReaperClient, action: PolicyAction) -> Result<()> {
+pub async fn execute(client: &GryviaClient, action: PolicyAction) -> Result<()> {
     match action {
         PolicyAction::Suggest { namespace } => suggest_policies(client, &namespace).await,
         PolicyAction::Apply { policy_name, namespace } => apply_policy(client, &policy_name, &namespace).await,
@@ -21,12 +21,12 @@ pub async fn execute(client: &TensorReaperClient, action: PolicyAction) -> Resul
     }
 }
 
-async fn list_policies(client: &TensorReaperClient, namespace: &str, output: &str) -> Result<()> {
+async fn list_policies(client: &GryviaClient, namespace: &str, output: &str) -> Result<()> {
     println!("{}", "━━━ Flow Policies ━━━".bold().cyan());
     println!();
 
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
-        "tensorreaper.ai",
+        "gryvia.io",
         "v1",
         "FabricFlowPolicy",
     ));
@@ -150,7 +150,7 @@ fn print_policies_table(policies: &[DynamicObject]) {
     println!();
 }
 
-async fn suggest_policies(client: &TensorReaperClient, namespace: &str) -> Result<()> {
+async fn suggest_policies(client: &GryviaClient, namespace: &str) -> Result<()> {
     println!("{}", "━━━ Suggested Policies ━━━".bold().cyan());
     println!();
     println!(
@@ -161,7 +161,7 @@ async fn suggest_policies(client: &TensorReaperClient, namespace: &str) -> Resul
 
     // Query for suggested policies (those with phase=Suggested)
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
-        "tensorreaper.ai",
+        "gryvia.io",
         "v1",
         "FabricFlowPolicy",
     ));
@@ -171,7 +171,7 @@ async fn suggest_policies(client: &TensorReaperClient, namespace: &str) -> Resul
         &ar,
     );
 
-    let label_selector = "tensorreaper.ai/suggested=true";
+    let label_selector = "gryvia.io/suggested=true";
     let params = ListParams::default().labels(label_selector);
 
     let suggestions = match api.list(&params).await {
@@ -247,7 +247,7 @@ async fn suggest_policies(client: &TensorReaperClient, namespace: &str) -> Resul
         println!("     Intent: {}", intent.dimmed());
         println!(
             "     Apply: {} policy apply {}",
-            "tensorreaper network".dimmed(),
+            "gryvia network".dimmed(),
             name.dimmed()
         );
         println!();
@@ -257,7 +257,7 @@ async fn suggest_policies(client: &TensorReaperClient, namespace: &str) -> Resul
 }
 
 async fn apply_policy(
-    client: &TensorReaperClient,
+    client: &GryviaClient,
     policy_name: &str,
     namespace: &str,
 ) -> Result<()> {
@@ -268,7 +268,7 @@ async fn apply_policy(
     );
 
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
-        "tensorreaper.ai",
+        "gryvia.io",
         "v1",
         "FabricFlowPolicy",
     ));
@@ -307,14 +307,14 @@ async fn apply_policy(
         },
         "metadata": {
             "labels": {
-                "tensorreaper.ai/suggested": null
+                "gryvia.io/suggested": null
             }
         }
     });
 
     api.patch(
         policy_name,
-        &PatchParams::apply("tensorreaper-cli"),
+        &PatchParams::apply("gryvia-cli"),
         &Patch::Merge(&patch),
     )
     .await

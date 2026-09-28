@@ -13,7 +13,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/ai-operator/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 )
 
 const (
@@ -34,17 +34,17 @@ type FabricModelRegistryReconciler struct {
 	Log    logr.Logger
 }
 
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricmodelregistries,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricmodelregistries/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricmodelregistries/finalizers,verbs=update
-//+kubebuilder:rbac:groups=tensorreaper.ai,resources=fabricinferenceservices,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricmodelregistries,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricmodelregistries/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricmodelregistries/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=fabricinferenceservices,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop
 func (r *FabricModelRegistryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("fabricmodelregistry", req.NamespacedName)
 
 	// Fetch the FabricModelRegistry instance
-	model := &tensorreaperv1.FabricModelRegistry{}
+	model := &gryviav1.FabricModelRegistry{}
 	err := r.Get(ctx, req.NamespacedName, model)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -84,11 +84,11 @@ func (r *FabricModelRegistryReconciler) Reconcile(ctx context.Context, req ctrl.
 	return result, nil
 }
 
-func (r *FabricModelRegistryReconciler) reconcileModelRegistry(ctx context.Context, model *tensorreaperv1.FabricModelRegistry) (ctrl.Result, error) {
+func (r *FabricModelRegistryReconciler) reconcileModelRegistry(ctx context.Context, model *gryviav1.FabricModelRegistry) (ctrl.Result, error) {
 	log := r.Log.WithValues("fabricmodelregistry", model.Name)
 
 	// Check if model should be auto-served when it reaches production stage
-	if model.Spec.Stage == tensorreaperv1.ModelStageProduction && model.Spec.AutoServe {
+	if model.Spec.Stage == gryviav1.ModelStageProduction && model.Spec.AutoServe {
 		if model.Status.Phase == PhaseRegistered || model.Status.Phase == PhaseDeploying {
 			if err := r.ensureInferenceService(ctx, model); err != nil {
 				log.Error(err, "Failed to ensure inference service")
@@ -108,7 +108,7 @@ func (r *FabricModelRegistryReconciler) reconcileModelRegistry(ctx context.Conte
 	}
 
 	// Track previous version for rollback support
-	if model.Spec.Stage == tensorreaperv1.ModelStageProduction {
+	if model.Spec.Stage == gryviav1.ModelStageProduction {
 		r.trackPreviousVersion(ctx, model)
 	}
 
@@ -126,11 +126,11 @@ func (r *FabricModelRegistryReconciler) reconcileModelRegistry(ctx context.Conte
 }
 
 // ensureInferenceService creates a FabricInferenceService for a production model.
-func (r *FabricModelRegistryReconciler) ensureInferenceService(ctx context.Context, model *tensorreaperv1.FabricModelRegistry) error {
+func (r *FabricModelRegistryReconciler) ensureInferenceService(ctx context.Context, model *gryviav1.FabricModelRegistry) error {
 	inferName := fmt.Sprintf("%s-%s-serving", model.Spec.ModelName, model.Spec.Version)
 
 	// Check if it already exists
-	existing := &tensorreaperv1.FabricInferenceService{}
+	existing := &gryviav1.FabricInferenceService{}
 	err := r.Get(ctx, types.NamespacedName{
 		Namespace: model.Namespace,
 		Name:      inferName,
@@ -146,14 +146,14 @@ func (r *FabricModelRegistryReconciler) ensureInferenceService(ctx context.Conte
 	}
 
 	// Determine serving configuration
-	backend := tensorreaperv1.BackendVLLM
+	backend := gryviav1.BackendVLLM
 	replicas := int32(1)
 	gpuCount := int32(1)
 	gpuType := ""
 
 	if model.Spec.ServingConfig != nil {
 		if model.Spec.ServingConfig.Backend != "" {
-			backend = tensorreaperv1.InferenceBackend(model.Spec.ServingConfig.Backend)
+			backend = gryviav1.InferenceBackend(model.Spec.ServingConfig.Backend)
 		}
 		if model.Spec.ServingConfig.Replicas > 0 {
 			replicas = model.Spec.ServingConfig.Replicas
@@ -164,20 +164,20 @@ func (r *FabricModelRegistryReconciler) ensureInferenceService(ctx context.Conte
 		gpuType = model.Spec.ServingConfig.GPUType
 	}
 
-	inferSvc := &tensorreaperv1.FabricInferenceService{
+	inferSvc := &gryviav1.FabricInferenceService{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      inferName,
 			Namespace: model.Namespace,
 			Labels: map[string]string{
-				"tensorreaper.ai/model":     model.Spec.ModelName,
-				"tensorreaper.ai/version":   model.Spec.Version,
-				"tensorreaper.ai/component": "inference",
+				"gryvia.io/model":     model.Spec.ModelName,
+				"gryvia.io/version":   model.Spec.Version,
+				"gryvia.io/component": "inference",
 			},
 			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(model, tensorreaperv1.GroupVersion.WithKind("FabricModelRegistry")),
+				*metav1.NewControllerRef(model, gryviav1.GroupVersion.WithKind("FabricModelRegistry")),
 			},
 		},
-		Spec: tensorreaperv1.FabricInferenceServiceSpec{
+		Spec: gryviav1.FabricInferenceServiceSpec{
 			ModelRef: model.Name,
 			Backend:  backend,
 			Replicas: replicas,
@@ -199,8 +199,8 @@ func (r *FabricModelRegistryReconciler) ensureInferenceService(ctx context.Conte
 }
 
 // syncInferenceHealth checks the health of the inference service and updates model status.
-func (r *FabricModelRegistryReconciler) syncInferenceHealth(ctx context.Context, model *tensorreaperv1.FabricModelRegistry) {
-	inferSvc := &tensorreaperv1.FabricInferenceService{}
+func (r *FabricModelRegistryReconciler) syncInferenceHealth(ctx context.Context, model *gryviav1.FabricModelRegistry) {
+	inferSvc := &gryviav1.FabricInferenceService{}
 	err := r.Get(ctx, types.NamespacedName{
 		Namespace: model.Namespace,
 		Name:      model.Status.InferenceServiceName,
@@ -234,16 +234,16 @@ func (r *FabricModelRegistryReconciler) syncInferenceHealth(ctx context.Context,
 }
 
 // trackPreviousVersion records the currently serving version for rollback support.
-func (r *FabricModelRegistryReconciler) trackPreviousVersion(ctx context.Context, model *tensorreaperv1.FabricModelRegistry) {
+func (r *FabricModelRegistryReconciler) trackPreviousVersion(ctx context.Context, model *gryviav1.FabricModelRegistry) {
 	if model.Status.PreviousVersion != "" {
 		return // Already tracked
 	}
 
 	// Find any other model with the same modelName in production stage
-	models := &tensorreaperv1.FabricModelRegistryList{}
+	models := &gryviav1.FabricModelRegistryList{}
 	if err := r.List(ctx, models,
 		client.InNamespace(model.Namespace),
-		client.MatchingLabels{"tensorreaper.ai/model": model.Spec.ModelName},
+		client.MatchingLabels{"gryvia.io/model": model.Spec.ModelName},
 	); err != nil {
 		return
 	}
@@ -252,14 +252,14 @@ func (r *FabricModelRegistryReconciler) trackPreviousVersion(ctx context.Context
 		if m.Name == model.Name {
 			continue
 		}
-		if m.Spec.Stage == tensorreaperv1.ModelStageProduction && m.Spec.ModelName == model.Spec.ModelName {
+		if m.Spec.Stage == gryviav1.ModelStageProduction && m.Spec.ModelName == model.Spec.ModelName {
 			model.Status.PreviousVersion = m.Spec.Version
 			break
 		}
 	}
 }
 
-func (r *FabricModelRegistryReconciler) updateModelCondition(model *tensorreaperv1.FabricModelRegistry, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *FabricModelRegistryReconciler) updateModelCondition(model *gryviav1.FabricModelRegistry, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -292,7 +292,7 @@ func (r *FabricModelRegistryReconciler) updateModelCondition(model *tensorreaper
 // SetupWithManager sets up the controller with the Manager.
 func (r *FabricModelRegistryReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tensorreaperv1.FabricModelRegistry{}).
-		Owns(&tensorreaperv1.FabricInferenceService{}).
+		For(&gryviav1.FabricModelRegistry{}).
+		Owns(&gryviav1.FabricInferenceService{}).
 		Complete(r)
 }

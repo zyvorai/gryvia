@@ -1,4 +1,4 @@
-IMG ?= tensorreaper/network-intelligence:latest
+IMG ?= gryvia/network-intelligence:latest
 
 .PHONY: all
 all: build

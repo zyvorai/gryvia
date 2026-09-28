@@ -13,7 +13,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ssahani/TensorReaper/collector/pkg/decoder"
+	"github.com/zyvorai/gryvia/collector/pkg/decoder"
 )
 
 // AnomalyType classifies what kind of anomaly was detected.
@@ -131,7 +131,7 @@ func (d *Detector) updateAndCheck(bl *baseline, value float64, anomalyType Anoma
 		delta := value - bl.mean
 		bl.mean += delta / float64(bl.count)
 		delta2 := value - bl.mean
-		bl.variance += delta*delta2
+		bl.variance += delta * delta2
 		return
 	}
 

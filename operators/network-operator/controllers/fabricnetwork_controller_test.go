@@ -2,10 +2,11 @@ package controllers
 
 import (
 	"context"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"testing"
 
-	corev1 "k8s.io/api/core/v1"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -14,12 +15,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/network-operator/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/network-operator/api/v1"
 )
 
 func newNetworkTestScheme() *runtime.Scheme {
 	s := runtime.NewScheme()
-	_ = tensorreaperv1.AddToScheme(s)
+	_ = gryviav1.AddToScheme(s)
 	_ = corev1.AddToScheme(s)
 	_ = appsv1.AddToScheme(s)
 	return s
@@ -30,7 +31,7 @@ func newNetworkReconciler(objs ...client.Object) (*FabricNetworkReconciler, clie
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(objs...).
-		WithStatusSubresource(&tensorreaperv1.FabricNetwork{}).
+		WithStatusSubresource(&gryviav1.FabricNetwork{}).
 		Build()
 	r := &FabricNetworkReconciler{
 		Client: fakeClient,
@@ -39,21 +40,21 @@ func newNetworkReconciler(objs ...client.Object) (*FabricNetworkReconciler, clie
 	return r, fakeClient
 }
 
-func newTestNetwork(name string) *tensorreaperv1.FabricNetwork {
-	return &tensorreaperv1.FabricNetwork{
+func newTestNetwork(name string) *gryviav1.FabricNetwork {
+	return &gryviav1.FabricNetwork{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
-		Spec: tensorreaperv1.FabricNetworkSpec{
+		Spec: gryviav1.FabricNetworkSpec{
 			NetworkType: "rdma",
-			RDMA: &tensorreaperv1.RDMAConfig{
+			RDMA: &gryviav1.RDMAConfig{
 				Mode:    "infiniband",
 				Devices: []string{"mlx5_0", "mlx5_1"},
 				Subnet:  "10.0.0.0/24",
 				Gateway: "10.0.0.1",
 			},
 			NodeSelector: map[string]string{
-				"tensorreaper.ai/gpu": "H100",
+				"gryvia.io/gpu": "H100",
 			},
 			MTU:             9000,
 			TargetNamespace: "default",
@@ -87,7 +88,7 @@ func TestNetwork_Reconcile_AddsFinalizer(t *testing.T) {
 		t.Error("expected requeue after adding finalizer")
 	}
 
-	updated := &tensorreaperv1.FabricNetwork{}
+	updated := &gryviav1.FabricNetwork{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-network"}, updated); err != nil {
 		t.Fatalf("failed to get network: %v", err)
 	}
@@ -106,15 +107,15 @@ func TestNetwork_Reconcile_DeletionCleanup(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "gpu-node-1",
 			Labels: map[string]string{
-				"tensorreaper.ai/gpu":       "H100",
-				"tensorreaper.ai/rdma":      "true",
-				"tensorreaper.ai/rdma-mode": "infiniband",
-				"tensorreaper.ai/sriov":     "true",
-				"other-label":              "keep",
+				"gryvia.io/gpu":       "H100",
+				"gryvia.io/rdma":      "true",
+				"gryvia.io/rdma-mode": "infiniband",
+				"gryvia.io/sriov":     "true",
+				"other-label":         "keep",
 			},
 			Annotations: map[string]string{
-				"tensorreaper.ai/rdma-devices":   "mlx5_0,mlx5_1",
-				"tensorreaper.ai/sriov-interface": "eth0",
+				"gryvia.io/rdma-devices":    "mlx5_0,mlx5_1",
+				"gryvia.io/sriov-interface": "eth0",
 			},
 		},
 	}
@@ -135,25 +136,28 @@ func TestNetwork_Reconcile_DeletionCleanup(t *testing.T) {
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "gpu-node-1"}, updatedNode); err != nil {
 		t.Fatalf("failed to get node: %v", err)
 	}
-	if _, exists := updatedNode.Labels["tensorreaper.ai/rdma"]; exists {
-		t.Error("expected tensorreaper.ai/rdma label to be removed")
+	if _, exists := updatedNode.Labels["gryvia.io/rdma"]; exists {
+		t.Error("expected gryvia.io/rdma label to be removed")
 	}
-	if _, exists := updatedNode.Labels["tensorreaper.ai/rdma-mode"]; exists {
-		t.Error("expected tensorreaper.ai/rdma-mode label to be removed")
+	if _, exists := updatedNode.Labels["gryvia.io/rdma-mode"]; exists {
+		t.Error("expected gryvia.io/rdma-mode label to be removed")
 	}
-	if _, exists := updatedNode.Labels["tensorreaper.ai/sriov"]; exists {
-		t.Error("expected tensorreaper.ai/sriov label to be removed")
+	if _, exists := updatedNode.Labels["gryvia.io/sriov"]; exists {
+		t.Error("expected gryvia.io/sriov label to be removed")
 	}
 	if val, exists := updatedNode.Labels["other-label"]; !exists || val != "keep" {
-		t.Error("expected non-tensorreaper labels to be preserved")
+		t.Error("expected non-gryvia labels to be preserved")
 	}
-	if _, exists := updatedNode.Annotations["tensorreaper.ai/rdma-devices"]; exists {
+	if _, exists := updatedNode.Annotations["gryvia.io/rdma-devices"]; exists {
 		t.Error("expected rdma-devices annotation to be removed")
 	}
 
 	// Verify finalizer removed
-	updatedNetwork := &tensorreaperv1.FabricNetwork{}
+	updatedNetwork := &gryviav1.FabricNetwork{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-network"}, updatedNetwork); err != nil {
+		if apierrors.IsNotFound(err) {
+			return // object is gone once its last finalizer is removed
+		}
 		t.Fatalf("failed to get network: %v", err)
 	}
 	if controllerutil.ContainsFinalizer(updatedNetwork, fabricNetworkFinalizer) {
@@ -163,24 +167,24 @@ func TestNetwork_Reconcile_DeletionCleanup(t *testing.T) {
 
 func TestNetwork_GetMatchingNodes(t *testing.T) {
 	network := newTestNetwork("test-network")
-	network.Spec.NodeSelector = map[string]string{"tensorreaper.ai/gpu": "H100"}
+	network.Spec.NodeSelector = map[string]string{"gryvia.io/gpu": "H100"}
 
 	node1 := &corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "node-1",
-			Labels: map[string]string{"tensorreaper.ai/gpu": "H100"},
+			Labels: map[string]string{"gryvia.io/gpu": "H100"},
 		},
 	}
 	node2 := &corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "node-2",
-			Labels: map[string]string{"tensorreaper.ai/gpu": "A100"},
+			Labels: map[string]string{"gryvia.io/gpu": "A100"},
 		},
 	}
 	node3 := &corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "node-3",
-			Labels: map[string]string{"tensorreaper.ai/gpu": "H100"},
+			Labels: map[string]string{"gryvia.io/gpu": "H100"},
 		},
 	}
 
@@ -223,7 +227,7 @@ func TestNetwork_UpdateStatus(t *testing.T) {
 
 	r.updateStatus(context.Background(), network, "Ready", "OK")
 
-	updated := &tensorreaperv1.FabricNetwork{}
+	updated := &gryviav1.FabricNetwork{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-network"}, updated); err != nil {
 		t.Fatalf("failed to get network: %v", err)
 	}

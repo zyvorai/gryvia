@@ -1,5 +1,5 @@
 #!/bin/bash
-# TensorReaper Backup and Restore Tool
+# Gryvia Backup and Restore Tool
 # Backs up CRDs, configurations, and state
 
 set -euo pipefail
@@ -10,18 +10,18 @@ RED='\033[0;31m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-BACKUP_DIR="${BACKUP_DIR:-${HOME}/.tensorreaper/backups}"
+BACKUP_DIR="${BACKUP_DIR:-${HOME}/.gryvia/backups}"
 NAMESPACE="${NAMESPACE:-default}"
 TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
 
 usage() {
     cat << EOF
-TensorReaper Backup and Restore Tool
+Gryvia Backup and Restore Tool
 
 Usage: $0 [COMMAND] [OPTIONS]
 
 Commands:
-    backup      Create a backup of TensorReaper resources
+    backup      Create a backup of Gryvia resources
     restore     Restore from a backup
     list        List available backups
     verify      Verify backup integrity
@@ -35,9 +35,9 @@ Options:
 Examples:
     $0 backup
     $0 backup --namespace production
-    $0 restore --file /backups/tensorreaper-20240101-120000.tar.gz
+    $0 restore --file /backups/gryvia-20240101-120000.tar.gz
     $0 list
-    $0 verify --file /backups/tensorreaper-20240101-120000.tar.gz
+    $0 verify --file /backups/gryvia-20240101-120000.tar.gz
 
 EOF
 }
@@ -71,7 +71,7 @@ check_prerequisites() {
 }
 
 backup() {
-    local backup_name="tensorreaper-${TIMESTAMP}"
+    local backup_name="gryvia-${TIMESTAMP}"
     local backup_path="${BACKUP_DIR}/${backup_name}"
 
     log_info "Starting backup: ${backup_name}"
@@ -84,15 +84,15 @@ backup() {
     # Backup CRDs
     log_info "Backing up CRDs..."
     local crd_names
-    crd_names=$(kubectl get crds -o name | grep tensorreaper || true)
+    crd_names=$(kubectl get crds -o name | grep gryvia || true)
     if [ -n "$crd_names" ]; then
         echo "$crd_names" | xargs kubectl get -o yaml > "${backup_path}/crds.yaml"
         if [ ! -s "${backup_path}/crds.yaml" ]; then
             log_warn "CRD backup file is empty, backup may be incomplete"
         fi
     else
-        log_warn "No TensorReaper CRDs found, skipping CRD backup"
-        echo "# No TensorReaper CRDs found during backup" > "${backup_path}/crds.yaml"
+        log_warn "No Gryvia CRDs found, skipping CRD backup"
+        echo "# No Gryvia CRDs found during backup" > "${backup_path}/crds.yaml"
     fi
 
     # Backup FabricGpuNodes
@@ -117,10 +117,10 @@ backup() {
 
     # Backup ConfigMaps
     log_info "Backing up ConfigMaps..."
-    kubectl get configmaps -n tensorreaper -o yaml > "${backup_path}/configmaps.yaml" 2>/dev/null || true
+    kubectl get configmaps -n gryvia-system -o yaml > "${backup_path}/configmaps.yaml" 2>/dev/null || true
 
     # Skip secrets by default to avoid storing sensitive data in plaintext backups
-    # To include secrets, create them separately using: kubectl get secrets -n tensorreaper -o yaml | kubeseal > sealed-secrets.yaml
+    # To include secrets, create them separately using: kubectl get secrets -n gryvia-system -o yaml | kubeseal > sealed-secrets.yaml
     log_info "Skipping secrets backup (use sealed-secrets for secret backup)"
     echo "Secrets excluded from backup for security. Use 'kubeseal' for encrypted secret backups." > "${backup_path}/secrets-skipped.txt"
 
@@ -134,7 +134,7 @@ backup() {
   "timestamp": "${TIMESTAMP}",
   "namespace": "${NAMESPACE}",
   "kubernetes_version": "$(kubectl version -o json 2>/dev/null | python3 -c 'import sys,json; print(json.load(sys.stdin)["serverVersion"]["gitVersion"])' 2>/dev/null || echo 'unknown')",
-  "tensorreaper_version": "$(kubectl get deployment tensorreaper-gpu-operator -n tensorreaper -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || echo 'unknown')"
+  "gryvia_version": "$(kubectl get deployment gryvia-gpu-operator -n gryvia-system -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || echo 'unknown')"
 }
 EOF
 

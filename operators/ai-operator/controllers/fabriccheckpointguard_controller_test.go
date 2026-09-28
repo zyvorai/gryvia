@@ -14,12 +14,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	tensorreaperv1 "github.com/ssahani/TensorReaper/operators/ai-operator/api/v1"
+	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 )
 
 func newCheckpointGuardTestScheme() *runtime.Scheme {
 	s := runtime.NewScheme()
-	_ = tensorreaperv1.AddToScheme(s)
+	_ = gryviav1.AddToScheme(s)
 	_ = corev1.AddToScheme(s)
 	_ = appsv1.AddToScheme(s)
 	return s
@@ -30,7 +30,7 @@ func newCheckpointGuardReconciler(objs ...client.Object) (*FabricCheckpointGuard
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(objs...).
-		WithStatusSubresource(&tensorreaperv1.FabricCheckpointGuard{}, &tensorreaperv1.FabricAIJob{}).
+		WithStatusSubresource(&gryviav1.FabricCheckpointGuard{}, &gryviav1.FabricAIJob{}).
 		Build()
 	r := &FabricCheckpointGuardReconciler{
 		Client: fakeClient,
@@ -40,23 +40,23 @@ func newCheckpointGuardReconciler(objs ...client.Object) (*FabricCheckpointGuard
 	return r, fakeClient
 }
 
-func newTestCheckpointGuard(name, namespace string) *tensorreaperv1.FabricCheckpointGuard {
-	return &tensorreaperv1.FabricCheckpointGuard{
+func newTestCheckpointGuard(name, namespace string) *gryviav1.FabricCheckpointGuard {
+	return &gryviav1.FabricCheckpointGuard{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
 		},
-		Spec: tensorreaperv1.FabricCheckpointGuardSpec{
-			JobSelector: tensorreaperv1.JobSelector{
+		Spec: gryviav1.FabricCheckpointGuardSpec{
+			JobSelector: gryviav1.JobSelector{
 				MatchLabels: map[string]string{"team": "ml"},
 			},
-			CheckpointPolicy: tensorreaperv1.CheckpointPolicy{
+			CheckpointPolicy: gryviav1.CheckpointPolicy{
 				IntervalMinutes: 30,
-				EmergencyCheckpoint: &tensorreaperv1.EmergencyCheckpointConfig{
+				EmergencyCheckpoint: &gryviav1.EmergencyCheckpointConfig{
 					Triggers: []string{TriggerGpuHealthDegraded, TriggerMemoryPressure},
 				},
 			},
-			Validation: &tensorreaperv1.CheckpointValidation{
+			Validation: &gryviav1.CheckpointValidation{
 				ChecksumVerify:  true,
 				RetentionCount:  5,
 				RetainValidOnly: true,
@@ -109,7 +109,7 @@ func TestCheckpointGuard_Reconcile_InitializesPhase(t *testing.T) {
 		t.Error("expected requeue after phase initialization")
 	}
 
-	updated := &tensorreaperv1.FabricCheckpointGuard{}
+	updated := &gryviav1.FabricCheckpointGuard{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-guard", Namespace: "default"}, updated); err != nil {
 		t.Fatalf("failed to get updated guard: %v", err)
 	}
@@ -132,7 +132,7 @@ func TestCheckpointGuard_Reconcile_NoMatchingJobs(t *testing.T) {
 		t.Error("expected requeue after for no matching jobs")
 	}
 
-	updated := &tensorreaperv1.FabricCheckpointGuard{}
+	updated := &gryviav1.FabricCheckpointGuard{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-guard", Namespace: "default"}, updated); err != nil {
 		t.Fatalf("failed to get updated guard: %v", err)
 	}
@@ -203,7 +203,7 @@ func TestCheckpointGuard_IsPeriodicCheckpointDue(t *testing.T) {
 func TestCheckpointGuard_DetectLossDivergence(t *testing.T) {
 	r, _ := newCheckpointGuardReconciler()
 
-	job := &tensorreaperv1.FabricAIJob{
+	job := &gryviav1.FabricAIJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-job",
 			Namespace: "default",
@@ -216,7 +216,7 @@ func TestCheckpointGuard_DetectLossDivergence(t *testing.T) {
 	}
 
 	// Normal loss
-	job.Status.Metrics = &tensorreaperv1.JobMetrics{Loss: 0.5}
+	job.Status.Metrics = &gryviav1.JobMetrics{Loss: 0.5}
 	if r.detectLossDivergence(job) {
 		t.Error("expected no divergence for normal loss")
 	}
