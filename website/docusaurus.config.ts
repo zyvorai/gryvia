@@ -52,6 +52,7 @@ const config: Config = {
   ],
 
   themeConfig: {
+    image: 'img/gryvia-share-card.png',
     colorMode: {
       respectPrefersColorScheme: true,
     },
