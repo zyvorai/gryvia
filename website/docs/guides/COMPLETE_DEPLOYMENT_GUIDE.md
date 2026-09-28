@@ -15,7 +15,7 @@ This guide walks through deploying a complete Gryvia cluster with all six operat
 
 **Storage (VAST/Weka/DDN):**
 - 500TB+ usable capacity
-- 100GB/s+ aggregate bandwidth
+- High aggregate bandwidth (size to your workload)
 - NFS/NVMe-oF connectivity
 
 **Network Infrastructure:**

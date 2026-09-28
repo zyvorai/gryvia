@@ -20,7 +20,7 @@ interface AuthProviderProps {
 
 export default function AuthProvider({ children }: AuthProviderProps) {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(() => getStoredToken() !== null)
   const [user, setUser] = useState<UserInfo | null>(null)
   const [authConfig, setAuthConfig] = useState<AuthConfig | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -38,10 +38,7 @@ export default function AuthProvider({ children }: AuthProviderProps) {
   // Validate existing token on mount
   useEffect(() => {
     const token = getStoredToken()
-    if (!token) {
-      setIsLoading(false)
-      return
-    }
+    if (!token) return
 
     fetchUserInfo(token)
       .then((userInfo) => {
@@ -62,15 +59,16 @@ export default function AuthProvider({ children }: AuthProviderProps) {
       storeToken(apiKey, 'api_key')
       setUser(userInfo)
       setIsAuthenticated(true)
-    } catch (err: any) {
+    } catch (err) {
+      const status = (err as { response?: { status?: number } })?.response?.status
       const message =
-        err?.response?.status === 403
+        status === 403
           ? 'Invalid API key'
-          : err?.response?.status === 401
+          : status === 401
             ? 'Authentication failed'
             : 'Connection error. Check that the API gateway is running.'
       setError(message)
-      throw new Error(message)
+      throw new Error(message, { cause: err })
     }
   }, [])
 

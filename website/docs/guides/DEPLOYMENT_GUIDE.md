@@ -44,7 +44,7 @@ For multi-node GPU clusters with HA, RDMA, and parallel storage.
 **Storage**:
 - VAST Data / Weka / DDN / Lustre cluster
 - RDMA connectivity
-- 100GB/s+ aggregate throughput
+- High aggregate throughput (size to your workload)
 
 ### Software Requirements
 

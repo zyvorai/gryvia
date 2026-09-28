@@ -15,10 +15,12 @@
 
 Gryvia is a Kubernetes-native GPU platform that:
 
-- Runs AI workloads at **95%+ GPU utilization** (vs 60-70% industry average)
-- Optimizes **RDMA + NVLink automatically** — no manual NCCL tuning
-- Delivers **40GB/s storage throughput** per node
-- Works on **bare metal + any cloud** (EKS, GKE, AKS)
+- Schedules AI workloads with **topology-aware GPU placement** and per-team quotas
+- Aims to configure **RDMA + NVLink** for you, so less manual NCCL tuning
+- Provisions **parallel-filesystem storage** per job
+- Targets **bare metal**, and is designed to run on managed Kubernetes (EKS, GKE, AKS)
+
+> **Status:** early and under active development. Performance figures in this repository are design targets, not measured results.
 
 Built for teams training large models, not running containers.
 
@@ -28,7 +30,7 @@ Built for teams training large models, not running containers.
 
 Modern AI infrastructure is broken:
 
-- **GPUs sit idle** — bad scheduling means 30-40% of expensive GPU hours are wasted
+- **GPUs sit idle** — poor scheduling and fragmentation waste expensive GPU hours
 - **Distributed training is slow** — network bottlenecks kill multi-node scaling efficiency
 - **Storage can't keep up** — data loading becomes the training bottleneck at scale
 - **Teams waste weeks** tuning NCCL, RDMA, drivers, and topology before training starts
@@ -47,15 +49,14 @@ Gryvia turns your infrastructure into a **high-performance GPU fabric**:
 
 ## Gryvia vs Vanilla Kubernetes
 
-| Metric | Vanilla K8s + GPU Operator | Gryvia |
+| Capability | Vanilla K8s + GPU Operator | Gryvia |
 |--------|---------------------------|------------|
-| **GPU Utilization** | 60-70% | **95%+** |
-| **Multi-node distributed training setup** | Hours of manual config | **Automatic** |
-| **RDMA/NVLink tuning** | Manual, error-prone | **Zero-touch** |
-| **Job placement quality** | Random (first-fit) | **Topology-optimal** |
-| **Storage throughput** | 1-5 GB/s (standard CSI) | **40 GB/s (RDMA)** |
-| **GPU failure recovery** | Manual intervention | **<60s auto-recovery** |
-| **Cost tracking** | Not built-in | **Per-team chargeback** |
+| **Multi-node distributed training setup** | Manual configuration | Automated by operators |
+| **RDMA/NVLink tuning** | Manual | Configured by the GPU and network operators |
+| **Job placement** | Default scheduler (first-fit) | Topology-aware scoring |
+| **Storage for training** | Standard CSI | Parallel filesystem integrations (Weka, DDN, Lustre, CephFS) |
+| **GPU failure handling** | Manual intervention | Health checks and automated remediation |
+| **Cost tracking** | Not built-in | Per-team budgets and chargeback |
 
 ---
 
@@ -194,9 +195,7 @@ Native support for parallel filesystems:
 
 #### Features:
 - **Auto-provision** per-job parallel filesystems
-- **RDMA storage access** - Direct memory access
-- **20-40 GB/s** throughput per node
-- **Sub-millisecond latency** for metadata ops
+- **RDMA storage access** for parallel filesystems (throughput depends on your hardware and filesystem)
 
 **Optimized for:**
 - Training data loading (ImageNet, LAION-5B)
@@ -244,7 +243,7 @@ Gryvia automatically:
 #### 🚀 **One-Click Inference Deployment**
 Submit a model, get auto-deployed:
 - **NVIDIA Triton Inference Server**
-- **vLLM** (fastest LLM inference)
+- **vLLM** (high-throughput LLM serving)
 - **TensorRT-LLM** (optimized kernels)
 - **TorchServe** (PyTorch serving)
 
@@ -292,9 +291,9 @@ Perfect for:
 
 ---
 
-### 8. **Enterprise-Ready from Day 1 — Security & Compliance**
+### 8. **Security & Compliance**
 
-Enterprise-grade security:
+Security features:
 - **OIDC/SSO authentication** — SAML, OAuth2, LDAP with PKCE flow
 - **Multi-tenant isolation** — per-tenant namespaces, NetworkPolicies, ResourceQuotas
 - **Secure boot** for GPU nodes
@@ -544,30 +543,33 @@ Three-stage scheduling: filter, score, select.
 
 ## Performance Metrics
 
-### Benchmark Results
+### Targets
 
-| Metric | Value |
-|--------|-------|
-| **Job Scheduling Latency** | <500ms (8-GPU job) |
-| **Storage Throughput** | 40GB/s per node (RDMA) |
-| **Network Bandwidth** | 400Gbps InfiniBand |
-| **GPU Utilization** | 95%+ sustained (training) |
-| **Concurrent Jobs** | 10,000+ queued |
-| **Fault Recovery Time** | <60s (node failure) |
+No benchmark results are published yet. The figures below are design targets to
+be validated with `benchmarks/suite.yaml` on real hardware before they are
+quoted as results.
+
+| Metric | Target |
+|--------|--------|
+| **Job scheduling latency** | < 500 ms (8-GPU job) |
+| **Fault recovery time** | < 60 s (node failure) |
+| **Concurrent queued jobs** | 10,000+ |
+
+Storage and network throughput depend on the hardware, filesystem and fabric you deploy on.
 
 ---
 
 ## Documentation
 
-- [Quick Start Guide](docs/getting-started/quickstart.md)
-- [Bare Metal Deployment](docs/DEPLOYMENT_GUIDE.md)
-- [Complete Deployment Guide](docs/COMPLETE_DEPLOYMENT_GUIDE.md)
-- [CLI Guide](docs/CLI_GUIDE.md)
-- [API Reference](docs/developer-guide/api-reference.md)
-- [Storage & Network Operators](docs/STORAGE_NETWORK_OPERATORS.md)
-- [Advanced Features](docs/ADVANCED_FEATURES.md)
+- [Quick Start Guide](website/docs/getting-started/quickstart.md)
+- [Bare Metal Deployment](website/docs/guides/DEPLOYMENT_GUIDE.md)
+- [Complete Deployment Guide](website/docs/guides/COMPLETE_DEPLOYMENT_GUIDE.md)
+- [CLI Guide](website/docs/guides/CLI_GUIDE.md)
+- [API Reference](website/docs/developer-guide/api-reference.md)
+- [Storage & Network Operators](website/docs/guides/STORAGE_NETWORK_OPERATORS.md)
+- [Advanced Features](website/docs/guides/ADVANCED_FEATURES.md)
 - [Examples & Tutorials](examples/README.md)
-- [FAQ](docs/FAQ.md)
+- [FAQ](website/docs/guides/FAQ.md)
 
 ## Security
 
@@ -647,15 +649,15 @@ Apache License 2.0 - see [LICENSE](LICENSE).
 
 ## Why Teams Choose Gryvia
 
-1. **Maximum GPU Utilization** — 95%+ vs industry average of 60-70%
+1. **GPU Utilization** — topology-aware, quota-aware scheduling to reduce idle and fragmented GPUs
 2. **Bare Metal Performance** — No cloud overhead, full hardware access
-3. **Cost Savings** — Self-hosted = 50-70% cheaper than cloud GPUs
+3. **Cost Visibility** — per-team budgets and chargeback
 4. **Flexibility** — Run anywhere (on-prem, cloud, edge)
-5. **Production-Ready** — Built by platform engineers, for platform engineers
+5. **Built for platform teams** — Kubernetes-native operators and CRDs
 6. **Open Source** — No vendor lock-in, full visibility
 
 ---
 
 **AI infra without bottlenecks.**
 
-[Get Started](docs/getting-started/quickstart.md) | [View Examples](examples/) | [Documentation](docs/README.md)
+[Get Started](website/docs/getting-started/quickstart.md) | [View Examples](examples/) | [Documentation](website/docs/intro.md)

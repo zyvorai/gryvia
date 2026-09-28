@@ -38,10 +38,6 @@ export default function Layout({ children }: LayoutProps) {
   }, [theme])
 
   useEffect(() => {
-    setMenuOpen(false)
-  }, [location.pathname])
-
-  useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
         setUserMenuOpen(false)
@@ -80,6 +76,7 @@ export default function Layout({ children }: LayoutProps) {
                 to={item.href}
                 className={isActive(item.href) ? 'active' : undefined}
                 aria-current={isActive(item.href) ? 'page' : undefined}
+                onClick={() => setMenuOpen(false)}
               >
                 {item.name}
               </NavLink>

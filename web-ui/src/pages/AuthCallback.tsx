@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/lib/auth'
 
@@ -6,29 +6,29 @@ export default function AuthCallback() {
   const { handleOIDCCallback, isAuthenticated, error: authError } = useAuth()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
-  const [processed, setProcessed] = useState(false)
+  const processed = useRef(false)
 
   useEffect(() => {
-    if (processed) return
+    if (processed.current) return
 
     const code = searchParams.get('code')
     const errorParam = searchParams.get('error')
 
     if (errorParam) {
-      setProcessed(true)
+      processed.current = true
       // Show error and redirect to login after a delay
       setTimeout(() => navigate('/login', { replace: true }), 3000)
       return
     }
 
     if (code) {
-      setProcessed(true)
+      processed.current = true
       handleOIDCCallback(code)
     } else {
       // No code and no error - redirect to login
       navigate('/login', { replace: true })
     }
-  }, [searchParams, handleOIDCCallback, navigate, processed])
+  }, [searchParams, handleOIDCCallback, navigate])
 
   // Redirect to dashboard once authenticated
   useEffect(() => {

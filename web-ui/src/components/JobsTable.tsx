@@ -1,27 +1,11 @@
 import { Link } from 'react-router-dom'
 import { formatDistanceToNow } from 'date-fns'
+import { phaseTone } from '@/lib/phase'
 import { FabricAIJob } from '@/types'
 
 interface JobsTableProps {
   jobs: FabricAIJob[]
   compact?: boolean
-}
-
-export function phaseTone(phase?: string): 'ok' | 'warn' | 'bad' | 'info' | '' {
-  switch (phase) {
-    case 'Completed':
-    case 'Succeeded':
-      return 'ok'
-    case 'Pending':
-    case 'Queued':
-      return 'warn'
-    case 'Failed':
-      return 'bad'
-    case 'Running':
-      return 'info'
-    default:
-      return ''
-  }
 }
 
 export default function JobsTable({ jobs, compact = false }: JobsTableProps) {

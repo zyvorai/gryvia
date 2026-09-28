@@ -94,7 +94,7 @@ metadata:
   namespace: default
 type: Opaque
 stringData:
-  password: "changeme123"  # Change in production
+  password: "REPLACE_ME"  # Set a strong password (or create this Secret out of band) before applying
 
 ---
 # VSCode Service

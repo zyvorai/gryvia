@@ -6,7 +6,7 @@ Common questions about Gryvia and GPU infrastructure management.
 
 ### What is Gryvia?
 
-Gryvia is an enterprise-grade GPU compute platform for AI/ML infrastructure. It provides:
+Gryvia is an open, Kubernetes-native GPU compute platform for AI/ML infrastructure. It provides:
 - GPU resource management and scheduling
 - Cost optimization and budget controls
 - Multi-tenancy with quotas

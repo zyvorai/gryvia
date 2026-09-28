@@ -1,17 +1,7 @@
 import { useMemo } from 'react'
+import { SERIES_COLORS } from '@/lib/chartColors'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 
-// Series colors come from tokens so light and dark themes both stay legible.
-export const SERIES_COLORS = [
-  'var(--apple-blue)',
-  'var(--accent-green)',
-  'var(--accent-purple)',
-  'var(--accent-amber)',
-  'var(--accent-cyan)',
-  'var(--danger)',
-  'var(--text-secondary)',
-  'var(--text-tertiary)',
-]
 
 interface GPUDataPoint {
   time: string
@@ -23,7 +13,7 @@ interface GPUChartProps {
 }
 
 export default function GPUChart({ data }: GPUChartProps) {
-  const chartData = data || []
+  const chartData = useMemo(() => data ?? [], [data])
 
   const nodeKeys = useMemo(() => {
     if (chartData.length === 0) return []

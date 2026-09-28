@@ -3,11 +3,13 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import PageHero from '@/components/PageHero'
-import { phaseTone } from '@/components/JobsTable'
+import { useNow } from '@/lib/useNow'
+import { phaseTone } from '@/lib/phase'
 
 export default function JobDetails() {
   const { name } = useParams<{ name: string }>()
   const navigate = useNavigate()
+  const now = useNow()
 
   const { data: job, isLoading, isError } = useQuery({
     queryKey: ['job', name],
@@ -36,7 +38,7 @@ export default function JobDetails() {
   const formatDuration = (start?: string, end?: string) => {
     if (!start) return 'N/A'
     const startTime = new Date(start).getTime()
-    const endTime = end ? new Date(end).getTime() : Date.now()
+    const endTime = end ? new Date(end).getTime() : now
     const duration = endTime - startTime
     const hours = Math.floor(duration / 3600000)
     const minutes = Math.floor((duration % 3600000) / 60000)

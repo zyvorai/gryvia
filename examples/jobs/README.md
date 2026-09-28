@@ -1,6 +1,6 @@
 # Gryvia Job Examples
 
-Production-ready job examples for various AI/ML workloads.
+Example jobs for various AI/ML workloads.
 
 ## Examples
 

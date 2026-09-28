@@ -1,0 +1,5 @@
+# Reviewed: placeholder values in example manifests/docs, not real credentials.
+3a0bd493274e9daff6be669dec2d35579cea0399:services/airflow/integration.yaml:generic-api-key:21
+3a0bd493274e9daff6be669dec2d35579cea0399:services/airflow/integration.yaml:generic-api-key:22
+3a0bd493274e9daff6be669dec2d35579cea0399:services/mlflow/deploy.yaml:generic-api-key:36
+40fc0cc70cd353f57d086b51bda8681d636890be:docs/developer-guide/api-reference.md:curl-auth-header:32

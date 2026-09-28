@@ -4,7 +4,7 @@ This document provides a comprehensive overview of the Gryvia Storage and Networ
 
 ## Overview
 
-Both operators are production-ready Kubernetes controllers built with Go and the controller-runtime framework. They automate the deployment and configuration of critical AI infrastructure components:
+Both operators are Kubernetes controllers built with Go and the controller-runtime framework. They automate the deployment and configuration of critical AI infrastructure components:
 
 - **Storage Operator**: Manages parallel filesystem CSI drivers for high-performance data access
 - **Network Operator**: Configures RDMA and SR-IOV for ultra-low latency distributed training
@@ -28,7 +28,8 @@ Both operators are production-ready Kubernetes controllers built with Go and the
            ↓                            ↓
     ┌─────────────┐              ┌────────────┐
     │ PVCs (RWX)  │              │  Pod NICs  │
-    │ 100GB/s+    │              │  400Gb/s   │
+    │ hardware-   │              │ hardware-  │
+    │ dependent   │              │ dependent  │
     └─────────────┘              └────────────┘
 ```
 
@@ -336,10 +337,7 @@ spec:
       claimName: training-data  # VAST storage
 ```
 
-**Performance:**
-- **Storage**: 100GB/s read from VAST via NFS/NVMe-oF
-- **Network**: 400Gb/s GPU-to-GPU via RDMA InfiniBand
-- **Result**: Near-linear scaling to 100s of GPUs
+**Performance:** depends on your storage system and fabric (for example NFS/NVMe-oF to VAST, RDMA over InfiniBand). No benchmark results are published yet.
 
 ## RBAC Permissions
 
@@ -390,9 +388,9 @@ make run
 kubectl exec -it <pod-with-rdma> -- ibv_devinfo
 ```
 
-## Production Readiness
+## Implementation Status
 
-### Storage Operator: ✅ Production Ready
+### Storage Operator
 
 - ✅ Full VAST CSI implementation
 - ✅ Full Weka CSI implementation
@@ -403,7 +401,7 @@ kubectl exec -it <pod-with-rdma> -- ibv_devinfo
 - ✅ Error handling and retries
 - ✅ Status conditions
 
-### Network Operator: ✅ Production Ready
+### Network Operator
 
 - ✅ RDMA device plugin deployment
 - ✅ SR-IOV configuration
@@ -433,22 +431,13 @@ kubectl exec -it <pod-with-rdma> -- ibv_devinfo
 
 ## Performance Benchmarks
 
-### Expected Performance
+### Performance
 
-**Storage (VAST):**
-- Sequential Read: 100+ GB/s
-- Sequential Write: 80+ GB/s
-- IOPS: 1M+ (small files)
-- Latency: <100μs
-
-**Network (RDMA InfiniBand NDR):**
-- Bandwidth: 400 Gb/s (50 GB/s)
-- Latency: <1μs
-- NCCL All-Reduce: 400+ GB/s (8x H100)
+No measured results are published yet. Throughput, IOPS and latency depend on the storage system, fabric and node hardware; validate with `benchmarks/suite.yaml` on your own cluster.
 
 ## Conclusion
 
-Both operators provide enterprise-grade automation for AI infrastructure:
+Both operators automate the setup for AI infrastructure:
 
 - **Storage Operator**: Simplifies parallel filesystem deployment with full VAST, Weka, DDN, Lustre, and CephFS implementations
 - **Network Operator**: Automates RDMA/SR-IOV with automated VF enablement for maximum training performance
@@ -471,7 +460,7 @@ kubectl apply -f examples/network/rdma-network-example.yaml
 kubectl apply -f examples/network/rdma-network-example.yaml  # See pod spec
 
 # Done! Your AI workload now has:
-#   ✅ 100GB/s storage
-#   ✅ 400Gb/s RDMA networking
+#   ✅ Parallel-filesystem storage
+#   ✅ RDMA networking
 #   ✅ Automatic CSI/device plugin management
 ```

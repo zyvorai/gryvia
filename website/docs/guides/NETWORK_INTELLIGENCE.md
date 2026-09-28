@@ -28,7 +28,7 @@ Gryvia's network intelligence stack uses eBPF programs attached to kernel hooks 
    tracepoint, cgroup)     with pod metadata          detects anomalies     status
 ```
 
-**eBPF Programs** run in the kernel on every node and capture packet, socket, syscall, and GPU-level events with negligible overhead.
+**eBPF Programs** run in the kernel on every node and capture packet, socket, syscall, and GPU-level events with low overhead by design. Overhead has not yet been measured; see the benchmark suite.
 
 **Flow Collector** is a per-node DaemonSet that reads eBPF map data, enriches flows with Kubernetes pod/service metadata, and exports to the operator.
 

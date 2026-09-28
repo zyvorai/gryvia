@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import PageHero from '@/components/PageHero'
-import { SERIES_COLORS } from '@/components/GPUChart'
+import { SERIES_COLORS } from '@/lib/chartColors'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 
 const tooltipStyle = {
@@ -120,7 +120,10 @@ export default function Costs() {
                   cx="50%"
                   cy="50%"
                   outerRadius={100}
-                  label={(props: any) => `${props.team}: ${money(props.cost)}`}
+                  label={(props: unknown) => {
+                    const p = props as { team: string; cost: number }
+                    return `${p.team}: ${money(p.cost)}`
+                  }}
                   labelLine={{ stroke: 'var(--hairline-1)' }}
                 >
                   {teamData.map((_entry, index) => (

@@ -114,7 +114,7 @@ This is a realistic, investor-ready roadmap for taking Gryvia from MVP to produc
 - FabricNetwork Operator complete
 
 ### Success Metric
-- **NCCL bandwidth near hardware limits** (390GB/s for 400GbE)
+- **NCCL bandwidth near hardware limits** (a 400GbE link is about 50 GB/s per direction)
 
 ### Effort Estimate
 - **FabricNetwork Operator:** 2 weeks

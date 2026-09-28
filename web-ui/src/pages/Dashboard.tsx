@@ -6,7 +6,7 @@ import GPUChart from '@/components/GPUChart'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import PageHero from '@/components/PageHero'
 import Reveal from '@/components/Reveal'
-import { phaseTone } from '@/components/JobsTable'
+import { phaseTone } from '@/lib/phase'
 
 export default function Dashboard() {
   const { data: clusterStats, isLoading: statsLoading, isError: statsError } = useQuery({
