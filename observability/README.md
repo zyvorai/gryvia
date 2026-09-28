@@ -442,7 +442,7 @@ kubectl exec -it <job-pod> -- env | grep OTEL
 
 # Test connectivity
 kubectl exec -it <job-pod> -- \
-  curl http://otel-collector.gryvia:4318/v1/traces
+  curl http://otel-collector.gryvia-system:4318/v1/traces
 ```
 
 ### High Cardinality

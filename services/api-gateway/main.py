@@ -237,7 +237,7 @@ def _validate_prometheus_url(url: str) -> str:
 
 # Prometheus client (optional - used for historical metrics when available)
 PROMETHEUS_URL = _validate_prometheus_url(
-    os.environ.get("PROMETHEUS_URL", "http://prometheus-operated.gryvia:9090")
+    os.environ.get("PROMETHEUS_URL", "http://prometheus-operated.gryvia-system:9090")
 )
 HTTP_TIMEOUT_SECONDS = int(os.environ.get("HTTP_TIMEOUT_SECONDS", "10"))
 prom = None

@@ -1,0 +1,11 @@
+# Applied and removed by scripts/deploy-remote.sh to prove a custom resource
+# is accepted by the API server and visible through the Gryvia API.
+# Fields follow the FabricQuota CRD that helm/gryvia-core/crds installs.
+apiVersion: gryvia.io/v1
+kind: FabricQuota
+metadata:
+  name: gryvia-smoke
+  namespace: default
+spec:
+  team: smoke-test
+  maxGpus: 1

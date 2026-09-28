@@ -10,7 +10,7 @@ COPY ebpf/ .
 RUN make
 
 # Stage 2: Build the Go collector binary.
-FROM golang:1.22-bookworm AS go-builder
+FROM golang:1.27-bookworm AS go-builder
 
 WORKDIR /build/collector
 COPY collector/go.mod collector/go.sum ./

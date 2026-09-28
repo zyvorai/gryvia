@@ -163,7 +163,7 @@ apiGateway:
       cpu: 200m
       memory: 256Mi
   prometheus:
-    url: http://prometheus-operated.gryvia:9090
+    url: http://prometheus-operated.gryvia-system:9090
 
 # CRD Installation
 crds:

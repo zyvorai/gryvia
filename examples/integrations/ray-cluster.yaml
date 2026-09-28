@@ -46,9 +46,9 @@ spec:
                 mountPath: /tmp/ray
             env:
               - name: RAY_GRAFANA_HOST
-                value: "http://grafana.gryvia.svc.cluster.local:3000"
+                value: "http://grafana.gryvia-system.svc.cluster.local:3000"
               - name: RAY_PROMETHEUS_HOST
-                value: "http://prometheus.gryvia.svc.cluster.local:9090"
+                value: "http://prometheus.gryvia-system.svc.cluster.local:9090"
         volumes:
           - name: ray-logs
             emptyDir: {}

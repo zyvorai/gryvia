@@ -302,7 +302,7 @@ spec:
   env:
     # OpenTelemetry configuration
     - name: OTEL_EXPORTER_OTLP_ENDPOINT
-      value: "http://otel-collector.gryvia:4317"
+      value: "http://otel-collector.gryvia-system:4317"
     - name: OTEL_SERVICE_NAME
       value: "training-job"
     - name: OTEL_RESOURCE_ATTRIBUTES

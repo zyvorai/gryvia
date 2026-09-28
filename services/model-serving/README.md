@@ -216,7 +216,7 @@ import mlflow
 import torch
 import os
 
-mlflow.set_tracking_uri("http://mlflow.gryvia.svc.cluster.local:5000")
+mlflow.set_tracking_uri("http://mlflow.gryvia-system.svc.cluster.local:5000")
 
 # Load production model
 model_uri = "models:/llama-7b/Production"

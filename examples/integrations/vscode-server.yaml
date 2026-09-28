@@ -40,7 +40,7 @@ spec:
           name: vscode-secret
           key: password
     - name: MLFLOW_TRACKING_URI
-      value: "http://mlflow.gryvia.svc.cluster.local:5000"
+      value: "http://mlflow.gryvia-system.svc.cluster.local:5000"
     - name: CUDA_VISIBLE_DEVICES
       value: "0"
   ports:

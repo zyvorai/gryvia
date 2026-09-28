@@ -6,7 +6,7 @@ Complete REST API reference for Gryvia.
 
 Internal (from within the cluster):
 ```
-http://gryvia-api-gateway.gryvia.svc.cluster.local:8080
+http://gryvia-api-gateway.gryvia-system.svc.cluster.local:8080
 ```
 
 External (via NodePort):

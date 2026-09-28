@@ -117,13 +117,13 @@ docker run -p 8080:8080 \
 kubectl apply -f ../../manifests/deploy/api-gateway-deployment.yaml
 ```
 
-The service will be exposed internally at `http://gryvia-api-gateway.gryvia:8080`.
+The service will be exposed internally at `http://gryvia-api-gateway.gryvia-system:8080`.
 
 ### Configuration
 
 The service is configured via environment variables:
 
-- `PROMETHEUS_URL`: Prometheus endpoint (default: `http://prometheus-operated.gryvia:9090`)
+- `PROMETHEUS_URL`: Prometheus endpoint (default: `http://prometheus-operated.gryvia-system:9090`)
 - `KUBERNETES_NAMESPACE`: Default namespace for jobs (default: `default`)
 - `LOG_LEVEL`: Logging level (default: `INFO`)
 

@@ -80,7 +80,7 @@ import mlflow
 import mlflow.pytorch
 
 # Set tracking URI
-mlflow.set_tracking_uri("http://mlflow.gryvia.svc.cluster.local:5000")
+mlflow.set_tracking_uri("http://mlflow.gryvia-system.svc.cluster.local:5000")
 
 # Create experiment
 mlflow.set_experiment("llama-training")
@@ -124,7 +124,7 @@ spec:
     - train.py
   env:
     - name: MLFLOW_TRACKING_URI
-      value: "http://mlflow.gryvia.svc.cluster.local:5000"
+      value: "http://mlflow.gryvia-system.svc.cluster.local:5000"
     - name: MLFLOW_EXPERIMENT_NAME
       value: "distributed-training"
 ```
@@ -345,7 +345,7 @@ kubectl get svc -n gryvia-system mlflow
 
 # Test connectivity
 kubectl run -it --rm debug --image=curlimages/curl -- \
-  curl http://mlflow.gryvia.svc.cluster.local:5000/health
+  curl http://mlflow.gryvia-system.svc.cluster.local:5000/health
 ```
 
 ### Storage Full

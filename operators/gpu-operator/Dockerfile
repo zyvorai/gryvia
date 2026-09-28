@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.24-alpine AS builder
+FROM golang:1.27-bookworm AS builder
 
 WORKDIR /workspace
 
@@ -16,10 +16,11 @@ COPY pkg/ pkg/
 # Build
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -a -o manager main.go
+# go-nvml needs cgo (it dlopen()s libnvidia-ml at runtime), so link against glibc.
+RUN CGO_ENABLED=1 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -a -o manager main.go
 
 # Runtime stage
-FROM gcr.io/distroless/static:nonroot
+FROM gcr.io/distroless/base-debian12:nonroot
 
 WORKDIR /
 

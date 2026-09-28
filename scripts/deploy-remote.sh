@@ -1,460 +1,269 @@
-#!/bin/bash
-# ============================================================================
-# deploy-remote.sh — Full Gryvia deployment to a remote server
-# ============================================================================
-# One command to deploy Gryvia to a remote Kubernetes node:
-#   1. Rsync repo to remote
-#   2. Install CRDs
-#   3. Build and deploy operators
-#   4. Deploy API gateway + Web UI
-#   5. Optionally configure HTTPS with auto self-signed cert
-#   6. Verify everything works
+#!/usr/bin/env bash
+# Gryvia — remote deploy (SSH + rsync + on-host image build + Helm), modeled on
+# netra's scripts/deploy-remote.sh.
+#
+# Deploys to a single-node k3s (or any cluster the remote user can reach):
+#   1. rsync the repo to ~/.deployments/gryvia on the host
+#   2. build the gpu-operator, ai-operator, api-gateway and ui images with podman
+#      and import them into k3s's containerd
+#   3. install the CRDs, then the gryvia-core Helm chart (operators)
+#   4. deploy the API gateway and web UI, expose the UI on NodePort 30880
+#   5. wait for every rollout, then smoke-test the UI, the API and a custom resource
 #
 # Usage:
-#   ./scripts/deploy-remote.sh <host> [user] [password]
-#   ./scripts/deploy-remote.sh 185.165.240.5 root mypassword
-#   ./scripts/deploy-remote.sh 10.0.0.1 root                  # SSH key auth
-#   ./scripts/deploy-remote.sh 10.0.0.1 root pass --quick     # skip build
-#   ./scripts/deploy-remote.sh 10.0.0.1 root pass --https     # enable HTTPS
-#   ./scripts/deploy-remote.sh 10.0.0.1 root pass --uninstall # remove gryvia
+#   ./scripts/deploy-remote.sh user@10.0.1.5
+#   ./scripts/deploy-remote.sh 10.0.1.5 user
+#   ./scripts/deploy-remote.sh user@10.0.1.5 --quick        # skip image builds
+#   ./scripts/deploy-remote.sh user@10.0.1.5 --verify-only  # only run the checks
+#   ./scripts/deploy-remote.sh user@10.0.1.5 --uninstall
+#   ./scripts/deploy-remote.sh user@10.0.1.5 --dry-run      # print the remote script
 #
-# Environment variables:
-#   DEPLOY_HOST=185.165.240.5
-#   DEPLOY_USER=root
-#   DEPLOY_PASS=mypassword
-#   DEPLOY_DIR=/root/gryvia
-#   GRYVIA_HTTPS_PORT=30443
-# ============================================================================
-
+# Environment:
+#   GRYVIA_API_KEY          API key for the gateway (default: generated once and kept
+#                           in ~/.gryvia/api-key on the host, mode 600)
+#   GRYVIA_REMOTE_SUBDIR    checkout dir relative to the remote $HOME
+#                           (default: .deployments/gryvia)
+#   GRYVIA_UI_NODEPORT      NodePort for the web UI (default: 30880)
+#   GRYVIA_DEPLOY_*         see scripts/lib/deploy-guards.sh (disk guard, timeouts)
+#
+# The kubeconfig is read from k3s with sudo into ~/.kube/gryvia-k3s.yaml and used
+# only by this script; no shell startup files or cluster settings are changed.
 set -euo pipefail
 
-info()  { echo "  ✅ $*"; }
-warn()  { echo "  ⚠️  $*"; }
-error() { echo "  ❌ $*"; exit 1; }
-step()  { echo ""; echo "  🔧 $*"; }
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-# ── Parse args ──
-QUICK_MODE=false
-UNINSTALL_MODE=false
-HTTPS_MODE=false
+MODE="deploy"
+DRY_RUN=false
 POSITIONAL=()
-for arg in "$@"; do
-    case "$arg" in
-        --quick)     QUICK_MODE=true ;;
-        --uninstall) UNINSTALL_MODE=true ;;
-        --https)     HTTPS_MODE=true ;;
-        --help|-h)
-            echo "Usage: $0 <host> [user] [password] [--quick|--uninstall|--https]"
-            echo ""
-            echo "  --quick      Skip builds (only rsync + kubectl apply)"
-            echo "  --uninstall  Remove Gryvia from remote server"
-            echo "  --https      Enable HTTPS with auto self-signed TLS certificate"
-            echo ""
-            echo "Full mode: rsync, install CRDs, build operators, deploy all."
-            exit 0
-            ;;
-        *)  POSITIONAL+=("$arg") ;;
-    esac
+SSH_OPTS=(-o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30)
+
+usage() { sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; exit 0; }
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help) usage ;;
+    --quick) MODE="quick"; shift ;;
+    --verify-only) MODE="verify"; shift ;;
+    --uninstall) MODE="uninstall"; shift ;;
+    --dry-run) DRY_RUN=true; shift ;;
+    -*) echo "unknown flag: $1" >&2; exit 2 ;;
+    *) POSITIONAL+=("$1"); shift ;;
+  esac
 done
 
-HOST="${POSITIONAL[0]:-${DEPLOY_HOST:-}}"
-USER="${POSITIONAL[1]:-${DEPLOY_USER:-root}}"
-PASS="${POSITIONAL[2]:-${DEPLOY_PASS:-}}"
-REMOTE_DIR="${DEPLOY_DIR:-/root/gryvia}"
-HTTPS_PORT="${GRYVIA_HTTPS_PORT:-30443}"
+TARGET=""
+if [[ ${#POSITIONAL[@]} -eq 1 ]]; then
+  TARGET="${POSITIONAL[0]}"
+elif [[ ${#POSITIONAL[@]} -eq 2 ]]; then
+  # HOST USER, or user@host followed by anything
+  if [[ "${POSITIONAL[0]}" == *@* ]]; then
+    TARGET="${POSITIONAL[0]}"
+  elif [[ "${POSITIONAL[1]}" == *@* ]]; then
+    TARGET="${POSITIONAL[1]}"
+  else
+    TARGET="${POSITIONAL[1]}@${POSITIONAL[0]}"
+  fi
+else
+  echo "usage: $0 user@host [--quick|--verify-only|--uninstall|--dry-run]" >&2
+  echo "   or: $0 HOST USER [...]" >&2
+  exit 2
+fi
 
-[ -z "$HOST" ] && error "Usage: $0 <host> [user] [password] [--quick|--https]"
+VERSION="$(sed -n 's/^appVersion: *"\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' "${ROOT}/helm/gryvia-core/Chart.yaml")"
+[[ -n "$VERSION" ]] || { echo "cannot read appVersion from helm/gryvia-core/Chart.yaml" >&2; exit 1; }
+UI_NODEPORT="${GRYVIA_UI_NODEPORT:-30880}"
+API_KEY_LOCAL="${GRYVIA_API_KEY:-}"
+REMOTE_SUBDIR="${GRYVIA_REMOTE_SUBDIR:-.deployments/gryvia}"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+log() { printf '[gryvia-deploy] %s\n' "$*"; }
+ssh_host() { ssh "${SSH_OPTS[@]}" "$TARGET" "$@"; }
 
-[ -d "$REPO_DIR/operators" ] || error "Not in gryvia repo: $REPO_DIR"
-
-# ── SSH/rsync wrappers ──
-# NOTE: StrictHostKeyChecking=accept-new requires OpenSSH 7.6+ (2017-10-03).
-# It accepts host keys on first connection but rejects changed keys (MITM protection).
-_ssh() {
-    if [ -n "$PASS" ]; then
-        # WARNING: Password authentication is less secure than SSH key auth.
-        # Consider using ssh-copy-id to set up key-based authentication.
-        SSHPASS="$PASS" sshpass -e ssh -o StrictHostKeyChecking=accept-new "${USER}@${HOST}" "$@"
-    else
-        ssh -o StrictHostKeyChecking=accept-new "${USER}@${HOST}" "$@"
-    fi
+# Kubeconfig for this script only, and PATH. Runs on the host.
+preamble() {
+  cat <<'EOF'
+mkdir -p "$HOME/.kube"
+if [[ ! -r "$HOME/.kube/gryvia-k3s.yaml" ]] || [[ /etc/rancher/k3s/k3s.yaml -nt "$HOME/.kube/gryvia-k3s.yaml" ]]; then
+  sudo cat /etc/rancher/k3s/k3s.yaml > "$HOME/.kube/gryvia-k3s.yaml"
+  chmod 600 "$HOME/.kube/gryvia-k3s.yaml"
+fi
+export KUBECONFIG="$HOME/.kube/gryvia-k3s.yaml"
+export PATH="/usr/local/bin:/usr/bin:$PATH"
+EOF
 }
 
-_rsync() {
-    local ssh_cmd="ssh -o StrictHostKeyChecking=accept-new"
-    if [ -n "$PASS" ]; then
-        ssh_cmd="sshpass -e $ssh_cmd"
-    fi
-    SSHPASS="$PASS" rsync -avz \
-        --exclude='.git' --exclude='__pycache__' --exclude='*.pyc' \
-        --exclude='node_modules' --exclude='dist/' --exclude='target/' \
-        --exclude='bin/' --exclude='*.egg-info' \
-        -e "$ssh_cmd" \
-        "$@"
+if [[ "$MODE" == "uninstall" ]]; then
+  remote_script=$(cat <<EOF
+set -uo pipefail
+$(preamble)
+helm -n gryvia-system uninstall gryvia-core 2>/dev/null || true
+kubectl -n gryvia-system delete deployment gryvia-api-gateway gryvia-ui --ignore-not-found
+kubectl -n gryvia-system delete service gryvia-api-gateway gryvia-ui --ignore-not-found
+kubectl delete clusterrole,clusterrolebinding gryvia-api-gateway gryvia-ui --ignore-not-found
+kubectl delete namespace gryvia-system --ignore-not-found
+echo "Gryvia removed. CRDs and ~/${REMOTE_SUBDIR} are kept; delete them by hand to purge data."
+EOF
+)
+  if $DRY_RUN; then echo "$remote_script"; exit 0; fi
+  ssh_host 'bash -s' <<<"$remote_script"
+  exit 0
+fi
+
+# Smoke test, run on the host against the NodePort and the cluster.
+smoke_script=$(cat <<EOF
+set -uo pipefail
+$(preamble)
+KEY="\$(cat "\$HOME/.gryvia/api-key" 2>/dev/null || true)"
+BASE="http://127.0.0.1:${UI_NODEPORT}"
+fail=0
+check() { # check <name> <command...>
+  local name="\$1"; shift
+  if "\$@" >/dev/null 2>&1; then echo "  PASS  \$name"; else echo "  FAIL  \$name"; fail=1; fi
 }
-
-# ── Preflight ──
-if [ -n "$PASS" ] && ! command -v sshpass &>/dev/null; then
-    error "sshpass required for password auth. Install: dnf install sshpass"
-fi
-
-# ── Uninstall mode ──
-if $UNINSTALL_MODE; then
-    echo ""
-    echo "  ╔══════════════════════════════════════════════════╗"
-    echo "  ║     🗑️  Gryvia Remote Uninstall               ║"
-    echo "  ╚══════════════════════════════════════════════════╝"
-    echo ""
-    echo "  Host: ${USER}@${HOST}"
-    echo ""
-
-    step "Removing Gryvia resources"
-    _ssh "
-        kubectl delete namespace gryvia-system --ignore-not-found 2>/dev/null || true
-        kubectl delete crd fabricaijobs.gryvia.io fabricgpunodes.gryvia.io \
-            fabricstorages.gryvia.io fabricnetworks.gryvia.io \
-            fabricquotas.gryvia.io --ignore-not-found 2>/dev/null || true
-        kubectl delete secret gryvia-tls -n gryvia-system --ignore-not-found 2>/dev/null || true
-        rm -rf $REMOTE_DIR
-        rm -f /etc/gryvia/tls.*
-        echo 'Done'
-    " 2>&1 | grep -v "^Warning" || true
-
-    info "Gryvia removed from ${HOST}"
-    exit 0
-fi
-
-TOTAL_STEPS=6
-$QUICK_MODE && TOTAL_STEPS=4
-$HTTPS_MODE && ((TOTAL_STEPS++))
-
-echo ""
-echo "  ╔══════════════════════════════════════════════════╗"
-echo "  ║     🚀 Gryvia Remote Deployment              ║"
-echo "  ╚══════════════════════════════════════════════════╝"
-echo ""
-echo "  Host:     ${USER}@${HOST}"
-echo "  Auth:     $([ -n "$PASS" ] && echo "🔑 password" || echo "🔐 SSH key")"
-echo "  Local:    $REPO_DIR"
-echo "  Remote:   $REMOTE_DIR"
-echo "  HTTPS:    $($HTTPS_MODE && echo "🔒 enabled (port $HTTPS_PORT)" || echo "❌ disabled")"
-echo "  Mode:     $($QUICK_MODE && echo "⚡ quick (rsync + apply only)" || echo "📦 full (build + deploy)")"
-echo ""
-
-# ── Step 1: Rsync repo ──
-step "Step 1/${TOTAL_STEPS}: 📤 Syncing repository to ${HOST}"
-_rsync "$REPO_DIR/" "${USER}@${HOST}:${REMOTE_DIR}/" 2>&1 | tail -3
-info "Synced to ${HOST}:${REMOTE_DIR}"
-
-# ── Step 2: Check prerequisites ──
-step "Step 2/${TOTAL_STEPS}: 🔍 Checking prerequisites"
-_ssh "
-    # Check kubectl
-    if command -v kubectl &>/dev/null; then
-        KVER=\$(kubectl version --client -o json 2>/dev/null | python3 -c 'import sys,json; print(json.load(sys.stdin)[\"clientVersion\"][\"gitVersion\"])' 2>/dev/null || echo 'unknown')
-        echo \"kubectl: \$KVER\"
-    else
-        echo 'MISSING: kubectl'
-        exit 1
-    fi
-
-    # Check helm
-    if command -v helm &>/dev/null; then
-        echo \"helm: \$(helm version --short 2>/dev/null)\"
-    else
-        echo 'helm: not found (optional)'
-    fi
-
-    # Check cluster
-    if kubectl cluster-info &>/dev/null 2>&1; then
-        NODES=\$(kubectl get nodes --no-headers 2>/dev/null | wc -l)
-        echo \"cluster: \$NODES node(s)\"
-    else
-        echo 'MISSING: no cluster access'
-        exit 1
-    fi
-" 2>&1
-info "Prerequisites checked"
-
-if ! $QUICK_MODE; then
-    # ── Step 3: Install CRDs ──
-    step "Step 3/${TOTAL_STEPS}: 📋 Installing CRDs"
-    _ssh "
-        cd $REMOTE_DIR
-        kubectl apply -f crds/
-    " 2>&1
-    info "CRDs installed"
-
-    # ── Step 4: Deploy namespace + RBAC ──
-    step "Step 4/${TOTAL_STEPS}: 🔐 Creating namespace and RBAC"
-    _ssh "
-        cd $REMOTE_DIR
-        kubectl create namespace gryvia-system --dry-run=client -o yaml | kubectl apply -f -
-
-        # Apply operator deployments
-        for op in gpu-operator ai-operator storage-operator network-operator quota-operator; do
-            if [ -f operators/\$op/config/deployment.yaml ]; then
-                kubectl apply -f operators/\$op/config/deployment.yaml 2>&1
-            fi
-        done
-    " 2>&1
-    info "Operators deployed"
-
-    # ── Step 5: Deploy API gateway + Web UI ──
-    step "Step 5/${TOTAL_STEPS}: 🌐 Deploying API gateway and Web UI"
-    _ssh "
-        cd $REMOTE_DIR
-        if [ -f manifests/deploy/api-gateway-deployment.yaml ]; then
-            kubectl apply -f manifests/deploy/api-gateway-deployment.yaml 2>&1
-        fi
-        if [ -f manifests/deploy/ui-deployment.yaml ]; then
-            kubectl apply -f manifests/deploy/ui-deployment.yaml 2>&1
-        fi
-    " 2>&1
-    info "API gateway and Web UI deployed"
+authed() { curl -sf -H "Authorization: Bearer \$KEY" "\$@"; }
+unauth_rejected() { local c; c="\$(curl -s -o /dev/null -w '%{http_code}' "\$BASE/api/cluster/stats")"; [[ "\$c" == 401 || "\$c" == 403 ]]; }
+echo "Gryvia smoke test"
+check "namespace exists" kubectl get ns gryvia-system
+check "CRD fabricaijobs.gryvia.io established" kubectl wait --for=condition=Established crd/fabricaijobs.gryvia.io --timeout=30s
+for d in gryvia-core-gpu-operator gryvia-core-ai-operator gryvia-api-gateway gryvia-ui; do
+  check "deployment \$d available" kubectl -n gryvia-system wait --for=condition=Available deployment/\$d --timeout=60s
+done
+check "UI serves index" curl -sf "\$BASE/"
+check "API rejects a request without a key" unauth_rejected
+check "API accepts the key (cluster stats)" authed "\$BASE/api/cluster/stats"
+check "API lists jobs" authed "\$BASE/api/jobs"
+check "API lists nodes" authed "\$BASE/api/nodes"
+# Custom resource: accepted by the API server and visible through the Gryvia API.
+kubectl delete fabricquota gryvia-smoke -n default --ignore-not-found >/dev/null 2>&1 || true
+if kubectl apply -f "\$HOME/${REMOTE_SUBDIR}/scripts/lib/smoke-quota.yaml" >/dev/null 2>&1; then
+  check "FabricQuota visible through the API" bash -c "curl -sf -H 'Authorization: Bearer \$KEY' '\$BASE/api/quotas' | grep -q gryvia-smoke"
+  kubectl delete fabricquota gryvia-smoke -n default --ignore-not-found >/dev/null 2>&1 || true
 else
-    # Quick mode: just apply CRDs + deployments
-    step "Step 3/${TOTAL_STEPS}: 📋 Applying CRDs and deployments"
-    _ssh "
-        cd $REMOTE_DIR
-        kubectl apply -f crds/
-        kubectl create namespace gryvia-system --dry-run=client -o yaml | kubectl apply -f -
-        for op in gpu-operator ai-operator storage-operator network-operator quota-operator; do
-            if [ -f operators/\$op/config/deployment.yaml ]; then
-                kubectl apply -f operators/\$op/config/deployment.yaml 2>&1
-            fi
-        done
-        [ -f manifests/deploy/api-gateway-deployment.yaml ] && kubectl apply -f manifests/deploy/api-gateway-deployment.yaml 2>&1
-        [ -f manifests/deploy/ui-deployment.yaml ] && kubectl apply -f manifests/deploy/ui-deployment.yaml 2>&1
-    " 2>&1
-    info "Resources applied"
+  echo "  FAIL  apply FabricQuota"; fail=1
+fi
+echo
+kubectl -n gryvia-system get pods
+if [[ \$fail -eq 0 ]]; then echo "ALL CHECKS PASSED"; else echo "SOME CHECKS FAILED"; fi
+exit \$fail
+EOF
+)
+
+if [[ "$MODE" == "verify" ]]; then
+  if $DRY_RUN; then echo "$smoke_script"; exit 0; fi
+  ssh_host 'bash -s' <<<"$smoke_script"
+  exit $?
 fi
 
-# ── HTTPS auto setup ──
-if $HTTPS_MODE; then
-    if $QUICK_MODE; then
-        HTTPS_STEP=4
-    else
-        HTTPS_STEP=6
-    fi
-    step "Step ${HTTPS_STEP}/${TOTAL_STEPS}: 🔒 Configuring HTTPS with auto self-signed certificate"
+REMOTE_HOME="$(ssh_host 'printf %s "$HOME"')"
+REMOTE_DIR="${REMOTE_HOME}/${REMOTE_SUBDIR}"
 
-    _ssh "
-        set -e
-        CERT_DIR=/etc/gryvia
-        mkdir -p \$CERT_DIR
-
-        # Generate self-signed certificate if not present or expired
-        REGEN=false
-        if [ ! -f \$CERT_DIR/tls.crt ] || [ ! -f \$CERT_DIR/tls.key ]; then
-            REGEN=true
-        else
-            # Check if cert expires within 30 days
-            if ! openssl x509 -checkend 2592000 -noout -in \$CERT_DIR/tls.crt 2>/dev/null; then
-                REGEN=true
-            fi
-        fi
-
-        if \$REGEN; then
-            echo '  Generating self-signed TLS certificate...'
-            # Validate HOST to prevent injection into -subj (allow IPs and hostnames only)
-            if ! echo '${HOST}' | grep -qP '^[a-zA-Z0-9._:-]+\$'; then
-                echo '  ERROR: Invalid HOST value for certificate subject'
-                exit 1
-            fi
-            openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-                -keyout \$CERT_DIR/tls.key \
-                -out \$CERT_DIR/tls.crt \
-                -subj \"/CN=${HOST}/O=Gryvia\" \
-                -addext \"subjectAltName=IP:${HOST},DNS:gryvia.local\" \
-                2>/dev/null
-            chmod 600 \$CERT_DIR/tls.key
-            echo '  ✅ Certificate generated (365 days)'
-        else
-            echo '  ✅ Existing certificate still valid'
-        fi
-
-        # Create/update TLS secret in kubernetes
-        kubectl -n gryvia-system delete secret gryvia-tls --ignore-not-found 2>/dev/null || true
-        kubectl -n gryvia-system create secret tls gryvia-tls \
-            --cert=\$CERT_DIR/tls.crt \
-            --key=\$CERT_DIR/tls.key 2>/dev/null
-        echo '  ✅ TLS secret created in gryvia namespace'
-
-        # Patch UI service to add HTTPS NodePort
-        kubectl -n gryvia-system apply -f - <<SVCEOF
-apiVersion: v1
-kind: Service
-metadata:
-  name: gryvia-ui-https
-  namespace: gryvia-system
-spec:
-  type: NodePort
-  ports:
-    - port: 443
-      targetPort: 443
-      nodePort: ${HTTPS_PORT}
-      protocol: TCP
-      name: https
-  selector:
-    app: gryvia-ui
-SVCEOF
-
-        # Deploy nginx TLS termination sidecar as a separate pod
-        kubectl -n gryvia-system apply -f - <<TLSEOF
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: gryvia-tls-nginx
-  namespace: gryvia-system
-data:
-  nginx.conf: |
-    events { worker_connections 128; }
-    http {
-      server {
-        listen 443 ssl;
-        ssl_certificate /etc/tls/tls.crt;
-        ssl_certificate_key /etc/tls/tls.key;
-        ssl_protocols TLSv1.2 TLSv1.3;
-        ssl_ciphers HIGH:!aNULL:!MD5;
-
-        location / {
-          proxy_pass http://gryvia-ui.gryvia.svc:80;
-          proxy_set_header Host \\\$host;
-          proxy_set_header X-Real-IP \\\$remote_addr;
-          proxy_set_header X-Forwarded-For \\\$proxy_add_x_forwarded_for;
-          proxy_set_header X-Forwarded-Proto https;
-        }
-
-        location /api/ {
-          proxy_pass http://gryvia-api-gateway.gryvia.svc:8080/api/;
-          proxy_set_header Host \\\$host;
-          proxy_set_header X-Real-IP \\\$remote_addr;
-          proxy_set_header X-Forwarded-For \\\$proxy_add_x_forwarded_for;
-          proxy_set_header X-Forwarded-Proto https;
-        }
-      }
-    }
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: gryvia-tls-proxy
-  namespace: gryvia-system
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: gryvia-tls-proxy
-  template:
-    metadata:
-      labels:
-        app: gryvia-tls-proxy
-    spec:
-      containers:
-        - name: nginx
-          image: nginx:1.27-alpine
-          ports:
-            - containerPort: 443
-          volumeMounts:
-            - name: tls
-              mountPath: /etc/tls
-              readOnly: true
-            - name: nginx-conf
-              mountPath: /etc/nginx/nginx.conf
-              subPath: nginx.conf
-              readOnly: true
-          resources:
-            requests:
-              cpu: 50m
-              memory: 32Mi
-            limits:
-              cpu: 200m
-              memory: 64Mi
-          securityContext:
-            readOnlyRootFilesystem: false
-            allowPrivilegeEscalation: false
-      volumes:
-        - name: tls
-          secret:
-            secretName: gryvia-tls
-        - name: nginx-conf
-          configMap:
-            name: gryvia-tls-nginx
-TLSEOF
-
-        # Patch the HTTPS service selector to point to TLS proxy
-        kubectl -n gryvia-system patch svc gryvia-ui-https \
-            -p '{\"spec\":{\"selector\":{\"app\":\"gryvia-tls-proxy\"}}}' 2>/dev/null
-
-        echo '  ✅ TLS proxy deployed'
-
-        # Wait for TLS proxy to be ready
-        echo '  Waiting for TLS proxy...'
-        kubectl -n gryvia-system rollout status deployment gryvia-tls-proxy --timeout=60s 2>/dev/null || true
-
-        echo '  ✅ HTTPS configured on port ${HTTPS_PORT}'
-    " 2>&1
-    info "HTTPS auto-configured with self-signed certificate"
+log "sync → ${TARGET}:${REMOTE_DIR}"
+if ! $DRY_RUN; then
+  ssh_host "mkdir -p ${REMOTE_DIR}"
+  rsync -az --delete -e "ssh ${SSH_OPTS[*]}" \
+    --exclude '.git' --exclude 'node_modules' --exclude 'dist' --exclude 'target' \
+    --exclude 'build' --exclude '.docusaurus' --exclude '.DS_Store' --exclude 'bin' \
+    "${ROOT}/" "${TARGET}:${REMOTE_DIR}/"
 fi
 
-# ── Verify ──
-if $QUICK_MODE; then
-    VERIFY_STEP=$((TOTAL_STEPS))
-else
-    VERIFY_STEP=$((TOTAL_STEPS))
+remote_script=$(cat <<EOF
+set -euo pipefail
+cd ${REMOTE_DIR}
+$(preamble)
+MODE="${MODE}"
+VERSION="${VERSION}"
+UI_NODEPORT="${UI_NODEPORT}"
+REG="ghcr.io/zyvorai"
+
+source scripts/lib/deploy-guards.sh
+deploy_disk_guard /
+
+# API key: explicit > previously generated > new. Kept on the host, mode 600.
+mkdir -p "\$HOME/.gryvia"
+API_KEY="${API_KEY_LOCAL}"
+if [[ -z "\$API_KEY" && -r "\$HOME/.gryvia/api-key" ]]; then API_KEY="\$(cat "\$HOME/.gryvia/api-key")"; fi
+if [[ -z "\$API_KEY" ]]; then API_KEY="\$(openssl rand -hex 24)"; fi
+printf '%s\n' "\$API_KEY" > "\$HOME/.gryvia/api-key"
+chmod 600 "\$HOME/.gryvia/api-key"
+
+if command -v podman >/dev/null 2>&1; then RT=podman
+elif command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then RT=docker
+else RT=""; fi
+
+# name:build context:Dockerfile
+IMAGES=(
+  "gpu-operator:operators/gpu-operator:operators/gpu-operator/Dockerfile"
+  "ai-operator:operators/ai-operator:operators/ai-operator/Dockerfile"
+  "api-gateway:services/api-gateway:services/api-gateway/Dockerfile"
+  "ui:.:docker/Dockerfile.ui"
+)
+
+if [[ "\$MODE" != "quick" ]]; then
+  [[ -n "\$RT" ]] || { echo "podman or a working docker is required to build images" >&2; exit 1; }
+  for spec in "\${IMAGES[@]}"; do
+    IFS=: read -r name ctx df <<<"\$spec"
+    echo "Building \$REG/gryvia-\$name:\$VERSION ..."
+    \$RT build -f "\$df" -t "\$REG/gryvia-\$name:\$VERSION" "\$ctx"
+  done
+  # Build all, then import all: an imported image no pod uses yet is what kubelet's
+  # image GC collects, and each build pushes the disk toward its threshold.
+  for spec in "\${IMAGES[@]}"; do
+    IFS=: read -r name _ _ <<<"\$spec"
+    deploy_import_image "\$REG/gryvia-\$name:\$VERSION"
+  done
 fi
-step "Step ${VERIFY_STEP}/${TOTAL_STEPS}: ✅ Verifying deployment"
 
-_ssh "
-    echo ''
-    echo '📋 CRDs:'
-    kubectl get crd | grep gryvia || echo '  (none found)'
+echo "Installing CRDs ..."
+python3 scripts/lib/crds-only.py manifests/crds/*.yaml | kubectl apply --server-side --force-conflicts -f -
 
-    echo ''
-    echo '📦 Pods:'
-    kubectl get pods -n gryvia-system --no-headers 2>/dev/null | head -15 || echo '  (none running)'
+echo "Installing gryvia-core (operators) ..."
+helm upgrade --install gryvia-core ./helm/gryvia-core \\
+  --namespace gryvia-system --create-namespace \\
+  --set namespace.create=false \\
+  --set crds.install=false \\
+  --set monitoring.enabled=false \\
+  --set nvidiaDevicePlugin.enabled=false \\
+  --set dcgmExporter.enabled=false \\
+  --set gpuOperator.image.repository="\$REG/gryvia-gpu-operator" --set gpuOperator.image.tag="\$VERSION" \\
+  --set aiOperator.image.repository="\$REG/gryvia-ai-operator" --set aiOperator.image.tag="\$VERSION" \\
+  --wait --timeout 300s
 
-    echo ''
-    echo '🌐 Services:'
-    kubectl get svc -n gryvia-system --no-headers 2>/dev/null || echo '  (none)'
-" 2>&1
+echo "Deploying API gateway and web UI ..."
+kubectl -n gryvia-system create secret generic gryvia-api-key \\
+  --from-literal=GRYVIA_API_KEY="\$API_KEY" --dry-run=client -o yaml | kubectl apply -f -
+sed "s#image: gryvia/api-gateway:.*#image: \$REG/gryvia-api-gateway:\$VERSION#" manifests/deploy/api-gateway-deployment.yaml | kubectl apply -f -
+sed "s#image: gryvia/ui:.*#image: \$REG/gryvia-ui:\$VERSION#" manifests/deploy/ui-deployment.yaml | kubectl apply -f -
+kubectl -n gryvia-system set env deployment/gryvia-api-gateway --from=secret/gryvia-api-key
+kubectl -n gryvia-system patch svc gryvia-ui --type merge \\
+  -p "{\"spec\":{\"type\":\"NodePort\",\"ports\":[{\"name\":\"http\",\"port\":80,\"targetPort\":\"http\",\"protocol\":\"TCP\",\"nodePort\":\$UI_NODEPORT}]}}"
 
-info "Deployment verified"
+# A fixed tag never changes the pod template, so restart to pick up freshly imported images.
+# image-name:deployment:label selector
+WORKLOADS=(
+  "gpu-operator:gryvia-core-gpu-operator:app.kubernetes.io/component=gpu-operator"
+  "ai-operator:gryvia-core-ai-operator:app.kubernetes.io/component=ai-operator"
+  "api-gateway:gryvia-api-gateway:app=gryvia-api-gateway"
+  "ui:gryvia-ui:app=gryvia-ui"
+)
+for spec in "\${WORKLOADS[@]}"; do
+  IFS=: read -r img dep sel <<<"\$spec"
+  ref="\$REG/gryvia-\$img:\$VERSION"
+  deploy_ensure_image "\$ref"
+  kubectl -n gryvia-system rollout restart deployment/\$dep
+  deploy_wait_ready deployment/\$dep "\$sel" "\$ref"
+done
 
-echo ""
-echo "  ════════════════════════════════════════════════════"
-echo "  🎉 Deployment complete: ${USER}@${HOST}"
-echo "  ════════════════════════════════════════════════════"
-echo ""
-echo "  🔗 Connect:"
-echo "    ssh ${USER}@${HOST}"
-echo ""
+echo "GRYVIA_UI=http://\$(hostname -I | awk '{print \$1}'):\$UI_NODEPORT"
+echo "API key stored in ~/.gryvia/api-key on the host"
+EOF
+)
 
-# Get service ports
-UI_PORT=$(_ssh "kubectl get svc -n gryvia-system gryvia-ui -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null" || echo "30081")
-API_PORT=$(_ssh "kubectl get svc -n gryvia-system gryvia-api-gateway -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null" || echo "30088")
-
-echo "  🌐 Web Dashboard:"
-echo "    http://${HOST}:${UI_PORT}"
-if $HTTPS_MODE; then
-    echo "    https://${HOST}:${HTTPS_PORT}  (self-signed cert)"
+if $DRY_RUN; then
+  log "dry-run remote script:"
+  echo "$remote_script"
+  exit 0
 fi
-echo ""
-echo "  📡 API Gateway:"
-echo "    http://${HOST}:${API_PORT}"
-if $HTTPS_MODE; then
-    echo "    https://${HOST}:${HTTPS_PORT}/api/"
-fi
-echo ""
-echo "  🚀 Submit a job:"
-echo "    kubectl apply -f examples/training/simple-pytorch-training.yaml"
-echo ""
-echo "  📊 Check status:"
-echo "    kubectl get fabricgpunodes"
-echo "    kubectl get fabricaijobs"
-echo "    kubectl get pods -n gryvia-system"
-echo ""
+
+ssh_host 'bash -s' <<<"$remote_script"
+log "deployed; running smoke test"
+ssh_host 'bash -s' <<<"$smoke_script"

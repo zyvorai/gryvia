@@ -62,7 +62,7 @@ print(f"GPU count: {torch.cuda.device_count()}")
 print(f"GPU name: {torch.cuda.get_device_name(0)}")
 
 # MLflow tracking
-mlflow.set_tracking_uri("http://mlflow.gryvia.svc.cluster.local:5000")
+mlflow.set_tracking_uri("http://mlflow.gryvia-system.svc.cluster.local:5000")
 mlflow.set_experiment("jupyter-experiments")
 
 with mlflow.start_run():

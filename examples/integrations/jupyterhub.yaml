@@ -118,7 +118,7 @@ data:
 
     # Environment variables
     c.KubeSpawner.environment = {
-        'MLFLOW_TRACKING_URI': 'http://mlflow.gryvia.svc.cluster.local:5000',
+        'MLFLOW_TRACKING_URI': 'http://mlflow.gryvia-system.svc.cluster.local:5000',
         'JUPYTER_ENABLE_LAB': 'yes'
     }
 
