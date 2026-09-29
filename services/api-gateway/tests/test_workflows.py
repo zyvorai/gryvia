@@ -94,3 +94,11 @@ def test_create_duplicate(make_client, fake_k8s):
 def test_create_validation(make_client, fake_k8s, payload):
     assert make_client("workflows").post("/api/workflows", json=payload).status_code == 422
     assert not fake_k8s.store
+
+
+def test_delete(make_client, fake_k8s):
+    seed(fake_k8s)
+    c = make_client("workflows")
+    assert c.delete("/api/workflows/wf1").json() == {"status": "deleted", "name": "wf1"}
+    assert not fake_k8s.store
+    assert c.delete("/api/workflows/wf1").status_code == 404

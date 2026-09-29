@@ -46,6 +46,8 @@ GET    /api/jobs              # List jobs (?limit=100&offset=0)
 POST   /api/jobs              # Create a job (validates apiVersion and kind, enforces namespace server-side)
 GET    /api/jobs/{name}       # Get job by name
 DELETE /api/jobs/{name}       # Delete job by name
+DELETE /api/workflows/{name}  # Delete a workflow
+DELETE /api/tuners/{name}     # Delete an auto tuner
 GET    /api/jobs/{name}/pods  # Pods of the job (label gryvia.io/job=<name>)
 GET    /api/jobs/{name}/logs  # Pod log (?pod=<name>&tail=200, tail 1-2000; `truncated` flag)
 GET    /api/jobs/{name}/events # Kubernetes events for the job and its pods

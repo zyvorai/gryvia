@@ -13,6 +13,7 @@ import { initialSpaceState, spaceError, spaceJson, type ParamSpaceState } from '
 import type { FilterDef, SortAccessor } from '@/lib/tableState'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { useTableState } from '@/hooks/useTableState'
+import ConfirmDialog from '@/components/ConfirmDialog'
 import PageHero from '@/components/PageHero'
 import PagePulse from '@/components/kit/PagePulse'
 import Modal from '@/components/Modal'
@@ -50,6 +51,21 @@ export default function AutoTuner() {
   useDocumentTitle('Auto Tuner')
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [openName, setOpenName] = useState<string | null>(null)
+  const queryClient = useQueryClient()
+  const [deleting, setDeleting] = useState<string | null>(null)
+  const deleteMutation = useMutation({
+    mutationFn: (name: string) => api.deleteTuner(name),
+    onSuccess: (_d, name) => {
+      notify.success(`Deleted tuner ${name}`)
+      setDeleting(null)
+      if (openName === name) setOpenName(null)
+      return queryClient.invalidateQueries({ queryKey: ['tuners'] })
+    },
+    onError: (err, name) => {
+      notify.error(`Could not delete ${name}`, err)
+      setDeleting(null)
+    },
+  })
   const now = useNow(30000)
 
   const { data, isLoading, isError, error, refetch, isRefetching, dataUpdatedAt } = useQuery({
@@ -181,6 +197,9 @@ export default function AutoTuner() {
                 <div className="card" id="tuner-detail" role="region" aria-label={`${nameOf(openTuner)} trials`}>
                   <div className="row">
                     <p className="eyebrow">Trials: {nameOf(openTuner)}</p>
+                    <button type="button" className="danger" onClick={() => setDeleting(nameOf(openTuner))}>
+                      Delete tuner
+                    </button>
                     <button type="button" className="btn-secondary" onClick={() => setOpenName(null)}>
                       Close details
                     </button>
@@ -222,6 +241,17 @@ export default function AutoTuner() {
         </section>
       </div>
 
+      {deleting && (
+        <ConfirmDialog
+          title={`Delete tuner ${deleting}?`}
+          confirmLabel="Delete tuner"
+          busy={deleteMutation.isPending}
+          onCancel={() => setDeleting(null)}
+          onConfirm={() => deleteMutation.mutate(deleting)}
+        >
+          Deleting {deleting} stops the search and deletes its trial jobs. This cannot be undone.
+        </ConfirmDialog>
+      )}
       {showCreateForm && <CreateTunerModal onClose={() => setShowCreateForm(false)} />}
     </>
   )

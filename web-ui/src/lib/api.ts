@@ -712,6 +712,10 @@ export const api = {
     return data
   },
 
+  deleteWorkflow: async (name: string): Promise<void> => {
+    await apiClient.delete(`/workflows/${encodeURIComponent(name)}`)
+  },
+
   createWorkflow: async (workflow: CreateWorkflowRequest): Promise<Workflow> => {
     const { data } = await apiClient.post('/workflows', workflow)
     return data
@@ -726,6 +730,10 @@ export const api = {
   getTuner: async (name: string): Promise<AutoTunerJob> => {
     const { data } = await apiClient.get(`/tuners/${encodeURIComponent(name)}`)
     return data
+  },
+
+  deleteTuner: async (name: string): Promise<void> => {
+    await apiClient.delete(`/tuners/${encodeURIComponent(name)}`)
   },
 
   createTuner: async (req: CreateTunerRequest): Promise<AutoTunerJob> => {
