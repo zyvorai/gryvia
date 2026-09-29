@@ -5,10 +5,17 @@ on:
     branches: [ main, develop ]
     paths:
       - 'helm/**'
+      - 'crds/**'
+      - '.github/ct.yaml'
+      - '.github/workflows/helm.yml'
   pull_request:
     branches: [ main ]
     paths:
       - 'helm/**'
+      - 'crds/**'
+      - '.github/ct.yaml'
+      - '.github/workflows/helm.yml'
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
