@@ -44,9 +44,29 @@ header only when the connection comes from a private or loopback address.
 
 ### Single sign-on
 
-The gateway can validate OIDC JWTs (`OIDC_ENABLED`, `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`). The dashboard
-then offers an SSO button next to the key login. Roles and per-user permissions are not finished; treat
-every authenticated user as an administrator.
+The gateway can validate OIDC JWTs issued by your identity provider. The dashboard then offers an SSO
+button next to the key login. Roles and per-user permissions are not finished; treat every authenticated
+user as an administrator.
+
+| Variable | Meaning |
+| --- | --- |
+| `OIDC_ENABLED` | `true`, `1` or `yes` turns OIDC on. Default is off. |
+| `OIDC_ISSUER_URL` | Issuer URL (a trailing `/` is removed). The gateway reads `<issuer>/.well-known/openid-configuration` and the `jwks_uri` it lists. OIDC stays off when this is empty. |
+| `OIDC_CLIENT_ID` | Client id handed to the dashboard through `/api/auth/config`. |
+| `OIDC_AUDIENCE` | Required `aud` of the token. Defaults to `OIDC_CLIENT_ID`. |
+
+A bearer token with three dot-separated parts is checked as a JWT: RS256/384/512 or ES256/384 signature
+against the provider's JWKS (matched by `kid`), the issuer, the audience, and the presence of `exp`,
+`iss`, `aud` and `sub`. Signing keys are cached for one hour and refreshed once when an unknown `kid`
+appears. A token that fails is then tried as the API key, so it is rejected with 403 unless it equals
+that key; if the provider cannot be reached the gateway does not accept the token. Signed browser
+sessions (`gs1.` tokens) and the API key keep working while OIDC is on. `/api/auth/config` reports
+`oidcEnabled: false` with an error when discovery fails.
+
+Tenants: the `org` claim (a string) gives one tenant namespace; otherwise the string entries of the
+`groups` claim are the tenant namespaces. `/api/auth/me` returns `sub`, `email`, `name` (or
+`preferred_username`), `groups`, `org` and `tenantNamespaces`. Your provider must include `groups` (or
+`org`) in the token; the dashboard requests the scopes `openid profile email groups`.
 
 ## TLS
 

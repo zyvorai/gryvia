@@ -28,6 +28,7 @@ from routers.phases import count_phases, is_billable, normalize as normalize_pha
 
 import httpx
 from jose import jwt, JWTError
+from jose.exceptions import JOSEError
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -191,6 +192,17 @@ async def _get_jwks() -> Dict[str, Any]:
         return _jwks_cache
 
 
+async def _fetch_jwks_or_503() -> Dict[str, Any]:
+    """_get_jwks, with an unreachable or broken identity provider reported as 503, not a crash."""
+    try:
+        return await _get_jwks()
+    except HTTPException:
+        raise
+    except Exception:
+        logger.warning("Failed to fetch OIDC signing keys")
+        raise HTTPException(status_code=503, detail="OIDC provider unreachable")
+
+
 async def _validate_jwt_token(token: str) -> Dict[str, Any]:
     """Validate a JWT token against the OIDC provider's JWKS."""
     try:
@@ -199,7 +211,7 @@ async def _validate_jwt_token(token: str) -> Dict[str, Any]:
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token header")
 
-    jwks_data = await _get_jwks()
+    jwks_data = await _fetch_jwks_or_503()
     kid = unverified_header.get("kid")
 
     # Find the matching key
@@ -213,7 +225,7 @@ async def _validate_jwt_token(token: str) -> Dict[str, Any]:
         # Key not found - maybe keys rotated, refresh cache and retry once
         global _jwks_cache_time
         _jwks_cache_time = 0
-        jwks_data = await _get_jwks()
+        jwks_data = await _fetch_jwks_or_503()
         for key in jwks_data.get("keys", []):
             if key.get("kid") == kid:
                 rsa_key = key
@@ -231,13 +243,19 @@ async def _validate_jwt_token(token: str) -> Dict[str, Any]:
             algorithms=["RS256", "RS384", "RS512", "ES256", "ES384"],
             audience=OIDC_AUDIENCE,
             issuer=OIDC_ISSUER_URL,
+            options={
+                "require_exp": True,
+                "require_iss": True,
+                "require_aud": True,
+                "require_sub": True,
+            },
         )
         return payload
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token has expired")
     except jwt.JWTClaimsError as e:
         raise HTTPException(status_code=401, detail=f"Invalid token claims: {e}")
-    except JWTError:
+    except (JWTError, JOSEError):
         raise HTTPException(status_code=401, detail="Invalid token")
 
 
@@ -762,7 +780,10 @@ async def list_jobs(
             jobs = await loop.run_in_executor(
                 None,
                 lambda ns=ns: k8s_custom.list_namespaced_custom_object(
-                    group="gryvia.io", version="v1alpha1", namespace=ns, plural="gryviaaijobs"
+                    group="gryvia.io",
+                    version="v1alpha1",
+                    namespace=ns,
+                    plural="gryviaaijobs",
                 ),
             )
             all_items.extend(jobs.get("items", []))
