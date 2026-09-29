@@ -248,7 +248,11 @@ serviceAccount:
   annotations: {}
 
 namespace:
-  create: true
+  # Off by default: `helm install --create-namespace` creates the release namespace before the chart renders, so a chart-managed
+  # Namespace object collides with it ("namespaces already exists"). Set true only for flows that do not use
+  # --create-namespace (for example `helm template | kubectl apply`). With nvidia.enabled=true the namespace must allow
+  # privileged pods: label it `pod-security.kubernetes.io/enforce=privileged` (scripts/install-k3s-gpu.sh does).
+  create: false
   name: gryvia-system
 
 crds:
