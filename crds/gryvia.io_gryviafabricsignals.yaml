@@ -77,6 +77,12 @@ spec:
                 description: CNPRate is the RoCEv2 congestion notification packets
                   per second seen on the node
                 type: number
+              collectiveMaxSkewMs:
+                description: |-
+                  CollectiveMaxSkewMs is the largest slowest-minus-fastest host-side NCCL call duration in
+                  milliseconds among collectives matched by (communicator ordinal, sequence, op) across the
+                  job's ranks on the publishing node (0 = none matched; informational, never part of scoreDelta)
+                type: number
               exfilEvents:
                 description: |-
                   ExfilEvents is the number of large model-file reads followed by a connect to a non-internal
@@ -86,6 +92,17 @@ spec:
               gdsHitRatio:
                 description: GDSHitRatio is the fraction of cuFile bytes served over
                   the direct GPUDirect Storage path
+                type: number
+              gpuCorrelationCoverage:
+                description: |-
+                  GPUCorrelationCoverage is the fraction of NCCL communication time covered by a DCGM sample;
+                  a low value means the dcgm-exporter collect interval is too coarse for the ratios above
+                type: number
+              gpuIdleDuringCommRatio:
+                description: |-
+                  GPUIdleDuringCommRatio is the fraction of NCCL communication time (covered by DCGM samples)
+                  during which SM_ACTIVE (else GPU_UTIL) was below the idle threshold. Set only when the
+                  collector runs with -dcgm-correlate and measured it; informational, never part of scoreDelta
                 type: number
               inferWaitP99ms:
                 description: InferWaitP99Ms is the p99 wait in milliseconds from accept
@@ -113,6 +130,11 @@ spec:
                   (0 = healthy fabric)
                 maximum: 1
                 minimum: 0
+                type: number
+              smActiveDuringCompute:
+                description: |-
+                  SMActiveDuringCompute is the mean DCGM SM activity (0-1) outside the NCCL call windows,
+                  between the job's first and last observed collective (set only when measured)
                 type: number
               stragglerRank:
                 description: StragglerRank is the rank of the most recent NCCL straggler

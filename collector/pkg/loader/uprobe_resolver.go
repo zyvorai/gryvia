@@ -82,6 +82,12 @@ func (r *UprobeResolver) FindUCXLibrary(pid int) (string, error) {
 	return r.FindLibrary(pid, "libucp.so")
 }
 
+// FindIBVerbsLibrary finds libibverbs.so (exports ibv_create_qp, ibv_destroy_qp,
+// ibv_reg_mr; the data-path calls are inline and have no symbol) for a given PID.
+func (r *UprobeResolver) FindIBVerbsLibrary(pid int) (string, error) {
+	return r.FindLibrary(pid, "libibverbs.so")
+}
+
 // FindContainerPIDs finds PIDs for pods matching a label selector by scanning
 // /proc for processes whose cgroup path contains the pod name.
 func (r *UprobeResolver) FindContainerPIDs(namespace, podName string) ([]int, error) {

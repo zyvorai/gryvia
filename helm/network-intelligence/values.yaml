@@ -72,6 +72,21 @@ ebpf:
   # Paths of libnccl.so / libcudart.so for the GPU uprobes. Empty tries to discover them from running processes.
   ncclLib: ""
   cudaLib: ""
+  # RDMA NIC hardware counters from /sys/class/infiniband (flag -nic-counters): retry/error/CNP/pause rates
+  # folded into the fabric status and exported as gryvia_nic_counter_rate. Off by default; a node without RDMA
+  # devices is skipped. UNVERIFIED on real RDMA hardware. See docs/nccl-rdma-gpu-correlation.md.
+  nicCounters: false
+  # Attach the libibverbs control-path uprobes (flag -ibverbs-probes): QP created/destroyed and registered-memory
+  # counters. Off by default. The data path (post_send/poll_cq) has no exported symbol and is NOT covered.
+  ibverbsProbes: false
+  # Correlate DCGM GPU activity (from the node's dcgm-exporter) with NCCL call windows (flag -dcgm-correlate).
+  # Off by default; informational only. UNVERIFIED on real GPU hardware. The default URL is only reachable with
+  # collector.hostNetwork=true; run dcgm-exporter with a short --collect-interval (1000 ms) or coverage stays low.
+  dcgm:
+    enabled: false
+    url: "http://127.0.0.1:9400/metrics"
+    interval: 1s
+    idleThreshold: 0.1
 
 # Prometheus monitoring
 prometheus:

@@ -64,6 +64,21 @@ spec:
             {{- if .Values.ebpf.publishFabricStatus }}
             - -publish-fabric-status
             {{- end }}
+            {{- if .Values.ebpf.nicCounters }}
+            - -nic-counters
+            {{- end }}
+            {{- if .Values.ebpf.ibverbsProbes }}
+            - -ibverbs-probes
+            {{- end }}
+            {{- if .Values.ebpf.dcgm.enabled }}
+            {{- if and (contains "127.0.0.1" .Values.ebpf.dcgm.url) (not .Values.collector.hostNetwork) }}
+            {{- fail "ebpf.dcgm.url points at 127.0.0.1, which only reaches the node's dcgm-exporter with collector.hostNetwork=true" }}
+            {{- end }}
+            - -dcgm-correlate
+            - -dcgm-url={{ .Values.ebpf.dcgm.url }}
+            - -dcgm-interval={{ .Values.ebpf.dcgm.interval }}
+            - -dcgm-idle-threshold={{ .Values.ebpf.dcgm.idleThreshold }}
+            {{- end }}
             {{- with .Values.ebpf.ncclLib }}
             - -nccl-lib={{ . }}
             {{- end }}

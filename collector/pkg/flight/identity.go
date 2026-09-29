@@ -105,6 +105,22 @@ func (r *Resolver) Resolve(pid uint32) (Identity, bool) {
 	return id, ok
 }
 
+// JobOfPod returns the gryvia.io/job of a pod on this node (false when the pod
+// is unknown, has no job label, or the pod list is stale). It never guesses.
+func (r *Resolver) JobOfPod(namespace, pod string) (string, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if time.Since(r.updated) > time.Minute {
+		return "", false
+	}
+	for _, id := range r.byUID {
+		if id.Namespace == namespace && id.Pod == pod {
+			return id.Job, true
+		}
+	}
+	return "", false
+}
+
 // Run refreshes the node's pods every 15 seconds. The API server TLS CA and
 // service account token are used; failed refreshes retain the last snapshot.
 func (r *Resolver) Run(ctx context.Context, onError func(error)) {

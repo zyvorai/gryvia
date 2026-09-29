@@ -23,6 +23,7 @@ import (
 	"github.com/zyvorai/gryvia/collector/pkg/aggregator"
 	"github.com/zyvorai/gryvia/collector/pkg/ai"
 	"github.com/zyvorai/gryvia/collector/pkg/anomaly"
+	"github.com/zyvorai/gryvia/collector/pkg/dcgm"
 	"github.com/zyvorai/gryvia/collector/pkg/decoder"
 	"github.com/zyvorai/gryvia/collector/pkg/exporter"
 	"github.com/zyvorai/gryvia/collector/pkg/fabric"
@@ -30,6 +31,7 @@ import (
 	"github.com/zyvorai/gryvia/collector/pkg/graph"
 	"github.com/zyvorai/gryvia/collector/pkg/kube"
 	"github.com/zyvorai/gryvia/collector/pkg/loader"
+	"github.com/zyvorai/gryvia/collector/pkg/nic"
 	"github.com/zyvorai/gryvia/collector/pkg/security"
 	"github.com/zyvorai/gryvia/collector/pkg/tuning"
 )
@@ -51,6 +53,14 @@ func main() {
 		quotaPace       = flag.Bool("quota-pace", false, "attach quota_pace (the only program that changes sockets: caps SO_MAX_PACING_RATE of cgroups that hold a lease). Off by default; needs -cgroup-path. Without -quota-pace-sync nothing grants leases and pacing stays inert")
 		quotaPaceSync   = flag.Bool("quota-pace-sync", false, "MUTATING, off by default: every 30 s grant a pace lease to the cgroups of pods on this node whose namespace is listed by a GryviaQuota with spec.network.maxEgressMbps (needs -quota-pace, -cgroup-path, running in a cluster and NODE_NAME). Fails open: an API error changes nothing and leases expire after 2 minutes")
 		quotaPaceDry    = flag.Bool("quota-pace-dry-run", false, "with -quota-pace-sync: log what would be granted or revoked and write nothing to the pace map")
+		ibverbsLib      = flag.String("ibverbs-lib", "", "path to libibverbs.so for the ibv_verbs uprobes (empty = auto-discover)")
+		ibverbsProbes   = flag.Bool("ibverbs-probes", false, "attach ibv_verbs (uprobes on libibverbs ibv_create_qp/ibv_destroy_qp/ibv_reg_mr: QP and registered-memory counters). Off by default")
+		nicCounters     = flag.Bool("nic-counters", false, "read RDMA NIC hardware counters from /sys/class/infiniband and fold retry/error/CNP/pause rates into the fabric status (NCCL's userspace verbs path is invisible to the kernel RDMA kprobes). Off by default; skipped when no RDMA device exists")
+		nicSysfs        = flag.String("nic-sysfs", nic.DefaultRoot, "with -nic-counters: sysfs directory of RDMA devices")
+		dcgmCorrelate   = flag.Bool("dcgm-correlate", false, "scrape this node's dcgm-exporter and correlate GPU activity with NCCL call windows (gpuIdleDuringCommRatio etc.; informational). Off by default; run dcgm-exporter with a short --collect-interval")
+		dcgmURL         = flag.String("dcgm-url", dcgm.DefaultURL, "with -dcgm-correlate: dcgm-exporter metrics URL")
+		dcgmInterval    = flag.Duration("dcgm-interval", time.Second, "with -dcgm-correlate: scrape interval")
+		dcgmIdle        = flag.Float64("dcgm-idle-threshold", dcgm.DefaultIdleThreshold, "with -dcgm-correlate: SM activity (0-1) below which the GPU counts as idle")
 		publishFabric   = flag.Bool("publish-fabric-status", false, "every 30 s patch the status of an existing GryviaFabricSignal (spec.jobRef = job) with the folded fabric signals; needs a cluster (KUBERNETES_SERVICE_HOST) and RBAC (chart value ebpf.publishFabricStatus)")
 		windowSec       = flag.Int("window", 300, "Aggregation sliding window in seconds")
 	)
@@ -96,6 +106,7 @@ func main() {
 		InferPorts: ports,
 		Dir:        *ebpfDir, Iface: *iface, CgroupPath: *cgroupPath,
 		NCCLLib: *ncclLib, CUDALib: *cudaLib, CuFileLib: *cufileLib, UCXLib: *ucxLib, UprobePID: *uprobePID,
+		IBVerbsLib: *ibverbsLib, IBVerbs: *ibverbsProbes,
 		QuotaPace: *quotaPace,
 	}, log)
 	if err != nil {
@@ -175,6 +186,24 @@ func main() {
 		lastCNP, lastRoCE = cnp, roce
 		fabricFolder.AddCNP(dCNP)
 		metrics.RecordRoCE(dCNP, dRoCE)
+	}
+
+	// Opt-in extras (see fabricextras.go).
+	var nicPoll *nicPoller
+	if *nicCounters {
+		nicPoll = newNICPoller(*nicSysfs, fabricFolder, metrics, log)
+	}
+	var ibvPoll *ibvPoller
+	for _, s := range mgr.Status() {
+		if s.Object == "ibv_verbs.o" && s.Attached {
+			ibvPoll = &ibvPoller{mgr: mgr, metrics: metrics, log: log}
+			break
+		}
+	}
+	if *dcgmCorrelate {
+		if err := startDCGM(ctx, log, fabricFolder, identity, *dcgmURL, *dcgmInterval, *dcgmIdle); err != nil {
+			log.Warnw("-dcgm-correlate ignored", "error", err)
+		}
 	}
 
 	// pfc_pause keeps per-CPU counters only (no ring): poll them, fold the
@@ -365,6 +394,18 @@ func main() {
 	go func() {
 		for sig := range fabricDecoder.Events() {
 			fabricBinder.Add(sig)
+			if sig.Type == fabric.SigCollective {
+				if id, ok := identity.Resolve(sig.PID); ok {
+					ev := flight.Event{Identity: id, Source: "ebpf", Operation: decoder.NCCLOpName(sig.NCCLOp), Bytes: sig.Bytes,
+						DurationNs: sig.LatencyNS, CommOrdinal: sig.CommOrdinal(), CommSeq: sig.CollSeq(), CommWorld: sig.WorldSize,
+						CommLate: sig.Retries&fabric.CollFlagLate != 0}
+					if sig.Rank != fabric.RankUnknown {
+						r := sig.Rank
+						ev.CommRank = &r
+					}
+					recorder.RecordCollective(ev)
+				}
+			}
 			if sig.Type == fabric.SigExfil {
 				// Observe only: the probe emits one signal per read burst. Never enforced here.
 				log.Warnw("possible model-weight exfiltration: large model-file read followed by a connect to a non-internal address",
@@ -403,6 +444,13 @@ func main() {
 				}
 				if pfcAttached {
 					pollPFC()
+				}
+
+				if nicPoll != nil {
+					nicPoll.poll(time.Now())
+				}
+				if ibvPoll != nil {
+					ibvPoll.poll()
 				}
 
 				// Publish per-job fabric status.

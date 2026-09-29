@@ -7,6 +7,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/zyvorai/gryvia/collector/pkg/dcgm"
 )
 
 const (
@@ -14,6 +16,8 @@ const (
 	DefaultWindow = 5 * time.Minute
 	// maxSamples bounds the signals kept per job.
 	maxSamples = 4096
+	// maxCollSamples bounds the collective spans kept per job.
+	maxCollSamples = 16384
 )
 
 // Score-penalty thresholds and weights (see ScoreDelta).
@@ -72,9 +76,41 @@ type Status struct {
 	ExfilEvents uint64 `json:"exfilEvents"`
 	// UCXSlowP99MS is the p99 duration of UCX tag-send calls that blocked for
 	// at least the probe threshold. Informational: it does not feed ScoreDelta.
-	UCXSlowP99MS float64   `json:"ucxSlowP99ms"`
-	ScoreDelta   float64   `json:"scoreDelta"`
-	UpdatedAt    time.Time `json:"updatedAt"`
+	UCXSlowP99MS float64 `json:"ucxSlowP99ms"`
+
+	// CollectivesCompared is the number of collectives (same communicator
+	// ordinal, sequence and op) seen on at least two local ranks, and
+	// CollectiveMaxSkewMS the largest slowest-minus-fastest host-side duration
+	// among them. Both need ebpf/straggler.c with the identity probes attached
+	// and >= 2 ranks of the job on this node; the cross-node comparison lives
+	// in the gateway (see docs/nccl-rdma-gpu-correlation.md). Informational.
+	CollectivesCompared uint64  `json:"collectivesCompared"`
+	CollectiveMaxSkewMS float64 `json:"collectiveMaxSkewMs"`
+
+	// NICRetryRate / NICErrorRate are RDMA NIC hardware counter events per
+	// second (transport retries / sequence errors; link, symbol and discard
+	// errors), reported under job _node/nic when -nic-counters is on.
+	// Informational: they never change ScoreDelta.
+	NICRetryRate float64 `json:"nicRetryRate"`
+	NICErrorRate float64 `json:"nicErrorRate"`
+
+	// GPU correlation (opt-in, -dcgm-url; UNVERIFIED on hardware). Measured is
+	// false unless DCGM samples overlapped the job's collective windows.
+	// GPUIdleDuringCommRatio is the fraction of covered communication time with
+	// SM_ACTIVE (else GPU_UTIL) below the idle threshold; SMActiveDuringCompute
+	// the mean SM activity outside the comm windows (ComputeMeasured says
+	// whether there was any); GPUCorrelationCoverage the fraction of comm time
+	// that had a DCGM sample. The comm windows are host-side NCCL call windows,
+	// not on-GPU collective time. Informational: never changes ScoreDelta.
+	GPUCorrelationMeasured bool    `json:"gpuCorrelationMeasured"`
+	GPUIdleDuringCommRatio float64 `json:"gpuIdleDuringCommRatio"`
+	SMActiveDuringComm     float64 `json:"smActiveDuringComm"`
+	SMActiveDuringCompute  float64 `json:"smActiveDuringCompute"`
+	GPUComputeMeasured     bool    `json:"gpuComputeMeasured"`
+	GPUCorrelationCoverage float64 `json:"gpuCorrelationCoverage"`
+
+	ScoreDelta float64   `json:"scoreDelta"`
+	UpdatedAt  time.Time `json:"updatedAt"`
 }
 
 type sample struct {
@@ -89,8 +125,12 @@ type Folder struct {
 
 	mu        sync.Mutex
 	jobs      map[JobKey][]sample
+	colls     map[JobKey][]sample // SigCollective samples, kept apart so they cannot evict other signals
 	pidToJob  map[uint32]JobKey
 	gdsDirect bool
+
+	gpuSrc       func(k JobKey, from time.Time) []dcgm.GPUSample
+	gpuThreshold float64
 }
 
 // NewFolder creates a Folder. A non-positive window means DefaultWindow.
@@ -102,6 +142,7 @@ func NewFolder(window time.Duration) *Folder {
 		window:   window,
 		now:      time.Now,
 		jobs:     map[JobKey][]sample{},
+		colls:    map[JobKey][]sample{},
 		pidToJob: map[uint32]JobKey{},
 	}
 }
@@ -170,11 +211,15 @@ func (f *Folder) Add(s Signal) {
 }
 
 func (f *Folder) addLocked(key JobKey, s Signal) {
-	list := append(f.jobs[key], sample{at: f.now(), sig: s})
-	if len(list) > maxSamples {
-		list = append(list[:0], list[len(list)-maxSamples:]...)
+	m, limit := f.jobs, maxSamples
+	if s.Type == SigCollective {
+		m, limit = f.colls, maxCollSamples
 	}
-	f.jobs[key] = list
+	list := append(m[key], sample{at: f.now(), sig: s})
+	if len(list) > limit {
+		list = append(list[:0], list[len(list)-limit:]...)
+	}
+	m[key] = list
 }
 
 // Snapshot returns the current status of every job that has signals inside
@@ -184,24 +229,76 @@ func (f *Folder) Snapshot() map[JobKey]Status {
 	defer f.mu.Unlock()
 	now := f.now()
 	cutoff := now.Add(-f.window)
-	out := make(map[JobKey]Status, len(f.jobs))
-	for k, list := range f.jobs {
+	prune := func(m map[JobKey][]sample, k JobKey) []sample {
+		list := m[k]
 		i := sort.Search(len(list), func(i int) bool { return !list[i].at.Before(cutoff) })
 		list = list[i:]
 		if len(list) == 0 {
-			delete(f.jobs, k)
+			delete(m, k)
+			return nil
+		}
+		m[k] = list
+		return list
+	}
+	keys := make(map[JobKey]bool, len(f.jobs)+len(f.colls))
+	for k := range f.jobs {
+		keys[k] = true
+	}
+	for k := range f.colls {
+		keys[k] = true
+	}
+	out := make(map[JobKey]Status, len(keys))
+	for k := range keys {
+		list, colls := prune(f.jobs, k), prune(f.colls, k)
+		if len(list) == 0 && len(colls) == 0 {
 			continue
 		}
-		f.jobs[k] = list
-		out[k] = fold(list, f.gdsDirect, f.window)
+		st := fold(list, colls, f.gdsDirect, f.window)
+		if f.gpuSrc != nil && len(colls) > 0 {
+			f.correlateGPU(&st, k, colls, cutoff)
+		}
+		st.ScoreDelta = ScoreDelta(st)
+		out[k] = st
 	}
 	return out
 }
 
-func fold(list []sample, gdsDirect bool, window time.Duration) Status {
+// SetGPUSource enables the DCGM correlation: src returns the GPU samples that
+// belong to a job since `from` (nil when unattributable); threshold <= 0 means
+// dcgm.DefaultIdleThreshold. Not calling it leaves the correlation fields unset.
+func (f *Folder) SetGPUSource(src func(k JobKey, from time.Time) []dcgm.GPUSample, threshold float64) {
+	f.mu.Lock()
+	f.gpuSrc, f.gpuThreshold = src, threshold
+	f.mu.Unlock()
+}
+
+// correlateGPU fills the GPU fields from the job's collective call windows
+// (host-side [end - duration, end] of every local rank's calls) and the job's
+// DCGM samples. Called with f.mu held.
+func (f *Folder) correlateGPU(st *Status, k JobKey, colls []sample, from time.Time) {
+	windows := make([]dcgm.Window, 0, len(colls))
+	for _, c := range colls {
+		d := time.Duration(c.sig.LatencyNS)
+		windows = append(windows, dcgm.Window{Start: c.at.Add(-d), End: c.at})
+	}
+	res := dcgm.Correlate(windows, f.gpuSrc(k, from.Add(-2*time.Second)), f.gpuThreshold)
+	st.GPUCorrelationCoverage = res.Coverage
+	if !res.Measured {
+		return
+	}
+	st.GPUCorrelationMeasured = true
+	st.GPUIdleDuringCommRatio = res.IdleDuringComm
+	st.SMActiveDuringComm = res.ActiveDuringComm
+	st.GPUComputeMeasured = res.ComputeMeasured
+	st.SMActiveDuringCompute = res.ActiveDuringCompute
+}
+
+func fold(list, colls []sample, gdsDirect bool, window time.Duration) Status {
 	var st Status
 	var lat, inferLat, ucxLat []float64
 	var errs, posted, direct, total, overlapNS, cnps, pfcs uint64
+	var nicRetry, nicErr, nicCNP, nicPause uint64
+	var nicCNPSeen, nicPauseSeen bool
 	for _, sm := range list {
 		s := sm.sig
 		if sm.at.After(st.UpdatedAt) {
@@ -233,6 +330,48 @@ func fold(list []sample, gdsDirect bool, window time.Duration) Status {
 			st.ExfilEvents++
 		case SigUCXSlow:
 			ucxLat = append(ucxLat, float64(s.LatencyNS)/1e6)
+		case SigNICRetry:
+			nicRetry += s.Bytes
+		case SigNICError:
+			nicErr += s.Bytes
+		case SigNICCNP:
+			nicCNPSeen = true
+			nicCNP += s.Bytes
+		case SigNICPause:
+			nicPauseSeen = true
+			nicPause += s.Bytes
+		}
+	}
+	// NIC hardware counters, when the collector reads them, are authoritative
+	// for CNP and pause frames: the XDP counters see a subset (pause frames are
+	// usually consumed by the MAC and never reach XDP) and adding both would
+	// count the same packets twice. XDP samples are used only without NIC ones.
+	if nicCNPSeen {
+		cnps = nicCNP
+	}
+	if nicPauseSeen {
+		pfcs = nicPause
+	}
+	if t := lastAt(colls); t.After(st.UpdatedAt) {
+		st.UpdatedAt = t
+	}
+	for _, g := range MatchCollectives(spansOf(colls)) {
+		if !g.Comparable() {
+			continue
+		}
+		st.CollectivesCompared++
+		if ms := float64(g.SkewNS) / 1e6; ms > st.CollectiveMaxSkewMS {
+			st.CollectiveMaxSkewMS = ms
+		}
+		if straggling(g) {
+			st.StragglerHits++
+			st.StragglerRank = g.SlowestRank
+			for _, r := range g.Ranks {
+				if r.Rank == g.SlowestRank {
+					st.StragglerPID = r.PID
+					lat = append(lat, float64(r.DurationNS)/1e6)
+				}
+			}
 		}
 	}
 	st.NCCLP99MS = percentile(lat, 0.99)
@@ -253,9 +392,29 @@ func fold(list []sample, gdsDirect bool, window time.Duration) Status {
 		st.OverlapIdleRatio = math.Min(1, float64(overlapNS)/1e9/secs)
 		st.CNPRate = float64(cnps) / secs
 		st.PFCRate = float64(pfcs) / secs
+		st.NICRetryRate = float64(nicRetry) / secs
+		st.NICErrorRate = float64(nicErr) / secs
 	}
 	st.ScoreDelta = ScoreDelta(st)
 	return st
+}
+
+func spansOf(colls []sample) []CollSpan {
+	out := make([]CollSpan, 0, len(colls))
+	for _, c := range colls {
+		out = append(out, spanOf(c.sig))
+	}
+	return out
+}
+
+func lastAt(list []sample) time.Time {
+	var t time.Time
+	for _, s := range list {
+		if s.at.After(t) {
+			t = s.at
+		}
+	}
+	return t
 }
 
 // percentile returns the nearest-rank percentile of v (0 for empty input).

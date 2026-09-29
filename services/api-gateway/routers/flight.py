@@ -19,6 +19,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from .collector import COLLECTOR_PORT, COLLECTOR_SELECTOR
+from .collectives import compare_collectives
 from .common import Deps, run
 from .uiutil import namespaces
 
@@ -26,6 +27,7 @@ logger = logging.getLogger(__name__)
 NAME = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
 MAX_EVENTS = 500
 NODE_EVENT_LIMIT = 200          # the collector returns at most this many events per node
+NODE_COLLECTIVE_LIMIT = 200     # ... and this many identified collective spans
 MIN_TOKEN_LENGTH = 32           # same floor the collector enforces
 NODE_TIMEOUT = 3.0              # per collector request
 TOTAL_DEADLINE = 10.0           # whole fan-out; collectors still pending count as unreachable
@@ -143,6 +145,7 @@ async def gather(deps: Deps, namespace: str, job: str) -> Tuple[List[Dict[str, A
 
 def merge(namespace: str, job: str, bodies: List[Dict[str, Any]], coverage: Dict[str, int]) -> Dict[str, Any]:
     events: List[Dict[str, Any]] = []
+    collectives: List[Dict[str, Any]] = []
     counts: Dict[str, int] = {}
     findings: List[Dict[str, str]] = []
     nodes: List[str] = []
@@ -165,6 +168,11 @@ def merge(namespace: str, job: str, bodies: List[Dict[str, Any]], coverage: Dict
             identity = item.get("identity") or {}
             if isinstance(identity, dict) and identity.get("namespace") == namespace and identity.get("job") == job:
                 events.append({**item, "node": node})
+        raw_collectives = body.get("collectives")
+        for item in (raw_collectives if isinstance(raw_collectives, list) else [])[:NODE_COLLECTIVE_LIMIT]:
+            identity = item.get("identity") if isinstance(item, dict) else None
+            if isinstance(identity, dict) and identity.get("namespace") == namespace and identity.get("job") == job:
+                collectives.append({**item, "node": node})
         raw_findings = body.get("findings")
         for item in (raw_findings if isinstance(raw_findings, list) else [])[:20]:
             if isinstance(item, dict) and isinstance(item.get("code"), str) and isinstance(item.get("evidence"), str):
@@ -193,6 +201,8 @@ def merge(namespace: str, job: str, bodies: List[Dict[str, Any]], coverage: Dict
                                  "evidence": f"Rank {rank} observed median {op} API duration {median_ns} ns; "
                                              f"rank median baseline {int(baseline)} ns. This does not establish GPU or network cause."})
     truncated = truncated or len(events) > MAX_EVENTS
+    comparison = compare_collectives(collectives)
+    findings.extend(comparison.pop("findings"))
     return {
         "namespace": namespace, "job": job, "scope": "cluster observations; observed events only",
         # complete = every discovered collector answered. Nodes without a collector, or whose
@@ -201,6 +211,8 @@ def merge(namespace: str, job: str, bodies: List[Dict[str, Any]], coverage: Dict
         "truncated": truncated,
         "nodes": sorted(set(nodes)), "counts": counts, "findings": findings[:100],
         "rankObservations": rank_observations[:100],
+        # Identified collectives compared op-for-op across ranks/nodes (see routers/collectives.py).
+        "collectiveComparison": comparison,
         "events": events[-MAX_EVENTS:],
     }
 

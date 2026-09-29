@@ -32,13 +32,36 @@ enum fabric_signal_type {
 	FABRIC_SIG_PFC         = 7, /* bytes = 802.1Qbb PFC pause frames since the last poll */
 	FABRIC_SIG_EXFIL       = 8, /* large model-file read, then connect to a non-internal IPv4 */
 	FABRIC_SIG_UCX_SLOW    = 9, /* a UCX tag-send call that blocked for a long time */
+	/* One completed NCCL collective call on one rank, identified by
+	 * (communicator ordinal, sequence number, op).  Emitted by straggler.c;
+	 * the cross-rank comparison is done in userspace. */
+	FABRIC_SIG_COLLECTIVE  = 10,
 };
+
+/* FABRIC_SIG_COLLECTIVE retry_count bits. */
+#define COLL_FLAG_LATE      0x1 /* comm first seen at a collective: ordinal/seq are relative to probe attach */
+#define COLL_FLAG_RANK_UNK  0x2 /* rank/world not learned (no ncclCommInitRank/UserRank/Count observed) */
+/* rank value of a communicator whose rank was never observed. */
+#define FABRIC_RANK_UNKNOWN 0xffffffffU
 
 /*
  * Per-type field use:
- *   STRAGGLER   rank/peer_rank = this / fastest rank (0 when the comm rank
- *               offset is unknown), latency_ns/peer_latency_ns = this /
- *               fastest span, bytes = payload bytes, nccl_op = nccl_op_type.
+ *   STRAGGLER   LEGACY (no object emits it any more; the collector still
+ *               decodes it).  rank/peer_rank = this / fastest rank,
+ *               latency_ns/peer_latency_ns = this / fastest span.
+ *   COLLECTIVE  rank = rank in the communicator (FABRIC_RANK_UNKNOWN when not
+ *               learned), world_size = communicator size (0 when unknown),
+ *               peer_rank = communicator ORDINAL within the process (1-based,
+ *               in the order the process created/first used communicators),
+ *               peer_latency_ns = per-communicator collective SEQUENCE
+ *               (1-based, counts the hooked collectives on that comm in call
+ *               order), latency_ns = host-side duration of the API call (an
+ *               asynchronous launch is the enqueue time, not the GPU time),
+ *               bytes = count * element size (per-rank send count for
+ *               allgather), nccl_op = nccl_op_type, retry_count = COLL_FLAG_*,
+ *               rnr_count = low 32 bits of the ncclComm_t pointer (DEBUG only:
+ *               a per-process address, never comparable across ranks),
+ *               timestamp_ns = call exit (CLOCK_MONOTONIC).
  *   RDMA_RETRY  rank = QP number, world_size = post calls and
  *               retry_count/rnr_count = retry-exceeded / RNR-exceeded error
  *               completions since the previous signal for this QP,
@@ -104,6 +127,16 @@ struct rank_span {
 	__u32 seen;             /* 1 once exit recorded */
 };
 _Static_assert(sizeof(struct rank_span) == 32, "rank_span size");
+
+/* straggler.c: what is known about one ncclComm_t of one process. */
+struct comm_info {
+	__u64 seq;              /* collectives issued on this comm (atomic counter) */
+	__u32 rank;             /* FABRIC_RANK_UNKNOWN until learned */
+	__u32 world;            /* 0 until learned */
+	__u32 ordinal;          /* 1-based ordinal within the process */
+	__u32 flags;            /* COLL_FLAG_LATE */
+};
+_Static_assert(sizeof(struct comm_info) == 24, "comm_info size");
 
 /* rdma_health.c: per-QP state keyed by QP number. */
 struct rdma_health_val {

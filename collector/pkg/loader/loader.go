@@ -81,7 +81,7 @@ func (m *Manager) LoadAndAttach() error {
 		return fmt.Errorf("reading ebpf dir: %w", err)
 	}
 	m.cfg = ResolveLibraries(m.cfg, NewUprobeResolver(""), nil)
-	m.log.Infow("uprobe libraries", "nccl", m.cfg.NCCLLib, "cuda", m.cfg.CUDALib, "cufile", m.cfg.CuFileLib, "ucx", m.cfg.UCXLib)
+	m.log.Infow("uprobe libraries", "nccl", m.cfg.NCCLLib, "cuda", m.cfg.CUDALib, "cufile", m.cfg.CuFileLib, "ucx", m.cfg.UCXLib, "ibverbs", m.cfg.IBVerbsLib)
 
 	for _, entry := range entries {
 		if entry.IsDir() || filepath.Ext(entry.Name()) != ".o" {
@@ -144,6 +144,13 @@ func (m *Manager) loadObject(file, path string) error {
 	// unless -quota-pace and -cgroup-path are both set.
 	if _, ok := coll.Maps[PaceRateMap]; ok {
 		if r := QuotaPaceSkipReason(m.cfg); r != "" && skipAll == "" {
+			skipAll = r
+		}
+	}
+
+	// ibv_verbs.c probes libibverbs, shared by every RDMA process: opt-in.
+	if _, ok := coll.Maps[IBVCountsMap]; ok {
+		if r := IBVerbsSkipReason(m.cfg); r != "" && skipAll == "" {
 			skipAll = r
 		}
 	}
