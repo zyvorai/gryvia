@@ -13,8 +13,6 @@
 #define MAX_PAYLOAD_SCAN 512
 /* Start offsets tried for the header name (bounded loop for the verifier) */
 #define MAX_SCAN_POS 256
-/* Bytes pulled into the linear area so payload is always addressable */
-#define PULL_BYTES 1024
 
 /* traceparent header format:
  * traceparent: 00-<32 hex trace-id>-<16 hex span-id>-<2 hex flags>
@@ -74,31 +72,40 @@ static __always_inline int hex_to_val(char c)
     return -1;
 }
 
-/* Parse 16 hex characters into a __u64 value from packet data.
- * Returns 0 on success, -1 on failure.
- * data points to start of hex string, data_end is packet boundary. */
-static __always_inline int parse_hex64(void *data, void *data_end,
-                                        int offset, __u64 *result)
+/* The payload is copied into a per-CPU scratch buffer with bpf_skb_load_bytes and scanned there with masked
+ * indexes. Scanning packet memory directly (variable pointer + bounds check per offset) makes the verifier track a
+ * distinct state per offset and exceeds its complexity limit on some kernels (E2BIG on 6.17). */
+#define SCAN_BUF 1024 /* power of two: indexes are masked with SCAN_BUF - 1 */
+
+/* Mask an index and keep the mask: the empty asm stops clang from dropping the AND (it can prove the index is small
+ * from earlier checks, but older verifiers cannot, and reject the access as unbounded). */
+static __always_inline __u32 clamp_idx(__u32 i)
+{
+    i &= SCAN_BUF - 1;
+    asm volatile("" : "+r"(i));
+    return i;
+}
+#define SB(b, i) ((b)->d[clamp_idx(i)])
+
+struct scan_buf {
+    unsigned char d[SCAN_BUF];
+};
+
+struct {
+    __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
+    __uint(max_entries, 1);
+    __type(key, __u32);
+    __type(value, struct scan_buf);
+} scan_scratch SEC(".maps");
+
+/* Parse 16 hex characters at buf[off..off+15] into a __u64. Returns 0 on success, -1 on failure. */
+static __always_inline int parse_hex64(struct scan_buf *buf, __u32 off, __u64 *result)
 {
     __u64 val = 0;
-    unsigned char buf[16];
-    void *start = data + offset;
-
-    if (start + 16 > data_end)
-        return -1;
-
-    /* Read 16 bytes from packet */
-    #pragma unroll
-    for (int i = 0; i < 16; i++) {
-        unsigned char *p = start + i;
-        if ((void *)(p + 1) > data_end)
-            return -1;
-        buf[i] = *p;
-    }
 
     #pragma unroll
     for (int i = 0; i < 16; i++) {
-        int v = hex_to_val(buf[i]);
+        int v = hex_to_val(SB(buf, off + i));
         if (v < 0)
             return -1;
         val = (val << 4) | (__u64)v;
@@ -108,62 +115,43 @@ static __always_inline int parse_hex64(void *data, void *data_end,
     return 0;
 }
 
-/* Search for "traceparent:" (case-insensitive for 't') in payload.
- * Only scans first MAX_PAYLOAD_SCAN bytes of TCP payload. */
-static __always_inline int find_traceparent(void *payload, void *data_end,
-                                             int payload_len)
+struct find_ctx {
+    struct scan_buf *buf;
+    __u32 n;
+    int found; /* offset just after the colon, or -1 */
+};
+
+/* bpf_loop callback: does "traceparent:" (case-insensitive first 't') start at offset i? Returning 1 stops. */
+static long find_cb(__u64 idx, void *data)
 {
-    /* "traceparent:" is 12 chars */
-    const int needle_len = 12;
+    struct find_ctx *fc = data;
+    struct scan_buf *buf = fc->buf;
+    __u32 i = (__u32)idx;
 
-    if (payload_len > MAX_PAYLOAD_SCAN)
-        payload_len = MAX_PAYLOAD_SCAN;
-
-    /* Limit search to prevent verifier issues */
-    if (payload_len < needle_len)
-        return -1;
-
-    int search_limit = payload_len - needle_len;
-    if (search_limit > MAX_SCAN_POS - 1)
-        search_limit = MAX_SCAN_POS - 1;
-
-    for (int i = 0; i < MAX_SCAN_POS; i++) {
-        if (i > search_limit)
-            break;
-
-        void *pos = payload + i;
-        if (pos + needle_len > data_end)
-            break;
-
-        unsigned char c0, c1, c2, c3, c4;
-        c0 = *((unsigned char *)(pos));
-        c1 = *((unsigned char *)(pos + 1));
-        c2 = *((unsigned char *)(pos + 2));
-        c3 = *((unsigned char *)(pos + 3));
-        c4 = *((unsigned char *)(pos + 4));
-
-        /* Quick check first 5 chars: "trace" or "Trace" */
-        if ((c0 == 't' || c0 == 'T') &&
-            c1 == 'r' && c2 == 'a' && c3 == 'c' && c4 == 'e') {
-            /* Check remaining "parent:" */
-            unsigned char c5, c6, c7, c8, c9, c10, c11;
-            if (pos + 12 > data_end)
-                break;
-            c5 = *((unsigned char *)(pos + 5));
-            c6 = *((unsigned char *)(pos + 6));
-            c7 = *((unsigned char *)(pos + 7));
-            c8 = *((unsigned char *)(pos + 8));
-            c9 = *((unsigned char *)(pos + 9));
-            c10 = *((unsigned char *)(pos + 10));
-            c11 = *((unsigned char *)(pos + 11));
-
-            if (c5 == 'p' && c6 == 'a' && c7 == 'r' && c8 == 'e' &&
-                c9 == 'n' && c10 == 't' && c11 == ':') {
-                return i + needle_len;
-            }
-        }
+    if (i + 12 > fc->n)
+        return 1;
+    unsigned char c0 = SB(buf, i);
+    if (c0 != 't' && c0 != 'T')
+        return 0;
+    if (SB(buf, i + 1) == 'r' && SB(buf, i + 2) == 'a' && SB(buf, i + 3) == 'c' &&
+        SB(buf, i + 4) == 'e' && SB(buf, i + 5) == 'p' && SB(buf, i + 6) == 'a' &&
+        SB(buf, i + 7) == 'r' && SB(buf, i + 8) == 'e' && SB(buf, i + 9) == 'n' &&
+        SB(buf, i + 10) == 't' && SB(buf, i + 11) == ':') {
+        fc->found = (int)(i + 12);
+        return 1;
     }
-    return -1;
+    return 0;
+}
+
+/* Find "traceparent:" in the first n bytes of buf. Returns the offset just after the colon, or -1. bpf_loop
+ * (Linux 5.17+) verifies the body once instead of once per offset, which keeps the verifier's state count small on
+ * every kernel. */
+static __always_inline int find_traceparent(struct scan_buf *buf, __u32 n)
+{
+    struct find_ctx fc = { .buf = buf, .n = n, .found = -1 };
+
+    bpf_loop(MAX_SCAN_POS, find_cb, &fc, 0);
+    return fc.found;
 }
 
 /* ---- tc classifier ---------------------------------------------------- */
@@ -174,108 +162,72 @@ int trace_correlator_ingress(struct __sk_buff *skb)
     void *data     = (void *)(long)skb->data;
     void *data_end = (void *)(long)skb->data_end;
 
-    /* Parse Ethernet header */
     struct ethhdr *eth = data;
     if ((void *)(eth + 1) > data_end)
         return TC_ACT_OK;
-
     if (eth->h_proto != bpf_htons(ETH_P_IP))
-        return 0;
+        return TC_ACT_OK;
 
-    /* Parse IPv4 header */
     struct iphdr *iph = (void *)(eth + 1);
     if ((void *)(iph + 1) > data_end)
-        return 0;
-
+        return TC_ACT_OK;
     if (iph->protocol != IPPROTO_TCP)
-        return 0;
+        return TC_ACT_OK;
 
     __u32 ip_hdr_len = iph->ihl * 4;
     if (ip_hdr_len < sizeof(struct iphdr))
-        return 0;
+        return TC_ACT_OK;
 
-    /* Parse TCP header */
     struct tcphdr *tcph = (void *)iph + ip_hdr_len;
     if ((void *)(tcph + 1) > data_end)
-        return 0;
+        return TC_ACT_OK;
 
     __u32 tcp_hdr_len = tcph->doff * 4;
     if (tcp_hdr_len < sizeof(struct tcphdr))
-        return 0;
-
-    /* The payload may live in paged (non-linear) skb data: pull the first
-     * PULL_BYTES into the linear area, then re-derive every pointer. */
-    __u32 l4_off = sizeof(struct ethhdr) + ip_hdr_len;
-    __u32 pay_off = l4_off + tcp_hdr_len;
-    if (pay_off >= skb->len)
-        return TC_ACT_OK;
-    if (bpf_skb_pull_data(skb, skb->len < PULL_BYTES ? skb->len : PULL_BYTES))
         return TC_ACT_OK;
 
-    data     = (void *)(long)skb->data;
-    data_end = (void *)(long)skb->data_end;
-    eth = data;
-    if ((void *)(eth + 1) > data_end)
+    /* Payload offset; bpf_skb_load_bytes also reads paged (non-linear) skb data. */
+    __u32 pay_off = sizeof(struct ethhdr) + ip_hdr_len + tcp_hdr_len;
+    __u32 len = skb->len;
+    if (pay_off >= len)
         return TC_ACT_OK;
-    iph = (void *)(eth + 1);
-    if ((void *)(iph + 1) > data_end)
-        return TC_ACT_OK;
-    tcph = (void *)iph + ip_hdr_len;
-    if ((void *)(tcph + 1) > data_end)
-        return TC_ACT_OK;
-
-    void *payload = (void *)tcph + tcp_hdr_len;
-    if (payload >= data_end)
+    __u32 n = len - pay_off;
+    if (n > MAX_PAYLOAD_SCAN)
+        n = MAX_PAYLOAD_SCAN;
+    /* "traceparent:" + optional space + "00-" + 32 + "-" + 16 hex */
+    if (n < 12 + 1 + 55)
         return TC_ACT_OK;
 
-    int payload_len = data_end - payload;
-    if (payload_len <= 0)
+    __u32 zero = 0;
+    struct scan_buf *buf = bpf_map_lookup_elem(&scan_scratch, &zero);
+    if (!buf)
+        return TC_ACT_OK;
+    if (bpf_skb_load_bytes(skb, pay_off, buf->d, n))
         return TC_ACT_OK;
 
-    /* Search for traceparent header in payload */
-    int header_offset = find_traceparent(payload, data_end, payload_len);
+    int header_offset = find_traceparent(buf, n);
     if (header_offset < 0)
-        return 0;
+        return TC_ACT_OK;
 
-    /* Skip optional whitespace after "traceparent:" */
-    void *value_start = payload + header_offset;
-    if (value_start + 1 > data_end)
-        return 0;
-
-    unsigned char ws = *((unsigned char *)value_start);
-    if (ws == ' ')
-        value_start++;
+    __u32 v = (__u32)header_offset;
+    if (SB(buf, v) == ' ')
+        v++;
 
     /* Expected format: "00-<32 hex>-<16 hex>-<2 hex>" = 55 chars */
-    if (value_start + 55 > data_end)
-        return 0;
+    if (v + 55 > n)
+        return TC_ACT_OK;
+    if (SB(buf, v) != '0' || SB(buf, v + 1) != '0' || SB(buf, v + 2) != '-')
+        return TC_ACT_OK;
 
-    /* Verify version prefix "00-" */
-    unsigned char v0, v1, v2;
-    v0 = *((unsigned char *)value_start);
-    v1 = *((unsigned char *)(value_start + 1));
-    v2 = *((unsigned char *)(value_start + 2));
-    if (v0 != '0' || v1 != '0' || v2 != '-')
-        return 0;
-
-    /* Parse trace-id (32 hex chars = 2x __u64) at offset 3 */
     __u64 trace_id_hi = 0, trace_id_lo = 0, span_id = 0;
-
-    if (parse_hex64(value_start, data_end, 3, &trace_id_hi) < 0)
-        return 0;
-    if (parse_hex64(value_start, data_end, 19, &trace_id_lo) < 0)
-        return 0;
-
-    /* Verify dash separator at offset 35 */
-    if (value_start + 36 > data_end)
-        return 0;
-    unsigned char dash = *((unsigned char *)(value_start + 35));
-    if (dash != '-')
-        return 0;
-
-    /* Parse span-id (16 hex chars = __u64) at offset 36 */
-    if (parse_hex64(value_start, data_end, 36, &span_id) < 0)
-        return 0;
+    if (parse_hex64(buf, v + 3, &trace_id_hi) < 0)
+        return TC_ACT_OK;
+    if (parse_hex64(buf, v + 19, &trace_id_lo) < 0)
+        return TC_ACT_OK;
+    if (SB(buf, v + 35) != '-')
+        return TC_ACT_OK;
+    if (parse_hex64(buf, v + 36, &span_id) < 0)
+        return TC_ACT_OK;
 
     /* Store trace context keyed by 4-tuple */
     struct trace_key key = {};
@@ -300,7 +252,7 @@ int trace_correlator_ingress(struct __sk_buff *skb)
     struct trace_context *ev;
     ev = bpf_ringbuf_reserve(&trace_events, sizeof(*ev), 0);
     if (!ev)
-        return 0;
+        return TC_ACT_OK;
 
     *ev = tctx;
     bpf_ringbuf_submit(ev, 0);
