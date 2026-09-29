@@ -150,3 +150,25 @@ func TestPublisherSendsInferenceOnlyWhenEnabled(t *testing.T) {
 		}
 	}
 }
+
+// The engine fields (inference) and the collective/GPU fields (collective identity, DCGM correlation) live in one
+// merge-patch: neither may drop the other.
+func TestStatusPatchCarriesInferenceAndCollectiveFields(t *testing.T) {
+	st := inferenceStatus()
+	st.CollectiveMaxSkewMS = 12.5
+	st.GPUCorrelationMeasured, st.GPUIdleDuringCommRatio, st.GPUCorrelationCoverage = true, 0.25, 0.5
+	body, err := statusPatchBody(st, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := decodeStatus(t, body)
+	if s["ttftP99ms"].(float64) != 475 || s["engine"].(string) != "vllm" {
+		t.Errorf("engine fields lost: %s", body)
+	}
+	if s["collectiveMaxSkewMs"].(float64) != 12.5 || s["gpuIdleDuringCommRatio"].(float64) != 0.25 || s["gpuCorrelationCoverage"].(float64) != 0.5 {
+		t.Errorf("collective/GPU fields lost: %s", body)
+	}
+	if v, has := s["smActiveDuringCompute"]; !has || v != nil {
+		t.Errorf("unmeasured compute activity must be an explicit null: %v", v)
+	}
+}
