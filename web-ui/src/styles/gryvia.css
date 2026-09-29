@@ -32,7 +32,7 @@
 .pill.ok { color: var(--success-text); background: var(--success-bg); border-color: var(--success-border); }
 .pill.warn { color: var(--warning-text); background: var(--warning-bg); border-color: var(--warning-border); }
 .pill.info { color: var(--accent-cyan-text); background: var(--info-bg); border-color: var(--info-border); }
-.pill.bad { color: #fff; background: var(--danger); border-color: transparent; }
+.pill.bad { color: #fff; background: #c9251b; border-color: transparent; }
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--text-faint); flex: 0 0 auto; }
 .dot.ok { background: var(--accent-green); }
 .dot.warn { background: var(--accent-amber); }
@@ -173,7 +173,7 @@ tr[data-clickable]:focus-visible { outline: 2px solid var(--apple-blue); outline
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 
 /* Sortable column header button: looks like header text, keyboard focusable. */
-.th-sort { all: unset; cursor: pointer; font: inherit; color: inherit; display: inline-flex; align-items: center; gap: 2px; }
+.th-sort { all: unset; cursor: pointer; font: inherit; color: inherit; display: inline-flex; align-items: center; gap: 2px; min-height: 28px; }  /* WCAG 2.2 target size: at least 24px */
 .th-sort:focus-visible { outline: 2px solid var(--apple-blue); outline-offset: 2px; border-radius: 4px; }
 th.num .th-sort { justify-content: flex-end; }
 
@@ -188,3 +188,11 @@ th.num .th-sort { justify-content: flex-end; }
 .pill-raw { text-transform: none; }
 /* Login card title is an h2 (the page h1 is the hero); mirrors netra's .login-card h1 */
 .login-card h2 { font-size: var(--fs-h2); letter-spacing: -0.01em; margin: 6px 0 4px; font-weight: 600; color: var(--text-primary); }
+
+/* Contrast (WCAG AA, 4.5:1 for small text). netra's grays and blue measure 3.3-4.5:1 at 11-14px, so the
+   text tokens are darkened in light mode and brightened in dark mode. Measured in the browser on every page. */
+:root:not([data-theme="dark"]) { --text-secondary: #515154; --text-tertiary: #6b6b70; }
+[data-theme="dark"] { --text-secondary: #b8b8bd; --text-tertiary: #a1a1a6; }
+/* netra sets .eyebrow with !important, so the override needs it too */
+[data-theme="dark"] .eyebrow { color: #2997ff !important; }
+.severity-badge.critical { background: #c9251b; }
