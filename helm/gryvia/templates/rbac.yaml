@@ -381,6 +381,18 @@ rules:
       - update
       - watch
 
+  {{- if .Values.aiOperator.fabricAwareScheduling }}
+  # aiOperator.fabricAwareScheduling: read the per-node fabric health published by the collector
+  - apiGroups:
+      - gryvia.io
+    resources:
+      - gryvianodefabrics
+    verbs:
+      - get
+      - list
+      - watch
+  {{- end }}
+
   # Manage Namespaces, ResourceQuotas and LimitRanges (tenant namespaces)
   - apiGroups:
       - ""

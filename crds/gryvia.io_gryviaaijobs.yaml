@@ -3486,6 +3486,50 @@ spec:
                 description: Current phase (Pending, Scheduling, Running, Succeeded,
                   Failed, Unknown)
                 type: string
+              placementExplanation:
+                description: |-
+                  PlacementExplanation records, only when fabric-aware scheduling was applied,
+                  how per-node fabric health changed the node ranking (bounded to the top nodes)
+                items:
+                  description: PlacementExplanation is one node's line of the fabric-aware
+                    placement decision.
+                  properties:
+                    baseScore:
+                      description: BaseScore is the topology/capacity score before
+                        the fabric adjustment
+                      format: int32
+                      type: integer
+                    fabricPenalty:
+                      description: FabricPenalty is the points subtracted for fabric
+                        health (0 = none)
+                      format: int32
+                      type: integer
+                    finalScore:
+                      description: FinalScore is what the node was ranked by
+                      format: int32
+                      type: integer
+                    node:
+                      description: Node is the node name
+                      type: string
+                    reasons:
+                      description: Reasons are the fabric signals behind the penalty
+                      items:
+                        type: string
+                      maxItems: 8
+                      type: array
+                    signalAgeSeconds:
+                      description: SignalAgeSeconds is how old the node's fabric measurement
+                        was when used
+                      format: int64
+                      type: integer
+                  required:
+                  - baseScore
+                  - fabricPenalty
+                  - finalScore
+                  - node
+                  type: object
+                maxItems: 16
+                type: array
               replicasReady:
                 description: Ready replicas
                 format: int32

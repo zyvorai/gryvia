@@ -51,6 +51,7 @@ func main() {
 		quotaPace       = flag.Bool("quota-pace", false, "attach quota_pace (the only program that changes sockets: caps SO_MAX_PACING_RATE of cgroups that hold a lease). Off by default; needs -cgroup-path. Without -quota-pace-sync nothing grants leases and pacing stays inert")
 		quotaPaceSync   = flag.Bool("quota-pace-sync", false, "MUTATING, off by default: every 30 s grant a pace lease to the cgroups of pods on this node whose namespace is listed by a GryviaQuota with spec.network.maxEgressMbps (needs -quota-pace, -cgroup-path, running in a cluster and NODE_NAME). Fails open: an API error changes nothing and leases expire after 2 minutes")
 		quotaPaceDry    = flag.Bool("quota-pace-dry-run", false, "with -quota-pace-sync: log what would be granted or revoked and write nothing to the pace map")
+		publishNodeFab  = flag.Bool("publish-node-fabric", false, "every 30 s write this node's fabric health (worst scoreDelta + top reasons, ttl 5 min) to the cluster-scoped GryviaNodeFabric named after NODE_NAME, for the ai-operator's opt-in fabric-aware scheduling; creates only that one object; needs a cluster, NODE_NAME and RBAC (chart value ebpf.publishNodeFabric)")
 		publishFabric   = flag.Bool("publish-fabric-status", false, "every 30 s patch the status of an existing GryviaFabricSignal (spec.jobRef = job) with the folded fabric signals; needs a cluster (KUBERNETES_SERVICE_HOST) and RBAC (chart value ebpf.publishFabricStatus)")
 		windowSec       = flag.Int("window", 300, "Aggregation sliding window in seconds")
 	)
@@ -241,6 +242,20 @@ func main() {
 		} else {
 			go (&fabric.Publisher{API: client, Folder: fabricFolder, Log: log}).Run(ctx)
 			log.Infow("publishing fabric status to GryviaFabricSignal (existing objects only)", "interval", fabric.PublishInterval.String())
+		}
+	}
+
+	// Per-node fabric health for fabric-aware scheduling: opt-in, writes one object named after this node.
+	if *publishNodeFab {
+		client, err := kube.NewInCluster()
+		switch {
+		case err != nil:
+			log.Warnw("-publish-node-fabric ignored", "error", err)
+		case node == "":
+			log.Warnw("-publish-node-fabric ignored: NODE_NAME is not set")
+		default:
+			go (&fabric.NodePublisher{API: client, Folder: fabricFolder, Node: node, Log: log}).Run(ctx)
+			log.Infow("publishing node fabric health to GryviaNodeFabric", "node", node, "interval", fabric.NodePublishInterval.String())
 		}
 	}
 

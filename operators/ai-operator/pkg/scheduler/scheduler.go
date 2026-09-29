@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -20,10 +21,23 @@ type NodeScore struct {
 
 // FindOptimalNodes finds the best nodes for running an AI job
 func FindOptimalNodes(ctx context.Context, k8sClient client.Client, job *gryviav1.GryviaAIJob) ([]string, error) {
+	p, err := findOptimalNodes(ctx, k8sClient, job, nil)
+	return p.Nodes, err
+}
+
+// FindOptimalNodesFabric is FindOptimalNodes with fabric-aware ranking: fresh
+// per-node fabric penalties (capped, see FabricOptions) are subtracted from the
+// scores before the node choice, and the changes are returned as an explanation.
+// The caller decides the opt-in (see FabricEnabled).
+func FindOptimalNodesFabric(ctx context.Context, k8sClient client.Client, job *gryviav1.GryviaAIJob, opt FabricOptions) (Placement, error) {
+	return findOptimalNodes(ctx, k8sClient, job, &opt)
+}
+
+func findOptimalNodes(ctx context.Context, k8sClient client.Client, job *gryviav1.GryviaAIJob, fab *FabricOptions) (Placement, error) {
 	// Get all nodes
 	nodes := &corev1.NodeList{}
 	if err := k8sClient.List(ctx, nodes); err != nil {
-		return nil, fmt.Errorf("failed to list nodes: %w", err)
+		return Placement{}, fmt.Errorf("failed to list nodes: %w", err)
 	}
 
 	// Get all non-terminal pods requesting GPUs to calculate usage per node.
@@ -35,7 +49,7 @@ func FindOptimalNodes(ctx context.Context, k8sClient client.Client, job *gryviav
 		// Fall back to listing all pods if field selector is not indexed
 		pods = &corev1.PodList{}
 		if err := k8sClient.List(ctx, pods); err != nil {
-			return nil, fmt.Errorf("failed to list pods: %w", err)
+			return Placement{}, fmt.Errorf("failed to list pods: %w", err)
 		}
 	}
 
@@ -50,17 +64,22 @@ func FindOptimalNodes(ctx context.Context, k8sClient client.Client, job *gryviav
 	// Filter nodes based on job requirements
 	eligibleNodes := filterNodes(nodes.Items, job, gpuUsagePerNode, gpusNeeded)
 	if len(eligibleNodes) == 0 {
-		return nil, fmt.Errorf("no nodes meet the job requirements (gpuType=%q, gpus=%d, network=%q, %d nodes evaluated)",
+		return Placement{}, fmt.Errorf("no nodes meet the job requirements (gpuType=%q, gpus=%d, network=%q, %d nodes evaluated)",
 			job.Spec.GpuType, gpusNeeded, job.Spec.Network, len(nodes.Items))
 	}
 
 	// Score nodes
 	scoredNodes := scoreNodes(eligibleNodes, job, gpuUsagePerNode)
 
-	// Sort by score (highest first)
-	sort.Slice(scoredNodes, func(i, j int) bool {
-		return scoredNodes[i].Score > scoredNodes[j].Score
-	})
+	var explanation []gryviav1.PlacementExplanation
+	if fab == nil {
+		// Sort by score (highest first)
+		sort.Slice(scoredNodes, func(i, j int) bool {
+			return scoredNodes[i].Score > scoredNodes[j].Score
+		})
+	} else {
+		scoredNodes, explanation = rankFabric(ctx, k8sClient, scoredNodes, *fab)
+	}
 
 	// Determine how many nodes we need
 	requiredNodes := 1
@@ -69,7 +88,7 @@ func FindOptimalNodes(ctx context.Context, k8sClient client.Client, job *gryviav
 	}
 
 	if len(scoredNodes) < requiredNodes {
-		return nil, fmt.Errorf("not enough nodes: need %d, found %d", requiredNodes, len(scoredNodes))
+		return Placement{}, fmt.Errorf("not enough nodes: need %d, found %d", requiredNodes, len(scoredNodes))
 	}
 
 	// Select top N nodes
@@ -78,7 +97,28 @@ func FindOptimalNodes(ctx context.Context, k8sClient client.Client, job *gryviav
 		selectedNodes[i] = scoredNodes[i].NodeName
 	}
 
-	return selectedNodes, nil
+	return Placement{Nodes: selectedNodes, Explanation: explanation}, nil
+}
+
+// rankFabric loads the node signals (fail open) and ranks with them.
+func rankFabric(ctx context.Context, k8sClient client.Client, scored []NodeScore, opt FabricOptions) ([]NodeScore, []gryviav1.PlacementExplanation) {
+	now := time.Now
+	if opt.Now != nil {
+		now = opt.Now
+	}
+	load := opt.Signals
+	if load == nil {
+		load = func(ctx context.Context) ([]NodeSignal, error) { return LoadNodeSignals(ctx, k8sClient) }
+	}
+	sigs, err := load(ctx)
+	if err != nil {
+		if opt.OnError != nil {
+			opt.OnError(err)
+		}
+		sigs = nil // never penalise on missing data
+	}
+	t := now()
+	return rankWithFabric(scored, FreshSignals(sigs, t), opt, t)
 }
 
 // calculateGPUUsagePerNode sums the nvidia.com/gpu requests across all

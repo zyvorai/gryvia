@@ -56,6 +56,12 @@ ebpf:
   # ClusterRole additionally gets list on gryviafabricsignals and patch on gryviafabricsignals/status; it creates
   # nothing. Jobs are attributed through the Flight Recorder's pod resolver (needs NODE_NAME, set by this chart).
   publishFabricStatus: false
+  # Publish this node's fabric health (worst scoreDelta + top reasons, ttl 5 min) into the cluster-scoped
+  # GryviaNodeFabric named after the node, every 30 s (flag -publish-node-fabric). Off by default. When on, the
+  # collector ClusterRole additionally gets create and patch on gryvianodefabrics (Kubernetes RBAC cannot limit
+  # create to one name; the collector only writes the object named after its own NODE_NAME). Read by the
+  # ai-operator only when its fabric-aware scheduling is on (see docs/fabric-scheduling.md).
+  publishNodeFabric: false
   # quota_pace is the only eBPF program that changes anything: it lowers SO_MAX_PACING_RATE of new outbound TCP
   # connections of cgroups that hold a lease. Everything here is off by default and needs cgroupPath.
   quotaPace:

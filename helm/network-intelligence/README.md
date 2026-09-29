@@ -60,6 +60,7 @@ name is `gryvia-network-intelligence`.
 | `ebpf.ncclLib`, `ebpf.cudaLib` | Library paths for the GPU uprobes; empty means auto-discover | `""` |
 | `ebpf.flightTokenSecret`, `ebpf.flightTokenKey` | Secret holding the Flight Recorder token (`-flight-token-file`); empty disables that endpoint | `""`, `token` |
 | `ebpf.publishFabricStatus` | Patch the status of existing `GryviaFabricSignal` objects every 30 s (`-publish-fabric-status`); adds `list` on `gryviafabricsignals` and `patch` on `gryviafabricsignals/status` to the collector ClusterRole | `false` |
+| `ebpf.publishNodeFabric` | Write this node's fabric health to the cluster-scoped `GryviaNodeFabric` named after the node every 30 s (`-publish-node-fabric`); adds `create`, `patch` on `gryvianodefabrics` to the collector ClusterRole | `false` |
 | `ebpf.quotaPace.enabled` | Attach `quota_pace`, the one eBPF program that changes sockets (`-quota-pace`); needs `ebpf.cgroupPath`; alone it paces nothing | `false` |
 | `ebpf.quotaPace.sync` | **Mutating.** Grant pace leases from `GryviaQuota` `spec.network.maxEgressMbps` (`-quota-pace-sync`); needs `ebpf.quotaPace.enabled`; adds `list` on `gryviaquotas` to the collector ClusterRole | `false` |
 | `ebpf.quotaPace.dryRun` | Log what `sync` would do and write nothing (`-quota-pace-dry-run`); needs `ebpf.quotaPace.sync` | `false` |

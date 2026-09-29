@@ -142,6 +142,16 @@ rules:
     verbs:
       - patch
   {{- end }}
+  {{- if and .Values.ebpf.enabled .Values.ebpf.publishNodeFabric }}
+  # ebpf.publishNodeFabric: each collector writes the GryviaNodeFabric named after its own node
+  - apiGroups:
+      - gryvia.io
+    resources:
+      - gryvianodefabrics
+    verbs:
+      - create
+      - patch
+  {{- end }}
   {{- if and .Values.ebpf.enabled .Values.ebpf.quotaPace.enabled .Values.ebpf.quotaPace.sync }}
   # ebpf.quotaPace.sync: read the egress caps of GryviaQuota objects (read-only)
   - apiGroups:

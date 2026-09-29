@@ -35,6 +35,11 @@ aiOperator:
     requests: {cpu: 100m, memory: 128Mi}
   nodeSelector: {}
   tolerations: []
+  # Fabric-aware node ranking (--fabric-aware-scheduling): subtract a capped penalty from nodes whose fresh
+  # GryviaNodeFabric (published by the collector, network-intelligence ebpf.publishNodeFabric) reports a sick
+  # fabric, and record why in status.placementExplanation. Off by default; adds get/list/watch on
+  # gryvianodefabrics to the operators ClusterRole. Per-job override: annotation gryvia.io/fabric-aware.
+  fabricAwareScheduling: false
 
 # Admission webhook served by the ai-operator: validates GryviaAIJob on CREATE/UPDATE.
 # It uses its own self-signed certificate (independent of tls.mode), reused on upgrades.

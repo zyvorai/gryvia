@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -13,6 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -40,6 +42,16 @@ type GryviaAIJobReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Log    logr.Logger
+
+	// FabricAware turns fabric-aware node ranking on for every job that does not
+	// carry gryvia.io/fabric-aware: "false" (operator flag -fabric-aware-scheduling,
+	// default false). A job with the annotation "true" is ranked fabric-aware even
+	// when this is false.
+	FabricAware bool
+	// FabricMaxPenalty lowers the per-node penalty cap (points); 0 = the default 25.
+	FabricMaxPenalty float64
+	// Recorder emits the placement Event (optional).
+	Recorder record.EventRecorder
 }
 
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs,verbs=get;list;watch;create;update;patch;delete
@@ -49,6 +61,8 @@ type GryviaAIJobReconciler struct {
 //+kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryvianodefabrics,verbs=get;list;watch
+//+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop
 func (r *GryviaAIJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -101,7 +115,24 @@ func (r *GryviaAIJobReconciler) reconcileAIJob(ctx context.Context, job *gryviav
 		job.Status.Phase = PhaseScheduling
 
 		// Use GPU-aware scheduler to find optimal nodes
-		nodes, err := scheduler.FindOptimalNodes(ctx, r.Client, job)
+		var nodes []string
+		var err error
+		if scheduler.FabricEnabled(job, r.FabricAware) {
+			var p scheduler.Placement
+			p, err = scheduler.FindOptimalNodesFabric(ctx, r.Client, job, scheduler.FabricOptions{
+				MaxPenalty: r.FabricMaxPenalty,
+				OnError: func(e error) {
+					log.Info("fabric-aware scheduling: node signals unavailable, ranking unchanged", "reason", e.Error())
+				},
+			})
+			nodes = p.Nodes
+			if err == nil {
+				job.Status.PlacementExplanation = p.Explanation
+				r.recordFabricPlacement(job, p)
+			}
+		} else {
+			nodes, err = scheduler.FindOptimalNodes(ctx, r.Client, job)
+		}
 		if err != nil {
 			log.Error(err, "Failed to schedule job")
 			r.updateCondition(job, ConditionScheduled, metav1.ConditionFalse, "SchedulingFailed", err.Error())
@@ -459,7 +490,7 @@ func (r *GryviaAIJobReconciler) buildPodTemplate(job *gryviav1.GryviaAIJob, labe
 		Volumes:      r.buildVolumes(job),
 		NodeSelector: r.buildNodeSelector(job),
 		Tolerations:  job.Spec.Tolerations,
-		Affinity:     job.Spec.Affinity,
+		Affinity:     r.buildAffinity(job),
 		// StatefulSets only support RestartPolicyAlways; use a Job or custom
 		// completion detection for run-to-completion semantics.
 		RestartPolicy: corev1.RestartPolicyAlways,
@@ -472,6 +503,48 @@ func (r *GryviaAIJobReconciler) buildPodTemplate(job *gryviav1.GryviaAIJob, labe
 		},
 		Spec: podSpec,
 	}
+}
+
+// buildAffinity returns job.Spec.Affinity, plus (only when a fabric-aware
+// decision penalised a node and the job has not opted out) SOFT preferred node
+// affinity toward the nodes the operator selected. Required terms and the user's
+// own preferences are never touched; the spec object is never mutated.
+func (r *GryviaAIJobReconciler) buildAffinity(job *gryviav1.GryviaAIJob) *corev1.Affinity {
+	if job.Annotations[scheduler.AnnotationFabricAware] == "false" {
+		return job.Spec.Affinity
+	}
+	terms := scheduler.PreferredNodeTerms(job.Status.NodesAllocated, job.Status.PlacementExplanation)
+	if len(terms) == 0 {
+		return job.Spec.Affinity
+	}
+	aff := job.Spec.Affinity.DeepCopy()
+	if aff == nil {
+		aff = &corev1.Affinity{}
+	}
+	if aff.NodeAffinity == nil {
+		aff.NodeAffinity = &corev1.NodeAffinity{}
+	}
+	aff.NodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution = append(
+		aff.NodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution, terms...)
+	return aff
+}
+
+// recordFabricPlacement emits one Event when fabric health changed the ranking.
+func (r *GryviaAIJobReconciler) recordFabricPlacement(job *gryviav1.GryviaAIJob, p scheduler.Placement) {
+	if r.Recorder == nil {
+		return
+	}
+	var parts []string
+	for _, e := range p.Explanation {
+		if e.FabricPenalty > 0 {
+			parts = append(parts, fmt.Sprintf("%s -%d (%d->%d)", e.Node, e.FabricPenalty, e.BaseScore, e.FinalScore))
+		}
+	}
+	if len(parts) == 0 {
+		return
+	}
+	r.Recorder.Eventf(job, corev1.EventTypeNormal, "FabricAwarePlacement",
+		"fabric health lowered node scores: %s; selected %v", strings.Join(parts, ", "), p.Nodes)
 }
 
 func (r *GryviaAIJobReconciler) buildEnvVars(job *gryviav1.GryviaAIJob) []corev1.EnvVar {

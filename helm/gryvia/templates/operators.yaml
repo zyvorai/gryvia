@@ -45,6 +45,9 @@ spec:
             {{- if eq $name "gpu-operator" }}
             - --auto-register={{ $.Values.gpuOperator.autoRegister }}
             {{- end }}
+            {{- if and (eq $name "ai-operator") $.Values.aiOperator.fabricAwareScheduling }}
+            - --fabric-aware-scheduling=true
+            {{- end }}
             {{- if $webhook }}
             - --enable-webhooks=true
             - --webhook-cert-dir=/tmp/k8s-webhook-server/serving-certs
