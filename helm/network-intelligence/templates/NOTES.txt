@@ -30,7 +30,11 @@ Enabled eBPF programs:
 
 == Monitoring ==
 
+{{- if .Capabilities.APIVersions.Has "monitoring.coreos.com/v1" }}
 Prometheus ServiceMonitor resources have been created.
+{{- else }}
+The Prometheus Operator is not installed, so no ServiceMonitor was created; scrape the endpoints below directly.
+{{- end }}
 
 Operator metrics endpoint: :8080/metrics
 Collector metrics endpoint: :9090/metrics
