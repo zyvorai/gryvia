@@ -2,6 +2,13 @@
 
 Complete guide to Gryvia's eBPF-powered network intelligence system for deep observability, security, and performance optimization of GPU clusters.
 
+:::caution Experimental
+The eBPF collector does not work yet. Its kernel programs in `ebpf/` do not compile today (they need porting to
+CO-RE with a generated `vmlinux.h`), so no collector image is published, the chart leaves the collector off
+(`ebpf.enabled=false`), and the network graph, flows and security event pages stay empty until a flow source
+exists. The operator, CRDs and CLI described below are implemented; the data they analyse is not produced yet.
+:::
+
 ## Table of Contents
 
 1. [Architecture](#architecture)

@@ -42,7 +42,6 @@ jobs:
           - {name: storage-operator, context: operators/storage-operator, file: operators/storage-operator/Dockerfile}
           - {name: network-operator, context: operators/network-operator, file: operators/network-operator/Dockerfile}
           - {name: network-intelligence-operator, context: operators/network-intelligence, file: operators/network-intelligence/Dockerfile}
-          - {name: ebpf-collector,   context: .,                          file: collector/Dockerfile}
           - {name: api-gateway,      context: services/api-gateway,       file: services/api-gateway/Dockerfile}
           - {name: ui,               context: .,                          file: docker/Dockerfile.ui}
     steps:

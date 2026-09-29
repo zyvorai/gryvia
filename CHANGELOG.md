@@ -27,6 +27,7 @@ and the project aims to follow [Semantic Versioning](https://semver.org/) once i
 - Status vocabulary unified across pages (`Succeeded` counts as completed, `Scheduling` as pending).
 
 ### Fixed
+- The release rehearsal showed the eBPF collector image has never built (its kernel programs do not compile). It is no longer published and is off by default in the network-intelligence chart; documented as experimental.
 - Costs are labelled as spend to date; empty states name the operator or collector that feeds the data instead
   of showing reassuring zeros.
 - Rate limits count per client address instead of per proxy pod.

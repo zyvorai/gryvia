@@ -252,6 +252,11 @@ guarantee yet; see the [changelog](CHANGELOG.md). What exists today:
   offers an opt-in NetworkPolicy for the gateway.
 - Release images and the Helm chart are signed with cosign and ship SBOM and provenance attestations.
 
+**Experimental, not working yet:** the eBPF flow collector (`ebpf/`, `collector/`). Its 23 kernel programs do not
+compile today (they need porting to CO-RE with a generated `vmlinux.h`), so no collector image is published and
+the network graph, flows and security event pages stay empty until a flow source exists. The rest of the platform
+does not depend on it.
+
 Read the [threat model and known limits](SECURITY.md) before exposing an install beyond a lab, and report
 vulnerabilities privately as described there.
 
