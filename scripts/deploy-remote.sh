@@ -8,7 +8,7 @@
 #      and import them into k3s's containerd
 #   3. install the CRDs, then the gryvia-core Helm chart (operators)
 #   4. deploy the API gateway and web UI (both HTTPS, self-signed certificates minted by
-#      an init container in each pod), expose the UI on NodePort 30880
+#      an init container in each pod), expose the UI on NodePort 32443
 #   5. wait for every rollout, then smoke-test the UI, the API and a custom resource
 #
 # Usage:
@@ -26,7 +26,7 @@
 #                           ~/.gryvia/api-key on the host (mode 600).
 #   GRYVIA_REMOTE_SUBDIR    checkout dir relative to the remote $HOME
 #                           (default: .deployments/gryvia)
-#   GRYVIA_UI_NODEPORT      NodePort for the web UI (default: 30880)
+#   GRYVIA_UI_NODEPORT      NodePort for the web UI (default: 32443)
 #   GRYVIA_DEPLOY_*         see scripts/lib/deploy-guards.sh (disk guard, timeouts)
 #
 # The kubeconfig is read from k3s with sudo into ~/.kube/gryvia-k3s.yaml and used
@@ -75,7 +75,7 @@ fi
 
 VERSION="$(sed -n 's/^appVersion: *"\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' "${ROOT}/helm/gryvia-core/Chart.yaml")"
 [[ -n "$VERSION" ]] || { echo "cannot read appVersion from helm/gryvia-core/Chart.yaml" >&2; exit 1; }
-UI_NODEPORT="${GRYVIA_UI_NODEPORT:-30880}"
+UI_NODEPORT="${GRYVIA_UI_NODEPORT:-32443}"
 API_KEY_LOCAL="${GRYVIA_API_KEY:-}"
 REMOTE_SUBDIR="${GRYVIA_REMOTE_SUBDIR:-.deployments/gryvia}"
 

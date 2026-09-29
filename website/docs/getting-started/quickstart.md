@@ -26,7 +26,7 @@ Deploy to a single-node k3s server over SSH (key authentication; the SSH user ne
 ```
 
 The script finishes with a smoke test (deployments, UI, API authentication, every dashboard
-endpoint, and a custom-resource round trip) and prints the dashboard URL, `https://<host>:30880`. The UI and the API gateway serve HTTPS with a
+endpoint, and a custom-resource round trip) and prints the dashboard URL, `https://<host>:32443`. The UI and the API gateway serve HTTPS with a
 self-signed certificate generated when the pod starts, so the browser shows a warning to accept once, and `curl` needs `-k`.
 
 ### Signing in

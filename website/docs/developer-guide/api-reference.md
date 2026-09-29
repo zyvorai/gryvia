@@ -11,12 +11,12 @@ https://gryvia-api-gateway.gryvia-system.svc.cluster.local:8080
 
 External (via NodePort):
 ```
-https://<server-ip>:30880/api
+https://<server-ip>:32443/api
 ```
 
 Via Web UI proxy (handles auth automatically):
 ```
-https://<server-ip>:30880/api/
+https://<server-ip>:32443/api/
 ```
 
 ## Authentication
@@ -30,7 +30,7 @@ kubectl set env deployment/gryvia-api-gateway -n gryvia-system \
 
 # Use in requests
 curl -k -H "Authorization: Bearer your-secure-key" \
-  https://<server-ip>:30880/api/cluster/stats
+  https://<server-ip>:32443/api/cluster/stats
 ```
 
 The Web UI's nginx proxy injects the auth header automatically for `/api/` requests.
