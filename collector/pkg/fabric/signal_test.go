@@ -93,10 +93,25 @@ func TestLayoutMatchesC(t *testing.T) {
 			t.Errorf("no _Static_assert for fabric_signal.%s in header", f)
 		}
 	}
+	// roce_cnp.c counter slots and the overlap.c state size.
+	for name, v := range map[string]uint32{"CNP_SLOT_CNP": CNPSlotCNP, "CNP_SLOT_ROCE": CNPSlotRoCE} {
+		m := regexp.MustCompile(`#define\s+` + name + `\s+(\d+)`).FindSubmatch(src)
+		if m == nil {
+			t.Errorf("%s missing from header", name)
+			continue
+		}
+		if n, _ := strconv.Atoi(string(m[1])); n != int(v) {
+			t.Errorf("%s: C %d, Go %d", name, n, v)
+		}
+	}
+	if !regexp.MustCompile(`sizeof\(struct overlap_state\) == 16`).Match(src) {
+		t.Error("overlap_state size assert (16) missing from header")
+	}
 	// The signal types must match the enum too.
 	for name, v := range map[string]uint8{
 		"FABRIC_SIG_STRAGGLER": SigStraggler, "FABRIC_SIG_RDMA_RETRY": SigRDMARetry,
 		"FABRIC_SIG_GDS": SigGDS, "FABRIC_SIG_OVERLAP": SigOverlap,
+		"FABRIC_SIG_INFER_WAIT": SigInferWait, "FABRIC_SIG_CNP": SigCNP,
 	} {
 		m := regexp.MustCompile(name + `\s*=\s*(\d+)`).FindSubmatch(src)
 		if m == nil {

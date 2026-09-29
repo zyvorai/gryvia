@@ -42,6 +42,7 @@ func main() {
 		cudaLib     = flag.String("cuda-lib", "", "path to libcudart.so for uprobes (empty = auto-discover)")
 		cufileLib   = flag.String("cufile-lib", "", "path to libcufile.so for GPUDirect Storage uprobes (empty = auto-discover)")
 		uprobePID   = flag.Int("uprobe-pid", 0, "find NCCL/CUDA/cuFile libraries via /proc/<pid>/maps of this process")
+		inferPorts  = flag.String("infer-ports", "8000,8001", "local TCP ports of inference servers for infer_latency (vLLM 8000, Triton HTTP 8001; at most 8, empty disables it)")
 		windowSec   = flag.Int("window", 300, "Aggregation sliding window in seconds")
 	)
 	flag.Parse()
@@ -65,9 +66,15 @@ func main() {
 		os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
+	ports, err := loader.ParsePorts(*inferPorts)
+	if err != nil {
+		log.Fatalw("invalid -infer-ports", "error", err)
+	}
+
 	// ---- Load eBPF programs ----
 	mgr, err := loader.New(loader.Config{
-		Dir: *ebpfDir, Iface: *iface, CgroupPath: *cgroupPath,
+		InferPorts: ports,
+		Dir:        *ebpfDir, Iface: *iface, CgroupPath: *cgroupPath,
 		NCCLLib: *ncclLib, CUDALib: *cudaLib, CuFileLib: *cufileLib, UprobePID: *uprobePID,
 	}, log)
 	if err != nil {
@@ -107,6 +114,33 @@ func main() {
 		if s.Object == "gds_trace.o" && s.Target == "nvidia_fs_read" && s.Attached {
 			fabricFolder.SetGDSDirectVisible(true)
 		}
+	}
+
+	// roce_cnp keeps counters only (no ring): poll them and fold the CNP delta.
+	roceAttached := false
+	for _, s := range mgr.Status() {
+		if s.Object == "roce_cnp.o" && s.Attached {
+			roceAttached = true
+		}
+	}
+	var lastCNP, lastRoCE uint64
+	pollRoCE := func() {
+		cnp, err1 := mgr.ReadCounter("roce_cnp.o", "cnp_count", fabric.CNPSlotCNP)
+		roce, err2 := mgr.ReadCounter("roce_cnp.o", "cnp_count", fabric.CNPSlotRoCE)
+		if err1 != nil || err2 != nil {
+			log.Warnw("reading roce_cnp counters", "cnp_error", err1, "roce_error", err2)
+			return
+		}
+		dCNP, dRoCE := cnp-lastCNP, roce-lastRoCE
+		if cnp < lastCNP { // counter reset (program reloaded)
+			dCNP = cnp
+		}
+		if roce < lastRoCE {
+			dRoCE = roce
+		}
+		lastCNP, lastRoCE = cnp, roce
+		fabricFolder.AddCNP(dCNP)
+		metrics.RecordRoCE(dCNP, dRoCE)
 	}
 
 	// GPU aggregators.
@@ -193,7 +227,7 @@ func main() {
 		}
 	}()
 
-	// ---- Fabric signal pipeline (straggler, RDMA health, GDS) ----
+	// ---- Fabric signal pipeline (straggler, RDMA health, GDS, overlap, inference wait) ----
 	go func() {
 		for sig := range fabricDecoder.Events() {
 			fabricFolder.Add(sig)
@@ -223,6 +257,10 @@ func main() {
 				// Update pipeline bottleneck metric.
 				bottleneck, _ := pipelineAnalyzer.GetBottleneck()
 				metrics.RecordPipelineBottleneck(bottleneck)
+
+				if roceAttached {
+					pollRoCE()
+				}
 
 				// Publish per-job fabric status.
 				metrics.RecordFabric(fabricFolder.List())

@@ -47,6 +47,11 @@ type Metrics struct {
 	fabricNCCLP99       *prometheus.GaugeVec
 	fabricRDMARetryRate *prometheus.GaugeVec
 	fabricGDSHitRatio   *prometheus.GaugeVec
+	fabricOverlapIdle   *prometheus.GaugeVec
+	fabricCNPRate       *prometheus.GaugeVec
+	fabricInferWaitP99  *prometheus.GaugeVec
+	roceCNPPackets      prometheus.Counter
+	roceRoCEPackets     prometheus.Counter
 
 	// Performance / TCP metrics.
 	tcpCwndHistogram prometheus.Histogram
@@ -185,6 +190,26 @@ func NewMetrics() *Metrics {
 			Name: "gryvia_fabric_gds_hit_ratio",
 			Help: "Fraction of cuFile bytes confirmed direct (GPUDirect Storage); absent when not measurable.",
 		}, fabricLabels),
+		fabricOverlapIdle: promauto.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "gryvia_fabric_overlap_idle_ratio",
+			Help: "Fraction of the window spent in cudaDeviceSynchronize inside an in-flight ncclAllReduce (GPU idle while communicating).",
+		}, fabricLabels),
+		fabricCNPRate: promauto.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "gryvia_fabric_cnp_rate",
+			Help: "RoCEv2 congestion notification packets per second over the window (job _node/cnp).",
+		}, fabricLabels),
+		fabricInferWaitP99: promauto.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "gryvia_fabric_infer_wait_p99_seconds",
+			Help: "p99 accept -> first recv wait on inference ports (vLLM/Triton).",
+		}, fabricLabels),
+		roceCNPPackets: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "gryvia_roce_cnp_packets_total",
+			Help: "RoCEv2 congestion notification packets seen by the roce_cnp XDP program.",
+		}),
+		roceRoCEPackets: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "gryvia_roce_packets_total",
+			Help: "RoCEv2 (UDP 4791) packets seen by the roce_cnp XDP program.",
+		}),
 
 		// ---- Performance / TCP metrics ----
 		tcpCwndHistogram: promauto.NewHistogram(prometheus.HistogramOpts{
@@ -320,15 +345,27 @@ func (m *Metrics) RecordFabric(jobs []fabric.JobStatus) {
 	m.fabricNCCLP99.Reset()
 	m.fabricRDMARetryRate.Reset()
 	m.fabricGDSHitRatio.Reset()
+	m.fabricOverlapIdle.Reset()
+	m.fabricCNPRate.Reset()
+	m.fabricInferWaitP99.Reset()
 	for _, j := range jobs {
 		m.fabricScoreDelta.WithLabelValues(j.Namespace, j.Job).Set(j.ScoreDelta)
 		m.fabricStragglerRank.WithLabelValues(j.Namespace, j.Job).Set(float64(j.StragglerRank))
 		m.fabricNCCLP99.WithLabelValues(j.Namespace, j.Job).Set(j.NCCLP99MS / 1e3)
 		m.fabricRDMARetryRate.WithLabelValues(j.Namespace, j.Job).Set(j.RDMARetryRate)
+		m.fabricOverlapIdle.WithLabelValues(j.Namespace, j.Job).Set(j.OverlapIdleRatio)
+		m.fabricCNPRate.WithLabelValues(j.Namespace, j.Job).Set(j.CNPRate)
+		m.fabricInferWaitP99.WithLabelValues(j.Namespace, j.Job).Set(j.InferWaitP99MS / 1e3)
 		if j.GDSMeasured {
 			m.fabricGDSHitRatio.WithLabelValues(j.Namespace, j.Job).Set(j.GDSHitRatio)
 		}
 	}
+}
+
+// RecordRoCE adds the RoCEv2 packet counts seen since the previous poll.
+func (m *Metrics) RecordRoCE(cnp, roce uint64) {
+	m.roceCNPPackets.Add(float64(cnp))
+	m.roceRoCEPackets.Add(float64(roce))
 }
 
 // RecordTCPStats records TCP connection statistics for Prometheus.

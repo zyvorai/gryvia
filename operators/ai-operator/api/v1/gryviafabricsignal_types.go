@@ -30,6 +30,16 @@ type GryviaFabricSignalStatus struct {
 	// GDSHitRatio is the fraction of cuFile bytes served over the direct GPUDirect Storage path
 	GDSHitRatio float64 `json:"gdsHitRatio,omitempty"`
 
+	// OverlapIdleRatio is the fraction of the window the job spent in cudaDeviceSynchronize
+	// inside an in-flight ncclAllReduce (GPU idle while communicating)
+	OverlapIdleRatio float64 `json:"overlapIdleRatio,omitempty"`
+
+	// CNPRate is the RoCEv2 congestion notification packets per second seen on the node
+	CNPRate float64 `json:"cnpRate,omitempty"`
+
+	// InferWaitP99Ms is the p99 wait in milliseconds from accept to first read on inference ports
+	InferWaitP99Ms float64 `json:"inferWaitP99ms,omitempty"`
+
 	// ScoreDelta is the penalty in [0,1] for the topology scorer (0 = healthy fabric)
 	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:validation:Maximum=1

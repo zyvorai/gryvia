@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
+	"regexp"
 	"testing"
 
 	"github.com/cilium/ebpf"
@@ -29,6 +31,10 @@ func TestParseSection(t *testing.T) {
 		{"tcx/egress", AttachSpec{Kind: KindTCXEgress}, false},
 		{"sockops", AttachSpec{Kind: KindSockOps}, false},
 		{"sk_msg", AttachSpec{Kind: KindSkMsg}, false},
+		{"uprobe/cudaDeviceSynchronize", AttachSpec{Kind: KindUprobe, Symbol: "cudaDeviceSynchronize"}, false},
+		{"uretprobe/cudaDeviceSynchronize", AttachSpec{Kind: KindUretprobe, Symbol: "cudaDeviceSynchronize"}, false},
+		{"kretprobe/inet_csk_accept", AttachSpec{Kind: KindKretprobe, Symbol: "inet_csk_accept"}, false},
+		{"uprobe", AttachSpec{}, true}, // bare section: no symbol to attach to
 		{"kprobe/", AttachSpec{}, true},
 		{"tracepoint/tcp", AttachSpec{}, true},
 		{"tcx/sideways", AttachSpec{}, true},
@@ -154,5 +160,90 @@ func TestResolveLibraries(t *testing.T) {
 	cfg = ResolveLibraries(Config{}, nil, []string{t.TempDir()})
 	if cfg.NCCLLib != "" || cfg.CUDALib != "" || cfg.CuFileLib != "" {
 		t.Errorf("expected empty, got %+v", cfg)
+	}
+}
+
+// Every program section in ebpf/*.c must be one ParseSection understands, so a
+// new program cannot ship with a section the loader would silently skip.
+func TestAllEBPFSourceSectionsParse(t *testing.T) {
+	files, _ := filepath.Glob("../../../ebpf/*.c")
+	if len(files) == 0 {
+		t.Skip("ebpf sources not available")
+	}
+	re := regexp.MustCompile(`SEC\("([^"]+)"\)`)
+	n := 0
+	for _, f := range files {
+		src, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, m := range re.FindAllSubmatch(src, -1) {
+			sec := string(m[1])
+			if sec == "license" || sec[0] == '.' {
+				continue
+			}
+			n++
+			if _, err := ParseSection(sec); err != nil {
+				t.Errorf("%s: %v", filepath.Base(f), err)
+			}
+		}
+	}
+	if n == 0 {
+		t.Error("no program sections found")
+	}
+}
+
+func TestNewFabricProgramGating(t *testing.T) {
+	xdp := AttachSpec{Kind: KindXDP}
+	if SkipReason(xdp, Config{}) == "" || SkipReason(xdp, Config{Iface: "ib0"}) != "" {
+		t.Error("roce_cnp (xdp) must attach only with -iface")
+	}
+	sync := AttachSpec{Kind: KindUprobe, Symbol: "cudaDeviceSynchronize"}
+	if SkipReason(sync, Config{NCCLLib: "/x"}) == "" || SkipReason(sync, Config{CUDALib: "/x"}) != "" {
+		t.Error("overlap sync probe needs libcudart")
+	}
+}
+
+func TestParsePorts(t *testing.T) {
+	cases := []struct {
+		in   string
+		want []uint16
+		err  bool
+	}{
+		{"8000,8001", []uint16{8000, 8001}, false},
+		{" 8000 , 8001 ,8000", []uint16{8000, 8001}, false},
+		{"", nil, false},
+		{"8000,", []uint16{8000}, false},
+		{"0", nil, true},
+		{"65536", nil, true},
+		{"http", nil, true},
+		{"1,2,3,4,5,6,7,8,9", nil, true},
+	}
+	for _, c := range cases {
+		got, err := ParsePorts(c.in)
+		if (err != nil) != c.err || !reflect.DeepEqual(got, c.want) {
+			t.Errorf("%q: got %v err=%v, want %v err=%v", c.in, got, err, c.want, c.err)
+		}
+	}
+}
+
+func TestPortSlots(t *testing.T) {
+	s, err := portSlots([]uint16{8000, 8001})
+	if err != nil || s != [MaxInferPorts]uint16{8000, 8001} {
+		t.Errorf("slots = %v err=%v", s, err)
+	}
+	if _, err := portSlots(make([]uint16, MaxInferPorts+1)); err == nil {
+		t.Error("too many ports must fail")
+	}
+}
+
+func TestMaxInferPortsMatchesC(t *testing.T) {
+	src, err := os.ReadFile("../../../ebpf/infer_latency.c")
+	if err != nil {
+		t.Skipf("C source not available: %v", err)
+	}
+	m := regexp.MustCompile(`#define\s+INFER_MAX_PORTS\s+(\d+)`).FindSubmatch(src)
+	if m == nil || string(m[1]) != fmt.Sprint(MaxInferPorts) {
+		t.Errorf("INFER_MAX_PORTS in infer_latency.c does not match MaxInferPorts=%d", MaxInferPorts)
 	}
 }

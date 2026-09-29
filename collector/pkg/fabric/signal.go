@@ -1,5 +1,6 @@
 // Package fabric decodes the fabric_signal ring buffers emitted by
-// ebpf/straggler.c, ebpf/rdma_health.c and ebpf/gds_trace.c, folds them per
+// ebpf/straggler.c, rdma_health.c, gds_trace.c, overlap.c and infer_latency.c
+// (roce_cnp.c only keeps counters, see AddCNP), folds them per
 // job, and derives a [0,1] score penalty for the topology scorer.
 //
 // The signals are a side channel next to gpu_event (which is frozen at 72
@@ -18,7 +19,17 @@ const (
 	SigStraggler uint8 = 1 // rank skew on a collective
 	SigRDMARetry uint8 = 2 // QP retry / RNR above threshold
 	SigGDS       uint8 = 3 // GPU-direct vs bounce-buffer read
-	SigOverlap   uint8 = 4 // reserved, not emitted yet
+	SigOverlap   uint8 = 4 // cudaDeviceSynchronize nested in an in-flight ncclAllReduce
+	SigInferWait uint8 = 5 // inference socket accept -> first recv
+	// SigCNP is synthesised by the collector from the roce_cnp cnp_count map
+	// (Bytes = CNP packets since the previous poll); it never appears on a ring.
+	SigCNP uint8 = 6
+)
+
+// Slots of roce_cnp.c's per-CPU cnp_count array (CNP_SLOT_* in fabric_signal.h).
+const (
+	CNPSlotCNP  uint32 = 0 // RoCEv2 congestion notification packets
+	CNPSlotRoCE uint32 = 1 // all RoCEv2 packets
 )
 
 // SignalSize is sizeof(struct fabric_signal).
@@ -51,6 +62,9 @@ const (
 //	SigRDMARetry: Rank = QP number, WorldSize = post calls, Retries/RNR =
 //	              error completions since the previous signal.
 //	SigGDS:       LatencyNS, Bytes, Retries = 1 when nvidia-fs confirmed direct.
+//	SigOverlap:   LatencyNS = sync duration, Retries = nested ncclAllReduce depth.
+//	SigInferWait: LatencyNS = accept -> first recv, Rank = local TCP port.
+//	SigCNP:       Bytes = CNP packets (userspace only).
 type Signal struct {
 	TimestampNS   uint64
 	PID           uint32

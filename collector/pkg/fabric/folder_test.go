@@ -46,8 +46,14 @@ func TestScoreDeltaFolding(t *testing.T) {
 		{"gds healthy", Status{GDSMeasured: true, GDSHitRatio: 0.9}, 0},
 		{"stragglers", Status{StragglerHits: 11}, 0.25},
 		{"10 stragglers is not enough", Status{StragglerHits: 10}, 0},
+		{"gpu idle while comm", Status{OverlapIdleRatio: 0.31}, 0.15},
+		{"idle at threshold", Status{OverlapIdleRatio: 0.3}, 0},
+		{"cnp storm", Status{CNPRate: 101}, 0.15},
+		{"cnp at threshold", Status{CNPRate: 100}, 0},
+		{"inference wait is informational", Status{InferWaitP99MS: 5000}, 0},
 		{"sum", Status{NCCLP99MS: 60, RDMARetryRate: 0.05}, 0.6},
 		{"clamped", Status{NCCLP99MS: 60, RDMARetryRate: 0.05, GDSMeasured: true, StragglerHits: 20}, 1},
+		{"everything bad stays <= 1", Status{NCCLP99MS: 60, RDMARetryRate: 1, GDSMeasured: true, StragglerHits: 20, OverlapIdleRatio: 1, CNPRate: 1e6}, 1},
 	}
 	for _, c := range cases {
 		if got := ScoreDelta(c.st); got < c.want-1e-9 || got > c.want+1e-9 {
@@ -176,5 +182,71 @@ func TestServeHTTP(t *testing.T) {
 	f.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/fabric", nil))
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("POST status %d", rec.Code)
+	}
+}
+
+func TestFoldOverlap(t *testing.T) {
+	f, _ := newTestFolder() // 60 s window
+	for i := 0; i < 4; i++ {
+		f.Add(Signal{Type: SigOverlap, PID: 7, Comm: "train", LatencyNS: 5e9, Retries: 1})
+	}
+	st := only(t, f)
+	if want := 20.0 / 60.0; st.OverlapIdleRatio < want-1e-9 || st.OverlapIdleRatio > want+1e-9 {
+		t.Errorf("idle ratio = %v, want %v", st.OverlapIdleRatio, want)
+	}
+	if st.ScoreDelta != 0.15 {
+		t.Errorf("score = %v, want 0.15", st.ScoreDelta)
+	}
+	// Many threads in sync at once cannot push the ratio past 1.
+	f2, _ := newTestFolder()
+	for i := 0; i < 50; i++ {
+		f2.Add(Signal{Type: SigOverlap, Comm: "train", LatencyNS: 10e9})
+	}
+	if got := only(t, f2).OverlapIdleRatio; got != 1 {
+		t.Errorf("capped ratio = %v, want 1", got)
+	}
+}
+
+func TestFoldCNP(t *testing.T) {
+	f, c := newTestFolder() // 60 s window
+	f.AddCNP(0)             // ignored
+	if len(f.Snapshot()) != 0 {
+		t.Fatal("zero CNPs must not create a job")
+	}
+	f.AddCNP(3000)
+	c.t = c.t.Add(10 * time.Second)
+	f.AddCNP(3000)
+	snap := f.Snapshot()
+	st, ok := snap[CNPJob]
+	if !ok || len(snap) != 1 {
+		t.Fatalf("CNPs must fold under %v: %v", CNPJob, snap)
+	}
+	if st.CNPRate != 100 { // 6000 packets / 60 s window: at, not above, the threshold
+		t.Errorf("rate = %v, want 100", st.CNPRate)
+	}
+	if st.ScoreDelta != 0 {
+		t.Errorf("score at threshold = %v, want 0", st.ScoreDelta)
+	}
+	f.AddCNP(60)
+	if st = f.Snapshot()[CNPJob]; st.CNPRate != 101 || st.ScoreDelta != 0.15 {
+		t.Errorf("above threshold: %+v", st)
+	}
+	c.t = c.t.Add(2 * time.Minute)
+	if len(f.Snapshot()) != 0 {
+		t.Error("CNP samples must expire with the window")
+	}
+}
+
+func TestFoldInferWait(t *testing.T) {
+	f, _ := newTestFolder()
+	for i := 1; i <= 100; i++ {
+		f.Add(Signal{Type: SigInferWait, PID: 9, Rank: 8000, LatencyNS: uint64(i) * 1_000_000, Comm: "vllm"})
+	}
+	st := only(t, f)
+	if st.InferWaitP99MS != 99 {
+		t.Errorf("infer p99 = %v, want 99", st.InferWaitP99MS)
+	}
+	if st.ScoreDelta != 0 || st.StragglerHits != 0 || st.NCCLP99MS != 0 {
+		t.Errorf("inference wait must not leak into the fabric score: %+v", st)
 	}
 }
