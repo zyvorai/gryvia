@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 
-from .common import Deps, create_item, list_items
+from .common import Deps, create_item, list_items, require_admin
 
 K8S_NAME = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
 POLICIES = "gryviasecuritypolicies"
@@ -80,7 +80,7 @@ def build_router(deps: Deps) -> APIRouter:
 
     @router.get("/api/security/alerts")
     @deps.limiter.limit("30/minute")
-    async def alerts(request: Request, _=Depends(deps.verify_auth)):
+    async def alerts(request: Request, _=Depends(deps.verify_auth), __=Depends(require_admin)):
         # GryviaSecurityPolicy status only carries counters (alertsTriggered, detectionCounts),
         # not per-event records (process/path/sourceIP), so there is no source for individual
         # alerts. Verify the backing kind is readable, then return no items rather than invent any.
@@ -94,12 +94,12 @@ def build_router(deps: Deps) -> APIRouter:
 
     @router.get("/api/security/policies")
     @deps.limiter.limit("30/minute")
-    async def list_policies(request: Request, _=Depends(deps.verify_auth)):
+    async def list_policies(request: Request, _=Depends(deps.verify_auth), __=Depends(require_admin)):
         return {"items": [_policy_view(o) for o in await list_items(deps, POLICIES)]}
 
     @router.post("/api/security/policies", status_code=201)
     @deps.limiter.limit("10/minute")
-    async def create_policy(request: Request, body: SecurityPolicyRequest, _=Depends(deps.verify_auth)):
+    async def create_policy(request: Request, body: SecurityPolicyRequest, _=Depends(deps.verify_auth), __=Depends(require_admin)):
         spec: Dict[str, Any] = {
             "targetNamespaces": body.targetNamespaces,
             "detectionRules": [r.model_dump() for r in body.detectionRules],

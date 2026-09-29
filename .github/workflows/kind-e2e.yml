@@ -86,6 +86,27 @@ jobs:
           "$gryvia" health
           "$gryvia" version | grep -q "gryvia-api-gateway"
           "$gryvia" completion bash | grep -q gryvia
+      - name: GPU as a Service (catalog, tenants, metering)
+        run: |
+          gryvia="$PWD/cli/target/release/gryvia"
+          "$gryvia" catalog | grep -q h100-80g
+          "$gryvia" catalog -o json | python3 -c "import json,sys; assert len(json.load(sys.stdin))>=3"
+          "$gryvia" tenant list | grep -q acme
+          "$gryvia" tenant get acme | grep -q tenant-acme
+          # The tenant controller creates the tenant's namespace with a ResourceQuota.
+          for i in $(seq 1 30); do kubectl get ns tenant-acme >/dev/null 2>&1 && break; sleep 4; done
+          kubectl get ns tenant-acme
+          kubectl -n tenant-acme get resourcequota
+          # The demo data ships two finished usage records (the fictional demo job never runs, so it is not metered).
+          "$gryvia" usage | tee /dev/stderr | grep -q acme
+          "$gryvia" usage --group-by sku -o json | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['totals']['jobs']==2 and abs(d['totals']['cost']-252)<0.01, d"
+          "$gryvia" usage --tenant globex -o json | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['totals']['jobs']==1, d"
+          "$gryvia" usage -o csv | head -1
+          key='Admin@321'
+          curl -sfk -H "Authorization: Bearer $key" https://localhost:8443/api/skus | grep -q h100-80g
+          curl -sfk -H "Authorization: Bearer $key" https://localhost:8443/api/tenants | grep -q acme
+          curl -sfk -H "Authorization: Bearer $key" "https://localhost:8443/api/usage?groupBy=sku" | grep -q totals
+          curl -sfk -H "Authorization: Bearer $key" "https://localhost:8443/api/usage/export?format=csv" | head -1 | grep -q tenant
       - name: The CLI explains a missing API instead of dumping it
         run: |
           # Point at an API group that does not exist: the error must be short and actionable.

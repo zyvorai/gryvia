@@ -1,46 +1,9 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/lib/auth'
+import { navFor } from '@/lib/roles'
+import { useIsAdmin } from '@/lib/useRole'
 import { applyTheme, readStoredTheme, toggleTheme, type Theme } from '@/theme'
-
-type NavLeaf = { name: string; href: string; blurb: string }
-type NavItem = { name: string; href: string } | { name: string; children: NavLeaf[] }
-
-const navigation: NavItem[] = [
-  { name: 'Dashboard', href: '/dashboard' },
-  {
-    name: 'Work',
-    children: [
-      { name: 'Jobs', href: '/jobs', blurb: 'Submit and track training jobs' },
-      { name: 'Workflows', href: '/workflows', blurb: 'Multi-step pipelines' },
-      { name: 'Tuner', href: '/tuner', blurb: 'Hyperparameter search' },
-      { name: 'Workspaces', href: '/workspaces', blurb: 'Jupyter and VS Code environments' },
-    ],
-  },
-  {
-    name: 'Models',
-    children: [
-      { name: 'Models', href: '/models', blurb: 'Registry, stages and promotion' },
-      { name: 'Inference', href: '/inference', blurb: 'Serving and autoscaling' },
-    ],
-  },
-  {
-    name: 'Platform',
-    children: [
-      { name: 'Nodes', href: '/nodes', blurb: 'GPU nodes and health' },
-      { name: 'Quotas', href: '/quotas', blurb: 'Team GPU and budget limits' },
-      { name: 'GPU', href: '/gpu', blurb: 'NCCL, stragglers, memory transfers' },
-      { name: 'Costs', href: '/costs', blurb: 'GPU spend by team and type' },
-    ],
-  },
-  {
-    name: 'Observe',
-    children: [
-      { name: 'Network', href: '/network', blurb: 'Service graph, flows and policies' },
-      { name: 'Security', href: '/security', blurb: 'Detection rules and alerts' },
-    ],
-  },
-]
 
 interface LayoutProps {
   children: ReactNode
@@ -51,6 +14,8 @@ export default function Layout({ children }: LayoutProps) {
   const location = useLocation()
   const navigate = useNavigate()
   const { logout, user } = useAuth()
+  const admin = useIsAdmin()
+  const navigation = useMemo(() => navFor(admin), [admin])
   const [keyNoticeHidden, setKeyNoticeHidden] = useState(() => {
     try {
       return sessionStorage.getItem('gryvia_default_key_notice') === '1'

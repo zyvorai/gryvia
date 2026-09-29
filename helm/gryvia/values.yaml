@@ -91,6 +91,13 @@ apiGateway:
   replicas: 2
   # Optional Prometheus URL for cost and metrics history.
   prometheusUrl: ""
+  # Roles: the API key and dashboard login are the provider admin; an OIDC user is a tenant user whose
+  # `org`/`groups` claim must match a GryviaTenant (name or namespace tenant-<name>).
+  oidc:
+    # Comma separated `groups` claim values that make an OIDC user a provider admin (default: none).
+    adminGroups: ""
+    # Keep the pre-tenant behaviour (claim values used as namespaces) while NO GryviaTenant exists.
+    legacyNamespaces: false
   # Real network flows come from Netra (a separate eBPF network observability product), not from Gryvia.
   # Install Netra, then point this at its controller, the address the gateway can actually reach, e.g. https://<netra-public-ip>:30870 (a cluster-internal name only works when Netra runs in this cluster). Netra's certificate is self-signed by default: set insecureTLS, or trust its CA. Empty: the network
   # pages show service-graph edges only.

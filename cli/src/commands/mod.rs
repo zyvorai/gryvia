@@ -1,5 +1,6 @@
 pub mod cancel;
 pub mod capacity;
+pub mod catalog;
 pub mod cluster;
 pub mod cost;
 pub mod create;
@@ -20,6 +21,8 @@ pub mod quota;
 pub mod security;
 pub mod status;
 pub mod submit;
+pub mod tenant;
 pub mod trace;
+pub mod usage;
 pub mod validate;
 pub mod version;

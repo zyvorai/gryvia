@@ -3,6 +3,7 @@ import toast from 'react-hot-toast'
 import { notifyUnauthorized } from '@/lib/authEvents'
 import type { GryviaAIJob, GryviaQuota, GryviaGpuNode } from '@/types'
 import { getStoredToken, clearToken } from '@/lib/auth'
+import type { Sku, SkuBody, TenantResource, CreateTenantBody, UsageReport } from '@/lib/cloud'
 
 export interface ClusterStats {
   totalGPUs: number
@@ -635,6 +636,51 @@ export const api = {
   getGPUMemoryStats: async (): Promise<GPUMemStats> => {
     const { data } = await apiClient.get('/gpu/memory')
     return data
+  },
+
+  // GPU-as-a-Service: catalog, tenants, usage
+  getSkus: async (): Promise<Sku[]> => {
+    const { data } = await apiClient.get('/skus')
+    return data.items || []
+  },
+
+  createSku: async (body: SkuBody & { name: string }): Promise<Sku> => {
+    const { data } = await apiClient.post('/skus', body)
+    return data
+  },
+
+  updateSku: async (name: string, body: SkuBody): Promise<Sku> => {
+    const { data } = await apiClient.put(`/skus/${encodeURIComponent(name)}`, body)
+    return data
+  },
+
+  deleteSku: async (name: string): Promise<void> => {
+    await apiClient.delete(`/skus/${encodeURIComponent(name)}`)
+  },
+
+  getTenants: async (): Promise<TenantResource[]> => {
+    const { data } = await apiClient.get('/tenants')
+    return data.items || []
+  },
+
+  createTenant: async (body: CreateTenantBody): Promise<TenantResource> => {
+    const { data } = await apiClient.post('/tenants', body)
+    return data
+  },
+
+  deleteTenant: async (name: string): Promise<void> => {
+    await apiClient.delete(`/tenants/${encodeURIComponent(name)}`)
+  },
+
+  getUsage: async (params: Record<string, string>): Promise<UsageReport> => {
+    const { data } = await apiClient.get('/usage', { params })
+    return data
+  },
+
+  /** Authenticated download (the token is a bearer header, so a plain link would be rejected). */
+  exportUsage: async (format: 'csv' | 'json', params: Record<string, string>): Promise<Blob> => {
+    const { data } = await apiClient.get('/usage/export', { params: { ...params, format }, responseType: 'blob' })
+    return data as Blob
   },
 
   // Workspaces

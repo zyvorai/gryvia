@@ -367,6 +367,9 @@ rules:
       - gryviahealthchecks/status
       - gryviatenants
       - gryviatenants/status
+      - gryviatenants/finalizers
+      - gryviagpuskus
+      - gryviausagerecords
     verbs:
       - create
       - delete
@@ -376,12 +379,27 @@ rules:
       - update
       - watch
 
-  # Manage Namespaces and ResourceQuotas
+  # Manage Namespaces, ResourceQuotas and LimitRanges (tenant namespaces)
   - apiGroups:
       - ""
     resources:
       - namespaces
       - resourcequotas
+      - limitranges
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+
+  # Tenant network isolation
+  - apiGroups:
+      - networking.k8s.io
+    resources:
+      - networkpolicies
     verbs:
       - get
       - list

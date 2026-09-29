@@ -157,13 +157,13 @@ func (r *GryviaTenantReconciler) ensureNamespace(ctx context.Context, tenant *gr
 				ObjectMeta: metav1.ObjectMeta{
 					Name: nsName,
 					Labels: map[string]string{
-						"gryvia.io/tenant":       tenant.Name,
-						"gryvia.io/managed-by":   "gryvia-tenant-controller",
-						"gryvia.io/display-name": tenant.Spec.DisplayName,
+						"gryvia.io/tenant":     tenant.Name,
+						"gryvia.io/managed-by": "gryvia-tenant-controller",
 					},
 				},
 			}
-			if tenant.Spec.Governance != nil {
+			// Label values cannot hold free text, so the display name is not copied.
+			if tenant.Spec.Governance != nil && tenant.Spec.Governance.DataClassification != "" {
 				ns.Labels["gryvia.io/data-classification"] = tenant.Spec.Governance.DataClassification
 			}
 			return r.Create(ctx, ns)
@@ -174,6 +174,9 @@ func (r *GryviaTenantReconciler) ensureNamespace(ctx context.Context, tenant *gr
 	// Update labels
 	if ns.Labels == nil {
 		ns.Labels = make(map[string]string)
+	}
+	if ns.Labels["gryvia.io/tenant"] == tenant.Name && ns.Labels["gryvia.io/managed-by"] == "gryvia-tenant-controller" {
+		return nil
 	}
 	ns.Labels["gryvia.io/tenant"] = tenant.Name
 	ns.Labels["gryvia.io/managed-by"] = "gryvia-tenant-controller"
@@ -193,7 +196,7 @@ func (r *GryviaTenantReconciler) ensureResourceQuota(ctx context.Context, tenant
 
 	if tenant.Spec.Quotas != nil {
 		if tenant.Spec.Quotas.ConcurrentGPUs > 0 {
-			hard["nvidia.com/gpu"] = resource.MustParse(fmt.Sprintf("%d", tenant.Spec.Quotas.ConcurrentGPUs))
+			hard["requests.nvidia.com/gpu"] = resource.MustParse(fmt.Sprintf("%d", tenant.Spec.Quotas.ConcurrentGPUs))
 		}
 	}
 

@@ -7,7 +7,7 @@ import types
 from typing import Any, Dict, Optional
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 from kubernetes.client.exceptions import ApiException
 
@@ -177,8 +177,20 @@ class FakeCore:
         return types.SimpleNamespace(items=items)
 
 
-async def _allow():  # verify_auth stand-in
-    return None
+async def _allow(request: Request):  # verify_auth stand-in: the provider admin
+    request.state.role = "admin"
+    request.state.tenant = None
+    request.state.tenants = []
+    request.state.tenant_namespaces = None
+
+
+@pytest.fixture(autouse=True)
+def _fresh_tenant_cache():
+    from routers import tenancy
+
+    tenancy.clear_cache()
+    yield
+    tenancy.clear_cache()
 
 
 @pytest.fixture
@@ -186,13 +198,24 @@ def fake_k8s() -> FakeCustomObjects:
     return FakeCustomObjects()
 
 
+def _stub_auth(role: str, tenants):
+    """verify_auth stand-in for a given role; tenant callers get namespaces tenant-<name>."""
+    async def auth(request: Request):
+        request.state.role = role
+        request.state.tenants = list(tenants)
+        request.state.tenant = tenants[0] if tenants else None
+        request.state.tenant_namespaces = [f"tenant-{t}" for t in tenants] or None
+    return auth
+
+
 @pytest.fixture
 def make_client(fake_k8s):
-    """make_client("network") -> TestClient with routers/network.py mounted."""
+    """make_client("network") -> TestClient with routers/network.py mounted (admin caller by default).
+    make_client("usage", role="tenant", tenants=["alpha"]) mounts it for a tenant user."""
     import importlib
 
-    def _make(module: str, **deps_kw) -> TestClient:
-        deps = Deps(verify_auth=_allow, k8s_custom=fake_k8s, k8s_core=FakeCore(),
+    def _make(module: str, role: str = "admin", tenants=(), **deps_kw) -> TestClient:
+        deps = Deps(verify_auth=_stub_auth(role, tenants), k8s_custom=fake_k8s, k8s_core=FakeCore(),
                     limiter=NoopLimiter(), job_namespace="default", **deps_kw)
         app = FastAPI()
         app.include_router(importlib.import_module(f"routers.{module}").build_router(deps))

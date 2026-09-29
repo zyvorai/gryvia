@@ -55,6 +55,14 @@ spec:
           value: "1"
         {{- end }}
         {{- end }}
+        {{- if .Values.apiGateway.oidc.adminGroups }}
+        - name: GRYVIA_OIDC_ADMIN_GROUPS
+          value: {{ .Values.apiGateway.oidc.adminGroups | quote }}
+        {{- end }}
+        {{- if .Values.apiGateway.oidc.legacyNamespaces }}
+        - name: GRYVIA_OIDC_LEGACY_NAMESPACES
+          value: "1"
+        {{- end }}
         - name: GRYVIA_API_KEY
           valueFrom:
             secretKeyRef:
@@ -164,6 +172,9 @@ rules:
   - gryviasecuritypolicies
   - gryviatraininginsights
   - gryviagpumemoryoptimizers
+  - gryviagpuskus
+  - gryviatenants
+  - gryviausagerecords
   verbs: ["get", "list", "watch"]
 # Write only the kinds the API creates, deletes or updates.
 - apiGroups: ["gryvia.io"]
@@ -177,7 +188,9 @@ rules:
   - gryviatracesessions
   - gryviasecuritypolicies
   - gryviamodelregistries
-  verbs: ["create", "delete", "patch"]
+  - gryviagpuskus
+  - gryviatenants
+  verbs: ["create", "delete", "patch", "update"]
 - apiGroups: [""]
   resources: ["nodes", "pods", "namespaces"]
   verbs: ["get", "list", "watch"]

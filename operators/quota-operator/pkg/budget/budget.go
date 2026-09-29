@@ -10,23 +10,22 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	gryviav1 "github.com/zyvorai/gryvia/operators/quota-operator/api/v1"
+	"github.com/zyvorai/gryvia/operators/quota-operator/pkg/pricing"
 	"github.com/zyvorai/gryvia/operators/quota-operator/pkg/usage"
 )
 
 // gpuPricingMu protects concurrent access to gpuPricing
 var gpuPricingMu sync.RWMutex
 
-// gpuPricing contains GPU hourly rates in USD
-var gpuPricing = map[string]float64{
-	"H100":     8.00, // $8/hour
-	"A100-80G": 4.00, // $4/hour
-	"A100-40G": 3.00, // $3/hour
-	"L40":      2.50, // $2.50/hour
-	"A10":      1.50, // $1.50/hour
-	"V100":     2.00, // $2/hour
-	"T4":       0.75, // $0.75/hour
-	"default":  2.00, // Default rate if type unknown
-}
+// gpuPricing starts as a copy of the shared default table in pkg/pricing and can
+// be overridden at runtime with UpdatePricing.
+var gpuPricing = func() map[string]float64 {
+	m := make(map[string]float64, len(pricing.DefaultRates))
+	for k, v := range pricing.DefaultRates {
+		m[k] = v
+	}
+	return m
+}()
 
 // CalculateBudget calculates budget status for a quota
 func CalculateBudget(ctx context.Context, k8sClient client.Client, quota *gryviav1.GryviaQuota, currentUsage *gryviav1.QuotaUsage) (*gryviav1.BudgetStatus, error) {

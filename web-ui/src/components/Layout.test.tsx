@@ -44,3 +44,23 @@ describe('Layout default-key notice', () => {
     expect(screen.queryByText(/default lab key/i)).toBeNull()
   })
 })
+
+describe('Layout role gating', () => {
+  beforeEach(() => {
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {} }))
+  })
+
+  it('hides admin groups from tenant users', () => {
+    renderLayout({ ...user(false), role: 'tenant', tenant: 'acme' })
+    expect(screen.getByRole('button', { name: 'Cloud' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Platform' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Observe' })).toBeNull()
+  })
+
+  it('shows them to admins and to old gateways without a role', () => {
+    renderLayout({ ...user(false), role: 'admin' })
+    expect(screen.getByRole('button', { name: 'Platform' })).toBeTruthy()
+    renderLayout(user(false))
+    expect(screen.getAllByRole('button', { name: 'Observe' }).length).toBe(2)
+  })
+})

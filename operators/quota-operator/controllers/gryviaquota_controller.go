@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -37,6 +38,8 @@ type GryviaQuotaReconciler struct {
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviaquotas/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviaquotas/finalizers,verbs=update
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs,verbs=get;list;watch;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviatenants;gryviagpuskus,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch;update;patch
 //+kubebuilder:rbac:groups="",resources=resourcequotas,verbs=get;list;watch;create;update;patch;delete
 
@@ -137,11 +140,10 @@ func (r *GryviaQuotaReconciler) reconcileQuota(ctx context.Context, quota *gryvi
 
 	quota.Status.Phase = phase
 
-	// Enforce quota by updating jobs
-	if phase == "QuotaExceeded" || phase == "BudgetExceeded" {
-		if err := r.enforceQuota(ctx, quota); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to enforce quota: %w", err)
-		}
+	// Enforce quota by updating jobs. GPU type / SKU checks apply in every phase;
+	// the per-job size and budget checks only once the quota is exceeded.
+	if err := r.enforceQuota(ctx, quota); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to enforce quota: %w", err)
 	}
 
 	return ctrl.Result{}, nil
@@ -201,48 +203,63 @@ func (r *GryviaQuotaReconciler) enforceQuota(ctx context.Context, quota *gryviav
 		}
 	}
 
-	// Reject jobs that exceed quota
+	exceeded := quota.Status.Phase == "QuotaExceeded" || quota.Status.Phase == "BudgetExceeded"
+
+	// SKUs are only loaded when some tenant might restrict them.
+	var skus []gryviav1.GryviaGpuSku
+	skusLoaded := false
+
+	// Reject jobs that violate the quota
 	for _, job := range pendingJobs {
 		if job.Spec.GPUs <= 0 {
 			continue // skip invalid job specs
 		}
 
-		rejected := false
 		reason := ""
+		reasonCode := "QuotaExceeded"
 
-		if quota.Status.Phase == "BudgetExceeded" && quota.Spec.Budget.HardLimit {
-			rejected = true
+		if quota.Status.Phase == "BudgetExceeded" && quota.Spec.Budget != nil && quota.Spec.Budget.HardLimit {
 			reason = fmt.Sprintf("Budget exceeded for team %s", quota.Spec.Team)
 		}
 
-		if quota.Spec.GPUQuota.MaxGPUsPerJob > 0 && int(job.Spec.GPUs) > quota.Spec.GPUQuota.MaxGPUsPerJob {
-			rejected = true
+		if exceeded && quota.Spec.GPUQuota.MaxGPUsPerJob > 0 && int(job.Spec.GPUs) > quota.Spec.GPUQuota.MaxGPUsPerJob {
 			reason = fmt.Sprintf("Job requests %d GPUs, exceeds max %d per job", job.Spec.GPUs, quota.Spec.GPUQuota.MaxGPUsPerJob)
 		}
 
-		// Check GPU type is allowed
-		if len(quota.Spec.GPUQuota.AllowedGPUTypes) > 0 {
-			gpuType := job.Spec.GpuType
-			allowed := false
-			for _, t := range quota.Spec.GPUQuota.AllowedGPUTypes {
-				if t == gpuType {
-					allowed = true
-					break
-				}
+		// GPU type must be in the quota's allowed list
+		if len(quota.Spec.GPUQuota.AllowedGPUTypes) > 0 && !containsString(quota.Spec.GPUQuota.AllowedGPUTypes, job.Spec.GpuType) {
+			reason = fmt.Sprintf("GPU type %q is not allowed for team %s (allowed: %s)",
+				job.Spec.GpuType, quota.Spec.Team, strings.Join(quota.Spec.GPUQuota.AllowedGPUTypes, ", "))
+			reasonCode = "GpuTypeNotAllowed"
+		}
+
+		// When the tenant restricts SKUs, the GPU type needs an enabled SKU among them
+		if reason == "" {
+			allowedSkus, err := r.tenantAllowedSkus(ctx, job.Namespace)
+			if err != nil {
+				return err
 			}
-			if !allowed {
-				// Queue the job - GPU type not allowed
-				logger.Info("Job uses disallowed GPU type", "job", job.Name, "gpuType", gpuType)
-				continue
+			if len(allowedSkus) > 0 {
+				if !skusLoaded {
+					list := &gryviav1.GryviaGpuSkuList{}
+					if err := r.List(ctx, list); err != nil {
+						return fmt.Errorf("failed to list GPU SKUs: %w", err)
+					}
+					skus, skusLoaded = list.Items, true
+				}
+				if findSku(skus, job.Spec.GpuType, allowedSkus) == nil {
+					reason = fmt.Sprintf("GPU type %q has no enabled SKU among the SKUs allowed for this tenant", job.Spec.GpuType)
+					reasonCode = "NoEnabledSku"
+				}
 			}
 		}
 
-		if rejected {
+		if reason != "" {
 			job.Status.Phase = "Rejected"
 			meta.SetStatusCondition(&job.Status.Conditions, metav1.Condition{
 				Type:               "Rejected",
 				Status:             metav1.ConditionTrue,
-				Reason:             "QuotaExceeded",
+				Reason:             reasonCode,
 				Message:            reason,
 				LastTransitionTime: metav1.Now(),
 			})
@@ -254,6 +271,22 @@ func (r *GryviaQuotaReconciler) enforceQuota(ctx context.Context, quota *gryviav
 	}
 
 	return nil
+}
+
+// tenantAllowedSkus returns spec.allowedSkus of the GryviaTenant owning the namespace
+// (tenant-<name>), or nil when there is no such tenant.
+func (r *GryviaQuotaReconciler) tenantAllowedSkus(ctx context.Context, namespace string) ([]string, error) {
+	if !strings.HasPrefix(namespace, tenantNamespacePrefix) {
+		return nil, nil
+	}
+	t := &gryviav1.GryviaTenant{}
+	if err := r.Get(ctx, types.NamespacedName{Name: strings.TrimPrefix(namespace, tenantNamespacePrefix)}, t); err != nil {
+		if errors.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return t.Spec.AllowedSkus, nil
 }
 
 func (r *GryviaQuotaReconciler) updateStatus(ctx context.Context, quota *gryviav1.GryviaQuota, phase, message string) error {

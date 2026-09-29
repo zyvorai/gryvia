@@ -122,6 +122,9 @@ def env(fake_k8s, monkeypatch, keys):
     monkeypatch.setattr(
         main, "httpx", types.SimpleNamespace(AsyncClient=idp.client_class())
     )
+    monkeypatch.setattr(main, "k8s_custom", fake_k8s)
+    for tenant in ("acme", "t1", "t2"):
+        fake_k8s.add("gryviatenants", {"metadata": {"name": tenant}, "spec": {}})
     monkeypatch.setattr(main, "API_KEY", API_KEY)
     monkeypatch.setattr(main, "OIDC_ENABLED", True)
     monkeypatch.setattr(main, "OIDC_ISSUER_URL", ISSUER)
@@ -144,6 +147,7 @@ def claims(**over):
         "sub": "user-1",
         "email": "ada@example.com",
         "name": "Ada",
+        "org": "acme",
         "iat": now,
         "exp": now + 600,
     }
@@ -176,7 +180,10 @@ def test_valid_token_is_accepted_and_me_returns_identity(env, keys):
         "name": "Ada",
         "groups": ["team-a", "team-b"],
         "org": "acme",
-        "tenantNamespaces": ["acme"],
+        "role": "tenant",
+        "tenant": "acme",
+        "tenants": ["acme"],
+        "tenantNamespaces": ["tenant-acme"],
     }
 
 
@@ -453,14 +460,14 @@ def test_no_tenants_when_claims_are_absent_or_odd(env, cl):
 
 def test_me_reports_groups_as_tenants_when_no_org(env, keys):
     c, _, _ = env
-    body = me(c, keys[0].sign(claims(groups=["t1", "t2"]))).json()
-    assert body["tenantNamespaces"] == ["t1", "t2"] and body["org"] == ""
+    body = me(c, keys[0].sign(claims(org=None, groups=["t1", "t2"]))).json()
+    assert body["tenantNamespaces"] == ["tenant-t1", "tenant-t2"] and body["org"] == ""
 
 
-def test_me_without_tenant_claims_has_no_tenants(env, keys):
+def test_token_without_tenant_claims_is_refused(env, keys):
     c, _, _ = env
-    body = me(c, keys[0].sign(claims())).json()
-    assert body["tenantNamespaces"] is None and body["groups"] == []
+    r = me(c, keys[0].sign(claims(org=None)))
+    assert r.status_code == 403 and "tenant" in r.json()["detail"]
 
 
 def test_key_rotation_refresh_works_on_a_freshly_booted_host(env, keys, monkeypatch):
