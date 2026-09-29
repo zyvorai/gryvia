@@ -1,0 +1,144 @@
+"""Shared helpers for the gateway's route modules.
+
+Each module under routers/ exposes ``build_router(deps) -> APIRouter`` and is
+registered by ``routers.register_routers``. Modules must not import ``main``;
+everything they need comes from ``Deps`` so they can be tested with a fake
+Kubernetes client (see tests/conftest.py).
+"""
+import asyncio
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, List, Optional
+
+from fastapi import HTTPException
+from kubernetes.client.exceptions import ApiException
+
+GROUP = "gryvia.io"
+VERSION = "v1"
+
+# Plurals of the cluster-scoped Gryvia CRDs (from crds/*.yaml); everything else is namespaced.
+CLUSTER_SCOPED = frozenset({
+    "fabricaudits",
+    "fabricautoscalers",
+    "fabricbudgets",
+    "fabricchargebacks",
+    "fabriccostpredictors",
+    "fabricdatasets",
+    "fabricdrtests",
+    "fabricfederations",
+    "fabricgpumemoryoptimizers",
+    "fabricgpunodes",
+    "fabricgpusharingpolicies",
+    "fabrichealthchecks",
+    "fabricjobhooks",
+    "fabricmetrics",
+    "fabricnetworks",
+    "fabricpriorities",
+    "fabricquotapolicies",
+    "fabricquotas",
+    "fabricreservations",
+    "fabricretrypolicies",
+    "fabricslas",
+    "fabricstorages",
+    "fabrictemplates",
+    "fabrictenants",
+})
+
+
+@dataclass
+class Deps:
+    verify_auth: Callable[..., Any]   # FastAPI dependency: raises 401/403
+    k8s_custom: Any                   # kubernetes.client.CustomObjectsApi (or a fake)
+    k8s_core: Any                     # kubernetes.client.CoreV1Api (or a fake)
+    limiter: Any                      # slowapi Limiter (or a no-op fake)
+    job_namespace: str = "default"
+
+
+async def run(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+    """Run a blocking Kubernetes client call off the event loop."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, lambda: fn(*args, **kwargs))
+
+
+def is_cluster_scoped(plural: str) -> bool:
+    return plural in CLUSTER_SCOPED
+
+
+def http_error(exc: Exception, what: str) -> HTTPException:
+    """Map a Kubernetes ApiException to an HTTP error without leaking internals."""
+    if isinstance(exc, ApiException):
+        if exc.status in (400, 404, 409, 422):
+            return HTTPException(status_code=exc.status, detail=f"{what}: {exc.reason}")
+        if exc.status in (401, 403):
+            return HTTPException(status_code=502, detail=f"{what}: gateway is not permitted to do this")
+    return HTTPException(status_code=500, detail=f"Failed to {what}")
+
+
+async def list_items(deps: Deps, plural: str, namespace: Optional[str] = None) -> List[Dict[str, Any]]:
+    """List all objects of a kind (cluster-wide for namespaced kinds unless namespace is given)."""
+    try:
+        if is_cluster_scoped(plural) or namespace is None:
+            res = await run(deps.k8s_custom.list_cluster_custom_object, group=GROUP, version=VERSION, plural=plural)
+        else:
+            res = await run(deps.k8s_custom.list_namespaced_custom_object, group=GROUP, version=VERSION,
+                            namespace=namespace, plural=plural)
+    except Exception as exc:  # noqa: BLE001
+        raise http_error(exc, f"list {plural}") from exc
+    return res.get("items", [])
+
+
+async def get_item(deps: Deps, plural: str, name: str, namespace: Optional[str] = None) -> Dict[str, Any]:
+    ns = namespace or deps.job_namespace
+    try:
+        if is_cluster_scoped(plural):
+            return await run(deps.k8s_custom.get_cluster_custom_object, group=GROUP, version=VERSION,
+                             plural=plural, name=name)
+        return await run(deps.k8s_custom.get_namespaced_custom_object, group=GROUP, version=VERSION,
+                         namespace=ns, plural=plural, name=name)
+    except Exception as exc:  # noqa: BLE001
+        raise http_error(exc, f"get {plural}/{name}") from exc
+
+
+async def create_item(deps: Deps, plural: str, kind: str, name: str, spec: Dict[str, Any],
+                      namespace: Optional[str] = None, labels: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+    body: Dict[str, Any] = {
+        "apiVersion": f"{GROUP}/{VERSION}",
+        "kind": kind,
+        "metadata": {"name": name, **({"labels": labels} if labels else {})},
+        "spec": spec,
+    }
+    try:
+        if is_cluster_scoped(plural):
+            return await run(deps.k8s_custom.create_cluster_custom_object, group=GROUP, version=VERSION,
+                             plural=plural, body=body)
+        ns = namespace or deps.job_namespace
+        body["metadata"]["namespace"] = ns
+        return await run(deps.k8s_custom.create_namespaced_custom_object, group=GROUP, version=VERSION,
+                         namespace=ns, plural=plural, body=body)
+    except Exception as exc:  # noqa: BLE001
+        raise http_error(exc, f"create {plural}/{name}") from exc
+
+
+async def delete_item(deps: Deps, plural: str, name: str, namespace: Optional[str] = None) -> None:
+    ns = namespace or deps.job_namespace
+    try:
+        if is_cluster_scoped(plural):
+            await run(deps.k8s_custom.delete_cluster_custom_object, group=GROUP, version=VERSION,
+                      plural=plural, name=name)
+        else:
+            await run(deps.k8s_custom.delete_namespaced_custom_object, group=GROUP, version=VERSION,
+                      namespace=ns, plural=plural, name=name)
+    except Exception as exc:  # noqa: BLE001
+        raise http_error(exc, f"delete {plural}/{name}") from exc
+
+
+async def patch_item(deps: Deps, plural: str, name: str, patch: Dict[str, Any],
+                     namespace: Optional[str] = None) -> Dict[str, Any]:
+    ns = namespace or deps.job_namespace
+    try:
+        if is_cluster_scoped(plural):
+            return await run(deps.k8s_custom.patch_cluster_custom_object, group=GROUP, version=VERSION,
+                             plural=plural, name=name, body=patch)
+        return await run(deps.k8s_custom.patch_namespaced_custom_object, group=GROUP, version=VERSION,
+                         namespace=ns, plural=plural, name=name, body=patch)
+    except Exception as exc:  # noqa: BLE001
+        raise http_error(exc, f"update {plural}/{name}") from exc

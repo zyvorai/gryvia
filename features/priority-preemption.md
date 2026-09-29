@@ -501,7 +501,7 @@ kfctl checkpoint test my-job
 
 ## Examples
 
-See `manifests/crds/fabricpriority.yaml` for:
+See `crds/gryvia.io_fabricpriorities.yaml` for:
 - Priority class definitions
 - Example jobs with priorities
 - Preemption event examples

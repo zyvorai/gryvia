@@ -3,22 +3,22 @@ kind: FabricStorage
 metadata:
   name: ddn-exascaler
 spec:
-  backendType: ddn
+  backend: ddn
   endpoint: ddn-mgmt.example.com
   capacity: 1Pi
-  nodeSelector:
-    gryvia.io/storage: "true"
   credentials:
     secretName: ddn-credentials
     secretNamespace: gryvia-system
-  config:
-    filesystemName: lustre-fs1
-    mgsNodes: mgs1.example.com,mgs2.example.com
-    mountOptions:
-      - "rw"
-      - "flock"
-      - "localflock"
-    csiDriverVersion: "v2.3.0"
+  mountOptions:
+    - "rw"
+    - "flock"
+    - "localflock"
+  storageClass:
+    name: ddn-exascaler
+    parameters:
+      filesystemName: lustre-fs1
+      mgsNodes: mgs1.example.com,mgs2.example.com
+      csiDriverVersion: "v2.3.0"
 ---
 apiVersion: v1
 kind: Secret

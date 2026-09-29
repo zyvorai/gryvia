@@ -7,20 +7,21 @@ metadata:
     team: computer-vision
     project: object-detection
 spec:
-  framework: tensorflow
+  type: training
 
   # Distributed configuration
   distributed:
+    framework: tensorflow
     enabled: true
-    strategy: parameter-server
     nodes: 4       # 4 nodes
     gpusPerNode: 4 # 4 GPUs per node = 16 total
 
+  gpus: 16   # 4 nodes x 4 GPUs
+  gpuType: A100-80G
   resources:
-    gpuType: A100-80G
-    gpuCount: 4
-    memory: 256Gi
-    cpu: 32
+    requests:
+      cpu: "32"
+      memory: 256Gi
 
   image: nvcr.io/nvidia/tensorflow:24.01-tf2-py3
 

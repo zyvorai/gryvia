@@ -8,17 +8,17 @@ kind: FabricStorage
 metadata:
   name: vast-production
 spec:
-  backendType: vast
+  backend: vast
   endpoint: vast-mgmt.example.com
   capacity: 500Ti
-  nodeSelector:
-    gryvia.io/storage: "true"
   credentials:
     secretName: vast-credentials
     secretNamespace: gryvia-system
-  config:
-    vipPool: "10.0.0.0/24"
-    mountOptions: ["rw", "relatime", "vers=3"]
+  mountOptions: ["rw", "relatime", "vers=3"]
+  storageClass:
+    name: vast-production
+    parameters:
+      vipPool: "10.0.0.0/24"
 
 ---
 # 2. Network Configuration - RDMA InfiniBand for distributed training
@@ -47,12 +47,12 @@ spec:
   nodeName: gpu-worker-01
   gpuType: H100
   gpuCount: 8
-  memory: 512Gi
-  rdmaEnabled: true
-  nvlinkEnabled: true
+  memoryGB: 80        # GPU memory per GPU
+  rdma: true
+  interconnect: nvlink
   healthCheck:
     enabled: true
-    interval: 60
+    intervalSeconds: 60
 
 ---
 # 4. Team Quotas - ML Research Team
@@ -137,18 +137,20 @@ metadata:
   name: llm-pretraining
   namespace: ml-training
 spec:
-  framework: pytorch
+  type: training
   distributed:
+    framework: pytorch
     enabled: true
-    strategy: ddp
     nodes: 4         # 4 nodes
     gpusPerNode: 8   # 8 GPUs per node = 32 GPUs total
 
+  gpus: 32  # 4 nodes x 8 GPUs
+  gpuType: H100
+  priority: 80
   resources:
-    gpuType: H100
-    gpuCount: 8  # Per node
-    memory: 1Ti
-    cpu: 96
+    requests:
+      cpu: "96"
+      memory: 1Ti
 
   image: nvcr.io/nvidia/pytorch:24.01-py3
 
@@ -174,23 +176,13 @@ spec:
     - name: CUDA_VISIBLE_DEVICES
       value: "0,1,2,3,4,5,6,7"
 
-  storage:
-    - name: training-data
-      storageClassName: vast-production
-      size: 50Ti
-      mountPath: /data
+  # Volume provisioned from the vast-production storage class
+  # (training data ~50Ti + checkpoints ~10Ti)
+  storage: vast-production
+  storageRequest: 60Ti
 
-    - name: checkpoints
-      storageClassName: vast-production
-      size: 10Ti
-      mountPath: /checkpoints
-
-  network:
-    rdma: rdma-training-network
-
-  scheduling:
-    priority: high
-    preemptible: false
+  # RDMA fabric (see rdma-training-network above)
+  network: rdma
 
 ---
 # 9. Inference Service - Computer Vision Model
@@ -200,13 +192,15 @@ metadata:
   name: cv-inference-service
   namespace: cv-prod
 spec:
-  framework: triton
+  type: inference
+  priority: 80
 
+  gpus: 2
+  gpuType: L40
   resources:
-    gpuType: L40
-    gpuCount: 2
-    memory: 128Gi
-    cpu: 32
+    requests:
+      cpu: "32"
+      memory: 128Gi
 
   image: nvcr.io/nvidia/tritonserver:24.01-py3
 
@@ -217,28 +211,8 @@ spec:
     - --grpc-port=8001
     - --metrics-port=8002
 
-  storage:
-    - name: models
-      storageClassName: vast-production
-      size: 1Ti
-      mountPath: /models
-
-  service:
-    type: LoadBalancer
-    ports:
-      - name: http
-        port: 8000
-        targetPort: 8000
-      - name: grpc
-        port: 8001
-        targetPort: 8001
-      - name: metrics
-        port: 8002
-        targetPort: 8002
-
-  scheduling:
-    priority: high
-    preemptible: false
+  storage: vast-production
+  storageRequest: 1Ti   # model repository, mounted for tritonserver (/models)
 
 ---
 # 10. PersistentVolumeClaim for shared dataset

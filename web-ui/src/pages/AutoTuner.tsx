@@ -244,13 +244,27 @@ function CreateTunerModal({ onClose }: { onClose: () => void }) {
     name: '',
     algorithm: 'Bayesian',
     objectiveMetric: 'accuracy',
+    direction: 'maximize' as 'maximize' | 'minimize',
+    image: '',
+    gpus: 1,
+    maxEpochs: 10,
     maxTrials: 20,
     parameterSpace: '{\n  "learning_rate": {"type": "float", "min": 1e-5, "max": 1e-2},\n  "batch_size": {"type": "choice", "values": [16, 32, 64, 128]},\n  "dropout": {"type": "float", "min": 0.0, "max": 0.5}\n}',
   })
   const [error, setError] = useState<string | null>(null)
 
   const createMutation = useMutation({
-    mutationFn: (data: typeof formData) => api.createTuner(data),
+    mutationFn: (data: typeof formData) =>
+      api.createTuner({
+        name: data.name,
+        algorithm: data.algorithm,
+        objectiveMetric: data.objectiveMetric,
+        direction: data.direction,
+        maxTrials: data.maxTrials,
+        parameterSpace: data.parameterSpace,
+        jobTemplate: { type: 'training', image: data.image.trim(), gpus: data.gpus },
+        ...(data.algorithm === 'ASHA' ? { ashaConfig: { maxEpochs: data.maxEpochs } } : {}),
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tuners'] })
       onClose()
@@ -320,6 +334,55 @@ function CreateTunerModal({ onClose }: { onClose: () => void }) {
                 value={formData.objectiveMetric}
                 onChange={(e) => setFormData({ ...formData, objectiveMetric: e.target.value })}
                 placeholder="accuracy"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="faint" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Goal</label>
+              <select
+                value={formData.direction}
+                onChange={(e) => setFormData({ ...formData, direction: e.target.value as 'maximize' | 'minimize' })}
+              >
+                <option value="maximize">Maximize the metric</option>
+                <option value="minimize">Minimize the metric</option>
+              </select>
+            </div>
+            {formData.algorithm === 'ASHA' && (
+              <div>
+                <label className="faint" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Max Epochs (ASHA)</label>
+                <input
+                  type="number"
+                  min="1"
+                  required
+                  value={formData.maxEpochs}
+                  onChange={(e) => setFormData({ ...formData, maxEpochs: parseInt(e.target.value, 10) || 1 })}
+                />
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="faint" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Trial Image</label>
+              <input
+                type="text"
+                required
+                value={formData.image}
+                onChange={(e) => setFormData({ ...formData, image: e.target.value })}
+                placeholder="registry.example.com/train:latest"
+              />
+            </div>
+            <div>
+              <label className="faint" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>GPUs per Trial</label>
+              <input
+                type="number"
+                min="0"
+                max="1024"
+                required
+                value={formData.gpus}
+                onChange={(e) => setFormData({ ...formData, gpus: parseInt(e.target.value, 10) || 0 })}
               />
             </div>
           </div>

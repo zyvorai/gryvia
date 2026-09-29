@@ -134,10 +134,10 @@ check "API accepts the key (cluster stats)" authed "\$BASE/api/cluster/stats"
 check "API lists jobs" authed "\$BASE/api/jobs"
 check "API lists nodes" authed "\$BASE/api/nodes"
 # Custom resource: accepted by the API server and visible through the Gryvia API.
-kubectl delete fabricquota gryvia-smoke -n default --ignore-not-found >/dev/null 2>&1 || true
+kubectl delete fabricquota gryvia-smoke --ignore-not-found >/dev/null 2>&1 || true
 if kubectl apply -f "\$HOME/${REMOTE_SUBDIR}/scripts/lib/smoke-quota.yaml" >/dev/null 2>&1; then
   check "FabricQuota visible through the API" bash -c "curl -sf -H 'Authorization: Bearer \$KEY' '\$BASE/api/quotas' | grep -q gryvia-smoke"
-  kubectl delete fabricquota gryvia-smoke -n default --ignore-not-found >/dev/null 2>&1 || true
+  kubectl delete fabricquota gryvia-smoke --ignore-not-found >/dev/null 2>&1 || true
 else
   echo "  FAIL  apply FabricQuota"; fail=1
 fi
@@ -214,7 +214,24 @@ if [[ "\$MODE" != "quick" ]]; then
 fi
 
 echo "Installing CRDs ..."
-python3 scripts/lib/crds-only.py manifests/crds/*.yaml | kubectl apply --server-side --force-conflicts -f -
+# A CRD's scope cannot be changed in place. If the installed scope differs from the
+# generated one, recreate the CRD, but only when it has no objects (deleting a CRD
+# deletes them); otherwise stop and say so.
+for f in crds/*.yaml; do
+  crd="\$(sed -n 's/^  name: \\(.*\\.gryvia\\.io\\)\$/\\1/p' "\$f" | head -1)"
+  want="\$(sed -n 's/^  scope: //p' "\$f" | head -1)"
+  have="\$(kubectl get crd "\$crd" -o jsonpath='{.spec.scope}' 2>/dev/null || true)"
+  if [[ -n "\$have" && "\$have" != "\$want" ]]; then
+    n="\$(kubectl get "\$crd" -A --no-headers 2>/dev/null | wc -l | tr -d ' ')"
+    if [[ "\$n" != "0" ]]; then
+      echo "CRD \$crd is \$have-scoped but should be \$want and has \$n object(s); back them up, delete them and the CRD, then redeploy" >&2
+      exit 1
+    fi
+    echo "Recreating \$crd (scope \$have -> \$want, no objects)"
+    kubectl delete crd "\$crd"
+  fi
+done
+kubectl apply --server-side --force-conflicts -f crds/
 
 echo "Installing gryvia-core (operators) ..."
 helm upgrade --install gryvia-core ./helm/gryvia-core \\

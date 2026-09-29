@@ -266,13 +266,10 @@ metadata:
   name: jupyterhub-users
 spec:
   team: jupyterhub
-  limits:
+  namespaces:
+    - jupyterhub
+  gpuQuota:
     maxGPUs: 32
-    gpuHours: 10000
   budget:
-    monthly: 100000
-  notifications:
-    - type: email
-      threshold: 80
-      recipients:
-        - admin@company.com
+    monthlyBudget: 100000
+    alertThreshold: 80

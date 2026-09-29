@@ -1,0 +1,192 @@
+# Example: Platinum SLA (Production)
+apiVersion: gryvia.io/v1
+kind: FabricSLA
+metadata:
+  name: production-platinum
+spec:
+  tier: platinum
+
+  scope:
+    type: job-type
+    name: production
+
+  performance:
+    maxQueueTime: 5m
+    guaranteedStart: true
+    minThroughput:
+      value: 1000
+      unit: requests/sec
+
+  availability:
+    uptime: 99.99  # Four nines
+    maxDowntimeMinutes: 4.38  # Per month
+    maintenanceWindows:
+      - dayOfWeek: Sunday
+        startTime: "02:00"
+        duration: "2h"
+
+  resources:
+    guaranteedGPUTypes:
+      - H100
+      - A100-80G
+    reservedCapacity:
+      gpuCount: 64
+      always: true
+    fallbackAllowed: false
+
+  failureHandling:
+    autoRetry: true
+    maxRetries: 5
+    compensation:
+      enabled: true
+      type: credit
+      percentage: 100  # 100% credit for SLA breach
+
+  support:
+    responseTime: 15m
+    channels: [slack, pagerduty, phone]
+    businessHours: false  # 24/7 support
+
+  monitoring:
+    metricsRetention: 1y
+    reports:
+      frequency: weekly
+      recipients:
+        - production-team@company.com
+        - sre-team@company.com
+---
+# Example: Gold SLA (Research)
+apiVersion: gryvia.io/v1
+kind: FabricSLA
+metadata:
+  name: research-gold
+spec:
+  tier: gold
+
+  scope:
+    type: team
+    name: ml-research
+
+  performance:
+    maxQueueTime: 30m
+    guaranteedStart: true
+
+  availability:
+    uptime: 99.9  # Three nines
+    maxDowntimeMinutes: 43.2  # Per month
+
+  resources:
+    guaranteedGPUTypes:
+      - A100-80G
+      - A100-40G
+    fallbackAllowed: true
+
+  failureHandling:
+    autoRetry: true
+    maxRetries: 3
+    compensation:
+      enabled: true
+      type: priority-boost
+      percentage: 50
+
+  support:
+    responseTime: 4h
+    channels: [email, slack]
+    businessHours: true
+
+  monitoring:
+    metricsRetention: 90d
+    reports:
+      frequency: monthly
+      recipients:
+        - ml-team-lead@company.com
+---
+# Example: Silver SLA (Development)
+apiVersion: gryvia.io/v1
+kind: FabricSLA
+metadata:
+  name: dev-silver
+spec:
+  tier: silver
+
+  scope:
+    type: team
+    name: dev-team
+
+  performance:
+    maxQueueTime: 2h
+    guaranteedStart: false
+
+  availability:
+    uptime: 99.0
+    maxDowntimeMinutes: 432  # Per month
+
+  resources:
+    guaranteedGPUTypes:
+      - T4
+      - V100
+    fallbackAllowed: true
+
+  failureHandling:
+    autoRetry: true
+    maxRetries: 2
+    compensation:
+      enabled: false
+
+  support:
+    responseTime: 1d
+    channels: [email]
+    businessHours: true
+
+  monitoring:
+    metricsRetention: 30d
+    reports:
+      frequency: monthly
+      recipients:
+        - dev-team@company.com
+---
+# Example: Job with SLA
+apiVersion: gryvia.io/v1
+kind: FabricAIJob
+metadata:
+  name: production-inference
+spec:
+  type: inference
+  # Covered by the production-platinum FabricSLA (see above)
+
+  gpus: 8
+  gpuType: H100
+
+  # SLA requirements enforced
+  # - Max 5 minute queue time
+  # - Guaranteed H100 GPUs
+  # - Auto-retry on failure
+  # - 24/7 support
+
+  image: vllm/vllm:v0.6.6
+  command: ["python", "-m", "vllm.entrypoints.api_server"]
+---
+# SLA Status Example
+apiVersion: gryvia.io/v1
+kind: FabricSLA
+metadata:
+  name: production-platinum
+status:
+  compliance:
+    current: 99.95
+    trend: stable
+    lastMonth: 99.92
+
+  metrics:
+    avgQueueTime: 2m30s
+    p95QueueTime: 4m45s
+    p99QueueTime: 4m58s
+    uptime: 99.95
+    breaches: 1
+
+  breaches:
+    - timestamp: "2024-01-15T10:30:00Z"
+      type: queue-time-exceeded
+      severity: medium
+      duration: 2m  # Queue time was 7m instead of 5m
+      compensated: true

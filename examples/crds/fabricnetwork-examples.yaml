@@ -1,0 +1,133 @@
+# Example: InfiniBand HDR200 Configuration
+apiVersion: gryvia.io/v1
+kind: FabricNetworkPolicy
+metadata:
+  name: infiniband-hdr200
+spec:
+  topology: infiniband
+
+  infiniband:
+    enabled: true
+    speed: HDR200  # 200 Gb/s
+    subnetManager: ib-sm.cluster.local
+    rdma:
+      mode: exclusive
+      devicesPerNode: 8
+
+  gpuDirect:
+    enabled: true
+    numaAffinity: true
+
+  nccl:
+    socketIfName: "ib0"
+    ibGidIndex: 3
+    ibTc: 136
+    minNRings: 8
+    maxNRings: 16
+    ibDisable: false
+    p2pDisable: false
+
+  bandwidthReservation:
+    enabled: true
+    minBandwidthGbps: 100
+    maxBandwidthGbps: 200
+---
+# Example: RoCEv2 Configuration
+apiVersion: gryvia.io/v1
+kind: FabricNetworkPolicy
+metadata:
+  name: roce-v2
+spec:
+  topology: roce
+
+  roce:
+    enabled: true
+    version: v2
+    pfc:
+      enabled: true
+      priorities: [3, 4]
+    ecn:
+      enabled: true
+
+  sriov:
+    enabled: true
+    vfsPerNIC: 16
+    resourcePool: mellanox-rdma
+
+  gpuDirect:
+    enabled: true
+
+  nccl:
+    socketIfName: "enp0s3f0"
+    minNRings: 4
+    maxNRings: 8
+---
+# Example: Multi-Rail Network
+apiVersion: gryvia.io/v1
+kind: FabricNetworkPolicy
+metadata:
+  name: multi-rail
+spec:
+  topology: multi-rail
+
+  # Use multiple network interfaces for bandwidth aggregation
+  infiniband:
+    enabled: true
+    speed: HDR200
+    rdma:
+      mode: exclusive
+      devicesPerNode: 8  # 8 IB interfaces per node
+
+  nccl:
+    # Use all IB interfaces
+    socketIfName: "ib0,ib1,ib2,ib3,ib4,ib5,ib6,ib7"
+    minNRings: 16
+    maxNRings: 32
+
+  segmentation:
+    enabled: true
+    vlans:
+      management: 100
+      storage: 200
+      compute: 300
+---
+# Example: Job with Network Requirements
+apiVersion: gryvia.io/v1
+kind: FabricAIJob
+metadata:
+  name: distributed-training-ib
+spec:
+  type: training
+
+  # Network requirements
+  # RDMA fabric (InfiniBand HDR200 with GPUDirect, see FabricNetworkPolicy above)
+  network: rdma
+
+  # Enable NCCL optimizations
+  env:
+    - name: NCCL_SOCKET_IFNAME
+      value: "ib0"
+    - name: NCCL_IB_GID_INDEX
+      value: "3"
+    - name: NCCL_IB_TC
+      value: "136"
+    - name: NCCL_IB_DISABLE
+      value: "0"
+    - name: NCCL_NET_GDR_LEVEL
+      value: "5"  # Enable GPUDirect RDMA
+
+  distributed:
+    framework: pytorch
+    enabled: true
+    nodes: 8
+    gpusPerNode: 8
+
+  gpus: 64   # 8 nodes x 8 GPUs
+  gpuType: A100-80G
+
+  image: nvcr.io/nvidia/pytorch:24.01-py3
+  command:
+    - torchrun
+    - --nproc_per_node=8
+    - --nnodes=8
+    - train.py

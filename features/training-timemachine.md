@@ -335,5 +335,5 @@ FabricAIJob (source) --> Time Machine Controller
 ## Support
 
 - Issues: https://github.com/zyvorai/gryvia/issues
-- CRD Reference: `manifests/crds/fabrictrainingtimemachine.yaml`
+- CRD Reference: `crds/gryvia.io_fabrictrainingtimemachines.yaml`
 - Example: `examples/training/timemachine-example.yaml`

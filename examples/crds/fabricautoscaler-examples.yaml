@@ -1,0 +1,170 @@
+# Example: A100 Queue Auto-Scaler
+apiVersion: gryvia.io/v1
+kind: FabricAutoScaler
+metadata:
+  name: a100-autoscaler
+spec:
+  queueRef: ml-research-queue
+  gpuType: A100-80G
+
+  minNodes: 2    # Always keep 2 nodes
+  maxNodes: 20   # Scale up to 20 nodes
+
+  scaleUpPolicy:
+    # Scale up if:
+    # - More than 10 pending jobs
+    # - OR queue time > 30 minutes
+    # - OR utilization > 85%
+    pendingJobs: 10
+    queueTimeMinutes: 30
+    utilizationPercent: 85
+
+    increment: 2  # Add 2 nodes at a time
+    cooldownMinutes: 5
+
+  scaleDownPolicy:
+    # Scale down if:
+    # - Idle for > 15 minutes
+    # - AND utilization < 30%
+    idleTimeMinutes: 15
+    utilizationPercent: 30
+
+    decrement: 1  # Remove 1 node at a time
+    cooldownMinutes: 15
+
+  nodeProvider:
+    type: bare-metal  # Use existing bare metal nodes
+
+  costControls:
+    maxHourlyCost: 1000  # Max $1000/hour for autoscaled nodes
+---
+# Example: Cloud-Based Auto-Scaler with Spot Instances
+apiVersion: gryvia.io/v1
+kind: FabricAutoScaler
+metadata:
+  name: t4-spot-autoscaler
+spec:
+  queueRef: inference-queue
+  gpuType: T4
+
+  minNodes: 0     # Can scale to zero
+  maxNodes: 50    # Scale up to 50 nodes
+
+  scaleUpPolicy:
+    pendingJobs: 5
+    queueTimeMinutes: 10
+    increment: 3
+    cooldownMinutes: 3
+
+  scaleDownPolicy:
+    idleTimeMinutes: 10
+    utilizationPercent: 20
+    decrement: 2
+    cooldownMinutes: 10
+
+  nodeProvider:
+    type: cloud-provision
+    cloud:
+      provider: aws
+      instanceType: g4dn.xlarge  # 1x T4
+      region: us-west-2
+      zone: us-west-2a
+      spotInstances: true  # Use spot for 70% savings
+
+  costControls:
+    maxHourlyCost: 500
+    preferSpot: true
+    maxSpotPrice: 0.50  # Max $0.50/hour per instance
+
+  advanced:
+    scaleToZero: true  # Allow complete scale-down
+---
+# Example: Predictive Auto-Scaler
+apiVersion: gryvia.io/v1
+kind: FabricAutoScaler
+metadata:
+  name: h100-predictive-autoscaler
+spec:
+  queueRef: training-queue
+  gpuType: H100
+
+  minNodes: 4
+  maxNodes: 16
+
+  scaleUpPolicy:
+    pendingJobs: 5
+    queueTimeMinutes: 20
+    increment: 2
+    cooldownMinutes: 5
+
+  scaleDownPolicy:
+    idleTimeMinutes: 20
+    utilizationPercent: 40
+    decrement: 1
+    cooldownMinutes: 20
+
+  nodeProvider:
+    type: bare-metal
+
+  advanced:
+    predictive: true  # Use ML to predict scaling needs
+    # Will scale up BEFORE jobs arrive based on patterns
+---
+# Auto-Scaler Status Example
+apiVersion: gryvia.io/v1
+kind: FabricAutoScaler
+metadata:
+  name: a100-autoscaler
+status:
+  currentNodes: 6
+  desiredNodes: 8
+  pendingNodes: 2  # 2 nodes being provisioned
+
+  lastScaleTime: "2024-01-21T10:30:00Z"
+  lastScaleAction: scale-up
+
+  metrics:
+    pendingJobs: 15
+    avgQueueTimeMinutes: 35
+    utilizationPercent: 88
+
+  conditions:
+    - type: ScalingActive
+      status: "True"
+      reason: HighQueueTime
+      message: "Scaled up by 2 nodes due to queue time >30min"
+
+    - type: AtMaxCapacity
+      status: "False"
+      reason: "BelowMax"
+      message: "Current: 6, Max: 20"
+
+    - type: CostLimitReached
+      status: "False"
+      reason: "WithinBudget"
+      message: "Current cost: $720/hr, Limit: $1000/hr"
+---
+# Scaling Events
+apiVersion: v1
+kind: Event
+metadata:
+  name: autoscaler-scale-up
+type: Normal
+reason: ScaledUp
+message: |
+  FabricAutoScaler 'a100-autoscaler' scaled up
+
+  Trigger: Queue time exceeded threshold
+  Queue Time: 35 minutes (threshold: 30 minutes)
+  Pending Jobs: 15
+
+  Scaling Action:
+    Previous Nodes: 6
+    New Nodes: 8 (+2)
+
+  New Nodes:
+    - gpu-node-07 (8x A100-80G) - provisioning
+    - gpu-node-08 (8x A100-80G) - provisioning
+
+  Estimated Time: 5-10 minutes
+  Estimated Cost: +$192/hour

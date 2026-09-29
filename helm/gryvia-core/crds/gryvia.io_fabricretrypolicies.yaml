@@ -1,0 +1,195 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.22.0
+  name: fabricretrypolicies.gryvia.io
+spec:
+  group: gryvia.io
+  names:
+    kind: FabricRetryPolicy
+    listKind: FabricRetryPolicyList
+    plural: fabricretrypolicies
+    singular: fabricretrypolicy
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.maxRetries
+      name: Max-Retries
+      type: integer
+    - jsonPath: .spec.backoff.type
+      name: Backoff
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: FabricRetryPolicy is the Schema for the fabricretrypolicies API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: FabricRetryPolicySpec defines the desired state of FabricRetryPolicy
+            properties:
+              backoff:
+                description: Backoff defines the backoff strategy
+                properties:
+                  initialDelay:
+                    description: InitialDelay is the initial delay between retries
+                    type: string
+                  maxDelay:
+                    description: MaxDelay is the maximum delay between retries
+                    type: string
+                  multiplier:
+                    description: Multiplier is the backoff multiplier for exponential
+                      backoff
+                    type: number
+                  type:
+                    description: Type is the backoff type (fixed, exponential, fibonacci,
+                      random)
+                    type: string
+                type: object
+              budget:
+                description: Budget defines cost and time limits for retries
+                properties:
+                  maxCostUSD:
+                    description: MaxCostUSD is the maximum cost for all retries
+                    type: number
+                  maxTotalTime:
+                    description: MaxTotalTime is the maximum total time for all attempts
+                    type: string
+                type: object
+              circuitBreaker:
+                description: CircuitBreaker defines circuit breaker configuration
+                properties:
+                  enabled:
+                    description: Enabled enables circuit breaker
+                    type: boolean
+                  failureThreshold:
+                    description: FailureThreshold is the number of consecutive failures
+                      before opening circuit
+                    format: int32
+                    type: integer
+                  resetTimeout:
+                    description: ResetTimeout is the time to wait before closing the
+                      circuit
+                    type: string
+                type: object
+              maxRetries:
+                description: MaxRetries is the maximum number of retries
+                format: int32
+                type: integer
+              noRetryOn:
+                description: NoRetryOn defines conditions that prevent a retry
+                properties:
+                  errors:
+                    description: Errors lists error message substrings that prevent
+                      retry
+                    items:
+                      type: string
+                    type: array
+                  exitCodes:
+                    description: ExitCodes lists exit codes that prevent retry
+                    items:
+                      format: int32
+                      type: integer
+                    type: array
+                type: object
+              resourceAdjustment:
+                description: ResourceAdjustment defines resource changes on retry
+                properties:
+                  enabled:
+                    description: Enabled enables resource adjustment
+                    type: boolean
+                  onOutOfMemory:
+                    description: OnOutOfMemory defines adjustments for OOM failures
+                    properties:
+                      increaseGPUMemory:
+                        description: IncreaseGPUMemory switches to a larger GPU type
+                        type: boolean
+                      increaseMemory:
+                        description: IncreaseMemory is the percentage to increase
+                          memory
+                        type: string
+                    type: object
+                type: object
+              retryOn:
+                description: RetryOn defines conditions that trigger a retry
+                properties:
+                  conditions:
+                    description: Conditions lists failure types that trigger a retry
+                    items:
+                      description: RetryConditionType defines a typed retry condition
+                      properties:
+                        enabled:
+                          description: Enabled controls whether this condition triggers
+                            retries
+                          type: boolean
+                        type:
+                          description: Type is the condition type (OutOfMemory, NodeFailure,
+                            NetworkError, etc.)
+                          type: string
+                      required:
+                      - enabled
+                      - type
+                      type: object
+                    type: array
+                  errors:
+                    description: Errors lists error message substrings that trigger
+                      a retry
+                    items:
+                      type: string
+                    type: array
+                  exitCodes:
+                    description: ExitCodes lists exit codes that trigger a retry
+                    items:
+                      format: int32
+                      type: integer
+                    type: array
+                type: object
+            type: object
+          status:
+            description: FabricRetryPolicyStatus defines the observed state of FabricRetryPolicy
+            properties:
+              attempts:
+                description: Attempts is the total number of retry attempts
+                format: int32
+                type: integer
+              lastAttemptTime:
+                description: LastAttemptTime is the time of the last retry attempt
+                format: date-time
+                type: string
+              nextRetryTime:
+                description: NextRetryTime is the scheduled time for the next retry
+                format: date-time
+                type: string
+              state:
+                description: State is the current state (active, circuit-open, budget-exceeded)
+                type: string
+              successRate:
+                description: SuccessRate is the retry success rate
+                type: number
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

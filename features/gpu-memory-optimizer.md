@@ -255,5 +255,5 @@ FabricGpuNode (status.gpuStatus) --> Memory Optimizer Controller
 ## Support
 
 - Issues: https://github.com/zyvorai/gryvia/issues
-- CRD Reference: `manifests/crds/fabricgpumemoryoptimizer.yaml`
+- CRD Reference: `crds/gryvia.io_fabricgpumemoryoptimizers.yaml` (generated from the Go types)
 - Example: `examples/training/memory-optimizer-example.yaml`

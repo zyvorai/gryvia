@@ -260,13 +260,10 @@ metadata:
   name: ray-cluster-quota
 spec:
   team: ml-platform
-  limits:
+  namespaces:
+    - default
+  gpuQuota:
     maxGPUs: 32
-    gpuHours: 5000
   budget:
-    monthly: 150000
-  notifications:
-    - type: email
-      threshold: 80
-      recipients:
-        - platform-team@company.com
+    monthlyBudget: 150000
+    alertThreshold: 80

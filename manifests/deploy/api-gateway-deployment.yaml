@@ -98,9 +98,42 @@ kind: ClusterRole
 metadata:
   name: gryvia-api-gateway
 rules:
+# Read every kind the gateway serves.
 - apiGroups: ["gryvia.io"]
-  resources: ["fabricaijobs", "fabricquotas", "fabricgpunodes", "fabricstorages", "fabricnetworks"]
+  resources:
+  - fabricaijobs
+  - fabricquotas
+  - fabricgpunodes
+  - fabricstorages
+  - fabricnetworks
+  - fabricworkspaces
+  - fabricmodelregistries
+  - fabricinferenceservices
+  - fabricworkflows
+  - fabricautotuners
+  - fabricflowpolicies
+  - fabrictrafficinsights
+  - fabricservicegraphs
+  - fabricnetworkanomalies
+  - fabricnetworkcosts
+  - fabrictracesessions
+  - fabricsecuritypolicies
+  - fabrictraininginsights
+  - fabricgpumemoryoptimizers
   verbs: ["get", "list", "watch"]
+# Write only the kinds the API creates, deletes or updates.
+- apiGroups: ["gryvia.io"]
+  resources:
+  - fabricaijobs
+  - fabricworkspaces
+  - fabricinferenceservices
+  - fabricworkflows
+  - fabricautotuners
+  - fabricflowpolicies
+  - fabrictracesessions
+  - fabricsecuritypolicies
+  - fabricmodelregistries
+  verbs: ["create", "delete", "patch"]
 - apiGroups: [""]
   resources: ["nodes", "pods", "namespaces"]
   verbs: ["get", "list", "watch"]

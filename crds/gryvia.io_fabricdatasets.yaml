@@ -1,0 +1,278 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.22.0
+  name: fabricdatasets.gryvia.io
+spec:
+  group: gryvia.io
+  names:
+    kind: FabricDataset
+    listKind: FabricDatasetList
+    plural: fabricdatasets
+    singular: fabricdataset
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.type
+      name: Type
+      type: string
+    - jsonPath: .status.currentVersion
+      name: Version
+      type: string
+    - jsonPath: .status.state
+      name: State
+      type: string
+    - jsonPath: .status.usage.jobsUsing
+      name: Jobs-Using
+      type: integer
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: FabricDataset is the Schema for the fabricdatasets API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: FabricDatasetSpec defines the desired state of FabricDataset
+            properties:
+              access:
+                description: Access defines access control
+                properties:
+                  allowedTeams:
+                    description: AllowedTeams lists teams that can access the dataset
+                    items:
+                      type: string
+                    type: array
+                  allowedUsers:
+                    description: AllowedUsers lists users that can access the dataset
+                    items:
+                      type: string
+                    type: array
+                  public:
+                    description: Public indicates whether the dataset is publicly
+                      accessible
+                    type: boolean
+                type: object
+              cache:
+                description: Cache defines caching configuration
+                properties:
+                  enabled:
+                    description: Enabled enables caching
+                    type: boolean
+                  size:
+                    description: Size is the cache size
+                    type: string
+                  storageClass:
+                    description: StorageClass is the storage class for cache PVCs
+                    type: string
+                  warmup:
+                    description: Warmup enables pre-loading cache on first access
+                    type: boolean
+                type: object
+              description:
+                description: Description is a human-readable description
+                type: string
+              license:
+                description: License is the dataset license
+                type: string
+              source:
+                description: Source defines the data source
+                properties:
+                  http:
+                    description: HTTP is the HTTP configuration
+                    properties:
+                      checksumURL:
+                        description: ChecksumURL is the URL for checksum verification
+                        type: string
+                      url:
+                        description: URL is the download URL
+                        type: string
+                    required:
+                    - url
+                    type: object
+                  nfs:
+                    description: NFS is the NFS configuration
+                    properties:
+                      path:
+                        description: Path is the NFS export path
+                        type: string
+                      server:
+                        description: Server is the NFS server address
+                        type: string
+                    required:
+                    - path
+                    - server
+                    type: object
+                  s3:
+                    description: S3 is the S3 configuration
+                    properties:
+                      bucket:
+                        description: Bucket is the S3 bucket name
+                        type: string
+                      credentialsSecret:
+                        description: CredentialsSecret is the name of the secret with
+                          credentials
+                        type: string
+                      prefix:
+                        description: Prefix is the S3 key prefix
+                        type: string
+                      region:
+                        description: Region is the S3 region
+                        type: string
+                    required:
+                    - bucket
+                    type: object
+                  type:
+                    description: Type is the source type (s3, gcs, azure-blob, nfs,
+                      http, git-lfs, vast)
+                    type: string
+                required:
+                - type
+                type: object
+              statistics:
+                description: Statistics defines dataset statistics
+                properties:
+                  fileCount:
+                    description: FileCount is the number of files
+                    format: int64
+                    type: integer
+                  sampleCount:
+                    description: SampleCount is the number of samples
+                    format: int64
+                    type: integer
+                  totalSizeBytes:
+                    description: TotalSizeBytes is the total size in bytes
+                    format: int64
+                    type: integer
+                type: object
+              tags:
+                description: Tags are searchable labels
+                items:
+                  type: string
+                type: array
+              type:
+                description: Type is the dataset type (image, text, audio, video,
+                  tabular, multimodal)
+                type: string
+              version:
+                description: Version is the semantic version
+                type: string
+              versioning:
+                description: Versioning defines versioning configuration
+                properties:
+                  enabled:
+                    description: Enabled enables versioning
+                    type: boolean
+                  retentionPolicy:
+                    description: RetentionPolicy defines version retention
+                    properties:
+                      keepDays:
+                        description: KeepDays is the number of days to keep versions
+                        format: int32
+                        type: integer
+                      keepLast:
+                        description: KeepLast is the number of versions to keep
+                        format: int32
+                        type: integer
+                    type: object
+                  strategy:
+                    description: Strategy is the versioning strategy (snapshot, incremental,
+                      git-lfs)
+                    type: string
+                type: object
+            required:
+            - source
+            type: object
+          status:
+            description: FabricDatasetStatus defines the observed state of FabricDataset
+            properties:
+              cacheStatus:
+                description: CacheStatus holds cache information
+                properties:
+                  cached:
+                    description: Cached indicates whether data is cached
+                    type: boolean
+                  hitRate:
+                    description: HitRate is the cache hit rate
+                    type: number
+                  lastAccess:
+                    description: LastAccess is the last cache access time
+                    format: date-time
+                    type: string
+                type: object
+              currentVersion:
+                description: CurrentVersion is the current active version
+                type: string
+              state:
+                description: State is the current state (initializing, ready, error,
+                  syncing)
+                type: string
+              usage:
+                description: Usage holds usage information
+                properties:
+                  jobsUsing:
+                    description: JobsUsing is the number of jobs currently using the
+                      dataset
+                    format: int32
+                    type: integer
+                  lastUsedBy:
+                    description: LastUsedBy is the name of the last job that used
+                      the dataset
+                    type: string
+                  totalAccesses:
+                    description: TotalAccesses is the total number of accesses
+                    format: int64
+                    type: integer
+                type: object
+              versions:
+                description: Versions is the list of available versions
+                items:
+                  description: DatasetVersionInfo holds version metadata
+                  properties:
+                    changes:
+                      description: Changes describes what changed
+                      type: string
+                    checksum:
+                      description: Checksum is the version checksum
+                      type: string
+                    createdAt:
+                      description: CreatedAt is the version creation time
+                      format: date-time
+                      type: string
+                    size:
+                      description: Size is the version size in bytes
+                      format: int64
+                      type: integer
+                    version:
+                      description: Version is the version string
+                      type: string
+                  required:
+                  - version
+                  type: object
+                type: array
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

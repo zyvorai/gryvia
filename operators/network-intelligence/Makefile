@@ -33,12 +33,7 @@ docker-push:
 
 .PHONY: deploy
 deploy:
-	kubectl apply -f ../../manifests/crds/fabricflowpolicy.yaml
-	kubectl apply -f ../../manifests/crds/fabrictrafficinsight.yaml
-	kubectl apply -f ../../manifests/crds/fabricautopolicy.yaml
-	kubectl apply -f ../../manifests/crds/fabrictracesession.yaml
-	kubectl apply -f ../../manifests/crds/fabricservicegraph.yaml
-	kubectl apply -f ../../manifests/crds/fabricnetworkanomaly.yaml
+	kubectl apply --server-side -f ../../crds/
 	kubectl apply -f config/
 
 .PHONY: undeploy

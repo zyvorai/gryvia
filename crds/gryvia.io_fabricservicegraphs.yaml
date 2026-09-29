@@ -1,0 +1,121 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.22.0
+  name: fabricservicegraphs.gryvia.io
+spec:
+  group: gryvia.io
+  names:
+    kind: FabricServiceGraph
+    listKind: FabricServiceGraphList
+    plural: fabricservicegraphs
+    singular: fabricservicegraph
+  scope: Namespaced
+  versions:
+  - name: v1
+    schema:
+      openAPIV3Schema:
+        description: FabricServiceGraph is the Schema for the fabricservicegraphs
+          API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: FabricServiceGraphSpec defines the desired state of FabricServiceGraph
+            properties:
+              depth:
+                description: Depth is the maximum graph traversal depth (1-10)
+                type: integer
+              includeExternal:
+                description: IncludeExternal includes traffic to/from external endpoints
+                type: boolean
+              namespaces:
+                description: Namespaces is the list of namespaces to include in the
+                  graph
+                items:
+                  type: string
+                type: array
+              refreshInterval:
+                description: RefreshInterval is the interval between graph refreshes
+                  (e.g., 30s, 5m)
+                type: string
+            type: object
+          status:
+            description: FabricServiceGraphStatus defines the observed state of FabricServiceGraph
+            properties:
+              edges:
+                description: Edges is the list of connections between services
+                items:
+                  description: ServiceGraphEdge represents a connection between services
+                  properties:
+                    destination:
+                      description: Destination is the destination service name
+                      type: string
+                    latencyP99:
+                      description: LatencyP99 is the 99th percentile latency
+                      type: string
+                    port:
+                      description: Port is the destination port
+                      type: integer
+                    protocol:
+                      description: Protocol is the network protocol used
+                      type: string
+                    source:
+                      description: Source is the source service name
+                      type: string
+                    throughput:
+                      description: Throughput is the traffic throughput
+                      type: string
+                    verdict:
+                      description: Verdict indicates the traffic verdict (forwarded,
+                        dropped, error)
+                      type: string
+                  type: object
+                type: array
+              lastUpdated:
+                description: LastUpdated is the timestamp of the last graph refresh
+                format: date-time
+                type: string
+              nodes:
+                description: Nodes is the list of services in the graph
+                items:
+                  description: ServiceGraphNode represents a service in the dependency
+                    graph
+                  properties:
+                    health:
+                      description: Health is the service health status
+                      type: string
+                    name:
+                      description: Name is the service name
+                      type: string
+                    namespace:
+                      description: Namespace is the service namespace
+                      type: string
+                    type:
+                      description: Type is the node type (service, deployment, external)
+                      type: string
+                  type: object
+                type: array
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

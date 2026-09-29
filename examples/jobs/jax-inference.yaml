@@ -8,13 +8,14 @@ metadata:
     project: image-generation
     workload-type: inference
 spec:
-  framework: jax
+  type: inference
 
+  gpus: 1
+  gpuType: L40
   resources:
-    gpuType: L40
-    gpuCount: 1
-    memory: 64Gi
-    cpu: 16
+    requests:
+      cpu: "16"
+      memory: 64Gi
 
   image: nvcr.io/nvidia/jax:24.01-py3
 
@@ -33,15 +34,6 @@ spec:
       value: "false"
     - name: XLA_PYTHON_CLIENT_ALLOCATOR
       value: platform
-
-  # Service exposure for inference
-  service:
-    type: LoadBalancer
-    ports:
-      - name: http
-        port: 8000
-        targetPort: 8000
-        protocol: TCP
 
   volumeMounts:
     - name: models

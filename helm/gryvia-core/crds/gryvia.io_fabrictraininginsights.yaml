@@ -1,0 +1,128 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.22.0
+  name: fabrictraininginsights.gryvia.io
+spec:
+  group: gryvia.io
+  names:
+    kind: FabricTrainingInsight
+    listKind: FabricTrainingInsightList
+    plural: fabrictraininginsights
+    singular: fabrictraininginsight
+  scope: Namespaced
+  versions:
+  - name: v1
+    schema:
+      openAPIV3Schema:
+        description: FabricTrainingInsight is the Schema for the fabrictraininginsights
+          API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: FabricTrainingInsightSpec defines the desired state of FabricTrainingInsight
+            properties:
+              analysisWindow:
+                description: AnalysisWindow is the time window for analysis (e.g.,
+                  "5m", "1h")
+                type: string
+              metrics:
+                description: |-
+                  Metrics is the list of analysis metrics to collect
+                  Supported: collective_timing, straggler_detection, communication_ratio, pattern_analysis
+                items:
+                  type: string
+                type: array
+              targetJob:
+                description: TargetJob is the name of the FabricAIJob to analyze
+                type: string
+            type: object
+          status:
+            description: FabricTrainingInsightStatus defines the observed state of
+              FabricTrainingInsight
+            properties:
+              bottleneck:
+                description: Bottleneck identifies the primary bottleneck (compute,
+                  communication, data_loading)
+                type: string
+              commComputeRatio:
+                description: CommComputeRatio is the ratio of communication time to
+                  compute time
+                type: number
+              commPattern:
+                description: CommPattern is the detected communication pattern (ring_allreduce,
+                  tree_allreduce, pipelined)
+                type: string
+              lastAnalysis:
+                description: LastAnalysis is the timestamp of the last analysis
+                format: date-time
+                type: string
+              phase:
+                description: Phase is the current analysis phase
+                type: string
+              rankStats:
+                description: RankStats contains per-rank communication statistics
+                items:
+                  description: RankStat contains per-rank communication statistics
+                  properties:
+                    avgLatencyNs:
+                      description: AvgLatencyNs is the average communication latency
+                        in nanoseconds
+                      format: int64
+                      type: integer
+                    isStraggler:
+                      description: IsStraggler indicates whether this rank is identified
+                        as a straggler
+                      type: boolean
+                    rank:
+                      description: Rank is the distributed training rank
+                      type: integer
+                    totalBytes:
+                      description: TotalBytes is the total bytes communicated by this
+                        rank
+                      format: int64
+                      type: integer
+                  type: object
+                type: array
+              stragglers:
+                description: Stragglers lists detected straggler ranks
+                items:
+                  description: StragglerInfo provides details about a detected straggler
+                    rank
+                  properties:
+                    rank:
+                      description: Rank is the straggler rank
+                      type: integer
+                    reason:
+                      description: Reason describes the suspected cause of the slowdown
+                      type: string
+                    slowdownFactor:
+                      description: SlowdownFactor is how much slower this rank is
+                        compared to the median
+                      type: number
+                  type: object
+                type: array
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

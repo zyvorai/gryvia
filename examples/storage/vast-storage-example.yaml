@@ -3,21 +3,21 @@ kind: FabricStorage
 metadata:
   name: vast-production
 spec:
-  backendType: vast
+  backend: vast
   endpoint: vast-mgmt.example.com
   capacity: 100Ti
-  nodeSelector:
-    gryvia.io/storage: "true"
   credentials:
     secretName: vast-credentials
     secretNamespace: gryvia-system
-  config:
-    vipPool: "10.0.0.0/24"
-    mountOptions:
-      - "rw"
-      - "relatime"
-      - "vers=3"
-    csiDriverVersion: "v2.5.0"
+  mountOptions:
+    - "rw"
+    - "relatime"
+    - "vers=3"
+  storageClass:
+    name: vast-production
+    parameters:
+      vipPool: "10.0.0.0/24"
+      csiDriverVersion: "v2.5.0"
 ---
 apiVersion: v1
 kind: Secret

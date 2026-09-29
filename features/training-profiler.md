@@ -18,7 +18,7 @@ FabricTrainingProfiler is a Kubernetes-native profiling system that:
 ### 1. Deploy the CRD
 
 ```bash
-kubectl apply -f manifests/crds/fabrictrainingprofiler.yaml
+kubectl apply -f crds/gryvia.io_fabrictrainingprofilers.yaml
 ```
 
 ### 2. Create a Profiler

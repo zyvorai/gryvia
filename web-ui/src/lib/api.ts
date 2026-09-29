@@ -372,8 +372,13 @@ export interface CreateTunerRequest {
   name: string
   algorithm: string
   objectiveMetric: string
+  direction: 'maximize' | 'minimize'
   maxTrials: number
   parameterSpace: string
+  /** The job run for each trial (required by the FabricAutoTuner CRD). */
+  jobTemplate: { type: 'training'; image: string; gpus: number }
+  /** Required when algorithm is ASHA. */
+  ashaConfig?: { maxEpochs: number }
 }
 
 const apiClient = axios.create({

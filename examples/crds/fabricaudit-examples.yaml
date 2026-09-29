@@ -1,0 +1,135 @@
+# Example: SOC2 Compliance Audit
+apiVersion: gryvia.io/v1
+kind: FabricAudit
+metadata:
+  name: soc2-audit
+spec:
+  scope:
+    type: cluster
+
+  retention:
+    duration: 7y  # SOC2 requires 7 years
+    archival:
+      enabled: true
+      destination: s3
+      bucket: compliance-archives
+      compressionEnabled: true
+
+  events:
+    jobCreated: true
+    jobModified: true
+    jobDeleted: true
+    resourceAccessDenied: true
+    quotaExceeded: true
+    budgetExceeded: true
+    sensitiveDataAccess: true
+    configurationChanges: true
+    userAuthentication: true
+    roleChanges: true
+
+  compliance:
+    frameworks: [SOC2, ISO27001]
+    dataClassification: confidential
+    approvalRequired:
+      sensitiveJobs: true
+      highCostJobs: true
+      productionDeployments: true
+
+  reporting:
+    enabled: true
+    schedule: "0 0 1 * *"  # Monthly
+    recipients:
+      - compliance@company.com
+      - security@company.com
+    format: pdf
+
+  anomalyDetection:
+    enabled: true
+    rules:
+      - name: unusual-gpu-usage
+        condition: "gpu_hours_per_day > avg(gpu_hours_per_day, 30d) * 3"
+        severity: high
+        action: alert
+
+      - name: off-hours-access
+        condition: "hour(timestamp) < 6 OR hour(timestamp) > 20"
+        severity: medium
+        action: log
+
+      - name: multiple-failed-auth
+        condition: "failed_auth_attempts > 5 in 1h"
+        severity: critical
+        action: block
+---
+# Example: HIPAA Compliance Audit
+apiVersion: gryvia.io/v1
+kind: FabricAudit
+metadata:
+  name: hipaa-audit
+spec:
+  scope:
+    type: namespace
+    name: healthcare-ml
+
+  retention:
+    duration: 6y  # HIPAA requires 6 years
+    archival:
+      enabled: true
+      destination: glacier  # Use Glacier for cost savings
+      bucket: hipaa-archives
+
+  events:
+    jobCreated: true
+    jobModified: true
+    jobDeleted: true
+    resourceAccessDenied: true
+    sensitiveDataAccess: true  # Critical for HIPAA
+    userAuthentication: true
+    roleChanges: true
+
+  compliance:
+    frameworks: [HIPAA]
+    dataClassification: restricted
+    approvalRequired:
+      sensitiveJobs: true
+      productionDeployments: true
+
+  reporting:
+    enabled: true
+    schedule: "0 0 1 */3 *"  # Quarterly
+    recipients:
+      - hipaa-officer@company.com
+      - compliance@company.com
+    format: pdf
+---
+# Example: Team-Specific Audit
+apiVersion: gryvia.io/v1
+kind: FabricAudit
+metadata:
+  name: ml-research-audit
+spec:
+  scope:
+    type: team
+    name: ml-research
+
+  retention:
+    duration: 1y
+    archival:
+      enabled: false
+
+  events:
+    jobCreated: true
+    jobModified: true
+    quotaExceeded: true
+    budgetExceeded: true
+
+  compliance:
+    frameworks: []
+    dataClassification: internal
+
+  reporting:
+    enabled: true
+    schedule: "0 0 1 * *"  # Monthly
+    recipients:
+      - ml-team-lead@company.com
+    format: csv

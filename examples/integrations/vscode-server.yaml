@@ -1,5 +1,7 @@
 ---
 # VSCode Server with GPU Access
+# code-server listens on 8080; expose it with `kubectl port-forward` or your own Service
+# (FabricAIJob has no ports/probes fields).
 apiVersion: gryvia.io/v1
 kind: FabricAIJob
 metadata:
@@ -9,12 +11,13 @@ metadata:
     app: vscode-server
     team: ml-research
 spec:
-  framework: pytorch
+  type: training
+  gpus: 1
+  gpuType: A100-80G
   resources:
-    gpuType: A100-80G
-    gpuCount: 1
-    memory: 64Gi
-    cpu: 16
+    requests:
+      cpu: "16"
+      memory: 64Gi
   image: codercom/code-server:4.20.0
   command:
     - /bin/sh
@@ -43,9 +46,6 @@ spec:
       value: "http://mlflow.gryvia-system.svc.cluster.local:5000"
     - name: CUDA_VISIBLE_DEVICES
       value: "0"
-  ports:
-    - containerPort: 8080
-      name: http
   volumeMounts:
     - name: workspace
       mountPath: /workspace
@@ -57,18 +57,6 @@ spec:
         claimName: vscode-workspace
     - name: config
       emptyDir: {}
-  livenessProbe:
-    httpGet:
-      path: /healthz
-      port: 8080
-    initialDelaySeconds: 60
-    periodSeconds: 30
-  readinessProbe:
-    httpGet:
-      path: /healthz
-      port: 8080
-    initialDelaySeconds: 30
-    periodSeconds: 10
 
 ---
 # VSCode Workspace PVC

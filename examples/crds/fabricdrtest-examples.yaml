@@ -1,0 +1,324 @@
+# Example: Backup and Restore Test
+apiVersion: gryvia.io/v1
+kind: FabricDRTest
+metadata:
+  name: monthly-backup-restore
+spec:
+  type: backup-restore
+
+  scope:
+    components: [jobs, config, persistent-volumes]
+    environment: staging
+
+  backupRestore:
+    resources: [crds, jobs, config, secrets, persistent-volumes]
+    backupLocation:
+      type: s3
+      path: s3://gryvia-backups/staging
+      credentials:
+        secretRef: aws-backup-credentials
+
+    restorePoint: latest  # or specific timestamp
+
+    validation:
+      verifyJobsRecovered: true
+      verifyDataIntegrity: true
+      verifyCheckpoints: true
+
+  schedule:
+    type: recurring
+    cron: "0 2 1 * *"  # Monthly on 1st at 2 AM
+
+  notifications:
+    enabled: true
+    events: [completion, failure]
+    recipients:
+      - sre-team@company.com
+      - backup-team@company.com
+    channels: [email, slack]
+
+  approvalRequired: false  # Automated monthly test
+---
+# Example: Regional Failover Test
+apiVersion: gryvia.io/v1
+kind: FabricDRTest
+metadata:
+  name: quarterly-failover-drill
+spec:
+  type: failover
+
+  scope:
+    components: [all]
+    environment: staging
+
+  failover:
+    scenario: region-failure
+
+    source:
+      cluster: us-west-prod
+      region: us-west-2
+
+    target:
+      cluster: us-east-prod
+      region: us-east-1
+
+    automatic: true
+
+    jobs:
+      includeAll: false
+      priorities: [critical, high]  # Only failover critical/high priority
+
+  schedule:
+    type: recurring
+    cron: "0 2 1 */3 *"  # Quarterly
+
+  notifications:
+    enabled: true
+    events: [start, completion, failure]
+    recipients:
+      - sre-team@company.com
+      - leadership@company.com
+    channels: [email, slack, pagerduty]
+
+  approvalRequired: true  # Require approval for failover test
+---
+# Example: RPO/RTO Validation
+apiVersion: gryvia.io/v1
+kind: FabricDRTest
+metadata:
+  name: rpo-rto-validation
+spec:
+  type: rpo-rto
+
+  scope:
+    components: [data-plane, jobs, storage]
+    environment: staging
+
+  rpoRto:
+    targets:
+      rpoMinutes: 5
+      rtoMinutes: 15
+
+    scenarios:
+      - name: node-failure
+        description: "Single GPU node failure"
+        failureType: node-failure
+
+      - name: az-failure
+        description: "Entire availability zone failure"
+        failureType: az-failure
+
+      - name: storage-failure
+        description: "Storage system failure"
+        failureType: storage-failure
+
+  schedule:
+    type: recurring
+    cron: "0 3 15 * *"  # Monthly on 15th
+
+  notifications:
+    enabled: true
+    events: [completion, metrics-exceeded]
+    recipients:
+      - sre-team@company.com
+    channels: [email]
+---
+# Example: Full DR Drill
+apiVersion: gryvia.io/v1
+kind: FabricDRTest
+metadata:
+  name: annual-dr-drill
+spec:
+  type: full-drill
+
+  scope:
+    components: [all]
+    environment: test
+
+  fullDrill:
+    scenario: "Complete datacenter failure with regional failover"
+
+    steps:
+      - name: simulate-failure
+        action: "Shut down all nodes in us-west-2"
+        timeout: 5m
+        validation: "All nodes marked as NotReady"
+
+      - name: detect-failure
+        action: "Wait for monitoring to detect failure"
+        timeout: 2m
+        validation: "Alerts triggered"
+
+      - name: initiate-failover
+        action: "Trigger automated failover to us-east-1"
+        timeout: 10m
+        validation: "Failover process started"
+
+      - name: restore-jobs
+        action: "Recover all critical and high priority jobs"
+        timeout: 15m
+        validation: "All jobs running in target region"
+
+      - name: verify-data
+        action: "Verify data integrity and availability"
+        timeout: 10m
+        validation: "All data accessible, checksums match"
+
+      - name: verify-operations
+        action: "Submit test job and verify completion"
+        timeout: 30m
+        validation: "Test job completes successfully"
+
+    successCriteria:
+      - metric: recovery_time_minutes
+        operator: lte
+        value: 15
+
+      - metric: data_loss_percentage
+        operator: eq
+        value: 0
+
+      - metric: jobs_recovered_percentage
+        operator: gte
+        value: 100
+
+    rollbackEnabled: true
+
+  schedule:
+    type: recurring
+    cron: "0 2 1 1 *"  # Annually on Jan 1
+
+  notifications:
+    enabled: true
+    events: [start, completion, failure]
+    recipients:
+      - sre-team@company.com
+      - leadership@company.com
+      - compliance@company.com
+    channels: [email, slack, pagerduty]
+
+  approvalRequired: true
+---
+# Example: Chaos Engineering Test
+apiVersion: gryvia.io/v1
+kind: FabricDRTest
+metadata:
+  name: weekly-chaos-test
+spec:
+  type: chaos-engineering
+
+  scope:
+    components: [data-plane]
+    environment: staging
+
+  chaosEngineering:
+    experiments:
+      - type: pod-kill
+        target:
+          selector:
+            app: gpu-operator
+        duration: 5m
+
+      - type: node-drain
+        target:
+          selector:
+            node-role: gpu-worker
+        duration: 10m
+
+      - type: network-partition
+        target:
+          selector:
+            component: scheduler
+        duration: 3m
+        parameters:
+          partition: 50%
+
+      - type: cpu-stress
+        target:
+          selector:
+            app: api-gateway
+        duration: 5m
+        parameters:
+          cores: "2"
+          load: "80"
+
+    blastRadius: limited
+
+  schedule:
+    type: recurring
+    cron: "0 3 * * 3"  # Weekly on Wednesday
+
+  notifications:
+    enabled: true
+    events: [completion, failure]
+    recipients:
+      - sre-team@company.com
+    channels: [slack]
+---
+# DR Test Report
+apiVersion: gryvia.io/v1
+kind: FabricDRTest
+metadata:
+  name: q1-2024-failover-drill
+status:
+  state: completed
+
+  execution:
+    startTime: "2024-03-15T02:00:00Z"
+    endTime: "2024-03-15T02:18:30Z"
+    duration: 18m30s
+
+  results:
+    passed: true
+
+    metrics:
+      rpoAchieved: 3m25s
+      rtoAchieved: 12m15s
+      dataIntegrity: 100%
+      jobsRecovered: 145
+      jobsFailed: 0
+
+    details:
+      - step: simulate-failure
+        status: completed
+        duration: 2m30s
+        message: "All 32 nodes in us-west-2 marked NotReady"
+
+      - step: detect-failure
+        status: completed
+        duration: 45s
+        message: "Monitoring detected failure, alerts triggered"
+
+      - step: initiate-failover
+        status: completed
+        duration: 1m20s
+        message: "Failover to us-east-1 initiated"
+
+      - step: restore-jobs
+        status: completed
+        duration: 9m45s
+        message: "145 jobs restored and running"
+
+      - step: verify-data
+        status: completed
+        duration: 3m20s
+        message: "All data verified, checksums match"
+
+      - step: verify-operations
+        status: completed
+        duration: 50s
+        message: "Test job completed successfully"
+
+    issues:
+      - severity: low
+        description: "RTO exceeded target by 2m15s due to slow DNS propagation"
+        recommendation: "Pre-warm DNS cache for failover targets"
+
+      - severity: low
+        description: "3 jobs experienced 30s delay in checkpoint loading"
+        recommendation: "Optimize checkpoint pre-loading strategy"
+
+  report:
+    generated: true
+    path: /reports/dr-tests/q1-2024-failover-drill.pdf
+    format: pdf

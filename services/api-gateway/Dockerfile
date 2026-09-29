@@ -8,6 +8,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY main.py .
+COPY routers/ routers/
 
 # Create non-root user
 RUN useradd -m -u 1000 apigateway && \

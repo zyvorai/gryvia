@@ -8,21 +8,22 @@ metadata:
     project: llama-training
     environment: production
 spec:
-  framework: pytorch
+  type: training
 
   # Distributed training configuration
   distributed:
+    framework: pytorch
     enabled: true
-    strategy: ddp  # Distributed Data Parallel
     nodes: 1       # Number of nodes
     gpusPerNode: 8 # GPUs per node (WORLD_SIZE = nodes * gpusPerNode)
 
   # Resource requirements
+  gpus: 8    # 8 GPUs per pod
+  gpuType: H100
   resources:
-    gpuType: H100
-    gpuCount: 8    # 8 GPUs per pod
-    memory: 512Gi
-    cpu: 64
+    requests:
+      cpu: "64"
+      memory: 512Gi
 
   # Container configuration
   image: nvcr.io/nvidia/pytorch:24.01-py3
@@ -80,12 +81,7 @@ spec:
       emptyDir: {}
 
   # Retry policy
-  restartPolicy: OnFailure
-  backoffLimit: 3
-
-  # Resource limits
-  limits:
-    nvidia.com/gpu: "8"
+  retryLimit: 3
 
   # Node selection
   nodeSelector:

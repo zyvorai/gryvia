@@ -1,0 +1,114 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.22.0
+  name: fabrictracesessions.gryvia.io
+spec:
+  group: gryvia.io
+  names:
+    kind: FabricTraceSession
+    listKind: FabricTraceSessionList
+    plural: fabrictracesessions
+    singular: fabrictracesession
+  scope: Namespaced
+  versions:
+  - name: v1
+    schema:
+      openAPIV3Schema:
+        description: FabricTraceSession is the Schema for the fabrictracesessions
+          API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: FabricTraceSessionSpec defines the desired state of FabricTraceSession
+            properties:
+              captureHeaders:
+                description: CaptureHeaders enables HTTP header capture (L7 only)
+                type: boolean
+              duration:
+                description: Duration is the trace session lifetime (e.g., 5m, 30m)
+                type: string
+              filters:
+                description: Filters define traffic filters for the trace session
+                properties:
+                  dstIP:
+                    description: DstIP filters by destination IP address
+                    type: string
+                  port:
+                    description: Port filters by destination port
+                    type: integer
+                  protocol:
+                    description: Protocol filters by network protocol (tcp, udp, icmp,
+                      any)
+                    type: string
+                  srcIP:
+                    description: SrcIP filters by source IP address
+                    type: string
+                type: object
+              level:
+                description: Level is the trace depth (l3, l4, l7)
+                type: string
+              namespace:
+                description: Namespace is the namespace of the target service
+                type: string
+              service:
+                description: Service is the target service to trace
+                type: string
+            type: object
+          status:
+            description: FabricTraceSessionStatus defines the observed state of FabricTraceSession
+            properties:
+              endTime:
+                description: EndTime is when the trace session ended
+                format: date-time
+                type: string
+              flowsCaptured:
+                description: FlowsCaptured is the number of network flows captured
+                format: int64
+                type: integer
+              phase:
+                description: Phase is the current session phase (active, completed,
+                  expired)
+                type: string
+              resultRef:
+                description: ResultRef references the stored trace data
+                properties:
+                  kind:
+                    description: Kind is the type of resource storing trace data (ConfigMap,
+                      PersistentVolumeClaim)
+                    type: string
+                  name:
+                    description: Name is the name of the storage resource
+                    type: string
+                  namespace:
+                    description: Namespace is the namespace of the storage resource
+                    type: string
+                type: object
+              startTime:
+                description: StartTime is when the trace session began
+                format: date-time
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

@@ -6,6 +6,19 @@ import type { InferenceService } from '@/lib/api'
 import PageHero from '@/components/PageHero'
 import LoadingSpinner from '@/components/LoadingSpinner'
 
+const BACKEND_LABELS: Record<string, string> = {
+  triton: 'Triton',
+  vllm: 'vLLM',
+  'tensorrt-llm': 'TensorRT-LLM',
+  torchserve: 'TorchServe',
+}
+
+/** The gateway stores backends lowercase (CRD values); show the product names. */
+function backendLabel(backend?: string): string {
+  if (!backend) return 'Triton'
+  return BACKEND_LABELS[backend.toLowerCase()] ?? backend
+}
+
 export default function InferenceServices() {
   const queryClient = useQueryClient()
   const [showCreateForm, setShowCreateForm] = useState(false)
@@ -122,7 +135,7 @@ function ServiceRow({ service, onDelete }: { service: InferenceService; onDelete
     <tr>
       <td><b>{name}</b></td>
       <td className="muted">{service.spec?.modelRef || '-'}</td>
-      <td><span className="pill">{service.spec?.backend || 'Triton'}</span></td>
+      <td><span className="pill">{backendLabel(service.spec?.backend)}</span></td>
       <td className="muted">
         {service.status?.readyReplicas || 0}/{service.spec?.replicas || 0}
       </td>

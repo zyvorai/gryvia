@@ -276,6 +276,17 @@ GPU_PRICING = {
 }
 
 
+from routers import Deps, register_routers  # noqa: E402
+
+register_routers(app, Deps(
+    verify_auth=verify_auth,
+    k8s_custom=k8s_custom,
+    k8s_core=k8s_core,
+    limiter=limiter,
+    job_namespace=JOB_NAMESPACE,
+))
+
+
 @app.get("/")
 async def root():
     return {"status": "healthy", "service": "gryvia-api-gateway"}

@@ -64,7 +64,7 @@ git clone https://github.com/zyvorai/gryvia.git
 cd gryvia
 
 # Install CRDs
-kubectl apply -f manifests/crds/
+kubectl apply --server-side -f crds/
 
 # Install operators
 kubectl apply -f manifests/deploy/
