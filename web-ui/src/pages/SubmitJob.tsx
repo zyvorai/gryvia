@@ -1,15 +1,32 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { FRAMEWORK_LABEL } from '@/lib/jobs'
 import { api } from '@/lib/api'
 import { errorMessage } from '@/lib/errors'
 import type { FabricAIJob } from '@/types'
 import { Trash2 } from 'lucide-react'
 import PageHero from '@/components/PageHero'
+import { notify } from '@/lib/notify'
+import { useDocumentTitle } from '@/hooks/useDocumentTitle'
+
+const K8S_NAME = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/
+const NAME_HELP = 'Lowercase letters, digits and hyphens; start and end with a letter or digit; at most 63 characters.'
+const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
+
+/** Inline error for a job name, or undefined when valid (empty is reported only after the field is touched). */
+function nameError(name: string): string | undefined {
+  if (name.length === 0) return 'Job name is required.'
+  if (name.length > 63) return `Job name is ${name.length} characters; the maximum is 63.`
+  if (!K8S_NAME.test(name)) return NAME_HELP
+  return undefined
+}
 
 export default function SubmitJob() {
+  useDocumentTitle('Submit job')
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const [nameTouched, setNameTouched] = useState(false)
   const [formData, setFormData] = useState({
     name: '',
     framework: 'pytorch',
@@ -27,22 +44,38 @@ export default function SubmitJob() {
 
   const createJobMutation = useMutation({
     mutationFn: (job: Partial<FabricAIJob>) => api.createJob(job),
-    onSuccess: () => {
-      navigate('/jobs')
+    onSuccess: (_created, job) => {
+      const jobName = job.metadata?.name ?? formData.name
+      notify.success(`Submitted job ${jobName}`)
+      queryClient.invalidateQueries({ queryKey: ['jobs'] })
+      navigate(`/jobs/${jobName}`)
     },
+    onError: (err) => notify.error('Could not submit the job', err),
   })
 
   const [envIdCounter, setEnvIdCounter] = useState(0)
   const [error, setError] = useState<string | null>(null)
 
+  const nameProblem = nameTouched ? nameError(formData.name) : undefined
+  const envProblems = formData.env.map((row, i) => {
+    if (row.name.trim() === '') return 'Name is required.'
+    if (!ENV_NAME.test(row.name)) return 'Use letters, digits and underscores; do not start with a digit.'
+    if (formData.env.some((other, j) => j !== i && other.name === row.name)) return 'Duplicate name.'
+    return undefined
+  })
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
 
-    // Validate Kubernetes resource name
-    const k8sNameRegex = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/
-    if (!k8sNameRegex.test(formData.name)) {
-      setError('Job name must consist of lowercase alphanumeric characters or hyphens, and must start and end with an alphanumeric character')
+    setNameTouched(true)
+    const nameProblem = nameError(formData.name)
+    if (nameProblem) {
+      setError(nameProblem)
+      return
+    }
+    if (envProblems.some(Boolean)) {
+      setError('Fix the environment variable errors below before submitting.')
       return
     }
 
@@ -91,9 +124,10 @@ export default function SubmitJob() {
   }
 
   const updateEnvVar = (index: number, field: 'name' | 'value', value: string) => {
-    const newEnv = [...formData.env]
-    newEnv[index][field] = value
-    setFormData({ ...formData, env: newEnv })
+    setFormData({
+      ...formData,
+      env: formData.env.map((row, i) => (i === index ? { ...row, [field]: value } : row)),
+    })
   }
 
   return (
@@ -112,8 +146,15 @@ export default function SubmitJob() {
                 required
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                onBlur={() => setNameTouched(true)}
+                aria-invalid={nameProblem ? true : undefined}
+                aria-describedby="job-name-help"
+                maxLength={253}
                 placeholder="my-training-job"
               />
+              <small id="job-name-help" className={nameProblem ? 'warning' : 'faint'} role={nameProblem ? 'alert' : undefined}>
+                {nameProblem ?? NAME_HELP}
+              </small>
             </label>
 
             <label className="field">
@@ -169,7 +210,9 @@ export default function SubmitJob() {
                 min="1"
                 max="512"
                 required
-                value={formData.gpuCount}
+                disabled={formData.distributedEnabled}
+                aria-describedby={formData.distributedEnabled ? 'gpu-total' : undefined}
+                value={formData.distributedEnabled ? formData.nodes * formData.gpusPerNode : formData.gpuCount}
                 onChange={(e) => setFormData({ ...formData, gpuCount: parseInt(e.target.value, 10) || 1 })}
               />
             </label>
@@ -213,6 +256,12 @@ export default function SubmitJob() {
               />
               <span>Enable distributed training</span>
             </label>
+
+            {formData.distributedEnabled && (
+              <p id="gpu-total" className="muted">
+                Total GPUs: {formData.nodes} nodes × {formData.gpusPerNode} GPUs per node = <b>{formData.nodes * formData.gpusPerNode}</b>
+              </p>
+            )}
 
             {formData.distributedEnabled && (
               <div className="formgrid">
@@ -264,13 +313,17 @@ export default function SubmitJob() {
           </div>
           <div className="stack">
             {formData.env.map((env, idx) => (
-              <div key={env.id} className="toolbar">
+              <div key={env.id} className="stack">
+              <div className="toolbar">
                 <input
                   type="text"
                   className="mono"
                   value={env.name}
                   onChange={(e) => updateEnvVar(idx, 'name', e.target.value)}
                   placeholder="VARIABLE_NAME"
+                  aria-label={`Variable ${idx + 1} name`}
+                  aria-invalid={envProblems[idx] ? true : undefined}
+                  aria-describedby={envProblems[idx] ? `env-err-${env.id}` : undefined}
                 />
                 <input
                   type="text"
@@ -278,15 +331,22 @@ export default function SubmitJob() {
                   value={env.value}
                   onChange={(e) => updateEnvVar(idx, 'value', e.target.value)}
                   placeholder="value"
+                  aria-label={`Variable ${idx + 1} value`}
                 />
                 <button
                   type="button"
                   className="danger"
                   onClick={() => removeEnvVar(idx)}
-                  aria-label="Remove variable"
+                  aria-label={env.name ? `Remove variable ${env.name}` : `Remove variable ${idx + 1}`}
                 >
                   <Trash2 className="icon-sm" />
                 </button>
+              </div>
+              {envProblems[idx] && (
+                <small id={`env-err-${env.id}`} className="warning" role="alert">
+                  {envProblems[idx]}
+                </small>
+              )}
               </div>
             ))}
           </div>

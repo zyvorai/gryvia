@@ -38,7 +38,8 @@ def test_list_get_shape(make_client, fake_k8s):
     c = make_client("tuners")
     item = c.get("/api/tuners/t1").json()
     assert c.get("/api/tuners").json()["items"] == [item]
-    assert item["spec"] == {"algorithm": "random", "objectiveMetric": "acc", "maxTrials": 10,
+    assert item["spec"] == {"algorithm": "random", "objectiveMetric": "acc", "metricName": "acc",
+                                "direction": "maximize", "maxTrials": 10,
                             "parameterSpace": {"lr": {"type": "float", "min": 0.1, "max": 1.0},
                                                "bs": {"type": "choice", "values": ["16", "32"]}}}
     assert item["status"] == {"phase": "Running", "trialsCompleted": 2, "trialsRunning": 1,
@@ -118,3 +119,16 @@ def test_create_validation(make_client, fake_k8s, patch):
 def test_create_missing_jobtemplate_key(make_client):
     b = {k: v for k, v in BODY.items() if k != "jobTemplate"}
     assert make_client("tuners").post("/api/tuners", json=b).status_code == 422
+
+
+def test_direction_and_metric_name(make_client, fake_k8s):
+    seed(fake_k8s)
+    fake_k8s.store[("fabricautotuners", NS, "t1")]["spec"]["objective"]["direction"] = "minimize"
+    spec = make_client("tuners").get("/api/tuners/t1").json()["spec"]
+    assert spec["direction"] == "minimize" and spec["metricName"] == "acc"
+
+
+def test_direction_defaults_to_maximize(make_client, fake_k8s):
+    seed(fake_k8s)
+    del fake_k8s.store[("fabricautotuners", NS, "t1")]["spec"]["objective"]["direction"]
+    assert make_client("tuners").get("/api/tuners/t1").json()["spec"]["direction"] == "maximize"

@@ -1,8 +1,9 @@
-import { Link } from 'react-router-dom'
-import { formatDistanceToNow } from 'date-fns'
+import { Link, useNavigate } from 'react-router-dom'
 import { phaseTone } from '@/lib/phase'
-import { FabricAIJob } from '@/types'
+import { formatDate, formatRelative } from '@/lib/format'
+import type { FabricAIJob } from '@/types'
 import { jobFramework, jobGpus } from '@/lib/jobs'
+import { EmptyState } from '@/components/StateViews'
 
 interface JobsTableProps {
   jobs: FabricAIJob[]
@@ -10,6 +11,23 @@ interface JobsTableProps {
 }
 
 export default function JobsTable({ jobs, compact = false }: JobsTableProps) {
+  const navigate = useNavigate()
+
+  if (jobs.length === 0) {
+    return (
+      <EmptyState
+        title="No jobs yet"
+        action={
+          <Link to="/jobs/new" className="buttonlike primary">
+            Submit a job
+          </Link>
+        }
+      >
+        Jobs appear here once you submit a FabricAIJob, from this UI or with kubectl.
+      </EmptyState>
+    )
+  }
+
   return (
     <div className="table-wrap">
       <table>
@@ -17,41 +35,31 @@ export default function JobsTable({ jobs, compact = false }: JobsTableProps) {
           <tr>
             <th>Name</th>
             <th>Framework</th>
-            <th>GPUs</th>
+            <th className="num">GPUs</th>
             <th>Status</th>
             {!compact && <th>Age</th>}
           </tr>
         </thead>
         <tbody>
-          {jobs.length === 0 ? (
-            <tr>
-              <td colSpan={compact ? 4 : 5} className="faint" style={{ textAlign: 'center' }}>
-                No jobs found
+          {jobs.map((job) => (
+            <tr key={job.metadata.name} data-clickable="" onClick={() => navigate(`/jobs/${job.metadata.name}`)}>
+              <td>
+                <Link to={`/jobs/${job.metadata.name}`} className="card-link" onClick={(e) => e.stopPropagation()}>
+                  {job.metadata.name}
+                </Link>
               </td>
+              <td>{jobFramework(job)}</td>
+              <td className="num">{jobGpus(job)}</td>
+              <td>
+                <span className={`pill ${phaseTone(job.status?.phase)}`}>{job.status?.phase || 'Unknown'}</span>
+              </td>
+              {!compact && (
+                <td className="faint" title={formatDate(job.metadata.creationTimestamp)}>
+                  {formatRelative(job.metadata.creationTimestamp)}
+                </td>
+              )}
             </tr>
-          ) : (
-            jobs.map((job) => (
-              <tr key={job.metadata.name}>
-                <td>
-                  <Link to={`/jobs/${job.metadata.name}`} className="card-link">
-                    {job.metadata.name}
-                  </Link>
-                </td>
-                <td>{jobFramework(job)}</td>
-                <td>{jobGpus(job)}</td>
-                <td>
-                  <span className={`pill ${phaseTone(job.status?.phase)}`}>{job.status?.phase || 'Unknown'}</span>
-                </td>
-                {!compact && (
-                  <td className="faint">
-                    {job.metadata.creationTimestamp
-                      ? formatDistanceToNow(new Date(job.metadata.creationTimestamp), { addSuffix: true })
-                      : '-'}
-                  </td>
-                )}
-              </tr>
-            ))
-          )}
+          ))}
         </tbody>
       </table>
     </div>

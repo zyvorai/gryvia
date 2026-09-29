@@ -2,31 +2,25 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { api } from '@/lib/api'
 import JobsTable from '@/components/JobsTable'
-import LoadingSpinner from '@/components/LoadingSpinner'
 import PageHero from '@/components/PageHero'
 import PagePulse from '@/components/kit/PagePulse'
 import { countTone } from '@/components/kit/tone'
-
-const STATUSES = ['Running', 'Pending', 'Completed', 'Failed']
+import { ErrorState, Skeleton } from '@/components/StateViews'
+import { countByGroup } from '@/lib/phase'
+import { errorMessage } from '@/lib/errors'
+import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 
 export default function Jobs() {
-  const { data: jobs, isLoading, isError, refetch, isRefetching, dataUpdatedAt } = useQuery({
+  useDocumentTitle('Jobs')
+  const { data: jobs, isLoading, isError, error, refetch, isRefetching, dataUpdatedAt } = useQuery({
     queryKey: ['jobs'],
     queryFn: api.getJobs,
     refetchInterval: 15000,
   })
 
-  if (isError) {
-    return (
-      <>
-        <PageHero eyebrow="Jobs" title="Jobs unavailable." tint="red" />
-        <p className="warning" role="alert">Failed to load jobs. Please try again.</p>
-      </>
-    )
-  }
-
-  const count = (status: string) => jobs?.filter((j) => j.status?.phase === status).length || 0
-  const failed = count('Failed')
+  const counts = countByGroup(jobs, (j) => j.status?.phase)
+  const failed = counts.failed
+  const loadFailed = isError && !jobs
 
   return (
     <>
@@ -35,6 +29,7 @@ export default function Jobs() {
       <div className="grid">
         <PagePulse
           updatedAt={dataUpdatedAt}
+          error={isError ? errorMessage(error) : undefined}
           headline={
             jobs
               ? failed > 0
@@ -42,26 +37,34 @@ export default function Jobs() {
                 : `${jobs.length} job${jobs.length === 1 ? '' : 's'}, none failed.`
               : undefined
           }
-          tone={jobs ? (failed > 0 ? 'warn' : undefined) : undefined}
-          figures={STATUSES.map((status) => ({
-            label: status,
-            value: jobs ? count(status) : undefined,
-            tone: status === 'Failed' && jobs ? countTone(failed) : undefined,
-          }))}
+          tone={jobs && failed > 0 ? 'warn' : undefined}
+          figures={[
+            { label: 'Running', value: jobs ? counts.running : undefined },
+            { label: 'Pending', value: jobs ? counts.pending : undefined },
+            { label: 'Completed', value: jobs ? counts.completed : undefined },
+            { label: 'Failed', value: jobs ? failed : undefined, tone: jobs ? countTone(failed) : undefined },
+          ]}
         />
 
         <section className="card span3">
-          <p className="eyebrow">ALL JOBS · {jobs?.length || 0} TOTAL</p>
-          <h2 className="card-title">All Jobs</h2>
+          <p className="eyebrow">ALL JOBS · {jobs ? `${jobs.length} TOTAL` : '…'}</p>
+          <h2 className="card-title">All jobs</h2>
           <div className="toolbar">
             <Link to="/jobs/new" className="buttonlike primary">
-              Submit Job
+              Submit job
             </Link>
             <button className="btn-refresh" onClick={() => refetch()} disabled={isRefetching}>
-              Refresh
+              {isRefetching ? 'Refreshing…' : 'Refresh'}
             </button>
           </div>
-          {isLoading ? <LoadingSpinner /> : <JobsTable jobs={jobs || []} />}
+          {isError && jobs && <ErrorState title="Could not refresh jobs; showing the last data." error={error} onRetry={() => refetch()} retrying={isRefetching} />}
+          {loadFailed ? (
+            <ErrorState title="Could not load jobs." error={error} onRetry={() => refetch()} retrying={isRefetching} />
+          ) : isLoading ? (
+            <Skeleton rows={5} />
+          ) : (
+            <JobsTable jobs={jobs || []} />
+          )}
         </section>
       </div>
     </>

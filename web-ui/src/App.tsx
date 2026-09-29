@@ -1,49 +1,79 @@
-import { BrowserRouter as Router, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { lazy, Suspense, useEffect } from 'react'
+import { BrowserRouter as Router, Routes, Route, Navigate, Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import axios from 'axios'
 import { Toaster } from 'react-hot-toast'
-import { type ReactNode } from 'react'
 
 import ErrorBoundary from './components/ErrorBoundary'
 import AuthProvider from './components/AuthProvider'
-import { useAuth } from './lib/auth'
 import Layout from './components/Layout'
 import PageHero from './components/PageHero'
-import Dashboard from './pages/Dashboard'
-import Jobs from './pages/Jobs'
-import JobDetails from './pages/JobDetails'
-import Quotas from './pages/Quotas'
-import Nodes from './pages/Nodes'
-import Costs from './pages/Costs'
-import SubmitJob from './pages/SubmitJob'
-import NetworkOverview from './pages/NetworkOverview'
-import NetworkFlows from './pages/NetworkFlows'
-import NetworkPolicies from './pages/NetworkPolicies'
-import SecurityOverview from './pages/SecurityOverview'
-import GpuCommunication from './pages/GpuCommunication'
-import NetworkCost from './pages/NetworkCost'
-import Workspaces from './pages/Workspaces'
-import ModelRegistry from './pages/ModelRegistry'
-import InferenceServices from './pages/InferenceServices'
-import WorkflowsPage from './pages/Workflows'
-import AutoTunerPage from './pages/AutoTuner'
+import { Skeleton } from './components/StateViews'
+import { useAuth } from './lib/auth'
+import { setUnauthorizedHandler } from './lib/authEvents'
+import { notify } from './lib/notify'
+import { useDocumentTitle } from './hooks/useDocumentTitle'
 import Login from './pages/Login'
 import AuthCallback from './pages/AuthCallback'
 
+// Pages load on demand so the first paint (login, dashboard) stays small.
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Jobs = lazy(() => import('./pages/Jobs'))
+const JobDetails = lazy(() => import('./pages/JobDetails'))
+const SubmitJob = lazy(() => import('./pages/SubmitJob'))
+const Quotas = lazy(() => import('./pages/Quotas'))
+const Nodes = lazy(() => import('./pages/Nodes'))
+const Costs = lazy(() => import('./pages/Costs'))
+const NetworkOverview = lazy(() => import('./pages/NetworkOverview'))
+const NetworkFlows = lazy(() => import('./pages/NetworkFlows'))
+const NetworkPolicies = lazy(() => import('./pages/NetworkPolicies'))
+const NetworkCost = lazy(() => import('./pages/NetworkCost'))
+const SecurityOverview = lazy(() => import('./pages/SecurityOverview'))
+const GpuCommunication = lazy(() => import('./pages/GpuCommunication'))
+const Workspaces = lazy(() => import('./pages/Workspaces'))
+const ModelRegistry = lazy(() => import('./pages/ModelRegistry'))
+const InferenceServices = lazy(() => import('./pages/InferenceServices'))
+const Workflows = lazy(() => import('./pages/Workflows'))
+const AutoTuner = lazy(() => import('./pages/AutoTuner'))
+
 const queryClient = new QueryClient({
+  queryCache: new QueryCache({
+    // A background refresh failing while we still show data: say so once (the pill also turns "Stale").
+    onError: (error, query) => {
+      if (query.state.data !== undefined) notify.error('Refresh failed', error)
+    },
+  }),
   defaultOptions: {
     queries: {
       refetchOnWindowFocus: false,
-      retry: 1,
-      staleTime: 30000, // 30 seconds
+      refetchIntervalInBackground: false,
+      staleTime: 30000,
+      // Don't retry client errors (404/422/429): they will not fix themselves.
+      retry: (failureCount, error) => {
+        if (axios.isAxiosError(error) && error.response && error.response.status < 500) return false
+        return failureCount < 1
+      },
     },
   },
 })
 
-/**
- * Wrapper that redirects unauthenticated users to /login.
- * Shows nothing while auth state is loading to avoid flicker.
- */
-function RequireAuth({ children }: { children: ReactNode }) {
+/** Sends a signed-out or expired session to /login, remembering where the user was. */
+function SessionGuard() {
+  const navigate = useNavigate()
+  const { logout } = useAuth()
+  useEffect(() => {
+    setUnauthorizedHandler(({ reason }) => {
+      const { pathname, search, hash } = window.location
+      logout()
+      navigate('/login', { replace: true, state: { from: { pathname, search, hash }, reason } })
+    })
+    return () => setUnauthorizedHandler(undefined)
+  }, [logout, navigate])
+  return null
+}
+
+/** Auth gate + shell for every signed-in page. */
+function ProtectedLayout() {
   const { isAuthenticated, isLoading } = useAuth()
   const location = useLocation()
 
@@ -54,140 +84,79 @@ function RequireAuth({ children }: { children: ReactNode }) {
       </div>
     )
   }
-
   if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />
   }
+  return (
+    <Layout>
+      <ErrorBoundary key={location.pathname}>
+        <Suspense fallback={<Skeleton rows={4} />}>
+          <Outlet />
+        </Suspense>
+      </ErrorBoundary>
+    </Layout>
+  )
+}
 
-  return <>{children}</>
+function NotFound() {
+  useDocumentTitle('Page not found')
+  return (
+    <>
+      <PageHero eyebrow="404" title="Page not found." lede="That page doesn't exist. Try one of these instead." />
+      <div className="toolbar">
+        {[
+          ['/dashboard', 'Dashboard'],
+          ['/jobs', 'Jobs'],
+          ['/workspaces', 'Workspaces'],
+          ['/nodes', 'Nodes'],
+          ['/quotas', 'Quotas'],
+        ].map(([to, label]) => (
+          <Link key={to} to={to} className="buttonlike btn-secondary">
+            {label}
+          </Link>
+        ))}
+      </div>
+    </>
+  )
 }
 
 function App() {
   return (
-    <ErrorBoundary>
     <QueryClientProvider client={queryClient}>
       <Router>
         <AuthProvider>
+          <SessionGuard />
           <Routes>
-            {/* Public routes */}
             <Route path="/login" element={<Login />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
-
-            {/* Protected routes */}
-            <Route path="/" element={
-              <RequireAuth>
-                <Navigate to="/dashboard" replace />
-              </RequireAuth>
-            } />
-            <Route path="/dashboard" element={
-              <RequireAuth>
-                <Layout><Dashboard /></Layout>
-              </RequireAuth>
-            } />
-            <Route path="/jobs" element={
-              <RequireAuth>
-                <Layout><Jobs /></Layout>
-              </RequireAuth>
-            } />
-            <Route path="/jobs/new" element={
-              <RequireAuth>
-                <Layout><SubmitJob /></Layout>
-              </RequireAuth>
-            } />
-            <Route path="/jobs/:name" element={
-              <RequireAuth>
-                <Layout><JobDetails /></Layout>
-              </RequireAuth>
-            } />
-            <Route path="/quotas" element={
-              <RequireAuth>
-                <Layout><Quotas /></Layout>
-              </RequireAuth>
-            } />
-            <Route path="/nodes" element={
-              <RequireAuth>
-                <Layout><Nodes /></Layout>
-              </RequireAuth>
-            } />
-            <Route path="/network" element={
-              <RequireAuth>
-                <Layout><NetworkOverview /></Layout>
-              </RequireAuth>
-            } />
-            <Route path="/network/flows" element={
-              <RequireAuth>
-                <Layout><NetworkFlows /></Layout>
-              </RequireAuth>
-            } />
-            <Route path="/network/policies" element={
-              <RequireAuth>
-                <Layout><NetworkPolicies /></Layout>
-              </RequireAuth>
-            } />
-            <Route path="/network/costs" element={
-              <RequireAuth>
-                <Layout><NetworkCost /></Layout>
-              </RequireAuth>
-            } />
-            <Route path="/security" element={
-              <RequireAuth>
-                <Layout><SecurityOverview /></Layout>
-              </RequireAuth>
-            } />
-            <Route path="/gpu" element={
-              <RequireAuth>
-                <Layout><GpuCommunication /></Layout>
-              </RequireAuth>
-            } />
-            <Route path="/gpu/communication" element={
-              <RequireAuth>
-                <Layout><GpuCommunication /></Layout>
-              </RequireAuth>
-            } />
-            <Route path="/costs" element={
-              <RequireAuth>
-                <Layout><Costs /></Layout>
-              </RequireAuth>
-            } />
-            <Route path="/workspaces" element={
-              <RequireAuth>
-                <Layout><Workspaces /></Layout>
-              </RequireAuth>
-            } />
-            <Route path="/models" element={
-              <RequireAuth>
-                <Layout><ModelRegistry /></Layout>
-              </RequireAuth>
-            } />
-            <Route path="/inference" element={
-              <RequireAuth>
-                <Layout><InferenceServices /></Layout>
-              </RequireAuth>
-            } />
-            <Route path="/workflows" element={
-              <RequireAuth>
-                <Layout><WorkflowsPage /></Layout>
-              </RequireAuth>
-            } />
-            <Route path="/tuner" element={
-              <RequireAuth>
-                <Layout><AutoTunerPage /></Layout>
-              </RequireAuth>
-            } />
-            <Route path="*" element={
-              <RequireAuth>
-                <Layout>
-                  <PageHero eyebrow="404" title="Page not found." lede="That page doesn't exist." />
-                  <Link to="/dashboard" className="apple-text-link">Go to Dashboard</Link>
-                </Layout>
-              </RequireAuth>
-            } />
+            <Route element={<ProtectedLayout />}>
+              <Route index element={<Navigate to="/dashboard" replace />} />
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/jobs" element={<Jobs />} />
+              <Route path="/jobs/new" element={<SubmitJob />} />
+              <Route path="/jobs/:name" element={<JobDetails />} />
+              <Route path="/quotas" element={<Quotas />} />
+              <Route path="/nodes" element={<Nodes />} />
+              <Route path="/network" element={<NetworkOverview />} />
+              <Route path="/network/flows" element={<NetworkFlows />} />
+              <Route path="/network/policies" element={<NetworkPolicies />} />
+              <Route path="/network/costs" element={<NetworkCost />} />
+              <Route path="/security" element={<SecurityOverview />} />
+              <Route path="/gpu" element={<GpuCommunication />} />
+              <Route path="/gpu/communication" element={<GpuCommunication />} />
+              <Route path="/costs" element={<Costs />} />
+              <Route path="/workspaces" element={<Workspaces />} />
+              <Route path="/models" element={<ModelRegistry />} />
+              <Route path="/inference" element={<InferenceServices />} />
+              <Route path="/workflows" element={<Workflows />} />
+              <Route path="/tuner" element={<AutoTuner />} />
+              <Route path="*" element={<NotFound />} />
+            </Route>
           </Routes>
         </AuthProvider>
       </Router>
       <Toaster position="top-right" toastOptions={{ style: { background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--hairline-1)' } }} />
     </QueryClientProvider>
-    </ErrorBoundary>
   )
 }
 

@@ -1,19 +1,30 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { api } from '@/lib/api'
 import type { FlowPolicy, CreateFlowPolicyRequest } from '@/lib/api'
-import LoadingSpinner from '@/components/LoadingSpinner'
 import PageHero from '@/components/PageHero'
 import PagePulse from '@/components/kit/PagePulse'
-import { countTone } from '@/components/kit/tone'
-import toast from 'react-hot-toast'
+import ConfirmDialog from '@/components/ConfirmDialog'
+import { EmptyState, ErrorState, Skeleton } from '@/components/StateViews'
+import { useDocumentTitle } from '@/hooks/useDocumentTitle'
+import { notify } from '@/lib/notify'
+import { errorMessage } from '@/lib/errors'
+import { phaseTone } from '@/lib/phase'
+import { bucketPolicies, INTENT_MAX, validatePolicyForm, type PolicyFormErrors, type PolicyFormValues } from '@/lib/network'
+
+type PolicyAction = 'allow' | 'deny' | 'log'
+type PolicyStatusExt = { phase?: string; matchedFlows?: number; ciliumPolicyRef?: string }
+
+const phaseOf = (p: FlowPolicy) => p.status?.phase
 
 export default function NetworkPolicies() {
+  useDocumentTitle('Network policies')
   const [showCreateForm, setShowCreateForm] = useState(false)
+  const [confirming, setConfirming] = useState<FlowPolicy | null>(null)
   const queryClient = useQueryClient()
 
-  const { data: policies, isLoading, isError, dataUpdatedAt } = useQuery({
+  const { data: policies, isLoading, isError, error, refetch, isFetching, dataUpdatedAt } = useQuery({
     queryKey: ['flowPolicies'],
     queryFn: api.getFlowPolicies,
     refetchInterval: 15000,
@@ -23,41 +34,25 @@ export default function NetworkPolicies() {
     mutationFn: api.applyFlowPolicy,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['flowPolicies'] })
-      toast.success('Policy applied successfully')
+      notify.success('Apply requested — waiting for operator')
     },
-    onError: () => {
-      toast.error('Failed to apply policy')
-    },
+    onError: (err) => notify.error('Could not request apply', err),
+    onSettled: () => setConfirming(null),
   })
 
   const createMutation = useMutation({
-    mutationFn: api.createFlowPolicy,
+    mutationFn: (req: CreateFlowPolicyRequest) => api.createFlowPolicy(req),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['flowPolicies'] })
       setShowCreateForm(false)
-      toast.success('Policy created successfully')
+      notify.success('Policy created')
     },
-    onError: () => {
-      toast.error('Failed to create policy')
-    },
+    onError: (err) => notify.error('Could not create policy', err),
   })
 
-  if (isLoading) return <LoadingSpinner />
-
-  if (isError) {
-    return (
-      <>
-        <PageHero eyebrow="Network" title="Policies unavailable." tint="red" />
-        <p className="warning" role="alert">
-          Failed to load flow policies. Please check your API connection.
-        </p>
-      </>
-    )
-  }
-
-  const enforcedPolicies = policies?.filter((p) => p.status?.phase === 'Enforced' || p.status?.phase === 'Active') || []
-  const pendingPolicies = policies?.filter((p) => p.status?.phase === 'Pending') || []
-  const suggestedPolicies = policies?.filter((p) => p.status?.phase === 'Suggested') || []
+  const applyingName = applyMutation.isPending ? (applyMutation.variables as string) : undefined
+  const buckets = bucketPolicies(policies, phaseOf)
+  const total = policies?.length
 
   return (
     <>
@@ -65,88 +60,139 @@ export default function NetworkPolicies() {
 
       <div className="grid">
         <div className="toolbar span3">
-          <button
-            onClick={() => setShowCreateForm(!showCreateForm)}
-            className={showCreateForm ? 'btn-secondary' : 'primary'}
-          >
-            {showCreateForm ? 'Cancel' : 'Create Policy'}
-          </button>
+          {!showCreateForm && (
+            <button type="button" className="primary" onClick={() => setShowCreateForm(true)}>
+              New policy
+            </button>
+          )}
           <Link to="/network" className="buttonlike btn-secondary">
             Back to network
           </Link>
         </div>
 
-        <PagePulse
-          updatedAt={dataUpdatedAt}
-          headline={
-            suggestedPolicies.length > 0
-              ? `${suggestedPolicies.length} suggested polic${suggestedPolicies.length === 1 ? 'y' : 'ies'} awaiting review.`
-              : `${enforcedPolicies.length} polic${enforcedPolicies.length === 1 ? 'y' : 'ies'} enforced.`
-          }
-          tone={suggestedPolicies.length > 0 || pendingPolicies.length > 0 ? 'warn' : undefined}
-          figures={[
-            { label: 'enforced', value: enforcedPolicies.length },
-            { label: 'pending', value: pendingPolicies.length, tone: countTone(pendingPolicies.length) },
-            { label: 'suggested', value: suggestedPolicies.length, tone: countTone(suggestedPolicies.length) },
-            { label: 'total', value: policies?.length ?? 0 },
-          ]}
-        />
+        {isLoading ? (
+          <section className="card span3" aria-label="Live summary">
+            <Skeleton rows={2} />
+          </section>
+        ) : isError && !policies ? (
+          <div className="span3">
+            <ErrorState title="Could not load flow policies." error={error} onRetry={() => refetch()} retrying={isFetching} />
+          </div>
+        ) : (
+          <PagePulse
+            updatedAt={dataUpdatedAt}
+            error={isError ? errorMessage(error) : undefined}
+            headline={
+              buckets.suggested.length > 0
+                ? `${buckets.suggested.length} suggested polic${buckets.suggested.length === 1 ? 'y' : 'ies'} awaiting review.`
+                : `${buckets.enforced.length} polic${buckets.enforced.length === 1 ? 'y' : 'ies'} enforced.`
+            }
+            tone={buckets.suggested.length > 0 || buckets.pending.length > 0 ? 'warn' : undefined}
+            figures={[
+              { label: 'enforced', value: buckets.enforced.length },
+              { label: 'pending', value: buckets.pending.length, tone: buckets.pending.length > 0 ? 'warn' : undefined },
+              { label: 'suggested', value: buckets.suggested.length },
+              ...(buckets.other.length > 0 ? [{ label: 'other', value: buckets.other.length }] : []),
+              { label: 'total', value: total },
+            ]}
+          />
+        )}
 
         {showCreateForm && (
           <CreatePolicyForm
             onSubmit={(data) => createMutation.mutate(data)}
+            onCancel={() => setShowCreateForm(false)}
             isSubmitting={createMutation.isPending}
+            serverError={createMutation.isError ? errorMessage(createMutation.error) : undefined}
           />
         )}
 
-        {suggestedPolicies.length > 0 && (
-          <section className="card span3">
-            <p className="eyebrow">{suggestedPolicies.length} SUGGESTIONS</p>
-            <h2 className="card-title">Suggested policies</h2>
-            {suggestedPolicies.map((policy) => (
-              <SuggestedPolicyCard
-                key={policy.metadata.name}
-                policy={policy}
-                onApply={() => applyMutation.mutate(policy.metadata.name)}
-                isApplying={applyMutation.isPending}
-              />
-            ))}
-          </section>
-        )}
+        {policies && (
+          <>
+            {buckets.suggested.length > 0 && (
+              <section className="card span3">
+                <p className="eyebrow">{buckets.suggested.length} SUGGESTIONS</p>
+                <h2 className="card-title">Suggested policies</h2>
+                {buckets.suggested.map((policy) => (
+                  <PolicyRow key={policy.metadata.name} policy={policy} onApply={() => setConfirming(policy)} applying={applyingName === policy.metadata.name} />
+                ))}
+              </section>
+            )}
 
-        <section className="card span3">
-          <p className="eyebrow">{enforcedPolicies.length} ACTIVE</p>
-          <h2 className="card-title">Enforced policies</h2>
-          {enforcedPolicies.length === 0 ? (
-            <p className="empty-state">No enforced policies</p>
-          ) : (
-            enforcedPolicies.map((policy) => (
-              <PolicyCard key={policy.metadata.name} policy={policy} />
-            ))
-          )}
-        </section>
+            <section className="card span3">
+              <p className="eyebrow">{buckets.enforced.length} ENFORCED</p>
+              <h2 className="card-title">Enforced policies</h2>
+              {buckets.enforced.length === 0 ? (
+                <EmptyState
+                  title="No enforced policies"
+                  action={
+                    !showCreateForm && (
+                      <button type="button" className="primary" onClick={() => setShowCreateForm(true)}>
+                        New policy
+                      </button>
+                    )
+                  }
+                >
+                  Policies are FabricFlowPolicy resources; the network operator enforces them. Create one, or wait for the operator to suggest policies from observed traffic.
+                </EmptyState>
+              ) : (
+                buckets.enforced.map((policy) => <PolicyRow key={policy.metadata.name} policy={policy} />)
+              )}
+            </section>
 
-        {pendingPolicies.length > 0 && (
-          <section className="card span3">
-            <p className="eyebrow">{pendingPolicies.length} PENDING</p>
-            <h2 className="card-title">Pending policies</h2>
-            {pendingPolicies.map((policy) => (
-              <PolicyCard key={policy.metadata.name} policy={policy} />
-            ))}
-          </section>
+            {buckets.pending.length > 0 && (
+              <section className="card span3">
+                <p className="eyebrow">{buckets.pending.length} PENDING</p>
+                <h2 className="card-title">Pending policies</h2>
+                {buckets.pending.map((policy) => (
+                  <PolicyRow key={policy.metadata.name} policy={policy} />
+                ))}
+              </section>
+            )}
+
+            {buckets.other.length > 0 && (
+              <section className="card span3">
+                <p className="eyebrow">{buckets.other.length} OTHER</p>
+                <h2 className="card-title">Other policies</h2>
+                {buckets.other.map((policy) => (
+                  <PolicyRow key={policy.metadata.name} policy={policy} />
+                ))}
+              </section>
+            )}
+          </>
         )}
       </div>
+
+      {confirming && (
+        <ConfirmDialog
+          title={`Apply policy ${confirming.metadata.name}?`}
+          tone="primary"
+          confirmLabel="Request apply"
+          busy={applyMutation.isPending}
+          onCancel={() => setConfirming(null)}
+          onConfirm={() => applyMutation.mutate(confirming.metadata.name)}
+        >
+          This will {(confirming.spec.action as string) === 'log' ? 'log (observe only)' : confirming.spec.action} {confirming.spec.protocol}:{confirming.spec.port} traffic from {confirming.spec.sourceService} to {confirming.spec.destinationService}. Enforcement is requested from the network operator; the policy stays pending until the operator confirms it.
+        </ConfirmDialog>
+      )}
     </>
   )
 }
 
-// --- Sub-components ---
-
 function ActionPill({ action }: { action: string }) {
-  return <span className={`pill ${action === 'allow' ? 'ok' : 'bad'}`}>{action.toUpperCase()}</span>
+  const tone = action === 'deny' ? 'bad' : action === 'log' ? 'info' : ''
+  return <span className={`pill ${tone}`}>{action ? action.charAt(0).toUpperCase() + action.slice(1) : '—'}</span>
 }
 
-function PolicyCard({ policy }: { policy: FlowPolicy }) {
+function PhaseBadge({ phase }: { phase: string }) {
+  const tone = phase.toLowerCase() === 'suggested' ? 'info' : phaseTone(phase)
+  return <span className={`pill ${tone}`}>{phase}</span>
+}
+
+function PolicyRow({ policy, onApply, applying }: { policy: FlowPolicy; onApply?: () => void; applying?: boolean }) {
+  const status = policy.status as PolicyStatusExt | undefined
+  const phase = status?.phase || 'Pending'
+  const confidence = typeof policy.spec.confidence === 'number' && policy.spec.confidence > 0 ? policy.spec.confidence : undefined
   return (
     <div className="list-row">
       <div className="grow">
@@ -155,108 +201,121 @@ function PolicyCard({ policy }: { policy: FlowPolicy }) {
           {policy.spec.sourceService} → {policy.spec.destinationService} · {policy.spec.protocol}:{policy.spec.port}
         </small>
         <small>
-          Intent: {policy.spec.intent}
-          {policy.status?.matchedFlows !== undefined && ` · ${policy.status.matchedFlows} matched flows`}
+          Intent: {policy.spec.intent || '—'}
+          {status?.matchedFlows !== undefined && ` · ${status.matchedFlows} matched flows`}
+          {confidence !== undefined && ` · ${Math.round(confidence * 100)}% confidence`}
         </small>
+        {status?.ciliumPolicyRef && (
+          <small>
+            Cilium policy: <span className="mono">{status.ciliumPolicyRef}</span>
+          </small>
+        )}
       </div>
       <ActionPill action={policy.spec.action} />
-      <PolicyPhaseBadge phase={policy.status?.phase || 'Pending'} />
+      <PhaseBadge phase={phase} />
+      {onApply && (
+        <button type="button" className="btn-secondary" onClick={onApply} disabled={applying} aria-label={`Apply policy ${policy.metadata.name}`}>
+          {applying ? 'Requesting…' : 'Apply'}
+        </button>
+      )}
     </div>
   )
 }
 
-function SuggestedPolicyCard({ policy, onApply, isApplying }: {
-  policy: FlowPolicy
-  onApply: () => void
-  isApplying: boolean
-}) {
-  return (
-    <div className="list-row">
-      <div className="grow">
-        <b>{policy.metadata.name}</b>
-        <small>
-          {policy.spec.sourceService} → {policy.spec.destinationService} · {policy.spec.protocol}:{policy.spec.port}
-        </small>
-        <small>
-          Intent: {policy.spec.intent}
-          {policy.spec.confidence ? ` · ${Math.round(policy.spec.confidence * 100)}% confidence` : ''}
-        </small>
-      </div>
-      <ActionPill action={policy.spec.action} />
-      <button className="btn-secondary" onClick={onApply} disabled={isApplying}>
-        Apply
-      </button>
-    </div>
-  )
-}
-
-function PolicyPhaseBadge({ phase }: { phase: string }) {
-  const tones: Record<string, string> = {
-    Enforced: 'ok',
-    Active: 'ok',
-    Pending: 'warn',
-    Suggested: 'info',
-  }
-  return <span className={`pill ${tones[phase] ?? 'warn'}`}>{phase}</span>
-}
-
-function CreatePolicyForm({ onSubmit, isSubmitting }: {
+function CreatePolicyForm({ onSubmit, onCancel, isSubmitting, serverError }: {
   onSubmit: (data: CreateFlowPolicyRequest) => void
+  onCancel: () => void
   isSubmitting: boolean
+  serverError?: string
 }) {
-  const [form, setForm] = useState<CreateFlowPolicyRequest>({
-    sourceService: '',
-    destinationService: '',
-    port: 80,
-    protocol: 'TCP',
-    action: 'allow',
-    intent: '',
-  })
+  const uid = useId()
+  const [values, setValues] = useState<PolicyFormValues>({ name: '', sourceService: '', destinationService: '', port: '80', intent: '' })
+  const [protocol, setProtocol] = useState('TCP')
+  const [action, setAction] = useState<PolicyAction>('allow')
+  const [submitted, setSubmitted] = useState(false)
+
+  const errors: PolicyFormErrors = submitted ? validatePolicyForm(values) : {}
+  const set = (k: keyof PolicyFormValues) => (e: React.ChangeEvent<HTMLInputElement>) => setValues({ ...values, [k]: e.target.value })
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!form.sourceService || !form.destinationService || !form.intent) {
-      toast.error('Please fill in all required fields')
-      return
+    setSubmitted(true)
+    if (Object.keys(validatePolicyForm(values)).length > 0) return
+    const req = {
+      sourceService: values.sourceService.trim(),
+      destinationService: values.destinationService.trim(),
+      port: Number(values.port),
+      protocol,
+      action,
+      intent: values.intent.trim(),
+      ...(values.name.trim() ? { name: values.name.trim() } : {}),
     }
-    onSubmit(form)
+    onSubmit(req as unknown as CreateFlowPolicyRequest)
   }
+
+  const field = (k: keyof PolicyFormValues, hint?: string) => {
+    const hintId = `${uid}-${k}-hint`
+    const errId = `${uid}-${k}-err`
+    const describedBy = [hint ? hintId : '', errors[k] ? errId : ''].filter(Boolean).join(' ') || undefined
+    return {
+      'aria-invalid': errors[k] ? true : undefined,
+      'aria-describedby': describedBy,
+      hintNode: hint ? (
+        <small id={hintId} className="faint">
+          {hint}
+        </small>
+      ) : null,
+      errNode: errors[k] ? (
+        <small id={errId} className="text-bad" role="alert">
+          {errors[k]}
+        </small>
+      ) : null,
+    }
+  }
+  const fName = field('name', 'Optional. Lowercase letters, digits and "-"; generated if left empty. Created in the gateway’s default namespace.')
+  const fSrc = field('sourceService', 'Lowercase Kubernetes name, up to 63 characters.')
+  const fDst = field('destinationService', 'Lowercase Kubernetes name, up to 63 characters.')
+  const fPort = field('port')
+  const fIntent = field('intent', `Plain-language purpose, up to ${INTENT_MAX} characters.`)
 
   return (
     <section className="card span3">
       <p className="eyebrow">NEW</p>
       <h2 className="card-title">Create flow policy</h2>
-      <form onSubmit={handleSubmit} className="stack">
+      <form onSubmit={handleSubmit} className="stack" noValidate>
+        {serverError && (
+          <div className="warning" role="alert">
+            <strong>The gateway rejected this policy.</strong>
+            <div>{serverError}</div>
+          </div>
+        )}
         <div className="formgrid">
           <label className="field">
-            <span>Source Service *</span>
-            <input
-              type="text"
-              value={form.sourceService}
-              onChange={(e) => setForm({ ...form, sourceService: e.target.value })}
-              placeholder="e.g., frontend"
-            />
+            <span>Name</span>
+            <input type="text" value={values.name} onChange={set('name')} placeholder="e.g., frontend-to-payment" aria-invalid={fName['aria-invalid']} aria-describedby={fName['aria-describedby']} />
+            {fName.hintNode}
+            {fName.errNode}
           </label>
           <label className="field">
-            <span>Destination Service *</span>
-            <input
-              type="text"
-              value={form.destinationService}
-              onChange={(e) => setForm({ ...form, destinationService: e.target.value })}
-              placeholder="e.g., payment-api"
-            />
+            <span>Source service *</span>
+            <input type="text" value={values.sourceService} onChange={set('sourceService')} placeholder="e.g., frontend" required aria-invalid={fSrc['aria-invalid']} aria-describedby={fSrc['aria-describedby']} />
+            {fSrc.hintNode}
+            {fSrc.errNode}
           </label>
           <label className="field">
-            <span>Port</span>
-            <input
-              type="number"
-              value={form.port}
-              onChange={(e) => setForm({ ...form, port: parseInt(e.target.value) || 0 })}
-            />
+            <span>Destination service *</span>
+            <input type="text" value={values.destinationService} onChange={set('destinationService')} placeholder="e.g., payment-api" required aria-invalid={fDst['aria-invalid']} aria-describedby={fDst['aria-describedby']} />
+            {fDst.hintNode}
+            {fDst.errNode}
+          </label>
+          <label className="field">
+            <span>Port *</span>
+            <input type="number" min={1} max={65535} step={1} value={values.port} onChange={set('port')} required aria-invalid={fPort['aria-invalid']} aria-describedby={fPort['aria-describedby']} />
+            {fPort.errNode}
           </label>
           <label className="field">
             <span>Protocol</span>
-            <select value={form.protocol} onChange={(e) => setForm({ ...form, protocol: e.target.value })}>
+            <select value={protocol} onChange={(e) => setProtocol(e.target.value)}>
               <option value="TCP">TCP</option>
               <option value="UDP">UDP</option>
               <option value="HTTP">HTTP</option>
@@ -265,39 +324,42 @@ function CreatePolicyForm({ onSubmit, isSubmitting }: {
           </label>
           <label className="field">
             <span>Action</span>
-            <select
-              value={form.action}
-              onChange={(e) => setForm({ ...form, action: e.target.value as 'allow' | 'deny' })}
-            >
+            <select value={action} onChange={(e) => setAction(e.target.value as PolicyAction)} aria-describedby={`${uid}-action-hint`}>
               <option value="allow">Allow</option>
               <option value="deny">Deny</option>
+              <option value="log">Log</option>
             </select>
+            <small id={`${uid}-action-hint`} className="faint">
+              log = observe only, safe to trial
+            </small>
           </label>
-          <label className="field">
+          <label className="field span-all">
             <span>Intent *</span>
-            <input
-              type="text"
-              value={form.intent}
-              onChange={(e) => setForm({ ...form, intent: e.target.value })}
-              placeholder="e.g., allow payment processing"
-            />
+            <input type="text" value={values.intent} onChange={set('intent')} placeholder="e.g., allow payment processing" maxLength={INTENT_MAX + 50} required aria-invalid={fIntent['aria-invalid']} aria-describedby={fIntent['aria-describedby']} />
+            {fIntent.hintNode}
+            {fIntent.errNode}
           </label>
         </div>
 
         <div className="list-row">
           <div className="grow">
-            <small>Policy Preview</small>
+            <small>Policy preview</small>
             <b>
-              {form.sourceService || '(source)'} → {form.destinationService || '(destination)'}
+              {values.sourceService || '(source)'} → {values.destinationService || '(destination)'}
             </b>
           </div>
-          <span className="pill info">{form.protocol}:{form.port}</span>
-          <ActionPill action={form.action} />
+          <span className="pill info">
+            {protocol}:{values.port || '—'}
+          </span>
+          <ActionPill action={action} />
         </div>
 
         <div className="toolbar">
           <button type="submit" disabled={isSubmitting} className="primary">
-            {isSubmitting ? 'Creating...' : 'Create Policy'}
+            {isSubmitting ? 'Creating…' : 'Create policy'}
+          </button>
+          <button type="button" className="btn-secondary" onClick={onCancel} disabled={isSubmitting}>
+            Cancel
           </button>
         </div>
       </form>

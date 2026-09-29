@@ -3,111 +3,131 @@ import { Link } from 'react-router-dom'
 import { api } from '@/lib/api'
 import type { FabricAIJob } from '@/types'
 import GPUChart from '@/components/GPUChart'
-import LoadingSpinner from '@/components/LoadingSpinner'
 import PageHero from '@/components/PageHero'
-import { phaseTone } from '@/lib/phase'
+import { EmptyState, ErrorState, Skeleton } from '@/components/StateViews'
+import { countByGroup, phaseTone } from '@/lib/phase'
 import { jobFramework, jobGpus } from '@/lib/jobs'
+import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 
 export default function Dashboard() {
-  const { data: clusterStats, isLoading: statsLoading, isError: statsError } = useQuery({
-    queryKey: ['clusterStats'],
-    queryFn: api.getClusterStats,
-    refetchInterval: 15000,
-  })
+  useDocumentTitle('Dashboard')
+  const stats = useQuery({ queryKey: ['clusterStats'], queryFn: api.getClusterStats, refetchInterval: 15000 })
+  const jobsQ = useQuery({ queryKey: ['jobs'], queryFn: api.getJobs, refetchInterval: 10000 })
+  const nodesQ = useQuery({ queryKey: ['nodes'], queryFn: api.getNodes, refetchInterval: 30000 })
+  const gpuQ = useQuery({ queryKey: ['gpuMetrics'], queryFn: api.getGPUMetrics, refetchInterval: 15000 })
 
-  const { data: jobs, isLoading: jobsLoading } = useQuery({
-    queryKey: ['jobs'],
-    queryFn: api.getJobs,
-    refetchInterval: 10000,
-  })
+  const clusterStats = stats.data
+  const jobs = jobsQ.data
+  const nodes = nodesQ.data
+  const gpuMetrics = gpuQ.data
 
-  const { data: nodes } = useQuery({
-    queryKey: ['nodes'],
-    queryFn: api.getNodes,
-    refetchInterval: 30000,
-  })
-
-  const { data: gpuMetrics } = useQuery({
-    queryKey: ['gpuMetrics'],
-    queryFn: api.getGPUMetrics,
-    refetchInterval: 15000,
-  })
-
-  if (statsLoading) {
-    return <LoadingSpinner />
-  }
-
-  if (statsError) {
+  if (stats.isError && !clusterStats) {
     return (
       <>
         <PageHero eyebrow="Dashboard" title="Cluster unavailable." tint="red" />
-        <p className="warning" role="alert">
-          Failed to load cluster stats. Please check your API connection.
-        </p>
+        <ErrorState title="Could not load cluster stats." error={stats.error} onRetry={() => stats.refetch()} retrying={stats.isRefetching} />
       </>
     )
   }
 
-  const runningJobs = jobs?.filter((j) => j.status?.phase === 'Running') || []
-  const pendingJobs = jobs?.filter((j) => j.status?.phase === 'Pending' || j.status?.phase === 'Queued') || []
-  const completedJobs = jobs?.filter((j) => j.status?.phase === 'Completed' || j.status?.phase === 'Succeeded') || []
-  const failedJobs = jobs?.filter((j) => j.status?.phase === 'Failed') || []
-  const totalJobs = jobs?.length || 0
-  const successRate = totalJobs > 0 ? Math.round((completedJobs.length / totalJobs) * 100) : 0
-  const utilization = Math.round(clusterStats?.utilizationPercent || 0)
+  const counts = countByGroup(jobs, (j) => j.status?.phase)
+  const finished = counts.completed + counts.failed
+  const successRate = finished > 0 ? Math.round((counts.completed / finished) * 100) : undefined
+  const utilization = clusterStats ? Math.round(clusterStats.utilizationPercent || 0) : undefined
+  const totalGPUs = clusterStats?.totalGPUs ?? 0
+  const availableGPUs = clusterStats?.availableGPUs ?? 0
+  const allocatedGPUs = clusterStats?.allocatedGPUs ?? Math.max(0, totalGPUs - availableGPUs)
+  const num = (n: number | undefined) => (n === undefined ? '—' : n)
 
   return (
     <>
       <PageHero eyebrow="Dashboard" title="Your GPU cluster, at a glance." lede="Live capacity, jobs and node health." />
 
       <div className="grid">
+        {stats.isError && (
+          <div className="span3">
+            <ErrorState title="Could not refresh cluster stats; showing the last data." error={stats.error} onRetry={() => stats.refetch()} retrying={stats.isRefetching} />
+          </div>
+        )}
+
         <div className="apple-metric-band span3">
           <div>
-            <span>GPUs · {clusterStats?.availableGPUs || 0} available</span>
-            <b>{clusterStats?.totalGPUs || 0}</b>
+            <span>GPUs{clusterStats ? ` · ${availableGPUs} available` : ''}</span>
+            <b>{num(clusterStats?.totalGPUs)}</b>
           </div>
           <div>
-            <span>Running jobs{pendingJobs.length > 0 ? ` · ${pendingJobs.length} pending` : ''}</span>
-            <b>{runningJobs.length}</b>
+            <span>Running jobs{jobs && counts.pending > 0 ? ` · ${counts.pending} pending` : ''}</span>
+            <b>{num(jobs ? counts.running : undefined)}</b>
           </div>
           <div>
-            <span>Completed{successRate > 0 ? ` · ${successRate}% success` : ''}</span>
-            <b>{completedJobs.length}</b>
+            <span>Completed{successRate !== undefined ? ` · ${successRate}% success` : ''}</span>
+            <b>{num(jobs ? counts.completed : undefined)}</b>
           </div>
           <div>
-            <span>GPU utilization</span>
-            <b>{utilization}%</b>
+            <span>GPU utilization now</span>
+            <b>{utilization === undefined ? '—' : `${utilization}%`}</b>
           </div>
         </div>
 
         <section className="card span2">
           <p className="eyebrow">UTILIZATION</p>
-          <h2 className="card-title">GPU utilization</h2>
-          <GPUChart
-            data={gpuMetrics?.metrics?.map((m) => ({
-              time: new Date(m.timestamp).toLocaleTimeString(),
-              [`${m.node}-GPU${m.gpuIndex}`]: m.utilization,
-            }))}
-          />
+          <h2 className="card-title">GPU utilization now</h2>
+          {gpuQ.isError && !gpuMetrics ? (
+            <ErrorState title="Could not load GPU metrics." error={gpuQ.error} onRetry={() => gpuQ.refetch()} retrying={gpuQ.isRefetching} />
+          ) : gpuQ.isLoading ? (
+            <Skeleton rows={4} />
+          ) : (
+            <GPUChart
+              data={gpuMetrics?.metrics?.map((m) => ({
+                time: new Date(m.timestamp).toLocaleTimeString(),
+                [`${m.node}-GPU${m.gpuIndex}`]: m.utilization,
+              }))}
+            />
+          )}
         </section>
 
         <section className="card">
           <p className="eyebrow">HEALTH</p>
           <h2 className="card-title">Cluster health</h2>
-          <HealthCheck label="GPU nodes" tone={(clusterStats?.totalNodes || 0) > 0 ? 'ok' : 'bad'} detail={`${clusterStats?.totalNodes || 0} nodes`} />
-          <HealthCheck label="GPU utilization" tone={utilization >= 95 ? 'bad' : utilization > 80 ? 'warn' : 'ok'} detail={`${utilization}%`} />
-          <HealthCheck label="Failed jobs" tone={failedJobs.length === 0 ? 'ok' : 'bad'} detail={`${failedJobs.length}`} />
-          <HealthCheck label="Available GPUs" tone={(clusterStats?.availableGPUs || 0) > 0 ? 'ok' : 'bad'} detail={`${clusterStats?.availableGPUs || 0}`} />
-          <HealthCheck label="Job queue" tone={pendingJobs.length >= 10 ? 'bad' : pendingJobs.length > 5 ? 'warn' : 'ok'} detail={`${pendingJobs.length} pending`} />
+          {!clusterStats ? (
+            <Skeleton rows={5} />
+          ) : (
+            <>
+              <HealthCheck label="GPU nodes" tone={clusterStats.totalNodes > 0 ? 'ok' : 'warn'} detail={`${clusterStats.totalNodes} nodes`} />
+              <HealthCheck label="GPU utilization" tone={(utilization ?? 0) >= 95 ? 'bad' : (utilization ?? 0) > 80 ? 'warn' : 'ok'} detail={`${utilization}%`} />
+              <HealthCheck label="Failed jobs" tone={!jobs ? undefined : counts.failed === 0 ? 'ok' : 'warn'} detail={jobs ? `${counts.failed}` : '—'} />
+              <HealthCheck
+                label="GPUs allocated"
+                tone={totalGPUs > 0 && availableGPUs === 0 ? 'warn' : 'ok'}
+                detail={`${allocatedGPUs}/${totalGPUs} GPUs`}
+              />
+              <HealthCheck
+                label="Job queue"
+                tone={!jobs ? undefined : counts.pending >= 10 ? 'bad' : counts.pending > 5 ? 'warn' : 'ok'}
+                detail={jobs ? `${counts.pending} pending` : '—'}
+              />
+            </>
+          )}
         </section>
 
         <section className="card span2">
-          <p className="eyebrow">JOBS · {totalJobs} TOTAL</p>
+          <p className="eyebrow">JOBS · {jobs ? `${jobs.length} TOTAL` : '…'}</p>
           <h2 className="card-title">Recent jobs</h2>
-          {jobsLoading ? (
-            <LoadingSpinner />
+          {jobsQ.isError && !jobs ? (
+            <ErrorState title="Could not load jobs." error={jobsQ.error} onRetry={() => jobsQ.refetch()} retrying={jobsQ.isRefetching} />
+          ) : jobsQ.isLoading ? (
+            <Skeleton rows={4} />
           ) : (jobs || []).length === 0 ? (
-            <p className="empty-state">No jobs yet</p>
+            <EmptyState
+              title="No jobs yet"
+              action={
+                <Link to="/jobs/new" className="buttonlike primary">
+                  Submit a job
+                </Link>
+              }
+            >
+              Jobs appear here once you submit a FabricAIJob.
+            </EmptyState>
           ) : (
             (jobs || []).slice(0, 5).map((job) => <JobRow key={job.metadata?.name} job={job} />)
           )}
@@ -118,30 +138,39 @@ export default function Dashboard() {
           </p>
         </section>
 
-        {nodes && nodes.length > 0 ? (
-          <section className="card">
-            <p className="eyebrow">NODES</p>
-            <h2 className="card-title">GPU nodes</h2>
-            {nodes.slice(0, 6).map((node) => (
-              <div key={node.metadata?.name} className="list-row">
-                <span className={`dot ${node.status?.phase === 'Ready' ? 'ok' : node.status?.phase === 'Degraded' ? 'warn' : 'bad'}`} />
-                <div className="grow">
-                  <b>{node.spec?.nodeName || node.metadata?.name}</b>
-                  <small>
-                    {node.spec?.gpuType} × {node.spec?.gpuCount}
-                  </small>
+        <section className="card">
+          <p className="eyebrow">NODES</p>
+          <h2 className="card-title">GPU nodes</h2>
+          {nodesQ.isError && !nodes ? (
+            <ErrorState title="Could not load nodes." error={nodesQ.error} onRetry={() => nodesQ.refetch()} retrying={nodesQ.isRefetching} />
+          ) : nodesQ.isLoading ? (
+            <Skeleton rows={3} />
+          ) : !nodes || nodes.length === 0 ? (
+            <EmptyState title="No GPU nodes registered">Nodes are registered by the GPU operator once it discovers GPUs.</EmptyState>
+          ) : (
+            <>
+              {nodes.slice(0, 6).map((node) => (
+                <div key={node.metadata?.name} className="list-row">
+                  <span className={`dot ${phaseTone(node.status?.phase)}`} />
+                  <div className="grow">
+                    <b>{node.spec?.nodeName || node.metadata?.name}</b>
+                    <small>
+                      {node.spec?.gpuType} × {node.spec?.gpuCount}
+                    </small>
+                  </div>
+                  <span className="faint">{node.status?.phase || 'Unknown'}</span>
                 </div>
-              </div>
-            ))}
-            {nodes.length > 6 && (
-              <p>
-                <Link to="/nodes" className="card-link">
-                  View all {nodes.length} nodes ›
-                </Link>
-              </p>
-            )}
-          </section>
-        ) : null}
+              ))}
+              {nodes.length > 6 && (
+                <p>
+                  <Link to="/nodes" className="card-link">
+                    View all {nodes.length} nodes ›
+                  </Link>
+                </p>
+              )}
+            </>
+          )}
+        </section>
 
         <section className="card span3">
           <p className="eyebrow">SHORTCUTS</p>
@@ -178,12 +207,12 @@ function JobRow({ job }: { job: FabricAIJob }) {
   )
 }
 
-function HealthCheck({ label, tone, detail }: { label: string; tone: 'ok' | 'warn' | 'bad'; detail?: string }) {
+function HealthCheck({ label, tone, detail }: { label: string; tone?: 'ok' | 'warn' | 'bad'; detail?: string }) {
   return (
     <div className="list-row">
-      <span className={`dot ${tone}`} />
+      <span className={`dot ${tone ?? ''}`} />
       <span className="grow">{label}</span>
-      {detail && <span className="faint">{detail}</span>}
+      {detail && <span className="faint num">{detail}</span>}
     </div>
   )
 }

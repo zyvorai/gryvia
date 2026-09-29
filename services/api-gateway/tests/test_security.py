@@ -15,14 +15,26 @@ def valid(**over):
 
 
 def test_empty(client):
-    assert client.get("/api/security/alerts").json() == {"items": []}
+    assert client.get("/api/security/alerts").json() == {"items": [], "eventSource": False}
     assert client.get("/api/security/policies").json() == {"items": []}
 
 
 def test_alerts_never_fabricated(client, fake_k8s):
     fake_k8s.add("fabricsecuritypolicies", {"metadata": {"name": "p"}, "spec": {},
                                             "status": {"alertsTriggered": 5, "detectionCounts": {"mining": 5}}}, NS)
-    assert client.get("/api/security/alerts").json() == {"items": []}
+    assert client.get("/api/security/alerts").json() == {"items": [], "eventSource": False}
+
+
+def test_alerts_survive_unreadable_policies_crd(make_client, fake_k8s):
+    from kubernetes.client.exceptions import ApiException
+
+    def boom(*a, **kw):
+        raise ApiException(status=403, reason="Forbidden")
+
+    fake_k8s.list_cluster_custom_object = boom
+    r = make_client("security").get("/api/security/alerts")
+    assert r.status_code == 200
+    assert r.json() == {"items": [], "eventSource": False}
 
 
 def test_list_shape(client, fake_k8s):

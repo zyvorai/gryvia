@@ -25,7 +25,7 @@
 .pill {
   display: inline-flex; align-items: center; justify-self: start; align-self: center;
   padding: 3px 10px; border-radius: var(--radius-pill);
-  font-size: 11px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
   line-height: 1.4; white-space: nowrap;
   color: var(--text-tertiary); background: var(--bg-elevated-2); border: 1px solid var(--border);
 }
@@ -88,3 +88,83 @@ a.buttonlike:hover { text-decoration: none; }
 
 /* A toolbar right after body text inside a card (e.g. the workspace card actions) needs breathing room. */
 .card p + .toolbar, .card .list-row + .toolbar { margin-top: 14px; }
+
+/* Numbers line up: right-aligned, tabular figures. */
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+th.num { text-align: right; }
+
+/* Skeleton loaders */
+.skeleton { border-radius: var(--radius-sm); background: var(--fill-tertiary); animation: skeletonPulse 1.4s ease-in-out infinite; }
+@keyframes skeletonPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+@media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } }
+
+/* Skip link: first tab stop, visible only on focus. */
+.skip-link { position: absolute; left: 12px; top: -48px; z-index: 200; padding: 10px 16px; border-radius: var(--radius-pill); background: var(--apple-blue); color: #fff; text-decoration: none; }
+.skip-link:focus { top: 8px; }
+
+/* Interactive table rows */
+tr[data-clickable] { cursor: pointer; }
+tr[data-clickable]:focus-visible { outline: 2px solid var(--apple-blue); outline-offset: -2px; }
+
+/* Modals: full width on phones */
+@media (max-width: 600px) { .modal-backdrop { padding: 0; align-items: flex-end; } .modal-card { width: 100%; max-height: 92vh; border-radius: var(--radius-2xl) var(--radius-2xl) 0 0; } }
+
+/* Real links (not buttons) styled exactly like netra's nav buttons, so open-in-new-tab works. Generated from netra.css. */
+.navlinks > a,
+.nav .navlinks > a {
+  position: relative;
+  border: 0;
+  background: transparent;
+  padding: 0 10px;
+  min-height: 48px;
+  height: 48px;
+  border-radius: 0;
+  display: inline-flex;
+  align-items: center;
+  color: var(--nav-link);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  opacity: 0.88;
+  transition: opacity 0.2s var(--ease-apple), color 0.2s var(--ease-apple); }
+.navlinks > a::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 6px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--apple-blue);
+  transform: scaleX(0);
+  transition: transform 0.25s var(--ease-apple); }
+.navlinks > a:hover {
+  background: transparent;
+  opacity: 1;
+  color: var(--nav-link-active); }
+.navlinks > a.active {
+  background: transparent;
+  color: var(--nav-link-active);
+  opacity: 1;
+  font-weight: 500; }
+.navlinks > a.active::after {
+  transform: scaleX(1); }
+.mega-grid a {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  height: auto;
+  min-height: 0;
+  padding: 8px;
+  border-radius: var(--radius-xs, 6px);
+  text-align: left;
+  white-space: normal;
+  opacity: 1; }
+.mega-grid a:hover {
+  background: var(--hover-fill); }
+.mega-grid a::after {
+  content: none; }
+.navlinks > a, .mega-grid a { text-decoration: none; }
+.mega-grid a.active .mega-link-label { color: var(--apple-blue); }

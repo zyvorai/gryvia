@@ -46,6 +46,7 @@ def to_ui(obj: Dict[str, Any]) -> Dict[str, Any]:
         }),
         "status": prune({
             "phase": st.get("phase"),
+            "message": st.get("message") if isinstance(st.get("message"), str) and st.get("message") else None,
             "url": st.get("url"),
             "uptime": fmt_duration(st.get("startTime")) if running else None,
             "lastActivity": st.get("lastActivity"),

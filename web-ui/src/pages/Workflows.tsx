@@ -2,33 +2,43 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { api } from '@/lib/api'
-import { errorMessage } from '@/lib/errors'
 import type { Workflow, WorkflowStep } from '@/lib/api'
+import { errorMessage } from '@/lib/errors'
+import { formatDate, formatRelative } from '@/lib/format'
+import { countByGroup, phaseGroup, phaseTone } from '@/lib/phase'
+import { notify } from '@/lib/notify'
+import { nameError } from '@/lib/forms'
+import { dagLayers } from '@/lib/dag'
+import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import PageHero from '@/components/PageHero'
 import PagePulse from '@/components/kit/PagePulse'
 import { countTone } from '@/components/kit/tone'
-import LoadingSpinner from '@/components/LoadingSpinner'
+import Modal from '@/components/Modal'
+import Progress from '@/components/Progress'
+import { EmptyState, ErrorState, Skeleton } from '@/components/StateViews'
+import { TableCaption } from '@/components/TableCaption'
 
 export default function Workflows() {
+  useDocumentTitle('Workflows')
   const [showCreate, setShowCreate] = useState(false)
-  const { data: workflows, isLoading, isError, refetch, isRefetching, dataUpdatedAt } = useQuery({
+  const { data: workflows, isLoading, isError, error, refetch, isRefetching, dataUpdatedAt } = useQuery({
     queryKey: ['workflows'],
     queryFn: api.getWorkflows,
     refetchInterval: 15000,
   })
 
-  if (isError) return (
-    <>
-      <PageHero eyebrow="Workflows" title="Workflows unavailable." tint="red" />
-      <p className="warning" role="alert">Failed to load workflows. Please try again.</p>
-    </>
-  )
+  if (isError && !workflows) {
+    return (
+      <>
+        <PageHero eyebrow="Workflows" title="Workflows unavailable." tint="red" />
+        <ErrorState title="Could not load workflows." error={error} onRetry={() => refetch()} retrying={isRefetching} />
+      </>
+    )
+  }
 
-  const activeWorkflows = workflows?.filter(w => w.status?.phase === 'Running') || []
-  const completedWorkflows = workflows?.filter(w => w.status?.phase === 'Completed' || w.status?.phase === 'Succeeded') || []
-  const failedWorkflows = workflows?.filter(w => w.status?.phase === 'Failed') || []
-  const stepsRunning = workflows?.reduce((sum, w) =>
-    sum + (w.status?.steps?.filter(s => s.status === 'Running').length || 0), 0) || 0
+  const groups = workflows ? countByGroup(workflows, (w) => w.status?.phase) : undefined
+  const failed = groups?.failed
+  const stepsRunning = workflows?.reduce((sum, w) => sum + (w.status?.steps?.filter((s) => phaseGroup(s.status) === 'running').length ?? 0), 0)
 
   return (
     <>
@@ -37,53 +47,76 @@ export default function Workflows() {
       <div className="grid">
         <PagePulse
           updatedAt={dataUpdatedAt}
-          headline={failedWorkflows.length > 0 ? `${failedWorkflows.length} workflow${failedWorkflows.length === 1 ? '' : 's'} failed.` : `${activeWorkflows.length} workflows running, none failed.`}
-          tone={countTone(failedWorkflows.length, 1)}
+          error={isError ? errorMessage(error) : undefined}
+          headline={
+            failed === undefined
+              ? undefined
+              : failed > 0
+                ? `${failed} workflow${failed === 1 ? '' : 's'} failed.`
+                : `${groups?.running ?? 0} workflows running, none failed.`
+          }
+          tone={failed === undefined ? undefined : countTone(failed, 1)}
           figures={[
-            { label: 'Active workflows', value: activeWorkflows.length },
-            { label: 'Completed', value: completedWorkflows.length },
-            { label: 'Failed', value: failedWorkflows.length, tone: countTone(failedWorkflows.length, 1) },
+            { label: 'Active workflows', value: groups?.running },
+            { label: 'Completed', value: groups?.completed },
+            { label: 'Failed', value: failed, tone: failed === undefined ? undefined : countTone(failed, 1) },
             { label: 'Steps running', value: stepsRunning },
           ]}
         />
 
+        {isError && (
+          <div className="span3">
+            <ErrorState title="Showing the last data received; refreshing failed." error={error} onRetry={() => refetch()} retrying={isRefetching} />
+          </div>
+        )}
+
         <section className="card span3">
           <p className="eyebrow">Pipelines</p>
-          <h2 className="card-title">All Workflows</h2>
+          <h2 className="card-title">All workflows</h2>
           <div className="toolbar">
             <button className="primary" onClick={() => setShowCreate(true)}>
-              Create Workflow
+              Create workflow
             </button>
             <button className="btn-refresh" onClick={() => refetch()} disabled={isRefetching}>
               Refresh
             </button>
-            <span className="faint">{workflows?.length || 0} total</span>
+            {workflows && <span className="faint">{workflows.length} total</span>}
           </div>
-        {isLoading ? (
-          <LoadingSpinner />
-        ) : (workflows || []).length === 0 ? (
-          <p className="empty-state">No workflows yet</p>
-        ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Steps</th>
-                  <th>Status</th>
-                  <th>Progress</th>
-                  <th>Duration</th>
-                  <th>Started</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(workflows || []).map((wf) => (
-                  <WorkflowRow key={wf.metadata?.name} workflow={wf} />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+          {isLoading ? (
+            <Skeleton rows={4} />
+          ) : (workflows ?? []).length === 0 ? (
+            <EmptyState
+              title="No workflows yet."
+              action={
+                <button className="primary" onClick={() => setShowCreate(true)}>
+                  Create your first workflow
+                </button>
+              }
+            >
+              A workflow chains jobs, scripts and webhooks into a pipeline, with steps that wait for the ones they depend on.
+            </EmptyState>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <TableCaption>Workflows</TableCaption>
+                <thead>
+                  <tr>
+                    <th scope="col">Name</th>
+                    <th scope="col" className="num">Steps</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Progress</th>
+                    <th scope="col">Duration</th>
+                    <th scope="col">Started</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(workflows ?? []).map((wf) => (
+                    <WorkflowRow key={wf.metadata?.name} workflow={wf} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
       </div>
       {showCreate && <CreateWorkflowModal onClose={() => setShowCreate(false)} />}
@@ -93,22 +126,18 @@ export default function Workflows() {
 
 // --- Sub-components ---
 
-const phaseTone: Record<string, string> = {
-  Running: 'info',
-  Completed: 'ok',
-  Succeeded: 'ok',
-  Failed: 'bad',
-  Pending: 'warn',
-}
+const NOT_STARTED = 'Not started'
 
-const stepTone: Record<string, string> = {
-  Completed: 'ok',
-  Succeeded: 'ok',
-  Running: 'info',
-  Pending: '',
-  Failed: 'bad',
+/** Spec steps carry type and dependsOn; status steps carry progress. Combine them by step name. */
+function mergeSteps(workflow: Workflow): WorkflowStep[] {
+  const spec = workflow.spec?.steps ?? []
+  const status = workflow.status?.steps ?? []
+  const statusByName = new Map(status.map((s) => [s.name, s]))
+  const specNames = new Set(spec.map((s) => s.name))
+  const merged: WorkflowStep[] = spec.map((s) => ({ ...s, ...statusByName.get(s.name), type: statusByName.get(s.name)?.type ?? s.type, dependsOn: statusByName.get(s.name)?.dependsOn ?? s.dependsOn }))
+  for (const s of status) if (!specNames.has(s.name)) merged.push(s)
+  return merged
 }
-
 
 const DEFAULT_STEPS = JSON.stringify(
   [
@@ -123,72 +152,70 @@ function CreateWorkflowModal({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient()
   const [name, setName] = useState('')
   const [steps, setSteps] = useState(DEFAULT_STEPS)
-  const [error, setError] = useState<string | null>(null)
+  const [submitted, setSubmitted] = useState(false)
+  const dirty = name !== '' || steps !== DEFAULT_STEPS
 
   const createMutation = useMutation({
     mutationFn: (body: { name: string; steps: unknown[] }) =>
       api.createWorkflow({ metadata: { name: body.name }, spec: { steps: body.steps } }),
-    onSuccess: () => {
+    onSuccess: (_d, vars) => {
+      notify.success(`Created workflow ${vars.name}`)
       queryClient.invalidateQueries({ queryKey: ['workflows'] })
       onClose()
     },
+    onError: (err) => notify.error('Could not create workflow', err),
   })
+
+  let parsed: unknown
+  let stepsError: string | null = null
+  try {
+    parsed = JSON.parse(steps)
+    if (!Array.isArray(parsed) || parsed.length === 0) stepsError = 'Steps must be a non-empty JSON array.'
+  } catch (e) {
+    stepsError = `Not valid JSON: ${e instanceof Error ? e.message : 'parse error'}`
+  }
+  const nameErr = nameError(name)
+  const nameShown = submitted || name !== '' ? nameErr : null
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    setError(null)
-    if (!/^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/.test(name)) {
-      setError('Name must consist of lowercase alphanumeric characters or hyphens')
-      return
-    }
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(steps)
-    } catch {
-      setError('Steps must be valid JSON')
-      return
-    }
-    if (!Array.isArray(parsed) || parsed.length === 0) {
-      setError('Steps must be a non-empty JSON array')
-      return
-    }
-    createMutation.mutate({ name, steps: parsed })
+    setSubmitted(true)
+    if (nameErr || stepsError) return
+    createMutation.mutate({ name, steps: parsed as unknown[] })
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-        <h2 className="card-title">Create Workflow</h2>
-        <form onSubmit={handleSubmit} className="stack">
-          <label className="field">
-            <span>Name</span>
-            <input type="text" required value={name} onChange={(e) => setName(e.target.value)} placeholder="my-pipeline" />
-          </label>
-          <label className="field">
-            <span>Steps (JSON)</span>
-            <textarea className="codeedit compact" required value={steps} onChange={(e) => setSteps(e.target.value)} />
-          </label>
-          <p className="faint">
-            Each step has a name, an optional dependsOn list, and a payload: a jobTemplate (type, image, gpus), a script
-            (image, command) or a webhook (url).
+    <Modal title="Create workflow" onClose={onClose} dirty={dirty}>
+      <form onSubmit={handleSubmit} className="stack" noValidate>
+        <label className="field">
+          <span>Name</span>
+          <input type="text" data-autofocus value={name} onChange={(e) => setName(e.target.value)} placeholder="my-pipeline" aria-invalid={!!nameShown} autoComplete="off" />
+          {nameShown && <span className="warning">{nameShown}</span>}
+        </label>
+        <label className="field">
+          <span>Steps (JSON)</span>
+          <textarea className="codeedit compact" value={steps} onChange={(e) => setSteps(e.target.value)} aria-invalid={!!stepsError} spellCheck={false} />
+          {stepsError && <span className="warning">{stepsError}</span>}
+        </label>
+        <p className="faint">
+          Each step has a name, an optional dependsOn list, and a payload: a jobTemplate (type, image, gpus), a script
+          (image, command) or a webhook (url).
+        </p>
+        {createMutation.isError && (
+          <p className="warning" role="alert">
+            {errorMessage(createMutation.error)}
           </p>
-          {error && <p className="warning" role="alert">{error}</p>}
-          {createMutation.isError && (
-            <p className="warning" role="alert">
-              Error creating workflow: {errorMessage(createMutation.error)}
-            </p>
-          )}
-          <div className="toolbar">
-            <button type="button" className="btn-secondary" onClick={onClose}>
-              Cancel
-            </button>
-            <button type="submit" className="primary" disabled={createMutation.isPending}>
-              {createMutation.isPending ? 'Creating...' : 'Create Workflow'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        )}
+        <div className="toolbar">
+          <button type="button" className="btn-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="primary" disabled={createMutation.isPending}>
+            {createMutation.isPending ? 'Creating…' : 'Create workflow'}
+          </button>
+        </div>
+      </form>
+    </Modal>
   )
 }
 
@@ -196,30 +223,41 @@ function WorkflowRow({ workflow }: { workflow: Workflow }) {
   const [expanded, setExpanded] = useState(false)
   const name = workflow.metadata?.name || 'unknown'
   const phase = workflow.status?.phase || 'Pending'
-  const steps = workflow.status?.steps || workflow.spec?.steps || []
+  const steps = mergeSteps(workflow)
   const totalSteps = steps.length
-  const completedSteps = workflow.status?.steps?.filter(
-    s => s.status === 'Completed' || s.status === 'Succeeded'
-  ).length || 0
+  const completedSteps = workflow.status?.steps?.filter((s) => phaseGroup(s.status) === 'completed').length ?? 0
+  const started = workflow.status?.startedAt
+  const toggle = () => setExpanded((v) => !v)
 
   return (
     <>
-      <tr className="table-row-hover" onClick={() => setExpanded(!expanded)}>
+      <tr
+        className="table-row-hover"
+        data-clickable
+        tabIndex={0}
+        aria-expanded={expanded}
+        onClick={toggle}
+        onKeyDown={(e) => {
+          if (e.target !== e.currentTarget) return
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            toggle()
+          }
+        }}
+      >
         <td>
           <span className="faint" aria-hidden="true">{expanded ? '▾' : '▸'}</span>{' '}
           <b>{name}</b>
         </td>
-        <td className="muted">{totalSteps}</td>
-        <td><span className={`pill ${phaseTone[phase] || ''}`}>{phase}</span></td>
+        <td className="num muted">{totalSteps}</td>
+        <td><span className={`pill ${phaseTone(phase)}`}>{phase}</span></td>
         <td>
-          <div className={phase === 'Failed' ? 'progress bad' : 'progress'}>
-            <span style={{ width: totalSteps > 0 ? `${(completedSteps / totalSteps) * 100}%` : '0%' }} />
-          </div>
+          <Progress value={completedSteps} max={totalSteps} label={`${name}: ${completedSteps} of ${totalSteps} steps complete`} tone={phaseGroup(phase) === 'failed' ? 'bad' : undefined} />
           <span className="faint">{completedSteps}/{totalSteps}</span>
         </td>
-        <td className="muted">{workflow.status?.duration || '-'}</td>
-        <td className="faint">
-          {workflow.status?.startedAt ? new Date(workflow.status.startedAt).toLocaleString() : '-'}
+        <td className="muted">{workflow.status?.duration ?? '—'}</td>
+        <td className="faint" title={formatDate(started)}>
+          {formatRelative(started)}
         </td>
       </tr>
 
@@ -227,7 +265,7 @@ function WorkflowRow({ workflow }: { workflow: Workflow }) {
         <tr>
           <td colSpan={6}>
             <p className="eyebrow">Workflow DAG</p>
-            <DAGVisualization steps={workflow.status?.steps || workflow.spec?.steps || []} />
+            <DAGVisualization steps={steps} started={!!workflow.status?.steps} />
           </td>
         </tr>
       )}
@@ -235,60 +273,70 @@ function WorkflowRow({ workflow }: { workflow: Workflow }) {
   )
 }
 
-function DAGVisualization({ steps }: { steps: WorkflowStep[] }) {
-  const [selectedStep, setSelectedStep] = useState<WorkflowStep | null>(null)
+function DAGVisualization({ steps, started }: { steps: WorkflowStep[]; started: boolean }) {
+  const [selectedName, setSelectedName] = useState<string | null>(null)
+  const stepStatus = (s: WorkflowStep) => (started && s.status ? s.status : NOT_STARTED)
+  const selectedStep = steps.find((s) => s.name === selectedName)
 
   if (steps.length === 0) {
-    return <p className="empty-state">No steps defined</p>
+    return <EmptyState title="No steps defined." />
   }
+
+  const layers = dagLayers(steps)
 
   return (
     <div className="stack">
-      <div className="toolbar">
-        {steps.map((step, idx) => {
-          const isSelected = selectedStep?.name === step.name
-          return (
-            <div key={step.name || idx} className="row">
-              <button
-                className={isSelected ? 'primary' : 'btn-secondary'}
-                onClick={() => setSelectedStep(isSelected ? null : step)}
-              >
-                {step.name}
-                {' '}
-                <span className={`pill ${stepTone[step.status || 'Pending'] ?? ''}`}>
-                  {step.status || 'Pending'}
-                </span>
-              </button>
-              {idx < steps.length - 1 && <span className="faint" aria-hidden="true">›</span>}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, overflowX: 'auto', paddingBottom: 4 }} role="group" aria-label="Workflow steps, left to right by dependency">
+        {layers.map((layer, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {i > 0 && <span className="faint" aria-hidden="true">→</span>}
+            <div className="stack" style={{ gap: 8 }}>
+              {layer.map((step) => {
+                const isSelected = selectedName === step.name
+                const status = stepStatus(step)
+                return (
+                  <button
+                    key={step.name}
+                    type="button"
+                    className={isSelected ? 'primary' : 'btn-secondary'}
+                    aria-pressed={isSelected}
+                    onClick={() => setSelectedName(isSelected ? null : step.name)}
+                  >
+                    {step.name} <span className={`pill ${phaseTone(status)}`}>{status}</span>
+                  </button>
+                )
+              })}
             </div>
-          )
-        })}
+          </div>
+        ))}
       </div>
 
       {selectedStep && (
         <div className="stack">
           <div className="formgrid">
             <div>
-              <div className="faint">Step Name</div>
+              <div className="faint">Step name</div>
               <b>{selectedStep.name}</b>
             </div>
             <div>
               <div className="faint">Type</div>
-              <span className="muted">{selectedStep.type || 'task'}</span>
+              <span className="muted">{selectedStep.type ?? '—'}</span>
+            </div>
+            <div>
+              <div className="faint">Depends on</div>
+              <span className="muted">{selectedStep.dependsOn && selectedStep.dependsOn.length > 0 ? selectedStep.dependsOn.join(', ') : 'Nothing (starts first)'}</span>
             </div>
             <div>
               <div className="faint">Status</div>
-              <span className={`pill ${stepTone[selectedStep.status || 'Pending'] ?? ''}`}>
-                {selectedStep.status || 'Pending'}
-              </span>
+              <span className={`pill ${phaseTone(stepStatus(selectedStep))}`}>{stepStatus(selectedStep)}</span>
             </div>
             <div>
               <div className="faint">Duration</div>
-              <span className="muted">{selectedStep.duration || '-'}</span>
+              <span className="muted">{selectedStep.duration ?? '—'}</span>
             </div>
           </div>
           {selectedStep.jobRef && (
-            <Link to={`/jobs/${selectedStep.jobRef}`} className="card-link">
+            <Link to={`/jobs/${encodeURIComponent(selectedStep.jobRef)}`} className="card-link">
               View job logs: {selectedStep.jobRef} ›
             </Link>
           )}

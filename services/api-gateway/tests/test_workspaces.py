@@ -104,3 +104,17 @@ def test_actions_404(make_client):
     c = make_client("workspaces")
     assert c.post("/api/workspaces/nope/pause").status_code == 404
     assert c.post("/api/workspaces/nope/resume").status_code == 404
+
+
+def test_status_message_passthrough(make_client, fake_k8s):
+    seed(fake_k8s, status={"phase": "Failed", "message": "quota exceeded"})
+    st = make_client("workspaces").get("/api/workspaces").json()["items"][0]["status"]
+    assert st["phase"] == "Failed" and st["message"] == "quota exceeded"
+
+
+def test_no_phase_invented(make_client, fake_k8s):
+    seed(fake_k8s, status={"message": "waiting for scheduler"})
+    st = make_client("workspaces").get("/api/workspaces").json()["items"][0]["status"]
+    assert "phase" not in st and st["message"] == "waiting for scheduler"
+    seed(fake_k8s, name="w2", status={"phase": "Running"})
+    assert "message" not in make_client("workspaces").get("/api/workspaces/w2").json()["status"]

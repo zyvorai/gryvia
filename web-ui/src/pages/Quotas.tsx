@@ -1,46 +1,86 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import LoadingSpinner from '@/components/LoadingSpinner'
 import PageHero from '@/components/PageHero'
 import PagePulse from '@/components/kit/PagePulse'
 import { countTone } from '@/components/kit/tone'
+import Progress from '@/components/Progress'
+import { EmptyState, ErrorState, Skeleton } from '@/components/StateViews'
+import { errorMessage } from '@/lib/errors'
+import { formatMoney } from '@/lib/format'
+import { alertThreshold, allowedTypes, budgetPercent, budgetedCount, limitLabel, overBudgetAlert } from '@/lib/quotas'
+import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 
 function tone(pct: number) {
-  return pct > 90 ? 'bad' : pct > 70 ? 'warn' : ''
+  return pct > 90 ? 'bad' : pct > 70 ? 'warn' : undefined
 }
 
 export default function Quotas() {
-  const { data: quotas, isLoading, isError, dataUpdatedAt } = useQuery({
+  useDocumentTitle('Quotas')
+  const { data: quotas, isLoading, isError, error, refetch, isRefetching, dataUpdatedAt } = useQuery({
     queryKey: ['quotas'],
     queryFn: api.getQuotas,
     refetchInterval: 30000,
   })
 
-  if (isLoading) return <LoadingSpinner />
-  if (isError) {
+  if (isLoading) {
+    return (
+      <>
+        <PageHero eyebrow="Quotas" title="Team quotas." lede="GPU allocations and budget tracking per team" />
+        <Skeleton rows={4} />
+      </>
+    )
+  }
+  if (isError && !quotas) {
     return (
       <>
         <PageHero eyebrow="Quotas" title="Quotas unavailable." tint="red" />
-        <p className="warning" role="alert">Failed to load quotas. Please try again.</p>
+        <ErrorState title="Could not load quotas." error={error} onRetry={() => refetch()} retrying={isRefetching} />
       </>
     )
   }
 
   const list = quotas || []
-  const over = list.filter((q) => {
-    const b = q.status?.budgetStatus
-    return b && q.spec.budget && b.percentUsed > q.spec.budget.alertThreshold
-  }).length
+  const over = list.filter(overBudgetAlert).length
+  const budgeted = budgetedCount(list)
+  const plural = (n: number) => (n === 1 ? '' : 's')
+
+  let headline: string
+  let headlineTone: 'ok' | 'warn' | undefined
+  if (list.length === 0) {
+    headline = 'No team quotas defined.'
+  } else if (over > 0) {
+    headline = `${over} team${plural(over)} over the budget alert threshold.`
+    headlineTone = 'warn'
+  } else if (budgeted === 0) {
+    headline = `${list.length} team${plural(list.length)}, no budgets configured.`
+  } else if (budgeted < list.length) {
+    headline = `${budgeted} of ${list.length} team${plural(list.length)} have a budget; none over their alert threshold.`
+    headlineTone = 'ok'
+  } else {
+    headline = `${list.length} team${plural(list.length)}, all within budget.`
+    headlineTone = 'ok'
+  }
 
   return (
     <>
-      <PageHero eyebrow="Quotas" title="Every team, within budget." lede="GPU allocations and budget tracking per team" />
+      <PageHero
+        eyebrow="Quotas"
+        title={list.length > 0 && budgeted > 0 && over === 0 ? 'Every team, within budget.' : 'Team quotas.'}
+        lede="GPU allocations and budget tracking per team"
+      />
 
       <div className="grid">
+        {isError && (
+          <div className="span3">
+            <ErrorState title="Could not refresh quotas; showing the last data." error={error} onRetry={() => refetch()} retrying={isRefetching} />
+          </div>
+        )}
+
         <PagePulse
           updatedAt={dataUpdatedAt}
-          headline={over > 0 ? `${over} team${over === 1 ? '' : 's'} over the budget alert threshold.` : `${list.length} team${list.length === 1 ? '' : 's'}, all within budget.`}
-          tone={over > 0 ? 'warn' : 'ok'}
+          error={isError ? errorMessage(error) : undefined}
+          headline={headline}
+          tone={headlineTone}
           figures={[
             { label: 'Teams', value: list.length },
             { label: 'GPUs allocated', value: list.reduce((n, q) => n + (q.status?.currentUsage?.allocatedGPUs || 0), 0) },
@@ -50,65 +90,84 @@ export default function Quotas() {
           ]}
         />
 
-        {quotas?.map((quota) => {
+        {list.length === 0 && (
+          <section className="card span3">
+            <EmptyState
+              title="No quotas yet"
+              action={
+                <a className="buttonlike btn-secondary" href="https://github.com/zyvorai/gryvia/tree/main/docs" target="_blank" rel="noreferrer">
+                  Read the docs
+                </a>
+              }
+            >
+              Quotas come from FabricQuota resources, one per team. Create one with <code className="mono">kubectl apply -f fabricquota.yaml</code> and it appears here.
+            </EmptyState>
+          </section>
+        )}
+
+        {list.map((quota) => {
           const usage = quota.status?.currentUsage
           const budget = quota.status?.budgetStatus
-          const gpuUtilization = usage && quota.spec.gpuQuota.maxGPUs > 0 ? (usage.allocatedGPUs / quota.spec.gpuQuota.maxGPUs) * 100 : 0
-          const budgetUtilization = budget ? budget.percentUsed : 0
+          const specBudget = quota.spec.budget
+          const gpuQuota = quota.spec.gpuQuota
+          const maxGPUs = gpuQuota?.maxGPUs ?? 0
+          const allocated = usage?.allocatedGPUs ?? 0
+          const gpuUtilization = maxGPUs > 0 ? (allocated / maxGPUs) * 100 : 0
+          const budgetUtilization = budgetPercent(quota) ?? 0
+          const types = allowedTypes(quota)
 
           return (
             <section key={quota.metadata.name} className="card span3">
               <p className="eyebrow">TEAM</p>
               <h2 className="card-title">{quota.spec.team}</h2>
-              <p><span className="pill">Priority {quota.spec.priority}</span></p>
+              {quota.spec.priority !== undefined && quota.spec.priority !== null && (
+                <p><span className="pill">Priority {quota.spec.priority}</span></p>
+              )}
 
               <div className="stack">
                 <div>
                   <div className="row">
-                    <span className="muted">GPU Allocation</span>
-                    <span className="faint">
-                      {usage?.allocatedGPUs || 0} / {quota.spec.gpuQuota.maxGPUs} GPUs
+                    <span className="muted">GPU allocation</span>
+                    <span className="faint num">
+                      {allocated} / {maxGPUs} GPUs
                     </span>
                   </div>
-                  <div className={`progress ${tone(gpuUtilization)}`}>
-                    <span style={{ width: `${Math.min(gpuUtilization, 100)}%` }} />
-                  </div>
+                  <Progress value={allocated} max={maxGPUs} tone={tone(gpuUtilization)} label={`${quota.spec.team} GPU allocation`} />
                 </div>
 
-                {quota.spec.budget && budget && (
+                {specBudget && (
                   <div>
                     <div className="row">
-                      <span className="muted">Budget Usage</span>
-                      <span className="faint">
-                        ${budget.spentThisMonth.toFixed(2)} / ${quota.spec.budget.monthlyBudget.toFixed(2)}
+                      <span className="muted">Budget usage</span>
+                      <span className="faint num">
+                        {formatMoney(budget?.spentThisMonth ?? 0)} / {formatMoney(specBudget.monthlyBudget)}
+                        {specBudget.hardLimit ? ' · hard limit' : ''}
                       </span>
                     </div>
-                    <div className={`progress ${tone(budgetUtilization)}`}>
-                      <span style={{ width: `${Math.min(budgetUtilization, 100)}%` }} />
-                    </div>
-                    {budgetUtilization > quota.spec.budget.alertThreshold && (
-                      <p className="warning">Budget alert threshold exceeded</p>
+                    <Progress value={budgetUtilization} tone={tone(budgetUtilization)} label={`${quota.spec.team} budget usage`} />
+                    {overBudgetAlert(quota) && (
+                      <p className="warning">Budget alert threshold ({alertThreshold(quota)}%) exceeded</p>
                     )}
                   </div>
                 )}
 
                 <div className="apple-metric-band">
                   <div>
-                    <span>Running Jobs</span>
-                    <b>{usage?.runningJobs || 0}</b>
+                    <span>Running jobs</span>
+                    <b>{usage?.runningJobs ?? 0}</b>
                   </div>
                   <div>
-                    <span>Queued Jobs</span>
-                    <b>{usage?.queuedJobs || 0}</b>
+                    <span>Queued jobs</span>
+                    <b>{usage?.queuedJobs ?? 0}</b>
                   </div>
                   <div>
-                    <span>GPU Hours</span>
-                    <b>{usage?.gpuHours?.toFixed(1) || 0}</b>
+                    <span>GPU hours</span>
+                    <b>{(usage?.gpuHours ?? 0).toFixed(1)}</b>
                   </div>
                   {budget && (
                     <div>
                       <span>Projected</span>
-                      <b>${budget.projectedSpend.toFixed(0)}</b>
+                      <b>{formatMoney(budget.projectedSpend)}</b>
                     </div>
                   )}
                 </div>
@@ -116,16 +175,16 @@ export default function Quotas() {
                 <div>
                   <p className="eyebrow">ALLOWED GPU TYPES</p>
                   <div className="row">
-                    {quota.spec.gpuQuota?.allowedGPUTypes?.map((gpuType) => (
+                    {types === 'All' ? <span className="faint">All</span> : types.map((gpuType) => (
                       <span key={gpuType} className="pill mono">{gpuType}</span>
-                    )) || <span className="faint">All</span>}
+                    ))}
                   </div>
                   <div className="row">
                     <span>
-                      <span className="faint">Max GPUs/Job:</span> {quota.spec.gpuQuota.maxGPUsPerJob}
+                      <span className="faint">Max GPUs/job:</span> {limitLabel(gpuQuota?.maxGPUsPerJob)}
                     </span>
                     <span>
-                      <span className="faint">Max Running:</span> {quota.spec.gpuQuota.maxRunningJobs}
+                      <span className="faint">Max running:</span> {limitLabel(gpuQuota?.maxRunningJobs)}
                     </span>
                   </div>
                 </div>

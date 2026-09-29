@@ -9,6 +9,11 @@ export function readStoredTheme(): Theme {
   } catch {
     /* storage unavailable */
   }
+  try {
+    if (window.matchMedia?.('(prefers-color-scheme: dark)').matches) return 'dark'
+  } catch {
+    /* no matchMedia */
+  }
   return 'light'
 }
 
