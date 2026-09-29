@@ -20,20 +20,23 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: collector/go.mod
       - name: Install toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends clang llvm libbpf-dev linux-libc-dev make linux-tools-common
-          # bpftool ships in the kernel-specific tools package; fall back to the generic one.
-          sudo apt-get install -y --no-install-recommends "linux-tools-$(uname -r)" || sudo apt-get install -y --no-install-recommends linux-tools-generic
-          bpftool version
+          sudo apt-get install -y --no-install-recommends clang llvm libbpf-dev linux-libc-dev make
       - name: Build (x86_64)
         run: make -C ebpf
       - name: Load every object through the verifier
+        # collector/cmd/verifyobj uses the same cilium/ebpf loader as the collector; no bpftool needed.
         run: |
           uname -r
           test -e /sys/kernel/btf/vmlinux
-          make -C ebpf check
+          go build -o "$RUNNER_TEMP/verifyobj" ./cmd/verifyobj
+          sudo "$RUNNER_TEMP/verifyobj" ../ebpf
+        working-directory: collector
       - name: Cross-compile (arm64)
         run: |
           make -C ebpf clean
