@@ -13,7 +13,7 @@ been verified on real hardware. Most HTTP endpoints below are **unauthenticated*
 ## Architecture
 
 ```
-   kernel eBPF programs (../ebpf, 30 CO-RE objects)
+   kernel eBPF programs (../ebpf, 35 CO-RE objects)
         |  perf event arrays (flow)   ring buffers (GPU, security, fabric)
         v
    +--------------------------- collector ---------------------------+

@@ -5,7 +5,7 @@ Guide to Gryvia's eBPF-based network intelligence: the kernel programs, the per-
 several links between them are not wired yet.
 
 :::caution Status: what works and what does not
-**Programs.** The 30 eBPF programs in `ebpf/` are CO-RE (no per-kernel builds; they need a node kernel with BTF, and the
+**Programs.** The 35 eBPF programs in `ebpf/` are CO-RE (no per-kernel builds; they need a node kernel with BTF, and the
 `tcx` programs Linux 6.6+). All 30 compile and pass the kernel verifier on Linux 7.0 x86_64; on that host the collector
 attached 36 of the 83 hooks (the kprobes and tracepoints) and decoded real TCP flows. **Not verified:** arm64 (compiles,
 never loaded), the XDP/TCX/sockops programs (attach is config-gated: `ebpf.interface`, `ebpf.cgroupPath`), and
@@ -79,7 +79,7 @@ Deployment and reconciles the ten CRDs below.
 
 ## eBPF Programs
 
-Gryvia ships 30 eBPF programs (24 original programs in six categories, plus six fabric-signal programs). The collector
+Gryvia ships 35 eBPF programs (24 original programs in six categories, plus eleven fabric-signal programs). The collector
 loads them and attaches each by section name. Hook types below come from the `SEC()` annotations in `ebpf/*.c`.
 
 ### GPU Programs

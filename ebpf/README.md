@@ -4,7 +4,7 @@ Kernel-space eBPF programs that form the data-plane of the Gryvia
 network intelligence layer.  They run inside the Linux kernel and feed
 structured events to the userspace flow collector (`../collector/`).
 
-**Status: experimental.** There are 30 programs (`ls *.c`). All build and load through the kernel verifier on
+**Status: experimental.** There are 35 programs (`ls *.c`). All build and load through the kernel verifier on
 Linux 7.0 x86_64; the collector attached the kprobe/tracepoint subset there and decoded real TCP flows. GPU, NCCL,
 RDMA and GPUDirect Storage behaviour, arm64 loading and the gated XDP/TCX/sockops attachments have not been verified on
 hardware. Nothing in the rest of the platform depends on them, and the collector is off by default.

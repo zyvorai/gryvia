@@ -164,8 +164,9 @@ spec:
   node's addresses and a pod NetworkPolicy does not apply. Use node firewall
   rules, or set `collector.hostNetwork=false` before relying on the policy above.
 
-GPU/RDMA validation and per-job rank identity in the underlying NCCL probe
-still precede general availability.
+GPU/RDMA/NCCL validation on real hardware still precedes general availability. Collective identity (communicator
+ordinal, sequence, rank) is now learned from public NCCL API uprobes, but only against a stand-in library so far;
+see [nccl-rdma-gpu-correlation.md](nccl-rdma-gpu-correlation.md).
 
 See [flight-diagnosis.md](flight-diagnosis.md) for the unified bottleneck diagnosis, persistent incident history and measurement completeness.
 

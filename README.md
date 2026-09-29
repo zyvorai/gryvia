@@ -79,7 +79,7 @@ controller.<br>
 <td valign="top" width="33%">
 
 **Network Intelligence (NetPredator) and eBPF**<br>
-Experimental. 30 CO-RE eBPF programs and a privileged collector (off by default), a node-local Flight Recorder, and
+Experimental. 35 CO-RE eBPF programs and a privileged collector (off by default), a node-local Flight Recorder, and
 an operator whose Cilium policy actions are real but whose live measurements are not wired. Real flows can come from
 Netra.<br>
 [Network Intelligence guide](website/docs/guides/NETWORK_INTELLIGENCE.md)
@@ -104,7 +104,7 @@ for the custom resources.<br>
 |---|---|
 | **Implemented and tested in CI** (unit tests, chart rendering, a kind install with demo data read back through the API and CLI) | The Helm chart; GPU, AI workload and quota operators; `GryviaAIJob` placement, StatefulSet creation and the admission webhook; per-namespace quotas and budgets; tenants, SKU catalog, usage metering and estimate invoices; the API gateway with API-key, session and OIDC roles; the dashboard; the CLI |
 | **Implemented, unverified on real hardware or services** | NVIDIA GPU Operator sub-chart, `install-k3s-gpu.sh` and node auto-registration (GPU-less k3s in CI only); storage and network operators (off by default); OIDC against a real identity provider; anything that needs GPUs, RDMA or a parallel filesystem |
-| **Experimental** | The eBPF collector, the 30 eBPF programs, fabric signals and the Flight Recorder (verified on Linux 7.0 x86_64 only); the network-intelligence operator |
+| **Experimental** | The eBPF collector, the 35 eBPF programs, fabric signals and the Flight Recorder (verified on Linux 7.0 x86_64 only); the network-intelligence operator |
 | **CRD and API only, no controller wired** | Workflows, auto tuner, workspaces, inference services, model registry, budgets (the `GryviaBudget` kind), chargeback, SLA, audit, priority classes, auto-scaler, federation, DR tests, benchmarks, templates and others. The gateway and dashboard can create and list them, but nothing acts on them. Gang scheduling, DRF queues, preemption and elastic scaling are library code that no controller calls |
 | **Not implemented** | Payments or tax invoices, multi-cluster federation, per-tenant Kubernetes RBAC, a mutating quota-pacing eBPF program |
 
@@ -316,8 +316,8 @@ guarantee yet; see the [changelog](CHANGELOG.md). What exists today:
   fails open when the quotas cannot be read.
 - Release images and the Helm charts are signed with cosign; images ship SBOM and provenance attestations.
 
-**Experimental:** the 30 CO-RE eBPF programs (24 original, plus the fabric-signal programs `straggler`, `rdma_health`,
-`gds_trace`, `overlap`, `roce_cnp` and `infer_latency`) build and pass the verifier on a Linux 7.0 x86_64 host, the
+**Experimental:** the 35 CO-RE eBPF programs (24 original, plus the fabric-signal programs `straggler`, `rdma_health`,
+`gds_trace`, `overlap`, `roce_cnp`, `infer_latency`, `ucx_gloo`, `pfc_pause`, `weight_exfil`, `quota_pace` and `ibv_verbs`) build and pass the verifier on a Linux 7.0 x86_64 host, the
 only place they have been verified (arm64 is compile-only); there the collector attached the supported
 kprobe/tracepoint subset and decoded TCP flows. GPU, NCCL, RDMA and GPUDirect Storage runtime behavior and the gated
 XDP/TCX/sockops attachments have not been validated on hardware. The collector is disabled by default, privileged and
