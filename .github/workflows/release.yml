@@ -41,6 +41,8 @@ jobs:
           - {name: quota-operator,   context: operators/quota-operator,   file: operators/quota-operator/Dockerfile}
           - {name: storage-operator, context: operators/storage-operator, file: operators/storage-operator/Dockerfile}
           - {name: network-operator, context: operators/network-operator, file: operators/network-operator/Dockerfile}
+          - {name: network-intelligence-operator, context: operators/network-intelligence, file: operators/network-intelligence/Dockerfile}
+          - {name: ebpf-collector,   context: .,                          file: collector/Dockerfile}
           - {name: api-gateway,      context: services/api-gateway,       file: services/api-gateway/Dockerfile}
           - {name: ui,               context: .,                          file: docker/Dockerfile.ui}
     steps:
@@ -109,19 +111,24 @@ jobs:
       - name: Package
         run: |
           v="${TAG#v}"
-          helm lint helm/gryvia
-          helm package helm/gryvia --version "$v" --app-version "$v" -d dist
-      - name: Push to ghcr.io (OCI)
+          for c in helm/gryvia helm/network-intelligence; do
+            helm lint "$c"
+            helm package "$c" --version "$v" --app-version "$v" -d dist
+          done
+      - name: Push to ghcr.io (OCI) and sign
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
-          out=$(helm push dist/gryvia-*.tgz oci://${GHCR}/charts 2>&1 | tee /dev/stderr)
-          digest=$(echo "$out" | sed -n 's/^Digest: //p')
-          cosign sign --yes "${GHCR}/charts/gryvia@${digest}"
+          for f in dist/*.tgz; do
+            name=$(basename "$f" | sed -E 's/-[0-9][^/]*\.tgz$//')
+            out=$(helm push "$f" oci://${GHCR}/charts 2>&1 | tee /dev/stderr)
+            digest=$(echo "$out" | sed -n 's/^Digest: //p')
+            cosign sign --yes "${GHCR}/charts/${name}@${digest}"
+          done
       - name: Push to Docker Hub (OCI)
         if: env.HAS_HUB == 'true'
         run: |
           echo "${{ secrets.DOCKERHUB_TOKEN }}" | helm registry login registry-1.docker.io -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
-          helm push dist/gryvia-*.tgz oci://registry-1.docker.io/zyvorai
+          for f in dist/*.tgz; do helm push "$f" oci://registry-1.docker.io/zyvorai; done
       - uses: actions/upload-artifact@v4
         with:
           name: chart

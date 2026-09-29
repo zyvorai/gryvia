@@ -3,8 +3,9 @@
 # Operator configuration
 operator:
   image:
-    repository: gryvia/network-intelligence-operator
-    tag: "1.0.0"
+    repository: ghcr.io/zyvorai/gryvia-network-intelligence-operator
+    # Defaults to the chart appVersion.
+    tag: ""
     pullPolicy: IfNotPresent
   replicas: 1
   resources:
@@ -20,8 +21,8 @@ operator:
 # eBPF Collector configuration
 collector:
   image:
-    repository: gryvia/ebpf-collector
-    tag: "1.0.0"
+    repository: ghcr.io/zyvorai/gryvia-ebpf-collector
+    tag: ""
     pullPolicy: IfNotPresent
   resources:
     limits:
