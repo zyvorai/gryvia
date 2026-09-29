@@ -27,6 +27,10 @@ pub enum GroupBy {
     Sku,
     /// One row per UTC day
     Day,
+    /// One row per peer class (only with --network)
+    PeerClass,
+    /// One row per zone class (only with --network)
+    ZoneClass,
 }
 
 impl GroupBy {
@@ -35,6 +39,8 @@ impl GroupBy {
             GroupBy::Tenant => "tenant",
             GroupBy::Sku => "sku",
             GroupBy::Day => "day",
+            GroupBy::PeerClass => "peerClass",
+            GroupBy::ZoneClass => "zoneClass",
         }
     }
 }
@@ -187,6 +193,8 @@ fn group_key(r: &Record, by: GroupBy) -> String {
             .start
             .map(|s| s.date_naive().to_string())
             .unwrap_or_else(|| "unknown".to_string()),
+        // Rejected in execute(): only network usage has these groupings.
+        GroupBy::PeerClass | GroupBy::ZoneClass => r.tenant.clone(),
     }
 }
 
@@ -383,6 +391,9 @@ pub struct Options {
 }
 
 pub async fn execute(client: &GryviaClient, opts: Options) -> Result<()> {
+    if matches!(opts.group_by, GroupBy::PeerClass | GroupBy::ZoneClass) {
+        bail!("--group-by peer-class and zone-class need --network");
+    }
     // Validate the dates before touching the cluster.
     let lo = opts
         .from

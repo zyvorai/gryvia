@@ -28,6 +28,7 @@ CLUSTER_SCOPED = frozenset({
     "gryviagpumemoryoptimizers",
     "gryviagpunodes",
     "gryviagpuskus",
+    "gryvianetworkrates",
     "gryviagpusharingpolicies",
     "gryviahealthchecks",
     "gryviajobhooks",

@@ -41,7 +41,8 @@ def _latency(record: Dict[str, Any]) -> str:
 def to_flow(record: Dict[str, Any], index: int) -> Dict[str, Any]:
     """One Netra flow record as a dashboard NetworkFlow item. `blocked` counts packets Netra dropped."""
     return {
-        "metadata": {"name": f"netra-{index}", **({"namespace": record["namespace"]} if record.get("namespace") else {})},
+        "metadata": {"name": f"netra-{index}",
+                     **({"namespace": record["namespace"]} if record.get("namespace") else {})},
         "spec": {
             "timestamp": record.get("observedAt", ""),
             "source": _endpoint(record),
@@ -75,3 +76,29 @@ async def fetch_flows(deps: Deps) -> Optional[List[Dict[str, Any]]]:
     if records is None:
         return None
     return [to_flow(r, i) for i, r in enumerate(records) if isinstance(r, dict)]
+
+
+HISTORY_MAX = 5000
+
+
+async def fetch_history(deps: Deps, since_hours: int, limit: int = HISTORY_MAX) -> Optional[List[Dict[str, Any]]]:
+    """Raw Netra flow-history records of the last ``since_hours`` hours (at most ``limit``), or None when Netra
+    is not configured or unreachable. Used by the network cost reconciliation only. The ``since``/``limit``
+    parameters follow the documented history API; the retention and record semantics are Netra's (unverified
+    here against a live netrad)."""
+    if deps.netra_fetch is not None:
+        records = await deps.netra_fetch()
+    elif deps.netra_url:
+        headers = {"Authorization": f"Bearer {deps.netra_token}"} if deps.netra_token else {}
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS * 4, verify=deps.netra_verify_tls) as client:
+                resp = await client.get(deps.netra_url + HISTORY_PATH,
+                                        params={"since": f"{max(1, since_hours)}h", "limit": limit}, headers=headers)
+                resp.raise_for_status()
+                records = (resp.json() or {}).get("records") or []
+        except Exception as exc:  # noqa: BLE001
+            logger.info("netra %s unavailable: %s", deps.netra_url, exc)
+            return None
+    else:
+        return None
+    return [r for r in (records or []) if isinstance(r, dict)]

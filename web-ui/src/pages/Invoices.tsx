@@ -7,7 +7,7 @@ import { useIsAdmin } from '@/lib/useRole'
 import { saveBlob } from '@/lib/download'
 import { formatNumber } from '@/lib/format'
 import { formatRate } from '@/lib/cloud'
-import { formatMoney, invoiceFilename, invoiceParams, invoiceTotalDisplay, invoiceTotalLabel, monthLabel, parseMonth, periodLabel, type Invoice } from '@/lib/invoices'
+import { classLabel, formatMoney, invoiceFilename, networkRateDisplay, invoiceParams, invoiceTotalDisplay, invoiceTotalLabel, monthLabel, parseMonth, periodLabel, type Invoice } from '@/lib/invoices'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import PageHero from '@/components/PageHero'
 import { EmptyState, ErrorState, Skeleton } from '@/components/StateViews'
@@ -139,6 +139,43 @@ export default function Invoices() {
                 </table>
               </div>
               {inv.note && <p className="faint">{inv.note}</p>}
+              {inv.networkLines && inv.networkLines.length > 0 && (
+                <>
+                  <h3 className="card-title">Network egress (estimate)</h3>
+                  <div className="table-wrap">
+                    <table>
+                      <caption className="sr-only">{`Invoice ${inv.number} network egress lines, ${monthLabel(month)}`}</caption>
+                      <thead>
+                        <tr>
+                          <th scope="col">Peer</th>
+                          <th scope="col">Zone</th>
+                          <th scope="col" className="num">Egress GB</th>
+                          <th scope="col" className="num">Rate</th>
+                          <th scope="col" className="num">Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {inv.networkLines.map((l) => (
+                          <tr key={`${l.peerClass}:${l.zoneClass}`}>
+                            <td>{classLabel(l.peerClass)}</td>
+                            <td>{classLabel(l.zoneClass)}</td>
+                            <td className="num">{formatNumber(Math.round(l.egressGB * 1000) / 1000)}</td>
+                            <td className="num">{networkRateDisplay(l)}</td>
+                            <td className="num">{formatMoney(l.amount, l.currency || inv.currency)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr>
+                          <th scope="row" colSpan={4}>Network subtotal (separate from the GPU subtotal)</th>
+                          <td className="num"><b>{formatMoney(inv.networkSubtotal, inv.networkLines[0]?.currency || inv.currency)}</b></td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                  {inv.networkNote && <p className="faint">{inv.networkNote}</p>}
+                </>
+              )}
               <div className="toolbar">
                 {(['csv', 'json'] as const).map((f) => (
                   <button key={f} type="button" className="btn-secondary" onClick={() => download(inv, f)} disabled={busy !== null} aria-busy={busy === `${inv.number}:${f}`} aria-label={`Download ${f.toUpperCase()} for ${inv.number}`}>

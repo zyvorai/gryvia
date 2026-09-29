@@ -647,6 +647,7 @@ gryvia usage
 gryvia usage --tenant acme --from 2026-09-01 --to 2026-09-30
 gryvia usage --group-by sku -o json
 gryvia usage --group-by day -o csv
+gryvia usage --network --group-by zone-class
 ```
 
 - `--tenant` restricts to one tenant.
@@ -654,6 +655,7 @@ gryvia usage --group-by day -o csv
 - `--group-by tenant|sku|day` (default `tenant`).
 - `-o table|json|yaml|csv`. CSV has a header row and a final `total` row, and cells starting with `=`, `+`, `-` or `@` are prefixed with `'` so spreadsheets do not run them as formulas. When records use different currencies the currency shows as `MIXED`.
 - Costs are estimates: job run time times the SKU rate. No invoices or payments are processed.
+- `--network` reports measured network egress (GryviaNetworkUsageRecord, written by the opt-in collector feature described in [`docs/network-cost-attribution.md`](https://github.com/zyvorai/gryvia/blob/main/docs/network-cost-attribution.md)) instead of GPU usage: bytes per tenant, `peer-class`, `zone-class` or `day`, plus an estimated cost when a GryviaNetworkRate exists. Only egress is counted; `--group-by sku` is rejected in this mode and `peer-class`/`zone-class` are rejected without it.
 
 ### `gryvia invoice`
 
