@@ -23,6 +23,11 @@ export interface UserInfo {
   groups: string[]
   org: string
   tenantNamespaces: string[] | null
+  /** 'admin' sees the whole platform; 'tenant' only its own tenant. Absent on older gateways (treated as admin). */
+  role?: 'admin' | 'tenant'
+  /** The tenant a tenant user belongs to. */
+  tenant?: string | null
+  tenants?: string[]
   /** True while the gateway still uses the well-known lab key. */
   usingDefaultKey?: boolean
 }

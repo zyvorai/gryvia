@@ -18,6 +18,7 @@ pub const GROUPS: &[(&str, &[&str])] = &[
         "Cluster",
         &["cluster", "queue", "capacity", "quota", "cost"],
     ),
+    ("Tenants & Billing", &["tenant", "catalog", "usage"]),
     ("Operations", &["health", "maintenance"]),
     ("Observe", &["network", "security", "gpu"]),
     ("Utilities", &["completion", "version"]),

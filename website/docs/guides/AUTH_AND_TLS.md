@@ -45,8 +45,8 @@ header only when the connection comes from a private or loopback address.
 ### Single sign-on
 
 The gateway can validate OIDC JWTs issued by your identity provider. The dashboard then offers an SSO
-button next to the key login. Roles and per-user permissions are not finished; treat every authenticated
-user as an administrator.
+button next to the key login. Signed-in OIDC users are **tenant users**: they only see their own tenant's data
+(see [GPU as a Service](./GPU_AS_A_SERVICE.md)). The API key and browser sessions are the provider **admin**.
 
 | Variable | Meaning |
 | --- | --- |
@@ -64,10 +64,15 @@ that key; if the provider cannot be reached the gateway does not accept the toke
 sessions (`gs1.` tokens) and the API key keep working while OIDC is on. `/api/auth/config` reports
 `oidcEnabled: false` with an error when discovery fails.
 
-Tenants: the `org` claim (a string) gives one tenant namespace; otherwise the string entries of the
-`groups` claim are the tenant namespaces. `/api/auth/me` returns `sub`, `email`, `name` (or
-`preferred_username`), `groups`, `org` and `tenantNamespaces`. Your provider must include `groups` (or
-`org`) in the token; the dashboard requests the scopes `openid profile email groups`.
+Roles and tenants: an OIDC token is a tenant user unless its `groups` claim contains one of
+`GRYVIA_OIDC_ADMIN_GROUPS` (comma list, chart value `apiGateway.oidc.adminGroups`; default none, so nobody is
+admin through OIDC). The tenant comes from the `org` claim (a string) or else the `groups` entries, matched against
+`GryviaTenant` names (or their `tenant-<name>` namespace). Namespaces always come from the matched tenants, so a token
+cannot name an arbitrary namespace, and a token that matches no tenant gets 403. Only while no `GryviaTenant` exists
+can `GRYVIA_OIDC_LEGACY_NAMESPACES=1` (`apiGateway.oidc.legacyNamespaces`) keep the old "claim is a namespace"
+behaviour for installs that predate tenants. `/api/auth/me` returns `sub`, `email`, `name` (or
+`preferred_username`), `groups`, `org`, `role`, `tenant`, `tenants` and `tenantNamespaces`. Your provider must include
+`groups` (or `org`) in the token; the dashboard requests the scopes `openid profile email groups`.
 
 ## TLS
 

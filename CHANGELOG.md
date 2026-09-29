@@ -6,6 +6,8 @@ and the project aims to follow [Semantic Versioning](https://semver.org/) once i
 ## [Unreleased]
 
 ### Added
+- GPU as a Service: tenants (`GryviaTenant`, now run by the quota operator) get an isolated `tenant-<name>` namespace; a price catalog (`GryviaGpuSku`); per-job metering (`GryviaUsageRecord`); gateway routes `/api/skus`, `/api/tenants`, `/api/usage` (+ CSV/JSON export); dashboard Catalog, Usage and Tenants pages; and `gryvia catalog`, `gryvia tenant`, `gryvia usage`. See `website/docs/guides/GPU_AS_A_SERVICE.md`.
+- Roles in the gateway: the API key and sessions are the provider admin; OIDC users are tenant users limited to their tenant's namespaces (`GRYVIA_OIDC_ADMIN_GROUPS` promotes a group). Cluster-wide routes (nodes, network, security, GPU metrics) are admin-only.
 - Network flows can come from [Netra](https://github.com/zyvorai/netra): set `apiGateway.netra.url` and `/api/network/flows` returns Netra's recent flows (falls back to service-graph edges when it is unset or unreachable).
 - Workflows and auto tuners can be deleted from the dashboard and the gateway (`DELETE /api/workflows/{name}`, `DELETE /api/tuners/{name}`).
 - GPU nodes prepare themselves: the chart can bundle NVIDIA's GPU Operator (`nvidia.enabled=true`: driver, container toolkit, device plugin, DCGM, node feature discovery), and `scripts/install-k3s-gpu.sh` takes a fresh Ubuntu server to k3s + Gryvia + GPU support (`agent` mode joins more nodes). CI runs the script on a real k3s (without a GPU) and dry-run tests for the GPU branches. See `website/docs/guides/GPU_NODES.md` and `docs/gpu-validation.md`.
@@ -26,6 +28,8 @@ and the project aims to follow [Semantic Versioning](https://semver.org/) once i
 - Open tabs recover automatically after a redeploy.
 
 ### Changed
+- **Breaking for OIDC installs:** an OIDC token must now match a `GryviaTenant` (by `org` or `groups`); previously the claim was trusted as a namespace and every user could read cluster-wide data. Set `apiGateway.oidc.legacyNamespaces=true` only while no tenants exist.
+- Quota enforcement rejects jobs whose GPU type is not allowed; GPU prices come from the SKU catalog (one shared default table replaces two hardcoded copies).
 - The GPU operator no longer uses NVML: it runs without cgo on a distroless static image. It previously read GPU data inside its own pod, so it reported the wrong node and normally could not load the driver. `spec.drivers` is informational; nothing consumes it.
 - The bundled NVIDIA device plugin and DCGM exporter DaemonSets only run on nodes labelled `nvidia.com/gpu.present=true` (configurable) and are skipped when the GPU Operator sub-chart is enabled. Previously they ran, and crashed, on every node.
 - Docs no longer claim the Terraform/Ansible flow installs Kubernetes, Calico, Multus or GPU drivers; those directories are marked experimental and incomplete.

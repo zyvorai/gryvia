@@ -39,6 +39,12 @@ spec:
           spec:
             description: GryviaTenantSpec defines the desired state of GryviaTenant
             properties:
+              allowedSkus:
+                description: AllowedSkus lists the GryviaGpuSku names this tenant
+                  may use; empty means all enabled SKUs
+                items:
+                  type: string
+                type: array
               billing:
                 description: Billing defines billing configuration
                 properties:

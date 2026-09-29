@@ -14,7 +14,7 @@ from typing import Any, Dict
 from fastapi import APIRouter, Depends, Request
 
 from .collector import fetch_all_with_stats, merge_gpu_memory, merge_nccl
-from .common import Deps, list_items
+from .common import Deps, list_items, require_admin
 
 
 def _num(value: Any, default: float = 0) -> Any:
@@ -69,7 +69,7 @@ def build_router(deps: Deps) -> APIRouter:
 
     @router.get("/api/ai/training/insight")
     @deps.limiter.limit("30/minute")
-    async def training_insight(request: Request, _=Depends(deps.verify_auth)):
+    async def training_insight(request: Request, _=Depends(deps.verify_auth), __=Depends(require_admin)):
         """Latest training communication analysis (empty shape when none exists)."""
         items = await list_items(deps, "gryviatraininginsights")
         analysed = [o for o in items if o.get("status")]
@@ -83,14 +83,14 @@ def build_router(deps: Deps) -> APIRouter:
 
     @router.get("/api/ai/training/nccl")
     @deps.limiter.limit("30/minute")
-    async def training_nccl(request: Request, _=Depends(deps.verify_auth)):
+    async def training_nccl(request: Request, _=Depends(deps.verify_auth), __=Depends(require_admin)):
         """NCCL per-operation stats merged from every collector; empty when none is reachable."""
         bodies, stats = await fetch_all_with_stats(deps, "/api/v1/gpu/nccl")
         return {**merge_nccl(bodies), "collectors": stats}
 
     @router.get("/api/gpu/memory")
     @deps.limiter.limit("30/minute")
-    async def gpu_memory(request: Request, _=Depends(deps.verify_auth)):
+    async def gpu_memory(request: Request, _=Depends(deps.verify_auth), __=Depends(require_admin)):
         """Host/device transfer counters summed across collectors; zeros when none is reachable."""
         bodies, stats = await fetch_all_with_stats(deps, "/api/v1/gpu/memory")
         return {**merge_gpu_memory(bodies), "collectors": stats}

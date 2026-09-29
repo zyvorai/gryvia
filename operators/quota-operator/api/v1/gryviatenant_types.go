@@ -41,6 +41,9 @@ type GryviaTenantSpec struct {
 
 	// Governance defines compliance and governance
 	Governance *TenantGovernance `json:"governance,omitempty"`
+
+	// AllowedSkus lists the GryviaGpuSku names this tenant may use; empty means all enabled SKUs
+	AllowedSkus []string `json:"allowedSkus,omitempty"`
 }
 
 // TenantMember defines a tenant member

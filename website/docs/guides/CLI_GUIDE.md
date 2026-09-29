@@ -596,6 +596,51 @@ usually a PodDisruptionBudget) is reported as blocked and left running; the comm
 the node stays cordoned. Pods are never deleted directly. Running `start` again on a node that is already marked
 keeps the original start time, which makes retrying a blocked drain safe.
 
+## Tenants, catalog and usage
+
+These commands cover the [GPU as a Service](./GPU_AS_A_SERVICE.md) flow: a provider publishes SKUs, creates tenants and reads metered usage. They talk to the Kubernetes API directly, like the other commands, and need the `gryvia.io/v1alpha1` CRDs installed.
+
+### `gryvia catalog` (alias `skus`)
+
+Lists the GPU SKUs on offer (GryviaGpuSku): GPU type, GPUs per unit, rate per hour, spot discount and whether the SKU is enabled, with a total line. Output formats: `table`, `json`, `yaml`.
+
+```bash
+gryvia catalog
+gryvia skus -o json
+```
+
+### `gryvia tenant`
+
+A tenant is a cluster-scoped GryviaTenant. Its workloads run in the namespace `tenant-<name>`, so the name must be lowercase letters, digits and `-`, at most 56 characters.
+
+```bash
+gryvia tenant list
+gryvia tenant get acme
+gryvia tenant create acme --display-name "Acme Corp" --allowed-sku h100-8x --allowed-sku a100 --max-gpus 16 --isolated true
+gryvia tenant delete acme --yes
+```
+
+- `list` and `get` accept `-o table|json|yaml`.
+- `create` accepts `--display-name`, repeatable `--allowed-sku` (default: all enabled SKUs), `--max-gpus` (maximum concurrent GPUs) and `--isolated true|false` (network isolation from other tenants). It applies the object, so running it again updates the tenant.
+- `delete` asks for confirmation unless `--yes` is given. Deleting a tenant can remove its namespace and everything in it.
+
+### `gryvia usage`
+
+Aggregates the metered usage records (GryviaUsageRecord) into GPU hours, cost and the number of distinct jobs per tenant, SKU or day, with a total row.
+
+```bash
+gryvia usage
+gryvia usage --tenant acme --from 2026-09-01 --to 2026-09-30
+gryvia usage --group-by sku -o json
+gryvia usage --group-by day -o csv
+```
+
+- `--tenant` restricts to one tenant.
+- `--from` and `--to` filter on each record's start time. A date-only `--to` includes that whole day (UTC). RFC 3339 timestamps are also accepted.
+- `--group-by tenant|sku|day` (default `tenant`).
+- `-o table|json|yaml|csv`. CSV has a header row and a final `total` row, and cells starting with `=`, `+`, `-` or `@` are prefixed with `'` so spreadsheets do not run them as formulas. When records use different currencies the currency shows as `MIXED`.
+- Costs are estimates: job run time times the SKU rate. No invoices or payments are processed.
+
 ## Network Intelligence Commands
 
 ### Network Overview

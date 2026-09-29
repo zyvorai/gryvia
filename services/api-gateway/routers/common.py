@@ -9,7 +9,7 @@ import asyncio
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from kubernetes.client.exceptions import ApiException
 
 GROUP = "gryvia.io"
@@ -27,6 +27,7 @@ CLUSTER_SCOPED = frozenset({
     "gryviafederations",
     "gryviagpumemoryoptimizers",
     "gryviagpunodes",
+    "gryviagpuskus",
     "gryviagpusharingpolicies",
     "gryviahealthchecks",
     "gryviajobhooks",
@@ -58,6 +59,13 @@ class Deps:
     netra_fetch: Optional[Callable[[], Awaitable[Any]]] = None                 # tests: returns Netra records
     # tests inject this: returns a list of bodies, or (bodies, total_collectors)
     collector_fetch: Optional[Callable[[str], Awaitable[Any]]] = None
+
+
+async def require_admin(request: Request) -> None:
+    """Dependency for provider-only routes. List it AFTER ``Depends(deps.verify_auth)`` (dependencies are
+    resolved in order) so the role is already set. A missing role is treated as not admin."""
+    if getattr(request.state, "role", None) != "admin":
+        raise HTTPException(status_code=403, detail="This action requires a provider administrator")
 
 
 async def run(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:

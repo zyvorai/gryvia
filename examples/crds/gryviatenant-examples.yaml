@@ -214,3 +214,19 @@ status:
     jobsPercent: 46.0
 
   health: healthy
+
+---
+# Example: GPU-as-a-Service tenant restricted to two catalog SKUs
+apiVersion: gryvia.io/v1alpha1
+kind: GryviaTenant
+metadata:
+  name: acme
+spec:
+  displayName: "Acme Corp"
+  allowedSkus:
+    - h100-standard
+    - t4-economy
+  quotas:
+    concurrentGPUs: 16
+  networkPolicy:
+    isolated: true

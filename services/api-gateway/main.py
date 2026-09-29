@@ -24,7 +24,11 @@ from slowapi.errors import RateLimitExceeded
 import logging
 from collections import defaultdict
 
+from routers import tenancy
 from routers.phases import count_phases, is_billable, normalize as normalize_phase
+from routers.pricing import load_rates
+from routers.common import require_admin
+from routers.usage import fetch_records
 
 import httpx
 from jose import jwt, JWTError
@@ -277,6 +281,67 @@ def _extract_tenant_namespaces(claims: Dict[str, Any]) -> Optional[List[str]]:
     return None
 
 
+# Role model. API key and browser-session callers are the provider administrator ("admin"). An OIDC user
+# is a tenant user ("tenant") unless its token carries a group listed in GRYVIA_OIDC_ADMIN_GROUPS
+# (comma separated, matched against the `groups` claim; default none, so nobody is admin via OIDC).
+# A tenant user's namespaces come from the GryviaTenant objects its `org`/`groups` claim matches (by tenant
+# name or namespace `tenant-<name>`); a token can never name an arbitrary namespace, and a claim that
+# matches no tenant is refused with 403.
+# Compatibility escape hatch: with GRYVIA_OIDC_LEGACY_NAMESPACES=1 AND no GryviaTenant objects at all, the
+# old behaviour (claim values used as namespaces) still applies, so existing OIDC installs keep working
+# until tenants are created. Off by default.
+OIDC_ADMIN_GROUPS = {
+    g.strip() for g in os.environ.get("GRYVIA_OIDC_ADMIN_GROUPS", "").split(",") if g.strip()
+}
+OIDC_LEGACY_NAMESPACES = os.environ.get("GRYVIA_OIDC_LEGACY_NAMESPACES", "") in ("1", "true", "yes")
+
+
+def _set_admin_state(request: Optional[Request]) -> None:
+    if request is not None:
+        request.state.user_claims = None
+        request.state.auth_method = "api_key"
+        request.state.role = "admin"
+        request.state.tenant = None
+        request.state.tenants = []
+        request.state.tenant_namespaces = None
+
+
+async def _resolve_oidc_identity(request: Request, claims: Dict[str, Any]) -> None:
+    """Set role/tenant/tenant_namespaces on the request for a validated OIDC token (raises 403/503)."""
+    request.state.user_claims = claims
+    request.state.auth_method = "oidc"
+    groups = claims.get("groups")
+    if OIDC_ADMIN_GROUPS and isinstance(groups, list) and OIDC_ADMIN_GROUPS.intersection(
+        g for g in groups if isinstance(g, str)
+    ):
+        request.state.role = "admin"
+        request.state.tenant = None
+        request.state.tenants = []
+        request.state.tenant_namespaces = None
+        return
+
+    request.state.role = "tenant"
+    candidates = _extract_tenant_namespaces(claims) or []
+    items = await tenancy.list_tenants(k8s_custom)
+    matched = tenancy.match_tenants(items, candidates)
+    if matched:
+        names = [tenancy.tenant_name(t) for t in matched]
+        request.state.tenants = names
+        request.state.tenant = names[0]
+        request.state.tenant_namespaces = [tenancy.namespace_of(n) for n in names]
+        return
+    if not items and OIDC_LEGACY_NAMESPACES:
+        request.state.tenants = []
+        request.state.tenant = None
+        request.state.tenant_namespaces = candidates or None
+        return
+    raise HTTPException(
+        status_code=403,
+        detail="Your account is not mapped to a Gryvia tenant. Ask the provider to create a tenant "
+        "matching your organization or group.",
+    )
+
+
 async def verify_auth(
     authorization: Optional[str] = Header(None), request: Request = None
 ):
@@ -286,7 +351,7 @@ async def verify_auth(
     1. OIDC JWT token (when OIDC_ENABLED=true and Bearer token is a JWT)
     2. API key (Bearer token matched against GRYVIA_API_KEY)
 
-    Stores user claims on request.state when OIDC is used.
+    Sets request.state.role ("admin" | "tenant"), .tenant, .tenants, .tenant_namespaces and the OIDC claims.
     """
     if not authorization:
         raise HTTPException(status_code=401, detail="Authorization header required")
@@ -300,27 +365,24 @@ async def verify_auth(
     if token.startswith(SESSION_PREFIX):
         if verify_session_token(token) is None:
             raise HTTPException(status_code=401, detail="Session expired or invalid")
-        if request is not None:
-            request.state.user_claims = None
-            request.state.auth_method = "api_key"
-            request.state.tenant_namespaces = None
+        _set_admin_state(request)
         return
 
     # Try OIDC validation first when enabled
     if OIDC_ENABLED and OIDC_ISSUER_URL:
         # Heuristic: JWTs have 3 dot-separated parts
         if token.count(".") == 2:
+            claims = None
             try:
                 claims = await _validate_jwt_token(token)
-                # Store claims on request state for downstream use
-                if request is not None:
-                    request.state.user_claims = claims
-                    request.state.auth_method = "oidc"
-                    request.state.tenant_namespaces = _extract_tenant_namespaces(claims)
-                return
             except HTTPException:
                 # If OIDC validation fails, fall through to API key check
                 pass
+            if claims is not None:
+                # A valid token is never re-tried as an API key; tenant problems are final (403/503).
+                if request is not None:
+                    await _resolve_oidc_identity(request, claims)
+                return
 
     # Fall back to API key authentication
     if not API_KEY:
@@ -328,11 +390,7 @@ async def verify_auth(
     if not hmac.compare_digest(token, API_KEY):
         raise HTTPException(status_code=403, detail="Invalid credentials")
 
-    # API key auth - set default state
-    if request is not None:
-        request.state.user_claims = None
-        request.state.auth_method = "api_key"
-        request.state.tenant_namespaces = None
+    _set_admin_state(request)
 
 
 # Initialize Kubernetes client
@@ -402,38 +460,57 @@ except Exception:
 # Namespace for job queries (configurable)
 JOB_NAMESPACE = os.environ.get("GRYVIA_JOB_NAMESPACE", "default")
 
-# GPU pricing (same as quota operator)
-GPU_PRICING = {
-    "H100": 8.00,
-    "A100-80G": 4.00,
-    "A100-40G": 3.50,
-    "L40": 2.50,
-    "V100": 2.00,
-    "T4": 1.00,
-}
-
-
 from routers import Deps, register_routers  # noqa: E402
 
-register_routers(
-    app,
-    Deps(
-        verify_auth=verify_auth,
-        k8s_custom=k8s_custom,
-        k8s_core=k8s_core,
-        limiter=limiter,
-        job_namespace=JOB_NAMESPACE,
-        collector_urls=[
-            u.strip().rstrip("/")
-            for u in os.environ.get("GRYVIA_COLLECTOR_URLS", "").split(",")
-            if u.strip()
-        ]
-        or None,
-        netra_url=os.environ.get("GRYVIA_NETRA_URL", "").strip().rstrip("/") or None,
-        netra_token=os.environ.get("GRYVIA_NETRA_TOKEN", "").strip() or None,
-        netra_verify_tls=os.environ.get("GRYVIA_NETRA_INSECURE", "") != "1",
-    ),
+deps = Deps(
+    verify_auth=verify_auth,
+    k8s_custom=k8s_custom,
+    k8s_core=k8s_core,
+    limiter=limiter,
+    job_namespace=JOB_NAMESPACE,
+    collector_urls=[
+        u.strip().rstrip("/")
+        for u in os.environ.get("GRYVIA_COLLECTOR_URLS", "").split(",")
+        if u.strip()
+    ]
+    or None,
+    netra_url=os.environ.get("GRYVIA_NETRA_URL", "").strip().rstrip("/") or None,
+    netra_token=os.environ.get("GRYVIA_NETRA_TOKEN", "").strip() or None,
+    netra_verify_tls=os.environ.get("GRYVIA_NETRA_INSECURE", "") != "1",
 )
+register_routers(app, deps)
+
+
+def _query_namespaces(request: Request) -> List[str]:
+    """Namespaces the caller may read jobs from: its tenant namespaces, else the gateway's job namespace."""
+    tenant_ns = getattr(request.state, "tenant_namespaces", None)
+    return list(tenant_ns) if tenant_ns else [JOB_NAMESPACE]
+
+
+def _quota_visible(request: Request, quota: Dict[str, Any]) -> bool:
+    """Admins see every quota; a tenant only quotas whose spec.namespaces intersect its namespaces."""
+    if getattr(request.state, "role", None) == "admin":
+        return True
+    mine = set(_query_namespaces(request))
+    return bool(mine.intersection((quota.get("spec") or {}).get("namespaces") or []))
+
+
+async def _list_jobs(request: Request) -> Dict[str, Any]:
+    """GryviaAIJobs from the caller's namespaces, as {"items": [...]}."""
+    loop = asyncio.get_running_loop()
+    items: List[dict] = []
+    for ns in _query_namespaces(request):
+        res = await loop.run_in_executor(
+            None,
+            lambda ns=ns: k8s_custom.list_namespaced_custom_object(
+                group="gryvia.io",
+                version="v1alpha1",
+                namespace=ns,
+                plural="gryviaaijobs",
+            ),
+        )
+        items.extend(res.get("items", []))
+    return {"items": items}
 
 
 def _node_gpu_status(status: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -458,24 +535,21 @@ async def get_cluster_stats(request: Request, _=Depends(verify_auth)):
     try:
         loop = asyncio.get_running_loop()
 
-        # Get all GPU nodes and jobs in parallel
-        nodes, jobs = await asyncio.gather(
-            loop.run_in_executor(
+        # Nodes are cluster-wide (admin only); jobs come from the caller's namespaces. A tenant user
+        # gets its own job counts and zero node/GPU capacity figures.
+        is_admin = getattr(request.state, "role", None) == "admin"
+
+        async def _nodes() -> Dict[str, Any]:
+            if not is_admin:
+                return {"items": []}
+            return await loop.run_in_executor(
                 None,
                 lambda: k8s_custom.list_cluster_custom_object(
                     group="gryvia.io", version="v1alpha1", plural="gryviagpunodes"
                 ),
-            ),
-            loop.run_in_executor(
-                None,
-                lambda: k8s_custom.list_namespaced_custom_object(
-                    group="gryvia.io",
-                    version="v1alpha1",
-                    namespace=JOB_NAMESPACE,
-                    plural="gryviaaijobs",
-                ),
-            ),
-        )
+            )
+
+        nodes, jobs = await asyncio.gather(_nodes(), _list_jobs(request))
 
         total_gpus = 0
         available_gpus = 0
@@ -536,6 +610,7 @@ async def get_gpu_metrics(
         description="Time range (1h, 6h, 24h, 7d) - reserved for Prometheus integration",
     ),
     _=Depends(verify_auth),
+    __=Depends(require_admin),
 ):
     """Get GPU utilization metrics over time"""
     allowed_ranges = {"1h", "6h", "24h", "7d", "30d"}
@@ -581,26 +656,20 @@ async def get_gpu_metrics(
 @app.get("/api/metrics/costs")
 @limiter.limit("30/minute")
 async def get_cost_metrics(request: Request, _=Depends(verify_auth)):
-    """Get cost metrics and analysis"""
+    """Cost metrics for the caller's scope (admin: everything, tenant: its own namespaces).
+
+    Metered GryviaUsageRecords are preferred when any exist; otherwise costs are computed on the fly from
+    job wall-clock time, priced from the GryviaGpuSku catalog (built-in table when there are no SKUs).
+    """
     try:
         loop = asyncio.get_running_loop()
+        is_admin = getattr(request.state, "role", None) == "admin"
 
-        # Get all quotas with budget info
+        # Get all quotas with budget info (only used to map namespaces to team names)
         quotas = await loop.run_in_executor(
             None,
             lambda: k8s_custom.list_cluster_custom_object(
                 group="gryvia.io", version="v1alpha1", plural="gryviaquotas"
-            ),
-        )
-
-        # Get all jobs to calculate costs
-        jobs = await loop.run_in_executor(
-            None,
-            lambda: k8s_custom.list_namespaced_custom_object(
-                group="gryvia.io",
-                version="v1alpha1",
-                namespace=JOB_NAMESPACE,
-                plural="gryviaaijobs",
             ),
         )
 
@@ -612,53 +681,75 @@ async def get_cost_metrics(request: Request, _=Depends(verify_auth)):
                 for qns in qspec.get("namespaces") or []:
                     ns_team.setdefault(qns, qspec["team"])
 
-        # Calculate costs by team
         team_costs = defaultdict(float)
         gpu_type_costs = defaultdict(lambda: {"cost": 0.0, "hours": 0.0})
+        source = "jobs"
 
-        for job in jobs.get("items", []):
-            status = job.get("status", {})
-            spec = job.get("spec", {})
+        try:
+            records = await fetch_records(
+                k8s_custom, None if is_admin else _query_namespaces(request)
+            )
+        except Exception:  # noqa: BLE001 - CRD not installed / not readable: compute from jobs
+            records = []
 
-            if is_billable(status.get("phase")):
-                gpu_type = spec.get(
-                    "gpuType", spec.get("resources", {}).get("gpuType", "unknown")
-                )
-                gpu_count = spec.get(
-                    "gpus", spec.get("resources", {}).get("gpuCount", 0)
-                )
+        if records:
+            source = "usage-records"
+            for rec in records:
+                rspec = rec.get("spec") or {}
+                rns = (rec.get("metadata") or {}).get("namespace")
+                team = ns_team.get(rns) or rspec.get("tenant") or "unassigned"
+                cost = float(rspec.get("cost") or 0)
+                hours = float(rspec.get("gpuHours") or 0)
+                team_costs[team] += cost
+                gtype = rspec.get("gpuType") or rspec.get("sku") or "unknown"
+                gpu_type_costs[gtype]["cost"] += cost
+                gpu_type_costs[gtype]["hours"] += hours
+        else:
+            rates = await load_rates(k8s_custom)
+            jobs = await _list_jobs(request)
+            for job in jobs.get("items", []):
+                status = job.get("status", {})
+                spec = job.get("spec", {})
 
-                # Calculate hours
-                start_time = status.get("startTime")
-                end_time = (
-                    status.get("completionTime")
-                    or datetime.now(timezone.utc).isoformat()
-                )
-
-                if start_time:
-                    try:
-                        start = datetime.fromisoformat(
-                            start_time.replace("Z", "+00:00")
-                        )
-                        end = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
-                    except (ValueError, TypeError):
-                        continue
-                    hours = (end - start).total_seconds() / 3600
-
-                    cost = hours * gpu_count * GPU_PRICING.get(gpu_type, 1.0)
-
-                    # Add to team costs (use namespace or label as team identifier)
-                    jmeta = job.get("metadata") or {}
-                    team = (
-                        ns_team.get(jmeta.get("namespace"))
-                        or (jmeta.get("labels") or {}).get("gryvia.io/team")
-                        or "unassigned"
+                if is_billable(status.get("phase")):
+                    gpu_type = spec.get(
+                        "gpuType", spec.get("resources", {}).get("gpuType", "unknown")
                     )
-                    team_costs[team] += cost
+                    gpu_count = spec.get(
+                        "gpus", spec.get("resources", {}).get("gpuCount", 0)
+                    )
 
-                    # Add to GPU type costs
-                    gpu_type_costs[gpu_type]["cost"] += cost
-                    gpu_type_costs[gpu_type]["hours"] += hours * gpu_count
+                    # Calculate hours
+                    start_time = status.get("startTime")
+                    end_time = (
+                        status.get("completionTime")
+                        or datetime.now(timezone.utc).isoformat()
+                    )
+
+                    if start_time:
+                        try:
+                            start = datetime.fromisoformat(
+                                start_time.replace("Z", "+00:00")
+                            )
+                            end = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
+                        except (ValueError, TypeError):
+                            continue
+                        hours = (end - start).total_seconds() / 3600
+
+                        cost = hours * gpu_count * rates.get(gpu_type, 1.0)
+
+                        # Add to team costs (use namespace or label as team identifier)
+                        jmeta = job.get("metadata") or {}
+                        team = (
+                            ns_team.get(jmeta.get("namespace"))
+                            or (jmeta.get("labels") or {}).get("gryvia.io/team")
+                            or "unassigned"
+                        )
+                        team_costs[team] += cost
+
+                        # Add to GPU type costs
+                        gpu_type_costs[gpu_type]["cost"] += cost
+                        gpu_type_costs[gpu_type]["hours"] += hours * gpu_count
 
         current_month_cost = sum(team_costs.values())
 
@@ -688,6 +779,7 @@ async def get_cost_metrics(request: Request, _=Depends(verify_auth)):
             "byGPUType": by_gpu_type,
             "totalCost": round(current_month_cost, 2),
             "scope": "all-time",
+            "source": source,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
     except Exception as e:
@@ -704,17 +796,7 @@ async def get_job_metrics(
 ):
     """Get job metrics over time"""
     try:
-        loop = asyncio.get_running_loop()
-
-        jobs = await loop.run_in_executor(
-            None,
-            lambda: k8s_custom.list_namespaced_custom_object(
-                group="gryvia.io",
-                version="v1alpha1",
-                namespace=JOB_NAMESPACE,
-                plural="gryviaaijobs",
-            ),
-        )
+        jobs = await _list_jobs(request)
 
         # Calculate job statistics
         total_jobs = len(jobs.get("items", []))
@@ -775,10 +857,7 @@ async def list_jobs(
         loop = asyncio.get_running_loop()
 
         # Determine which namespaces to query based on tenant
-        tenant_ns = getattr(request.state, "tenant_namespaces", None)
-        query_namespaces = [JOB_NAMESPACE]
-        if tenant_ns:
-            query_namespaces = tenant_ns
+        query_namespaces = _query_namespaces(request)
 
         # Fetch jobs from all tenant namespaces
         all_items: List[dict] = []
@@ -815,17 +894,29 @@ async def get_job(request: Request, name: str, _=Depends(verify_auth)):
     try:
         loop = asyncio.get_running_loop()
 
-        job = await loop.run_in_executor(
-            None,
-            lambda: k8s_custom.get_namespaced_custom_object(
-                group="gryvia.io",
-                version="v1alpha1",
-                namespace=JOB_NAMESPACE,
-                plural="gryviaaijobs",
-                name=name,
-            ),
-        )
+        # Only the caller's namespaces are searched, so another tenant's job is a 404.
+        job = None
+        for ns in _query_namespaces(request):
+            try:
+                job = await loop.run_in_executor(
+                    None,
+                    lambda ns=ns: k8s_custom.get_namespaced_custom_object(
+                        group="gryvia.io",
+                        version="v1alpha1",
+                        namespace=ns,
+                        plural="gryviaaijobs",
+                        name=name,
+                    ),
+                )
+                break
+            except client.ApiException as e:
+                if e.status != 404:
+                    raise
+        if job is None:
+            raise HTTPException(status_code=404, detail=f"Job '{name}' not found")
         return job
+    except HTTPException:
+        raise
     except client.ApiException as e:
         if e.status == 404:
             raise HTTPException(status_code=404, detail=f"Job '{name}' not found")
@@ -866,9 +957,10 @@ async def create_job(request: Request, _=Depends(verify_auth)):
 
         # Enforce namespace server-side to prevent namespace bypass
         # When using OIDC with tenant namespaces, use the first tenant namespace
-        tenant_ns = getattr(request.state, "tenant_namespaces", None)
-        target_ns = tenant_ns[0] if tenant_ns else JOB_NAMESPACE
-        body.setdefault("metadata", {})["namespace"] = target_ns
+        target_ns = _query_namespaces(request)[0]
+        if not isinstance(body.get("metadata"), dict):
+            body["metadata"] = {}
+        body["metadata"]["namespace"] = target_ns
 
         job = await loop.run_in_executor(
             None,
@@ -897,17 +989,29 @@ async def delete_job(request: Request, name: str, _=Depends(verify_auth)):
     try:
         loop = asyncio.get_running_loop()
 
-        await loop.run_in_executor(
-            None,
-            lambda: k8s_custom.delete_namespaced_custom_object(
-                group="gryvia.io",
-                version="v1alpha1",
-                namespace=JOB_NAMESPACE,
-                plural="gryviaaijobs",
-                name=name,
-            ),
-        )
+        deleted = False
+        for ns in _query_namespaces(request):
+            try:
+                await loop.run_in_executor(
+                    None,
+                    lambda ns=ns: k8s_custom.delete_namespaced_custom_object(
+                        group="gryvia.io",
+                        version="v1alpha1",
+                        namespace=ns,
+                        plural="gryviaaijobs",
+                        name=name,
+                    ),
+                )
+                deleted = True
+                break
+            except client.ApiException as e:
+                if e.status != 404:
+                    raise
+        if not deleted:
+            raise HTTPException(status_code=404, detail=f"Job '{name}' not found")
         return {"status": "deleted", "name": name}
+    except HTTPException:
+        raise
     except client.ApiException as e:
         if e.status == 404:
             raise HTTPException(status_code=404, detail=f"Job '{name}' not found")
@@ -936,7 +1040,9 @@ async def list_quotas(
             ),
         )
 
-        all_items = quotas.get("items", [])
+        all_items = [
+            q for q in quotas.get("items", []) if _quota_visible(request, q)
+        ]
         total = len(all_items)
         items = all_items[offset : offset + limit]
 
@@ -967,7 +1073,11 @@ async def get_quota(request: Request, name: str, _=Depends(verify_auth)):
                 name=name,
             ),
         )
+        if not _quota_visible(request, quota):
+            raise HTTPException(status_code=404, detail=f"Quota '{name}' not found")
         return quota
+    except HTTPException:
+        raise
     except client.ApiException as e:
         if e.status == 404:
             raise HTTPException(status_code=404, detail=f"Quota '{name}' not found")
@@ -984,6 +1094,7 @@ async def list_nodes(
     limit: int = Query(500, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     _=Depends(verify_auth),
+    __=Depends(require_admin),
 ):
     """List all GPU nodes with pagination"""
     try:
@@ -1013,7 +1124,9 @@ async def list_nodes(
 
 @app.get("/api/nodes/{name}")
 @limiter.limit("30/minute")
-async def get_node(request: Request, name: str, _=Depends(verify_auth)):
+async def get_node(
+    request: Request, name: str, _=Depends(verify_auth), __=Depends(require_admin)
+):
     """Get a specific GPU node by name"""
     try:
         loop = asyncio.get_running_loop()
@@ -1045,7 +1158,7 @@ async def get_quota_usage(
     offset: int = Query(0, ge=0),
     _=Depends(verify_auth),
 ):
-    """Get quota usage across all teams"""
+    """Get quota usage across all teams (a tenant sees only its own quotas)"""
     try:
         loop = asyncio.get_running_loop()
 
@@ -1058,6 +1171,8 @@ async def get_quota_usage(
 
         usage_data = []
         for quota in quotas.get("items", []):
+            if not _quota_visible(request, quota):
+                continue
             spec = quota.get("spec", {})
             status = quota.get("status", {})
             current_usage = status.get("currentUsage", {})
@@ -1107,6 +1222,7 @@ async def get_node_health(
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     _=Depends(verify_auth),
+    __=Depends(require_admin),
 ):
     """Get GPU node health status"""
     try:
@@ -1254,6 +1370,9 @@ async def get_current_user(request: Request, _=Depends(verify_auth)):
             "name": claims.get("name", claims.get("preferred_username", "")),
             "groups": claims.get("groups", []),
             "org": claims.get("org", ""),
+            "role": getattr(request.state, "role", "tenant"),
+            "tenant": getattr(request.state, "tenant", None),
+            "tenants": getattr(request.state, "tenants", []),
             "tenantNamespaces": getattr(request.state, "tenant_namespaces", None),
         }
 
@@ -1265,6 +1384,9 @@ async def get_current_user(request: Request, _=Depends(verify_auth)):
         "name": "admin",
         "groups": [],
         "org": "",
+        "role": "admin",
+        "tenant": None,
+        "tenants": [],
         "tenantNamespaces": None,
         "usingDefaultKey": using_default_key(),
     }

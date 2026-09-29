@@ -75,6 +75,36 @@ GET /api/nodes/health
 ```
 Returns GPU node health status.
 
+### Roles and tenant isolation
+
+- The API key and dashboard sessions are the provider **admin**. An OIDC user is a **tenant** user unless its
+  `groups` claim contains a value from `GRYVIA_OIDC_ADMIN_GROUPS` (comma separated, default none).
+- A tenant user's `org` claim (or, without `org`, its `groups` values) must match a `GryviaTenant` by name or by
+  namespace `tenant-<name>`. Its namespaces are those of the matched tenants only; no match is a 403. The tenant list is cached for 30 s.
+  `GRYVIA_OIDC_LEGACY_NAMESPACES=1` keeps the old "claim = namespace" behaviour, and only while no `GryviaTenant` exists.
+- `GET /api/auth/me` returns `role` (`admin`|`tenant`), `tenant`, `tenants` and `tenantNamespaces`.
+- Admin only (403 for tenants): nodes, node health, `/api/metrics/gpu`, `/api/network/*`, `/api/security/*`,
+  `/api/ai/*`, `/api/gpu/memory`, and all writes to `/api/skus` and `/api/tenants`.
+- Tenant-scoped (a tenant sees only its own namespaces): jobs, workspaces, models, inference, workflows, tuners,
+  `/api/quotas`, `/api/quota/usage` (quotas whose `spec.namespaces` intersect), `/api/metrics/costs`,
+  `/api/metrics/jobs`, `/api/cluster/stats` (jobs only, no node capacity), `/api/usage`.
+
+### GPU catalog, tenants, usage
+```
+GET    /api/skus[/{name}]        # any user; tenants see enabled SKUs, limited to spec.allowedSkus of their tenant
+POST   /api/skus                 # admin: {name, gpuType, gpusPerUnit, hourlyRate, currency, spotDiscount, description, enabled}
+PUT    /api/skus/{name}          # admin: same fields without name
+DELETE /api/skus/{name}          # admin
+GET    /api/tenants[/{name}]     # admin: all; tenant: its own
+POST   /api/tenants              # admin: {name, displayName, allowedSkus, maxGPUs, isolated}
+DELETE /api/tenants/{name}       # admin
+GET    /api/usage?tenant=&from=&to=&groupBy=tenant|sku|day   # {items:[{key,gpuHours,cost,currency,jobs}], totals}
+GET    /api/usage/export?format=csv|json&tenant=&from=&to=   # per-record rows, attachment download
+```
+Usage comes from `GryviaUsageRecord` objects (metered estimates from job wall-clock time; no billing). Tenant users are
+always limited to their own tenant, whatever `tenant` says. `/api/metrics/costs` uses usage records when any exist and
+otherwise computes from jobs, priced from `GryviaGpuSku` (a built-in table only when no SKU exists).
+
 ## Development
 
 ### Prerequisites

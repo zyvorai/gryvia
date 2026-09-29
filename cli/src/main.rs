@@ -11,6 +11,7 @@ use clap::builder::styling::{AnsiColor, Effects};
 use clap::builder::Styles;
 use clap::{ColorChoice, CommandFactory, FromArgMatches, Parser, Subcommand};
 use clap_complete::Shell;
+use commands::usage::{GroupBy, UsageFormat};
 use output::{OutputFormat, StructuredFormat};
 
 /// An "Examples:" block for a command's help, colored like the rest of the help.
@@ -254,6 +255,55 @@ enum Commands {
         output: OutputFormat,
     },
 
+    /// List the GPU SKUs on offer, with hourly rates
+    ///
+    /// Read-only. Shows every GryviaGpuSku: GPU type, GPUs per unit, rate per hour, spot discount and
+    /// whether it is enabled. Rates are what usage metering multiplies GPU hours by.
+    #[command(visible_alias = "skus")]
+    #[command(after_help = examples(&["gryvia catalog", "gryvia skus -o json"]))]
+    Catalog {
+        /// Output format
+        #[arg(short, long, value_enum, default_value_t = OutputFormat::Table, env = "GRYVIA_OUTPUT")]
+        output: OutputFormat,
+    },
+
+    /// Manage tenants: list, get, create, delete
+    ///
+    /// A tenant is a GryviaTenant object; its workloads run in the namespace `tenant-<name>`.
+    #[command(after_help = examples(&["gryvia tenant list", "gryvia tenant get acme", "gryvia tenant create acme --display-name Acme --allowed-sku h100-8x --max-gpus 16 --isolated true", "gryvia tenant delete acme --yes"]))]
+    Tenant {
+        #[command(subcommand)]
+        action: TenantCommands,
+    },
+
+    /// Show metered GPU usage and estimated cost
+    ///
+    /// Aggregates GryviaUsageRecord objects: GPU hours, cost and distinct jobs per tenant, SKU or day.
+    /// Records are filtered on their start time; a date-only --to covers that whole day. Costs are
+    /// estimates from job run time multiplied by the SKU rate, not invoices.
+    #[command(after_help = examples(&["gryvia usage", "gryvia usage --tenant acme --from 2026-09-01 --to 2026-09-30", "gryvia usage --group-by sku -o json", "gryvia usage --group-by day -o csv"]))]
+    Usage {
+        /// Only this tenant
+        #[arg(long)]
+        tenant: Option<String>,
+
+        /// Earliest record start: YYYY-MM-DD or an RFC 3339 timestamp
+        #[arg(long)]
+        from: Option<String>,
+
+        /// Latest record start: YYYY-MM-DD (the whole day is included) or an RFC 3339 timestamp
+        #[arg(long)]
+        to: Option<String>,
+
+        /// How to group the rows
+        #[arg(long, value_enum, default_value_t = GroupBy::Tenant)]
+        group_by: GroupBy,
+
+        /// Output format
+        #[arg(short, long, value_enum, default_value_t = UsageFormat::Table, env = "GRYVIA_OUTPUT")]
+        output: UsageFormat,
+    },
+
     /// Interactive job creation wizard
     #[command(after_help = examples(&["gryvia create job"]))]
     Create {
@@ -343,6 +393,58 @@ enum Commands {
     Gpu {
         #[command(subcommand)]
         action: GpuCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum TenantCommands {
+    /// List tenants
+    List {
+        /// Output format
+        #[arg(short, long, value_enum, default_value_t = OutputFormat::Table, env = "GRYVIA_OUTPUT")]
+        output: OutputFormat,
+    },
+
+    /// Show one tenant
+    Get {
+        /// Tenant name
+        name: String,
+
+        /// Output format
+        #[arg(short, long, value_enum, default_value_t = OutputFormat::Table)]
+        output: OutputFormat,
+    },
+
+    /// Create (or update) a tenant
+    Create {
+        /// Tenant name (becomes the namespace tenant-<name>)
+        name: String,
+
+        /// Human-readable name (defaults to the tenant name)
+        #[arg(long)]
+        display_name: Option<String>,
+
+        /// SKU the tenant may use; repeat for several (default: all enabled SKUs)
+        #[arg(long = "allowed-sku")]
+        allowed_sku: Vec<String>,
+
+        /// Maximum concurrent GPUs
+        #[arg(long)]
+        max_gpus: Option<u32>,
+
+        /// Isolate the tenant's network from other tenants
+        #[arg(long, value_name = "BOOL", action = clap::ArgAction::Set)]
+        isolated: Option<bool>,
+    },
+
+    /// Delete a tenant
+    Delete {
+        /// Tenant name
+        name: String,
+
+        /// Skip confirmation
+        #[arg(short, long)]
+        yes: bool,
     },
 }
 
@@ -776,6 +878,53 @@ async fn run() -> Result<()> {
         } => {
             commands::queue::execute(&client, name, watch, output.as_str()).await?;
         }
+        Commands::Catalog { output } => {
+            commands::catalog::execute(&client, output.as_str()).await?;
+        }
+        Commands::Tenant { action } => match action {
+            TenantCommands::List { output } => {
+                commands::tenant::list(&client, output.as_str()).await?;
+            }
+            TenantCommands::Get { name, output } => {
+                commands::tenant::get(&client, &name, output.as_str()).await?;
+            }
+            TenantCommands::Create {
+                name,
+                display_name,
+                allowed_sku,
+                max_gpus,
+                isolated,
+            } => {
+                commands::tenant::create(
+                    &client,
+                    &name,
+                    display_name.as_deref(),
+                    &allowed_sku,
+                    max_gpus,
+                    isolated,
+                )
+                .await?;
+            }
+            TenantCommands::Delete { name, yes } => {
+                commands::tenant::delete(&client, &name, yes).await?;
+            }
+        },
+        Commands::Usage {
+            tenant,
+            from,
+            to,
+            group_by,
+            output,
+        } => {
+            let opts = commands::usage::Options {
+                tenant,
+                from,
+                to,
+                group_by,
+                output,
+            };
+            commands::usage::execute(&client, opts).await?;
+        }
         Commands::Create { resource } => {
             commands::create::execute(&client, &resource).await?;
         }
@@ -1180,6 +1329,7 @@ mod tests {
             ("rm", "delete"),
             ("describe", "get"),
             ("cap", "capacity"),
+            ("skus", "catalog"),
         ] {
             let m = Cli::command()
                 .try_get_matches_from(match target {
@@ -1202,6 +1352,11 @@ mod tests {
             vec!["gryvia", "maintenance", "list", "-o", "json"],
             vec!["gryvia", "capacity", "-o", "yaml"],
             vec!["gryvia", "status", "-o", "json"],
+            vec!["gryvia", "catalog", "-o", "json"],
+            vec!["gryvia", "tenant", "list", "-o", "yaml"],
+            vec!["gryvia", "tenant", "get", "acme", "-o", "json"],
+            vec!["gryvia", "usage", "-o", "csv"],
+            vec!["gryvia", "usage", "--group-by", "day", "-o", "json"],
         ] {
             assert!(
                 Cli::command().try_get_matches_from(args.clone()).is_ok(),
@@ -1210,6 +1365,42 @@ mod tests {
         }
         assert!(Cli::command()
             .try_get_matches_from(["gryvia", "quota", "-o", "csv"])
+            .is_err());
+    }
+
+    #[test]
+    fn tenant_create_takes_repeated_skus_and_a_bool() {
+        let m = Cli::command()
+            .try_get_matches_from([
+                "gryvia",
+                "tenant",
+                "create",
+                "acme",
+                "--allowed-sku",
+                "a",
+                "--allowed-sku",
+                "b",
+                "--max-gpus",
+                "8",
+                "--isolated",
+                "false",
+            ])
+            .unwrap();
+        let (_, create) = m
+            .subcommand_matches("tenant")
+            .unwrap()
+            .subcommand()
+            .unwrap();
+        assert_eq!(create.get_many::<String>("allowed_sku").unwrap().count(), 2);
+        assert_eq!(create.get_one::<bool>("isolated"), Some(&false));
+        assert!(Cli::command()
+            .try_get_matches_from(["gryvia", "tenant", "create", "acme", "--max-gpus", "x"])
+            .is_err());
+        assert!(Cli::command()
+            .try_get_matches_from(["gryvia", "usage", "--group-by", "week"])
+            .is_err());
+        assert!(Cli::command()
+            .try_get_matches_from(["gryvia", "catalog", "-o", "csv"])
             .is_err());
     }
 

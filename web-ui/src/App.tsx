@@ -10,6 +10,8 @@ import Layout from './components/Layout'
 import PageHero from './components/PageHero'
 import { Skeleton } from './components/StateViews'
 import { useAuth } from './lib/auth'
+import { TENANT_HOME } from './lib/roles'
+import { useIsAdmin } from './lib/useRole'
 import { setUnauthorizedHandler } from './lib/authEvents'
 import { notify } from './lib/notify'
 import { useDocumentTitle } from './hooks/useDocumentTitle'
@@ -35,6 +37,9 @@ const ModelRegistry = lazy(() => import('./pages/ModelRegistry'))
 const InferenceServices = lazy(() => import('./pages/InferenceServices'))
 const Workflows = lazy(() => import('./pages/Workflows'))
 const AutoTuner = lazy(() => import('./pages/AutoTuner'))
+const Catalog = lazy(() => import('./pages/Catalog'))
+const Usage = lazy(() => import('./pages/Usage'))
+const Tenants = lazy(() => import('./pages/Tenants'))
 
 const queryClient = new QueryClient({
   queryCache: new QueryCache({
@@ -98,8 +103,15 @@ function ProtectedLayout() {
   )
 }
 
+/** Routes only admins may open; a tenant user is sent to the catalog instead. */
+function AdminOnly() {
+  const admin = useIsAdmin()
+  return admin ? <Outlet /> : <Navigate to={TENANT_HOME} replace />
+}
+
 function NotFound() {
   useDocumentTitle('Page not found')
+  const admin = useIsAdmin()
   return (
     <>
       <PageHero eyebrow="404" title="Page not found." lede="That page doesn't exist. Try one of these instead." />
@@ -108,8 +120,7 @@ function NotFound() {
           ['/dashboard', 'Dashboard'],
           ['/jobs', 'Jobs'],
           ['/workspaces', 'Workspaces'],
-          ['/nodes', 'Nodes'],
-          ['/quotas', 'Quotas'],
+          ...(admin ? [['/nodes', 'Nodes'], ['/quotas', 'Quotas']] : [['/catalog', 'Catalog'], ['/usage', 'Usage']]),
         ].map(([to, label]) => (
           <Link key={to} to={to} className="buttonlike btn-secondary">
             {label}
@@ -135,16 +146,21 @@ function App() {
               <Route path="/jobs" element={<Jobs />} />
               <Route path="/jobs/new" element={<SubmitJob />} />
               <Route path="/jobs/:name" element={<JobDetails />} />
-              <Route path="/quotas" element={<Quotas />} />
-              <Route path="/nodes" element={<Nodes />} />
-              <Route path="/network" element={<NetworkOverview />} />
-              <Route path="/network/flows" element={<NetworkFlows />} />
-              <Route path="/network/policies" element={<NetworkPolicies />} />
-              <Route path="/network/costs" element={<NetworkCost />} />
-              <Route path="/security" element={<SecurityOverview />} />
-              <Route path="/gpu" element={<GpuCommunication />} />
-              <Route path="/gpu/communication" element={<GpuCommunication />} />
-              <Route path="/costs" element={<Costs />} />
+              <Route element={<AdminOnly />}>
+                <Route path="/quotas" element={<Quotas />} />
+                <Route path="/nodes" element={<Nodes />} />
+                <Route path="/network" element={<NetworkOverview />} />
+                <Route path="/network/flows" element={<NetworkFlows />} />
+                <Route path="/network/policies" element={<NetworkPolicies />} />
+                <Route path="/network/costs" element={<NetworkCost />} />
+                <Route path="/security" element={<SecurityOverview />} />
+                <Route path="/gpu" element={<GpuCommunication />} />
+                <Route path="/gpu/communication" element={<GpuCommunication />} />
+                <Route path="/costs" element={<Costs />} />
+              </Route>
+              <Route path="/catalog" element={<Catalog />} />
+              <Route path="/usage" element={<Usage />} />
+              <Route path="/tenants" element={<Tenants />} />
               <Route path="/workspaces" element={<Workspaces />} />
               <Route path="/models" element={<ModelRegistry />} />
               <Route path="/inference" element={<InferenceServices />} />

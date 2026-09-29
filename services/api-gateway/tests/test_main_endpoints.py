@@ -7,6 +7,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from fastapi import Request
 from fastapi.testclient import TestClient
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
@@ -19,8 +20,9 @@ def gw(fake_k8s, monkeypatch):
     monkeypatch.setattr(config, "load_kube_config", lambda: None)
     import main
 
-    async def allow():
-        return None
+    async def allow(request: Request):
+        request.state.role = "admin"
+        request.state.tenant_namespaces = None
 
     monkeypatch.setattr(main, "k8s_custom", fake_k8s)
     main.limiter.enabled = False

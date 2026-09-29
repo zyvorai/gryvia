@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 
-from .common import Deps, create_item, get_item, list_items, patch_item
+from .common import Deps, create_item, get_item, list_items, patch_item, require_admin
 from .netra import fetch_flows
 
 K8S_NAME = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
@@ -209,7 +209,7 @@ def build_router(deps: Deps) -> APIRouter:
 
     @router.get("/api/network/flows")
     @deps.limiter.limit("30/minute")
-    async def list_flows(request: Request, _=Depends(deps.verify_auth)):
+    async def list_flows(request: Request, _=Depends(deps.verify_auth), __=Depends(require_admin)):
         """Observed flows: real flows from Netra when GRYVIA_NETRA_URL is set and reachable, otherwise the
         GryviaServiceGraph edges (no separate flow CRD exists)."""
         netra = await fetch_flows(deps)
@@ -238,12 +238,12 @@ def build_router(deps: Deps) -> APIRouter:
 
     @router.get("/api/network/policies")
     @deps.limiter.limit("30/minute")
-    async def list_policies(request: Request, _=Depends(deps.verify_auth)):
+    async def list_policies(request: Request, _=Depends(deps.verify_auth), __=Depends(require_admin)):
         return {"items": [_policy_view(o) for o in await list_items(deps, FLOW_POLICIES)]}
 
     @router.post("/api/network/policies", status_code=201)
     @deps.limiter.limit("10/minute")
-    async def create_policy(request: Request, body: FlowPolicyRequest, _=Depends(deps.verify_auth)):
+    async def create_policy(request: Request, body: FlowPolicyRequest, _=Depends(deps.verify_auth), __=Depends(require_admin)):
         name = body.name
         if not name:
             digest = hashlib.sha1(
@@ -260,7 +260,7 @@ def build_router(deps: Deps) -> APIRouter:
 
     @router.post("/api/network/policies/{name}/apply")
     @deps.limiter.limit("10/minute")
-    async def apply_policy(request: Request, name: str, _=Depends(deps.verify_auth)):
+    async def apply_policy(request: Request, name: str, _=Depends(deps.verify_auth), __=Depends(require_admin)):
         """Request (re)enforcement: annotate the CR so the operator reconciles it."""
         _name_or_404(name)
         await get_item(deps, FLOW_POLICIES, name)
@@ -271,7 +271,7 @@ def build_router(deps: Deps) -> APIRouter:
 
     @router.get("/api/network/insights")
     @deps.limiter.limit("30/minute")
-    async def insights(request: Request, _=Depends(deps.verify_auth)):
+    async def insights(request: Request, _=Depends(deps.verify_auth), __=Depends(require_admin)):
         graphs = await list_items(deps, GRAPHS)
         policies = await list_items(deps, FLOW_POLICIES)
         anomalies = await list_items(deps, ANOMALIES)
@@ -289,19 +289,19 @@ def build_router(deps: Deps) -> APIRouter:
 
     @router.get("/api/network/graph")
     @deps.limiter.limit("30/minute")
-    async def graph(request: Request, _=Depends(deps.verify_auth)):
+    async def graph(request: Request, _=Depends(deps.verify_auth), __=Depends(require_admin)):
         g = _merge_graphs(await list_items(deps, GRAPHS))
         g["edges"] = [{k: v for k, v in e.items() if not k.startswith("_")} for e in g["edges"]]
         return g
 
     @router.get("/api/network/anomalies")
     @deps.limiter.limit("30/minute")
-    async def anomalies(request: Request, _=Depends(deps.verify_auth)):
+    async def anomalies(request: Request, _=Depends(deps.verify_auth), __=Depends(require_admin)):
         return {"items": _anomaly_items(await list_items(deps, ANOMALIES), await list_items(deps, INSIGHTS))}
 
     @router.get("/api/network/costs")
     @deps.limiter.limit("30/minute")
-    async def costs(request: Request, _=Depends(deps.verify_auth)):
+    async def costs(request: Request, _=Depends(deps.verify_auth), __=Depends(require_admin)):
         crs = sorted(await list_items(deps, COSTS), key=lambda o: o.get("metadata", {}).get("name", ""))
         rates = {"sameZone": 0, "crossZone": 0, "internetEgress": 0}
         for cr in crs:
@@ -322,12 +322,12 @@ def build_router(deps: Deps) -> APIRouter:
 
     @router.get("/api/network/traces")
     @deps.limiter.limit("30/minute")
-    async def list_traces(request: Request, _=Depends(deps.verify_auth)):
+    async def list_traces(request: Request, _=Depends(deps.verify_auth), __=Depends(require_admin)):
         return {"items": [_trace_view(o) for o in await list_items(deps, TRACES)]}
 
     @router.post("/api/network/traces", status_code=201)
     @deps.limiter.limit("10/minute")
-    async def create_trace(request: Request, body: TraceRequest, _=Depends(deps.verify_auth)):
+    async def create_trace(request: Request, body: TraceRequest, _=Depends(deps.verify_auth), __=Depends(require_admin)):
         name = f"trace-{body.targetService[:40]}-{uuid.uuid4().hex[:8]}"
         spec = {"service": body.targetService, "namespace": body.namespace,
                 "duration": body.duration, "level": body.captureLevel}
@@ -336,7 +336,7 @@ def build_router(deps: Deps) -> APIRouter:
 
     @router.get("/api/network/traces/{name}")
     @deps.limiter.limit("30/minute")
-    async def get_trace(request: Request, name: str, _=Depends(deps.verify_auth)):
+    async def get_trace(request: Request, name: str, _=Depends(deps.verify_auth), __=Depends(require_admin)):
         _name_or_404(name)
         return _trace_view(await get_item(deps, TRACES, name))
 
