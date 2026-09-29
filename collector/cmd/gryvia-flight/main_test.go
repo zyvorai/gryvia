@@ -160,3 +160,41 @@ func TestRunUsageAndTokenHandling(t *testing.T) {
 		t.Fatalf("stdin token: %d %q", code, seenAuth)
 	}
 }
+
+const diagBody = `{"namespace":"ml","job":"train","summary":"1 finding(s)","partial":true,
+"findings":[{"kind":"cpu","severity":"critical","confidence":"high","nodes":["n1"],"summary":"throttled\u001b[31m","whatWasNotMeasured":["host CPU"],
+"evidence":[{"node":"n1","source":"cgroup","metric":"cpu_throttle_ratio","value":0.75,"window":"5m0s"}]}],
+"unavailable":[{"node":"n1","signal":"cgroup.io.pressure","reason":"PSI disabled"}],
+"measurementCompleteness":{"probesAttached":4,"probesSkipped":[],"droppedEvents":{"total":3},"sampling":{"ratio":1},
+"nodesExpected":"unknown","nodesReporting":1,"missingNodes":[],"complete":false,"reasons":["expected nodes unknown"]}}`
+
+func TestDiagnosisFlag(t *testing.T) {
+	tok := map[string]string{tokenEnv: "secret-token"}
+	base := []string{"-gateway", "https://g.example", "-namespace", "ml", "-job", "train", "-diagnosis"}
+	var path string
+	client := &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
+		path = r.URL.Path
+		return response(200, diagBody), nil
+	})}
+	code, out, errs := runCLI(t, client, tok, "", base...)
+	if code != 0 || path != "/api/flight/jobs/train/diagnosis" || !strings.Contains(out, `"measurementCompleteness"`) || !strings.Contains(errs, "incomplete measurement") {
+		t.Fatalf("json: %d %q %q %q", code, path, out, errs)
+	}
+	if code, _, _ = runCLI(t, client, tok, "", append(base, "-require-complete")...); code != 3 {
+		t.Fatalf("require-complete on incomplete: %d", code)
+	}
+	code, out, _ = runCLI(t, client, tok, "", append(base, "-o", "text")...)
+	for _, want := range []string{"INCOMPLETE MEASUREMENT", "absence of findings is not evidence of health", "of unknown expected", "cpu_throttle_ratio", "not measured", "Unavailable (not healthy): 1", "expected nodes unknown"} {
+		if code != 0 || !strings.Contains(out, want) {
+			t.Fatalf("text missing %q: %d %q", want, code, out)
+		}
+	}
+	if strings.Contains(out, "\x1b") {
+		t.Fatal("control characters must not reach the terminal")
+	}
+	complete := strings.Replace(strings.Replace(diagBody, `"partial":true`, `"partial":false`, 1), `"complete":false`, `"complete":true`, 1)
+	ok := &http.Client{Transport: roundTrip(func(*http.Request) (*http.Response, error) { return response(200, complete), nil })}
+	if code, _, _ = runCLI(t, ok, tok, "", append(base, "-require-complete")...); code != 0 {
+		t.Fatalf("complete: %d", code)
+	}
+}

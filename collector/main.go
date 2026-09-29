@@ -24,10 +24,12 @@ import (
 	"github.com/zyvorai/gryvia/collector/pkg/ai"
 	"github.com/zyvorai/gryvia/collector/pkg/anomaly"
 	"github.com/zyvorai/gryvia/collector/pkg/decoder"
+	"github.com/zyvorai/gryvia/collector/pkg/diagnosis"
 	"github.com/zyvorai/gryvia/collector/pkg/exporter"
 	"github.com/zyvorai/gryvia/collector/pkg/fabric"
 	"github.com/zyvorai/gryvia/collector/pkg/flight"
 	"github.com/zyvorai/gryvia/collector/pkg/graph"
+	"github.com/zyvorai/gryvia/collector/pkg/incident"
 	"github.com/zyvorai/gryvia/collector/pkg/kube"
 	"github.com/zyvorai/gryvia/collector/pkg/loader"
 	"github.com/zyvorai/gryvia/collector/pkg/security"
@@ -53,6 +55,13 @@ func main() {
 		quotaPaceDry    = flag.Bool("quota-pace-dry-run", false, "with -quota-pace-sync: log what would be granted or revoked and write nothing to the pace map")
 		publishFabric   = flag.Bool("publish-fabric-status", false, "every 30 s patch the status of an existing GryviaFabricSignal (spec.jobRef = job) with the folded fabric signals; needs a cluster (KUBERNETES_SERVICE_HOST) and RBAC (chart value ebpf.publishFabricStatus)")
 		windowSec       = flag.Int("window", 300, "Aggregation sliding window in seconds")
+		diagCgroup      = flag.String("flight-diagnosis-cgroup", "", "cgroup v2 root (for example /host/sys/fs/cgroup) from which /api/v1/flight/diagnosis reads cpu.stat, memory.events and *.pressure of the job's pods, read-only and userspace only; empty reports those signals as unavailable")
+		diagThresholds  = flag.String("flight-diagnosis-thresholds", "", "JSON file overriding the diagnosis rule thresholds (docs/flight-diagnosis.md); empty uses the defaults")
+		storeDir        = flag.String("flight-store-dir", "", "directory for the persistent incident history (append-only JSON-lines segments); empty disables it")
+		storeRetention  = flag.Duration("flight-retention", 24*time.Hour, "with -flight-store-dir: drop history older than this")
+		storeMaxBytes   = flag.Int64("flight-store-max-bytes", 64<<20, "with -flight-store-dir: bound on the total size of the segments (the newest segment may exceed it by one segment)")
+		storeFsync      = flag.String("flight-store-fsync", "interval", "with -flight-store-dir: always, interval (incidents at once, samples every 10 s) or none")
+		incidentMinDur  = flag.Duration("flight-incident-min-duration", 60*time.Second, "with -flight-store-dir: a warning-or-worse finding must persist this long to become an incident")
 	)
 	flag.Parse()
 
@@ -468,6 +477,37 @@ func main() {
 	mux.HandleFunc("/api/v1/ai/training", trainingAnalyzer.ServeHTTP)
 	mux.HandleFunc("/api/v1/ai/pipeline", pipelineAnalyzer.ServeHTTP)
 	mux.Handle("/api/v1/flight/diagnose", flightAuth(recorder, *flightTokenFile))
+
+	// Unified diagnosis, incident history and comparison (same HMAC protection as the flight route).
+	diag := &diagnosisService{node: node, recorder: recorder, identity: identity, folder: fabricFolder,
+		probes: managerProbes{mgr}, now: time.Now,
+		gauge: prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "gryvia_measurement_dropped_events",
+			Help: "Events lost before analysis (producer ring/perf failures and consumer backlog), monotonic since start."}, []string{"source"})}
+	prometheus.MustRegister(diag.gauge)
+	diag.cfg, err = diagnosis.LoadConfig(*diagThresholds)
+	if err != nil {
+		log.Fatalw("invalid -flight-diagnosis-thresholds", "error", err)
+	}
+	diag.sampler = diagnosis.NewSampler(*diagCgroup, identity)
+	diag.userDrops = func() []diagnosis.DropCount {
+		out := []diagnosis.DropCount{{Source: "userspace/gpu-decoder", Count: gpuDecoder.Dropped()},
+			{Source: "userspace/fabric-decoder", Count: fabricDecoder.Dropped()}}
+		if dec != nil {
+			out = append(out, diagnosis.DropCount{Source: "userspace/flow-perf-lost", Count: dec.Lost()})
+		}
+		return out
+	}
+	if *storeDir != "" {
+		st, err := incident.Open(incident.Options{Dir: *storeDir, Retention: *storeRetention, MaxBytes: *storeMaxBytes, Fsync: *storeFsync})
+		if err != nil {
+			log.Fatalw("cannot open -flight-store-dir", "error", err)
+		}
+		diag.store = st
+		diag.tracker = incident.NewTracker(st, incident.TrackerOptions{MinDuration: *incidentMinDur})
+		log.Infow("flight incident history enabled", "dir", *storeDir, "retention", storeRetention.String(), "max_bytes", *storeMaxBytes, "fsync", *storeFsync)
+	}
+	diag.register(mux, *flightTokenFile)
+	go diag.Run(ctx, 10*time.Second)
 
 	// TCP tuning endpoint.
 	mux.HandleFunc("/api/v1/tuning/tcp", tcpAdvisor.ServeHTTP)

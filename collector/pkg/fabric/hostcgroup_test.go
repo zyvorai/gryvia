@@ -177,3 +177,31 @@ func TestSyncWithHostCgroupsOnlyGrantsUnderRoot(t *testing.T) {
 		t.Fatalf("map %v, want exactly ids %d and %d", m.m, podID, cID)
 	}
 }
+
+func TestHostCgroupsDirs(t *testing.T) {
+	us := strings.ReplaceAll(testUID, "-", "_")
+	root := newCgroupRoot(t)
+	pod := "kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod" + us + ".slice"
+	mkdirs(t, root, pod+"/cri-containerd-a.scope", pod+"/cri-containerd-b.scope")
+	_ = os.WriteFile(filepath.Join(root, pod, "not-a-dir"), nil, 0o644)
+	h := &HostCgroups{Root: root}
+	dirs, err := h.Dirs(PodRef{Namespace: "ml", Name: "p", UID: testUID, QOS: "Burstable"})
+	if err != nil || len(dirs) != 3 || !strings.HasSuffix(dirs[0], pod) {
+		t.Fatalf("%v %v", dirs, err)
+	}
+	if _, err := h.Dirs(PodRef{UID: "../../etc", QOS: "Burstable"}); err == nil {
+		t.Fatal("bad uid accepted")
+	}
+	if _, err := h.Dirs(PodRef{UID: testUID, QOS: "Guaranteed"}); err == nil {
+		t.Fatal("missing pod cgroup must be an error")
+	}
+	outside := t.TempDir()
+	root2 := newCgroupRoot(t)
+	mkdirs(t, root2, "kubepods.slice/kubepods-burstable.slice")
+	if err := os.Symlink(outside, filepath.Join(root2, pod)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (&HostCgroups{Root: root2}).Dirs(PodRef{UID: testUID, QOS: "Burstable"}); err == nil {
+		t.Fatal("symlinked pod dir must not be followed")
+	}
+}

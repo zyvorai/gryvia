@@ -79,6 +79,11 @@ func statusError(code int, detail string) error {
 
 // fetch returns the raw report body after validating it is a JSON object.
 func fetch(ctx context.Context, client *http.Client, gateway, namespace, job, token string) ([]byte, error) {
+	return fetchPath(ctx, client, gateway, namespace, job, token, "")
+}
+
+// fetchPath is fetch for a sub-resource of the job (for example "/diagnosis").
+func fetchPath(ctx context.Context, client *http.Client, gateway, namespace, job, token, suffix string) ([]byte, error) {
 	u, err := url.Parse(gateway)
 	if err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 		return nil, errors.New("gateway must be an HTTP(S) URL without credentials, query or fragment")
@@ -94,7 +99,7 @@ func fetch(ctx context.Context, client *http.Client, gateway, namespace, job, to
 	if len(job) > 63 || len(namespace) > 63 || !dnsLabel.MatchString(job) || !dnsLabel.MatchString(namespace) {
 		return nil, errors.New("namespace and job must be DNS-1123 labels")
 	}
-	u.Path = strings.TrimRight(u.Path, "/") + "/api/flight/jobs/" + job
+	u.Path = strings.TrimRight(u.Path, "/") + "/api/flight/jobs/" + job + suffix
 	u.RawPath = ""
 	q := url.Values{}
 	q.Set("namespace", namespace)
@@ -178,6 +183,86 @@ func printText(out io.Writer, r *report) {
 	}
 }
 
+// diagnosisReport holds the fields of the gateway diagnosis this tool interprets.
+type diagnosisReport struct {
+	Namespace string `json:"namespace"`
+	Job       string `json:"job"`
+	Summary   string `json:"summary"`
+	Partial   bool   `json:"partial"`
+	Findings  []struct {
+		Kind               string   `json:"kind"`
+		Severity           string   `json:"severity"`
+		Confidence         string   `json:"confidence"`
+		Nodes              []string `json:"nodes"`
+		Summary            string   `json:"summary"`
+		WhatWasNotMeasured []string `json:"whatWasNotMeasured"`
+		Evidence           []struct {
+			Node   string  `json:"node"`
+			Source string  `json:"source"`
+			Metric string  `json:"metric"`
+			Value  float64 `json:"value"`
+			Window string  `json:"window"`
+		} `json:"evidence"`
+	} `json:"findings"`
+	Unavailable []struct {
+		Node   string `json:"node"`
+		Signal string `json:"signal"`
+		Reason string `json:"reason"`
+	} `json:"unavailable"`
+	Completeness struct {
+		ProbesAttached int `json:"probesAttached"`
+		ProbesSkipped  []struct {
+			Node   string `json:"node"`
+			Object string `json:"object"`
+			Reason string `json:"reason"`
+		} `json:"probesSkipped"`
+		DroppedEvents struct {
+			Total uint64 `json:"total"`
+		} `json:"droppedEvents"`
+		Sampling struct {
+			Ratio float64 `json:"ratio"`
+		} `json:"sampling"`
+		// NodesExpected is a number, or the string "unknown".
+		NodesExpected  json.RawMessage `json:"nodesExpected"`
+		NodesReporting int             `json:"nodesReporting"`
+		MissingNodes   []string        `json:"missingNodes"`
+		Complete       bool            `json:"complete"`
+		Reasons        []string        `json:"reasons"`
+	} `json:"measurementCompleteness"`
+}
+
+// incomplete reports whether the diagnosis must not be read as covering the whole job.
+func (d *diagnosisReport) incomplete() bool { return d.Partial || !d.Completeness.Complete }
+
+// printDiagnosis writes a human summary. Untrusted strings are printed with %q.
+func printDiagnosis(out io.Writer, d *diagnosisReport) {
+	c := d.Completeness
+	fmt.Fprintf(out, "Job %s/%s\n%q\n", d.Namespace, d.Job, d.Summary)
+	if d.incomplete() {
+		fmt.Fprintln(out, "INCOMPLETE MEASUREMENT: absence of findings is not evidence of health.")
+	}
+	fmt.Fprintf(out, "Nodes: %d reported of %s expected; missing: %q\n", c.NodesReporting, strings.Trim(string(c.NodesExpected), `"`), c.MissingNodes)
+	fmt.Fprintf(out, "Probes attached: %d, skipped: %d; dropped events: %d; sampling ratio: %g\n", c.ProbesAttached, len(c.ProbesSkipped), c.DroppedEvents.Total, c.Sampling.Ratio)
+	for i, f := range d.Findings {
+		fmt.Fprintf(out, "%d. %q %s (%s confidence) on %q\n   %q\n", i+1, f.Kind, f.Severity, f.Confidence, f.Nodes, f.Summary)
+		for _, e := range f.Evidence {
+			fmt.Fprintf(out, "   evidence: %q %q %q = %g (window %q)\n", e.Node, e.Source, e.Metric, e.Value, e.Window)
+		}
+		for _, m := range f.WhatWasNotMeasured {
+			fmt.Fprintf(out, "   not measured: %q\n", m)
+		}
+	}
+	if len(d.Unavailable) > 0 {
+		fmt.Fprintf(out, "Unavailable (not healthy): %d\n", len(d.Unavailable))
+		for _, u := range d.Unavailable {
+			fmt.Fprintf(out, "  %q %q: %q\n", u.Node, u.Signal, u.Reason)
+		}
+	}
+	for _, r := range c.Reasons {
+		fmt.Fprintf(out, "Incomplete because: %q\n", r)
+	}
+}
+
 func readToken(file string, stdin io.Reader, getenv func(string) string) (string, error) {
 	var raw []byte
 	var err error
@@ -222,7 +307,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv func(s
 	tokenFile := fs.String("token-file", "", "file holding the gateway token, or - for stdin (default: $"+tokenEnv+")")
 	output := fs.String("o", "json", "output format: json or text")
 	timeout := fs.Duration("timeout", 30*time.Second, "request timeout (the gateway's fan-out may take up to 10s)")
-	requireComplete := fs.Bool("require-complete", false, "exit 3 when the report is partial or truncated")
+	requireComplete := fs.Bool("require-complete", false, "exit 3 when the report is partial or truncated (with -diagnosis: when the measurement is incomplete)")
+	diag := fs.Bool("diagnosis", false, "fetch the unified bottleneck diagnosis (ranked findings with evidence, unavailable telemetry and measurement completeness) instead of the event report")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
@@ -248,6 +334,30 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv func(s
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 	defer cancel()
+	if *diag {
+		body, err := fetchPath(ctx, client, *gateway, *namespace, *job, token, "/diagnosis")
+		if err != nil {
+			fmt.Fprintln(stderr, "gryvia-flight:", err)
+			return 1
+		}
+		var d diagnosisReport
+		if err := json.Unmarshal(body, &d); err != nil {
+			fmt.Fprintln(stderr, "gryvia-flight: gateway returned an unexpected diagnosis shape")
+			return 1
+		}
+		if *output == "text" {
+			printDiagnosis(stdout, &d)
+		} else {
+			fmt.Fprintln(stdout, strings.TrimRight(string(body), "\r\n"))
+			if d.incomplete() {
+				fmt.Fprintln(stderr, "gryvia-flight: warning: incomplete measurement (see measurementCompleteness); no finding is not evidence of health")
+			}
+		}
+		if d.incomplete() && *requireComplete {
+			return 3
+		}
+		return 0
+	}
 	body, err := fetch(ctx, client, *gateway, *namespace, *job, token)
 	if err != nil {
 		fmt.Fprintln(stderr, "gryvia-flight:", err)

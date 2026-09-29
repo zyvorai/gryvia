@@ -457,6 +457,51 @@ export interface FlightReport {
   events: FlightEvent[]
 }
 
+// Unified diagnosis: the gateway's merge of the per-node evidence-backed diagnoses.
+export interface DiagnosisEvidence {
+  node?: string
+  source: string
+  metric: string
+  value: number
+  window: string
+}
+
+export interface DiagnosisFinding {
+  kind: string
+  severity: 'info' | 'warning' | 'critical'
+  confidence: 'low' | 'medium' | 'high'
+  nodes: string[]
+  evidence: DiagnosisEvidence[]
+  summary: string
+  whatWasNotMeasured: string[]
+}
+
+export interface MeasurementCompleteness {
+  probesAttached: number
+  probesSkipped: Array<{ node?: string; object: string; program?: string; reason?: string }>
+  droppedEvents: { total: number; byNode?: Record<string, number> }
+  sampling: { ratio: number; note?: string }
+  /** A number, or the string "unknown" when the gateway could not list the job's pods. */
+  nodesExpected: number | 'unknown'
+  nodesReporting: number
+  missingNodes: string[]
+  complete: boolean
+  reasons: string[]
+}
+
+export interface FlightDiagnosis {
+  namespace: string
+  job: string
+  summary: string
+  partial: boolean
+  coverage: { total: number; reachable: number; reporting: number; complete: boolean }
+  nodes: string[]
+  findings: DiagnosisFinding[]
+  unavailable: Array<{ node: string; signal: string; reason: string }>
+  measured: Record<string, string[]>
+  measurementCompleteness: MeasurementCompleteness
+}
+
 const apiClient = axios.create({
   baseURL: '/api',
   timeout: 30000,
@@ -714,6 +759,11 @@ export const api = {
 
   getFlightReport: async (job: string, namespace: string): Promise<FlightReport> => {
     const { data } = await apiClient.get(`/flight/jobs/${encodeURIComponent(job)}`, { params: { namespace } })
+    return data
+  },
+
+  getFlightDiagnosis: async (job: string, namespace: string): Promise<FlightDiagnosis> => {
+    const { data } = await apiClient.get(`/flight/jobs/${encodeURIComponent(job)}/diagnosis`, { params: { namespace } })
     return data
   },
 

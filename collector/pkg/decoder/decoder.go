@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync/atomic"
 
 	"github.com/cilium/ebpf/perf"
 	"go.uber.org/zap"
@@ -62,7 +63,13 @@ type Decoder struct {
 	readers []*perf.Reader
 	log     *zap.SugaredLogger
 	eventCh chan FlowEvent
+	lost    atomic.Uint64
 }
+
+// Lost counts perf samples the kernel could not deliver (buffer overrun), as
+// reported by the perf reader. The tcp_trace `drops` map counts the same
+// condition from the producer side.
+func (d *Decoder) Lost() uint64 { return d.lost.Load() }
 
 // New creates a Decoder that consumes from the given perf readers.
 func New(readers []*perf.Reader, log *zap.SugaredLogger) (*Decoder, error) {
@@ -111,6 +118,7 @@ func (d *Decoder) readLoop(ctx context.Context, reader *perf.Reader) {
 		}
 
 		if record.LostSamples > 0 {
+			d.lost.Add(record.LostSamples)
 			d.log.Warnw("lost perf samples", "count", record.LostSamples)
 			continue
 		}

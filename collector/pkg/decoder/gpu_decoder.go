@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"sync/atomic"
 
 	"github.com/cilium/ebpf/ringbuf"
 )
@@ -117,8 +118,12 @@ func MemDirectionName(dir uint8) string {
 
 // GPUDecoder decodes GPU events from eBPF ring buffers.
 type GPUDecoder struct {
-	events chan GPUEvent
+	events  chan GPUEvent
+	dropped atomic.Uint64
 }
+
+// Dropped counts events discarded in userspace because the consumer was behind.
+func (d *GPUDecoder) Dropped() uint64 { return d.dropped.Load() }
 
 // NewGPUDecoder creates a GPUDecoder with the given channel buffer size.
 func NewGPUDecoder(bufSize int) *GPUDecoder {
@@ -152,6 +157,7 @@ func (d *GPUDecoder) DecodeRingBuf(reader *ringbuf.Reader) {
 		case d.events <- ev:
 		default:
 			// Drop event if channel is full to avoid blocking the reader.
+			d.dropped.Add(1)
 		}
 	}
 }

@@ -77,6 +77,8 @@ struct {
     __uint(max_entries, RINGBUF_SIZE);
 } pipeline_events SEC(".maps");
 
+GRYVIA_DECLARE_DROPS();
+
 /* ---- helpers ----------------------------------------------------------- */
 
 static __always_inline void emit_pipeline_event(__u8 event_type,
@@ -85,8 +87,10 @@ static __always_inline void emit_pipeline_event(__u8 event_type,
 {
     struct gpu_event *ev = bpf_ringbuf_reserve(&pipeline_events,
                                                sizeof(struct gpu_event), 0);
-    if (!ev)
-        return;
+    if (!ev) {
+    	GRYVIA_COUNT_DROP(GRYVIA_DROP_RINGBUF);
+    	return;
+    }
 
     __builtin_memset(ev, 0, sizeof(*ev));
     ev->timestamp     = bpf_ktime_get_ns();

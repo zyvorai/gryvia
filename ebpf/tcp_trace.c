@@ -29,6 +29,8 @@ struct {
     __uint(value_size, sizeof(__u32));
 } events SEC(".maps");
 
+GRYVIA_DECLARE_DROPS();
+
 /* ---- helpers ---------------------------------------------------------- */
 
 static __always_inline void emit_event(void *ctx, __u32 src_ip, __u32 dst_ip,
@@ -57,7 +59,8 @@ static __always_inline void emit_event(void *ctx, __u32 src_ip, __u32 dst_ip,
     if (!owner_pid || owner_pid == cur_pid)
         bpf_get_current_comm(&ev.comm, sizeof(ev.comm));
 
-    bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU, &ev, sizeof(ev));
+    if (bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU, &ev, sizeof(ev)))
+        GRYVIA_COUNT_DROP(GRYVIA_DROP_PERF);
 }
 
 /* ---- kprobes ---------------------------------------------------------- */

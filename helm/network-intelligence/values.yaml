@@ -56,6 +56,28 @@ ebpf:
   # ClusterRole additionally gets list on gryviafabricsignals and patch on gryviafabricsignals/status; it creates
   # nothing. Jobs are attributed through the Flight Recorder's pod resolver (needs NODE_NAME, set by this chart).
   publishFabricStatus: false
+  # Unified bottleneck diagnosis (GET /api/v1/flight/diagnosis, served whenever flightTokenSecret is set).
+  # Off by default: without cgroupSignals the CPU-throttling, memory and pressure signals are reported as
+  # "unavailable" (never as healthy). cgroupSignals reads cpu.stat, memory.events and *.pressure of the job's pods
+  # from the host cgroup mount this chart already provides (/host/sys/fs/cgroup, read-only, userspace only).
+  diagnosis:
+    cgroupSignals: false
+    # Overrides of the rule thresholds (docs/flight-diagnosis.md), for example {tcpRetransmits: {warn: 50, crit: 500}}.
+    # Empty keeps the defaults. Unknown keys make the collector refuse to start.
+    thresholds: {}
+  # Persistent incident history (-flight-store-dir): append-only JSON-lines segments of per-job incidents and metric
+  # samples, kept for retention and bounded by maxBytes. Off by default. The collector must also have flightTokenSecret
+  # set for the incidents/compare API to be reachable. emptyDir keeps history across collector restarts but not across
+  # pod or node replacement; hostPath keeps it across pod replacement on the same node.
+  flightStore:
+    enabled: false
+    volume: emptyDir          # emptyDir | hostPath
+    hostPath: /var/lib/gryvia/flight
+    sizeLimit: 128Mi          # emptyDir only; keep it above maxBytes
+    retention: 24h
+    maxBytes: 67108864
+    fsync: interval           # always | interval | none
+    incidentMinDuration: 60s
   # quota_pace is the only eBPF program that changes anything: it lowers SO_MAX_PACING_RATE of new outbound TCP
   # connections of cgroups that hold a lease. Everything here is off by default and needs cgroupPath.
   quotaPace:

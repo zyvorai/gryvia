@@ -50,6 +50,8 @@ struct {
 	__uint(max_entries, FABRIC_RINGBUF_SIZE);
 } fabric_events SEC(".maps");
 
+GRYVIA_DECLARE_DROPS();
+
 // Userspace writes the byte offset of the rank inside ncclComm; 0 = unknown.
 struct {
 	__uint(type, BPF_MAP_TYPE_ARRAY);
@@ -79,8 +81,10 @@ static __always_inline void emit_straggler(const struct rank_span *mine,
 	struct fabric_signal *ev;
 
 	ev = bpf_ringbuf_reserve(&fabric_events, sizeof(*ev), 0);
-	if (!ev)
+	if (!ev) {
+		GRYVIA_COUNT_DROP(GRYVIA_DROP_RINGBUF);
 		return;
+	}
 
 	__builtin_memset(ev, 0, sizeof(*ev));
 	ev->timestamp_ns = mine->end_ns;
