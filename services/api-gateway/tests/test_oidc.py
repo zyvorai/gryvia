@@ -461,3 +461,15 @@ def test_me_without_tenant_claims_has_no_tenants(env, keys):
     c, _, _ = env
     body = me(c, keys[0].sign(claims())).json()
     assert body["tenantNamespaces"] is None and body["groups"] == []
+
+
+def test_key_rotation_refresh_works_on_a_freshly_booted_host(env, keys, monkeypatch):
+    # A host up for less than the cache TTL has a small monotonic clock; the forced refresh must not depend on it.
+    import time
+    monkeypatch.setattr(time, "monotonic", lambda: time.perf_counter() - time.perf_counter() + 100.0)
+    c, main, idp = env
+    main._jwks_cache, main._jwks_cache_time = {}, 0
+    assert me(c, keys[0].sign(claims())).status_code == 200
+    idp.jwks = {"keys": [keys[0].jwk(), keys[1].jwk()]}
+    age_jwks(main, main._JWKS_MIN_REFRESH_SECONDS + 1)
+    assert me(c, keys[1].sign(claims())).status_code == 200
