@@ -5,6 +5,8 @@ import {
   type UserInfo,
   fetchAuthConfig,
   fetchUserInfo,
+  loginWithCredentials,
+  loginErrorMessage,
   exchangeCodeForToken,
   buildAuthorizationURLWithPKCE,
   storeToken,
@@ -13,7 +15,6 @@ import {
   getOIDCState,
   getStoredToken,
 } from '@/lib/auth'
-import { bearerCandidates } from '@/lib/credentials'
 
 interface AuthProviderProps {
   children: ReactNode
@@ -75,30 +76,22 @@ export default function AuthProvider({ children }: AuthProviderProps) {
 
   const loginWithPassword = useCallback(async (username: string, password: string) => {
     setError(null)
-    const candidates = bearerCandidates(username.trim(), password)
-    if (candidates.length === 0) {
+    if (username.trim() === '' || password === '') {
       const message = 'Wrong username or password.'
       setError(message)
       throw new Error(message)
     }
-    let rejected = false
-    for (const bearer of candidates) {
-      try {
-        const userInfo = await fetchUserInfo(bearer)
-        storeToken(bearer, 'api_key')
-        setUser(userInfo)
-        setIsAuthenticated(true)
-        return
-      } catch (err) {
-        const status = (err as { response?: { status?: number } })?.response?.status
-        if (status === 401 || status === 403) rejected = true
-      }
+    try {
+      const bearer = await loginWithCredentials(username.trim(), password)
+      const userInfo = await fetchUserInfo(bearer)
+      storeToken(bearer, 'api_key')
+      setUser(userInfo)
+      setIsAuthenticated(true)
+    } catch (err) {
+      const message = loginErrorMessage(err)
+      setError(message)
+      throw new Error(message, { cause: err })
     }
-    const message = rejected
-      ? 'Wrong username or password.'
-      : 'Could not reach the API gateway. Check the URL and try again.'
-    setError(message)
-    throw new Error(message)
   }, [])
 
   const loginWithSSO = useCallback(async () => {

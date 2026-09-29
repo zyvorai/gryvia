@@ -1,7 +1,7 @@
-# KubeFabric Bare Metal Configuration Example
+# Gryvia Bare Metal Configuration Example
 # Copy this file to terraform.tfvars and customize for your environment
 
-cluster_name            = "kubefabric-production"
+cluster_name            = "gryvia-production"
 control_plane_endpoint  = "10.0.1.100" # Load balancer VIP or single master
 kubernetes_version      = "1.28.5"
 
@@ -88,4 +88,4 @@ storage_rdma_enabled  = true
 
 # SSH configuration
 ssh_user             = "ubuntu"
-ssh_private_key_path = "~/.ssh/kubefabric_rsa"
+ssh_private_key_path = "~/.ssh/gryvia_rsa"

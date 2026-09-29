@@ -102,24 +102,37 @@ A Rust CLI (`gryvia`) plus Python and Go SDKs against the same REST API the web 
 | GPU failure handling | Manual intervention | Health checks and automated remediation |
 | Cost tracking | Not built in | Per-team budgets and chargeback |
 
-## 5-Minute Demo
+## Try it in five minutes (no GPUs)
+
+`scripts/kind-demo.sh` creates a local [kind](https://kind.sigs.k8s.io) cluster, installs Gryvia and loads
+**fictional** demo data (GPU nodes, a quota, a job) so you can explore the dashboard without hardware:
 
 ```bash
-# Deploy Gryvia
-gryvia init --bare-metal
-
-# Submit a distributed training job — that's it
-gryvia create job llama-70b \
-  --gpus 64 \
-  --gpu-type H100 \
-  --distributed \
-  --nodes 8
-
-# Watch it run
-gryvia status llama-70b --follow
+git clone https://github.com/zyvorai/gryvia && cd gryvia
+./scripts/kind-demo.sh
+kubectl -n gryvia-system port-forward svc/gryvia-ui 8443:443   # https://localhost:8443
 ```
 
-## Quick Start (Bare Metal)
+Sign in as `admin` / `Admin@321`. That is a well-known lab key: set your own (`auth.apiKey`) before sharing
+an install. See [Authentication and TLS](website/docs/guides/AUTH_AND_TLS.md).
+
+## Install on your cluster
+
+```bash
+helm install gryvia oci://ghcr.io/zyvorai/charts/gryvia \
+  --namespace gryvia-system --create-namespace \
+  --set auth.apiKey='a-long-random-secret'
+```
+
+Then submit work with the CLI or `kubectl`:
+
+```bash
+gryvia submit examples/training/simple-pytorch-training.yaml
+gryvia list jobs
+gryvia status <job-name>
+```
+
+## Bare-metal deployment
 
 ```bash
 cd terraform/bare-metal
@@ -158,7 +171,7 @@ Full deployment time: 30-45 minutes, automated. Every step, including managed-Ku
 
 Each cluster runs a GPU-aware scheduler (gang scheduling, DRF fair-share, elastic scaling), the six
 operators, an eBPF flow collector plus NVIDIA DCGM/Prometheus/Grafana observability, the storage
-fabric, a dark-themed web UI with OIDC auth and a REST API gateway, and the Rust CLI / Python SDK /
+fabric, a web dashboard and a REST API gateway with OIDC support, and the Rust CLI / Python SDK /
 Go SDK. 30+ CRDs, grouped by area, in [Core Components](#core-components).
 
 ---
@@ -166,7 +179,7 @@ Go SDK. 30+ CRDs, grouped by area, in [Core Components](#core-components).
 ## Core Components
 
 <details>
-<summary><b>30+ CRDs across core, ML workflow, operations and network intelligence</b></summary>
+<summary><b>40+ CRDs across core, ML workflow, operations and network intelligence</b></summary>
 
 **Core:** `GryviaGpuNode`, `GryviaAIJob`, `GryviaStorage`, `GryviaNetwork`, `GryviaQuota`
 
@@ -214,6 +227,7 @@ Storage and network throughput depend on the hardware, filesystem and fabric you
 | Full documentation index | [website/docs/intro.md](website/docs/intro.md) |
 | Quick start | [website/docs/getting-started/quickstart.md](website/docs/getting-started/quickstart.md) |
 | Bare-metal / complete deployment | [DEPLOYMENT_GUIDE.md](website/docs/guides/DEPLOYMENT_GUIDE.md) · [COMPLETE_DEPLOYMENT_GUIDE.md](website/docs/guides/COMPLETE_DEPLOYMENT_GUIDE.md) |
+| Authentication and TLS | [guides/AUTH_AND_TLS.md](website/docs/guides/AUTH_AND_TLS.md) |
 | Cluster setup (admin) | [admin-guide/cluster-setup.md](website/docs/admin-guide/cluster-setup.md) |
 | Job management (user) | [user-guide/jobs.md](website/docs/user-guide/jobs.md) |
 | Scheduling internals | [guides/SCHEDULING.md](website/docs/guides/SCHEDULING.md) |
@@ -225,14 +239,21 @@ Storage and network throughput depend on the hardware, filesystem and fabric you
 | Advanced features, FAQ, roadmap | [guides/ADVANCED_FEATURES.md](website/docs/guides/ADVANCED_FEATURES.md) · [guides/FAQ.md](website/docs/guides/FAQ.md) · [guides/ROADMAP.md](website/docs/guides/ROADMAP.md) |
 | Examples & tutorials | [examples/README.md](examples/README.md) |
 
-## Security
+## Status and security
 
-OIDC/SSO with PKCE, JWT validation and JWKS caching · per-tenant namespaces, NetworkPolicies and
-ResourceQuotas via `GryviaTenant` · least-privilege RBAC scoped per CRD · non-root containers (UID
-65532, read-only root filesystem) · no blanket `privileged: true` on GPU device plugins ·
-default-deny network policies with auto-generated rules from observed traffic · admission webhooks
-validating `GryviaAIJob` at creation · full audit trail via `GryviaAudit` · input validation on
-budgets, job names and quotas · pinned image tags, never `:latest`.
+Gryvia is **alpha**. APIs (`gryvia.io/v1` CRDs) may change between releases and there is no upgrade
+guarantee yet; see the [changelog](CHANGELOG.md). What exists today:
+
+- OIDC/SSO with PKCE and JWT validation in the API gateway, plus a shared-key login (constant-time
+  compare, rate limited). There is no per-user RBAC yet: every authenticated user is an administrator.
+- HTTPS for the dashboard and gateway (self-signed by default; cert-manager or your own certificate supported).
+- Non-root containers with a read-only root filesystem for the operators, gateway and dashboard.
+- `GryviaTenant` creates per-tenant namespaces, ResourceQuotas and optional NetworkPolicies; the chart
+  offers an opt-in NetworkPolicy for the gateway.
+- Release images and the Helm chart are signed with cosign and ship SBOM and provenance attestations.
+
+Read the [threat model and known limits](SECURITY.md) before exposing an install beyond a lab, and report
+vulnerabilities privately as described there.
 
 ## Real-World Use Cases
 

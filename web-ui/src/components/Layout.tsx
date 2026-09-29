@@ -50,7 +50,14 @@ interface LayoutProps {
 export default function Layout({ children }: LayoutProps) {
   const location = useLocation()
   const navigate = useNavigate()
-  const { logout } = useAuth()
+  const { logout, user } = useAuth()
+  const [keyNoticeHidden, setKeyNoticeHidden] = useState(() => {
+    try {
+      return sessionStorage.getItem('gryvia_default_key_notice') === '1'
+    } catch {
+      return false
+    }
+  })
   const [theme, setTheme] = useState<Theme>(readStoredTheme)
   const [openGroup, setOpenGroup] = useState<string | null>(null)
   const navRef = useRef<HTMLElement>(null)
@@ -176,6 +183,28 @@ export default function Layout({ children }: LayoutProps) {
           </div>
         </div>
       </nav>
+      {user?.usingDefaultKey && !keyNoticeHidden && (
+        <div className="warning" role="status">
+          <span>
+            This install uses the default lab key, which is public. Set your own with{' '}
+            <code>auth.apiKey</code> (Helm) or <code>GRYVIA_API_KEY</code> before exposing it to anyone else.
+          </span>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => {
+              setKeyNoticeHidden(true)
+              try {
+                sessionStorage.setItem('gryvia_default_key_notice', '1')
+              } catch {
+                /* storage unavailable */
+              }
+            }}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
       <main id="main" ref={mainRef} tabIndex={-1} style={{ outline: 'none' }}>
         <div key={location.pathname}>{children}</div>
       </main>

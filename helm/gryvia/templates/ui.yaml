@@ -22,34 +22,10 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      initContainers:
-      - name: gen-cert
-        image: alpine/openssl:3.3.2
-        command: ["/bin/sh", "-c"]
-        args:
-        - |
-          # Copy the shared certificate from the {{ .Values.tls.secretName }} Secret and hand it to the
-          # nginx user; mint a throwaway one if the Secret is empty.
-          if [ -s /tls-src/tls.crt ] && [ -s /tls-src/tls.key ]; then
-            cp /tls-src/tls.crt /tls-src/tls.key /tls/
-          else
-            openssl req -x509 -nodes -days 3650 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -keyout /tls/tls.key -out /tls/tls.crt -subj "/CN=gryvia-ui/O=Gryvia" -addext "subjectAltName=DNS:gryvia-ui,DNS:localhost,IP:127.0.0.1"
-          fi
-          chown 101:101 /tls/tls.key /tls/tls.crt
-          chmod 600 /tls/tls.key
-        securityContext:
-          runAsUser: 0
-          runAsNonRoot: false
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop: ["ALL"]
-            add: ["CHOWN", "DAC_OVERRIDE", "FOWNER"]
-        volumeMounts:
-        - name: tls
-          mountPath: /tls
-        - name: tls-src
-          mountPath: /tls-src
-          readOnly: true
+      securityContext:
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: ui
         image: {{ include "gryvia.image" (dict "root" . "image" .Values.ui.image) | quote }}
@@ -93,11 +69,9 @@ spec:
           readOnly: true
       volumes:
       - name: tls
-        emptyDir: {}
-      - name: tls-src
         secret:
           secretName: {{ .Values.tls.secretName }}
-          optional: true
+          defaultMode: 0440
       - name: nginx-cache
         emptyDir: {}
       - name: nginx-run
