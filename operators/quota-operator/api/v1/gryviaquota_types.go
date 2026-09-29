@@ -20,6 +20,23 @@ type GryviaQuotaSpec struct {
 
 	// Priority for this team (1-100, higher is more important)
 	Priority int `json:"priority,omitempty"`
+
+	// Network defines optional network limits (optional)
+	Network *NetworkSpec `json:"network,omitempty"`
+}
+
+// NetworkSpec defines optional network limits. Nothing reads them unless the
+// per-node eBPF collector runs with -quota-pace, -cgroup-path and
+// -quota-pace-sync (all off by default).
+type NetworkSpec struct {
+	// MaxEgressMbps caps the outbound TCP rate of each new connection opened by
+	// pods in the listed namespaces, in megabits per second. It is enforced by the
+	// eBPF collector (SO_MAX_PACING_RATE at connect time), only when that opt-in
+	// is enabled; it is not a bandwidth guarantee and does not limit UDP, RDMA or
+	// connections that already exist. Omit it for no cap.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=32000
+	MaxEgressMbps *int `json:"maxEgressMbps,omitempty"`
 }
 
 // GPUQuotaSpec defines GPU resource limits

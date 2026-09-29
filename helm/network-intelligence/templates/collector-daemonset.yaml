@@ -43,6 +43,27 @@ spec:
             {{- with .Values.ebpf.cgroupPath }}
             - -cgroup-path={{ . }}
             {{- end }}
+            {{- if .Values.ebpf.quotaPace.enabled }}
+            {{- if not .Values.ebpf.cgroupPath }}
+            {{- fail "ebpf.quotaPace.enabled needs ebpf.cgroupPath (for example /host/sys/fs/cgroup)" }}
+            {{- end }}
+            - -quota-pace
+            {{- end }}
+            {{- if .Values.ebpf.quotaPace.sync }}
+            {{- if not .Values.ebpf.quotaPace.enabled }}
+            {{- fail "ebpf.quotaPace.sync needs ebpf.quotaPace.enabled" }}
+            {{- end }}
+            - -quota-pace-sync
+            {{- end }}
+            {{- if .Values.ebpf.quotaPace.dryRun }}
+            {{- if not .Values.ebpf.quotaPace.sync }}
+            {{- fail "ebpf.quotaPace.dryRun needs ebpf.quotaPace.sync" }}
+            {{- end }}
+            - -quota-pace-dry-run
+            {{- end }}
+            {{- if .Values.ebpf.publishFabricStatus }}
+            - -publish-fabric-status
+            {{- end }}
             {{- with .Values.ebpf.ncclLib }}
             - -nccl-lib={{ . }}
             {{- end }}

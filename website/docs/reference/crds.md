@@ -41,7 +41,7 @@ Gryvia defines 49 custom resources in the `gryvia.io` API group (version `v1alph
 | `GryviaNetworkAnomaly` | `gryvianetworkanomalies` | Namespaced | network-intelligence | none | `alertWebhook`, `autoMitigate`, `detectionRules`, `targetService` |
 | `GryviaNetworkCost` | `gryvianetworkcosts` | Namespaced | network-intelligence | none | `costCenters`, `costPerGB`, `reportingInterval`, `targetNamespaces` |
 | `GryviaPriority` | `gryviapriorities` | Cluster | none | `value` | `description`, `preemptionPolicy`, `quotaOverride`, `sla` |
-| `GryviaQuota` | `gryviaquotas` | Cluster | quota-operator | `gpuQuota`, `namespaces`, `team` | `budget`, `priority` |
+| `GryviaQuota` | `gryviaquotas` | Cluster | quota-operator | `gpuQuota`, `namespaces`, `team` | `budget`, `network`, `priority` |
 | `GryviaQuotaPolicy` | `gryviaquotapolicies` | Cluster | none | none | `alerts`, `allocation`, `enforcement`, `hierarchy`, `limits`, `scope`, `timeBased` |
 | `GryviaReservation` | `gryviareservations` | Cluster | none | `owner`, `resources`, `schedule` | `billing`, `guarantees`, `notifications` |
 | `GryviaRetryPolicy` | `gryviaretrypolicies` | Cluster | none | none | `backoff`, `budget`, `circuitBreaker`, `maxRetries`, `noRetryOn`, `resourceAdjustment`, `retryOn` |

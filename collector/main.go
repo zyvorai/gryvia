@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -27,6 +28,7 @@ import (
 	"github.com/zyvorai/gryvia/collector/pkg/fabric"
 	"github.com/zyvorai/gryvia/collector/pkg/flight"
 	"github.com/zyvorai/gryvia/collector/pkg/graph"
+	"github.com/zyvorai/gryvia/collector/pkg/kube"
 	"github.com/zyvorai/gryvia/collector/pkg/loader"
 	"github.com/zyvorai/gryvia/collector/pkg/security"
 	"github.com/zyvorai/gryvia/collector/pkg/tuning"
@@ -46,7 +48,10 @@ func main() {
 		uprobePID       = flag.Int("uprobe-pid", 0, "find NCCL/CUDA/cuFile/UCX libraries via /proc/<pid>/maps of this process")
 		inferPorts      = flag.String("infer-ports", "8000,8001", "local TCP ports of inference servers for infer_latency (vLLM 8000, Triton HTTP 8001; at most 8, empty disables it)")
 		flightTokenFile = flag.String("flight-token-file", "", "file containing the Flight Recorder API token; empty disables the endpoint")
-		quotaPace       = flag.Bool("quota-pace", false, "attach quota_pace (the only program that changes sockets: caps SO_MAX_PACING_RATE of cgroups that hold a lease). Off by default; needs -cgroup-path. Nothing grants leases yet, so pacing stays inert until an operator or a future controller does")
+		quotaPace       = flag.Bool("quota-pace", false, "attach quota_pace (the only program that changes sockets: caps SO_MAX_PACING_RATE of cgroups that hold a lease). Off by default; needs -cgroup-path. Without -quota-pace-sync nothing grants leases and pacing stays inert")
+		quotaPaceSync   = flag.Bool("quota-pace-sync", false, "MUTATING, off by default: every 30 s grant a pace lease to the cgroups of pods on this node whose namespace is listed by a GryviaQuota with spec.network.maxEgressMbps (needs -quota-pace, -cgroup-path, running in a cluster and NODE_NAME). Fails open: an API error changes nothing and leases expire after 2 minutes")
+		quotaPaceDry    = flag.Bool("quota-pace-dry-run", false, "with -quota-pace-sync: log what would be granted or revoked and write nothing to the pace map")
+		publishFabric   = flag.Bool("publish-fabric-status", false, "every 30 s patch the status of an existing GryviaFabricSignal (spec.jobRef = job) with the folded fabric signals; needs a cluster (KUBERNETES_SERVICE_HOST) and RBAC (chart value ebpf.publishFabricStatus)")
 		windowSec       = flag.Int("window", 300, "Aggregation sliding window in seconds")
 	)
 	flag.Parse()
@@ -72,6 +77,13 @@ func main() {
 
 	if *quotaPace && *cgroupPath == "" {
 		log.Fatalw("-quota-pace needs -cgroup-path: pacing is only ever attached to an explicit cgroup")
+	}
+
+	if (*quotaPaceSync || *quotaPaceDry) && !*quotaPace {
+		log.Fatalw("-quota-pace-sync and -quota-pace-dry-run need -quota-pace (and -cgroup-path)")
+	}
+	if *quotaPaceDry && !*quotaPaceSync {
+		log.Fatalw("-quota-pace-dry-run needs -quota-pace-sync")
 	}
 
 	ports, err := loader.ParsePorts(*inferPorts)
@@ -124,6 +136,13 @@ func main() {
 	secDecoder := decoder.NewSecurityDecoder(4096)
 	fabricDecoder := fabric.NewDecoder(4096)
 	fabricFolder := fabric.NewFolder(fabric.DefaultWindow)
+	// Attribute signals to (namespace, job) through the Flight Recorder's resolver: host PID ->
+	// pod UID -> pod -> gryvia.io/job label. It fails closed, so anything it cannot resolve stays
+	// under "_unattributed".
+	fabricBinder := fabric.NewBinder(fabricFolder, func(pid uint32) (string, string, bool) {
+		id, ok := identity.Resolve(pid)
+		return id.Namespace, id.Job, ok
+	})
 	// GDS direct/bounce is only meaningful when the nvidia-fs kernel hook is attached.
 	for _, s := range mgr.Status() {
 		if s.Object == "gds_trace.o" && s.Target == "nvidia_fs_read" && s.Attached {
@@ -190,19 +209,38 @@ func main() {
 
 	// quota_pace is the only program that mutates sockets. With -quota-pace the
 	// Pacer owns its pace_rate map: it deletes lapsed leases and, at shutdown,
-	// every entry it wrote. Nothing calls Pacer.Grant: there is no GryviaQuota
-	// watch and no API, so no cgroup is paced until an operator or a future
-	// controller inserts an entry.
+	// every entry it wrote. Without -quota-pace-sync nothing calls Pacer.Grant, so
+	// no cgroup is paced until an operator inserts an entry. With it, the
+	// QuotaSyncer (below) is the only caller, and only for pods on this node in
+	// namespaces listed by a GryviaQuota that sets spec.network.maxEgressMbps.
 	var pacer *fabric.Pacer
 	if *quotaPace {
 		if pm := mgr.Map("quota_pace.o", loader.PaceRateMap); pm != nil {
-			pacer = fabric.NewPacer(fabric.NewEBPFPaceMap(pm), fabric.DefaultLeaseTTL, log)
+			ttl := fabric.DefaultLeaseTTL
+			if *quotaPaceSync {
+				ttl = fabric.QuotaSyncLeaseTTL // renewed every sync; an API outage ends pacing within minutes
+			}
+			pacer = fabric.NewPacer(fabric.NewEBPFPaceMap(pm), ttl, log)
 			go pacer.Run(ctx, 10*time.Second)
 			defer func() { _ = pacer.Shutdown() }()
-			log.Warnw("quota pacing enabled: the pace_rate map is empty, no cgroup is paced until a lease is granted (nothing grants one yet)",
-				"cgroup_path", *cgroupPath, "lease_ttl", fabric.DefaultLeaseTTL.String())
+			log.Warnw("quota pacing enabled: the pace_rate map is empty until a lease is granted",
+				"cgroup_path", *cgroupPath, "lease_ttl", ttl.String(), "quota_pace_sync", *quotaPaceSync, "dry_run", *quotaPaceDry)
+			if *quotaPaceSync {
+				startQuotaSync(ctx, log, pacer, node, *cgroupPath, *quotaPaceDry)
+			}
 		} else {
 			log.Warnw("-quota-pace set but quota_pace.o is not loaded (missing object or verifier rejection); pacing stays off")
+		}
+	}
+
+	// Publishing fabric status writes to the cluster, so it needs an explicit flag and a cluster.
+	if *publishFabric {
+		client, err := kube.NewInCluster()
+		if err != nil {
+			log.Warnw("-publish-fabric-status ignored", "error", err)
+		} else {
+			go (&fabric.Publisher{API: client, Folder: fabricFolder, Log: log}).Run(ctx)
+			log.Infow("publishing fabric status to GryviaFabricSignal (existing objects only)", "interval", fabric.PublishInterval.String())
 		}
 	}
 
@@ -326,7 +364,7 @@ func main() {
 	// ---- Fabric signal pipeline (straggler, RDMA health, GDS, overlap, inference wait, UCX, weight exfil) ----
 	go func() {
 		for sig := range fabricDecoder.Events() {
-			fabricFolder.Add(sig)
+			fabricBinder.Add(sig)
 			if sig.Type == fabric.SigExfil {
 				// Observe only: the probe emits one signal per read burst. Never enforced here.
 				log.Warnw("possible model-weight exfiltration: large model-file read followed by a connect to a non-internal address",
@@ -476,4 +514,30 @@ func main() {
 func encodeJSON(w http.ResponseWriter, v interface{}) error {
 	enc := json.NewEncoder(w)
 	return enc.Encode(v)
+}
+
+// startQuotaSync starts the GryviaQuota -> pace lease reconcile loop. Every
+// prerequisite is checked and a missing one leaves pacing inert (with a log
+// line): running in a cluster, NODE_NAME, the collector's own namespace (its
+// pods are never paced) and a cgroup v2 root.
+func startQuotaSync(ctx context.Context, log *zap.SugaredLogger, pacer *fabric.Pacer, node, cgroupPath string, dryRun bool) {
+	client, err := kube.NewInCluster()
+	if err != nil {
+		log.Warnw("-quota-pace-sync ignored", "error", err)
+		return
+	}
+	if node == "" {
+		log.Warnw("-quota-pace-sync ignored: NODE_NAME is not set")
+		return
+	}
+	own, err := os.ReadFile(kube.SADir + "/namespace")
+	if err != nil || strings.TrimSpace(string(own)) == "" {
+		log.Warnw("-quota-pace-sync ignored: cannot determine the collector's own namespace", "error", err)
+		return
+	}
+	src := &fabric.KubeSources{API: client, Node: node}
+	s := fabric.NewQuotaSyncer(src, src, &fabric.HostCgroups{Root: cgroupPath}, pacer, strings.TrimSpace(string(own)), dryRun, log)
+	go s.Run(ctx, fabric.QuotaSyncInterval)
+	log.Warnw("quota pace sync running", "interval", fabric.QuotaSyncInterval.String(), "dry_run", dryRun, "node", node,
+		"own_namespace", strings.TrimSpace(string(own)), "cgroup_root", cgroupPath)
 }

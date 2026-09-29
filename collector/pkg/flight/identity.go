@@ -2,18 +2,16 @@ package flight
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 	"os"
 	"regexp"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/zyvorai/gryvia/collector/pkg/kube"
 )
 
 // The pod UID is a canonical UUID; systemd cgroup names use underscores for
@@ -110,42 +108,15 @@ func (r *Resolver) Resolve(pid uint32) (Identity, bool) {
 // Run refreshes the node's pods every 15 seconds. The API server TLS CA and
 // service account token are used; failed refreshes retain the last snapshot.
 func (r *Resolver) Run(ctx context.Context, onError func(error)) {
-	ca, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/ca.crt")
+	client, err := kube.NewInCluster()
 	if err != nil {
 		onError(err)
 		return
 	}
-	roots := x509.NewCertPool()
-	if !roots.AppendCertsFromPEM(ca) {
-		onError(fmt.Errorf("invalid Kubernetes service account CA"))
-		return
-	}
-	client := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}}}
 	refresh := func() {
 		q := url.Values{"fieldSelector": {"spec.nodeName=" + r.node}}
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://kubernetes.default.svc/api/v1/pods?"+q.Encode(), nil)
-		if err != nil {
-			onError(err)
-			return
-		}
-		// Projected service account tokens rotate; read the current one each time.
-		token, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/token")
-		if err != nil {
-			onError(err)
-			return
-		}
-		req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(string(token)))
-		resp, err := client.Do(req)
-		if err != nil {
-			onError(err)
-			return
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			onError(fmt.Errorf("pod list: HTTP %d", resp.StatusCode))
-			return
-		}
-		b, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+		// The client re-reads the projected service account token on every request.
+		b, err := client.Get(ctx, "/api/v1/pods?"+q.Encode())
 		if err == nil {
 			err = r.SetPods(b)
 		}

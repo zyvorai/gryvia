@@ -127,6 +127,30 @@ rules:
     verbs:
       - create
       - patch
+  {{- if and .Values.ebpf.enabled .Values.ebpf.publishFabricStatus }}
+  # ebpf.publishFabricStatus: update the status of existing GryviaFabricSignal objects (never create)
+  - apiGroups:
+      - gryvia.io
+    resources:
+      - gryviafabricsignals
+    verbs:
+      - list
+  - apiGroups:
+      - gryvia.io
+    resources:
+      - gryviafabricsignals/status
+    verbs:
+      - patch
+  {{- end }}
+  {{- if and .Values.ebpf.enabled .Values.ebpf.quotaPace.enabled .Values.ebpf.quotaPace.sync }}
+  # ebpf.quotaPace.sync: read the egress caps of GryviaQuota objects (read-only)
+  - apiGroups:
+      - gryvia.io
+    resources:
+      - gryviaquotas
+    verbs:
+      - list
+  {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
