@@ -52,7 +52,9 @@ func load(path string) error {
 	if err != nil {
 		return fmt.Errorf("parse: %w", err)
 	}
-	coll, err := ebpf.NewCollection(spec)
+	coll, err := ebpf.NewCollectionWithOptions(spec, ebpf.CollectionOptions{
+		Programs: ebpf.ProgramOptions{LogSizeStart: 16 << 20},
+	})
 	if err != nil {
 		var ve *ebpf.VerifierError
 		if errors.As(err, &ve) {

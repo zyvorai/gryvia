@@ -53,6 +53,8 @@ jobs:
         run: |
           set -euo pipefail
           curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$(sed -n 's/^K3S_VERSION_DEFAULT="\(.*\)"/\1/p' scripts/install-k3s-gpu.sh)" sh -s - server --write-kubeconfig-mode 644
+          # `kubectl wait --all` fails with "no matching resources found" until the node has registered.
+          for i in $(seq 1 100); do sudo k3s kubectl get nodes --no-headers 2>/dev/null | grep -q . && break; sleep 3; done
           sudo k3s kubectl wait --for=condition=Ready node --all --timeout=300s
           for f in /tmp/gryvia-*.tar; do sudo k3s ctr images import "$f"; done
 

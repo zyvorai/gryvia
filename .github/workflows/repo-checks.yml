@@ -21,10 +21,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: Fail on Fabric* identifiers
         run: |
-          # The kinds were renamed to Gryvia*; scripts/rename-kinds.sh and the docs that describe the rename may mention the old names.
-          # A legacy identifier starts with Fabric (FabricAIJob); Gryvia-prefixed names such as GryviaFabricSignal and the
-          # FabricPenalty scheduler helper are current and must not match.
-          if git grep -nE '(^|[^A-Za-z])Fabric[A-Z]' -- . ':!scripts/rename-kinds.sh' ':!CHANGELOG.md' ':!website/docs/guides/OPERATIONS.md' ':!*package-lock.json' ':!.github/workflows/repo-checks.yml' | grep -vE '(^|[^A-Za-z])FabricPenalty'; then
+          # The kinds were renamed from Fabric<Kind> to Gryvia<Kind>. A legacy identifier is Fabric + the name of a current
+          # kind (FabricAIJob for GryviaAIJob); scripts/rename-kinds.sh and the docs describing the rename may mention them.
+          # Other Fabric-prefixed identifiers (FabricPenalty, FabricOptions, FabricEnabled...) are current code.
+          kinds=$(grep -rhoE '^  *kind: Gryvia[A-Za-z]+' crds/ | sed -E 's/.*kind: Gryvia//' | sort -u | paste -sd'|' -)
+          test -n "$kinds"
+          if git grep -nE "(^|[^A-Za-z])Fabric($kinds)([^a-z]|$)" -- . ':!scripts/rename-kinds.sh' ':!CHANGELOG.md' ':!website/docs/guides/OPERATIONS.md' ':!*package-lock.json' ':!.github/workflows/repo-checks.yml'; then
             echo "::error::Legacy Fabric* identifiers found; use the Gryvia* names."
             exit 1
           fi

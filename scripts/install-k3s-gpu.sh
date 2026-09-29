@@ -226,6 +226,8 @@ install_helm() {
 
 wait_for_node() {
   info "Waiting for the node to become Ready"
+  # `kubectl wait --all` fails with "no matching resources found" while the node has not registered yet.
+  run_sh "for i in \$(seq 1 100); do KUBECONFIG=$KUBECONFIG_K3S k3s kubectl get nodes --no-headers 2>/dev/null | grep -q . && break; sleep 3; done"
   run env KUBECONFIG="$KUBECONFIG_K3S" k3s kubectl wait --for=condition=Ready node --all --timeout=300s
 }
 

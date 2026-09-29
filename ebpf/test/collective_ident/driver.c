@@ -56,7 +56,8 @@ int main(int argc, char **argv)
 		pids[i] = fork();
 		if (!pids[i]) {
 			setenv("LD_LIBRARY_PATH", ".", 1);
-			execl("./rank_proc", "rank_proc", argv[5 + i], argv[4], late ? "late" : "run", (char *)0);
+			const char *proc = getenv("PROC") ? getenv("PROC") : "./rank_proc";
+			execl(proc, proc, argv[5 + i], argv[4], late ? "late" : "run", (char *)0);
 			_exit(127);
 		}
 	}

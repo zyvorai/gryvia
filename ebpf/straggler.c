@@ -288,25 +288,42 @@ int BPF_UPROBE(ident_initall_entry, void *comms, int ndev)
 	return 0;
 }
 
+struct initall_ctx {
+	__u64 ptr;
+	__u32 nranks;
+	__u32 pid;
+};
+
+/* bpf_loop callback: register communicator i of ncclCommInitAll (comm i has rank i). Returning 1 stops the loop. */
+static long initall_cb(__u64 idx, void *data)
+{
+	struct initall_ctx *c = data;
+	__u64 comm = 0;
+
+	if ((__u32)idx >= c->nranks)
+		return 1;
+	if (bpf_probe_read_user(&comm, sizeof(comm), (void *)(c->ptr + idx * sizeof(comm))))
+		return 1;
+	comm_register(c->pid, comm, (__u32)idx, c->nranks);
+	return 0;
+}
+
 SEC("uretprobe/ncclCommInitAll")
 int BPF_URETPROBE(ident_initall_exit, int ret)
 {
 	struct arg_val v;
-	__u64 comm;
-	__u32 pid = bpf_get_current_pid_tgid() >> 32;
-	int i;
+	struct initall_ctx c;
 
 	if (!args_take(ARG_INITALL, &v) || ret != 0)
 		return 0;
 	if (v.nranks == 0 || v.nranks > INITALL_MAX)
 		return 0;
-	/* bounded loop: the verifier walks at most INITALL_MAX iterations */
-	for (i = 0; i < INITALL_MAX && (__u32)i < v.nranks; i++) {
-		comm = 0;
-		if (bpf_probe_read_user(&comm, sizeof(comm), (void *)(v.ptr + i * sizeof(comm))))
-			break;
-		comm_register(pid, comm, i, v.nranks);
-	}
+	c.ptr = v.ptr;
+	c.nranks = v.nranks;
+	c.pid = bpf_get_current_pid_tgid() >> 32;
+	/* bpf_loop (Linux 5.17+) verifies the callback body once instead of once per device: an unrolled loop with map
+	 * updates in the body exceeded the verifier's limits on Linux 6.17. */
+	bpf_loop(INITALL_MAX, initall_cb, &c, 0);
 	return 0;
 }
 
