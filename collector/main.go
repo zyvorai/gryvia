@@ -34,17 +34,18 @@ import (
 
 func main() {
 	var (
-		metricsAddr = flag.String("metrics-addr", ":9090", "Prometheus metrics listen address")
-		natsURL     = flag.String("nats-url", "", "NATS server URL (optional)")
-		ebpfDir     = flag.String("ebpf-dir", "/opt/gryvia/ebpf", "Directory containing compiled eBPF .o files")
-		iface       = flag.String("iface", "", "Network interface for XDP/TCX attachment (empty = skip those programs)")
-		cgroupPath  = flag.String("cgroup-path", "", "cgroup v2 path for sockops/sk_msg attachment (empty = skip)")
-		ncclLib     = flag.String("nccl-lib", "", "path to libnccl.so for uprobes (empty = auto-discover)")
-		cudaLib     = flag.String("cuda-lib", "", "path to libcudart.so for uprobes (empty = auto-discover)")
-		cufileLib   = flag.String("cufile-lib", "", "path to libcufile.so for GPUDirect Storage uprobes (empty = auto-discover)")
-		uprobePID   = flag.Int("uprobe-pid", 0, "find NCCL/CUDA/cuFile libraries via /proc/<pid>/maps of this process")
-		inferPorts  = flag.String("infer-ports", "8000,8001", "local TCP ports of inference servers for infer_latency (vLLM 8000, Triton HTTP 8001; at most 8, empty disables it)")
-		windowSec   = flag.Int("window", 300, "Aggregation sliding window in seconds")
+		metricsAddr     = flag.String("metrics-addr", ":9090", "Prometheus metrics listen address")
+		natsURL         = flag.String("nats-url", "", "NATS server URL (optional)")
+		ebpfDir         = flag.String("ebpf-dir", "/opt/gryvia/ebpf", "Directory containing compiled eBPF .o files")
+		iface           = flag.String("iface", "", "Network interface for XDP/TCX attachment (empty = skip those programs)")
+		cgroupPath      = flag.String("cgroup-path", "", "cgroup v2 path for sockops/sk_msg attachment (empty = skip)")
+		ncclLib         = flag.String("nccl-lib", "", "path to libnccl.so for uprobes (empty = auto-discover)")
+		cudaLib         = flag.String("cuda-lib", "", "path to libcudart.so for uprobes (empty = auto-discover)")
+		cufileLib       = flag.String("cufile-lib", "", "path to libcufile.so for GPUDirect Storage uprobes (empty = auto-discover)")
+		uprobePID       = flag.Int("uprobe-pid", 0, "find NCCL/CUDA/cuFile libraries via /proc/<pid>/maps of this process")
+		inferPorts      = flag.String("infer-ports", "8000,8001", "local TCP ports of inference servers for infer_latency (vLLM 8000, Triton HTTP 8001; at most 8, empty disables it)")
+		flightTokenFile = flag.String("flight-token-file", "", "file containing the Flight Recorder API token; empty disables the endpoint")
+		windowSec       = flag.Int("window", 300, "Aggregation sliding window in seconds")
 	)
 	flag.Parse()
 
@@ -238,7 +239,11 @@ func main() {
 				case decoder.GPUEvtMemTransfer:
 					kind = "cuda_memcpy"
 				}
-				recorder.Record(flight.Event{Identity: id, Source: "ebpf", Kind: kind, Bytes: ev.Bytes, DurationNs: ev.LatencyNs})
+				observation := flight.Event{Identity: id, Source: "ebpf", Kind: kind, Bytes: ev.Bytes, DurationNs: ev.LatencyNs}
+				if ev.EventType == decoder.GPUEvtNCCLOp {
+					observation.Operation = decoder.NCCLOpName(ev.NCCLOp)
+				}
+				recorder.Record(observation)
 			}
 			// Update NCCL aggregator.
 			ncclAgg.Process(ev)
@@ -360,7 +365,7 @@ func main() {
 	// AI/training endpoints.
 	mux.HandleFunc("/api/v1/ai/training", trainingAnalyzer.ServeHTTP)
 	mux.HandleFunc("/api/v1/ai/pipeline", pipelineAnalyzer.ServeHTTP)
-	mux.HandleFunc("/api/v1/flight/diagnose", recorder.ServeHTTP)
+	mux.Handle("/api/v1/flight/diagnose", flightAuth(recorder, *flightTokenFile))
 
 	// TCP tuning endpoint.
 	mux.HandleFunc("/api/v1/tuning/tcp", tcpAdvisor.ServeHTTP)

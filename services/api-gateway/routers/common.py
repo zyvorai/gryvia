@@ -53,6 +53,8 @@ class Deps:
     limiter: Any                      # slowapi Limiter (or a no-op fake)
     job_namespace: str = "default"
     collector_urls: Optional[List[str]] = None                                 # GRYVIA_COLLECTOR_URLS
+    flight_token: Optional[str] = None                                           # GRYVIA_FLIGHT_TOKEN
+    flight_collector_namespace: str = "gryvia-network"
     netra_url: Optional[str] = None                                            # GRYVIA_NETRA_URL
     netra_token: Optional[str] = None                                          # GRYVIA_NETRA_TOKEN
     netra_verify_tls: bool = True                                              # GRYVIA_NETRA_INSECURE=1 turns off

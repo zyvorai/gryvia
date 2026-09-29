@@ -34,6 +34,9 @@ spec:
           args:
             - -metrics-addr=:9090
             - -ebpf-dir=/opt/gryvia/ebpf
+            {{- if .Values.ebpf.flightTokenSecret }}
+            - -flight-token-file=/var/run/gryvia-flight/token
+            {{- end }}
             {{- with .Values.ebpf.interface }}
             - -iface={{ . }}
             {{- end }}
@@ -74,6 +77,11 @@ spec:
             - name: cgroup
               mountPath: /host/sys/fs/cgroup
               readOnly: true
+            {{- if .Values.ebpf.flightTokenSecret }}
+            - name: flight-token
+              mountPath: /var/run/gryvia-flight
+              readOnly: true
+            {{- end }}
       volumes:
         - name: sys-fs-bpf
           hostPath:
@@ -95,6 +103,14 @@ spec:
           hostPath:
             path: /sys/fs/cgroup
             type: Directory
+        {{- if .Values.ebpf.flightTokenSecret }}
+        - name: flight-token
+          secret:
+            secretName: {{ .Values.ebpf.flightTokenSecret | quote }}
+            items:
+              - key: {{ .Values.ebpf.flightTokenKey | quote }}
+                path: token
+        {{- end }}
       {{- with .Values.collector.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

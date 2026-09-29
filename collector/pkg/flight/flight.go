@@ -27,6 +27,7 @@ type Event struct {
 	Identity    Identity  `json:"identity"`
 	Source      string    `json:"source"`
 	Kind        string    `json:"kind"`
+	Operation   string    `json:"operation,omitempty"`
 	Bytes       uint64    `json:"bytes,omitempty"`
 	Retransmits uint32    `json:"retransmits,omitempty"`
 	DurationNs  uint64    `json:"duration_ns,omitempty"`
