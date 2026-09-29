@@ -176,3 +176,15 @@ tr[data-clickable]:focus-visible { outline: 2px solid var(--apple-blue); outline
 .th-sort { all: unset; cursor: pointer; font: inherit; color: inherit; display: inline-flex; align-items: center; gap: 2px; }
 .th-sort:focus-visible { outline: 2px solid var(--apple-blue); outline-offset: 2px; border-radius: 4px; }
 th.num .th-sort { justify-content: flex-end; }
+
+/* Layout helpers (replace inline styles) */
+.toolbar-between { justify-content: space-between; }
+.toolbar-center { justify-content: center; }
+.mt-10 { margin-top: 10px; }
+.modal-card.modal-wide { width: min(760px, 100%); }
+.link-plain { color: inherit; text-decoration: none; }
+.log-view { max-height: 420px; overflow: auto; margin: 0; white-space: pre-wrap; word-break: break-all; }
+.list-plain { list-style: none; margin: 0; padding: 0; }
+.pill-raw { text-transform: none; }
+/* Login card title is an h2 (the page h1 is the hero); mirrors netra's .login-card h1 */
+.login-card h2 { font-size: var(--fs-h2); letter-spacing: -0.01em; margin: 6px 0 4px; font-weight: 600; color: var(--text-primary); }

@@ -8,7 +8,7 @@ import Progress from '@/components/Progress'
 import DataTable, { type Column } from '@/components/DataTable'
 import { useTableState } from '@/hooks/useTableState'
 import { applySearch, type SortAccessor } from '@/lib/tableState'
-import VisuallyHidden from '@/components/VisuallyHidden'
+import { TableCaption } from '@/components/TableCaption'
 import { EmptyState, ErrorState, Skeleton } from '@/components/StateViews'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { formatBytes, formatMoney, formatPercent } from '@/lib/format'
@@ -47,7 +47,7 @@ export default function NetworkCost() {
 
   return (
     <>
-      <PageHero eyebrow="Network" title="What your traffic costs." lede="Cross-zone and egress network cost tracking, as reported per period" />
+      <PageHero eyebrow="Network" title="What your traffic costs." lede="Cross-zone and egress spend per period, as reported by the network operator." />
 
       <div className="grid">
         {isLoading ? (
@@ -61,7 +61,7 @@ export default function NetworkCost() {
         ) : allReports.length === 0 ? (
           <div className="span3">
             <EmptyState title="No network cost reports yet">
-              Cost reports are produced by the network operator from FabricNetworkCost resources. Create a FabricNetworkCost CR for a namespace or team to start tracking; the first report appears after one reporting interval.
+              The network operator produces cost reports from FabricNetworkCost resources. Create a FabricNetworkCost for a namespace or team to start tracking; the first report appears after one reporting interval.
             </EmptyState>
           </div>
         ) : (
@@ -71,6 +71,8 @@ export default function NetworkCost() {
             periodChoices={summary.periods}
             onSelect={setSelected}
             updatedAt={dataUpdatedAt}
+            onRefresh={() => refetch()}
+            refreshing={isFetching}
             stale={isError ? errorMessage(error) : undefined}
           />
         )}
@@ -79,12 +81,14 @@ export default function NetworkCost() {
   )
 }
 
-function CostBody({ summary, costPerGB, periodChoices, onSelect, updatedAt, stale }: {
+function CostBody({ summary, costPerGB, periodChoices, onSelect, updatedAt, onRefresh, refreshing, stale }: {
   summary: ReturnType<typeof summarizeCosts>
   costPerGB?: { sameZone: number; crossZone: number; internetEgress: number }
   periodChoices: string[]
   onSelect: (p: string) => void
   updatedAt: number
+  onRefresh: () => void
+  refreshing: boolean
   stale?: string
 }) {
   const { period, reports, totalCost, sameZone, crossZone, external, teams, namespaces, namespacesAll, trend } = summary
@@ -103,7 +107,7 @@ function CostBody({ summary, costPerGB, periodChoices, onSelect, updatedAt, stal
   return (
     <>
       <div className="toolbar span3">
-        <label className="field" style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <label className="row">
           <span>Period</span>
           <select value={period} onChange={(e) => onSelect(e.target.value)} aria-label="Reporting period">
             {periodChoices.map((p, i) => (
@@ -117,6 +121,9 @@ function CostBody({ summary, costPerGB, periodChoices, onSelect, updatedAt, stal
         <span className="faint">
           {reports.length} report{reports.length === 1 ? '' : 's'} in this period
         </span>
+        <button type="button" className="btn-secondary" onClick={onRefresh} disabled={refreshing} aria-busy={refreshing}>
+          {refreshing ? 'Refreshing…' : 'Refresh'}
+        </button>
       </div>
 
       <PagePulse
@@ -169,12 +176,12 @@ function CostBody({ summary, costPerGB, periodChoices, onSelect, updatedAt, stal
           columns={teamColumns}
           state={table}
           rowKey={(t) => t.name}
-          empty={<EmptyState title="No team costs in this period" />}
+          empty={<EmptyState title="No team costs in this period">The network operator reports cost per team in each FabricNetworkCost report; none of this period's reports include a team breakdown.</EmptyState>}
         />
       </section>
 
       <section className="card">
-        <p className="eyebrow">NAMESPACES</p>
+        <p className="eyebrow">BY NAMESPACE</p>
         <h2 className="card-title">Top cost contributors</h2>
         <div className="stack">
           {shownNamespaces.length === 0 && <p className="faint">No namespace matches the search.</p>}
@@ -202,44 +209,49 @@ function CostTrendChart({ data }: { data: Array<{ period: string; cost: number }
     )
   }
   const maxCost = Math.max(...data.map((d) => d.cost), 0)
+  const latest = data[data.length - 1]
   const chartHeight = 120
-  const summary = `Network cost per period, ${data[0].period} to ${data[data.length - 1].period}: from ${formatMoney(data[0].cost)} to ${formatMoney(data[data.length - 1].cost)}, peak ${formatMoney(maxCost)}.`
+  const barW = 24
+  const gap = 4
+  const width = data.length * (barW + gap) - gap
+  const summary = `Network cost per period, ${data[0].period} to ${latest.period}: from ${formatMoney(data[0].cost)} to ${formatMoney(latest.cost)}, peak ${formatMoney(maxCost)}.`
 
   return (
     <div>
-      <div role="img" aria-label={summary} style={{ display: 'grid', gridAutoFlow: 'column', gridAutoColumns: '1fr', alignItems: 'end', gap: 4, height: chartHeight }}>
-        {data.map((d) => (
-          <div
-            key={d.period}
-            style={{ height: maxCost > 0 ? `${(d.cost / maxCost) * chartHeight}px` : 0, background: 'var(--apple-blue)', borderRadius: '3px 3px 0 0' }}
-            title={`${d.period}: ${formatMoney(d.cost)}`}
-          />
-        ))}
-      </div>
+      <svg viewBox={`0 0 ${width} ${chartHeight}`} width="100%" height={chartHeight} preserveAspectRatio="none" role="img" aria-label={summary}>
+        {data.map((d, i) => {
+          const h = maxCost > 0 ? (d.cost / maxCost) * chartHeight : 0
+          return (
+            <rect key={d.period} x={i * (barW + gap)} y={chartHeight - h} width={barW} height={h} rx="3" fill="var(--apple-blue)">
+              <title>{`${d.period}: ${formatMoney(d.cost)}`}</title>
+            </rect>
+          )
+        })}
+      </svg>
       <div className="list-row faint">
-        <small className="grow">{data[0].period}</small>
-        <small>{data[data.length - 1].period}</small>
+        <small className="grow">{data[0].period}: {formatMoney(data[0].cost)}</small>
+        <small>{latest.period}: {formatMoney(latest.cost)}</small>
       </div>
-      <VisuallyHidden>
+      <small className="faint">Peak {formatMoney(maxCost)}. Bar height is relative to the peak.</small>
+      <div className="sr-only">
         <table>
-          <caption>Network cost per period</caption>
+          <TableCaption>Network cost per period</TableCaption>
           <thead>
             <tr>
-              <th>Period</th>
-              <th>Cost (USD)</th>
+              <th scope="col">Period</th>
+              <th scope="col" className="num">Cost (USD)</th>
             </tr>
           </thead>
           <tbody>
             {data.map((d) => (
               <tr key={d.period}>
                 <td>{d.period}</td>
-                <td>{formatMoney(d.cost)}</td>
+                <td className="num">{formatMoney(d.cost)}</td>
               </tr>
             ))}
           </tbody>
         </table>
-      </VisuallyHidden>
+      </div>
     </div>
   )
 }
-

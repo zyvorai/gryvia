@@ -6,6 +6,7 @@ import type { RegisteredModel } from '@/lib/api'
 import { errorMessage } from '@/lib/errors'
 import { formatDate, formatRelative } from '@/lib/format'
 import { notify } from '@/lib/notify'
+import { useNow } from '@/lib/useNow'
 import type { FilterDef, SortAccessor } from '@/lib/tableState'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { useTableState } from '@/hooks/useTableState'
@@ -33,6 +34,7 @@ const DEFAULT_SORT = { key: 'created', dir: 'desc' as const }
 export default function ModelRegistry() {
   useDocumentTitle('Models')
   const [openKey, setOpenKey] = useState<string | null>(null)
+  const now = useNow(30000)
   const { data: models, isLoading, isError, error, refetch, isRefetching, dataUpdatedAt } = useQuery({
     queryKey: ['models'],
     queryFn: api.getModels,
@@ -62,25 +64,25 @@ export default function ModelRegistry() {
           type="button"
           className="th-sort"
           aria-expanded={openKey === keyOf(m)}
-          aria-controls="model-detail"
+          aria-controls={openKey === keyOf(m) ? 'model-detail' : undefined}
           onClick={(e) => {
             e.stopPropagation()
             toggleOpen(m)
           }}
         >
           <span className="faint" aria-hidden="true">{openKey === keyOf(m) ? '▾' : '▸'}</span>{' '}
-          <b>{nameOf(m)}</b>
+          <b className="mono">{nameOf(m)}</b>
         </button>
       ),
     },
-    { key: 'version', header: 'Version', sortable: true, render: (m) => <span className="muted">{m.spec?.version ?? '—'}</span> },
+    { key: 'version', header: 'Version', sortable: true, render: (m) => <span className="mono muted">{m.spec?.version ?? '—'}</span> },
     { key: 'stage', header: 'Stage', sortable: true, render: (m) => <StageBadge stage={m.spec?.stage} /> },
     {
       key: 'sourceJob',
       header: 'Source job',
       render: (m) =>
         m.spec?.sourceJob ? (
-          <Link to={`/jobs/${encodeURIComponent(m.spec.sourceJob)}`} className="card-link" onClick={(e) => e.stopPropagation()}>
+          <Link to={`/jobs/${encodeURIComponent(m.spec.sourceJob)}`} className="card-link mono" onClick={(e) => e.stopPropagation()}>
             {m.spec.sourceJob}
           </Link>
         ) : (
@@ -93,7 +95,7 @@ export default function ModelRegistry() {
       sortable: true,
       render: (m) => (
         <span className="faint" title={formatDate(m.metadata?.creationTimestamp)}>
-          {formatRelative(m.metadata?.creationTimestamp)}
+          {formatRelative(m.metadata?.creationTimestamp, now)}
         </span>
       ),
     },
@@ -104,7 +106,7 @@ export default function ModelRegistry() {
 
   return (
     <>
-      <PageHero eyebrow="Models" title="Every model, versioned." lede="Model versioning and promotion." />
+      <PageHero eyebrow="Models" title="Every model, versioned." lede="Versions registered from finished training jobs, promoted from dev to staging to production." />
 
       <div className="grid">
         <PagePulse
@@ -150,9 +152,9 @@ export default function ModelRegistry() {
                 rowKey={keyOf}
                 onRowClick={toggleOpen}
                 actions={
-                  <button className="btn-refresh" onClick={() => refetch()} disabled={isRefetching}>
-                    Refresh
-                  </button>
+                  <button type="button" className="btn-refresh" onClick={() => refetch()} disabled={isRefetching} aria-busy={isRefetching}>
+{isRefetching ? 'Refreshing…' : 'Refresh'}
+</button>
                 }
                 empty={
                   <EmptyState
@@ -163,7 +165,7 @@ export default function ModelRegistry() {
                       </Link>
                     }
                   >
-                    Models are registered from training jobs: when a job finishes, its output shows up here.
+                    Models are registered from training jobs. When a job finishes, its output appears here.
                   </EmptyState>
                 }
               />
@@ -213,13 +215,13 @@ function ModelDetail({ model }: { model: RegisteredModel }) {
             ))}
           </div>
         ) : (
-          <div className="faint">No artifacts</div>
+          <div className="faint">No artifacts recorded for this version.</div>
         )}
       </div>
       <div>
         <div className="faint">Source job</div>
         {sourceJob ? (
-          <Link to={`/jobs/${encodeURIComponent(sourceJob)}`} className="card-link">
+          <Link to={`/jobs/${encodeURIComponent(sourceJob)}`} className="card-link mono">
             {sourceJob}
           </Link>
         ) : (
@@ -267,19 +269,20 @@ function ModelActions({ model }: { model: RegisteredModel }) {
     // The row toggles its details on click; these controls must not.
     <div className="toolbar" onClick={(e) => e.stopPropagation()}>
       {stage !== 'archived' && (
-        <Link to={`/inference?new=1&model=${encodeURIComponent(name)}`} className="buttonlike btn-secondary" aria-label={`Serve model ${name}`}>
+        <Link to={`/inference?new=1&model=${encodeURIComponent(name)}`} className="buttonlike btn-secondary" aria-label={`Serve this model: ${name}`}>
           Serve this model
         </Link>
       )}
       {target && (
         <button
+          type="button"
           className="btn-secondary"
           onClick={() => {
             promoteMutation.reset()
             setConfirming(true)
           }}
           disabled={promoteMutation.isPending}
-          aria-label={`Promote ${name} to ${target}`}
+          aria-label={`Promote to ${target}: ${name}`}
         >
           {promoteMutation.isPending ? 'Promoting…' : `Promote to ${target}`}
         </button>

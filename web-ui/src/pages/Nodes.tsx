@@ -10,6 +10,7 @@ import PagePulse from '@/components/kit/PagePulse'
 import { countTone } from '@/components/kit/tone'
 import Progress from '@/components/Progress'
 import { EmptyState, ErrorState, Skeleton } from '@/components/StateViews'
+import { formatBytes, formatPercent } from '@/lib/format'
 import { phaseTone } from '@/lib/phase'
 import { errorMessage } from '@/lib/errors'
 import { notify } from '@/lib/notify'
@@ -52,7 +53,7 @@ export default function Nodes() {
   if (isLoading) {
     return (
       <>
-        <PageHero eyebrow="Nodes" title="Every GPU, accounted for." lede="Physical GPU nodes and real-time metrics" />
+        <PageHero eyebrow="Nodes" title="Every GPU, accounted for." lede="GPU nodes, their GPUs and live health metrics." />
         <Skeleton rows={4} />
       </>
     )
@@ -69,7 +70,7 @@ export default function Nodes() {
 
   const list = nodes || []
   const columns: Column<FabricGpuNode>[] = [
-    { key: 'name', header: 'Node', sortable: true, render: (n) => nodeName(n) },
+    { key: 'name', header: 'Node', sortable: true, render: (n) => <span className="mono">{nodeName(n)}</span> },
     { key: 'phase', header: 'Phase', sortable: true, render: (n) => <span className={`pill ${phaseTone(n.status?.phase)}`}>{n.status?.phase || 'Unknown'}</span> },
     { key: 'gpu', header: 'GPU type', render: (n) => n.spec?.gpuType || '—' },
     { key: 'gpus', header: 'GPUs', sortable: true, numeric: true, render: (n) => n.spec?.gpuCount ?? '—' },
@@ -88,7 +89,7 @@ export default function Nodes() {
 
   return (
     <>
-      <PageHero eyebrow="Nodes" title="Every GPU, accounted for." lede="Physical GPU nodes and real-time metrics" />
+      <PageHero eyebrow="Nodes" title="Every GPU, accounted for." lede="GPU nodes, their GPUs and live health metrics." />
 
       <div className="grid">
         {isError && (
@@ -118,7 +119,7 @@ export default function Nodes() {
         />
 
         <section className="card span3">
-          <p className="eyebrow">NODES</p>
+          <p className="eyebrow">INVENTORY</p>
           <h2 className="card-title">All nodes</h2>
           <DataTable
             caption="GPU nodes"
@@ -128,7 +129,7 @@ export default function Nodes() {
             searchLabel="Search nodes"
             empty={
               <EmptyState title="No GPU nodes registered">
-                FabricGpuNode resources are created by the Gryvia GPU operator when it discovers GPUs on a node. Check that the GPU operator is installed and its pods are running.
+                FabricGpuNode resources are created by the Gryvia GPU operator when it discovers GPUs on a node, and live metrics come from its GPU collector. Check that the operator is installed and its pods are running.
               </EmptyState>
             }
           />
@@ -139,7 +140,7 @@ export default function Nodes() {
           return (
             <section key={node.metadata?.name} className="card span3">
               <p className="eyebrow">NODE</p>
-              <h2 className="card-title">{node.spec?.nodeName || node.metadata?.name}</h2>
+              <h2 className="card-title mono">{node.spec?.nodeName || node.metadata?.name}</h2>
               <div className="row">
                 <span className={`pill ${phaseTone(phase)}`}>{phase || 'Unknown'}</span>
                 {node.spec?.rdma && <span className="pill info">RDMA</span>}
@@ -159,7 +160,7 @@ export default function Nodes() {
                 </div>
                 <div>
                   <span>GPU memory (per GPU)</span>
-                  <b>{node.spec?.memoryGB ? `${node.spec.memoryGB} GB` : '—'}</b>
+                  <b>{node.spec?.memoryGB ? formatBytes(node.spec.memoryGB * 1024 ** 3) : '—'}</b>
                 </div>
               </div>
 
@@ -167,9 +168,9 @@ export default function Nodes() {
                 <div className="formgrid">
                   {node.status.gpuStatus.map((gpu) => {
                     const hasMem = isNum(gpu.memoryUsed) && isNum(gpu.memoryTotal) && gpu.memoryTotal > 0
-                    const memUsedGB = hasMem ? (gpu.memoryUsed as number) / 1024 : 0
-                    const memTotalGB = hasMem ? (gpu.memoryTotal as number) / 1024 : 0
-                    const memPercent = hasMem ? Math.min(100, (memUsedGB / memTotalGB) * 100) : 0
+                    const memUsed = hasMem ? (gpu.memoryUsed as number) * 1024 ** 2 : 0
+                    const memTotal = hasMem ? (gpu.memoryTotal as number) * 1024 ** 2 : 0
+                    const memPercent = hasMem ? Math.min(100, (memUsed / memTotal) * 100) : 0
                     const gpuName = `${node.spec?.nodeName || node.metadata?.name} GPU ${gpu.index}`
                     return (
                       <div key={gpu.index} className="stack">
@@ -193,14 +194,14 @@ export default function Nodes() {
                         <MetricBar
                           label="Utilization"
                           available={isNum(gpu.utilization)}
-                          value={`${gpu.utilization}%`}
+                          value={formatPercent(gpu.utilization)}
                           percent={Math.min(gpu.utilization ?? 0, 100)}
                           barLabel={`${gpuName} utilization`}
                         />
                         <MetricBar
                           label="GPU memory"
                           available={hasMem}
-                          value={`${memUsedGB.toFixed(1)} / ${memTotalGB.toFixed(1)} GB`}
+                          value={`${formatBytes(memUsed)} / ${formatBytes(memTotal)}`}
                           percent={memPercent}
                           barLabel={`${gpuName} memory`}
                         />

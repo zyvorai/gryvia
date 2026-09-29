@@ -14,6 +14,7 @@ import { EmptyState, ErrorState, Skeleton } from '@/components/StateViews'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { notify } from '@/lib/notify'
 import { errorMessage } from '@/lib/errors'
+import { formatPercent } from '@/lib/format'
 import { phaseTone } from '@/lib/phase'
 import { bucketPolicies, flowsUrlForService, INTENT_MAX, parsePolicyPrefill, POLICY_PROTOCOLS, validatePolicyForm, type PolicyFormErrors, type PolicyFormValues, type PolicyPrefill } from '@/lib/network'
 
@@ -133,7 +134,7 @@ export default function NetworkPolicies() {
 
   return (
     <>
-      <PageHero eyebrow="Network" title="Flow policies." lede="Manage network flow policies and suggestions" />
+      <PageHero eyebrow="Network" title="Flow policies." lede="Review, create and apply the flow policies the network operator enforces." />
 
       <div className="grid">
         <div className="toolbar span3">
@@ -145,6 +146,9 @@ export default function NetworkPolicies() {
           <Link to="/network" className="buttonlike btn-secondary">
             Back to network
           </Link>
+          <button type="button" className="btn-secondary" onClick={() => refetch()} disabled={isFetching} aria-busy={isFetching}>
+            {isFetching ? 'Refreshing…' : 'Refresh'}
+          </button>
         </div>
 
         {isLoading ? (
@@ -187,7 +191,7 @@ export default function NetworkPolicies() {
 
         {policies && (
           <section className="card span3">
-            <p className="eyebrow">{policies.length} POLICIES</p>
+            <p className="eyebrow">{policies.length} TOTAL</p>
             <h2 className="card-title">Flow policies</h2>
             <DataTable
               caption="Flow policies"
@@ -207,7 +211,7 @@ export default function NetworkPolicies() {
                     )
                   }
                 >
-                  Policies are FabricFlowPolicy resources; the network operator enforces them. Create one, or wait for the operator to suggest policies from observed traffic.
+                  Policies are FabricFlowPolicy resources that the network operator enforces. Create one, or wait for the network-intelligence operator to suggest policies from observed traffic.
                 </EmptyState>
               }
             />
@@ -235,7 +239,7 @@ export default function NetworkPolicies() {
 
 function PolicyDetailModal({ policy, onClose }: { policy: FlowPolicy; onClose: () => void }) {
   const status = policy.status as PolicyStatusExt | undefined
-  const confidence = typeof policy.spec.confidence === 'number' && policy.spec.confidence > 0 ? `${Math.round(policy.spec.confidence * 100)}%` : undefined
+  const confidence = typeof policy.spec.confidence === 'number' && policy.spec.confidence > 0 ? formatPercent(Math.round(policy.spec.confidence * 100)) : undefined
   const rows: Array<[string, string]> = [
     ['Connection', `${policy.spec.sourceService} → ${policy.spec.destinationService} · ${policy.spec.protocol}:${policy.spec.port}`],
     ['Action', policy.spec.action],

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
@@ -6,7 +6,8 @@ import type { InferenceService } from '@/lib/api'
 import { errorMessage } from '@/lib/errors'
 import { phaseTone } from '@/lib/phase'
 import { notify } from '@/lib/notify'
-import { intError, nameError, parseIntStrict } from '@/lib/forms'
+import { fieldAria, intError, nameError, parseIntStrict } from '@/lib/forms'
+import { formatPercent } from '@/lib/format'
 import type { FilterDef, SortAccessor } from '@/lib/tableState'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { useTableState } from '@/hooks/useTableState'
@@ -117,18 +118,18 @@ export default function InferenceServices() {
           type="button"
           className="th-sort"
           aria-expanded={openName === nameOf(svc)}
-          aria-controls="service-detail"
+          aria-controls={openName === nameOf(svc) ? 'service-detail' : undefined}
           onClick={(e) => {
             e.stopPropagation()
             toggleOpen(svc)
           }}
         >
           <span className="faint" aria-hidden="true">{openName === nameOf(svc) ? '▾' : '▸'}</span>{' '}
-          <b>{nameOf(svc)}</b>
+          <b className="mono">{nameOf(svc)}</b>
         </button>
       ),
     },
-    { key: 'model', header: 'Model', sortable: true, render: (svc) => <span className="muted">{svc.spec?.modelRef ?? '—'}</span> },
+    { key: 'model', header: 'Model', sortable: true, render: (svc) => <span className="mono muted">{svc.spec?.modelRef ?? '—'}</span> },
     { key: 'backend', header: 'Backend', sortable: true, render: (svc) => <span className="pill">{backendLabel(svc.spec?.backend)}</span> },
     {
       key: 'replicas',
@@ -161,10 +162,11 @@ export default function InferenceServices() {
     },
     {
       key: 'canary',
-      header: 'Canary',
+      header: 'Canary traffic',
+      numeric: true,
       render: (svc) => {
         const canary = svc.spec?.canary?.trafficPercent ?? 0
-        return canary > 0 ? <span className="pill info">{canary}%</span> : <span className="faint">—</span>
+        return canary > 0 ? <span className="pill info">{formatPercent(canary)}</span> : <span className="faint">—</span>
       },
     },
     {
@@ -172,6 +174,7 @@ export default function InferenceServices() {
       header: 'Actions',
       render: (svc) => (
         <button
+          type="button"
           className="danger"
           onClick={(e) => {
             e.stopPropagation()
@@ -194,7 +197,7 @@ export default function InferenceServices() {
 
   return (
     <>
-      <PageHero eyebrow="Inference" title="Serve models at scale." lede="Model serving management." />
+      <PageHero eyebrow="Inference" title="Serve models at scale." lede="Registered models served behind autoscaled endpoints." />
 
       <div className="grid">
         <PagePulse
@@ -232,24 +235,24 @@ export default function InferenceServices() {
                 onRowClick={toggleOpen}
                 actions={
                   <>
-                    <button className="primary" onClick={() => setShowCreateForm(true)}>
+                    <button type="button" className="primary" onClick={() => setShowCreateForm(true)}>
                       Deploy model
                     </button>
-                    <button className="btn-refresh" onClick={() => refetch()} disabled={isRefetching}>
-                      Refresh
-                    </button>
+                    <button type="button" className="btn-refresh" onClick={() => refetch()} disabled={isRefetching} aria-busy={isRefetching}>
+{isRefetching ? 'Refreshing…' : 'Refresh'}
+</button>
                   </>
                 }
                 empty={
                   <EmptyState
                     title="No inference services deployed."
                     action={
-                      <button className="primary" onClick={() => setShowCreateForm(true)}>
+                      <button type="button" className="primary" onClick={() => setShowCreateForm(true)}>
                         Deploy a model
                       </button>
                     }
                   >
-                    Serve a registered model behind an autoscaled endpoint.
+                    Services are deployed from models in the registry, each behind its own endpoint.
                   </EmptyState>
                 }
               />
@@ -312,12 +315,12 @@ function ServiceDetail({ service, onClose, onDelete, deleting }: { service: Infe
         </div>
         <div>
           <div className="faint">Target GPU utilization</div>
-          <span className="num">{auto?.targetUtilization !== undefined ? `${auto.targetUtilization}%` : '—'}</span>
+          <span className="num">{formatPercent(auto?.targetUtilization)}</span>
         </div>
         <div>
           <div className="faint">Model</div>
           {model ? (
-            <Link to={`/models?q=${encodeURIComponent(model)}`} className="card-link">
+            <Link to={`/models?q=${encodeURIComponent(model)}`} className="card-link mono">
               {model}
             </Link>
           ) : (
@@ -326,7 +329,7 @@ function ServiceDetail({ service, onClose, onDelete, deleting }: { service: Infe
         </div>
       </div>
       <div className="toolbar">
-        <button className="danger" onClick={onDelete} disabled={deleting} aria-label={`Delete service ${name}`}>
+        <button type="button" className="danger" onClick={onDelete} disabled={deleting} aria-label={`Delete service ${name}`}>
           {deleting ? 'Deleting…' : 'Delete service'}
         </button>
       </div>
@@ -347,6 +350,7 @@ function CreateInferenceServiceModal({ onClose, initialModel = '' }: { onClose: 
   const queryClient = useQueryClient()
   const [initial] = useState(() => ({ ...INITIAL, modelRef: initialModel }))
   const [form, setForm] = useState(initial)
+  const uid = useId()
   const [touched, setTouched] = useState(false)
   const set = (patch: Partial<typeof INITIAL>) => setForm((f) => ({ ...f, ...patch }))
   const dirty = JSON.stringify(form) !== JSON.stringify(initial)
@@ -377,6 +381,13 @@ function CreateInferenceServiceModal({ onClose, initialModel = '' }: { onClose: 
   const invalid = Object.values(errors).some(Boolean)
   const show = (e: string | null) => (touched ? e : null)
   const nameShown = touched || form.name !== '' ? errors.name : null
+  const modelErr = modelNames.length > 0 ? show(errors.modelRef) : null
+  const msg = (id: string, err: string | null | undefined, hint?: string) =>
+    err || hint ? (
+      <span id={`${uid}-${id}-msg`} className={err ? 'warning' : 'faint'}>
+        {err ?? hint}
+      </span>
+    ) : null
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -406,14 +417,15 @@ function CreateInferenceServiceModal({ onClose, initialModel = '' }: { onClose: 
               value={form.name}
               onChange={(e) => set({ name: e.target.value })}
               placeholder="my-inference-svc"
-              aria-invalid={!!nameShown}
               autoComplete="off"
+              spellCheck={false}
+              {...fieldAria(`${uid}-name`, nameShown, true)}
             />
-            {nameShown && <span className="warning">{nameShown}</span>}
+            {msg('name', nameShown, 'Lowercase letters, digits and hyphens.')}
           </label>
           <label className="field">
             Model
-            <select value={form.modelRef} onChange={(e) => set({ modelRef: e.target.value })} disabled={modelNames.length === 0} aria-invalid={!!show(errors.modelRef)}>
+            <select value={form.modelRef} onChange={(e) => set({ modelRef: e.target.value })} disabled={modelNames.length === 0} {...fieldAria(`${uid}-model`, modelErr)}>
               <option value="">{modelsQuery.isLoading ? 'Loading models…' : 'Select a model'}</option>
               {modelNames.map((n) => (
                 <option key={n} value={n}>
@@ -421,7 +433,7 @@ function CreateInferenceServiceModal({ onClose, initialModel = '' }: { onClose: 
                 </option>
               ))}
             </select>
-            {show(errors.modelRef) && modelNames.length > 0 && <span className="warning">{errors.modelRef}</span>}
+            {msg('model', modelErr)}
           </label>
         </div>
 
@@ -448,18 +460,18 @@ function CreateInferenceServiceModal({ onClose, initialModel = '' }: { onClose: 
           <div className="formgrid">
             <label className="field">
               Min replicas
-              <input type="number" min={1} max={100} value={form.minReplicas} onChange={(e) => set({ minReplicas: e.target.value })} aria-invalid={!!show(errors.min)} />
-              {show(errors.min) && <span className="warning">{errors.min}</span>}
+              <input type="number" min={1} max={100} value={form.minReplicas} onChange={(e) => set({ minReplicas: e.target.value })} {...fieldAria(`${uid}-min`, show(errors.min))} />
+              {msg('min', show(errors.min))}
             </label>
             <label className="field">
               Max replicas
-              <input type="number" min={1} max={100} value={form.maxReplicas} onChange={(e) => set({ maxReplicas: e.target.value })} aria-invalid={!!show(errors.max)} />
-              {show(errors.max) && <span className="warning">{errors.max}</span>}
+              <input type="number" min={1} max={100} value={form.maxReplicas} onChange={(e) => set({ maxReplicas: e.target.value })} {...fieldAria(`${uid}-max`, show(errors.max))} />
+              {msg('max', show(errors.max))}
             </label>
             <label className="field">
               Target GPU %
-              <input type="number" min={1} max={100} value={form.targetUtilization} onChange={(e) => set({ targetUtilization: e.target.value })} aria-invalid={!!show(errors.target)} />
-              {show(errors.target) && <span className="warning">{errors.target}</span>}
+              <input type="number" min={1} max={100} value={form.targetUtilization} onChange={(e) => set({ targetUtilization: e.target.value })} {...fieldAria(`${uid}-target`, show(errors.target))} />
+              {msg('target', show(errors.target))}
             </label>
           </div>
           <p className="faint">The service starts at the minimum and scales up to the maximum when GPU utilization passes the target.</p>

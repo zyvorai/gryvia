@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useId } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/lib/auth'
 
@@ -10,6 +10,7 @@ export default function Login() {
 
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const errorId = useId()
   const [busy, setBusy] = useState(false)
   const [localError, setLocalError] = useState('')
   const host = window.location.host || window.location.hostname
@@ -54,8 +55,8 @@ export default function Login() {
           Connecting to <code>{host}</code>
         </p>
       </div>
-      <form className="card login-card" onSubmit={submit} noValidate>
-        <h1>Sign in.</h1>
+      <form className="card login-card" onSubmit={submit} noValidate aria-busy={busy}>
+        <h2>Sign in.</h2>
         {expired && !error && (
           <p className="warning" role="status">
             Your session expired. Sign in again to continue.
@@ -80,6 +81,7 @@ export default function Login() {
                 autoComplete="username"
                 disabled={busy}
                 aria-invalid={Boolean(error)}
+                aria-describedby={error ? errorId : undefined}
               />
             </label>
             <label className="tokenbox">
@@ -94,12 +96,13 @@ export default function Login() {
                 autoComplete="current-password"
                 disabled={busy}
                 aria-invalid={Boolean(error)}
+                aria-describedby={error ? errorId : undefined}
               />
             </label>
           </>
         )}
         {error ? (
-          <p className="login-error" role="alert" aria-live="assertive">
+          <p id={errorId} className="login-error" role="alert">
             {error}
           </p>
         ) : null}

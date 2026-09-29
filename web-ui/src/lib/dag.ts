@@ -79,3 +79,18 @@ export function validateDag(steps: StepLike[]): DagIssue[] {
   }
   return issues
 }
+
+/**
+ * Plain-text version of the layered drawing for screen readers: one line per step in execution
+ * order, saying its stage and what it waits for. `extra` appends per-step detail (e.g. status).
+ */
+export function describeSteps<T extends StepLike>(steps: T[], extra?: (step: T) => string | undefined): string[] {
+  const known = new Set(steps.map((s) => s.name))
+  return dagLayers(steps).flatMap((layer, i) =>
+    layer.map((s) => {
+      const deps = (s.dependsOn ?? []).filter((d) => d !== s.name && known.has(d))
+      const tail = extra?.(s)
+      return `${s.name}: stage ${i + 1}, ${deps.length > 0 ? `runs after ${deps.join(', ')}` : 'no dependencies'}${tail ? `, ${tail}` : ''}`
+    }),
+  )
+}

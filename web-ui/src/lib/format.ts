@@ -77,3 +77,9 @@ export function formatPercent(n?: number | null): string {
   if (n === undefined || n === null || !Number.isFinite(n)) return '—'
   return `${Number.isInteger(n) ? n : n.toFixed(1)}%`
 }
+
+/** Integer or one-decimal number with thousands grouping. */
+export function formatNumber(n?: number | null): string {
+  if (n === undefined || n === null || !Number.isFinite(n)) return '—'
+  return new Intl.NumberFormat('en-US', { maximumFractionDigits: Number.isInteger(n) ? 0 : 1 }).format(n)
+}

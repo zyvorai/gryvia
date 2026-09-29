@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildIdleTimeout, buildStorage, intError, nameError, parseIntStrict } from './forms'
+import { buildIdleTimeout, buildStorage, fieldAria, intError, nameError, parseIntStrict } from './forms'
 
 describe('buildStorage', () => {
   it('builds valid quantities', () => {
@@ -41,5 +41,13 @@ describe('nameError / intError', () => {
     expect(intError('64', 1, 64)).toBeNull()
     expect(intError('65', 1, 64)).not.toBeNull()
     expect(intError('abc', 1, 64)).not.toBeNull()
+  })
+})
+
+describe('fieldAria', () => {
+  it('marks invalid and describes by the message id only when there is something to read', () => {
+    expect(fieldAria('f', 'Bad')).toEqual({ 'aria-invalid': true, 'aria-describedby': 'f-msg' })
+    expect(fieldAria('f', null, true)).toEqual({ 'aria-invalid': false, 'aria-describedby': 'f-msg' })
+    expect(fieldAria('f', null)).toEqual({ 'aria-invalid': false, 'aria-describedby': undefined })
   })
 })

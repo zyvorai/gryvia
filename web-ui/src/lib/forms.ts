@@ -37,3 +37,11 @@ export function buildIdleTimeout(amount: string, unit: 'm' | 'h' | string): stri
   const v = `${amount.trim()}${unit}`
   return IDLE_TIMEOUT_PATTERN.test(v) ? v : null
 }
+
+/**
+ * aria wiring for a field: invalid when it has an error, described by `${id}-msg` when there is
+ * an error or a hint to read. Render the message element with that same id.
+ */
+export function fieldAria(id: string, error?: string | null, hasHint = false): { 'aria-invalid': boolean; 'aria-describedby'?: string } {
+  return { 'aria-invalid': !!error, 'aria-describedby': error || hasHint ? `${id}-msg` : undefined }
+}

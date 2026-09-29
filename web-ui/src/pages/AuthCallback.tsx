@@ -59,7 +59,7 @@ export default function AuthCallback() {
         </div>
       ) : (
         <div className="stack">
-          <h1 className="apple-display">Completing sign in...</h1>
+          <h1 className="apple-display">Completing sign in…</h1>
           <div className="spinner" role="status" aria-label="Completing sign in" />
         </div>
       )}

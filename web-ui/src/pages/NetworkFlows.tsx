@@ -4,10 +4,11 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '@/lib/api'
 import type { NetworkFlow } from '@/lib/api'
 import PageHero from '@/components/PageHero'
+import { TableCaption } from '@/components/TableCaption'
 import PagePulse from '@/components/kit/PagePulse'
 import { EmptyState, ErrorState, Skeleton } from '@/components/StateViews'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
-import { formatDate, formatRelative } from '@/lib/format'
+import { formatBytes, formatDate, formatRelative } from '@/lib/format'
 import { errorMessage } from '@/lib/errors'
 import { applySort, type SortAccessor, type SortDir } from '@/lib/tableState'
 import { filterFlows, flowFilterOptions, pageWindow, parseByteQuantity, parseLatencyMs, policyPrefillUrl, traceUrl, verdictKind, verdictTone, type FlowFilters } from '@/lib/network'
@@ -103,13 +104,16 @@ export default function NetworkFlows() {
 
   return (
     <>
-      <PageHero eyebrow="Network" title="Observed connections." lede="Connections observed between services, from the service graph" />
+      <PageHero eyebrow="Network" title="Observed connections." lede="Connections observed between services, as reported by the service graph." />
 
       <div className="grid">
         <div className="toolbar span3">
           <Link to="/network" className="buttonlike btn-secondary">
             Back to network
           </Link>
+          <button type="button" className="btn-secondary" onClick={() => refetch()} disabled={isFetching} aria-busy={isFetching}>
+            {isFetching ? 'Refreshing…' : 'Refresh'}
+          </button>
         </div>
 
         {isLoading ? (
@@ -202,14 +206,14 @@ export default function NetworkFlows() {
 
             <section className="card span3">
               <p className="eyebrow">
-                PAGE {page} OF {totalPages}
+                RESULTS · PAGE {page} OF {totalPages}
               </p>
               <h2 className="card-title">
                 {filtered.length} connection{filtered.length === 1 ? '' : 's'}
               </h2>
               {all.length === 0 ? (
                 <EmptyState title="No connections observed yet" action={<Link to="/network" className="buttonlike btn-secondary">Back to network</Link>}>
-                  Connections come from the FabricServiceGraph that the network-intelligence operator builds from eBPF flow data. Nothing has been reported yet.
+                  Connections come from the FabricServiceGraph that the network-intelligence operator builds from eBPF flow data. The operator has not reported any yet.
                 </EmptyState>
               ) : filtered.length === 0 ? (
                 <EmptyState title="No connections match these filters" action={<button type="button" className="btn-secondary" onClick={clearFilters}>Clear filters</button>}>
@@ -218,6 +222,7 @@ export default function NetworkFlows() {
               ) : (
                 <div className="table-wrap">
                   <table>
+                    <TableCaption>{`Observed connections, page ${page} of ${totalPages}`}</TableCaption>
                     <thead>
                       <tr>
                         <th scope="col">Graph updated</th>
@@ -293,6 +298,9 @@ function FlowRow({ flow, showThroughput, colSpan, open, onToggle }: { flow: Netw
   const ts = flow.spec.timestamp
   const verdict = flow.spec.verdict as string
   const latency = flow.spec.latency && flow.spec.latency !== '-' ? flow.spec.latency : '—'
+  const bytes = parseByteQuantity(flow.spec.bytes)
+  const throughput = bytes !== undefined ? formatBytes(bytes) : flow.spec.bytes || '—'
+  const detailId = `flow-detail-${flow.metadata.name}`
   const detail: Array<[string, string]> = [
     ['Source', flow.spec.source],
     ['Destination', flow.spec.destination],
@@ -300,7 +308,7 @@ function FlowRow({ flow, showThroughput, colSpan, open, onToggle }: { flow: Netw
     ['Port', String(flow.spec.port ?? '—')],
     ['Verdict', verdict || 'Unknown'],
     ['Latency', latency],
-    ['Throughput', flow.spec.bytes || '—'],
+    ['Throughput', throughput],
     ['Graph updated', ts ? `${formatDate(ts)} · ${formatRelative(ts)}` : '—'],
   ]
   return (
@@ -309,6 +317,8 @@ function FlowRow({ flow, showThroughput, colSpan, open, onToggle }: { flow: Netw
         data-clickable=""
         tabIndex={0}
         aria-expanded={open}
+        aria-controls={open ? detailId : undefined}
+        aria-label={`${flow.spec.source} to ${flow.spec.destination}, ${verdict || 'unknown verdict'}. ${open ? 'Hide' : 'Show'} details.`}
         onClick={onToggle}
         onKeyDown={(e) => {
           if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
@@ -326,14 +336,14 @@ function FlowRow({ flow, showThroughput, colSpan, open, onToggle }: { flow: Netw
           <span className="pill info">{flow.spec.protocol}</span>
         </td>
         <td className="mono muted num">{flow.spec.port}</td>
-        {showThroughput && <td className="muted num">{flow.spec.bytes || '—'}</td>}
+        {showThroughput && <td className="muted num">{throughput}</td>}
         <td className="muted num">{latency}</td>
         <td>
           <span className={`pill ${verdictTone(verdict)}`}>{verdict || 'Unknown'}</span>
         </td>
       </tr>
       {open && (
-        <tr>
+        <tr id={detailId}>
           <td colSpan={colSpan}>
             <div className="stack">
               <dl className="formgrid">

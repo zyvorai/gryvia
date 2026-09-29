@@ -53,7 +53,7 @@ export default function Jobs() {
       header: 'Name',
       sortable: true,
       render: (job) => (
-        <Link to={`/jobs/${job.metadata.name}`} className="card-link" onClick={(e) => e.stopPropagation()}>
+        <Link to={`/jobs/${job.metadata.name}`} className="card-link mono" onClick={(e) => e.stopPropagation()}>
           {job.metadata.name}
         </Link>
       ),
@@ -81,7 +81,7 @@ export default function Jobs() {
 
   return (
     <>
-      <PageHero eyebrow="Jobs" title="Every job, in one place." lede="Manage training and inference workloads" />
+      <PageHero eyebrow="Jobs" title="Every job, in one place." lede="Training and inference jobs across every team." />
 
       <div className="grid">
         <PagePulse
@@ -104,7 +104,7 @@ export default function Jobs() {
         />
 
         <section className="card span3">
-          <p className="eyebrow">ALL JOBS · {jobs ? `${jobs.length} TOTAL` : '…'}</p>
+          <p className="eyebrow">WORKLOADS · {jobs ? `${jobs.length} TOTAL` : '…'}</p>
           <h2 className="card-title">All jobs</h2>
           {jobs && (
             <div className="toolbar" role="group" aria-label="Filter by status">
@@ -142,7 +142,7 @@ export default function Jobs() {
                   <Link to="/jobs/new" className="buttonlike primary">
                     Submit job
                   </Link>
-                  <button type="button" className="btn-refresh" onClick={() => refetch()} disabled={isRefetching}>
+                  <button type="button" className="btn-refresh" onClick={() => refetch()} disabled={isRefetching} aria-busy={isRefetching}>
                     {isRefetching ? 'Refreshing…' : 'Refresh'}
                   </button>
                 </>
@@ -156,7 +156,7 @@ export default function Jobs() {
                     </Link>
                   }
                 >
-                  Jobs appear here once you submit a FabricAIJob, from this UI or with kubectl.
+                  Jobs are FabricAIJob resources, created from this UI or with kubectl. The Gryvia operator schedules them onto GPU nodes.
                 </EmptyState>
               }
             />

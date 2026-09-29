@@ -11,7 +11,7 @@ import { countTone } from '@/components/kit/tone'
 import Progress from '@/components/Progress'
 import { EmptyState, ErrorState, Skeleton } from '@/components/StateViews'
 import { errorMessage } from '@/lib/errors'
-import { formatMoney } from '@/lib/format'
+import { formatDuration, formatMoney, formatPercent } from '@/lib/format'
 import { alertThreshold, allowedTypes, budgetPercent, budgetedCount, limitLabel, overBudgetAlert } from '@/lib/quotas'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 
@@ -45,7 +45,7 @@ export default function Quotas() {
   if (isLoading) {
     return (
       <>
-        <PageHero eyebrow="Quotas" title="Team quotas." lede="GPU allocations and budget tracking per team" />
+        <PageHero eyebrow="Quotas" title="Team quotas." lede="GPU allocation and monthly budget for each team." />
         <Skeleton rows={4} />
       </>
     )
@@ -61,9 +61,9 @@ export default function Quotas() {
 
   const list = quotas || []
   const columns: Column<FabricQuota>[] = [
-    { key: 'team', header: 'Team', sortable: true, render: (q) => q.spec.team },
+    { key: 'team', header: 'Team', sortable: true, render: (q) => <span className="mono">{q.spec.team}</span> },
     { key: 'gpus', header: 'GPUs allocated', sortable: true, numeric: true, render: (q) => `${q.status?.currentUsage?.allocatedGPUs ?? 0} / ${q.spec.gpuQuota?.maxGPUs ?? 0}` },
-    { key: 'budget', header: 'Budget used', sortable: true, numeric: true, render: (q) => (q.spec.budget ? `${Math.round(budgetPercent(q) ?? 0)}%` : '—') },
+    { key: 'budget', header: 'Budget used', sortable: true, numeric: true, render: (q) => (q.spec.budget ? formatPercent(Math.round(budgetPercent(q) ?? 0)) : '—') },
     { key: 'jobs', header: 'Jobs', render: (q) => <Link to={jobsLink(q)} className="card-link">View jobs</Link> },
   ]
   const over = list.filter(overBudgetAlert).length
@@ -117,7 +117,7 @@ export default function Quotas() {
         />
 
         <section className="card span3">
-          <p className="eyebrow">TEAMS</p>
+          <p className="eyebrow">OVERVIEW</p>
           <h2 className="card-title">All teams</h2>
           <DataTable
             caption="Team quotas"
@@ -134,7 +134,7 @@ export default function Quotas() {
                   </a>
                 }
               >
-                Quotas come from FabricQuota resources, one per team. Create one with <code className="mono">kubectl apply -f fabricquota.yaml</code> and it appears here.
+                Quotas are FabricQuota resources, one per team, enforced by the Gryvia operator. Create one with <code className="mono">kubectl apply -f fabricquota.yaml</code> and it appears here.
               </EmptyState>
             }
           />
@@ -154,7 +154,7 @@ export default function Quotas() {
           return (
             <section key={quota.metadata.name} className="card span3">
               <p className="eyebrow">TEAM</p>
-              <h2 className="card-title">{quota.spec.team}</h2>
+              <h2 className="card-title mono">{quota.spec.team}</h2>
               {quota.spec.priority !== undefined && quota.spec.priority !== null && (
                 <p><span className="pill">Priority {quota.spec.priority}</span></p>
               )}
@@ -201,8 +201,8 @@ export default function Quotas() {
                     <b>{usage?.queuedJobs ?? 0}</b>
                   </div>
                   <div>
-                    <span>GPU hours</span>
-                    <b>{(usage?.gpuHours ?? 0).toFixed(1)}</b>
+                    <span>GPU time used</span>
+                    <b>{formatDuration((usage?.gpuHours ?? 0) * 3_600_000)}</b>
                   </div>
                   {budget && (
                     <div>

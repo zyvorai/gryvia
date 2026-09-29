@@ -8,7 +8,7 @@ export function ErrorState({ title = 'Could not load this data.', error, onRetry
       <strong>{title}</strong>
       {error !== undefined && <div>{errorMessage(error)}</div>}
       {onRetry && (
-        <div className="toolbar" style={{ marginTop: 10 }}>
+        <div className="toolbar mt-10">
           <button type="button" className="btn-secondary" onClick={onRetry} disabled={retrying}>
             {retrying ? 'Retrying…' : 'Retry'}
           </button>
@@ -24,7 +24,7 @@ export function EmptyState({ title, children, action }: { title: string; childre
     <div className="empty-state">
       <strong>{title}</strong>
       {children && <div>{children}</div>}
-      {action && <div className="toolbar" style={{ justifyContent: 'center', marginTop: 10 }}>{action}</div>}
+      {action && <div className="toolbar toolbar-center mt-10">{action}</div>}
     </div>
   )
 }
