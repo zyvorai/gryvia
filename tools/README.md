@@ -2,6 +2,22 @@
 
 Collection of diagnostic and utility tools for Gryvia platform.
 
+> **Status: helper scripts, lightly tested, not part of the released images or Helm charts.** They are
+> run by hand with kubectl/helm/Python `kubernetes` access and have not been validated against a live
+> cluster in CI. Every "Example Output" block below is illustrative (made-up numbers). Corrections to
+> the descriptions in this file: the cost calculator uses a hard-coded rate table (`GPU_PRICING` in
+> `cost-calculator.py`, e.g. H100 8.00 USD/hour), not your real billing; `profiler.py` reads
+> `status.metrics` fields (`avgGPUUtilization`, ...) from the job, which nothing in this repo
+> populates, so its numbers are only meaningful if you supply them (compare the in-cluster
+> `GryviaTrainingProfiler`, which has the same input gap; see `features/training-profiler.md`);
+> `backup-restore.sh` does not back up Secrets; `upgrade.sh` has no automatic rollback (it exits on a
+> failed step after taking a backup); there is no `tools/Dockerfile`, `gryvia-tools` image or
+> `gryvia-tools` ServiceAccount, so the container and Kubernetes-integration snippets are templates
+> you must build yourself. Also present but not described below: `audit-tool.py` (compliance-style
+> report from `GryviaAIJob`s), `migration-tool.py` (export/import between kube contexts; it also lists
+> kinds that do not exist here, such as `gryviaqueues` and `gryviausers`), and `performance-profiler.py`
+> (per-job profile with generated suggestions). None of these gives a compliance attestation.
+
 ## Tools
 
 ### 1. GPU Diagnostics (gpu-diagnostics.sh)
@@ -25,7 +41,7 @@ kubectl exec -it <gpu-pod> -- /tools/gpu-diagnostics.sh
 - NCCL installation
 - NVLink status
 - GPU memory errors
-- Quick performance benchmark
+- Quick GPU benchmark (step 8 of 8; requires the tooling the script probes for, see `gpu-diagnostics.sh`)
 
 **Output:**
 - Console report with color-coded status
@@ -110,7 +126,7 @@ Complete backup and restore solution for Gryvia resources.
 ./tools/backup-restore.sh restore --file /backups/gryvia-20240101-120000.tar.gz
 ```
 
-**What Gets Backed Up:**
+**What Gets Backed Up** (Secrets are deliberately skipped; the script writes a note pointing to sealed-secrets):
 - All CRDs
 - GPU Nodes configuration
 - AI Jobs
@@ -118,7 +134,6 @@ Complete backup and restore solution for Gryvia resources.
 - Storage configurations
 - Network configurations
 - ConfigMaps
-- Secrets (encrypted)
 - RBAC policies
 
 **Backup Format:**
@@ -157,46 +172,10 @@ Safe Gryvia version upgrades with automatic backup.
 6. Post-upgrade verification
 
 **Supports:**
-- Helm deployments
-- Manual deployments
-- Zero-downtime upgrades
-- Automatic rollback on failure
-
-### 5. GPU Profiler (profiler.py)
-
-Analyzes GPU utilization and provides optimization recommendations.
-
-**Usage:**
-```bash
-# Upgrade to latest version
-./tools/upgrade.sh
-
-# Upgrade to specific version
-./tools/upgrade.sh --version 1.1.0
-
-# Upgrade specific namespace
-./tools/upgrade.sh --version 1.1.0 --namespace production
-
-# Skip backup (not recommended)
-./tools/upgrade.sh --skip-backup
-
-# Dry run (show what would be upgraded)
-./tools/upgrade.sh --dry-run
-```
-
-**Upgrade Process:**
-1. Pre-upgrade checks (running jobs, pod health)
-2. Automatic backup
-3. CRD upgrades
-4. Operator upgrades (rolling deployment)
-5. Web UI/API Gateway upgrades
-6. Post-upgrade verification
-
-**Supports:**
-- Helm deployments
-- Manual deployments
-- Zero-downtime upgrades
-- Automatic rollback on failure
+- Helm deployments (`helm upgrade gryvia gryvia/gryvia`)
+- Manual deployments (applies CRDs from the repo, updates operator/UI deployments)
+- Rolling deployment updates (zero downtime is not verified)
+- No automatic rollback: restore from the pre-upgrade backup manually
 
 ### 5. GPU Profiler (profiler.py)
 
@@ -292,6 +271,8 @@ chmod +x tools/*.py
 ```
 
 ### Container Usage
+
+Template only: `tools/Dockerfile` does not exist; write one first.
 
 ```bash
 # Build tools container
@@ -453,7 +434,7 @@ To add new tools:
 
 1. Create tool in `tools/` directory
 2. Add documentation to this README
-3. Create Dockerfile if needed
+3. Create Dockerfile if needed (none exists today)
 4. Add examples
 5. Submit pull request
 

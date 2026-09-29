@@ -41,7 +41,7 @@ jobs:
         run: |
           make -C ebpf clean
           make -C ebpf ARCH=arm64
-          test "$(ls ebpf/*.o | wc -l)" = "24"
+          test "$(ls ebpf/*.o | wc -l)" = "30"
   collector:
     name: Collector tests
     runs-on: ubuntu-24.04

@@ -1,6 +1,12 @@
 # Gryvia CLI Guide
 
-The Gryvia CLI provides a command-line interface for managing GPU clusters, submitting jobs, monitoring quotas, and analyzing costs.
+The Gryvia CLI (Rust, in `cli/`) provides a command-line interface for managing GPU clusters, submitting jobs, monitoring quotas, and analyzing costs.
+
+The CLI talks to the **Kubernetes API using your kubeconfig** (or `--context`); it does not call the Gryvia API gateway.
+It therefore needs the `gryvia.io/v1alpha1` CRDs installed and RBAC to read and create them. Commands only show what the
+cluster's controllers have written: kinds without a registered controller (see [reference/crds.md](../reference/crds.md))
+are never filled in, and the network, security and GPU-analysis commands depend on optional components described in
+[Network Intelligence](./NETWORK_INTELLIGENCE.md).
 
 Run `gryvia <command> --help` for the authoritative list of options for any command; this guide may lag behind the CLI.
 
@@ -8,11 +14,17 @@ Run `gryvia <command> --help` for the authoritative list of options for any comm
 
 ### From Release Binary
 
+Tagged releases attach CLI binaries named `gryvia-<tag>-<target>` for `linux-amd64`, `linux-arm64` and
+`darwin-arm64`, each with a `.sha256` file. Download the one for your platform from the GitHub releases page, verify the
+checksum and install it:
+
 ```bash
-# Download latest release
-curl -LO https://github.com/zyvorai/gryvia/releases/latest/download/gryvia
-chmod +x gryvia
-sudo mv gryvia /usr/local/bin/
+# example for linux-amd64; replace <tag> with a real release tag
+curl -LO https://github.com/zyvorai/gryvia/releases/download/<tag>/gryvia-<tag>-linux-amd64
+curl -LO https://github.com/zyvorai/gryvia/releases/download/<tag>/gryvia-<tag>-linux-amd64.sha256
+shasum -a 256 -c gryvia-<tag>-linux-amd64.sha256
+chmod +x gryvia-<tag>-linux-amd64
+sudo mv gryvia-<tag>-linux-amd64 /usr/local/bin/gryvia
 ```
 
 ### From Source
@@ -40,7 +52,7 @@ versions, any errors, and a per-node table. It reads only the Kubernetes API, so
 gryvia status
 ```
 
-Example output (from the CLI's own snapshot tests):
+Example output (from the CLI's own snapshot tests; the image tags and node data are test fixtures, not real releases):
 
 ```text
     ______      Gryvia:       OK
@@ -149,7 +161,7 @@ command's `--help` ends with examples. Help and output are colored when stdout i
 |--------|--------|
 | `--no-color` | Turn colors off. The `NO_COLOR` environment variable does the same. |
 | `CLICOLOR_FORCE=1` | Keep colors when piping (for example into `less -R`). |
-| `-o, --output table\|json\|yaml` | Output format of commands that print data (`GRYVIA_OUTPUT` sets the default where supported). |
+| `-o, --output table\|json\|yaml` | Per-command option (not global) on commands that print data; `GRYVIA_OUTPUT` sets the default. `usage` and `invoice` also accept `csv`. |
 | `--context`, `-n/--namespace` | Kubernetes context and namespace. |
 
 Piped output has no color codes, so `gryvia list jobs | grep Running` and `gryvia status -o json | jq` work as
@@ -183,10 +195,9 @@ kind: GryviaAIJob
 metadata:
   name: llm-training
 spec:
-  framework: pytorch
-  resources:
-    gpuType: H100
-    gpuCount: 8
+  type: training
+  gpus: 8
+  gpuType: H100
   image: nvcr.io/nvidia/pytorch:24.01-py3
   command: ["python", "train.py"]
 EOF
@@ -422,10 +433,9 @@ gryvia cost ml-research --detailed
 
 #### Budget Alerts
 
-The CLI highlights budget warnings:
-- 🟢 Green: < 75% of budget used
-- 🟡 Yellow: 75-99% of budget used
-- 🔴 Red: ≥100% of budget used
+The CLI marks how much of a budget or quota is used: no marker below 80%, a warning at 80% or more, an error at 100% or
+more (the quota's own `alertThreshold` is also shown as a warning when reached). Costs are estimates from job run time
+and the SKU catalog.
 
 ### Cluster Overview
 
@@ -505,6 +515,10 @@ gryvia get job my-training-job
 
 # Get quota details
 gryvia get quota team-ml
+
+# Storage and network objects (GryviaStorage, GryviaNetwork)
+gryvia get storage my-storage
+gryvia get network my-network
 
 # Get node details
 gryvia get node gpu-worker-01
@@ -661,6 +675,16 @@ gryvia invoice -o json
 
 ## Network Intelligence Commands
 
+:::caution What these commands read
+They read Kubernetes objects; they do not query the eBPF collector. `network flows`, `network graph` and
+`network trace --follow` read `GryviaFlow` objects, but **there is no `GryviaFlow` CRD in `crds/` and nothing creates
+such objects**, so on a stock install they print a warning or an empty result. Policies, anomalies and security
+status read `GryviaFlowPolicy`, `GryviaAutoPolicy`, `GryviaNetworkAnomaly` and `GryviaSecurityPolicy`, which are only
+filled in when the network-intelligence operator (separate chart) and its data sources work; much of that data path is
+still a stub. `gpu memory` and `gpu rdma` print hints or placeholder values. For real flows use the dashboard with
+Netra configured. See [Network Intelligence](./NETWORK_INTELLIGENCE.md) for the full status.
+:::
+
 ### Network Overview
 
 ```bash
@@ -758,6 +782,9 @@ gryvia security policy create my-policy \
 ```
 
 ## GPU Network Analysis Commands
+
+`gpu nccl` and `gpu training` read a `GryviaTrainingInsight` object for the job (create one and run the network-intelligence
+operator and collector); `gpu memory` and `gpu rdma` do not query the collector today.
 
 ```bash
 # View NCCL communication metrics for a training job
@@ -990,15 +1017,15 @@ gryvia list jobs --output json | \
 
 ```bash
 # Add to ~/.bashrc or ~/.zshrc
-alias kf="gryvia"
-alias kfj="gryvia list jobs"
-alias kfq="gryvia quota"
-alias kfc="gryvia cluster"
+alias gr="gryvia"
+alias grj="gryvia list jobs"
+alias grq="gryvia quota"
+alias grc="gryvia cluster"
 
 # Usage
-kfj                    # List jobs
-kfq my-team            # Check quota
-kfc --watch 5          # Watch cluster
+grj                    # List jobs
+grq my-team            # Check quota
+grc --watch 5          # Watch cluster
 ```
 
 ### 4. Validate Before Submitting
@@ -1037,40 +1064,27 @@ jobs:
   train:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Install Gryvia CLI
         run: |
-          curl -LO https://github.com/zyvorai/gryvia/releases/latest/download/gryvia
-          chmod +x gryvia
+          TAG=<release tag>
+          curl -LO https://github.com/zyvorai/gryvia/releases/download/${TAG}/gryvia-${TAG}-linux-amd64
+          chmod +x gryvia-${TAG}-linux-amd64
+          mv gryvia-${TAG}-linux-amd64 gryvia
       - name: Submit Job
+        # needs a kubeconfig for a service account allowed to create GryviaAIJob objects
         run: ./gryvia submit -f job.yaml --wait
+        env:
+          KUBECONFIG: ${{ github.workspace }}/kubeconfig
 ```
 
-## Recently Implemented
+## Not implemented
 
-- [x] Interactive job/quota creation wizard (`gryvia create job`, `gryvia create quota`)
-- [x] Real-time log streaming (`gryvia logs --follow`)
-- [x] Job queue monitoring (`gryvia queue`, `gryvia queue --watch 5`)
-- [x] Storage and network deletion (`gryvia delete storage/network`)
-- [x] Storage and network health checks (`gryvia health storage`, `gryvia health network`)
-- [x] Detailed cluster view with per-GPU metrics (`gryvia cluster --detailed`)
-- [x] Status follow mode (`gryvia status --follow`)
-- [x] Submit with log following (`gryvia submit --logs`)
-- [x] Cost detailed breakdown (`gryvia cost --detailed`)
-- [x] GPU capacity report (`gryvia capacity`)
-- [x] Node maintenance marking and draining (`gryvia maintenance start/end/list`)
-
-## Future Features
-
-Coming soon:
-- [ ] Job templates library
-- [ ] Shell completion (bash/zsh/fish)
-- [ ] Multi-cluster support
-- [ ] Job history and analytics
+The CLI has no job template library, multi-cluster mode or job history and analytics commands. Shell completion
+(bash, zsh, fish) is implemented (`gryvia completion <shell>`).
 
 ## Support
 
-- **Documentation**: https://gryvia.readthedocs.io
 - **Issues**: https://github.com/zyvorai/gryvia/issues
 - **Discussions**: https://github.com/zyvorai/gryvia/discussions
 

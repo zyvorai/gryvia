@@ -2,6 +2,17 @@
 
 Predict costs, training time, and queue wait for AI/ML jobs before submission.
 
+> **Status: controller implemented (quota-operator); estimates are heuristics, accuracy unmeasured.**
+> `GryviaCostPredictor` has a registered controller. It annotates pending or
+> `gryvia.io/dry-run: "true"` jobs with `estimated-cost`, `estimated-duration`,
+> `estimated-queue-wait`, `cost-confidence` and a best cheaper alternative, using similarity-weighted
+> history of past `GryviaAIJob`s (`operators/quota-operator/pkg/predictor`). Gaps versus the text below:
+> `linear-regression` is currently the same weighted average as the default; the `webhookAdmission`
+> and `chargebackRef` fields exist in the CRD but nothing reads them (`GryviaChargeback` has no
+> controller); with no similar history the time estimate falls back to one hour. Example numbers
+> below (costs, MAE, "342 jobs estimated") are illustrative, not measured, and no accuracy claim
+> has been validated against real clusters. Prices are whatever you configure, not real quotes.
+
 ## Overview
 
 GryviaCostPredictor analyzes historical job data to provide accurate estimates for new jobs:

@@ -2,6 +2,15 @@
 
 Navigate training history, fork experiments from any checkpoint, and manage checkpoint lifecycle.
 
+> **Status: partly implemented (ai-operator controller registered).** Forking works at the API level: the
+> controller creates a new `GryviaAIJob` from the source job's spec with the requested overrides. The
+> checkpoint timeline is derived from the source job's reported `status.metrics` (step/epoch), not by
+> reading checkpoint files, and retention (`keepEveryNth`, `keepBest`, `maxStorageGi`) is only
+> evaluated and logged: the controller does not delete anything (the code marks file deletion as future
+> work). Storage totals and lineage graphs are bookkeeping in `status`. Whether a fork actually resumes
+> from the checkpoint depends on your training code honouring the injected step/env; unverified on real
+> training runs.
+
 ## Overview
 
 GryviaTrainingTimeMachine provides training experiment management that:

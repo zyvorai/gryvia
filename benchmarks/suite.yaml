@@ -87,17 +87,19 @@ metadata:
     benchmark: mlperf
     model: resnet50
 spec:
-  framework: pytorch
+  type: training
+  gpus: 8
+  gpuType: A100-80G
   distributed:
     enabled: true
-    strategy: ddp
+    framework: pytorch
+    backend: nccl
     nodes: 1
     gpusPerNode: 8
   resources:
-    gpuType: A100-80G
-    gpuCount: 8
-    memory: 512Gi
-    cpu: 64
+    requests:
+      memory: 512Gi
+      cpu: "64"
   image: nvcr.io/nvidia/pytorch:24.01-py3
   command:
     - python
@@ -200,17 +202,19 @@ metadata:
   name: bench-scaling-4node
   namespace: gryvia-system
 spec:
-  framework: pytorch
+  type: training
+  gpus: 32  # 4 nodes x 8 GPUs = 32 total
+  gpuType: A100-80G
   distributed:
     enabled: true
-    strategy: ddp
+    framework: pytorch
+    backend: nccl
     nodes: 4
-    gpusPerNode: 8  # 4 nodes × 8 GPUs = 32 total
+    gpusPerNode: 8
   resources:
-    gpuType: A100-80G
-    gpuCount: 8
-    memory: 512Gi
-    cpu: 64
+    requests:
+      memory: 512Gi
+      cpu: "64"
   image: nvcr.io/nvidia/pytorch:24.01-py3
   command:
     - torchrun

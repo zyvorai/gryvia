@@ -2,6 +2,8 @@
 
 This directory contains example configurations for running AI workloads on Gryvia.
 
+> **Status.** Every manifest is schema-checked against `crds/` by `scripts/check-examples.py`, which only proves the YAML is valid, not that a controller acts on it. Kinds with a registered controller today: `GryviaAIJob` and the other ai-operator kinds, `GryviaGpuNode`, `GryviaGpuMemoryOptimizer`, `GryviaQuota`, `GryviaTenant`, `GryviaUsageRecord`, `GryviaCostPredictor`, `GryviaStorage`, `GryviaNetwork` and the network-intelligence kinds. Examples of other kinds (workflows, tuners, budgets, SLAs, inference services and so on) show the CRD schema only; no controller reconciles them yet. Nothing here has been run on real GPU or RDMA hardware except where stated.
+
 ### Training Examples
 
 #### Simple Single-GPU Training
@@ -42,16 +44,18 @@ curl http://localhost:8000/v1/completions \
 
 #### Register a GPU Node
 ```bash
-kubectl apply -f gpu-nodes/h100-node.yaml
+kubectl apply -f demo/demo.yaml           # fake nodes for a GPU-less cluster
+kubectl apply -f complete-setup/production-deployment.yaml   # includes a GryviaGpuNode
 kubectl get gryviagpunode
-kubectl describe gryviagpunode gpu-h100-01
+# On a cluster with NVIDIA GPU Feature Discovery labels, the gpu-operator can also
+# register nodes automatically (--auto-register).
 ```
 
 ### Storage Configuration
 
 #### Setup VAST Storage
 ```bash
-kubectl apply -f storage/vast-storage.yaml
+kubectl apply -f storage/vast-storage-example.yaml
 kubectl get gryviastorage
 ```
 
@@ -59,7 +63,7 @@ kubectl get gryviastorage
 
 #### Setup RDMA Network
 ```bash
-kubectl apply -f network/rdma-network.yaml
+kubectl apply -f network/rdma-network-example.yaml
 kubectl get gryvianetwork
 ```
 
@@ -67,7 +71,7 @@ kubectl get gryvianetwork
 
 #### Set Team GPU Quota
 ```bash
-kubectl apply -f quotas/team-quota.yaml
+kubectl apply -f quota/team-ml-quota.yaml
 kubectl get gryviaquota
 ```
 

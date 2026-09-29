@@ -9,17 +9,21 @@ This directory contains a complete example setup for Gryvia with all components 
 - Helm 3.x installed
 - 3+ GPU nodes with NVIDIA drivers installed
 
+> **Status: partly stale, use with care.** The only manifest in this directory is `production-deployment.yaml` (storage, network, GPU node, quotas, two jobs and a PVC). The other files that the original walkthrough and `deploy.sh` refer to (`gpu-nodes/`, `storage-config.yaml`, `network-config.yaml`, `quotas/`, `jobs/`, `example-job.yaml`) do not exist, and `deploy.sh` applies per-operator `config/deployment.yaml` files that exist only for the storage, network and quota operators (not gpu-operator or ai-operator), so **`deploy.sh` does not work as written**. Nothing here has been run on real GPU, VAST or InfiniBand hardware. The supported install path is the Helm chart (see the root README and `scripts/install.sh`, or `scripts/install-k3s-gpu.sh` for a single GPU server).
+
 ## Quick Start
 
 ```bash
-# 1. Install Gryvia
-./deploy.sh
+# 1. Install Gryvia with the Helm chart (see the root README for the exact command)
+helm install gryvia ./helm/gryvia --namespace gryvia-system --create-namespace \
+  --set auth.apiKey='a-long-random-secret'
 
 # 2. Verify installation
 kubectl get pods -n gryvia-system
 
-# 3. Submit example job
-kubectl apply -f example-job.yaml
+# 3. Review and edit the example resources, then apply them.
+#    The storage, network and GPU node entries point at example endpoints and hardware.
+kubectl apply -f production-deployment.yaml
 
 # 4. Check job status
 kubectl get gryviaaijobs -n default
@@ -27,106 +31,16 @@ kubectl get gryviaaijobs -n default
 
 ## What's Included
 
-- **GPU Nodes**: 3 example GPU node configurations (H100, A100, L40)
-- **Quotas**: 3 team quotas with budgets
-- **Storage**: VAST Data parallel filesystem
-- **Network**: RDMA/InfiniBand configuration
-- **Jobs**: Example training jobs for PyTorch, TensorFlow, JAX
-- **Monitoring**: Prometheus and Grafana dashboards
+`production-deployment.yaml` contains, as one multi-document file:
 
-## Step-by-Step Deployment
+- **Storage**: a `GryviaStorage` for a VAST Data backend (example endpoint, 500Ti)
+- **Network**: a `GryviaNetwork` for RDMA/InfiniBand
+- **GPU node**: a `GryviaGpuNode` declaration
+- **Quotas**: two `GryviaQuota` objects with budgets
+- **Jobs**: two example `GryviaAIJob` objects and a PVC
+- **Monitoring**: not included here; see `monitoring/` and the observability Helm chart
 
-### 1. Deploy Infrastructure Components
-
-```bash
-# Create namespace
-kubectl create namespace gryvia-system
-
-# Deploy CRDs
-kubectl apply -f ../../crds/
-
-# Deploy operators
-kubectl apply -f ../../operators/gpu-operator/config/deployment.yaml
-kubectl apply -f ../../operators/ai-operator/config/deployment.yaml
-kubectl apply -f ../../operators/storage-operator/config/deployment.yaml
-kubectl apply -f ../../operators/network-operator/config/deployment.yaml
-kubectl apply -f ../../operators/quota-operator/config/deployment.yaml
-```
-
-### 2. Configure GPU Nodes
-
-```bash
-# Apply node configurations
-kubectl apply -f gpu-nodes/
-```
-
-This creates GryviaGpuNode resources for:
-- 2x H100 nodes (8 GPUs each)
-- 2x A100-80G nodes (8 GPUs each)
-- 1x L40 node (4 GPUs each)
-
-### 3. Set Up Storage
-
-```bash
-# Deploy VAST storage backend
-kubectl apply -f storage-config.yaml
-```
-
-Configures:
-- 500TB VAST Data cluster
-- CSI driver deployment
-- StorageClass for dynamic provisioning
-
-### 4. Configure Networking
-
-```bash
-# Deploy RDMA network
-kubectl apply -f network-config.yaml
-```
-
-Sets up:
-- InfiniBand RDMA
-- Mellanox ConnectX-7 adapters
-- 400Gb/s networking
-
-### 5. Create Team Quotas
-
-```bash
-# Apply quota configurations
-kubectl apply -f quotas/
-```
-
-Creates quotas for:
-- **ML Research**: 32 GPUs, $50k/month budget
-- **Computer Vision**: 16 GPUs, $30k/month budget
-- **NLP**: 64 GPUs, $100k/month budget
-
-### 6. Deploy Monitoring
-
-```bash
-# Install Prometheus and Grafana
-kubectl apply -f ../../monitoring/
-```
-
-### 7. Deploy Web UI
-
-```bash
-# Deploy Web UI and API Gateway
-kubectl apply -f ../../manifests/deploy/api-gateway-deployment.yaml
-kubectl apply -f ../../manifests/deploy/ui-deployment.yaml
-```
-
-### 8. Submit Example Jobs
-
-```bash
-# Submit training jobs
-kubectl apply -f jobs/
-```
-
-Example jobs:
-- PyTorch distributed training (8x H100)
-- TensorFlow single-node training (1x A100)
-- JAX multi-node training (4x L40)
+The endpoints, hardware and capacities are placeholders. The step-by-step section that used to describe separate per-component directories has been removed because those files do not exist.
 
 ## Accessing the System
 
@@ -159,7 +73,7 @@ gryvia quota
 ### Grafana Dashboards
 
 ```bash
-kubectl port-forward -n gryvia-system svc/prometheus-grafana 3000:80
+kubectl port-forward -n gryvia-system svc/prometheus-grafana 3000:80   # service name depends on how you installed Grafana
 ```
 
 Open http://localhost:3000
@@ -220,7 +134,7 @@ gryvia logs llama-training
 watch kubectl get gryviagpunodes -o custom-columns=NAME:.metadata.name,TYPE:.spec.gpuType,GPUS:.spec.gpuCount,PHASE:.status.phase
 
 # Detailed node metrics
-kubectl describe gryviagpunode gpu-worker-01
+kubectl describe gryviagpunode gpu-node-01
 ```
 
 ### Check Team Quota Usage
@@ -233,7 +147,7 @@ gryvia quota
 kubectl get gryviaquotas
 
 # Detailed quota info
-kubectl describe gryviaquota ml-research-quota
+kubectl describe gryviaquota team-ml-research
 ```
 
 ## Troubleshooting

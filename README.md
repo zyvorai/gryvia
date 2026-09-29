@@ -10,15 +10,17 @@
 **GPU is the new CPU. Gryvia is its scheduler.**
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-0071e3?style=flat-square&labelColor=1d1d1f)](LICENSE)
-[![Go Version](https://img.shields.io/badge/Go-1.24+-0071e3?style=flat-square&labelColor=1d1d1f&logo=go&logoColor=white)](https://go.dev/)
-[![Kubernetes](https://img.shields.io/badge/Kubernetes-1.32+-0071e3?style=flat-square&labelColor=1d1d1f&logo=kubernetes&logoColor=white)](https://kubernetes.io/)
+[![Go Version](https://img.shields.io/badge/Go-1.27+-0071e3?style=flat-square&labelColor=1d1d1f&logo=go&logoColor=white)](https://go.dev/)
+[![Kubernetes](https://img.shields.io/badge/Kubernetes-1.30+-0071e3?style=flat-square&labelColor=1d1d1f&logo=kubernetes&logoColor=white)](https://kubernetes.io/)
 [![NVIDIA](https://img.shields.io/badge/NVIDIA-GPU-0071e3?style=flat-square&labelColor=1d1d1f&logo=nvidia&logoColor=white)](https://nvidia.com)
 
-[**Quick Start**](#install-on-your-cluster) · [**Docs**](website/docs/intro.md) · [**Architecture**](#architecture) · [**Demo**](#5-minute-demo) · [**License**](#license)
+[**Quick Start**](#install-on-your-cluster) · [**Docs**](website/docs/intro.md) · [**Architecture**](#architecture) · [**Demo**](#try-it-in-five-minutes-no-gpus) · [**License**](#license)
 
 </div>
 
-> **Status: early and under active development.** Performance figures in this repository are
+> **Status: alpha, under active development.** Much of the platform is implemented and unit-tested, but the GPU,
+> RDMA and eBPF paths have not been run on real hardware, and part of the CRD surface is design only.
+> [What works today](#what-works-today) says which is which. Performance figures in this repository are
 > design targets, not measured results — see [Performance Metrics](#performance-metrics).
 
 ---
@@ -31,34 +33,36 @@ storage can't keep up with data loading, and teams burn weeks hand-tuning NCCL, 
 topology before training even starts. No single platform ties GPU scheduling, networking, storage
 and observability together.
 
-Gryvia is a Kubernetes-native GPU platform: submit a job, and topology-aware scheduling, RDMA/NVLink
-configuration and parallel-filesystem storage are handled for you instead of hand-tuned per cluster.
-Built for teams training large models, not running containers.
+Gryvia is a Kubernetes-native GPU platform. The goal: submit a job and have GPU-aware placement, RDMA/NVLink
+configuration and parallel-filesystem storage handled by operators instead of hand-tuned per cluster, and run the
+cluster as a multi-tenant GPU service with a price catalog and metering. Built for teams training large models, not
+running containers. It is early: see [What works today](#what-works-today) before relying on any of it.
 
 <table width="100%">
 <tr>
 <td valign="top" width="33%">
 
-**Gang scheduling + fair-share**<br>
-Distributed jobs are placed atomically or not at all, with DRF fair-share queuing, backfill and
-priority preemption.<br>
+**GPU-aware admission of jobs**<br>
+Jobs are checked and scored against GPU type, RDMA/SR-IOV labels, NVLink/NVSwitch interconnect and free GPUs, then run
+as a StatefulSet pinned by node selector. Gang scheduling, DRF fair-share and preemption exist as library code but are
+not wired in yet.<br>
 [Scheduling guide](website/docs/guides/SCHEDULING.md)
 
 </td>
 <td valign="top" width="33%">
 
-**RDMA + NVLink automation**<br>
-SR-IOV, RDMA and NCCL are configured by the network operator instead of by hand, targeting
-InfiniBand and RoCE v2.<br>
-[Storage & network operators](website/docs/guides/STORAGE_NETWORK_OPERATORS.md)
+**GPU as a Service**<br>
+Tenants with isolated namespaces, a GPU SKU price catalog, per-job metering and estimate invoices, with provider
+(admin) and tenant roles in the gateway. Estimates only: no payments.<br>
+[GPU as a Service](website/docs/guides/GPU_AS_A_SERVICE.md)
 
 </td>
 <td valign="top" width="33%">
 
-**Parallel-filesystem storage**<br>
-Per-job provisioning for VAST, Weka, DDN, Lustre and CephFS, with RDMA storage access where the
-hardware supports it.<br>
-[Storage & network operators](website/docs/guides/STORAGE_NETWORK_OPERATORS.md)
+**GPU nodes that prepare themselves**<br>
+An optional NVIDIA GPU Operator sub-chart, a k3s bootstrap script, and automatic `GryviaGpuNode` registration from
+NVIDIA feature-discovery labels. Not yet validated on real GPUs.<br>
+[GPU nodes](website/docs/guides/GPU_NODES.md)
 
 </td>
 </tr>
@@ -66,23 +70,26 @@ hardware supports it.<br>
 <td valign="top" width="33%">
 
 **Six Kubernetes operators**<br>
-GPU, AI workload, storage, network, quota and network-intelligence operators, each a real
-controller with its own CRDs.<br>
+GPU, AI workload and quota operators (plus optional storage and network operators for RDMA/SR-IOV and
+parallel-filesystem CSI backends) in the main chart; network intelligence in its own. 24 of the 49 CRDs have a
+controller.<br>
 [Core components](#core-components)
 
 </td>
 <td valign="top" width="33%">
 
-**Network Intelligence (NetPredator)**<br>
-eBPF-powered service graph, per-service p50/p95/p99 latency, anomaly detection and auto-generated
-network policies, built on Cilium.<br>
+**Network Intelligence (NetPredator) and eBPF**<br>
+Experimental. 30 CO-RE eBPF programs and a privileged collector (off by default), a node-local Flight Recorder, and
+an operator whose Cilium policy actions are real but whose live measurements are not wired. Real flows can come from
+Netra.<br>
 [Network Intelligence guide](website/docs/guides/NETWORK_INTELLIGENCE.md)
 
 </td>
 <td valign="top" width="33%">
 
 **CLI, Python SDK, Go SDK**<br>
-A Rust CLI (`gryvia`) plus Python and Go SDKs against the same REST API the web console uses.<br>
+A Rust CLI (`gryvia`) that reads the cluster through your kubeconfig, a Python SDK for the gateway REST API and a Go SDK
+for the custom resources.<br>
 [CLI guide](website/docs/guides/CLI_GUIDE.md) · [API reference](website/docs/developer-guide/api-reference.md)
 
 </td>
@@ -91,16 +98,31 @@ A Rust CLI (`gryvia`) plus Python and Go SDKs against the same REST API the web 
 
 ---
 
+## What works today
+
+| State | What |
+|---|---|
+| **Implemented and tested in CI** (unit tests, chart rendering, a kind install with demo data read back through the API and CLI) | The Helm chart; GPU, AI workload and quota operators; `GryviaAIJob` placement, StatefulSet creation and the admission webhook; per-namespace quotas and budgets; tenants, SKU catalog, usage metering and estimate invoices; the API gateway with API-key, session and OIDC roles; the dashboard; the CLI |
+| **Implemented, unverified on real hardware or services** | NVIDIA GPU Operator sub-chart, `install-k3s-gpu.sh` and node auto-registration (GPU-less k3s in CI only); storage and network operators (off by default); OIDC against a real identity provider; anything that needs GPUs, RDMA or a parallel filesystem |
+| **Experimental** | The eBPF collector, the 30 eBPF programs, fabric signals and the Flight Recorder (verified on Linux 7.0 x86_64 only); the network-intelligence operator |
+| **CRD and API only, no controller wired** | Workflows, auto tuner, workspaces, inference services, model registry, budgets (the `GryviaBudget` kind), chargeback, SLA, audit, priority classes, auto-scaler, federation, DR tests, benchmarks, templates and others. The gateway and dashboard can create and list them, but nothing acts on them. Gang scheduling, DRF queues, preemption and elastic scaling are library code that no controller calls |
+| **Not implemented** | Payments or tax invoices, multi-cluster federation, per-tenant Kubernetes RBAC, a mutating quota-pacing eBPF program |
+
+The [CRD reference](website/docs/reference/crds.md) lists every kind with the operator that reconciles it (or `none`).
+
+---
+
 ## Gryvia vs vanilla Kubernetes
 
-| Capability | Vanilla K8s + GPU Operator | Gryvia |
+| Capability | Vanilla K8s + GPU Operator | Gryvia today |
 |---|---|---|
-| Multi-node distributed training setup | Manual configuration | Automated by operators |
-| RDMA/NVLink tuning | Manual | Configured by the GPU and network operators |
-| Job placement | Default scheduler (first-fit) | Topology-aware scoring |
-| Storage for training | Standard CSI | Parallel filesystem integrations (Weka, DDN, Lustre, CephFS) |
-| GPU failure handling | Manual intervention | Health checks and automated remediation |
-| Cost tracking | Not built in | Per-team budgets and chargeback |
+| Job spec | Pods, Jobs and StatefulSets you write | One `GryviaAIJob` (type, gpus, gpuType, distributed); the operator creates the StatefulSet, headless Service and PVC |
+| Job placement | Default scheduler (first-fit) | The operator filters and scores nodes (GPU type, RDMA/SR-IOV, NVLink, free GPUs, memory) and records the choice in the job status; pods are pinned by node selector and placed by the default scheduler. Gang scheduling is design only |
+| RDMA/NVLink setup | Manual | Network operator (optional) creates device plugins and Multus attachments; unverified on hardware |
+| Storage for training | Standard CSI | Storage operator (optional) for VAST, Weka, DDN, Lustre and CephFS backends; unverified on real storage |
+| GPU failure handling | Manual intervention | Node readiness and per-GPU health on `GryviaGpuNode` (DCGM); no automated remediation |
+| Cost tracking | Not built in | GPU-hour metering, SKU catalog, estimate invoices, per-team `GryviaQuota` budgets; no payments, no chargeback controller |
+| Multi-tenancy | Namespaces and your own RBAC | `GryviaTenant` namespaces with quota and NetworkPolicy; isolation is enforced by the gateway, not Kubernetes RBAC |
 
 ## Try it in five minutes (no GPUs)
 
@@ -114,7 +136,8 @@ kubectl -n gryvia-system port-forward svc/gryvia-ui 8443:443   # https://localho
 ```
 
 Sign in as `admin` / `Admin@321`. That is a well-known lab key: set your own (`auth.apiKey`) before sharing
-an install. See [Authentication and TLS](website/docs/guides/AUTH_AND_TLS.md).
+an install. See [Authentication and TLS](website/docs/guides/AUTH_AND_TLS.md). The demo's GPU nodes are fictional:
+nothing runs real GPU work.
 
 ## Install on your cluster
 
@@ -124,13 +147,18 @@ helm install gryvia oci://ghcr.io/zyvorai/charts/gryvia \
   --set auth.apiKey='a-long-random-secret'
 ```
 
-Then submit work with the CLI or `kubectl`:
+The chart installs the CRDs, the GPU, AI workload and quota operators, the API gateway and the dashboard; the storage
+and network operators are off by default, and network intelligence is a separate chart. Then submit work with the CLI
+or `kubectl` (the CLI needs a kubeconfig; build it with `cargo build --release` in `cli/`, or take a release binary):
 
 ```bash
-gryvia submit --file examples/training/simple-pytorch-training.yaml
-gryvia list jobs
-gryvia status <job-name>
+gryvia -n gryvia-system submit --file examples/training/simple-pytorch-training.yaml
+gryvia -n gryvia-system list jobs
+gryvia status                      # platform report; `gryvia status <job-name>` for one job
 ```
+
+The example requests storage from a StorageClass named `vast-fast`; edit or remove that line unless you have one. The
+dashboard's admin view shows jobs from the gateway's namespace (`gryvia-system` with the chart), hence `-n`.
 
 ## GPU servers: drivers, CUDA and the device plugin
 
@@ -142,64 +170,90 @@ sudo ./scripts/install-k3s-gpu.sh server
 ```
 
 On an existing cluster, add `--set nvidia.enabled=true` to the Helm install. Gryvia then registers every GPU node
-automatically. It does not install Kubernetes, a CNI, Multus or InfiniBand drivers, and the GPU path has not yet been
-validated on real hardware (see [docs/gpu-validation.md](docs/gpu-validation.md)). Details:
+automatically. It does not install a CNI, Multus or InfiniBand drivers (the script installs k3s itself), and the GPU
+path has not yet been validated on real hardware: CI covers the script with dry-run tests and a GPU-less k3s job (see
+[docs/gpu-validation.md](docs/gpu-validation.md) for the checklist to run on a real machine). Details:
 [GPU nodes](website/docs/guides/GPU_NODES.md) · [Deployment guide](website/docs/guides/DEPLOYMENT_GUIDE.md) ·
 [Complete deployment guide](website/docs/guides/COMPLETE_DEPLOYMENT_GUIDE.md). The Terraform and Ansible directories
 are experimental and incomplete.
+
+## GPU as a Service
+
+Run the cluster as a multi-tenant GPU cloud: the provider (API key or an OIDC admin group) creates `GryviaTenant`s
+(namespace `tenant-<name>` with quota and optional NetworkPolicy) and publishes `GryviaGpuSku` prices; tenants sign in
+with OIDC and see only their own jobs, usage and catalog; the quota operator meters GPU hours into `GryviaUsageRecord`s.
+
+```bash
+gryvia catalog                         # SKUs and hourly rates
+gryvia tenant list
+gryvia usage --group-by tenant
+gryvia invoice --month 2026-09         # estimate: JSON or CSV, no payments
+```
+
+Also in the dashboard (Catalog, Usage, Tenants, Invoices) and under `/api/skus`, `/api/tenants`, `/api/usage`,
+`/api/invoices`. It has been tested with unit tests and fake clusters, not against a real identity provider or GPUs.
+See [GPU as a Service](website/docs/guides/GPU_AS_A_SERVICE.md).
 
 ---
 
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│                   Gryvia Control Plane                    │
-│      (Multi-Cluster Management + Global Scheduling)       │
-└─────────────────────┬───────────────────────────────────—┘
-                       │
-       ┌───────────────┼────────────────┐
-       │               │                │
- ┌─────▼─────┐   ┌────▼─────┐   ┌─────▼──────┐
- │ Cluster A │   │ Cluster B│   │ Cluster C  │
- │  H100 GPU │   │  A100 GPU│   │ L40 (Edge) │
- │ InfiniBand│   │  RoCE v2 │   │  Standard  │
- │ VAST Stor │   │  Weka    │   │  Local SSD │
- └───────────┘   └──────────┘   └────────────┘
+ kubectl · gryvia CLI ─────────────────────────────┐
+ Dashboard ──▶ API gateway (admin | tenant roles) ─┤──▶  Kubernetes API  (gryvia.io/v1alpha1 CRDs)
+ Python SDK ──▶ API gateway      Go SDK ───────────┘            │
+                                                                ▼
+   Operators (helm/gryvia):  gpu · ai (+ admission webhook) · quota · [storage] · [network]
+   Operator (helm/network-intelligence):  network-intelligence
+                                                                │
+   GPU nodes:  NVIDIA GPU Operator (optional) ─▶ node labels ─▶ GryviaGpuNode (auto-registered)
+   Observability:  DCGM exporter · optional eBPF collector DaemonSet (experimental) · optional Netra flows
 ```
 
-Each cluster runs a GPU-aware scheduler (gang scheduling, DRF fair-share, elastic scaling), the six
-operators, an eBPF flow collector plus NVIDIA DCGM/Prometheus/Grafana observability, the storage
-fabric, a web dashboard and a REST API gateway with OIDC support, and the Rust CLI / Python SDK /
-Go SDK. 30+ CRDs, grouped by area, in [Core Components](#core-components).
+One cluster is managed per install. Multi-cluster federation exists only as a design sketch
+([multi-cluster/README.md](multi-cluster/README.md)); no controller implements it. The GPU-aware scheduling is the ai
+operator's node selection (filter, score, select), not a separate scheduler.
 
 ---
 
 ## Core Components
 
 <details>
-<summary><b>40+ CRDs across core, ML workflow, operations and network intelligence</b></summary>
+<summary><b>49 CRDs, 24 of them with a controller (the CRD reference has the full table)</b></summary>
 
-**Core:** `GryviaGpuNode`, `GryviaAIJob`, `GryviaStorage`, `GryviaNetwork`, `GryviaQuota`
+**Reconciled by a controller (24).**
+GPU operator: `GryviaGpuNode` (also auto-created from GPU feature-discovery labels), `GryviaGpuMemoryOptimizer` ·
+AI operator: `GryviaAIJob`, `GryviaCheckpointGuard`, `GryviaLiveExperiment`, `GryviaModelLineage`,
+`GryviaTrainingProfiler`, `GryviaTrainingTimeMachine` · Quota operator: `GryviaQuota`, `GryviaTenant`,
+`GryviaUsageRecord`, `GryviaCostPredictor` · Storage operator: `GryviaStorage` · Network operator: `GryviaNetwork` ·
+Network-intelligence operator: `GryviaFlowPolicy`, `GryviaTrafficInsight`, `GryviaAutoPolicy`, `GryviaTraceSession`,
+`GryviaServiceGraph`, `GryviaNetworkAnomaly`, `GryviaSecurityPolicy`, `GryviaNetworkCost`, `GryviaTrainingInsight`,
+`GryviaInferenceInsight`.
 
-**ML workflow:** `GryviaAutoTuner`, `GryviaWorkflow`, `GryviaModelRegistry`, `GryviaInferenceService`, `GryviaWorkspace`, `GryviaTemplate`
-
-**Operations & enterprise:** `GryviaAutoScaler`, `GryviaBudget`, `GryviaChargeback`, `GryviaTenant`, `GryviaSLA`, `GryviaAudit`, `GryviaReservation`, `GryviaPriority`
-
-**Network intelligence:** `GryviaFlowPolicy`, `GryviaTrafficInsight`, `GryviaAutoPolicy`, `GryviaTraceSession`, `GryviaServiceGraph`, `GryviaNetworkAnomaly`
+**Data or API only, no controller registered (25).** `GryviaGpuSku` (the price catalog, read by the gateway and quota
+operator), `GryviaDataset`, `GryviaFabricSignal`, and, with reconciler code that `main.go` never registers or none at
+all: `GryviaAutoTuner`, `GryviaWorkflow`, `GryviaWorkspace`, `GryviaInferenceService`, `GryviaModelRegistry`,
+`GryviaTemplate`, `GryviaAutoScaler`, `GryviaFederation`, `GryviaJobHook`, `GryviaPriority`, `GryviaRetryPolicy`,
+`GryviaBudget`, `GryviaChargeback`, `GryviaSLA`, `GryviaAudit`, `GryviaReservation`, `GryviaQuotaPolicy`,
+`GryviaGPUSharingPolicy`, `GryviaHealthCheck`, `GryviaMetric`, `GryviaBenchmark`, `GryviaDRTest`.
 
 </details>
 
-**Six operators:** GPU (lifecycle, drivers, health, MIG/time-slice sharing) · AI Workload
-(scheduling, distributed training, HPO, workflows, model registry, inference, workspaces) · Storage
-(VAST/Weka/DDN/Lustre/Ceph CSI, dataset caching) · Network (SR-IOV, RDMA, Multus) · Quota
-(enforcement, budgets, chargeback, SLA, audit, tenants) · Network Intelligence (eBPF flow policies,
-traffic insights, auto-policy, anomaly detection).
+**Six operators:** GPU (registers `GryviaGpuNode`s and reports readiness, driver/CUDA versions and DCGM health; it does
+not install drivers, NVIDIA's GPU Operator does) · AI workload (`GryviaAIJob` placement and StatefulSets, the admission
+webhook, and the profiler, checkpoint-guard, live-experiment, lineage and time-machine CRDs) · Quota (quotas and
+per-namespace budgets, tenants, usage metering) · Storage and Network (optional; parallel-filesystem CSI backends, and
+RDMA/SR-IOV device plugins with Multus attachments; hardware-unverified) · Network Intelligence (Cilium policy actions
+and insights; its own chart, experimental).
 
-**GPU-aware scheduler:** three-stage filter → score → select. Filtering eliminates nodes that are
-unhealthy, the wrong GPU type, missing RDMA/SR-IOV, or short on free GPUs; scoring weighs GPU type
-match, RDMA availability, NVSwitch interconnect, free GPU count and memory; the topology optimizer
-weighs NVLink (40%), NUMA (30%) and utilization (20%) with fragmentation penalties. Full detail:
+**GPU-aware node selection:** the AI operator lists nodes and their running GPU pods, filters out nodes that are not
+ready, have the wrong `gryvia.io/gpu` type, lack the requested RDMA/SR-IOV label or the free GPUs, then scores the rest
+(GPU type match +50, RDMA +30, NVSwitch +40 or NVLink +30 for multi-GPU jobs, +5 per free GPU, +1 per 10 GB of GPU
+memory, plus CPU/memory) and takes the top `distributed.nodes`. It records that choice in `status.nodesAllocated` (and
+keeps the job Pending, retrying every 30 s, when no node qualifies); the StatefulSet's pods are constrained by node
+selector (`gryvia.io/gpu`, `gryvia.io/rdma`, `spec.nodeSelector`) and placed by the default Kubernetes scheduler. The
+gang scheduler, DRF queues, preemption and elastic scaling in `operators/ai-operator/pkg/` and the standalone NVLink/NUMA
+topology optimizer in `scheduler/` are not called by the running operator. `FabricPenalty` (eBPF fabric signals) is a helper that nothing calls yet. Detail:
 [Scheduling guide](website/docs/guides/SCHEDULING.md).
 
 ---
@@ -235,6 +289,12 @@ Storage and network throughput depend on the hardware, filesystem and fabric you
 | CLI guide | [guides/CLI_GUIDE.md](website/docs/guides/CLI_GUIDE.md) |
 | API reference | [developer-guide/api-reference.md](website/docs/developer-guide/api-reference.md) |
 | ML workflows, integrations, playbooks | [guides/ML_WORKFLOWS.md](website/docs/guides/ML_WORKFLOWS.md) · [guides/INTEGRATIONS.md](website/docs/guides/INTEGRATIONS.md) · [guides/OPERATIONAL_PLAYBOOKS.md](website/docs/guides/OPERATIONAL_PLAYBOOKS.md) |
+| GPU as a Service (tenants, catalog, usage, invoices) | [guides/GPU_AS_A_SERVICE.md](website/docs/guides/GPU_AS_A_SERVICE.md) |
+| GPU nodes (NVIDIA GPU Operator, k3s bootstrap) | [guides/GPU_NODES.md](website/docs/guides/GPU_NODES.md) · [docs/gpu-validation.md](docs/gpu-validation.md) |
+| Operations (upgrade, uninstall, backup) | [guides/OPERATIONS.md](website/docs/guides/OPERATIONS.md) |
+| CRD reference (all 49 kinds and their controllers) | [reference/crds.md](website/docs/reference/crds.md) |
+| eBPF programs, collector, Flight Recorder | [ebpf/README.md](ebpf/README.md) · [collector/README.md](collector/README.md) · [docs/flight-recorder.md](docs/flight-recorder.md) |
+| Helm charts | [helm/gryvia](helm/gryvia/README.md) · [helm/network-intelligence](helm/network-intelligence/README.md) |
 | Advanced features, FAQ, roadmap | [guides/ADVANCED_FEATURES.md](website/docs/guides/ADVANCED_FEATURES.md) · [guides/FAQ.md](website/docs/guides/FAQ.md) · [guides/ROADMAP.md](website/docs/guides/ROADMAP.md) |
 | Examples & tutorials | [examples/README.md](examples/README.md) |
 
@@ -243,29 +303,41 @@ Storage and network throughput depend on the hardware, filesystem and fabric you
 Gryvia is **alpha**. APIs (`gryvia.io/v1alpha1` CRDs) may change between releases and there is no upgrade
 guarantee yet; see the [changelog](CHANGELOG.md). What exists today:
 
-- OIDC/SSO with PKCE and JWT validation in the API gateway, plus a shared-key login (constant-time
-  compare, rate limited). There is no per-user RBAC yet: every authenticated user is an administrator.
+- Two roles in the API gateway: the API key and dashboard sessions are the provider **admin**; OIDC users (JWT
+  validation, PKCE in the dashboard) are **tenant** users limited to the namespaces of the `GryviaTenant` they match
+  (`GRYVIA_OIDC_ADMIN_GROUPS` promotes a group). Isolation is enforced by the gateway, not by per-tenant Kubernetes
+  RBAC, and OIDC has only been tested against a fake identity provider. There is one shared admin identity, so no
+  per-user audit trail for key-based sessions.
+- A shared-key login (constant-time compare, rate limited) issuing signed, expiring session tokens.
 - HTTPS for the dashboard and gateway (self-signed by default; cert-manager or your own certificate supported).
 - Non-root containers with a read-only root filesystem for the operators, gateway and dashboard.
-- `GryviaTenant` creates per-tenant namespaces, ResourceQuotas and optional NetworkPolicies; the chart
-  offers an opt-in NetworkPolicy for the gateway.
-- Release images and the Helm chart are signed with cosign and ship SBOM and provenance attestations.
+- `GryviaTenant` creates per-tenant namespaces, ResourceQuotas, LimitRanges and optional NetworkPolicies; the chart
+  offers an opt-in NetworkPolicy for the gateway. The `GryviaAIJob` admission webhook enforces quota and SKU policy and
+  fails open when the quotas cannot be read.
+- Release images and the Helm charts are signed with cosign; images ship SBOM and provenance attestations.
 
-**Experimental:** the 27 CO-RE eBPF programs (including the fabric-signal ones) build and pass the verifier on a
-Linux 7.0 x86_64 host, the only place they have been verified (arm64 is compile-only); there the collector attached
-the supported kprobe/tracepoint subset and decoded TCP flows. GPU, NCCL, RDMA and GPUDirect Storage runtime behavior
-and the gated XDP/TCX/sockops attachments have not been validated on hardware. The collector is disabled by
-default; see [Flight Recorder](docs/flight-recorder.md) for its node-local, job-attributed diagnostic preview and its
-limits. The rest of the platform does not depend on it.
+**Experimental:** the 30 CO-RE eBPF programs (24 original, plus the fabric-signal programs `straggler`, `rdma_health`,
+`gds_trace`, `overlap`, `roce_cnp` and `infer_latency`) build and pass the verifier on a Linux 7.0 x86_64 host, the
+only place they have been verified (arm64 is compile-only); there the collector attached the supported
+kprobe/tracepoint subset and decoded TCP flows. GPU, NCCL, RDMA and GPUDirect Storage runtime behavior and the gated
+XDP/TCX/sockops attachments have not been validated on hardware. The collector is disabled by default, privileged and
+`hostNetwork` (its image is not part of the release), and most of its endpoints are unauthenticated; see
+[Flight Recorder](docs/flight-recorder.md) for its node-local, job-attributed diagnostic preview (the gateway's
+cluster view, `GET /api/flight/jobs/{job}`, is token-authenticated but has not run on a real cluster). Real network
+flows can instead come from [Netra](https://github.com/zyvorai/netra) (`apiGateway.netra.url`). The rest of the platform
+does not depend on the collector. Not present: a mutating quota-pacing eBPF program, and the fabric-signal score is not
+used by the scheduler.
 
 Read the [threat model and known limits](SECURITY.md) before exposing an install beyond a lab, and report
 vulnerabilities privately as described there.
 
 ## Real-World Use Cases
 
-Large-model training (`GryviaAIJob` with `distributed.nodes`/`gpusPerNode`), multi-tenant GPU
-sharing with per-team budgets (`GryviaQuota`), and inference at scale with replica fan-out — worked
-examples in [examples/](examples/) and the [user guide](website/docs/user-guide/jobs.md).
+What the code supports today: large-model training and inference-style jobs as `GryviaAIJob`s (with
+`distributed.nodes`/`gpusPerNode` for multi-node), per-team quotas and budgets (`GryviaQuota`), and multi-tenant GPU
+service with metering (`GryviaTenant`, `GryviaGpuSku`). Model serving, workflows, hyperparameter tuning and workspaces
+have CRDs and dashboard pages but no controller yet. Worked examples are in [examples/](examples/) and the
+[user guide](website/docs/user-guide/jobs.md).
 
 ---
 
@@ -279,11 +351,11 @@ Apache License 2.0 — see [LICENSE](LICENSE).
 
 ---
 
-### Why teams choose Gryvia
+### Why Gryvia
 
-Topology- and quota-aware scheduling to reduce idle and fragmented GPUs; bare-metal performance
-with full hardware access; per-team cost visibility; the same experience on-prem, cloud or edge;
-Kubernetes-native operators and CRDs built for platform teams; open source, no vendor lock-in.
+GPU-type-, interconnect- and quota-aware job admission to reduce idle and fragmented GPUs; hardware access without a
+virtualization layer; per-tenant cost visibility; Kubernetes-native operators and CRDs built for platform teams; open
+source under Apache 2.0.
 
 <div align="center">
 

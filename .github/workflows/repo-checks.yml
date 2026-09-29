@@ -22,7 +22,9 @@ jobs:
       - name: Fail on Fabric* identifiers
         run: |
           # The kinds were renamed to Gryvia*; scripts/rename-kinds.sh and the docs that describe the rename may mention the old names.
-          if git grep -nE 'Fabric[A-Z]' -- . ':!scripts/rename-kinds.sh' ':!CHANGELOG.md' ':!website/docs/guides/OPERATIONS.md' ':!*package-lock.json'; then
+          # A legacy identifier starts with Fabric (FabricAIJob); Gryvia-prefixed names such as GryviaFabricSignal and the
+          # FabricPenalty scheduler helper are current and must not match.
+          if git grep -nE '(^|[^A-Za-z])Fabric[A-Z]' -- . ':!scripts/rename-kinds.sh' ':!CHANGELOG.md' ':!website/docs/guides/OPERATIONS.md' ':!*package-lock.json' ':!.github/workflows/repo-checks.yml' | grep -vE '(^|[^A-Za-z])FabricPenalty'; then
             echo "::error::Legacy Fabric* identifiers found; use the Gryvia* names."
             exit 1
           fi
@@ -81,7 +83,7 @@ jobs:
         working-directory: cli
       - name: Every documented `gryvia` command is accepted by the CLI parser
         run: python3 scripts/check-cli-docs.py
-      - name: Every example manifest matches its CRD schema
+      - name: Every example and documented manifest matches its CRD schema
         run: python3 scripts/check-examples.py
 
   sdk-python:

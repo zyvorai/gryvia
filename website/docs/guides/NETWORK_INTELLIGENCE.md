@@ -1,23 +1,42 @@
 # Network Intelligence Guide
 
-Complete guide to Gryvia's eBPF-powered network intelligence system for deep observability, security, and performance optimization of GPU clusters.
+Guide to Gryvia's eBPF-based network intelligence: the kernel programs, the per-node collector, the
+`network-intelligence` operator and its CRDs. Read the status box first: the programs and the operator are real code, but
+several links between them are not wired yet.
 
-:::caution Flow sources and eBPF status
-Network flows can come from two places. **[Netra](https://github.com/zyvorai/netra)**, the separate standalone eBPF
-network observability product: set `apiGateway.netra.url` to an address the gateway pod can reach (its public IP, for
-example `https://<netra-public-ip>:30870`; a `*.svc` name only works when Netra runs in the same cluster) and
-`apiGateway.netra.tokenSecret` for its API token. Netra has its own license; Gryvia only calls its HTTP API. Or
-Gryvia's **own collector** (the `ebpf-collector` DaemonSet of the `network-intelligence` chart, `ebpf.enabled=true`,
-off by default).
+:::caution Status: what works and what does not
+**Programs.** The 30 eBPF programs in `ebpf/` are CO-RE (no per-kernel builds; they need a node kernel with BTF, and the
+`tcx` programs Linux 6.6+). All 30 compile and pass the kernel verifier on Linux 7.0 x86_64; on that host the collector
+attached 36 of the 83 hooks (the kprobes and tracepoints) and decoded real TCP flows. **Not verified:** arm64 (compiles,
+never loaded), the XDP/TCX/sockops programs (attach is config-gated: `ebpf.interface`, `ebpf.cgroupPath`), and
+everything GPU-related (NCCL/CUDA uprobes, RDMA, GDS), which needs GPU or RDMA hardware. Attach results per node are at
+`GET :9090/api/v1/ebpf/status`. See [ebpf/README.md](https://github.com/zyvorai/gryvia/blob/main/ebpf/README.md).
 
-The 27 eBPF programs in `ebpf/` are now CO-RE (no per-kernel builds; they need a node kernel with BTF, and the
-`tcx` programs Linux 6.6+). All 27 compile and pass the kernel verifier on Linux 7.0 x86_64, and on that host the
-collector attached 36 of the 83 hooks (the kprobes and tracepoints) and decoded real TCP flows. **Not yet verified:**
-arm64 (compiles, never loaded), the XDP/TCX/sockops programs (attach is config-gated: `ebpf.interface`,
-`ebpf.cgroupPath`), and everything GPU-related (NCCL/CUDA uprobes, RDMA), which needs GPU or RDMA hardware. RDMA
-kprobes attach only where the driver exports those symbols. Attach results per node are at
-`GET :9090/api/v1/ebpf/status`. The operator, CRDs and CLI described below work on whichever source you use. With
-neither source the network graph, flows and security pages stay empty.
+**Collector.** A privileged, `hostNetwork`, `hostPID` DaemonSet in the `helm/network-intelligence` chart,
+disabled by default (`ebpf.enabled=false`). Its image (`gryvia-ebpf-collector`) is built in CI but is not among the release
+images. Its HTTP listener on `:9090` (`/metrics`, `/healthz`, `/api/v1/{graph,anomalies,gpu/nccl,gpu/memory,fabric,security/alerts,ai/training,ai/pipeline,tuning/tcp,ebpf/status}`)
+is unauthenticated, except `/api/v1/flight/diagnose`, which needs an HMAC token (`-flight-token-file`).
+
+**Operator.** The ten controllers are registered and unit-tested, but most of the data path is a stub:
+
+- `GryviaFlowPolicy`, `GryviaAutoPolicy` and the auto-mitigation of `GryviaNetworkAnomaly` create
+  **CiliumNetworkPolicy** objects, so those features need Cilium as the CNI. Nothing was verified on a Cilium cluster.
+- The Hubble gRPC and Prometheus (PromQL) queries are not implemented. `GryviaTrafficInsight` does not measure latency or
+  throughput, `GryviaTraceSession` manages its lifecycle and results ConfigMap but does not capture flows,
+  `GryviaServiceGraph` does not discover edges, and `GryviaNetworkAnomaly` sees empty metrics.
+- `GryviaSecurityPolicy`, `GryviaNetworkCost`, `GryviaTrainingInsight` and `GryviaInferenceInsight` read from the
+  collector over HTTP, but the operator uses a hard-coded base URL,
+  `http://gryvia-collector.gryvia-system.svc.cluster.local:9090`, and the chart creates no Service with that name (the
+  chart's Services are `<release>-collector-metrics` in the chart namespace, `gryvia-network` by default). Moreover the
+  operator asks for `/api/v1/health`, `/api/v1/network/costs` and `/api/v1/inference/latency`, which the collector does not
+  serve. Until both sides are aligned these resources stay in an "awaiting data" state. Only `/api/v1/security/alerts` and `/api/v1/ai/training` exist on
+  both sides.
+
+**Flow sources.** Real flows can also come from **[Netra](https://github.com/zyvorai/netra)**, the separate standalone eBPF
+network observability product: set `apiGateway.netra.url` (an address the gateway pod can reach; a `*.svc` name only works
+when Netra runs in the same cluster) and `apiGateway.netra.tokenSecret` in the `gryvia` chart, and
+`GET /api/network/flows` returns Netra flows. Netra has its own license; Gryvia only calls its HTTP API. With neither
+source the network graph, flows and security pages stay empty.
 :::
 
 ## Table of Contents
@@ -33,41 +52,43 @@ neither source the network graph, flows and security pages stay empty.
 
 ## Architecture
 
-Gryvia's network intelligence stack uses eBPF programs attached to kernel hooks to collect fine-grained telemetry without application modification. The data flows through four layers:
-
 ```
 +--------------------+     +------------------+     +-------------------+     +--------+
-|   eBPF Programs    | --> |  Flow Collector  | --> |     Operator      | --> |  CRDs  |
-| (kernel-attached)  |     | (per-node agent) |     | (control plane)   |     |        |
+|   eBPF Programs    | --> |    Collector     | --> |     Operator      | --> |  CRDs  |
+| (kernel-attached)  |     | (per-node agent) |     | (control plane)   |     | status |
 +--------------------+     +------------------+     +-------------------+     +--------+
         |                         |                         |                     |
-  Kernel hooks              Aggregates &              Reconciles CRDs,      User-facing
-  (TC, XDP, kprobe,        enriches flows            generates policies,    resources &
-   tracepoint, cgroup)     with pod metadata          detects anomalies     status
+  Kernel hooks              Reads maps, folds         Reconciles CRDs,      User-facing
+  (kprobe, tracepoint,      events, serves HTTP       creates Cilium        resources
+   uprobe, XDP, tcx,        on :9090                  policies
+   sockops)
 ```
 
-**eBPF Programs** run in the kernel on every node and capture packet, socket, syscall, and GPU-level events with low overhead by design. Overhead has not yet been measured; see the benchmark suite.
+**eBPF programs** run in the kernel on every node and capture socket, syscall, packet and GPU-library events. Their
+overhead has not been measured.
 
-**Flow Collector** is a per-node DaemonSet that reads eBPF map data, enriches flows with Kubernetes pod/service metadata, and exports to the operator.
+**Collector** (`collector/`) is a per-node DaemonSet that loads the compiled objects with cilium/ebpf, attaches them by
+section name, reads the maps and ring buffers, and serves metrics and JSON on `:9090`.
 
-**Operator** runs as a Deployment in the control plane. It reconciles network intelligence CRDs, correlates cross-node flows, detects anomalies, and generates or enforces network policies.
+**Operator** (`operators/network-intelligence`, chart `helm/network-intelligence`, not part of `helm/gryvia`) runs as a
+Deployment and reconciles the ten CRDs below.
 
-**CRDs** are the user-facing interface for configuring network policies, viewing traffic insights, running trace sessions, and managing security rules.
+**CRDs** are the user-facing interface. Their status fields are only as good as the data path described in the status box.
 
 ---
 
 ## eBPF Programs
 
-Gryvia ships 27 eBPF programs organized into seven categories. All programs are loaded and managed by the Flow Collector DaemonSet.
+Gryvia ships 30 eBPF programs (24 original programs in six categories, plus six fabric-signal programs). The collector
+loads them and attaches each by section name. Hook types below come from the `SEC()` annotations in `ebpf/*.c`.
 
 ### GPU Programs
 
 | Program | Hook Type | Description |
 |---------|-----------|-------------|
-| `nccl_trace` | uprobe | Traces NCCL collective operations (AllReduce, AllGather, Broadcast) with timing, message size, and ring/tree algorithm details. Identifies communication bottlenecks in distributed training. |
-| `gpu_mem_trace` | kprobe | Monitors GPU memory allocations and deallocations via the NVIDIA kernel driver. Detects memory leaks, fragmentation, and OOM patterns before they cause job failures. |
-| `rdma_trace` | tracepoint | Traces RDMA/InfiniBand verbs (post_send, post_recv, poll_cq) for RoCE and IB gryvias. Measures RDMA latency, throughput, and error rates per queue pair. |
-
+| `nccl_trace` | uprobe (`ncclAllReduce`, `ncclAllGather`, `ncclBroadcast`, `ncclReduce`, `ncclReduceScatter`, `ncclSend`, `ncclRecv`, group calls) | NCCL collective timing with per-operation histograms. |
+| `gpu_mem_trace` | uprobe (`cudaMemcpy`, `cudaMemcpyAsync`, `cudaMalloc`, `cudaFree`, `cudaLaunchKernel`, `cudaDeviceSynchronize`) | Direction-aware GPU memory transfer byte counters and allocation tracking in the CUDA runtime library. |
+| `rdma_trace` | kprobe (`ib_post_send`, `ib_post_recv`, `ib_poll_cq`), tracepoint (`rdma/rdma_create_qp`, `rdma/rdma_destroy_qp`) | Per-QP RDMA statistics and completion tracking. |
 ### Fabric Signal Programs
 
 Six programs feed the scheduler-facing fabric signals (`roce_cnp` keeps counters only). They are observe-only (nothing is dropped or modified) and
@@ -107,364 +128,209 @@ are grouped under `_unattributed` by process name.
 
 | Program | Hook Type | Description |
 |---------|-----------|-------------|
-| `container_escape` | kprobe | Detects container escape attempts by monitoring namespace changes, capability escalation, and suspicious mount operations. |
-| `crypto_detect` | kprobe | Identifies cryptocurrency mining by detecting specific instruction patterns and connections to known mining pools. |
-| `exfil_detect` | TC | Detects data exfiltration patterns including large outbound transfers, DNS tunneling, and connections to suspicious external destinations. |
-| `privesc_monitor` | kprobe | Monitors privilege escalation attempts including setuid calls, capability changes, and kernel module loading from containers. |
-| `driver_fim` | kprobe | File integrity monitoring for GPU driver files and kernel modules. Alerts on unauthorized modifications to critical driver components. |
+| `container_escape` | raw_tracepoint (`sys_enter`), kprobe (`security_file_open`) | Flags suspicious syscalls (unshare, setns and similar) and sensitive file access from containers. |
+| `crypto_detect` | kprobe (`tcp_v4_connect`), tracepoint (`sched/sched_process_exec`) | Flags outbound connections to mining-pool ports and known miner executables. |
+| `exfil_detect` | kprobe (`tcp_sendmsg`, `tcp_v4_connect`) | Tracks outbound bytes per (PID, destination) over a window and flags volumes above a threshold. |
+| `privesc_monitor` | raw_tracepoint (`sys_enter`), kprobe (`commit_creds`) | Flags UID/GID transitions to root, credential changes and capability acquisition. |
+| `driver_fim` | kprobe (`security_file_open`), raw_tracepoint (`sys_enter`) | Watches write access to NVIDIA driver files and CUDA libraries, and kernel module loading. |
 
 ### Performance Programs
 
 | Program | Hook Type | Description |
 |---------|-----------|-------------|
-| `tcp_tuning` | sockops | Dynamically tunes TCP parameters (buffer sizes, congestion control, window scaling) per connection based on observed traffic patterns. |
-| `connpool_analyze` | kprobe | Analyzes connection pooling behavior to detect connection storms, idle connection waste, and suboptimal pool sizing. |
-| `numa_path` | tracepoint | Tracks NUMA-aware memory access patterns and identifies cross-NUMA traffic that degrades GPU-to-GPU communication. |
-| `sockops_optimize` | sockops | Accelerates local pod-to-pod communication by short-circuiting the TCP stack for connections within the same node. |
+| `tcp_tuning` | tracepoint (`tcp/tcp_probe`) | Collects per-connection cwnd, RTT and receive-window samples for **recommendations** (`GET /api/v1/tuning/tcp`). It does not change any TCP parameter. |
+| `connpool_analyze` | kprobe / kretprobe (`tcp_v4_connect`), kprobe (`tcp_close`) | Tracks connection lifecycles to spot short-lived connections and connection storms. |
+| `numa_path` | tracepoint (`net/netif_receive_skb`), kprobe (`__napi_poll`) | Correlates the CPU handling each packet with NUMA topology to detect cross-NUMA packet processing. |
+| `sockops_optimize` | sockops, sk_msg | Detects same-node connections and redirects their traffic with `bpf_msg_redirect_hash`, bypassing the TCP stack. Attached only with `-cgroup-path`. |
 
 ### Observability Programs
 
 | Program | Hook Type | Description |
 |---------|-----------|-------------|
-| `trace_correlator` | kprobe | Correlates distributed traces across pods by extracting and propagating trace context (W3C Trace Context, B3) from network packets. |
-| `latency_breakdown` | kprobe/TC | Decomposes end-to-end latency into kernel, network, and application components. Identifies which layer contributes most to tail latency. |
-| `cost_tracker` | TC | Tracks per-flow byte counts and maps them to cost attribution. Enables accurate network cost allocation per team, job, and service. |
-| `fingerprint` | TC | Generates traffic fingerprints for services based on packet size distributions, timing patterns, and protocol usage. Used for anomaly detection baselines. |
+| `trace_correlator` | tcx/ingress | Extracts W3C `traceparent` trace and span IDs from incoming HTTP headers. Needs Linux 6.6+ and `-iface`. |
+| `latency_breakdown` | kprobe / kretprobe (`udp_sendmsg`, `tcp_v4_connect`, `inet_stream_connect`, `tls_sw_sendmsg`, `tcp_sendmsg`, `tcp_recvmsg`) | Splits request latency into DNS, TCP handshake, TLS handshake and application phases. |
+| `cost_tracker` | tcx/egress, tcx/ingress | Per-pod byte counters classified as same-zone, cross-zone or external. Needs Linux 6.6+ and `-iface`. |
+| `fingerprint` | raw_tracepoint (`sys_enter`), kprobe (`tcp_v4_connect`) | Builds per-process behavioural feature vectors (syscall frequency, connection patterns) as an anomaly baseline. |
 
 ### AI-Specific Programs
 
 | Program | Hook Type | Description |
 |---------|-----------|-------------|
-| `training_pattern` | uprobe/TC | Analyzes distributed training communication patterns to identify synchronization barriers, straggler nodes, and gradient aggregation inefficiencies. |
-| `datapipe_bottleneck` | kprobe | Detects data pipeline bottlenecks by monitoring data loader throughput, storage I/O patterns, and prefetch queue depths. |
-| `gradient_compress` | TC | Monitors gradient compression ratios and communication volume in distributed training. Identifies opportunities for gradient compression optimization. |
+| `training_pattern` | uprobe (`ncclAllReduce`), kprobe (`tcp_sendmsg`, `tcp_recvmsg`) | Builds a rank communication matrix and compute/communication cycle view for training jobs. |
+| `datapipe_bottleneck` | tracepoint (`block/block_rq_complete`), kprobe (`tcp_recvmsg`), uprobe (`cudaLaunchKernel`, `cudaDeviceSynchronize`) | Correlates storage I/O, network ingestion and GPU busy/idle phases. |
+| `gradient_compress` | uprobe (`ncclAllReduce`) | Compares expected and actual bytes per collective to estimate a compression ratio. |
 
 ### Core Programs
 
 | Program | Hook Type | Description |
 |---------|-----------|-------------|
-| `tcp_trace` | kprobe | Core TCP flow tracing with connection state tracking, retransmit monitoring, and per-flow byte/packet counters. |
-| `packet_filter` | XDP | High-performance packet filtering at the XDP layer for early-drop of unauthorized traffic. Used by GryviaFlowPolicy enforcement. |
-| `latency_probe` | TC | Measures per-packet network latency using kernel timestamps. Provides P50/P90/P99 latency distributions per flow. |
-| `syscall_monitor` | tracepoint | Monitors network-related syscalls (connect, accept, sendmsg, recvmsg) with per-container attribution. |
-| `dns_tracker` | TC | Tracks DNS queries and responses with latency. Detects DNS-based service discovery issues and resolution failures. |
+| `tcp_trace` | kprobe (`tcp_v4_connect`, `inet_csk_accept`, `tcp_close`, `tcp_retransmit_skb`) | TCP connection lifecycle: establishment latency, bytes, retransmits. This is the program behind the decoded real TCP flows. |
+| `packet_filter` | XDP | Filters against a dynamically updatable blocklist in BPF maps, with per-rule hit counters. Attached only with `-iface`. Nothing in the operator programs the blocklist yet. |
+| `latency_probe` | kprobe (`tcp_sendmsg`, `tcp_recvmsg`) | Per-connection latency with histogram buckets. |
+| `syscall_monitor` | raw_tracepoint (`sys_enter`) | Tracks which processes call `connect`, `sendto`, `recvfrom`; flags first-time network activity. |
+| `dns_tracker` | XDP | Passive DNS query/response correlation, resolution latency, NXDOMAIN/SERVFAIL counts. Attached only with `-iface`. |
 
 ---
 
 ## CRDs
 
+All ten kinds are `gryvia.io/v1alpha1` and have a registered controller in the `network-intelligence` operator. The
+manifests below are validated against `crds/`; the fields shown are the complete useful surface of each spec. See
+`examples/network-intelligence/` for more and [reference/crds.md](../reference/crds.md) for the generated schema reference.
+
 ### GryviaFlowPolicy
 
-Intent-based network policies that describe allowed traffic using high-level semantics rather than raw IP/port rules.
+Intent-based flow policy. The controller translates it into a CiliumNetworkPolicy named `ffp-<name>` (needs Cilium).
+`intent` is one of `low-latency`, `high-throughput`, `secure`, `default`.
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaFlowPolicy
 metadata:
-  name: training-data-access
-  namespace: ml-research
+  name: payment-to-db
+  namespace: production
 spec:
-  # Intent-based policy definition
-  intent: allow
-  description: "Allow training jobs to access data lake and model registry"
-
-  # Source selector
   source:
-    matchLabels:
-      app: training-job
-      team: ml-research
-
-  # Destination rules
+    service: payment-service
+    namespace: production
+    labels:
+      app: payment
   destination:
-    - service: data-lake
-      namespace: storage
-      ports: [8080, 443]
-      protocol: TCP
-
-    - service: model-registry
-      namespace: ml-platform
-      ports: [443]
-      protocol: TCP
-
-  # Traffic shaping
-  rateLimit:
-    requestsPerSecond: 10000
-    burstSize: 5000
-
-  # Logging
-  logging:
-    enabled: true
-    sampleRate: 100   # Log 1 in 100 flows
-
-  # Enforcement mode
-  enforcement: enforce   # audit | enforce
+    service: postgres-primary
+    namespace: production
+    port: 5432
+    labels:
+      app: postgres
+  protocol: tcp
+  action: allow
+  intent: low-latency
+  priority: 100
 ```
 
 ### GryviaTrafficInsight
 
-Per-service traffic metrics aggregated from eBPF flow data.
+Declares a service and a rolling window to analyse, with the metrics of interest (`latency`, `throughput`, `drops`,
+`retransmits`). The controller requeues every `window` and would fill latency, throughput and top-talker status, but the
+Prometheus/Hubble queries it relies on are not implemented, so no measurements are produced today.
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaTrafficInsight
 metadata:
-  name: training-cluster-insight
-  namespace: ml-research
+  name: payment-traffic-analysis
+  namespace: production
 spec:
-  # Target service or workload
-  target:
-    kind: Deployment
-    name: training-coordinator
-    namespace: ml-research
-
-  # Metrics collection interval
-  interval: 30s
-
-  # Metrics to collect
+  service: payment-service
+  namespace: production
+  window: "5m"
   metrics:
-    - bytesIn
-    - bytesOut
-    - packetsIn
-    - packetsOut
-    - connections
-    - latencyP50
-    - latencyP99
+    - latency
+    - throughput
+    - drops
     - retransmits
-    - dnsLatency
-
-  # Retention period
-  retention: 7d
-
-status:
-  lastUpdated: "2024-01-15T12:30:00Z"
-  metrics:
-    bytesIn: 1.2Ti
-    bytesOut: 856Gi
-    connections: 45230
-    latencyP50ms: 0.8
-    latencyP99ms: 12.5
-    retransmitRate: 0.02%
-  topSources:
-    - service: data-loader
-      bytesOut: 800Gi
-    - service: gradient-aggregator
-      bytesOut: 56Gi
-  topDestinations:
-    - service: parameter-server
-      bytesIn: 1.1Ti
 ```
 
 ### GryviaAutoPolicy
 
-Self-healing firewall that learns traffic patterns and generates or enforces network policies automatically.
+Learn / suggest / enforce state machine for generated policies. `enforce` creates CiliumNetworkPolicy objects from stored
+suggestions, gated by `approvalRequired`. The learning step is a stub (no Hubble connection), so no traffic is learned
+today; treat the state handling as the only real part.
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaAutoPolicy
 metadata:
-  name: ml-namespace-autopolicy
-  namespace: ml-research
+  name: production-auto-firewall
+  namespace: gryvia-system
 spec:
-  # Operating mode
-  # learn: Observe traffic and build baseline (no enforcement)
-  # suggest: Generate policy recommendations for review
-  # enforce: Automatically apply learned policies
-  mode: suggest
-
-  # Scope
-  scope:
-    namespaces: [ml-research, ml-staging]
-
-  # Learning configuration
-  learning:
-    duration: 7d
-    minConfidence: 0.95
-    excludePorts: [53, 443]   # Don't restrict DNS and HTTPS
-
-  # Policy generation
-  policyGeneration:
-    defaultDeny: true
-    granularity: service      # service | pod | namespace
-    mergeThreshold: 0.8       # Merge similar rules above this similarity
-
-  # Notifications
-  notifications:
-    slack: "#ml-security"
-    onNewPolicy: true
-    onBlockedTraffic: true
-
-status:
-  phase: Suggesting
-  learnedFlows: 12450
-  generatedPolicies: 23
-  lastSuggestion: "2024-01-15T12:00:00Z"
-  suggestions:
-    - name: allow-training-to-datastore
-      confidence: 0.98
-      description: "Training pods regularly access datastore on port 6379"
+  mode: learn
+  learningWindow: "10m"
+  targetNamespaces:
+    - production
+    - staging
+  excludeServices:
+    - kube-dns
+    - metrics-server
+  approvalRequired: true
 ```
 
 ### GryviaTraceSession
 
-On-demand network debugging sessions for troubleshooting connectivity and performance issues.
+Time-limited debugging session. The controller creates a results ConfigMap, marks the session `active` and completes it
+when `duration` expires. `level` is `l3`, `l4` or `l7`. Flow capture from Hubble is not implemented, so the ConfigMap
+holds no captured flows.
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaTraceSession
 metadata:
-  name: debug-training-latency
-  namespace: ml-research
+  name: debug-payment-latency
+  namespace: production
 spec:
-  # Trace target
-  target:
-    pod: training-worker-0
-    namespace: ml-research
-
-  # Capture filters
+  service: payment-service
+  namespace: production
+  duration: "2m"
+  level: l7
+  captureHeaders: true
   filters:
-    - protocol: TCP
-      destPort: 29500      # PyTorch distributed port
-    - protocol: TCP
-      destPort: 2049       # NFS
-
-  # Capture duration
-  duration: 5m
-
-  # Packet capture settings
-  capture:
-    maxPackets: 100000
-    snapLength: 256        # Bytes per packet to capture
-    includePayload: false
-
-  # Analysis options
-  analysis:
-    latencyBreakdown: true
-    retransmitAnalysis: true
-    flowCorrelation: true
-
-status:
-  phase: Completed
-  startTime: "2024-01-15T12:00:00Z"
-  endTime: "2024-01-15T12:05:00Z"
-  capturedPackets: 45230
-  results:
-    avgLatency: 2.3ms
-    p99Latency: 15.8ms
-    retransmitRate: 0.5%
-    findings:
-      - severity: warning
-        message: "High retransmit rate on NFS connections from training-worker-0 to nfs-server"
-        recommendation: "Check NFS server disk I/O and network MTU settings"
+    port: 8080
+    protocol: tcp
 ```
 
 ### GryviaServiceGraph
 
-Service dependency visualization generated from observed network traffic.
+Service dependency graph over a set of namespaces, refreshed every `refreshInterval`. Edge discovery is not implemented;
+existing status edges are preserved. The gateway's `GET /api/network/flows` falls back to these edges when Netra is not
+configured.
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaServiceGraph
 metadata:
-  name: ml-platform-graph
+  name: production-graph
+  namespace: production
 spec:
-  # Scope
-  namespaces: [ml-research, ml-platform, storage]
-
-  # Discovery settings
-  discovery:
-    includeExternal: true
-    protocol: true          # Include protocol-level details
-    refreshInterval: 5m
-
-  # Display options
-  layout: hierarchical
-  groupBy: namespace
-
-status:
-  lastUpdated: "2024-01-15T12:30:00Z"
-  services: 24
-  edges: 67
-  externalEndpoints: 5
-  graph:
-    nodes:
-      - name: training-coordinator
-        namespace: ml-research
-        type: Deployment
-        replicas: 1
-      - name: data-lake
-        namespace: storage
-        type: StatefulSet
-        replicas: 3
-    edges:
-      - source: training-coordinator
-        destination: data-lake
-        protocol: TCP
-        port: 8080
-        bytesPerSecond: 125000000
-        requestsPerSecond: 450
+  namespaces:
+    - production
+    - production-data
+  refreshInterval: "30s"
+  includeExternal: true
+  depth: 5
 ```
 
 ### GryviaNetworkAnomaly
 
-Anomaly detection rules and alerts for network traffic patterns.
+Threshold rules on a service. Metrics come from Prometheus in design; today the metric source is empty, so rules do not
+fire. What is real: the webhook call and, with `autoMitigate`, a temporary deny CiliumNetworkPolicy for critical/high
+anomalies that expires after 15 minutes.
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaNetworkAnomaly
 metadata:
-  name: training-anomaly-detector
-  namespace: ml-research
+  name: payment-anomaly-detector
+  namespace: production
 spec:
-  # Detection scope
-  scope:
-    namespaces: [ml-research]
-
-  # Detection rules
-  rules:
-    - name: traffic-spike
-      type: volumeAnomaly
-      baseline: 7d
-      threshold: 3.0         # Standard deviations from baseline
-      severity: warning
-
-    - name: new-external-connection
-      type: newDestination
-      scope: external
-      severity: critical
-      action: alert
-
-    - name: latency-degradation
-      type: latencyAnomaly
-      metric: p99
-      baseline: 24h
-      threshold: 2.0
-      severity: warning
-
-    - name: connection-storm
-      type: connectionRate
-      maxNewConnections: 1000
-      window: 1m
-      severity: critical
-
-  # Alerting
-  alerts:
-    slack: "#ml-security"
-    email: ml-team@example.com
-    webhook: https://pagerduty.example.com/webhook
-
-status:
-  activeAnomalies: 2
-  anomalies:
-    - rule: latency-degradation
-      detected: "2024-01-15T11:45:00Z"
-      severity: warning
-      description: "P99 latency for training-coordinator increased from 5ms to 18ms"
-      affectedPods: [training-worker-0, training-worker-3]
+  targetService: payment-service
+  detectionRules:
+    - metric: latency
+      operator: gt
+      threshold: 100
+      window: "5m"
+    - metric: drops
+      operator: gt
+      threshold: 100
+      window: "1m"
+  alertWebhook: "https://alerts.example.com/network-anomaly"
+  autoMitigate: true
 ```
 
 ### GryviaSecurityPolicy
 
-Security detection rules for identifying threats and policy violations.
+Selects which detections (`type`: `escape`, `mining`, `exfiltration`, `privesc`, `driver_fim`; `sensitivity`: `low`,
+`medium`, `high`) apply to which namespaces. The controller polls the collector's `/api/v1/security/alerts`, counts alerts
+per type into `status.detectionCounts` (which `gryvia security alerts` reads), sends the webhook, and with `autoBlock`
+creates temporary CiliumNetworkPolicy blocks. It is subject to the collector URL mismatch described in the status box.
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
@@ -473,102 +339,60 @@ metadata:
   name: gpu-cluster-security
   namespace: gryvia-system
 spec:
-  # Detection rules
-  rules:
-    - name: crypto-mining-detection
-      program: crypto_detect
+  targetNamespaces:
+    - ml-research
+  detectionRules:
+    - type: mining
       enabled: true
-      action: block
-      severity: critical
-      alert: true
-
-    - name: container-escape-detection
-      program: container_escape
+      sensitivity: high
+    - type: escape
       enabled: true
-      action: alert
-      severity: critical
-
-    - name: data-exfiltration
-      program: exfil_detect
+      sensitivity: high
+    - type: exfiltration
       enabled: true
-      action: alert
-      severity: high
-      config:
-        maxOutboundMB: 1000    # Alert on large outbound transfers
-        suspiciousDomains: true
-        dnsExfiltration: true
-
-    - name: privilege-escalation
-      program: privesc_monitor
+      sensitivity: medium
+    - type: privesc
       enabled: true
-      action: block
-      severity: critical
-
-    - name: driver-integrity
-      program: driver_fim
+    - type: driver_fim
       enabled: true
-      action: alert
-      severity: high
-      config:
-        paths:
-          - /usr/lib/x86_64-linux-gnu/libnvidia-*
-          - /usr/lib/modules/*/nvidia*
-
-  # Global alert configuration
-  alerting:
-    slack: "#security-alerts"
-    pagerduty:
-      serviceKey: "abc123"
-      severity: critical
+  autoBlock: false
+  alertWebhook: "https://alerts.example.com/security"
 ```
 
 ### GryviaNetworkCost
 
-Network cost attribution per team, job, and service.
+Per-namespace network cost reports from same-zone, cross-zone and external byte counters, priced with `costPerGB` and
+attributed with `costCenters`. Reports are appended to `status.reports` every `reportingInterval` (default 1h). The
+byte counters would come from the collector's `cost_tracker` program, but the operator asks for
+`/api/v1/network/costs`, which the collector does not serve, so reports are empty today. The rates below are
+placeholders, not real prices.
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaNetworkCost
 metadata:
   name: monthly-network-costs
+  namespace: gryvia-system
 spec:
-  # Reporting period
-  period:
-    type: monthly
-
-  # Cost rates
-  rates:
-    intraNode: 0.00          # Free within a node
-    intraCluster: 0.01       # $0.01/GB within cluster
-    crossZone: 0.02          # $0.02/GB cross-zone
-    internet: 0.09           # $0.09/GB to internet
-    rdma: 0.005              # $0.005/GB RDMA traffic
-
-  # Scope
-  scope:
-    groupBy: [team, job, namespace]
-
-status:
-  lastCalculated: "2024-01-15T00:00:00Z"
-  totalCost: 1234.56
-  breakdown:
-    byTeam:
-      - team: ml-research
-        cost: 890.12
-        trafficGB: 45230
-      - team: ml-production
-        cost: 344.44
-        trafficGB: 12340
-    byType:
-      intraCluster: 452.30
-      crossZone: 246.80
-      internet: 111.06
-      rdma: 424.40
+  targetNamespaces:
+    - ml-research
+  reportingInterval: "1h"
+  costPerGB:
+    sameZone: 0.0
+    crossZone: 0.01
+    internetEgress: 0.09
+  costCenters:
+    - namespace: ml-research
+      team: ml-research
+      costCenter: cc-1001
 ```
 
 ### GryviaTrainingInsight
 
-AI training-specific network analysis for distributed training jobs.
+NCCL analysis for one `GryviaAIJob`. The controller reads `/api/v1/ai/training?job=<targetJob>` from the collector (an
+endpoint both sides have), then fills `status.rankStats`, `stragglers`, `commPattern`, `commComputeRatio` and a
+`bottleneck` verdict; `phase` is `AwaitingData` until ranks are reported. The straggler and bottleneck rules are simple
+heuristics on that data. Nothing here has run against a real NCCL job.
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
@@ -577,46 +401,21 @@ metadata:
   name: llm-training-insight
   namespace: ml-research
 spec:
-  # Target training job
-  jobRef:
-    name: llm-distributed-training
-    namespace: ml-research
-
-  # Analysis options
-  analysis:
-    ncclProfiling: true
-    stragglerDetection: true
-    gradientAnalysis: true
-    communicationPattern: true
-
-status:
-  lastUpdated: "2024-01-15T12:30:00Z"
-  workers: 8
-  communicationPattern: ring-allreduce
-  ncclMetrics:
-    allReduceTimeMs: 12.5
-    allGatherTimeMs: 8.3
-    broadcastTimeMs: 2.1
-    totalCommTimePercent: 18.5
-  stragglers:
-    - worker: training-worker-3
-      avgIterationMs: 245
-      clusterAvgMs: 220
-      delta: 11.4%
-      cause: "Cross-NUMA GPU memory access"
-  gradientMetrics:
-    avgGradientSizeMB: 125
-    compressionRatio: 1.0
-    recommendation: "Enable gradient compression for 2.3x communication speedup"
-  bottleneck:
-    type: communication
-    component: allreduce
-    recommendation: "Switch to hierarchical allreduce for 8+ node jobs"
+  targetJob: llm-distributed-training
+  analysisWindow: "5m"
+  metrics:
+    - collective_timing
+    - straggler_detection
+    - communication_ratio
+    - pattern_analysis
 ```
 
 ### GryviaInferenceInsight
 
-Serving latency breakdown and optimization analysis for inference services.
+Latency breakdown for an inference service (`status.latencyBreakdown`: DNS, TCP connect, TLS handshake, GPU queue, GPU
+execution, postprocess; `p50/p95/p99TotalNs`; `bottleneck`). The controller asks the collector for
+`/api/v1/inference/latency`, which the collector does not serve, so the status stays empty today. The `infer_latency`
+program measures only accept-to-first-read wait, not this full breakdown.
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
@@ -625,176 +424,91 @@ metadata:
   name: llm-serving-insight
   namespace: ml-production
 spec:
-  # Target inference service
-  serviceRef:
-    name: llama-3-serving
-    namespace: ml-production
-
-  # Analysis options
-  analysis:
-    latencyBreakdown: true
-    batchingAnalysis: true
-    cacheAnalysis: true
-    throughputProfiling: true
-
-status:
-  lastUpdated: "2024-01-15T12:30:00Z"
-  requestsPerSecond: 450
-  latency:
-    total:
-      p50ms: 35
-      p90ms: 62
-      p99ms: 95
-    breakdown:
-      networkIngress: 1.2ms
-      queueWait: 5.3ms
-      tokenization: 2.1ms
-      inference: 24.5ms
-      detokenization: 0.8ms
-      networkEgress: 1.1ms
-  batching:
-    avgBatchSize: 12
-    maxBatchSize: 64
-    batchUtilization: 18.7%
-    recommendation: "Increase max_batch_wait to 10ms to improve batch utilization to ~45%"
-  kvCache:
-    hitRate: 78.5%
-    memoryUsedGB: 24.3
-    evictions: 1250
-  throughput:
-    tokensPerSecond: 12500
-    peakTokensPerSecond: 18200
+  targetService: llama-serving
+  analysisWindow: "5m"
 ```
+
+### GryviaFabricSignal
+
+The CRD exists for scheduler-facing fabric signals (see the fabric programs above), but no controller fills it and it is
+not part of the operator's ten kinds.
 
 ---
 
 ## CLI Commands
 
+The CLI reads Kubernetes objects with your kubeconfig; it does not call the collector or the gateway. That determines what
+each command can show:
+
+| Command | Reads | Note |
+|---------|-------|------|
+| `gryvia network flows`, `graph`, `trace --follow` | `GryviaFlow` objects (labelled `gryvia.io/service`) | There is **no `GryviaFlow` CRD** in `crds/` and nothing creates such objects, so these print a warning or an empty result on a stock install. |
+| `gryvia network trace` | creates a `GryviaTraceSession` | See the trace caveats above. |
+| `gryvia network policy list/suggest/apply` | `GryviaFlowPolicy` / `GryviaAutoPolicy` | Works on whatever the operator stores. |
+| `gryvia network anomalies`, `status` | `GryviaNetworkAnomaly` and related objects | Empty until anomalies are produced. |
+| `gryvia security alerts/status/policy` | `GryviaSecurityPolicy` (`status.detectionCounts`) | Depends on the collector data path. |
+| `gryvia gpu nccl`, `training` | `GryviaTrainingInsight` | Needs an insight object for the job. |
+| `gryvia gpu memory`, `rdma` | `GryviaGpuNode` / placeholder | Print a hint or placeholder values; they do not query the collector. |
+
+For real flows in a browser, use the dashboard with Netra configured (`GET /api/network/flows`). See the
+[CLI guide](./CLI_GUIDE.md) for every flag.
+
 ### Network Tracing
 
-Traces target a service. Use `--level` to choose the capture depth (`l3`, `l4`, `l7`; default `l7`).
-
 ```bash
-# Start a trace of a service for 5 minutes
 gryvia network trace training-worker --duration 5m --trace-namespace ml-research
-
-# Trace at L4 only (TCP/UDP, no payload parsing) for 2 minutes
 gryvia network trace training-worker --level l4 --duration 2m --trace-namespace ml-research
-
-# Follow a live trace
 gryvia network trace training-worker --follow --trace-namespace ml-research
 
-# View trace sessions and their results
 kubectl get gryviatracesessions -n ml-research
-kubectl get gryviatracesession debug-training-latency -n ml-research -o yaml
 ```
 
-### Flow Analysis
+### Flow Analysis and Service Graph
 
 ```bash
-# View recent flows in a namespace
 gryvia network flows --flow-namespace ml-research
-
-# Flows for a specific service over the last hour
 gryvia network flows --service training-worker --flow-namespace ml-research --last 1h
-
-# Export flows as JSON
 gryvia network flows --flow-namespace ml-research --output json
-```
 
-### Service Graph
-
-```bash
-# View service dependency graph (ASCII)
 gryvia network graph --graph-namespace ml-research
-
-# Export the graph as JSON
 gryvia network graph --graph-namespace ml-research --format json > graph.json
 ```
 
 ### Policy Management
 
 ```bash
-# List active flow policies
 gryvia network policy list --policy-namespace ml-research
-
-# Apply a flow policy from a manifest
-kubectl apply -f flow-policy.yaml
-
-# View autopolicy suggestions
 gryvia network policy suggest --policy-namespace ml-research
-
-# Accept (apply) an autopolicy suggestion
 gryvia network policy apply suggestion-name --policy-namespace ml-research
+
+# Flow policies and security policies are ordinary manifests
+kubectl apply -f flow-policy.yaml
 ```
 
-To evaluate a policy without enforcing it, set the policy's mode in its manifest (for a
-GryviaAutoPolicy, `learn` or `suggest`) instead of `enforce`.
+To evaluate a policy without enforcing it, set a GryviaAutoPolicy's `mode` to `learn` or `suggest` instead of `enforce`.
 
-### Anomaly Detection
+### Anomalies and Security
 
 ```bash
-# View active anomalies
 gryvia network anomalies --anomaly-namespace ml-research
-
-# Filter by severity
 gryvia network anomalies --severity critical --anomaly-namespace ml-research
-
-# Filter by service
 gryvia network anomalies --service training-worker --anomaly-namespace ml-research
 
-# View the full detail of one anomaly
-kubectl get gryvianetworkanomaly latency-degradation -n ml-research -o yaml
-```
-
-### Security
-
-```bash
-# View security alerts
 gryvia security alerts --security-namespace ml-research
-
-# Filter by severity
 gryvia security alerts --severity critical --security-namespace ml-research
-
-# Filter by alert type (escape, mining, exfiltration, privesc)
 gryvia security alerts --alert-type mining --security-namespace ml-research
-
-# View security status
 gryvia security status
-
-# List security policies
 gryvia security policy list --security-namespace ml-research
-
-# Create a security policy
-gryvia security policy create gpu-hardening \
-  --namespaces ml-research \
-  --rules escape,mining,exfiltration,privesc \
-  --auto-block
-
-# Or apply a security policy from a manifest
-kubectl apply -f security-policy.yaml
 ```
 
 ### GPU Network Analysis
 
 ```bash
-# View NCCL communication metrics
 gryvia gpu nccl --job llm-distributed-training
-
-# View GPU memory transfer stats for a node
 gryvia gpu memory --node gpu-node-01
-
-# View RDMA statistics
 gryvia gpu rdma --node gpu-node-01
-
-# Training communication analysis
 gryvia gpu training --job llm-distributed-training
-```
 
-Straggler detection and gradient compression analysis are reported in the GryviaTrainingInsight
-resource for the job:
-
-```bash
 kubectl get gryviatraininginsights -n ml-research
 ```
 
@@ -804,63 +518,52 @@ kubectl get gryviatraininginsights -n ml-research
 
 ### Prerequisites
 
-- Linux kernel 5.10+ (for full eBPF feature support)
-- BTF (BPF Type Format) enabled in kernel (`CONFIG_DEBUG_INFO_BTF=y`)
-- CAP_BPF and CAP_SYS_ADMIN for the Flow Collector DaemonSet
-- NVIDIA GPU drivers for GPU-specific eBPF programs
+- A node kernel with BTF (`/sys/kernel/btf/vmlinux`, `CONFIG_DEBUG_INFO_BTF=y`; standard on Ubuntu 22.04+, RHEL 9, Debian 12+); Linux 6.6+ for the `tcx` programs.
+- A privileged DaemonSet is acceptable in your cluster (the collector runs as root, `hostNetwork`, `hostPID`).
+- Cilium as the CNI, for the CiliumNetworkPolicy-based features (FlowPolicy, AutoPolicy enforce, anomaly and security blocking).
+- NVIDIA drivers and the NCCL/CUDA libraries visible to the collector for the GPU uprobes (`ebpf.ncclLib`, `ebpf.cudaLib`).
 
-### Install Flow Collector
+### Install the Operator and Collector
 
-The Flow Collector is deployed as a DaemonSet on every node. The `gryvia` CLI has no installer for it,
-and no collector image is published yet (see the note at the top of this page). Once a collector is
-deployed, verify it with:
+The chart is `helm/network-intelligence`; it is separate from `helm/gryvia`. The operator is always installed; the
+collector DaemonSet only with `ebpf.enabled=true`:
 
 ```bash
-kubectl get daemonset -n gryvia-system flow-collector
-kubectl get pods -n gryvia-system -l app=flow-collector
+helm install network-intelligence ./helm/network-intelligence \
+  --set ebpf.enabled=true \
+  --set ebpf.interface=eth0
 ```
 
-### Verify eBPF Programs
+Relevant values (see `helm/network-intelligence/values.yaml`): `operator.*`, `collector.*`, `ebpf.enabled`,
+`ebpf.interface` (XDP/tcx attach), `ebpf.cgroupPath` (sockops), `ebpf.ncclLib` / `ebpf.cudaLib`,
+`ebpf.flightTokenSecret` (Flight Recorder token), `prometheus.serviceMonitor.*`, `namespace.name` (default
+`gryvia-network`). The collector image is not published with releases; build it yourself (`collector/Dockerfile`) and set
+`collector.image.repository` and `collector.image.tag`.
+
+### Verify
 
 ```bash
-# Check network health, including the collector
-gryvia network status --status-namespace ml-research
+kubectl get pods -n gryvia-network
+kubectl logs -n gryvia-network -l app.kubernetes.io/component=collector --tail 100
 
-# Check the collector pods for eBPF program load errors
-kubectl logs -n gryvia-system -l app=flow-collector --tail 100
+# per-node attach results (from a pod that can reach the node, or kubectl port-forward)
+curl -s http://<node-ip>:9090/api/v1/ebpf/status
 ```
 
 ---
 
 ## Best Practices
 
-### Performance
-
-- Start with core programs (`tcp_trace`, `latency_probe`, `dns_tracker`) and add specialized programs as needed.
-- Use `sampleRate` in GryviaFlowPolicy logging to reduce overhead on high-throughput flows.
-- Set appropriate `retention` periods on GryviaTrafficInsight to control storage usage.
-
-### Security
-
-- Begin with GryviaAutoPolicy in `learn` mode for at least 7 days before switching to `suggest` or `enforce`.
-- Enable `container_escape` and `privesc_monitor` on all GPU nodes.
-- Review auto-policy suggestions before accepting, especially in multi-tenant clusters.
-
-### Troubleshooting
-
-- Use GryviaTraceSession for targeted debugging rather than enabling cluster-wide capture.
-- Check GryviaTrainingInsight for straggler detection when distributed training performance degrades.
-- Review GryviaInferenceInsight latency breakdown to identify which layer (network, queue, compute) is causing tail latency.
+- Start with the core programs (`tcp_trace`, `latency_probe`, `dns_tracker`); the GPU programs need the NCCL/CUDA library paths and hardware.
+- Keep `ebpf.enabled=false` on clusters where a privileged, hostPID DaemonSet is not acceptable, and use Netra for flows instead.
+- Keep `autoBlock` and `autoMitigate` off until you have confirmed on a test cluster that the resulting CiliumNetworkPolicy objects match your intent.
+- Use `learn` or `suggest` modes for GryviaAutoPolicy and review suggestions before accepting them, especially in multi-tenant clusters.
+- Use GryviaTraceSession for targeted debugging rather than cluster-wide capture (once flow capture is implemented).
+- Treat all thresholds in the programs (2x straggler ratio, 0.3 overlap idle ratio, 100 CNP per second) as uncalibrated heuristics.
 
 ---
 
 ## Support
 
-- **Documentation**: https://gryvia.io/docs
 - **Issues**: https://github.com/zyvorai/gryvia/issues
 - **Discussions**: https://github.com/zyvorai/gryvia/discussions
-- **Slack**: #gryvia-users
-
----
-
-*Gryvia - Enterprise GPU Infrastructure Management*

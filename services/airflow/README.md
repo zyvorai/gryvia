@@ -1,5 +1,7 @@
 # Apache Airflow Integration
 
+> **Status: design/integration sketch, not implemented in this repo.** This directory holds only this README and `integration.yaml` (example manifests). No Airflow operator, provider package or DAG code ships here, and the manifests are not part of the Helm chart. Nothing below has been tested against a real Airflow deployment. The pattern it describes (an Airflow task creating a `GryviaAIJob` with the Kubernetes API) is plausible with the CRD that does exist, but treat all code as illustrative.
+
 Orchestrate ML data pipelines with Apache Airflow and Gryvia.
 
 ## Overview

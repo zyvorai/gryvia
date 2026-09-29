@@ -4,12 +4,14 @@ React dashboard for the Gryvia GPU orchestration platform. The look follows the 
 its stylesheets are copied verbatim into `src/styles/netra*.css` (do not hand-edit them) and Gryvia-specific
 additions live in `src/styles/gryvia.css`. Light or dark follows the system setting and can be toggled.
 
+> **Status.** The dashboard is exercised against the kind demo (`scripts/kind-demo.sh`, fictional data) in CI, and has component tests. Pages for Workspaces, Models, Inference, Workflows and Tuner create, list and delete the matching custom resources through the gateway, but no operator reconciles those kinds yet, so creating one does not start any work. Network, security and GPU-communication pages depend on collectors and Hubble/Prometheus paths that are not fully implemented and are often empty. Dashboard figures on real GPU hardware are unverified.
+
 ## Features
 
 - **Dashboard** - cluster stats, GPU utilization, job pipeline, links into the pages behind each number
 - **Jobs** - searchable, filterable, sortable table (state lives in the URL, so views are shareable); submit, clone,
   delete; job details show conditions, pods, logs (tail) and events
-- **Workspaces, Models, Inference, Workflows, Tuner** - list pages with the same table controls, detail panels,
+- **Workspaces, Models, Inference, Workflows, Tuner** - list pages (CRUD on the CRs only; see Status) with the same table controls, detail panels,
   create forms and confirmations; structured editors for tuner parameter spaces and workflow steps (with DAG
   validation) and an "Advanced: edit as JSON" escape hatch
 - **Quotas, Nodes, Costs** - team quotas and budgets, GPU node health, spend to date; drill-down links to the jobs

@@ -2,6 +2,16 @@
 
 Proactive GPU memory management with OOM prevention, right-sizing recommendations, and inference packing.
 
+> **Status: partly implemented (gpu-operator controller registered); acts as advisor only.**
+> The controller reads per-GPU memory from `GryviaGpuNode.status.gpuStatus` (populated by scraping
+> the DCGM exporter on each node), projects growth, and writes OOM predictions and right-sizing
+> recommendations to the optimizer's status. Not implemented: the `Auto-Mitigate` action only logs
+> which mitigations it would apply (the code notes that injecting env vars and signalling the
+> framework is not done), `evict` only logs a recommendation, no Kubernetes Events are emitted (so
+> the `kubectl get events --field-selector reason=OomPredicted` examples below will return
+> nothing), and `inferencePacking` is in the CRD but the controller has no packing logic (no
+> co-location, MPS or MIG isolation is performed). Unverified on real GPU nodes.
+
 ## Overview
 
 GryviaGpuMemoryOptimizer provides intelligent GPU memory management that:

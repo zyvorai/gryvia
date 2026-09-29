@@ -1,6 +1,11 @@
 # Gryvia Helm chart
 
-Installs Gryvia: the operators, the API gateway and the web dashboard.
+Installs Gryvia: the GPU, AI workload and quota operators (plus the storage and network operators when enabled), the
+API gateway and the web dashboard, and optionally NVIDIA's GPU Operator. The sixth operator, network intelligence, and
+the eBPF collector have their own chart, [`helm/network-intelligence`](../network-intelligence/README.md).
+
+Gryvia is alpha software: the GPU path has not been run on real GPU hardware (see
+[docs/gpu-validation.md](../../docs/gpu-validation.md)), and read [SECURITY.md](../../SECURITY.md) before exposing an install.
 
 ## Install
 
@@ -41,10 +46,36 @@ The certificate is self-signed by default; your browser shows a warning once.
 | Network operator | `networkOperator` | off |
 | API gateway (HTTPS, 2 replicas) | `apiGateway` | on |
 | Web dashboard (HTTPS, 2 replicas) | `ui` | on |
-| NVIDIA device plugin, DCGM exporter | `nvidiaDevicePlugin`, `dcgmExporter` | on (need NVIDIA GPU nodes) |
+| NVIDIA device plugin, DCGM exporter | `nvidiaDevicePlugin`, `dcgmExporter` | on, but only scheduled on nodes labelled `nvidia.com/gpu.present=true`; skipped when `nvidia.enabled=true` |
+| NVIDIA GPU Operator sub-chart (driver, toolkit, device plugin, DCGM, feature discovery) | `nvidia` | off |
+
+The quota operator also runs the `GryviaTenant` and `GryviaUsageRecord` controllers (GPU as a Service). Only some CRDs
+have a controller: see the Controller column of the [CRD reference](../../website/docs/reference/crds.md).
 
 CRDs are installed from `crds/` on first install. Helm does not upgrade CRDs; apply new versions with
 `kubectl apply --server-side -f crds/` before `helm upgrade`.
+
+## GPU nodes
+
+`--set nvidia.enabled=true` installs NVIDIA's GPU Operator as a sub-chart (`nvidia.driver.enabled=false` when the
+hosts already have drivers; `nvidia.toolkit.env` for k3s). The Gryvia GPU operator then registers a `GryviaGpuNode` for every node labelled by GPU feature discovery
+(`gpuOperator.autoRegister`, on by default). `scripts/install-k3s-gpu.sh` wraps this for a fresh Ubuntu server. See
+[GPU nodes](../../website/docs/guides/GPU_NODES.md). Not yet validated on real GPUs.
+
+## API gateway options
+
+| Value | Purpose |
+|-------|---------|
+| `auth.apiKey`, `auth.existingSecret` | The provider admin key (see above) |
+| `apiGateway.oidc.adminGroups` | Comma-separated OIDC `groups` values that are provider admins; every other OIDC user is a tenant user |
+| `apiGateway.oidc.legacyNamespaces` | Only while no `GryviaTenant` exists: trust the token claim as a namespace (old behaviour) |
+| `apiGateway.netra.url`, `.tokenSecret`, `.tokenKey`, `.insecureTLS` | Take `/api/network/flows` from [Netra](https://github.com/zyvorai/netra) |
+| `apiGateway.flightTokenSecret`, `.flightTokenKey`, `.flightCollectorNamespace` | Flight Recorder cluster view (needs the same token on the collector; see [docs/flight-recorder.md](../../docs/flight-recorder.md)) |
+| `apiGateway.prometheusUrl` | Prometheus for cost and metric history |
+
+OIDC itself is switched on with the gateway's `OIDC_*` environment variables; see
+[Authentication and TLS](../../website/docs/guides/AUTH_AND_TLS.md). Route-by-route access rules:
+[API reference](../../website/docs/developer-guide/api-reference.md).
 
 ## Admission webhook
 
@@ -53,7 +84,10 @@ The ai-operator serves a validating admission webhook for `GryviaAIJob` (CREATE 
 `fine-tuning`, `evaluation`; `spec.gpus` is not greater than 0; `spec.image` is empty; `metadata.name` is not a valid
 DNS name; `spec.network` is not `standard`, `rdma` or `sriov`; `spec.priority` is outside 0-100; the `distributed`
 block is inconsistent (nodes, framework, backend, more than 1024 GPUs); or CPU/memory requests are non-positive or
-exceed their limits. Checks against live node capacity or GPU labels are only returned as warnings, never denials.
+exceed their limits. On CREATE it also denies a job whose GPU type is not allowed by the quotas covering its namespace
+or by the tenant's catalog SKUs, or that exceeds the per-job GPU limit; if the quotas or tenant cannot be read the job is
+admitted (fails open) and the quota operator's reactive enforcement applies. Checks against live node capacity or GPU
+labels are only returned as warnings, never denials.
 
 The chart creates the `<release>-webhook` Service (443 to 9443), a `<release>-webhook-tls` Secret (own CA plus a
 serving certificate, generated once and reused on upgrades; independent of `tls.mode`), and a
@@ -79,6 +113,11 @@ ai-operator.
 | `tls.extraSANs` | Extra DNS names or IPs for the self-signed certificate |
 | `podDisruptionBudget.enabled`, `networkPolicy.enabled` | Optional hardening |
 | `apiGateway.prometheusUrl` | Prometheus for cost and metric history |
+
+These values are present in `values.yaml` but no template reads them, so setting them changes nothing:
+`ha.enabled` (only `ha.leaderElection` has an effect), `monitoring.*`, `crds.install` and `crds.keep`,
+`gpuOperator.healthCheck.*` and `quotaOperator.pricing.*` (GPU prices come from `GryviaGpuSku` objects, or a table built
+into the operator when there are none). The chart deploys no database and no Prometheus (use `helm/observability`).
 
 See `values.yaml` for every option. Uninstall with `helm uninstall gryvia -n gryvia-system`; CRDs and the
 `gryvia-tls` Secret are kept.

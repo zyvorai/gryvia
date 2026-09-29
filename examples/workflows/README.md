@@ -2,6 +2,8 @@
 
 Argo Workflows integration for complex ML pipelines.
 
+> **Status.** These are Argo `Workflow` manifests, not Gryvia's own `GryviaWorkflow` CRD (which has no controller yet). They have not been run against a live Argo and Gryvia install here, and Gryvia ships no Argo integration code. The MLflow server they mention is an example sketch (`services/mlflow/`), not something Gryvia deploys. Argo's install URL and version are pinned to what the README author used; check them before use.
+
 ## Prerequisites
 
 Install Argo Workflows:
@@ -250,12 +252,7 @@ gpuType: H100
 
 ## Integration with Gryvia
 
-Workflows automatically use Gryvia features:
-
-- **GPU Scheduling**: Automatic optimal node placement
-- **Quotas**: Respect team GPU limits
-- **Cost Tracking**: All jobs tracked for billing
-- **Monitoring**: Integrated with Prometheus/Grafana
+Workflow steps that create `GryviaAIJob` resources go through the normal Gryvia path, so the ai-operator (node selection), quota enforcement, usage metering and Prometheus metrics apply to those jobs. Plain Argo pods that do not create a `GryviaAIJob` are outside Gryvia's quota and metering.
 
 ## Troubleshooting
 

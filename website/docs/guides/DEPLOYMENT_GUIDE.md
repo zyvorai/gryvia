@@ -1,36 +1,39 @@
 # Gryvia Bare Metal Deployment Guide
 
-Hardware and network preparation for bare metal GPU clusters. **The Terraform and Ansible automation described in
-later sections is experimental and incomplete** (the playbook references roles that do not exist and has never been
-run in CI); for a working install use `scripts/install-k3s-gpu.sh` or the Helm chart with `--set nvidia.enabled=true`
-(see [GPU nodes](./GPU_NODES.md)). Once the cluster is up, continue with the [Platform Setup Guide](./COMPLETE_DEPLOYMENT_GUIDE.md) to install
+Hardware and network preparation for bare metal GPU clusters. **The Terraform and Ansible material in the repository is
+experimental and incomplete** (the playbook references roles that do not exist and has never been run in CI); for a
+working install use `scripts/install-k3s-gpu.sh` or the Helm chart with `--set nvidia.enabled=true` (see
+[GPU nodes](./GPU_NODES.md)). Once the cluster is up, continue with the [Platform Setup Guide](./COMPLETE_DEPLOYMENT_GUIDE.md) to install
 Gryvia itself. Operating an install (upgrade, uninstall, backup, troubleshooting) is covered in
 [Operations](./OPERATIONS.md).
 
 ## Quick Deploy (Single Server)
 
-For quick deployment to any server with a Kubernetes cluster:
+For a single k3s host you can reach over SSH:
 
 ```bash
-# One-command deploy
-./scripts/deploy-remote.sh <host> <user> <password>
-
-# Quick mode (rsync + apply only)
-./scripts/deploy-remote.sh <host> <user> <password> --quick
-
-# Uninstall
-./scripts/deploy-remote.sh <host> <user> <password> --uninstall
+./scripts/deploy-remote.sh user@10.0.1.5            # sync, build images on the host, install the chart
+./scripts/deploy-remote.sh user@10.0.1.5 --quick    # skip the image builds
+./scripts/deploy-remote.sh user@10.0.1.5 --verify-only
+./scripts/deploy-remote.sh user@10.0.1.5 --uninstall
 ```
 
-This script handles: rsync, CRD installation, namespace creation, operator deployment, API gateway, and Web UI. See [Quick Start Guide](getting-started/quickstart.md) for details.
+The script uses SSH (there is no password argument), rsyncs the repo, builds the images with podman on the host,
+installs the CRDs and the `gryvia` chart, and smoke-tests the dashboard and API. Set `GRYVIA_API_KEY` first; the default
+is a well-known development key. See the [Quick Start](../getting-started/quickstart.md) and `scripts/deploy-remote.sh --help`.
 
 ## Full Production Deployment
 
-For multi-node GPU clusters with HA, RDMA, and parallel storage.
+This guide covers **hardware and network preparation** for multi-node GPU clusters. Gryvia does not provision any of it:
+you bring the machines, the Kubernetes cluster, the GPU drivers and the RDMA and storage stacks. The Helm chart then
+installs the Gryvia components. None of the RDMA or parallel-storage steps below has been validated on real hardware by
+the project.
 
 ## Prerequisites
 
 ### Hardware Requirements
+
+These are planning suggestions, not tested minimums or maximums.
 
 **Control Plane Nodes** (minimum 3 for HA):
 - CPU: 8+ cores
@@ -44,19 +47,19 @@ For multi-node GPU clusters with HA, RDMA, and parallel storage.
 - GPUs: NVIDIA H100/A100/L40/V100/T4
 - Disk: 500GB+ NVMe SSD
 - Network: 100-400Gbps InfiniBand or RoCE
-- RDMA-capable NICs (Mellanox ConnectX-6 or newer)
+- RDMA-capable NICs (for example Mellanox ConnectX-6 or newer) if you want RDMA
 
 **Storage**:
-- VAST Data / Weka / DDN / Lustre cluster
-- RDMA connectivity
-- High aggregate throughput (size to your workload)
+- Optional: a shared filesystem (VAST, Weka, DDN, Lustre, NFS and so on) and its CSI driver, if you need shared datasets or checkpoints. Gryvia does not install these; see [Storage and network operators](./STORAGE_NETWORK_OPERATORS.md)
+- Size throughput to your workload
 
 ### Software Requirements
 
 - Ubuntu 22.04 LTS (recommended) or RHEL 8+
-- Kernel 5.15+
+- A recent kernel (5.15+ for typical GPU stacks; 6.6+ if you want the optional eBPF `tcx` programs)
 - SSH access to all nodes
-- Internet connectivity for package downloads
+- Internet connectivity for package and image downloads
+- Kubernetes 1.30+, `kubectl` and Helm 3.14+ (required by the Gryvia chart)
 
 ## Step 1: Prepare Infrastructure
 
@@ -72,7 +75,7 @@ For multi-node GPU clusters with HA, RDMA, and parallel storage.
 
 ### 1.2 Storage Setup
 
-Mount VAST/Weka/DDN on all GPU nodes:
+If you use an NFS-over-RDMA share, mount it on all GPU nodes (illustrative; use your vendor's mount options):
 ```bash
 # Example for VAST
 mkdir -p /mnt/vast
@@ -84,148 +87,70 @@ Add to `/etc/fstab`:
 vast-vip:/gryvia /mnt/vast nfs rdma,port=20049,hard,nointr 0 0
 ```
 
-## Step 2: Configure Terraform
+## Step 2: Install Kubernetes and the GPU stack
 
-### 2.1 Copy Example Configuration
+Use one of the paths that exist and are documented:
 
-```bash
-cd terraform/bare-metal
-cp terraform.tfvars.example terraform.tfvars
-```
+| You have | Use |
+|---|---|
+| One fresh Ubuntu server with an NVIDIA GPU | `sudo ./scripts/install-k3s-gpu.sh server` (k3s, Gryvia and NVIDIA's GPU Operator); join more with `agent` |
+| An existing Kubernetes cluster | `helm install gryvia ... --set nvidia.enabled=true` |
 
-### 2.2 Edit terraform.tfvars
+See [GPU nodes](./GPU_NODES.md). RDMA (Multus, SR-IOV, MOFED or the NVIDIA Network Operator) and the multi-node
+Kubernetes bring-up (kubeadm or your distribution's installer) are yours to set up; the repository does not automate them.
 
-```hcl
-cluster_name = "gryvia-production"
-control_plane_endpoint = "10.0.1.100"
+### Experimental: Terraform and Ansible
 
-control_nodes = [
-  { name = "master-01", ip = "10.0.1.101" },
-  { name = "master-02", ip = "10.0.1.102" },
-  { name = "master-03", ip = "10.0.1.103" }
-]
+`terraform/bare-metal` and `ansible/` are experimental and **incomplete**. The Terraform module only renders files
+(`generated/inventory.ini`, `kubeadm-config.yaml`, per-node GPU configs, `rdma-config.yaml`, `storage-config.yaml`,
+`deploy.sh`); it provisions nothing. `ansible/playbooks/site.yaml` references roles that do not exist
+(`kernel-tuning`, `container-runtime`, `kubernetes-control-plane`, `kubernetes-worker`, `gryvia-configure`) and has never
+been run in CI; the roles that do exist (`common`, `nvidia-drivers`, `rdma`, `gpu-optimization`, `gryvia-install`) are
+untested. Read `terraform/bare-metal/README.md` and `ansible/README.md` before touching them. They do not install
+Kubernetes, Calico, Multus or GPU drivers end to end.
 
-gpu_nodes = [
-  {
-    name          = "gpu-h100-01"
-    ip            = "10.0.1.201"
-    gpu_type      = "H100"
-    gpu_count     = 8
-    rdma_enabled  = true
-    rdma_device   = "mlx5_0"
-    storage_mount = "/mnt/vast"
-  },
-  # Add more nodes...
-]
+## Step 3: Install Gryvia
 
-storage_backend   = "vast"
-storage_endpoint  = "vast-vip.example.com"
-rdma_subnet       = "192.168.100.0/24"
-```
-
-### 2.3 Generate Configuration
+Once `kubectl` works against the cluster:
 
 ```bash
-terraform init
-terraform plan
-terraform apply
+helm install gryvia oci://ghcr.io/zyvorai/charts/gryvia \
+  --namespace gryvia-system --create-namespace \
+  --set auth.apiKey='a-long-random-secret'
 ```
 
-This generates:
-- Ansible inventory
-- Kubernetes configs
-- GPU node manifests
-- Network/storage configs
-
-## Step 3: Run Ansible Deployment
-
-### 3.1 Install Ansible Dependencies
-
-```bash
-cd ../../ansible
-ansible-galaxy collection install -r requirements.yaml
-```
-
-### 3.2 Test Connectivity
-
-```bash
-ansible all -i ../terraform/bare-metal/generated/inventory.ini -m ping
-```
-
-### 3.3 Deploy Cluster
-
-Run the auto-generated script:
-```bash
-cd ../terraform/bare-metal/generated
-./deploy.sh
-```
-
-Or run Ansible manually:
-```bash
-cd ../../ansible
-ansible-playbook -i ../terraform/bare-metal/generated/inventory.ini playbooks/site.yaml
-```
-
-If you run it anyway, it is meant to:
-1. Configure all nodes (kernel tuning, packages)
-2. Install NVIDIA drivers
-3. Setup RDMA networking
-4. Optimize GPU performance
-5. Install Kubernetes
-6. Deploy Gryvia operators
-7. Register GPU nodes
-
-**Duration**: 30-60 minutes depending on cluster size
+The full walk-through, configuration table and verification are in the [Platform Setup Guide](./COMPLETE_DEPLOYMENT_GUIDE.md)
+and the [Cluster Setup Guide](../admin-guide/cluster-setup.md).
 
 ## Step 4: Verify Installation
 
-### 4.1 Check Cluster
+### 4.1 Check the cluster
 
 ```bash
-export KUBECONFIG=./generated/kubeconfig
 kubectl get nodes
+kubectl get pods -n gryvia-system
+kubectl get crd | grep -c '\.gryvia\.io'    # 49 with this release
+./scripts/doctor.sh
 ```
 
-Expected output:
-```
-NAME           STATUS   ROLES           AGE   VERSION
-master-01      Ready    control-plane   10m   v1.30.5
-gpu-h100-01    Ready    <none>          8m    v1.30.5
-gpu-h100-02    Ready    <none>          8m    v1.30.5
-```
+With the default values you should see the `gryvia-gpu-operator`, `gryvia-ai-operator`, `gryvia-quota-operator`,
+`gryvia-api-gateway` and `gryvia-ui` deployments, plus the NVIDIA device plugin and DCGM exporter DaemonSets on nodes
+labelled `nvidia.com/gpu.present=true` (or the GPU Operator's pods with `nvidia.enabled=true`).
 
-### 4.2 Verify GPU Nodes
+### 4.2 Verify GPU nodes
 
 ```bash
 kubectl get gryviagpunodes
+gryvia status
 ```
 
-Expected output:
-```
-NAME           NODE          GPU-TYPE   GPU-COUNT   RDMA   PHASE   AGE
-gpu-h100-01    gpu-h100-01   H100       8           true   Ready   5m
-gpu-h100-02    gpu-h100-02   H100       8           true   Ready   5m
-```
+Nodes labelled `nvidia.com/gpu.present=true` (by the GPU Operator or your own GPU Feature Discovery) are registered
+automatically. Column names and values depend on what your nodes report; check `kubectl get gryviagpunodes -o yaml`.
 
-### 4.3 Check Operators
+### 4.3 Test GPU access
 
 ```bash
-kubectl get pods -n gryvia-system
-```
-
-Expected output:
-```
-NAME                                    READY   STATUS    RESTARTS   AGE
-gryvia-gpu-operator-xxx             1/1     Running   0          5m
-gryvia-ai-operator-xxx              1/1     Running   0          5m
-nvidia-device-plugin-daemonset-xxx      1/1     Running   0          5m
-dcgm-exporter-xxx                       1/1     Running   0          5m
-```
-
-### 4.4 Test GPU Access
-
-```bash
-kubectl apply -f - <<EOF
+kubectl apply -f - <<YAML
 apiVersion: v1
 kind: Pod
 metadata:
@@ -235,39 +160,36 @@ spec:
   - name: cuda
     image: nvidia/cuda:12.2.0-base-ubuntu22.04
     command: ["nvidia-smi"]
+    resources:
+      limits:
+        nvidia.com/gpu: 1
   restartPolicy: Never
-EOF
+YAML
 
 kubectl logs gpu-test
 ```
 
 ## Step 5: Configure Monitoring
 
-### 5.1 Access Grafana
+The Gryvia chart does not install Prometheus or Grafana. `helm/observability` wraps `kube-prometheus-stack`; set the
+Grafana admin password explicitly (there is no default):
 
 ```bash
-kubectl port-forward -n gryvia-system svc/gryvia-observability-grafana 3000:80
+helm dependency build helm/observability
+helm install gryvia-observability ./helm/observability -n gryvia-system \
+  --set grafana.adminPassword='<choose one>'
 ```
 
-Open http://localhost:3000
-- Username: admin
-- Password: gryvia-admin
-
-### 5.2 Import Dashboards
-
-Pre-configured dashboards available:
-- GPU Cluster Overview
-- Training Job Performance
-- GPU Health & Utilization
-- Network Performance
-- Storage I/O
+`monitoring/` holds dashboards, a ServiceMonitor and Prometheus rules as templates; `manifests/monitoring/` has a GPU
+alert rule file and a dashboard JSON. Not every metric they query is guaranteed to exist in your cluster. Point the
+gateway at Prometheus with `apiGateway.prometheusUrl` for GPU metrics and cost history.
 
 ## Step 6: Submit Test Job
 
 ```bash
-kubectl apply -f ../../examples/training/simple-pytorch-training.yaml
+kubectl apply -f examples/training/simple-pytorch-training.yaml
 kubectl get gryviaaijob
-kubectl logs -f $(kubectl get pod -l gryvia.io/job=pytorch-simple-training -o name)
+gryvia logs pytorch-simple-training
 ```
 
 ## Troubleshooting
@@ -297,7 +219,7 @@ ib_write_bw
 ### Pods Not Scheduling
 
 ```bash
-kubectl describe gryviaaijob <job-name>
+kubectl describe gryviaaijob <job-name>   # or: gryvia get job <job-name>
 kubectl get events --sort-by='.lastTimestamp'
 ```
 
@@ -310,27 +232,28 @@ kubectl describe node <gpu-node-name>
 
 ## Next Steps
 
-1. Configure team quotas: `kubectl apply -f examples/quotas/`
-2. Setup storage classes: `kubectl apply -f examples/storage/`
-3. Run distributed training: `kubectl apply -f examples/distributed/`
-4. Configure alerts: See `manifests/monitoring/alerts/`
+1. Configure team quotas: `kubectl apply -f examples/quota/` (see [GPU as a Service](./GPU_AS_A_SERVICE.md))
+2. Declare storage: `examples/storage/` holds `GryviaStorage` examples; they need the optional storage operator
+   (`storageOperator.enabled=true`) and your own CSI driver
+3. Try a multi-GPU job: `kubectl apply -f examples/distributed/multi-gpu-training.yaml`
+4. Alerts: sample rules in `manifests/monitoring/alerts/gpu-alerts.yaml`
+5. Day-2 operations: [Operations](./OPERATIONS.md)
 
 ## Production Checklist
 
-- [ ] High availability control plane (3+ nodes)
-- [ ] Backup etcd regularly
-- [ ] Setup monitoring and alerting
-- [ ] Configure network policies
-- [ ] Implement RBAC
-- [ ] Enable audit logging
-- [ ] Setup log aggregation
-- [ ] Configure automatic updates
-- [ ] Test disaster recovery
-- [ ] Document runbooks
+A generic list, not something Gryvia checks for you:
+
+- [ ] Highly available control plane (your Kubernetes distribution)
+- [ ] Regular etcd backups, and a backup of `gryvia.io` resources (see [Operations](./OPERATIONS.md))
+- [ ] Monitoring and alerting
+- [ ] Network policies (`networkPolicy.enabled` in the chart restricts access to the gateway)
+- [ ] A non-default API key, OIDC for tenants and a trusted certificate ([Authentication and TLS](./AUTH_AND_TLS.md))
+- [ ] Audit logging and log aggregation (cluster level)
+- [ ] A tested disaster recovery procedure
+- [ ] Runbooks
 
 ## Support
 
 For issues and questions:
 - GitHub Issues: https://github.com/zyvorai/gryvia/issues
-- Documentation: https://gryvia.io/docs
-- Community: https://gryvia.io/community
+- Discussions: https://github.com/zyvorai/gryvia/discussions

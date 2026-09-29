@@ -1,5 +1,7 @@
 # Model Serving with Gryvia
 
+> **Status: design/integration sketch, not implemented in this repo.** This directory holds only this README, `kserve-integration.yaml` (example manifests) and a Dockerfile that references a `requirements.txt` that does not exist; there is no source code. Gryvia does not deploy or manage KServe, vLLM, TensorRT-LLM or Triton. A `GryviaInferenceService` CRD and gateway CRUD exist, but no controller is registered, so nothing acts on it. Latency and throughput figures below are design targets, not measurements.
+
 Deploy and serve models trained with Gryvia using KServe, vLLM, TensorRT-LLM, and Triton.
 
 ## Overview

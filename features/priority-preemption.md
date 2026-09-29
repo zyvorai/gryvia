@@ -2,6 +2,22 @@
 
 Sophisticated job priority system with preemption support for efficient resource utilization.
 
+> **Status: mostly design. Priority classes and preemption are not running behaviour.**
+> `GryviaPriority` is a CRD with no controller wired yet (a reconciler exists in
+> `operators/ai-operator/controllers/` but `main.go` does not register it), so the named
+> classes and values below (`system-critical` ... `spot`), quota overrides and SLA
+> guarantees are not enforced. `GryviaAIJob` has no `priorityClassName` field: its only
+> priority field is the integer `spec.priority` (0-100, higher is more important),
+> range-checked by the admission webhook. A priority-queue with DRF fair-share and a
+> preemption-candidate finder exist as a library (`operators/ai-operator/pkg/queue`) and are
+> unit-tested, but the AIJob controller does not call them, so jobs are not reordered and no
+> job is preempted by priority today. Also not implemented: the `kfctl` CLI (it does not
+> exist), `--priority` on `gryvia submit`, the `resources.gpuCount` / `checkpointing`
+> job fields used in the examples (use `spec.gpus`, `spec.gpuType`, and a
+> `GryviaCheckpointGuard` for checkpointing), the priority Grafana dashboard, and the
+> queue/preemption numbers in example outputs (made up). `gryvia queue` exists but lists
+> pending, queued and scheduling jobs, not a priority or preemption view.
+
 ## Overview
 
 Gryvia provides a priority-based scheduling system that:
@@ -18,7 +34,9 @@ Gryvia provides a priority-based scheduling system that:
 
 For system and infrastructure jobs.
 
-```yaml
+Design sketch, not accepted by the current CRD schema:
+
+```text
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
@@ -141,7 +159,9 @@ spec:
 
 ### Basic Priority Assignment
 
-```yaml
+Design sketch, not accepted by the current CRD schema:
+
+```text
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:

@@ -2,6 +2,17 @@
 
 Intelligent checkpoint and restore system for AI training jobs running on Gryvia.
 
+> **Status: partly implemented (ai-operator controller registered); the checkpoint I/O is not.**
+> The controller matches jobs, evaluates emergency triggers (pod health, `GryviaGpuNode` phase and
+> per-GPU health/temperature, spot-preemption pod signals, NVLink state, loss divergence) and the
+> periodic schedule, and keeps checkpoint bookkeeping in `status` (counts, last checkpoint, retention
+> index). It does not itself make a training process write a checkpoint: it derives a
+> `/checkpoints/<job>/<name>` path and runs the validator (checksum, shape, load test) against that path
+> on the operator's own filesystem, so validation is only meaningful when that path is reachable
+> there. Automatic restore on job restart and replication to S3/GCS/Azure/NFS/PVC are described in
+> the CRD but no code in the controller performs them. The `gryvia_checkpoint_*` Prometheus metrics
+> listed below are not exported by the operator. Unverified end to end on a real GPU training job.
+
 ## Overview
 
 GryviaCheckpointGuard provides automated, policy-driven checkpointing for long-running AI training jobs. It continuously monitors GPU health, node conditions, and training metrics to determine when checkpoints should be taken -- including emergency checkpoints triggered by hardware degradation or spot preemption signals.

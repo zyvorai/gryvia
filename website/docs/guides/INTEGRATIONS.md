@@ -1,10 +1,36 @@
 ## External System Integrations
 
-Gryvia integrates seamlessly with popular ML platforms and tools.
+How to use Gryvia together with other ML and platform tools.
+
+:::caution There are no built-in connectors
+Gryvia has **no integration controller and no `integrations:` field** on `GryviaAIJob`. It does not talk to Weights &
+Biases, Neptune, MLflow, HuggingFace, Airflow, Datadog, Slack, LDAP and so on by itself, and it does not log anything to
+those services for you. Earlier versions of this page described such features; they never existed. What is real:
+
+- A `GryviaAIJob` runs your container. Anything your training code does (log to W&B, push to the Hub) works if the
+  container has network access and the credentials, which you pass with `spec.env` and Kubernetes Secrets.
+- External tools can create and read jobs through the [gateway REST API](../developer-guide/api-reference.md), the
+  [CLI](./CLI_GUIDE.md) (which uses your kubeconfig), the Python SDK (REST) or the Go SDK (Kubernetes API).
+- Metrics are exposed for Prometheus (DCGM exporter, operator metrics) and can be scraped by whatever you run.
+- Sign-in through an OIDC identity provider is implemented in the gateway ([Authentication and TLS](./AUTH_AND_TLS.md)).
+
+The recipes below are ordinary Kubernetes usage. None has been tested against the third-party service it mentions.
+:::
+
+CRDs such as `GryviaJobHook`, `GryviaDataset`, `GryviaWorkflow`, `GryviaModelRegistry`, `GryviaBudget` and
+`GryviaSLA` exist in `crds/`, but **no controller is wired for them yet**; objects of those kinds are stored and
+nothing acts on them. See [reference/crds.md](../reference/crds.md) for the list of kinds that do have a controller.
 
 ## Experiment Tracking
 
 ### Weights & Biases
+
+Put the key in a Secret and hand it to your training process as an environment variable. The logging itself is done by
+your script (`wandb.init(...)`); Gryvia does not add GPU metrics, cost or job metadata to your W&B run.
+
+```bash
+kubectl create secret generic wandb-api-key --from-literal=api-key=YOUR_API_KEY
+```
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
@@ -12,73 +38,36 @@ kind: GryviaAIJob
 metadata:
   name: training-with-wandb
 spec:
-  framework: pytorch
-
-  # W&B integration
-  integrations:
-    wandb:
-      enabled: true
-      project: my-project
-      entity: my-team
-      apiKeySecret: wandb-api-key
-      tags: [experiment-1, baseline]
-
+  type: training
+  gpus: 1
+  gpuType: any
+  image: nvcr.io/nvidia/pytorch:24.01-py3
+  command: ["python", "train.py", "--wandb-project=my-project"]
   env:
     - name: WANDB_API_KEY
       valueFrom:
         secretKeyRef:
           name: wandb-api-key
           key: api-key
-
-  command:
-    - python
-    - train.py
-    - --wandb-project=my-project
+    - name: WANDB_ENTITY
+      value: my-team
 ```
 
-**Auto-Integration**: Gryvia automatically logs:
-- GPU metrics (utilization, memory, temperature)
-- Cost per epoch
-- Resource allocation
-- Job metadata
+### Neptune, MLflow and TensorBoard
 
-### Neptune.ai
-
-```yaml
-integrations:
-  neptune:
-    enabled: true
-    project: team/project
-    apiTokenSecret: neptune-token
-    tags: [production, v2]
-```
-
-### MLflow
-
-```yaml
-integrations:
-  mlflow:
-    enabled: true
-    trackingUri: http://mlflow:5000
-    experimentName: llm-training
-    runName: "run-{{ .job.name }}"
-```
-
-### TensorBoard
-
-```yaml
-integrations:
-  tensorboard:
-    enabled: true
-    logDir: /tensorboard-logs
-    serviceType: LoadBalancer
-```
-
-Access: `http://<external-ip>:6006`
+The same pattern applies: pass the token or tracking URI as `spec.env` (for example `NEPTUNE_API_TOKEN`,
+`MLFLOW_TRACKING_URI`) and log from your code. Gryvia does not create a TensorBoard Service; run TensorBoard yourself
+against a shared volume (`spec.storage` gives a job a PVC mounted at `/data`, see the
+[platform setup guide](./COMPLETE_DEPLOYMENT_GUIDE.md)) and expose it with your own Deployment and Service.
 
 ## Model Registries
 
-### HuggingFace Hub
+### HuggingFace Hub and other registries
+
+Do the upload at the end of your training script, or as a follow-up Kubernetes Job you create yourself, with the token
+from a Secret (`kubectl create secret generic hf-token --from-literal=token=YOUR_HF_TOKEN`).
+Post-completion automation is the purpose of the `GryviaJobHook` CRD, but it has no controller today. This is its
+schema, shown as a design sketch (it validates against the CRD, and nothing will run it):
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
@@ -87,164 +76,65 @@ metadata:
   name: push-to-huggingface
 spec:
   trigger: post-completion
-  condition: "{{job.metrics.accuracy}} > 0.95"
-
   action:
     type: k8sJob
     k8sJob:
       image: python:3.11
-      command:
-        - python
-        - -c
-        - |
-          from huggingface_hub import HfApi
-          api = HfApi()
-          api.upload_folder(
-              folder_path="/checkpoints/{{ .job.name }}",
-              repo_id="my-org/my-model",
-              repo_type="model"
-          )
-      env:
-        - name: HF_TOKEN
-          valueFrom:
-            secretKeyRef:
-              name: hf-token
-              key: token
+      command: ["python", "push_model.py"]
 ```
 
-### AWS SageMaker Model Registry
-
-```yaml
-spec:
-  trigger: post-completion
-
-  action:
-    type: exec
-    exec:
-      command:
-        - aws
-        - sagemaker
-        - create-model-package
-        - --model-package-group-name=my-models
-        - --model-data=s3://bucket/{{ .job.name }}/model.tar.gz
-```
+`GryviaModelRegistry` is likewise schema-only. There is no SageMaker or MLflow registry integration.
 
 ## Data Platforms
 
-### DVC (Data Version Control)
-
-```yaml
-apiVersion: gryvia.io/v1alpha1
-kind: GryviaDataset
-metadata:
-  name: my-dataset
-spec:
-  source:
-    type: git-lfs
-    git:
-      repository: https://github.com/org/data-repo
-      ref: main
-      path: datasets/imagenet
-
-  versioning:
-    enabled: true
-    strategy: git-lfs
-```
-
-### Pachyderm
-
-```yaml
-integrations:
-  pachyderm:
-    enabled: true
-    project: ml-pipelines
-    pipeline: training-pipeline
-    input: data-repo@master
-```
+`GryviaDataset` (CRD only; the storage operator contains a dataset reconciler that is **not registered** in `main.go`)
+does not fetch, version or mount data. Use whatever you already use (DVC, Pachyderm, object storage) inside the job
+container or an init container, with credentials from Secrets, and a PVC or CSI volume for shared data
+(see [Storage and Network Operators](./STORAGE_NETWORK_OPERATORS.md)).
 
 ## Workflow Orchestration
+
+Any orchestrator that can run `kubectl` or the Gryvia CLI in a container with cluster credentials can create jobs. There
+is no published Gryvia CLI container image; the release provides CLI binaries (`gryvia-<tag>-<os>-<arch>` on the
+GitHub release), so build a small image that contains the binary and mount a kubeconfig or use an in-cluster service
+account.
 
 ### Airflow
 
 ```python
-# Airflow DAG
 from airflow import DAG
-from airflow.providers.cncf.kubernetes.operators.kubernetes_pod import KubernetesPodOperator
+from airflow.providers.cncf.kubernetes.operators.pod import KubernetesPodOperator
 
-with DAG('ml_training', schedule_interval='@daily') as dag:
+with DAG('ml_training', schedule='@daily') as dag:
     train = KubernetesPodOperator(
         task_id='train_model',
         namespace='default',
-        name='training-job',
-        image='gryvia/job-operator:1.0.0',
+        name='submit-job',
+        image='registry.example.com/your-org/gryvia-cli:latest',   # your own image containing the gryvia binary
         cmds=['gryvia'],
-        arguments=['submit', 'job.yaml'],
-        env_vars={'KUBECONFIG': '/config/kubeconfig'}
+        arguments=['submit', '--file', '/jobs/job.yaml', '--wait'],
     )
 ```
 
-### Kubeflow Pipelines
+Kubeflow Pipelines and Argo work the same way: run `gryvia submit --file job.yaml --wait`, or `kubectl apply`, or call
+`POST /api/jobs` on the gateway from a step.
 
-```python
-from kfp import dsl
+## Monitoring and Observability
 
-@dsl.pipeline(name='Gryvia Training')
-def training_pipeline():
-    train_op = dsl.ContainerOp(
-        name='Submit Job',
-        image='gryvia/cli:1.0.0',
-        command=['gryvia', 'submit', 'job.yaml']
-    )
-```
+Gryvia does not push metrics to Datadog, New Relic or Grafana Cloud, and it does not define `gryvia_gpu_utilization`,
+`gryvia_job_duration` or `gryvia_cost_total` Prometheus metrics. What exists:
 
-## Monitoring & Observability
-
-### Datadog
-
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: datadog-config
-data:
-  datadog.yaml: |
-    logs_enabled: true
-    apm_enabled: true
-
-    # Custom checks for Gryvia
-    instances:
-      - prometheus_url: http://prometheus:9090
-        namespace: gryvia-system
-        metrics:
-          - gryvia_gpu_utilization
-          - gryvia_job_duration
-          - gryvia_cost_total
-```
-
-### New Relic
-
-```yaml
-integrations:
-  newrelic:
-    enabled: true
-    licenseKey: <secret>
-    appName: gryvia-cluster
-```
-
-### Grafana Cloud
-
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: grafana-cloud
-data:
-  username: <base64-encoded>
-  api-key: <base64-encoded>
-  prometheus-endpoint: <base64-encoded>
-```
+- The DCGM exporter (port 9400) on GPU nodes and the operators' controller-runtime metrics endpoints, scrapeable by any
+  Prometheus. `helm/observability` wraps `kube-prometheus-stack`; `monitoring/` has a ServiceMonitor, alert rules and
+  dashboards as templates.
+- Gateway routes that read Prometheus when `apiGateway.prometheusUrl` is set (`/api/metrics/gpu` and cost history).
+  The gateway itself has no `/metrics` endpoint.
+- To forward metrics to a SaaS, use that vendor's Prometheus scraper or remote-write against the Prometheus you run.
 
 ## CI/CD Integration
+
+The CLI talks to the Kubernetes API with a kubeconfig, so a CI runner needs the `gryvia` binary and a kubeconfig for a
+service account that may create `GryviaAIJob` objects.
 
 ### GitHub Actions
 
@@ -258,54 +148,38 @@ jobs:
   train:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
-      - name: Submit Training Job
+      - name: Install gryvia
         run: |
-          gryvia submit job.yaml \
-            --gpu-type A100-80G \
-            --gpu-count 8 \
-            --wait
+          # download the release binary for linux-amd64 and put it on PATH (see the GitHub release page)
+          echo "install gryvia here"
+
+      - name: Submit training job
+        run: gryvia submit --file job.yaml --wait
         env:
-          KUBECONFIG: ${{ secrets.KUBECONFIG }}
+          KUBECONFIG: ${{ github.workspace }}/kubeconfig   # written from a secret in an earlier step
 
-      - name: Get Job Status
-        run: |
-          gryvia job status training-job-${{ github.run_id }}
+      - name: Job status
+        run: gryvia status training-job
 ```
 
-### GitLab CI
+GPU type and count are set in `job.yaml` (`spec.gpuType`, `spec.gpus`); `gryvia submit` has no `--gpu-type` or
+`--gpu-count` flag. `--wait` waits for completion and `--logs` follows logs. Adapt the same commands for GitLab CI or
+Jenkins (`gryvia submit --file job.yaml --wait`, `gryvia logs training-job`).
 
-```yaml
-train-model:
-  stage: train
-  image: gryvia/cli:1.0.0
-  script:
-    - gryvia submit job.yaml --wait
-    - gryvia job logs training-job
-  only:
-    - main
-```
+## Notifications
 
-### Jenkins
+### Webhooks that exist today
 
-```groovy
-pipeline {
-    agent any
-    stages {
-        stage('Train') {
-            steps {
-                sh 'gryvia submit job.yaml'
-                sh 'gryvia job wait training-job'
-            }
-        }
-    }
-}
-```
+The network-intelligence CRDs accept a webhook URL that the operator calls: `alertWebhook` on `GryviaNetworkAnomaly` and
+`GryviaSecurityPolicy` (see [Network Intelligence](./NETWORK_INTELLIGENCE.md); those controllers need Cilium and a
+working collector path). Point it at a Slack incoming webhook or any HTTP receiver. There is no job-completion
+notification, no Slack bot and no `/gryvia` slash command.
 
-## Slack Integration
+### Job hook (design sketch)
 
-### Job Notifications
+`GryviaJobHook` describes a webhook on job completion; nothing reconciles it today:
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
@@ -314,140 +188,59 @@ metadata:
   name: slack-notifications
 spec:
   trigger: post-completion
-
   action:
     type: webhook
     webhook:
       url: https://hooks.slack.com/services/YOUR/WEBHOOK/URL
       method: POST
-      body: |
-        {
-          "text": "Job {{ .job.name }} completed",
-          "blocks": [
-            {
-              "type": "section",
-              "text": {
-                "type": "mrkdwn",
-                "text": "*Status:* {{ .job.status }}\n*Duration:* {{ .job.duration }}\n*Cost:* ${{ .job.cost }}"
-              }
-            }
-          ]
-        }
-```
-
-### Slack Bot Commands
-
-```bash
-# In Slack channel #ml-jobs
-/gryvia submit job.yaml
-/gryvia status training-job-42
-/gryvia logs training-job-42 --tail 50
-/gryvia cost --team ml-research --month current
+      body: '{"text": "Job completed"}'
 ```
 
 ## Cost Management
 
-### CloudHealth
-
-```yaml
-integrations:
-  cloudhealth:
-    enabled: true
-    apiKey: <secret>
-    reportingTags:
-      - team
-      - project
-      - environment
-```
-
-### Kubecost Integration
-
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: kubecost-config
-data:
-  custom-metrics: |
-    - name: gpu_cost_hourly
-      query: gryvia_job_cost_total / gryvia_job_duration_hours
-```
+Cost estimates come from the quota operator (`GryviaCostPredictor`, `GryviaUsageRecord`) and the SKU catalog:
+`gryvia cost`, `gryvia usage`, `gryvia invoice`, `gryvia catalog`, and the gateway's `/api/metrics/costs` and
+`/api/usage/*` routes. There is no CloudHealth or Kubecost connector. To export usage, use `GET /api/usage/export`
+(see the [API reference](../developer-guide/api-reference.md)).
 
 ## Authentication
 
-### OAuth2 / OIDC
+OIDC sign-in is implemented in the API gateway; LDAP is not supported. Configure OIDC through the gateway environment
+and the chart values `apiGateway.oidc.*`, and map users to tenants with `GryviaTenant`. See
+[Authentication and TLS](./AUTH_AND_TLS.md) and [GPU as a Service](./GPU_AS_A_SERVICE.md). Payments and a real identity
+provider have not been exercised end to end.
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: gryvia-auth
-data:
-  oauth2-config.yaml: |
-    issuer: https://accounts.google.com
-    clientID: your-client-id
-    clientSecret: your-client-secret
-    redirectURL: https://gryvia.company.com/callback
-```
+## Backup and DR
 
-### LDAP
-
-```yaml
-auth:
-  ldap:
-    enabled: true
-    server: ldap://ldap.company.com
-    baseDN: dc=company,dc=com
-    userFilter: (uid=%s)
-    groupFilter: (memberUid=%s)
-```
-
-## Backup & DR
-
-### Velero
+State lives in custom resources; see [Operations](./OPERATIONS.md) for export, restore and `tools/backup-restore.sh`.
+A generic Velero schedule is a possible addition (not tested with Gryvia). Many Gryvia kinds are cluster-scoped, so
+include cluster resources:
 
 ```yaml
 apiVersion: velero.io/v1
 kind: Schedule
 metadata:
   name: gryvia-backup
+  namespace: velero
 spec:
-  schedule: "0 2 * * *"  # Daily at 2 AM
+  schedule: "0 2 * * *"
   template:
     includedNamespaces:
-      - gryvia
+      - gryvia-system
+    includeClusterResources: true
     includedResources:
-      - gryviaaijobs
-      - gryviaqueues
-      - gryviausers
+      - gryviaaijobs.gryvia.io
+      - gryviaquotas.gryvia.io
+      - gryviatenants.gryvia.io
       - persistentvolumeclaims
 ```
 
-### S3 Backup
-
-```yaml
-apiVersion: gryvia.io/v1alpha1
-kind: GryviaJobHook
-metadata:
-  name: backup-checkpoints
-spec:
-  trigger: on-checkpoint
-
-  action:
-    type: exec
-    exec:
-      command:
-        - aws
-        - s3
-        - sync
-        - /checkpoints/{{ .job.name }}
-        - s3://backups/checkpoints/{{ .job.name }}
-      timeout: 10m
-```
+There is no `GryviaJobHook`-based checkpoint sync; use your own sidecar or script (`aws s3 sync` and similar) to copy
+checkpoints, or the checkpoint features of your framework.
 
 ## Security Scanning
 
-### Trivy
+Image scanning is independent of Gryvia. For example, a plain Kubernetes CronJob running Trivy against an image you use:
 
 ```yaml
 apiVersion: batch/v1
@@ -455,220 +248,144 @@ kind: CronJob
 metadata:
   name: image-scanning
 spec:
-  schedule: "0 */6 * * *"  # Every 6 hours
+  schedule: "0 */6 * * *"
   jobTemplate:
     spec:
       template:
         spec:
+          restartPolicy: Never
           containers:
             - name: trivy
               image: aquasec/trivy:0.58.0
-              command:
-                - trivy
-                - image
-                - --severity=HIGH,CRITICAL
-                - nvcr.io/nvidia/pytorch:24.01-py3
+              args: ["image", "--severity=HIGH,CRITICAL", "nvcr.io/nvidia/pytorch:24.01-py3"]
 ```
+
+Release images are signed with cosign in the release workflow.
 
 ## SDKs
 
 ### Python SDK
 
-Install: `pip install gryvia`
+An async REST client for the gateway (jobs, nodes, quotas, costs, metrics). Install from source
+(`cd sdk/python && pip install -e .`); publication to PyPI is not verified. It has unit tests against mocked HTTP only.
+It does not cover SKUs, tenants, usage, invoices or Flight Recorder, and `Jobs.stream_logs` does not work against the
+current gateway (see `sdk/python/README.md`).
 
 ```python
+import asyncio
 from gryvia import Gryvia
 
-async with Gryvia(api_url="https://api.example.com", token="...") as tr:
-    # Submit a training job
-    job = await tr.jobs.create({
-        "spec": {"model": "llama-70b", "gpus": 8, "gpuType": "H100"}
-    })
-    
-    # Wait for completion
-    await tr.jobs.wait_for_completion(job["metadata"]["name"])
-    
-    # Stream logs
-    async for line in tr.jobs.stream_logs(job["metadata"]["name"]):
-        print(line)
+async def main():
+    async with Gryvia(api_url="https://gryvia.example.com", token="your-api-token") as tr:
+        job = await tr.jobs.create({
+            "apiVersion": "gryvia.io/v1alpha1",
+            "kind": "GryviaAIJob",
+            "metadata": {"name": "my-training"},
+            "spec": {
+                "type": "training",
+                "image": "nvcr.io/nvidia/pytorch:24.01-py3",
+                "gpus": 4,
+                "gpuType": "A100-80G",
+                "command": ["torchrun", "--nproc_per_node=4", "train.py"],
+            },
+        })
+        final = await tr.jobs.wait_for_completion("my-training", timeout=7200)
+        print(final.status.phase)
+
+asyncio.run(main())
 ```
 
 ### Go SDK
 
-Install: `go get github.com/zyvorai/gryvia/sdk/go`
+`github.com/zyvorai/gryvia/sdk/go` is a typed controller-runtime client for the CRDs (it uses the Kubernetes API, not
+the gateway). It wraps create/get/list/delete for jobs and several other kinds (whether a controller acts on those
+kinds is a separate question, see above).
 
 ```go
-import sdk "github.com/zyvorai/gryvia/sdk/go"
-
-client := sdk.NewGryviaClient(mgr.GetClient())
-
-// Create a job
-job, err := client.CreateJob(ctx, &v1.GryviaAIJob{
-    Spec: v1.GryviaAIJobSpec{
-        Model: "llama-70b",
-        Resources: v1.ResourceSpec{GPUCount: 8, GPUType: "H100"},
-    },
-})
-
-// Promote a model to production
-err = client.PromoteModel(ctx, "my-model", "production")
-```
-
-## API Integration Examples
-
-### Python SDK
-
-```python
-from gryvia import Client
-
-client = Client()
-
-# Submit job
-job = client.jobs.create(
-    name="my-training-job",
-    framework="pytorch",
-    gpu_type="A100-80G",
-    gpu_count=8,
-    image="nvcr.io/nvidia/pytorch:24.01-py3",
-    command=["python", "train.py"]
+import (
+    sdk "github.com/zyvorai/gryvia/sdk/go"
+    "sigs.k8s.io/controller-runtime/pkg/client/config"
 )
 
-# Wait for completion
-job.wait()
+cfg, _ := config.GetConfig()
+c, _ := sdk.NewClient(cfg)
 
-# Get metrics
-metrics = job.get_metrics()
-print(f"Accuracy: {metrics['accuracy']}")
-print(f"Cost: ${metrics['cost']}")
+job := &sdk.GryviaAIJob{}
+job.Name = "my-training"
+job.Namespace = "ml-training"
+job.Spec.Type = "training"
+job.Spec.Image = "nvcr.io/nvidia/pytorch:24.01-py3"
+job.Spec.GPUs = 8
+
+err := c.CreateJob(ctx, job)
 ```
 
-### REST API
+Check `sdk/go/client.go` and the CRD types in `operators/ai-operator/api/v1` for exact field names.
+
+## REST API
+
+Gateway routes live under `/api/` (there is no `/api/v1` prefix) and take `Authorization: Bearer <token>`; the
+[API reference](../developer-guide/api-reference.md) lists every route and its access rule. Creating a job:
 
 ```bash
-# Submit job
-curl -X POST https://gryvia-api/v1/jobs \
-  -H "Authorization: Bearer $TOKEN" \
+curl -k -X POST https://<dashboard-host>/api/jobs \
+  -H "Authorization: Bearer $GRYVIA_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "training-job",
-    "framework": "pytorch",
-    "resources": {
+    "apiVersion": "gryvia.io/v1alpha1",
+    "kind": "GryviaAIJob",
+    "metadata": {"name": "training-job"},
+    "spec": {
+      "type": "training",
+      "image": "nvcr.io/nvidia/pytorch:24.01-py3",
+      "gpus": 8,
       "gpuType": "A100-80G",
-      "gpuCount": 8
-    },
-    "image": "nvcr.io/nvidia/pytorch:24.01-py3",
-    "command": ["python", "train.py"]
+      "command": ["python", "train.py"]
+    }
   }'
 
-# Get job status
-curl https://gryvia-api/v1/jobs/training-job \
-  -H "Authorization: Bearer $TOKEN"
+curl -k https://<dashboard-host>/api/jobs/training-job -H "Authorization: Bearer $GRYVIA_API_KEY"
+curl -k "https://<dashboard-host>/api/jobs/training-job/logs?tail=100" -H "Authorization: Bearer $GRYVIA_API_KEY"
 ```
 
-### GraphQL API
-
-```graphql
-mutation SubmitJob {
-  createJob(input: {
-    name: "training-job"
-    framework: PYTORCH
-    resources: {
-      gpuType: "A100-80G"
-      gpuCount: 8
-    }
-    image: "nvcr.io/nvidia/pytorch:24.01-py3"
-    command: ["python", "train.py"]
-  }) {
-    id
-    status
-    createdAt
-  }
-}
-
-query GetJobMetrics {
-  job(name: "training-job") {
-    metrics {
-      accuracy
-      loss
-      cost
-      duration
-    }
-  }
-}
-```
+The gateway sets the namespace itself. There is no GraphQL API.
 
 ## Best Practices
 
-### 1. Secret Management
+### Secret management
 
-Use Kubernetes secrets for API keys:
+Use Kubernetes Secrets for API keys and tokens, and reference them with `secretKeyRef`:
 
 ```bash
-kubectl create secret generic wandb-api-key \
-  --from-literal=api-key=YOUR_API_KEY
-
-kubectl create secret generic hf-token \
-  --from-literal=token=YOUR_HF_TOKEN
+kubectl create secret generic wandb-api-key --from-literal=api-key=YOUR_API_KEY
+kubectl create secret generic hf-token --from-literal=token=YOUR_HF_TOKEN
 ```
 
-### 2. Webhooks
+### Least privilege for automation
 
-Use retry logic for webhooks:
-
-```yaml
-webhook:
-  url: https://api.example.com/callback
-  retry:
-    attempts: 3
-    backoff: exponential
-```
-
-### 3. Rate Limiting
-
-Respect API rate limits:
-
-```yaml
-integrations:
-  wandb:
-    rateLimit:
-      maxRequestsPerSecond: 10
-      burst: 20
-```
-
-### 4. Monitoring
-
-Monitor integration health:
-
-```promql
-rate(gryvia_integration_errors_total[5m])
-```
+Give CI and orchestrators a dedicated service account with only the rights to create and read `gryvia.io` jobs in the
+namespaces they need, or an OIDC tenant identity when going through the gateway, rather than the admin API key.
 
 ## Troubleshooting
 
-### Integration Not Working
-
 ```bash
-# Check integration logs
-kubectl logs -n gryvia-system deploy/integrations-controller
-
-# Check that the integrations controller is running
+# Platform and component status
+gryvia status
 kubectl get pods -n gryvia-system
 
-# Check platform status
-gryvia status
-```
+# Why a job did not start
+gryvia get job <name>
+kubectl describe gryviaaijob <name>
+kubectl logs -n gryvia-system deploy/gryvia-ai-operator
 
-### Authentication Failures
-
-```bash
-# Verify secret
-kubectl get secret wandb-api-key -o yaml
+# A secret referenced by a job
+kubectl get secret wandb-api-key
 ```
 
 ## Support
 
-- Integration Issues: https://github.com/zyvorai/gryvia/issues
-- Integration Requests: https://github.com/zyvorai/gryvia/discussions
+- Issues: https://github.com/zyvorai/gryvia/issues
+- Discussions: https://github.com/zyvorai/gryvia/discussions
 
 ---
 

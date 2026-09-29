@@ -2,6 +2,12 @@
 
 Real-time multi-experiment comparison system with automatic early stopping for GPU training jobs.
 
+> **Status: implemented for the log-scraping path (ai-operator controller registered), unverified on real training runs.**
+> Only `metricSource.type: log-pattern` is implemented; the `prometheus` source described below has no
+> code behind it. Early stopping applies a median stopping rule; the `bayesian` and `percentile`
+> methods listed below are accepted by the CRD but not implemented as distinct algorithms. `costSaved` is
+> `gpuHoursSaved` multiplied by a hard-coded $3.50 per GPU-hour, not real pricing.
+
 ## Overview
 
 GryviaLiveExperiment enables running multiple training jobs simultaneously and comparing them in real time. The system:
@@ -117,7 +123,7 @@ If no patterns are configured, the controller uses sensible defaults for `loss` 
 
 ### Prometheus Source
 
-Set `metricSource.type: prometheus` to query a Prometheus server for metrics instead of scraping logs. The `patterns` map is used to map metric names to PromQL queries.
+**Not implemented.** Setting `metricSource.type: prometheus` is intended to query a Prometheus server for metrics instead of scraping logs. The `patterns` map is used to map metric names to PromQL queries.
 
 ## Early Termination
 

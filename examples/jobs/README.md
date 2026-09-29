@@ -2,6 +2,8 @@
 
 Example jobs for various AI/ML workloads.
 
+> **Status.** The YAML files in this directory are schema-checked against the `GryviaAIJob` CRD. They have not been run on real GPU hardware; image tags, GPU counts and any throughput or cost figures are illustrative. Job phases are set by the ai-operator; see the operator README for what it actually does.
+
 ## Examples
 
 ### 1. PyTorch Distributed Training
@@ -100,7 +102,7 @@ kubectl describe gryviaaijob <job-name>
 
 ### View job logs
 ```bash
-kubectl logs -l job-name=<job-name>
+kubectl logs -l gryvia.io/job=<job-name>
 ```
 
 ### Delete a job
@@ -132,9 +134,11 @@ gryvia cancel pytorch-distributed-training
 
 ### Job Dependencies
 
-Create job chains using dependencies:
+Job dependencies are not supported: `GryviaAIJob` has no `dependsOn` field. Use a workflow tool such as Argo or Airflow (see `services/airflow/`) or submit jobs in sequence.
 
-```yaml
+Design sketch, not accepted by the current CRD schema:
+
+```text
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
@@ -147,7 +151,7 @@ spec:
 
 ### Priority Classes
 
-Set job priorities:
+Set a job priority with the integer `spec.priority`:
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
@@ -155,15 +159,19 @@ kind: GryviaAIJob
 metadata:
   name: urgent-job
 spec:
-  priorityClassName: high-priority
-  # ... rest of spec
+  type: training
+  gpus: 8
+  image: nvcr.io/nvidia/pytorch:24.01-py3
+  priority: 100
 ```
 
 ### Resource Preemption
 
-Allow job preemption for higher priority work:
+There is no `preemptionPolicy` field on `GryviaAIJob`, and the `GryviaPriority` CRD has no controller yet, so preemption is not implemented.
 
-```yaml
+Design sketch, not accepted by the current CRD schema:
+
+```text
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:

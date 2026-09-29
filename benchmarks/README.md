@@ -2,6 +2,17 @@
 
 Standard ML and GPU benchmarks for validating Gryvia cluster performance.
 
+> **Status: benchmark job templates; no results are checked in.** `suite.yaml` defines `GryviaAIJob` and
+> plain `Job` templates (the `GryviaAIJob`s were corrected to the real schema: `spec.gpus`,
+> `spec.gpuType`, `distributed.*`) that have not been run on GPU hardware for this repo. Every
+> "Expected" figure and the whole "Baseline Results" section (A100/H100 throughput, NCCL bandwidth,
+> scaling efficiency) are reference/design targets, not measurements from Gryvia, and are not the official
+> MLPerf results. The MLPerf names refer to the model/workload only; nothing here is an MLPerf submission.
+> Files referenced but not in this directory: `run-all.sh`, `scaling-benchmark.yaml`,
+> `nccl-benchmark.yaml`, `memory-benchmark.yaml`, `scripts/check-regression.py`,
+> `results/baseline.json`; the `kfctl` commands do not exist. Benchmark jobs and scripts inside
+> `suite.yaml` are unverified.
+
 ## Available Benchmarks
 
 ### ML Training Benchmarks
@@ -411,10 +422,9 @@ kind: GryviaAIJob
 metadata:
   name: custom-benchmark
 spec:
-  framework: pytorch
-  resources:
-    gpuType: A100-80G
-    gpuCount: 8
+  type: training
+  gpus: 8
+  gpuType: A100-80G
   image: my-org/my-benchmark:latest
   command:
     - python

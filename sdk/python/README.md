@@ -2,18 +2,20 @@
 
 Python SDK for [Gryvia](https://github.com/zyvorai/gryvia) -- a Kubernetes-native GPU compute platform for AI/ML workloads.
 
+> **Status.** This is an async REST client for the Gryvia API gateway (jobs, nodes, quotas, costs, metrics). It has unit tests against mocked HTTP but has not been validated against a production gateway. It does **not** cover SKUs/catalog, tenants, usage, invoices or flight-recorder endpoints, and it is not a Kubernetes client (see `sdk/go` for a controller-runtime client of the CRDs). Publication of a `gryvia` package on PyPI is not verified, so install from source. Gateway auth: an API key or session token grants admin, an OIDC token is tenant-scoped.
+
+**Known mismatch: `Jobs.stream_logs`.** It assumes server-sent events at `/api/jobs/{name}/logs?follow=...&tailLines=...`. The gateway's log endpoint returns a single JSON document (`{pod, container, lines, truncated}`) selected with `?pod=&tail=` (1 to 2000 lines) and does not stream, so `stream_logs` does not work against the current gateway. Use the CLI (`gryvia logs`) or call the endpoint directly until the SDK is updated.
+
 ## Installation
 
-```bash
-pip install gryvia
-```
-
-Or install from source:
+Install from source (recommended):
 
 ```bash
 cd sdk/python
 pip install -e .
 ```
+
+`pip install gryvia` only works if the package has been published to an index you use; that is not verified.
 
 ## Quick Start
 
@@ -73,7 +75,7 @@ async with Gryvia(...) as tr:
             "image": "nvcr.io/nvidia/pytorch:24.01-py3",
             "gpus": 4,
             "gpuType": "A100-80G",
-            "framework": "pytorch",
+            "type": "training",
             "command": ["torchrun", "--nproc_per_node=4", "train.py"],
         },
     })

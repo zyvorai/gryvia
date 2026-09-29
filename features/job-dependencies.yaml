@@ -1,6 +1,9 @@
 ---
 # Job Dependencies and DAG Workflows
 # Define complex job workflows with dependencies
+#
+# STATUS: design sketch. GryviaWorkflow has a CRD but no controller wired yet, and these examples use fields
+# (e.g. spec.jobs, schedule) that do not match crds/gryvia.io_gryviaworkflows.yaml. See features/README.md.
 
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaWorkflow

@@ -1,5 +1,8 @@
 ---
 # Advanced Scheduling Policies for Gryvia
+#
+# DESIGN SKETCH: `SchedulingPolicy` is not a CRD in this repository (see crds/), so this file
+# cannot be applied to a cluster. See policies/README.md for what is implemented.
 
 # Priority-based Scheduling
 apiVersion: gryvia.io/v1alpha1

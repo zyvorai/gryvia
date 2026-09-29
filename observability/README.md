@@ -1,6 +1,20 @@
 # Advanced Observability
 
-Comprehensive observability with distributed tracing, log aggregation, and metrics.
+Reference patterns for distributed tracing, log aggregation, and metrics.
+
+> **Status: reference material and templates, not a shipped feature.** No Gryvia
+> component (operators, gateway, CLI, collector) emits OpenTelemetry spans or ships a
+> Jaeger, OTel collector, Loki or Promtail deployment; `observability/distributed-tracing.yaml`
+> is an unapplied manifest template and nothing in the Helm charts installs it. The
+> Python snippets below are generic examples for your own training code (the
+> `opentelemetry.instrumentation.torch` `TorchInstrumentor` shown in the DDP example is
+> illustrative and is not a package this repo provides or verifies). The metric names used
+> in the PromQL examples (`gpu_utilization`, `training_loss`, ...) are application-defined
+> examples, not Gryvia metrics. What does ship: `helm/observability` (an optional
+> kube-prometheus-stack wrapper, not installed by default) and the eBPF collector's own
+> Prometheus metrics and flight recorder (collector disabled by default; see `monitoring/`
+> for which `gryvia_*` metrics actually exist). The retention numbers under Best Practices
+> are suggestions, not defaults. Nothing here was verified against a running cluster.
 
 ## Components
 
@@ -34,7 +48,7 @@ helm install loki grafana/loki-stack \
 
 ### 3. Metrics (Prometheus + Grafana)
 
-Already installed. See monitoring/
+Optional: `helm/observability` wraps kube-prometheus-stack; it is not installed by default. See `monitoring/`.
 
 ## Distributed Tracing
 

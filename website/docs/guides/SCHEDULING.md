@@ -1,35 +1,44 @@
-# Advanced Scheduling Guide
+# Scheduling Guide
 
-Complete guide to Gryvia's advanced scheduling capabilities for GPU workloads, including gang scheduling, fair-share queuing, elastic training, admission webhooks, and priority preemption.
+What Gryvia does today when a `GryviaAIJob` is submitted, and which of the more advanced scheduling ideas (gang scheduling, DRF fair share, backfill, elastic training, preemption) exist only as library code or design.
 
-## Table of Contents
+## Status at a glance
 
-1. [Gang Scheduling](#gang-scheduling)
-2. [DRF Fair-Share Queue](#drf-fair-share-queue)
-3. [Elastic Training](#elastic-training)
-4. [Admission Webhooks](#admission-webhooks)
-5. [Priority Preemption](#priority-preemption)
+| Capability | Status |
+|------------|--------|
+| GPU-aware node selection (filter and score nodes, recorded in `status.nodesAllocated`) | Implemented and run by the GryviaAIJob controller. Advisory: see [What runs today](#what-runs-today) |
+| StatefulSet, headless Service and PVC creation, NCCL/`MASTER_ADDR`/`WORLD_SIZE` env for distributed jobs | Implemented |
+| Validating admission webhook (job sanity, quota and SKU policy) | Implemented, served by the ai-operator when enabled; fails open by default |
+| Gang scheduling | Library code in `operators/ai-operator/pkg/scheduler/gang.go`, not called by the controller |
+| DRF fair share and queue ordering | Library code in `operators/ai-operator/pkg/queue`, not called by the controller |
+| Backfill | Not implemented as a running behaviour |
+| Elastic training | Library code in `operators/ai-operator/pkg/elastic`, not called by the controller |
+| Mutating webhook (NCCL injection and defaults) | Code exists in `pkg/webhook/mutator.go`; not registered in `main.go`, so it does not run |
+| Priority preemption, `GryviaPriority` classes | CRD only, no controller |
+| Fabric-health penalty on node scores | Function exists (`pkg/scheduler/fabric_score.go`), marked NOT WIRED in the code |
 
----
+The remaining sections describe the running behaviour first, then the designs. Sections marked "Design" are not what a cluster does today. Nothing here has been verified on real GPU hardware; the operator logic is covered by Go unit tests against fake clients.
 
-## Gang Scheduling
+## What runs today
 
-Atomic multi-pod placement guaranteeing that all pods for a distributed training job are scheduled simultaneously or not at all.
+The GryviaAIJob controller (`operators/ai-operator/controllers/gryviaaijob_controller.go`) reconciles each job through these steps:
 
-### Overview
+1. New jobs get `status.phase: Pending`.
+2. **Node selection.** `scheduler.FindOptimalNodes` lists nodes and GPU-consuming pods, then filters and scores nodes:
+   - Filters: node is Ready; `gryvia.io/gpu` label matches `spec.gpuType` (unless empty or `any`); `gryvia.io/rdma=true` when `spec.network: rdma`; `gryvia.io/sriov=true` when `spec.network: sriov`; `spec.nodeSelector` matches; enough free GPUs (from the `gryvia.io/gpu-count` label or `nvidia.com/gpu` allocatable, minus GPUs requested by running pods).
+   - Score: +50 for a GPU-type match, +30 for RDMA when requested, +40 (NVSwitch) or +30 (NVLink) from the `gryvia.io/interconnect` label for multi-GPU jobs, +5 per free GPU, +1 per 10 GB of `gryvia.io/gpu-memory`, plus a small general node-resource term.
+   - The top `distributed.nodes` nodes (1 when not distributed) are written to `status.nodesAllocated`. If no node qualifies, the `Scheduled` condition is set to false with the reason and the job is retried after 30 seconds.
+3. Creates a PVC when `spec.storage` is set, a headless Service, and a StatefulSet named `<job>-training` with one `trainer` container.
+4. Derives status from the StatefulSet and pods: `Running` once a replica is ready, `Succeeded` when all pods have succeeded, `Failed` when all pods have terminated and at least one failed.
 
-Traditional Kubernetes scheduling places pods independently, which can cause distributed training jobs to deadlock when some pods are scheduled but others remain pending. Gang scheduling solves this by treating all pods in a job as a single scheduling unit.
+Important limits of the current implementation:
 
-Key properties:
+- `status.nodesAllocated` is **not** turned into a node binding. The StatefulSet's pod template carries `nodeSelector` (`gryvia.io/gpu`, `gryvia.io/rdma`, plus your own), tolerations and affinity, and the Kubernetes scheduler places the pods. The operator's node choice is recorded, not enforced. In effect the operator's step is a feasibility check plus advisory status: it fails (job stays Pending, retried every 30 seconds) when no node qualifies, but it does not decide where pods run. The `gryvia.io/gpu`, `gryvia.io/gpu-count`, `gryvia.io/rdma`, `gryvia.io/sriov` and `gryvia.io/interconnect` node labels it relies on are set by the `GryviaGpuNode` controller (from the resource's spec and GPU feature discovery data).
+- Pods request `nvidia.com/gpu` (per pod: `distributed.gpusPerNode` when distributed, otherwise `spec.gpus`), so the NVIDIA device plugin is required.
+- `spec.priority`, `spec.retryLimit`, `spec.timeout` and `spec.model` are accepted by the schema (priority is range-checked 0 to 100 by the webhook) but the controller does not act on them today.
+- A StatefulSet is used, so pods restart in place (`restartPolicy: Always` is the only choice for StatefulSets); run-to-completion semantics are approximated by inspecting pod phases.
 
-- **Atomicity**: All pods are placed together or none are placed.
-- **Deadlock Prevention**: Prevents scenarios where multiple jobs each hold partial resources and block each other.
-- **Topology Awareness**: Prefers to co-locate pods on the same rack, switch, or NVLink domain for optimal communication performance.
-- **Timeout**: If the scheduler cannot place all pods within the configured timeout, the entire gang is released to avoid resource starvation.
-
-### Configuration
-
-Gang scheduling is enabled per-job via the `scheduling` section:
+### A distributed job that validates against the CRD
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
@@ -37,494 +46,169 @@ kind: GryviaAIJob
 metadata:
   name: distributed-llm-training
 spec:
-  framework: pytorch
+  type: training
+  image: nvcr.io/nvidia/pytorch:24.01-py3
+  gpus: 8
+  gpuType: H100
+  network: rdma
   distributed:
     enabled: true
-    strategy: ddp
+    framework: pytorch
+    backend: nccl
     nodes: 4
     gpusPerNode: 8
-
-  resources:
-    gpuType: H100
-    gpuCount: 32
-
-  scheduling:
-    gang:
-      enabled: true
-      # Minimum number of pods required to start (optional)
-      # Defaults to total pod count for strict gang semantics
-      minMembers: 4
-      # Timeout for gang assembly
-      timeout: 10m
-      # Topology preference
-      topology:
-        preferred: same-rack
-        required: same-zone
-
-  image: nvcr.io/nvidia/pytorch:24.01-py3
   command: ["torchrun", "--nproc_per_node=8", "train.py"]
 ```
 
-### Topology Preferences
+For a distributed job the controller creates 4 replicas with 8 GPUs each and injects `MASTER_ADDR`, `MASTER_PORT=29500`, `WORLD_SIZE` (nodes times GPUs per node) and `NCCL_DEBUG=INFO`; with `network: rdma` it also sets `NCCL_IB_DISABLE=0` and `NCCL_NET_GDR_LEVEL=5`, adds the `gryvia.io/rdma` annotation and the `rdma-network` network attachment annotation, and mounts a memory-backed `/dev/shm`. RDMA behaviour has not been verified on hardware.
 
-| Topology | Description | Use Case |
-|----------|-------------|----------|
-| `same-node` | All pods on a single node | Small jobs using NVLink |
-| `same-rack` | Pods on nodes in the same rack | Jobs needing low-latency interconnect |
-| `same-zone` | Pods in the same availability zone | Cross-rack but zone-local |
-| `any` | No topology constraint | Maximum scheduling flexibility |
+---
 
-### How It Works
+## Gang Scheduling
 
-1. Job submitted with `gang.enabled: true` and 4 pods requested.
-2. Scheduler reserves resources but does not bind pods until all 4 can be placed.
-3. If all 4 can be placed with topology preferences satisfied, pods are bound atomically.
-4. If the gang cannot be assembled within `timeout` (10m), reservations are released and the job is re-queued.
-5. The scheduler periodically retries gang assembly using backoff.
+Status: library code only. `GangScheduler` in `operators/ai-operator/pkg/scheduler/gang.go` implements a `PodGroup` with all-or-nothing reservation of GPUs across nodes, a hold timeout (a constant of 2 minutes in the code) that releases reserved GPUs to break deadlocks, and a deadlock detector. Nothing in the running controller calls it, and there is no `spec.scheduling` field on `GryviaAIJob`.
+
+What that means today: a multi-node job becomes one StatefulSet (default `OrderedReady` pod management, so pods start one after another) and the Kubernetes scheduler places each pod independently. Nothing reserves the whole set of GPUs up front, so two large jobs can each end up holding part of the cluster. If you need real gang semantics now, use a gang-aware scheduler such as Kueue or Volcano in front of the cluster; Gryvia does not integrate with them.
+
+### Design sketch
+
+Design sketch, not accepted by the current CRD schema (there is no `scheduling` field):
+
+```text
+spec:
+  scheduling:
+    gang:
+      enabled: true
+      minMembers: 4
+      timeout: 10m
+      topology:
+        preferred: same-rack
+```
+
+The intended behaviour is: reserve resources without binding until every pod of the gang can be placed, then bind atomically; on timeout release the reservations and re-queue. Topology preference values (`same-node`, `same-rack`, `same-zone`, `any`) are not implemented; the only topology signal in the real scorer is the `gryvia.io/interconnect` node label (NVSwitch, NVLink).
 
 ---
 
 ## DRF Fair-Share Queue
 
-Dominant Resource Fairness (DRF) multi-resource scheduling with hierarchical queues and backfill.
+Status: library code only. `operators/ai-operator/pkg/queue` contains a priority queue (`controller.go`) and a Dominant Resource Fairness calculator (`fairshare.go`: register teams with weights, record allocations, pick the team with the smallest weighted dominant share). The controller does not use either, so there is no fair-share ordering of jobs, no hierarchical queues and no backfill running. There is no `GryviaQueue` kind.
 
-### Overview
+What exists for multi-tenant limits instead:
 
-DRF ensures fair resource allocation across teams by equalizing each team's dominant resource share. A team whose dominant resource is GPUs will be compared against teams whose dominant resource is CPU or memory, ensuring no single team monopolizes the cluster.
+- `GryviaQuota` (reconciled by the quota-operator) tracks usage per namespace, and the admission webhook enforces per-job GPU limits and allowed GPU types from quotas and the tenant's SKU list on create.
+- Kubernetes `ResourceQuota` and namespaces per tenant work as usual.
 
-Features:
+### The CLI queue view
 
-- **Multi-Resource Fairness**: Considers GPU, CPU, memory, and storage simultaneously.
-- **Hierarchical Queues**: Team queues inherit from parent organization queues.
-- **Backfill**: Small jobs can jump ahead in the queue if they fit in resource gaps without delaying higher-priority jobs.
-- **Borrowing**: Teams can borrow unused quota from other teams (configurable).
-- **Guaranteed Minimums**: Each queue has a guaranteed minimum resource allocation.
-
-### Queue Configuration
-
-```yaml
-apiVersion: gryvia.io/v1alpha1
-kind: GryviaQueue
-metadata:
-  name: ml-research-queue
-spec:
-  # Queue hierarchy
-  parent: organization-queue
-
-  # Team binding
-  team: ml-research
-
-  # Resource guarantees and limits
-  resources:
-    guaranteed:
-      gpus: 32
-      cpu: 256
-      memory: 1Ti
-    limit:
-      gpus: 64
-      cpu: 512
-      memory: 2Ti
-
-  # Borrowing policy
-  borrowing:
-    enabled: true
-    maxBorrow:
-      gpus: 16        # Can borrow up to 16 extra GPUs
-    returnGracePeriod: 5m
-
-  # Backfill configuration
-  backfill:
-    enabled: true
-    maxJobDuration: 4h   # Only backfill jobs shorter than 4h
-    maxGPUs: 8           # Max GPUs per backfill job
-
-  # Scheduling weights (higher = more priority in fair share)
-  weight: 10
-
-  # Preemption configuration
-  preemption:
-    enabled: true
-    withinQueue: true     # Can preempt within same queue
-    crossQueue: false     # Cannot preempt other queues
-```
-
-### Queue Hierarchy Example
-
-```
-organization-queue (weight: 100, GPUs: 128)
-├── ml-research-queue (weight: 40, GPUs: 64)
-│   ├── cv-team-queue (weight: 15, GPUs: 24)
-│   ├── nlp-team-queue (weight: 15, GPUs: 24)
-│   └── rl-team-queue (weight: 10, GPUs: 16)
-├── ml-production-queue (weight: 30, GPUs: 32)
-└── ml-platform-queue (weight: 30, GPUs: 32)
-```
-
-Resources cascade down the hierarchy. Each child queue is guaranteed its share but can borrow from siblings when they have idle capacity.
-
-### Backfill Scheduling
-
-Backfill allows small, short-duration jobs to start immediately by filling resource gaps:
-
-```
-Time -->
-+-----------+---+--+
-| Large Job |   |  |   <- Backfill candidate fits in gap
-+-----------+---+--+
-| Running Job      |
-+------------------+
-        ^ Backfill job starts here
-```
-
-Requirements for backfill:
-- Job must declare a `maxDuration` so the scheduler knows it will complete before the gap closes.
-- Job must fit within the `backfill.maxGPUs` limit.
-- Job must not delay any higher-priority queued job.
-
-### CLI
+`gryvia queue` lists jobs whose phase is Pending, Queued or Scheduling, plus a summary of running jobs. It reads `GryviaAIJob` objects through your kubeconfig; the optional name argument filters by job name substring, it is not a queue name.
 
 ```bash
-# View queue status
 gryvia queue
-
-# View one queue
-gryvia queue ml-research-queue
-
-# Watch queues, refreshing every 5 seconds
 gryvia queue --watch 5
+gryvia queue -o json
 ```
+
+### Design sketch
+
+Design sketch, not accepted by the current CRD schema (no `GryviaQueue` kind exists):
+
+```text
+kind: GryviaQueue
+spec:
+  parent: organization-queue
+  team: ml-research
+  resources:
+    guaranteed: {gpus: 32}
+    limit: {gpus: 64}
+  borrowing: {enabled: true}
+  backfill: {enabled: true, maxJobDuration: 4h}
+  weight: 10
+```
+
+Intended semantics: weighted DRF ordering across teams, guaranteed minimums with borrowing of idle capacity, and backfill of short small jobs into gaps that do not delay higher-priority jobs. Backfill would also need a way to know a job's maximum duration; `spec.timeout` exists in the schema but is not read by any scheduler today.
 
 ---
 
 ## Elastic Training
 
-Dynamic worker scaling for distributed training jobs using PyTorch Elastic (torchelastic) integration.
+Status: library code only, with no schema field to enable it. `operators/ai-operator/pkg/elastic` has helpers for min/max node annotations and scaling a StatefulSet, but the GryviaAIJob controller never calls them, and `GryviaAIJob` has no `elastic` field. A job's replica count is fixed at `distributed.nodes`.
 
-### Overview
+You can still run a torchelastic-style job by putting the elastic launcher flags in `command` (for example `--nnodes=2:8` with a c10d rendezvous); that is entirely the job's own behaviour, and Gryvia will not add or remove workers.
 
-Elastic training allows distributed training jobs to scale their worker count up or down without restarting. This enables:
+### Design sketch
 
-- **Scale-Up**: Add workers when more GPUs become available, accelerating training.
-- **Scale-Down**: Remove workers gracefully when GPUs are needed for higher-priority jobs, rather than killing the entire job.
-- **Fault Tolerance**: Continue training with reduced workers when nodes fail, rather than failing the entire job.
-- **Opportunistic Scaling**: Use spot/preemptible GPUs and automatically adjust when they are reclaimed.
+Design sketch, not accepted by the current CRD schema:
 
-### Configuration
-
-```yaml
-apiVersion: gryvia.io/v1alpha1
-kind: GryviaAIJob
-metadata:
-  name: elastic-training
+```text
 spec:
-  framework: pytorch
-  distributed:
-    enabled: true
-    strategy: ddp
-
-  # Elastic scaling configuration
   elastic:
     enabled: true
-    minWorkers: 2        # Minimum workers to continue training
-    maxWorkers: 8        # Maximum workers when resources are available
-    initialWorkers: 4    # Starting worker count
-
-    # Scale-up policy
-    scaleUp:
-      trigger: gpuAvailable
-      cooldown: 5m
-      increment: 1
-
-    # Scale-down policy
-    scaleDown:
-      trigger: preemption
-      gracePeriod: 2m     # Time for checkpoint before removing worker
-
-    # Checkpoint before scaling
+    minWorkers: 2
+    maxWorkers: 8
     checkpointOnScale: true
-
-  resources:
-    gpuType: A100-80G
-    gpuPerWorker: 1
-    memoryPerWorker: 64Gi
-
-  image: nvcr.io/nvidia/pytorch:24.01-py3
-  command:
-    - python
-    - -m
-    - torch.distributed.run
-    - --rdzv_backend=etcd
-    - --rdzv_endpoint=etcd:2379
-    - --nnodes=2:8
-    - --nproc_per_node=1
-    - train.py
-
-  checkpointing:
-    enabled: true
-    frequency: 5m
-    path: /checkpoints
 ```
 
-### How Elastic Scaling Works
-
-1. Job starts with `initialWorkers` (4) workers.
-2. If additional GPUs become available and the cluster has capacity, Gryvia adds workers up to `maxWorkers` (8).
-3. The rendezvous backend (etcd) coordinates the new worker joining the training group.
-4. If a worker is preempted or a node fails, training continues as long as at least `minWorkers` (2) workers remain.
-5. Before removing a worker, the job checkpoints its state (if `checkpointOnScale` is true).
-6. New workers load the latest checkpoint and join the ongoing training.
-
-### Prerequisites
-
-- PyTorch 1.10+ with torchelastic support
-- etcd or C10d rendezvous backend deployed in the cluster
-- Checkpointing enabled (required for state consistency during scaling)
-
-### CLI
-
-```bash
-# View elastic job status
-gryvia status elastic-training
-
-# View scaling events (see the Events section)
-kubectl describe gryviaaijob elastic-training
-```
+Intended behaviour: scale workers up when GPUs are free, scale down instead of killing the job when GPUs are needed elsewhere, and checkpoint before removing a worker. This would need the checkpoint machinery (see `GryviaCheckpointGuard` in the ML workflows guide) and a rendezvous backend in the cluster.
 
 ---
 
 ## Admission Webhooks
 
-Validating and mutating admission webhooks for job submission with automatic NCCL environment injection.
+The ai-operator serves a **validating** webhook for `GryviaAIJob` when started with `--enable-webhooks` (the Helm chart's `webhook.enabled`, which defaults to true, with a self-signed certificate). The chart's `webhook.failurePolicy` defaults to `Ignore`, so if the webhook is unreachable job creation still succeeds (fail open). Set it to `Fail` to reject jobs while the webhook is down.
 
-### Overview
+### Validation rules that exist
 
-Gryvia registers two admission webhooks that intercept GryviaAIJob creation:
+| Rule | Behaviour |
+|------|-----------|
+| `spec.type` | Must be one of `training`, `inference`, `fine-tuning`, `evaluation` |
+| `spec.gpus` | Must be greater than 0 |
+| `spec.network` | If set, one of `standard`, `rdma`, `sriov` |
+| `spec.priority` | Between 0 and 100 |
+| `spec.distributed` | When enabled: `nodes` > 0, `gpusPerNode` not negative, `framework` one of pytorch, tensorflow, horovod, deepspeed, megatron, `backend` one of nccl, gloo, mpi, and nodes times GPUs per node at most 1024 |
+| Resource requests, image | Basic well-formedness checks |
+| Quota and tenant policy (create only) | Denies GPU types not allowed by the namespace's `GryviaQuota` objects, GPU counts above the smallest per-job limit, and GPU types outside the tenant's allowed SKUs (from the `GryviaGpuSku` catalog) |
+| Cluster warnings | Non-blocking warnings when the request exceeds the largest node or names a GPU type no node carries |
 
-1. **Validating Webhook**: Rejects invalid job specifications before they enter the system.
-2. **Mutating Webhook**: Automatically injects optimal NCCL environment variables and other runtime configuration.
+Rules that earlier versions of this guide listed but that are **not** implemented: budget check, image allowlist, priority authorization, PVC existence, network policy validation. There is no `gryvia-operator-config` ConfigMap driving webhook behaviour.
 
-### Validation Rules
+### Mutating webhook
 
-The validating webhook enforces the following rules:
-
-| Rule | Description |
-|------|-------------|
-| Quota check | Reject if team has insufficient GPU quota |
-| Budget check | Reject if team has exceeded budget limit |
-| Resource limits | Reject if requested GPU count exceeds per-job maximum |
-| Image allowlist | Reject if container image is not in the approved registry list |
-| Priority authorization | Reject if user is not authorized for the requested priority level |
-| GPU type availability | Reject if requested GPU type does not exist in the cluster |
-| Storage validation | Reject if referenced PVCs do not exist |
-| Network validation | Reject if referenced network policies are invalid |
-
-### NCCL Environment Injection
-
-The mutating webhook automatically injects optimal NCCL environment variables based on the job's GPU type, node topology, and interconnect:
-
-```yaml
-# Automatically injected for H100 jobs with InfiniBand
-env:
-  - name: NCCL_IB_DISABLE
-    value: "0"
-  - name: NCCL_IB_HCA
-    value: "mlx5"
-  - name: NCCL_IB_GID_INDEX
-    value: "3"
-  - name: NCCL_NET_GDR_LEVEL
-    value: "5"
-  - name: NCCL_SOCKET_IFNAME
-    value: "eth0"
-  - name: NCCL_DEBUG
-    value: "WARN"
-  - name: NCCL_ALGO
-    value: "Ring,Tree"
-  - name: NCCL_PROTO
-    value: "Simple"
-
-# Automatically injected for A100 jobs with NVLink
-env:
-  - name: NCCL_P2P_LEVEL
-    value: "NVL"
-  - name: NCCL_SHM_DISABLE
-    value: "0"
-  - name: NCCL_SOCKET_IFNAME
-    value: "eth0"
-  - name: NCCL_DEBUG
-    value: "WARN"
-
-# Automatically injected for RoCE (RDMA over Converged Ethernet)
-env:
-  - name: NCCL_IB_DISABLE
-    value: "0"
-  - name: NCCL_IB_ROCE_VERSION_NUM
-    value: "2"
-  - name: NCCL_IB_GID_INDEX
-    value: "3"
-  - name: NCCL_NET_GDR_LEVEL
-    value: "2"
-```
-
-### Additional Mutations
-
-Beyond NCCL, the mutating webhook also injects:
-
-- **Shared memory**: Sets `/dev/shm` size based on GPU memory requirements.
-- **CUDA settings**: Injects `CUDA_VISIBLE_DEVICES` based on allocated GPU indices.
-- **Affinity rules**: Adds node affinity for the requested GPU type.
-- **Tolerations**: Adds tolerations for GPU node taints.
-- **Resource limits**: Sets precise CPU and memory limits based on GPU type defaults.
-
-### Configuration
-
-Webhook behavior is configured via the Gryvia operator ConfigMap:
-
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: gryvia-operator-config
-  namespace: gryvia-system
-data:
-  admission.yaml: |
-    validation:
-      enabled: true
-      quotaCheck: true
-      budgetCheck: true
-      maxGPUsPerJob: 256
-      allowedRegistries:
-        - nvcr.io
-        - docker.io
-        - ghcr.io
-      imageAllowlist: true
-
-    mutation:
-      enabled: true
-      ncclInjection: true
-      shmSizeAuto: true
-      affinityInjection: true
-      tolerationInjection: true
-```
+`operators/ai-operator/pkg/webhook/mutator.go` contains a mutator that would inject NCCL variables (defaults such as `NCCL_DEBUG=WARN`, `NCCL_IB_DISABLE`, `NCCL_NET_GDR_LEVEL`, `NCCL_SOCKET_IFNAME`), topology and RDMA/SR-IOV annotations, default CPU and memory limits and a default image pull policy. It is not registered in the operator's `main.go` and no `MutatingWebhookConfiguration` is shipped, so none of these mutations happen. The only NCCL/distributed environment that is set today is the small set the controller itself adds (see above).
 
 ---
 
 ## Priority Preemption
 
-Multi-tier priority system with checkpoint-aware preemption and automatic requeueing.
+Status: not implemented. `spec.priority` (0 to 100) is validated but the controller neither orders jobs by it nor preempts anything. A `GryviaPriority` CRD exists (priority classes such as production or best-effort in the design), and a controller file exists under `operators/ai-operator/controllers/`, but it is not registered in `main.go`, so nothing reconciles it. There is no `priorityClassName`, `preemption` or `checkpointing` field on `GryviaAIJob`.
 
-### Overview
+For preemption today, use Kubernetes `PriorityClass` and the default scheduler's preemption on the pods. That requires a `priorityClassName` on the pod template, which `GryviaAIJob` does not expose either, so in practice it is not reachable through this API yet.
 
-Gryvia extends the [Priority & Preemption](ADVANCED_FEATURES.md#priority--preemption) system with checkpoint-aware preemption that minimizes wasted GPU compute when higher-priority jobs arrive.
+### Design
 
-### Preemption Flow
-
-```
-1. High-priority job submitted
-2. Scheduler determines cluster is at capacity
-3. Scheduler identifies candidate victims:
-   a. Lower priority than the incoming job
-   b. Sufficient resources freed if preempted
-   c. Prefer jobs with checkpointing enabled
-   d. Prefer jobs closest to their next checkpoint
-4. Victims are notified (SIGTERM)
-5. Victims checkpoint state (up to gracePeriod)
-6. Victims are terminated
-7. High-priority job is scheduled
-8. Preempted jobs are re-queued with their original priority
-9. When resources become available, re-queued jobs resume from checkpoint
-```
-
-### Preemption Configuration
-
-```yaml
-apiVersion: gryvia.io/v1alpha1
-kind: GryviaAIJob
-metadata:
-  name: critical-inference
-spec:
-  # Priority class
-  priorityClassName: production
-
-  # Preemption settings
-  preemption:
-    # Can this job preempt others?
-    canPreempt: true
-    # Can this job be preempted?
-    canBePreempted: false
-
-  # Required for safe preemption
-  checkpointing:
-    enabled: true
-    frequency: 10m
-    path: /checkpoints
-    # Grace period for final checkpoint on preemption
-    gracePeriod: 2m
-
-  resources:
-    gpuType: A100-80G
-    gpuCount: 4
-```
-
-### Priority Classes
-
-Gryvia defines seven priority classes with clear preemption rules:
-
-| Priority Class | Value | Can Preempt | Can Be Preempted | Typical Use |
-|---------------|-------|-------------|-------------------|-------------|
-| `system-critical` | 1,000,000 | Yes (all) | No | System infrastructure |
-| `production` | 100,000 | Yes (high and below) | No | Production serving |
-| `high` | 10,000 | Yes (normal and below) | Yes (by production+) | Critical research deadlines |
-| `normal` | 1,000 | No | Yes (by high+) | Standard training jobs |
-| `low` | 100 | No | Yes (by normal+) | Batch processing |
-| `best-effort` | 10 | No | Yes (by any) | Opportunistic workloads |
-| `spot` | 50 | No | Yes (by any) | Spot/preemptible instances |
-
-### Victim Selection Strategy
-
-When multiple candidates exist for preemption, the scheduler uses this ranking:
-
-1. **Lowest priority first**: Preempt the lowest-priority jobs first.
-2. **Most recently started**: Among equal priority, prefer newer jobs (less wasted compute).
-3. **Checkpoint-ready**: Prefer jobs that have recently checkpointed (less lost progress).
-4. **Fewest resources**: Prefer preempting fewer jobs to meet the resource requirement.
-
-### CLI
+The intended flow is: a high-priority job arrives at a full cluster, the scheduler picks lower-priority victims (preferring jobs that checkpoint, lowest priority first), victims get SIGTERM and a grace period to checkpoint, then are re-queued and resume from the checkpoint. None of this exists in running code. The priority class table (values, who can preempt whom) in earlier versions of this guide was a proposal, not shipped behaviour, and has been removed.
 
 ```bash
-# View priority classes
+# The CRD exists; nothing reconciles it yet
 kubectl get gryviapriorities
 
-# View preemption events and status for a job
-kubectl describe gryviaaijob my-job
-
-# View queued (including re-queued) jobs
+# Real commands
 gryvia queue
-
-# Check job status
 gryvia status my-job
+kubectl describe gryviaaijob my-job
 ```
 
 ---
 
 ## Scheduling Summary
 
-| Feature | Purpose | Key Benefit |
-|---------|---------|-------------|
-| Gang Scheduling | Atomic multi-pod placement | Prevents deadlock in distributed training |
-| DRF Fair-Share | Multi-resource fair allocation | Equitable cluster sharing across teams |
-| Elastic Training | Dynamic worker scaling | Maximize GPU utilization, fault tolerance |
-| Admission Webhooks | Validation + auto-configuration | Prevent errors, optimal NCCL settings |
-| Priority Preemption | Checkpoint-aware preemption | Critical jobs start fast, minimal waste |
+| Feature | Real state |
+|---------|-----------|
+| Node selection | Runs; recorded in status, pods are placed by the Kubernetes scheduler using selectors |
+| Gang scheduling | Library code, not wired |
+| DRF fair share, hierarchical queues, backfill | Library code (DRF and queue), backfill absent; not wired |
+| Elastic training | Library code, not wired, no CRD field |
+| Validating webhook | Runs when enabled; quota and SKU policy; fails open by default |
+| Mutating webhook (NCCL injection) | Code only, not registered |
+| Priority preemption | Not implemented |
 
----
-
-## Support
-
-- **Documentation**: https://gryvia.io/docs
-- **Issues**: https://github.com/zyvorai/gryvia/issues
-- **Discussions**: https://github.com/zyvorai/gryvia/discussions
-- **Slack**: #gryvia-users
-
----
-
-*Gryvia - Enterprise GPU Infrastructure Management*
+See also [GPU nodes](GPU_NODES.md), [GPU as a service](GPU_AS_A_SERVICE.md) for quota and tenancy, and [Operations](OPERATIONS.md).

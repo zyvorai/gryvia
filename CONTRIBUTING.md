@@ -41,16 +41,16 @@ Types: feat, fix, docs, style, refactor, test, chore
 ```bash
 git clone https://github.com/zyvorai/gryvia.git
 cd gryvia
-make build          # Build all operators + CLI + Web UI
-make test           # Run all tests
-make lint           # Run linters
+make build          # Build operators, CLI, Web UI and API gateway
+make test           # Operator (Go), CLI (Rust) and API gateway (pytest) tests; SDK and web-ui tests are run separately
+make lint           # golangci-lint on operators, clippy, web-ui lint, flake8 on the gateway
 ```
 
 ### Prerequisites
 
-- Go 1.22+
+- Go 1.27 (see the `go` line in each `go.mod`)
 - Rust (stable)
-- Node.js 20+
+- Node.js 22 (what CI uses)
 - Docker / Podman
 - kubectl + helm
 
@@ -58,9 +58,9 @@ make lint           # Run linters
 
 - **Go**: `gofmt`, `golangci-lint` (v1.57+), production logging (`Development: false`)
 - **Rust**: `rustfmt`, `clippy` with `-D warnings`
-- **Python**: `black`, `flake8`, use `config.ConfigException` (not bare `Exception`)
+- **Python**: `black`, `flake8` (the gateway CI job checks `main.py`); avoid bare `Exception`
 - **TypeScript**: `prettier`, `eslint`, proper types (no `any`)
-- **CSS**: Tailwind dark theme (slate palette), no light-theme classes (`bg-white`, `text-gray-*`)
+- **CSS**: plain global CSS with design tokens, no Tailwind; follow `docs/design/APPLE-UX-CONTRACT.md` (light and dark themes, no hard-coded colors)
 - **Dockerfiles**: Multi-arch support (`TARGETARCH` build arg), non-root user, distroless base
 - **Helm**: Resource limits required, security contexts, no `privileged: true`
 - **CI**: Pin actions to SHA, add `permissions` block, add `concurrency` group
@@ -77,19 +77,20 @@ make lint           # Run linters
 
 - Write unit tests for new code
 - Run `make test` before submitting PR
-- Add integration tests for features
+- Add integration tests for features (`tests/e2e/` is manual and not run in CI)
+- CI (`repo-checks.yml`) also enforces: no legacy `Fabric[A-Z]` identifiers, generated CRD docs are current, every documented `gryvia ...` command is accepted (`python3 scripts/check-cli-docs.py`), example manifests match the CRD schemas (`python3 scripts/check-examples.py`), and shellcheck on scripts
 - Ensure Makefile targets use subshells: `(cd dir && cmd)` not `cd dir && cmd && cd ..`
 
 ## Documentation
 
 - Update docs for new features
-- Keep README.md architecture section current
+- Keep README.md architecture section current, and say plainly what is implemented versus planned or unverified (needs GPU or RDMA hardware, a real IdP, payments). Use API version `gryvia.io/v1alpha1`
 - Include examples in `examples/` directory
 
 ## Community
 
 - GitHub Issues: Bug reports
 - GitHub Discussions: Questions
-- Documentation: https://github.com/zyvorai/gryvia/docs
+- Documentation: the `docs/` directory and the `website/` docs site
 
-Thank you for contributing! 🚀
+Thank you for contributing!

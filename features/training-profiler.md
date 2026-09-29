@@ -2,6 +2,15 @@
 
 Automatic GPU efficiency analysis that profiles training jobs and produces actionable recommendations to improve throughput, reduce cost, and maximize GPU utilization.
 
+> **Status: controller and analyzer implemented (ai-operator); the metric producer is not in this repo.**
+> The profiler reads its inputs from `gryvia.io/gpu-*` annotations on running job pods (see
+> "Metrics Collection"). Nothing in this repository writes those annotations: there is no
+> "GPU monitoring sidecar", and the GPU operator does not set them. Until you supply your own
+> annotator, all metrics read as 0 and recommendations will not reflect real utilization. The
+> MFU baselines, thresholds and "expected impact" percentages are heuristics in the analyzer, not
+> measured results, and the Prometheus metrics mentioned are not exported (see
+> `monitoring/README.md`). Unverified on real GPU workloads.
+
 ## Overview
 
 GryviaTrainingProfiler is a Kubernetes-native profiling system that:
@@ -221,7 +230,7 @@ spec:
 
 ## Metrics Collection
 
-GPU metrics are collected from pod annotations set by the Gryvia GPU monitoring sidecar or the GPU operator. The following annotations are read:
+GPU metrics are collected from pod annotations that must be set by your own metrics agent (nothing in this repo sets them). The following annotations are read:
 
 | Annotation                               | Description                          |
 |------------------------------------------|--------------------------------------|
@@ -274,7 +283,7 @@ Events:
 
 ### Prometheus Metrics
 
-When `prometheusMetrics: true`, the following metrics are exposed:
+When `prometheusMetrics: true`, the following metrics are intended to be exposed (planned: the operator does not currently register these series):
 
 ```
 gryvia_profiler_mfu{job="resnet-train", gpu_type="A100"} 22.3
@@ -316,7 +325,7 @@ If metrics show as 0, verify that pod annotations are being set:
 kubectl get pods -l gryvia.io/job=my-job -o jsonpath='{.items[0].metadata.annotations}'
 ```
 
-The GPU monitoring sidecar or GPU operator must set the `gryvia.io/gpu-*` annotations on training pods.
+Your own metrics agent must set the `gryvia.io/gpu-*` annotations on training pods; none ships with Gryvia.
 
 ### Recommendations Not Appearing
 

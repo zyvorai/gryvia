@@ -1,9 +1,26 @@
 # ML Workflows Guide
 
-Complete guide to Gryvia's machine learning workflow capabilities, including hyperparameter tuning, DAG-based pipelines, model registry, inference serving, and interactive workspaces.
+Gryvia's machine learning workflow kinds: hyperparameter tuning, DAG pipelines, model registry, inference serving and interactive workspaces, plus the training-side kinds that do have a running controller.
+
+## Status: read this first
+
+The five kinds this guide is mostly about are **not running behaviour today**:
+
+| Kind | CRD | Gateway/dashboard CRUD | Controller registered |
+|------|-----|------------------------|-----------------------|
+| `GryviaAutoTuner` | yes | create, list, delete, list trials | no |
+| `GryviaWorkflow` | yes | create, list, delete | no |
+| `GryviaModelRegistry` | yes | list, get, promote (patches `spec.stage` only) | no |
+| `GryviaInferenceService` | yes | create, list, delete | no |
+| `GryviaWorkspace` | yes | create, list, delete, pause and resume | no |
+
+You can `kubectl apply` these manifests and the gateway and dashboard can create and list them, but no operator reconciles them: no trials are launched, no DAG steps run, no model is served, no notebook pod is created, and `status` stays empty. Controller-style code for several of them exists under `operators/ai-operator/controllers/` (and a search library in `operators/ai-operator/pkg/tuner`) but is not registered in the operator's `main.go`. The sections below describe the schema that exists and the behaviour the kinds are designed for; the behaviour parts are marked as design. All YAML uses the real schema (`crds/`) and is checked in CI; the examples in `examples/ml-workflow/` are the source models.
+
+The API routes are in the [API reference](../developer-guide/api-reference.md). See the [CRD reference](../reference/crds.md) for the Controller column across all kinds.
 
 ## Table of Contents
 
+0. [What runs today](#what-runs-today)
 1. [Hyperparameter Tuning (GryviaAutoTuner)](#hyperparameter-tuning-gryviaautotuner)
 2. [DAG-Based Pipelines (GryviaWorkflow)](#dag-based-pipelines-gryviaworkflow)
 3. [Model Registry (GryviaModelRegistry)](#model-registry-gryviamodelregistry)
@@ -12,717 +29,350 @@ Complete guide to Gryvia's machine learning workflow capabilities, including hyp
 
 ---
 
+## What runs today
+
+The ai-operator registers controllers for these training-related kinds (examples in `examples/training/`):
+
+- `GryviaAIJob`: creates the StatefulSet, Service and PVC for a job (see [Scheduling](SCHEDULING.md#what-runs-today) and the [job guide](../user-guide/jobs.md)).
+- `GryviaCheckpointGuard`: checkpoint protection for a job.
+- `GryviaTrainingTimeMachine`: checkpoint history and forking experiments from checkpoints.
+- `GryviaLiveExperiment`: compares experiment runs using metrics parsed from job logs (metric patterns are configurable).
+- `GryviaTrainingProfiler`: training profiling.
+- `GryviaModelLineage`: records provenance of a model.
+
+The gpu-operator adds `GryviaGpuMemoryOptimizer`. All of these are exercised by Go unit tests against fake clients; none has been verified end to end with real GPU training runs.
+
+---
+
 ## Hyperparameter Tuning (GryviaAutoTuner)
 
-Automated hyperparameter optimization with multiple search strategies and early stopping.
+Status: CRD and gateway/dashboard CRUD only. No controller launches trials.
 
 ### Overview
 
-GryviaAutoTuner provides a Kubernetes-native hyperparameter tuning system that integrates directly with Gryvia's GPU scheduling and quota management. It supports four search strategies:
+`GryviaAutoTuner` describes a study: a search algorithm, an objective, a parameter space and a `GryviaAIJob` spec (`jobTemplate`) to run for each trial. The schema names four `searchAlgorithm` values: `grid`, `random`, `bayesian` and `asha` (with `ashaConfig` for `maxEpochs`, `minResource` and `reductionFactor`). A search library exists in `operators/ai-operator/pkg/tuner/search.go`, but the controller that would use it is not registered, so nothing generates trials from the spec. Do not rely on any convergence claim for these strategies; none has been measured here.
 
-- **Grid Search**: Exhaustive search over all parameter combinations. Best for small, discrete parameter spaces.
-- **Random Search**: Random sampling from parameter distributions. Effective for large parameter spaces where not all parameters are equally important.
-- **Bayesian (TPE)**: Tree-structured Parzen Estimator for intelligent, model-guided search. Converges faster than random search by learning from prior trials.
-- **ASHA Early Stopping**: Asynchronous Successive Halving Algorithm. Aggressively prunes underperforming trials to save GPU resources.
-
-### Example
+### Example (schema-valid)
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaAutoTuner
 metadata:
   name: resnet-hpo
-  namespace: ml-research
+  namespace: ml-team
 spec:
-  # Search strategy: grid, random, bayesian, asha
-  algorithm: bayesian
-
-  # Optimization objective
+  searchAlgorithm: bayesian
   objective:
-    metric: val_accuracy
-    goal: maximize
-
-  # Trial budget
-  maxTrials: 100
+    metricName: val_accuracy
+    direction: maximize
+  maxTrials: 50
   parallelism: 4
-
-  # Parameter search space
+  earlyStoppingRounds: 10
   parameterSpace:
     - name: learning_rate
       type: float
       min: 0.0001
       max: 0.1
       scale: log
-
     - name: batch_size
       type: int
-      values: [16, 32, 64, 128, 256]
-
+      values: ["32", "64", "128", "256"]
     - name: optimizer
       type: categorical
       values: ["adam", "sgd", "adamw"]
-
-    - name: weight_decay
-      type: float
-      min: 0.0
-      max: 0.1
-
-    - name: num_layers
-      type: int
-      min: 2
-      max: 8
-
-  # Early stopping configuration (for ASHA)
-  earlyStop:
-    metric: val_loss
-    patience: 10
-    minDelta: 0.001
-
-  # Base trial template
-  trialTemplate:
-    framework: pytorch
-    image: nvcr.io/nvidia/pytorch:24.01-py3
+  jobTemplate:
+    type: training
+    model: resnet50
+    image: training/resnet:latest
+    gpus: 1
+    gpuType: A100
     resources:
-      gpuType: A100-80G
-      gpuCount: 1
-    command:
-      - python
-      - train.py
-      - --lr={{ .learning_rate }}
-      - --batch-size={{ .batch_size }}
-      - --optimizer={{ .optimizer }}
-      - --weight-decay={{ .weight_decay }}
-      - --num-layers={{ .num_layers }}
-
-  # Resume from prior study
-  resumeFrom: ""
-
-  # Cost guardrails
-  budget:
-    maxCostUSD: 500
-    maxTotalGPUHours: 200
+      requests:
+        memory: "16Gi"
+        cpu: "4"
 ```
 
-### CLI Usage
+Required spec fields: `searchAlgorithm`, `objective`, `maxTrials`, `parameterSpace`, `jobTemplate`. There is no `budget`, `resumeFrom` or `trialTemplate` field; earlier versions of this guide showed them, and they are rejected by the schema.
+
+### Working with it today
 
 ```bash
-# Submit from YAML
-gryvia submit -f resnet-hpo.yaml
-
-# Monitor tuning progress (phase, trial counts, best trial)
-kubectl get gryviaautotuner resnet-hpo -n ml-research -o yaml
-
-# Get best trial parameters
-kubectl get gryviaautotuner resnet-hpo -n ml-research -o jsonpath='{.status.bestTrial}'
-
-# Cancel tuning early (preserves completed trial results)
-gryvia cancel resnet-hpo
+# Create, list and inspect through kubectl (the gryvia CLI does not manage tuners)
+kubectl apply -f resnet-hpo.yaml
+kubectl get gryviaautotuners -n ml-team
+kubectl get gryviaautotuner resnet-hpo -n ml-team -o yaml
 ```
 
-### Status Tracking
+`gryvia submit` is for `GryviaAIJob` files, not for these kinds.
 
-The GryviaAutoTuner status reports trial progress and the current best result:
+### Status fields
 
-```yaml
-status:
-  phase: Running
-  completedTrials: 42
-  runningTrials: 4
-  failedTrials: 2
-  bestTrial:
-    name: resnet-hpo-trial-37
-    parameters:
-      learning_rate: 0.0023
-      batch_size: 64
-      optimizer: adamw
-      weight_decay: 0.01
-      num_layers: 5
-    metrics:
-      val_accuracy: 0.9412
-```
+The schema defines `status.phase`, `trialsCompleted`, `trialsRunning`, `trialsFailed`, `bestTrial` (name, jobName, parameters, metricValue, ...) and `trials`. They would be filled by a controller; today they stay empty.
 
 ---
 
 ## DAG-Based Pipelines (GryviaWorkflow)
 
-Multi-step ML pipelines with dependency management, conditional execution, and fan-out/fan-in patterns.
+Status: CRD and gateway/dashboard CRUD only. No controller executes steps.
 
 ### Overview
 
-GryviaWorkflow lets you define complex ML pipelines as directed acyclic graphs (DAGs). Each step in the workflow can:
+A `GryviaWorkflow` lists `steps`. Each step has a `name`, an optional `dependsOn` list, a `type` (the schema has `jobTemplate` for a job step, `script` for a container script and `webhook` for an HTTP call), `timeoutSeconds`, `retries`, `retryBackoffSeconds` and a free-form `condition` string. Workflow-level `parameters` are a string map. There is no artifact passing, no per-step checkpointing and no structured condition language in the schema. The dependency ordering, fan-out/fan-in, retries and conditions are what a workflow controller would implement; none is running.
 
-- Depend on one or more upstream steps
-- Run conditionally based on upstream results
-- Retry independently on failure
-- Use different GPU types and resource configurations
-- Pass artifacts between steps
-
-### Example
+### Example (schema-valid)
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaWorkflow
 metadata:
-  name: llm-training-pipeline
-  namespace: ml-research
+  name: image-classifier-pipeline
+  namespace: ml-team
 spec:
-  # Global defaults for all steps
-  defaults:
-    image: nvcr.io/nvidia/pytorch:24.01-py3
-    retries: 2
-    retryDelay: 5m
-
+  parameters:
+    dataset: "imagenet-1k"
+    model_name: "resnet50-v2"
   steps:
-    - name: data-preprocessing
-      image: python:3.11
-      command: ["python", "preprocess.py", "--dataset", "openwebtext"]
-      resources:
-        cpu: 16
-        memory: 64Gi
-      outputs:
-        artifacts:
-          - name: processed-data
-            path: /output/data
-
-    - name: tokenizer-training
-      dependsOn: [data-preprocessing]
-      command: ["python", "train_tokenizer.py"]
-      resources:
-        cpu: 32
-        memory: 128Gi
-      inputs:
-        artifacts:
-          - name: processed-data
-            from: data-preprocessing
-      outputs:
-        artifacts:
-          - name: tokenizer
-            path: /output/tokenizer
-
-    - name: model-training
-      dependsOn: [tokenizer-training]
-      command: ["torchrun", "--nproc_per_node=8", "train.py"]
-      resources:
-        gpuType: H100
-        gpuCount: 8
-        memory: 512Gi
-      retries: 3
-      retryDelay: 10m
-      checkpointing:
-        enabled: true
-        frequency: 15m
-      inputs:
-        artifacts:
-          - name: processed-data
-            from: data-preprocessing
-          - name: tokenizer
-            from: tokenizer-training
-
-    - name: evaluation
-      dependsOn: [model-training]
-      command: ["python", "evaluate.py"]
-      resources:
-        gpuType: A100-80G
-        gpuCount: 1
-      conditions:
-        - type: exitCode
-          step: model-training
-          operator: equals
-          value: "0"
-
-    - name: benchmark-mmlu
-      dependsOn: [model-training]
-      command: ["python", "benchmark.py", "--suite", "mmlu"]
-      resources:
-        gpuType: A100-80G
-        gpuCount: 1
-
-    - name: benchmark-humaneval
-      dependsOn: [model-training]
-      command: ["python", "benchmark.py", "--suite", "humaneval"]
-      resources:
-        gpuType: A100-80G
-        gpuCount: 1
-
-    - name: publish-results
-      dependsOn: [evaluation, benchmark-mmlu, benchmark-humaneval]
-      command: ["python", "publish.py"]
-      resources:
-        cpu: 4
-        memory: 8Gi
-      conditions:
-        - type: allSucceeded
-          steps: [evaluation, benchmark-mmlu, benchmark-humaneval]
+    - name: preprocess
+      type: job
+      timeoutSeconds: 3600
+      retries: 2
+      jobTemplate:
+        type: training
+        model: data-pipeline
+        image: ml-pipelines/preprocess:1.4.0
+        gpus: 0
+        command: ["python"]
+        args: ["preprocess.py", "--dataset=imagenet-1k", "--output=/data/processed"]
+    - name: train
+      type: job
+      dependsOn: [preprocess]
+      timeoutSeconds: 86400
+      retries: 1
+      jobTemplate:
+        type: training
+        model: resnet50
+        image: training/pytorch-train:2.1.0
+        gpus: 4
+        gpuType: A100
+        network: rdma
+        distributed:
+          enabled: true
+          framework: pytorch
+          nodes: 2
+          gpusPerNode: 4
+          backend: nccl
+        command: ["torchrun"]
+        args: ["--nproc_per_node=4", "--nnodes=2", "train.py", "--data=/data/processed"]
+    - name: evaluate
+      type: job
+      dependsOn: [train]
+      jobTemplate:
+        type: evaluation
+        model: resnet50
+        image: training/pytorch-eval:2.1.0
+        gpus: 1
+        gpuType: A100
+        command: ["python"]
+        args: ["evaluate.py"]
 ```
 
-### Fan-Out / Fan-In Patterns
+### Fan-out and fan-in
 
-The workflow above demonstrates a fan-out/fan-in pattern:
+Several steps that list the same `dependsOn` parent are the intended fan-out, and a step listing several parents is the fan-in:
 
-```
-data-preprocessing
-       |
-tokenizer-training
-       |
- model-training
-    /  |  \            <-- fan-out
-   /   |   \
-eval  mmlu  humaneval
-   \   |   /
-    \  |  /            <-- fan-in
- publish-results
+```text
+train -> evaluate ---\
+train -> benchmark ---> publish
 ```
 
-Fan-out runs multiple steps in parallel after a single upstream step completes. Fan-in waits for all parallel branches to finish before proceeding.
+Design only until a workflow controller exists.
 
-### Conditional Execution
-
-Steps can run conditionally based on upstream results:
-
-```yaml
-- name: deploy-to-staging
-  dependsOn: [evaluation]
-  conditions:
-    # Only deploy if accuracy exceeds threshold
-    - type: metric
-      step: evaluation
-      metric: accuracy
-      operator: greaterThan
-      value: "0.90"
-
-    # And training completed successfully
-    - type: exitCode
-      step: model-training
-      operator: equals
-      value: "0"
-```
-
-### CLI Usage
+### Working with it today
 
 ```bash
-# Submit a workflow
-gryvia submit -f llm-pipeline.yaml
-
-# View workflow DAG status
-kubectl get gryviaworkflow llm-training-pipeline -n ml-research -o yaml
-
-# Cancel entire workflow
-gryvia cancel llm-training-pipeline
+kubectl apply -f pipeline.yaml
+kubectl get gryviaworkflows -n ml-team
 ```
+
+To get a pipeline running now, run the steps as separate `GryviaAIJob` objects yourself or use an external workflow engine.
 
 ---
 
 ## Model Registry (GryviaModelRegistry)
 
-Versioned model storage with stage-based promotion and automated deployment.
+Status: CRD, list/get and a promote route in the gateway. No controller acts on the object.
 
 ### Overview
 
-GryviaModelRegistry provides a Kubernetes-native model registry for tracking trained models through their lifecycle. Models progress through three stages:
+`GryviaModelRegistry` records a model version: `modelName`, `version`, `artifacts` (`s3Path` or `pvcName`/`subPath`, `format`, `sizeBytes`), `stage`, `source` (`jobRef`, `tunerRef` or `workflowRef`), free-form string `metadata`, and optional `autoServe` with a `servingConfig` (`backend`, `replicas`, `gpuCount`, `gpuType`). The dashboard and gateway treat `stage` as dev, staging and production. Promotion through the gateway (`POST /api/models/{name}/promote`) patches `spec.stage` and validates the transition; it does not deploy anything. `autoServe` would be acted on by a controller that does not exist yet, so promoting to production does not create an inference service. There is no approval workflow, canary block or metrics block on this kind.
 
-1. **dev** -- Initial stage after training. Used for experimentation and evaluation.
-2. **staging** -- Promoted for integration testing and validation against production data.
-3. **production** -- Approved for live serving. Promotion to production can trigger automatic deployment via GryviaInferenceService.
-
-### Example
+### Example (schema-valid)
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaModelRegistry
 metadata:
-  name: llama-3-fine-tuned
-  namespace: ml-research
+  name: resnet50-v2-1-0
+  namespace: ml-team
 spec:
-  modelName: llama-3-fine-tuned
-  version: "2.1.0"
-
-  # Model artifacts
-  artifacts:
-    modelPath: s3://models/llama-3-ft/v2.1.0/
-    format: safetensors
-    framework: pytorch
-    size: 14Gi
-
-  # Current lifecycle stage
-  stage: staging
-
-  # Metadata
-  metadata:
-    description: "LLaMA 3 fine-tuned on domain-specific data"
-    author: alice
-    team: ml-research
-    tags:
-      - llm
-      - fine-tuned
-      - domain-specific
-
-  # Training provenance
+  modelName: resnet50-v2
+  version: "1.0.0"
   source:
-    trainingJob: llm-training-pipeline
-    dataset: domain-corpus-v3
-    framework: pytorch
-    baseModel: meta-llama/llama-3-8b
-
-  # Evaluation metrics
-  metrics:
-    accuracy: 0.942
-    f1Score: 0.938
-    perplexity: 4.21
-    mmluScore: 0.71
-    latencyP99ms: 45
-
-  # Auto-deploy when promoted to production
-  autoDeploy:
-    enabled: true
-    inferenceServiceRef: llama-3-serving
-    canary:
-      enabled: true
-      initialWeight: 10
-      stepWeight: 20
-      stepInterval: 10m
-      successThreshold:
-        latencyP99ms: 100
-        errorRate: 0.01
-
-  # Approval workflow for production promotion
-  approval:
-    required: true
-    approvers:
-      - alice
-      - bob
-    minApprovals: 1
+    workflowRef: image-classifier-pipeline
+  artifacts:
+    s3Path: "s3://ml-models/resnet50-v2/v1.0.0/"
+    format: pytorch
+    sizeBytes: 102400000
+  stage: staging
+  description: "ResNet50 v2 trained on ImageNet-1K"
+  metadata:
+    framework: "pytorch-2.1.0"
+    dataset: "imagenet-1k"
+    top1_accuracy: "0.785"
+  autoServe: false
 ```
 
-### Stage Promotion
+### Stage changes
 
 ```bash
-# Register a new model version
-gryvia submit -f model-registry.yaml
+kubectl get gryviamodelregistries -n ml-team
 
-# List registered models
-kubectl get gryviamodelregistries -n ml-research
-
-# Promote to staging
-kubectl patch gryviamodelregistry llama-3-fine-tuned -n ml-research \
-  --type merge -p '{"spec":{"stage":"staging"}}'
-
-# Promote to production (triggers auto-deploy if configured)
-kubectl patch gryviamodelregistry llama-3-fine-tuned -n ml-research \
+# What the gateway does on promote: patch spec.stage
+kubectl patch gryviamodelregistry resnet50-v2-1-0 -n ml-team \
   --type merge -p '{"spec":{"stage":"production"}}'
-
-# Roll back: re-apply the manifest of the previous version with stage: production
-kubectl apply -f model-registry-v2.0.0.yaml
-
-# View model details and metrics
-kubectl get gryviamodelregistry llama-3-fine-tuned -n ml-research -o yaml
 ```
 
-### Auto-Deploy on Production Promotion
-
-When a model is promoted to `production` with `autoDeploy.enabled: true`, Gryvia automatically:
-
-1. Creates or updates the referenced GryviaInferenceService
-2. Starts a canary rollout with the configured weight schedule
-3. Monitors latency and error rate against success thresholds
-4. Completes the rollout or triggers auto-rollback on threshold violation
+The status fields (`phase`, `servingEndpoint`, `inferenceServiceName`, ...) are defined by the CRD but not populated. Rollback is re-applying an earlier manifest; nothing automates it.
 
 ---
 
 ## Inference Serving (GryviaInferenceService)
 
-Production model serving with multiple backends, canary deployments, and auto-rollback.
+Status: CRD and gateway/dashboard CRUD only. Nothing creates a Deployment, Service or canary. For serving today, run your own Deployment or use a `GryviaAIJob` with `type: inference`.
 
 ### Overview
 
-GryviaInferenceService deploys trained models as scalable inference endpoints. It supports four serving backends:
+`GryviaInferenceService` declares `modelRef` (a string naming a registry entry), `backend`, `replicas`, `gpuCount`, `gpuType`, `image`, `args`, `servicePort`, `autoscaling` (`minReplicas`, `maxReplicas`, `targetGPUUtilization`, `targetRequestsPerSecond`), `canary` (`enabled`, `weight`, `modelVersion`, `autoPromote`, `promoteAfterSeconds`) and `healthCheck` (`path`, `intervalSeconds`, `failureThreshold`, `autoRollback`).
 
-| Backend | Best For | Features |
-|---------|----------|----------|
-| **Triton** | Multi-framework, ensemble models | Dynamic batching, model ensemble, concurrent model execution |
-| **vLLM** | Large language models | PagedAttention, continuous batching, tensor parallelism |
-| **TensorRT-LLM** | Optimized LLM inference | INT8/FP8 quantization, inflight batching, KV cache optimization |
-| **TorchServe** | PyTorch models | Custom handlers, model versioning, metrics |
+Backends the design has in mind are Triton, vLLM, TensorRT-LLM and TorchServe; the schema takes `backend` as a free string. Feature lists for each backend (dynamic batching, PagedAttention, quantization and so on) belong to those projects, not to Gryvia, and Gryvia does not configure them beyond passing `args` to the container.
 
-### Example
+### Example (schema-valid)
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaInferenceService
 metadata:
-  name: llama-3-serving
-  namespace: ml-production
+  name: llama-70b-serving
+  namespace: ml-serving
 spec:
-  # Model reference from registry
-  modelRef:
-    name: llama-3-fine-tuned
-    version: "2.1.0"
-
-  # Serving backend
+  modelRef: llama-70b-v2-0
   backend: vllm
-
-  # Backend-specific configuration
-  backendConfig:
-    maxModelLen: 8192
-    tensorParallelSize: 2
-    quantization: awq
-    gpuMemoryUtilization: 0.90
-    maxBatchSize: 64
-
-  # Replica configuration
-  replicas:
-    min: 2
-    max: 10
-    target:
-      requestsPerSecond: 100
-      gpuUtilization: 80
-
-  # Resource requirements per replica
-  resources:
-    gpuType: A100-80G
-    gpuCount: 2
-    memory: 128Gi
-    cpu: 16
-
-  # Canary deployment configuration
-  canary:
-    enabled: true
-    # Traffic weight for the canary version
-    initialWeight: 10
-    # Increment weight by this amount each step
-    stepWeight: 20
-    # Time between weight increases
-    stepInterval: 10m
-    # Rollback if these thresholds are exceeded
-    successThreshold:
-      latencyP99ms: 100
-      errorRate: 0.01
-      minRequests: 1000
-
-  # Auto-rollback on failure
-  rollback:
-    automatic: true
-    onLatencyExceeded: true
-    onErrorRateExceeded: true
-    onHealthCheckFailed: true
-
-  # Health checks
-  healthCheck:
-    path: /health
-    intervalSeconds: 10
-    timeoutSeconds: 5
-    failureThreshold: 3
-
-  # Autoscaling
+  replicas: 3
+  gpuCount: 4
+  gpuType: A100
+  image: vllm/vllm-openai:0.3.0
+  args:
+    - "--tensor-parallel-size=4"
+    - "--max-model-len=4096"
+    - "--gpu-memory-utilization=0.90"
+  servicePort: 8080
   autoscaling:
     enabled: true
-    metric: requests_per_second
-    targetValue: 100
-    scaleUpStabilization: 60s
-    scaleDownStabilization: 300s
+    minReplicas: 2
+    maxReplicas: 8
+    targetGPUUtilization: 75
+    targetRequestsPerSecond: 100
+  canary:
+    enabled: true
+    weight: 10
+    modelVersion: llama-70b-v2-1
+    autoPromote: true
+    promoteAfterSeconds: 3600
+  healthCheck:
+    path: /health
+    intervalSeconds: 30
+    failureThreshold: 3
+    autoRollback: true
 ```
 
-### Canary Deployment Flow
+### Intended canary behaviour (design)
 
-When a new model version is deployed, the canary rollout proceeds as follows:
+A serving controller would route `canary.weight` percent of traffic to `canary.modelVersion`, promote after `promoteAfterSeconds` if healthy, and roll back after `failureThreshold` failed health checks. The step-wise weight schedule and latency or error-rate thresholds that earlier versions of this guide described are not in the schema. No such rollout runs today.
 
-1. New version deployed with `initialWeight` (10%) of traffic
-2. Health checks and success thresholds are monitored
-3. If thresholds pass, traffic weight increases by `stepWeight` (20%) every `stepInterval` (10m)
-4. Rollout: 10% -> 30% -> 50% -> 70% -> 90% -> 100%
-5. If any threshold is violated, traffic automatically reverts to the previous version
-
-### CLI Usage
+### Working with it today
 
 ```bash
-# Deploy an inference service
-gryvia submit -f inference-service.yaml
-
-# View serving status, including canary rollout progress (status.canaryStatus)
-kubectl get gryviainferenceservice llama-3-serving -n ml-production -o yaml
-
-# Manually promote canary to full traffic
-kubectl patch gryviainferenceservice llama-3-serving -n ml-production \
-  --type merge -p '{"spec":{"canary":{"weight":100}}}'
-
-# Roll back: disable the canary so traffic stays on the primary version
-kubectl patch gryviainferenceservice llama-3-serving -n ml-production \
-  --type merge -p '{"spec":{"canary":{"enabled":false}}}'
-
-# Scale replicas manually
-kubectl patch gryviainferenceservice llama-3-serving -n ml-production \
-  --type merge -p '{"spec":{"replicas":5}}'
+kubectl apply -f inference-service.yaml
+kubectl get gryviainferenceservices -n ml-serving
 ```
 
 ---
 
 ## Interactive Workspaces (GryviaWorkspace)
 
-Managed interactive development environments with GPU access, persistent storage, and idle management.
+Status: CRD and gateway/dashboard CRUD (including pause and resume routes that toggle `spec.paused`). No controller creates a pod, PVC or URL.
 
 ### Overview
 
-GryviaWorkspace provides on-demand interactive environments for data scientists and ML engineers. Supported environment types:
+`GryviaWorkspace` declares an environment `type` (required, for example `jupyter`), `gpuCount`, `gpuType`, `image`, `storage` (a size string) and `storageClassName`, CPU and memory requests and limits (`cpuRequest`, `cpuLimit`, `memRequest`, `memLimit`), `idleTimeoutMinutes`, `maxLifetimeHours`, `paused` and `env` (a string map). Idle detection, pause, automatic termination, package installation and git cloning would be workspace-controller behaviour and are not implemented; the earlier `packages`, `git`, `idleAction` and structured `storage` blocks are not in the schema.
 
-- **Jupyter** -- JupyterLab with pre-installed ML frameworks and GPU drivers
-- **VS Code** -- Code Server (VS Code in browser) with full extension support
-- **Custom** -- Any container image with a web-based IDE
-
-Workspaces include persistent storage, automatic idle detection, and pause/resume to save GPU costs when not in use.
-
-### Example
+### Example (schema-valid)
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaWorkspace
 metadata:
   name: research-notebook
-  namespace: ml-research
+  namespace: ml-team
 spec:
-  # Environment type: jupyter, vscode, custom
   type: jupyter
-
-  # GPU resources
-  gpuCount: 1
+  gpuCount: 2
   gpuType: A100-80G
-
-  # CPU and memory
-  cpu: 8
-  memory: 32Gi
-
-  # Persistent storage
-  storage:
-    homePVC: researcher-home
-    homeSize: 50Gi
-    datasetPVC: shared-datasets
-    scratchSize: 100Gi
-
-  # Pre-installed packages
-  packages:
-    pip:
-      - torch==2.2.0
-      - transformers==4.37.0
-      - datasets==2.16.0
-      - wandb
-    conda:
-      - cudatoolkit=12.1
-
-  # Idle management
-  idleTimeout: 2h
-  idleAction: pause   # pause | terminate
-
-  # Environment variables
+  image: ml-images/jupyterlab-cuda:12.1-pytorch2.1
+  storage: "100Gi"
+  storageClassName: fast-ssd
+  cpuRequest: "8"
+  cpuLimit: "16"
+  memRequest: "32Gi"
+  memLimit: "64Gi"
+  idleTimeoutMinutes: 60
+  maxLifetimeHours: 72
   env:
-    - name: WANDB_PROJECT
-      value: my-research
-    - name: HF_TOKEN
-      valueFrom:
-        secretKeyRef:
-          name: hf-credentials
-          key: token
-
-  # Image override (optional)
-  image: nvcr.io/nvidia/pytorch:24.01-py3
-
-  # Git integration
-  git:
-    repo: https://github.com/org/ml-experiments.git
-    branch: main
-    autoClone: true
+    WANDB_PROJECT: "ml-research"
+    HF_HOME: "/workspace/.cache/huggingface"
 ```
 
-### Pause and Resume
-
-Workspaces can be paused to release GPU resources while preserving storage state. This is triggered automatically after the idle timeout or manually by setting `spec.paused`:
+### Working with it today
 
 ```bash
-# Create a workspace
-gryvia submit -f workspace.yaml
+kubectl apply -f workspace.yaml
+kubectl get gryviaworkspaces -n ml-team
 
-# Get workspace URL (status.url)
-kubectl get gryviaworkspace research-notebook -n ml-research -o jsonpath='{.status.url}'
-# Output: https://research-notebook.gryvia.example.com
-
-# Pause workspace (releases GPU, preserves storage)
-kubectl patch gryviaworkspace research-notebook -n ml-research \
+# Sets spec.paused; with no controller this only changes the field
+kubectl patch gryviaworkspace research-notebook -n ml-team \
   --type merge -p '{"spec":{"paused":true}}'
 
-# Resume workspace (re-acquires GPU, restores state)
-kubectl patch gryviaworkspace research-notebook -n ml-research \
-  --type merge -p '{"spec":{"paused":false}}'
-
-# Terminate workspace
-kubectl delete gryviaworkspace research-notebook -n ml-research
-
-# List all workspaces with status
-kubectl get gryviaworkspaces -n ml-research
+kubectl delete gryviaworkspace research-notebook -n ml-team
 ```
 
-### Idle Detection
-
-When a workspace is idle (no terminal activity, no running cells, no active file edits) for the configured `idleTimeout`, Gryvia automatically:
-
-1. Sends a notification to the user (browser notification and email)
-2. Waits 5 minutes for activity
-3. Executes the configured `idleAction` (pause or terminate)
-
-Paused workspaces can be instantly resumed. Terminated workspaces lose all non-persistent state.
-
-### Workspace Status
-
-```yaml
-status:
-  phase: Running    # Pending | Running | Paused | Terminating
-  url: https://research-notebook.gryvia.example.com
-  startTime: "2024-01-15T10:30:00Z"
-  lastActivity: "2024-01-15T14:22:00Z"
-  idleTime: 8m
-  gpuUtilization: 45.2
-  costAccumulated: 12.50
-```
+Status fields (`phase`, `url`, `podName`, `lastActivity`) are defined but not populated.
 
 ---
 
-## Best Practices
+## Practical guidance
 
-### Hyperparameter Tuning
+These apply to running training today.
 
-- Start with random search to identify promising regions, then switch to Bayesian for refinement.
-- Use ASHA early stopping for large trial budgets to avoid wasting GPU time on poor configurations.
-- Set cost guardrails (`budget.maxCostUSD`) to prevent runaway experiments.
+- Write checkpoints to a mounted volume from your own training code, and see `GryviaCheckpointGuard` for the operator-side checkpoint handling.
+- Set `spec.storage` on a `GryviaAIJob` to get a PVC mounted at `/data`.
+- CPU-only work: the admission webhook rejects `gpus: 0` on a `GryviaAIJob` (the `gpus: 0` in the workflow example above only satisfies the schema), so run CPU-only steps as plain Kubernetes Jobs.
+- Add `team` and project labels to jobs so cost and usage reports can group them.
 
-### Pipelines
-
-- Enable checkpointing on long-running training steps so retries resume from the last checkpoint.
-- Use conditional execution to skip expensive steps when upstream quality is insufficient.
-- Keep data preprocessing steps on CPU-only to avoid wasting GPU resources.
-
-### Model Registry
-
-- Tag models with training metadata (dataset, base model, hyperparameters) for reproducibility.
-- Require approvals for production promotion in regulated environments.
-- Use auto-deploy with canary rollouts to reduce risk of serving regressions.
-
-### Inference Serving
-
-- Start with conservative canary weights (5-10%) and short step intervals.
-- Set `minRequests` in success thresholds to avoid promoting on insufficient traffic.
-- Enable auto-rollback for all production deployments.
-
-### Workspaces
-
-- Set idle timeouts to avoid accumulating GPU costs during meetings or overnight.
-- Use `pause` instead of `terminate` for idle action to preserve your working state.
-- Mount shared dataset PVCs read-only to avoid accidental modification.
+The tuning, pipeline, registry, serving and workspace practices from earlier versions of this guide (early stopping budgets, canary weights, idle timeouts) presuppose controllers that do not exist and have been removed.
 
 ---
 
 ## Support
 
-- **Documentation**: https://gryvia.io/docs
 - **Issues**: https://github.com/zyvorai/gryvia/issues
 - **Discussions**: https://github.com/zyvorai/gryvia/discussions
-- **Slack**: #gryvia-users
-
----
-
-*Gryvia - Enterprise GPU Infrastructure Management*
