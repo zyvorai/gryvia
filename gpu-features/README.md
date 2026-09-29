@@ -1,5 +1,16 @@
 # GPU Advanced Features
 
+> **Status: guidance built on NVIDIA tooling; Gryvia itself does not manage MIG or GPU sharing.** MIG
+> partitioning is done by NVIDIA's GPU Operator / mig-manager (the optional `nvidia.enabled` sub-chart
+> in `helm/gryvia`, or your own install). The Gryvia GPU operator only reads the `nvidia.com/mig.capable`
+> node label during discovery. `GryviaGPUSharingPolicy` (the real name of the CRD shown as
+> `GPUSharingPolicy` below) is a CRD with no controller wired yet (a reconciler for `mig`/time-slicing/MPS
+> exists in `operators/gpu-operator/controllers/` but is not registered), and `GryviaAIJob` has no `mig`
+> field (only `spec.gpus` and `spec.gpuType`). Design-sketch snippets are marked as such. The MIG profile
+> table follows NVIDIA's A100/H100 80GB documentation. All dollar figures and savings percentages (for
+> example "$3.43/hour", "86%") are made-up worked examples, not Gryvia pricing or measurements. Unverified
+> on real MIG-capable hardware.
+
 ## Multi-Instance GPU (MIG) Support
 
 Split A100/H100 GPUs into smaller instances for better utilization and cost savings.
@@ -71,7 +82,9 @@ kubectl describe node gpu-node-1 | grep nvidia.com/mig
 
 #### Request MIG Instance
 
-```yaml
+Design sketch, not accepted by the current CRD schema:
+
+```text
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
@@ -349,7 +362,9 @@ nvidia-smi -i 0 --query-compute-apps=pid,used_memory --format=csv
 
 For GPUs that don't support MIG (V100, T4), use time-sharing:
 
-```yaml
+Design sketch, not accepted by the current CRD schema:
+
+```text
 apiVersion: gryvia.io/v1alpha1
 kind: GPUSharingPolicy
 metadata:

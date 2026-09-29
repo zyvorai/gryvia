@@ -2,27 +2,25 @@
 
 Pre-configured templates for common ML workloads.
 
+> **Status: design sketches, not implemented.** This directory contains only this README; the referenced template files (`pytorch-ddp.yaml` and so on) do not exist. There is no `kfctl` tool (the CLI is `gryvia`, and it has no `templates` command), and `GryviaAIJob` does not do `${VAR:-default}` substitution, so the snippets below are not applicable manifests. The fields `framework`, `distributed.strategy`, `resources.gpuType` and `resources.gpuCount` shown in them are not in the `GryviaAIJob` schema (use `spec.type`, `spec.gpus`, `spec.gpuType`, `spec.distributed.framework`; see `examples/jobs/` for valid manifests). A `GryviaTemplate` CRD exists, but no controller is wired yet. `GryviaJobTemplate` (below) is not a real kind.
+
 ## Available Templates
+
+Only the sections below exist in this README; JAX, full fine-tuning, RLHF, TensorRT-LLM, Triton and data-validation templates were never written.
 
 ### Training Templates
 - [PyTorch DDP Training](#pytorch-ddp-training)
 - [TensorFlow Distributed](#tensorflow-distributed)
-- [JAX Multi-Host](#jax-multi-host)
 - [DeepSpeed Training](#deepspeed-training)
 
 ### Fine-Tuning Templates
 - [LoRA Fine-Tuning](#lora-fine-tuning)
-- [Full Fine-Tuning](#full-fine-tuning)
-- [RLHF Training](#rlhf-training)
 
 ### Inference Templates
 - [vLLM Inference Server](#vllm-inference)
-- [TensorRT-LLM](#tensorrt-llm)
-- [Triton Inference Server](#triton-inference)
 
 ### Data Processing Templates
 - [Dataset Preprocessing](#dataset-preprocessing)
-- [Data Validation](#data-validation)
 
 ## Usage
 
@@ -58,7 +56,9 @@ Distributed data parallel training with PyTorch.
 
 **Template:** `pytorch-ddp.yaml`
 
-```yaml
+Design sketch, not accepted by the current CRD schema:
+
+```text
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
@@ -116,7 +116,9 @@ Multi-worker distributed training with TensorFlow.
 
 **Template:** `tensorflow-distributed.yaml`
 
-```yaml
+Design sketch, not accepted by the current CRD schema:
+
+```text
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
@@ -148,7 +150,9 @@ Large model training with DeepSpeed ZeRO optimization.
 
 **Template:** `deepspeed-training.yaml`
 
-```yaml
+Design sketch, not accepted by the current CRD schema:
+
+```text
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
@@ -226,7 +230,9 @@ Parameter-efficient fine-tuning with LoRA.
 
 **Template:** `lora-finetuning.yaml`
 
-```yaml
+Design sketch, not accepted by the current CRD schema:
+
+```text
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
@@ -269,7 +275,9 @@ High-throughput LLM inference server with vLLM.
 
 **Template:** `vllm-inference.yaml`
 
-```yaml
+Design sketch, not accepted by the current CRD schema:
+
+```text
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
@@ -346,7 +354,9 @@ Large-scale data preprocessing job.
 
 **Template:** `dataset-preprocessing.yaml`
 
-```yaml
+Design sketch, not accepted by the current CRD schema:
+
+```text
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
@@ -377,7 +387,11 @@ spec:
 
 ### 1. Define Template
 
-```yaml
+`GryviaJobTemplate` does not exist; the closest real kind is `GryviaTemplate` (CRD only, no controller).
+
+Design sketch, not accepted by the current CRD schema:
+
+```text
 # my-template.yaml
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaJobTemplate

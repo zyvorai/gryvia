@@ -1,6 +1,7 @@
 # Quick Start Guide
 
-Get Gryvia running in minutes.
+Get Gryvia running in minutes. Gryvia is alpha software; the [changelog](https://github.com/zyvorai/gryvia/blob/main/CHANGELOG.md) and the
+[threat model](https://github.com/zyvorai/gryvia/blob/main/SECURITY.md) say what is and is not verified.
 
 ## Prerequisites
 
@@ -50,7 +51,9 @@ sudo ./scripts/install-k3s-gpu.sh server
 ```
 
 This installs k3s, Gryvia and NVIDIA's GPU Operator (driver, container toolkit, device plugin), then prints the
-dashboard URL. See [GPU nodes](../guides/GPU_NODES.md) for options, extra nodes and troubleshooting.
+dashboard URL. See [GPU nodes](../guides/GPU_NODES.md) for options, extra nodes and troubleshooting. The script is
+covered by dry-run tests and a GPU-less k3s job in CI; it has not been run on real GPU hardware, so follow the
+[validation checklist](https://github.com/zyvorai/gryvia/blob/main/docs/gpu-validation.md) and report differences.
 
 ## Option 4: Deploy to a remote k3s host over SSH
 
@@ -78,11 +81,19 @@ custom-resource round trip) and prints the dashboard URL, `https://<host>:32443`
 The dashboard follows your system light or dark setting and includes:
 - Cluster overview, job pipeline (pending, running, completed, failed) and GPU utilization, each linking to the page behind it
 - Jobs with search, filters, sorting, and per-job pods, logs and events
-- Workspaces, models, inference services, workflows and the auto-tuner, with structured create forms
 - Quotas, GPU nodes and costs, with drill-down links to the jobs involved
+- GPU as a Service pages: Catalog (GPU SKUs and prices), Usage (metered GPU hours and cost), Tenants and Invoices (monthly estimates, no payments); see [GPU as a Service](../guides/GPU_AS_A_SERVICE.md)
 - Network flows and policies, security policies and GPU communication analysis, which say so when no collector is feeding them
+- Workspaces, models, inference services, workflows and the auto-tuner, with structured create forms. These pages create and list the custom resources, but **no operator acts on them yet** (see the [CRD reference](../reference/crds.md), Controller column)
+
+Signed in with the API key you are the provider **admin**: you see cluster-wide pages, but jobs and similar objects only
+from one namespace, the gateway's `GRYVIA_JOB_NAMESPACE` (the release namespace, `gryvia-system`, with the chart). OIDC
+users are **tenant** users limited to their own tenant namespace; see [Authentication and TLS](../guides/AUTH_AND_TLS.md).
 
 ## Register GPU Nodes
+
+With the GPU Operator (Option 3, or `nvidia.enabled=true`) every GPU node is registered automatically from its NVIDIA
+feature-discovery labels. Otherwise register nodes yourself; `nodeName` must be a real Kubernetes node:
 
 ```yaml
 # gpu-node.yaml
@@ -104,6 +115,9 @@ kubectl apply -f gpu-node.yaml
 kubectl get gryviagpunodes
 ```
 
+The GPU operator copies these fields onto the node as `gryvia.io/*` labels, which job scheduling reads. On a cluster
+with fictional or no GPUs (the kind demo) jobs will not actually run.
+
 ## Submit Your First Job
 
 ```yaml
@@ -124,9 +138,14 @@ spec:
 ```
 
 ```bash
-kubectl apply -f training-job.yaml
-kubectl get gryviaaijobs
+kubectl apply -n gryvia-system -f training-job.yaml
+kubectl get gryviaaijobs -n gryvia-system
 ```
+
+`-n gryvia-system` puts the job where the dashboard's admin view looks; see the note above. Or use the CLI:
+`gryvia -n gryvia-system submit --file training-job.yaml`. The AI operator checks that enough matching GPU nodes
+exist (filtering and scoring node labels and free GPUs; the job stays `Pending` otherwise), then runs the job as a
+StatefulSet pinned by node selector to nodes of the requested `gpuType`.
 
 ## Set Up Team Quota
 
@@ -177,10 +196,12 @@ gryvia cost --period month
 # Via deploy script
 ./scripts/deploy-remote.sh <host> <user> --uninstall
 
-# Or manually
+# Or with Helm (CRDs and your objects are kept on purpose)
+helm uninstall gryvia -n gryvia-system
+
+# Remove everything, including all Gryvia objects
+kubectl get crd -o name | grep '\.gryvia\.io$' | xargs kubectl delete
 kubectl delete namespace gryvia-system
-kubectl delete crd gryviaaijobs.gryvia.io gryviagpunodes.gryvia.io \
-  gryvianetworks.gryvia.io gryviaquotas.gryvia.io gryviastorages.gryvia.io
 ```
 
 ## Troubleshooting

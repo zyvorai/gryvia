@@ -1,5 +1,7 @@
 # Auto-Tuning Framework
 
+> **Status: design sketch, not implemented in this repo.** This directory holds only this README and a Dockerfile that references a `requirements.txt` that does not exist; there is no source code. The `GryviaAutoTuner` CRD and gateway CRUD for it exist, but no controller is registered, so nothing reconciles a tuner spec. The `gryvia` `AutoTuner` Python import shown below does not exist in the SDK. Feature lists and any speed-up or cost numbers are design targets, not measurements.
+
 Automatically optimize hyperparameters, resource allocation, and training configurations.
 
 ## Features
@@ -33,7 +35,9 @@ Automatically optimize hyperparameters, resource allocation, and training config
 
 ### 1. Enable Auto-Tuning
 
-```yaml
+Design sketch, not accepted by the current CRD schema:
+
+```text
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaAutoTuner
 metadata:

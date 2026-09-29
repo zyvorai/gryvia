@@ -1,36 +1,29 @@
 # Frequently Asked Questions
 
-Common questions about Gryvia and GPU infrastructure management.
+Answers about what Gryvia does today. Where a feature has a CRD but no controller, or has not been verified on real hardware, the answer says so. See the [roadmap](ROADMAP.md) and the [CRD reference](../reference/crds.md) (which lists which kinds have a controller).
 
 ## General
 
 ### What is Gryvia?
 
-Gryvia is an open, Kubernetes-native GPU compute platform for AI/ML infrastructure. It provides:
-- GPU resource management and scheduling
-- Cost optimization and budget controls
-- Multi-tenancy with quotas
-- Advanced features like job dependencies, auto-scaling, and health monitoring
+An alpha, Kubernetes-native platform for GPU workloads. What runs today:
 
-### Who should use Gryvia?
+- A `GryviaAIJob` operator that selects GPU nodes and creates the StatefulSet, Service and PVC for a training or inference job
+- GPU node registration (`GryviaGpuNode`) from NVIDIA GPU feature discovery labels
+- Multi-tenancy: tenants, quotas, a GPU price catalog, per-job usage metering and estimate invoices
+- An admission webhook that checks jobs against quota and SKU policy
+- Storage and network operators, and network intelligence (eBPF collector, off by default)
+- A REST API gateway, a dashboard and a Rust CLI, plus Python and Go SDKs
 
-- **ML Engineers**: Submit training jobs, manage experiments
-- **Platform Teams**: Manage GPU infrastructure at scale
-- **Finance**: Track and optimize GPU compute costs
-- **Executives**: Get insights and forecasts on GPU utilization
+Many other kinds (workflows, tuners, budgets, auto-scaling, reservations, inference services and so on) have a CRD but no controller yet.
+
+### Who should use it?
+
+Teams that want to experiment with a GPU platform on Kubernetes and accept alpha software. The API is `gryvia.io/v1alpha1` and can change. Nothing has been verified on real GPU or RDMA hardware by this project's CI.
 
 ### How is Gryvia different from Kubeflow?
 
-| Feature | Gryvia | Kubeflow |
-|---------|-----------|----------|
-| Focus | GPU infrastructure management | ML pipelines |
-| Multi-tenancy | Built-in with quotas | Basic |
-| Cost management | Advanced | None |
-| GPU sharing | MIG, fractional, time-slicing | Limited |
-| Scheduling | 13 policies + ML-driven | Basic |
-| Reservations | Yes | No |
-
-**Use together**: Gryvia for infrastructure, Kubeflow for ML pipelines.
+They overlap little today. Kubeflow provides ML pipelines, notebooks and serving that run. Gryvia's DAG workflow, tuning, serving and notebook kinds are CRDs without controllers, so use Kubeflow (or another engine) for those. Gryvia's running parts are the job operator, tenancy and quota, metering, and GPU node and network tooling. They can be installed side by side; that combination has not been tested here.
 
 ---
 
@@ -38,42 +31,43 @@ Gryvia is an open, Kubernetes-native GPU compute platform for AI/ML infrastructu
 
 ### How do I submit my first job?
 
+Install the chart, then submit a `GryviaAIJob` manifest with the CLI or `kubectl`:
+
 ```bash
-# Install CLI
-curl -sSL https://gryvia.io/install.sh | bash
+helm install gryvia oci://ghcr.io/zyvorai/charts/gryvia \
+  --namespace gryvia-system --create-namespace \
+  --set auth.apiKey='a-long-random-secret'
 
-# Submit job
-kfctl submit job.yaml --gpu-type A100-80G --gpu-count 8
-
-# Check status
-kfctl job status my-job
-
-# View logs
-kfctl job logs my-job
+gryvia validate job.yaml
+gryvia submit --file job.yaml
+gryvia status my-job
+gryvia logs my-job --follow
 ```
+
+A minimal job (required fields are `type`, `gpus` and `image`):
+
+```yaml
+apiVersion: gryvia.io/v1alpha1
+kind: GryviaAIJob
+metadata:
+  name: my-job
+spec:
+  type: training
+  gpus: 8
+  gpuType: A100-80G
+  image: nvcr.io/nvidia/pytorch:24.01-py3
+  command: ["python", "train.py"]
+```
+
+The CLI talks to the Kubernetes API through your kubeconfig, not through the gateway. See the [job guide](../user-guide/jobs.md) and [CLI guide](CLI_GUIDE.md).
 
 ### What GPU types are supported?
 
-All NVIDIA GPUs:
-- **H100**: Latest, highest performance
-- **A100-80G / A100-40G**: Most popular for training
-- **V100**: Good for medium workloads
-- **T4**: Great for inference and development
-- **MIG instances**: Fractional GPUs (1g.10gb, 2g.20gb, 3g.40gb, 7g.80gb)
+Gryvia does not restrict GPU models. `spec.gpuType` is matched against the `gryvia.io/gpu` node label (values are whatever your nodes carry, for example the names in your `GryviaGpuSku` catalog), and pods request `nvidia.com/gpu`, so any NVIDIA GPU with a working device plugin can be scheduled. Which models have actually been run is not recorded: no GPU hardware runs in this project's CI. MIG and fractional sharing: the `GryviaGPUSharingPolicy` kind has a CRD but no controller; configure MIG or time-slicing with NVIDIA's GPU Operator directly.
 
 ### Can I use my existing Kubernetes cluster?
 
-Yes! Gryvia is deployed on Kubernetes:
-
-```bash
-# Add Helm repo
-helm repo add gryvia https://zyvorai.github.io/gryvia/charts
-
-# Install
-helm install gryvia gryvia/gryvia \
-  --namespace gryvia-system \
-  --create-namespace
-```
+Yes, the chart installs into any cluster. On a bare GPU server, `scripts/install-k3s-gpu.sh` can set up k3s, Gryvia and NVIDIA's GPU Operator. See [GPU nodes](GPU_NODES.md) and the [deployment guide](DEPLOYMENT_GUIDE.md).
 
 ---
 
@@ -81,111 +75,38 @@ helm install gryvia gryvia/gryvia \
 
 ### How do quotas work?
 
-Quotas limit resource usage per team:
+`GryviaQuota` objects (reconciled by the quota-operator) describe limits and usage per namespace, and `GryviaTenant` gives a team a `tenant-<name>` namespace with a ResourceQuota. At job creation the admission webhook denies jobs whose GPU type is not allowed by the namespace's quotas or the tenant's allowed SKUs, or that exceed the per-job GPU limit. The webhook fails open (jobs are admitted if it is unreachable, by default), and it does not check monthly GPU-hour or cost limits.
 
-```yaml
-quotas:
-  gpuHours:
-    monthly: 2000  # 2000 GPU hours per month
-  costUSD:
-    monthly: 50000  # $50k per month
-  concurrentGPUs: 128  # Max 128 GPUs at once
+```bash
+gryvia quota my-team
+gryvia quota my-team --budget
 ```
-
-When quota exceeded, new jobs are blocked.
 
 ### Can I request more quota?
 
-Yes:
-
-```bash
-kfctl quota request-increase \
-  --team ml-research \
-  --amount 10000 \
-  --reason "Critical deadline"
-```
-
-Requires approval from admin/finance.
+There is no request workflow. A platform admin edits the `GryviaQuota` or `GryviaTenant`, or you use `gryvia tenant create` to update a tenant.
 
 ### What happens if I exceed my budget?
 
-Depends on enforcement policy:
-- **Warn**: Email alert, jobs continue
-- **Block**: New jobs blocked
-- **Throttle**: Jobs run at lower priority
-
-Configure per budget:
-
-```yaml
-enforcement:
-  enabled: true
-  action: block  # or warn, throttle
-  gracePeriod: 2h
-```
+Nothing, because budgets are not enforced. `GryviaBudget` has a CRD but no controller; there are no alerts, blocks or throttling. `gryvia cost` and `gryvia usage` show estimated spend from metered usage and the SKU catalog prices; they are estimates, and Gryvia does no billing or payment processing.
 
 ---
 
-## Cost Optimization
+## Cost
 
 ### How can I reduce costs?
 
-**Top 5 ways to save:**
+Gryvia gives you visibility, not automatic savings:
 
-1. **Use Spot Instances** (40-70% savings)
-   ```bash
-   kfctl job submit --spot
-   ```
+- `gryvia capacity` shows free GPUs, pending demand and shortfall per type
+- `gryvia cost` and `gryvia usage` show estimated spend
+- The catalog (`gryvia catalog`) shows the hourly rates used for estimates
 
-2. **Enable MIG for Dev/Inference** (86% savings)
-   ```bash
-   kfctl gpu-sharing enable --profile all-1g.10gb
-   ```
-
-3. **Right-Size Resources**
-   ```bash
-   kfctl profile my-job
-   kfctl optimize my-job
-   ```
-
-4. **Use Reservations** (15-25% discount)
-   ```bash
-   kfctl reservation create --duration 30d --exclusive
-   ```
-
-5. **Enable Auto-Scaling** (eliminate idle)
-   ```bash
-   kfctl autoscale enable
-   ```
-
-### How much can I save with spot instances?
-
-**Example:**
-- On-demand: 32x A100 = $768/hour × 4 hours = $3,072
-- Spot: 32x A100 = $461/hour × 4 hours = $1,844
-- **Savings: $1,228 (40%)**
-
-Spot instances can be interrupted, so enable checkpointing:
-
-```yaml
-checkpointing:
-  enabled: true
-  frequency: 10m
-```
+Spot handling, auto-scaling, reservations and discounts are CRDs without controllers, so they do not reduce anything. Savings figures that older versions of this page quoted (spot percentages, MIG percentages, reservation discounts) were illustrative and unmeasured.
 
 ### What is MIG and when should I use it?
 
-**MIG** (Multi-Instance GPU) splits A100/H100 into smaller instances:
-
-**Use MIG for:**
-- Development (1g.10gb = $3.43/hr vs $24/hr for full GPU)
-- Inference serving
-- Small models
-- Multiple concurrent jobs
-
-**Don't use MIG for:**
-- Large-scale distributed training
-- Workloads needing >40GB memory
-- Maximum performance requirements
+MIG (Multi-Instance GPU) partitions A100/H100-class GPUs into isolated instances. It suits small models, development and inference; it is not suited to large distributed training. Gryvia does not manage MIG itself: use NVIDIA's GPU Operator to configure it and expose the MIG resources, then request them in your pod resources. Unverified with Gryvia on hardware.
 
 ---
 
@@ -193,68 +114,40 @@ checkpointing:
 
 ### How do I retry failed jobs?
 
-Automatic retry with policy:
-
-```yaml
-spec:
-  retryPolicy:
-    maxRetries: 3
-    backoff:
-      type: exponential
-      initialDelay: 1m
-```
-
-Or manual:
+The job controller does not retry. `spec.retryLimit` and `status.retries` exist in the schema but are not acted on, and there is no `retryPolicy` field on the job (a `GryviaRetryPolicy` CRD exists without a controller). The job's pods are a StatefulSet, so a crashed container restarts in place. To rerun, delete and resubmit:
 
 ```bash
-kfctl job retry my-job
+gryvia delete job my-job --yes
+gryvia submit --file job.yaml
 ```
 
 ### Can I checkpoint and resume jobs?
 
-Yes:
-
-```yaml
-spec:
-  checkpointing:
-    enabled: true
-    frequency: 10m
-    path: /checkpoints
-
-  command:
-    - python
-    - train.py
-    - --checkpoint-dir=/checkpoints
-    - --auto-resume
-```
-
-Job automatically resumes from last checkpoint on:
-- Spot interruption
-- Preemption
-- Failure
+Your training code does the checkpointing. Write to a volume that survives the pod, using `spec.storage` (PVC mounted at `/data`) or your own `volumes`, and have the code resume from it on start. There is no `checkpointing` block on `GryviaAIJob` and Gryvia does not resume jobs on preemption or spot interruption. `GryviaCheckpointGuard` is a separate ai-operator kind for checkpoint protection; see the [ML workflows guide](ML_WORKFLOWS.md).
 
 ### How do I run distributed training?
 
 ```yaml
+apiVersion: gryvia.io/v1alpha1
+kind: GryviaAIJob
+metadata:
+  name: ddp-4x8
 spec:
-  framework: pytorch
+  type: training
+  image: nvcr.io/nvidia/pytorch:24.01-py3
+  gpus: 8
+  gpuType: A100-80G
   distributed:
     enabled: true
-    strategy: ddp
-    nodes: 4         # Number of nodes
-    gpusPerNode: 8   # GPUs per node
-
-  resources:
-    gpuType: A100-80G
-    gpuCount: 8  # GPUs per node
+    framework: pytorch
+    backend: nccl
+    nodes: 4
+    gpusPerNode: 8
+  command: ["torchrun"]
+  args: ["--nproc_per_node=8", "--nnodes=4", "--master_addr=$(MASTER_ADDR)", "--master_port=$(MASTER_PORT)", "train.py"]
 ```
 
-Gryvia handles:
-- Node selection via the GPU-aware scheduler
-- `WORLD_SIZE` environment variable (automatically set to `nodes * gpusPerNode`)
-- `MASTER_ADDR` and `MASTER_PORT` for rendezvous
-- NCCL configuration (including RDMA settings when network is `rdma`)
-- Rank assignment via StatefulSet ordinal indices
+The controller creates 4 StatefulSet replicas with 8 GPUs each and sets `MASTER_ADDR`, `MASTER_PORT`, `WORLD_SIZE` (`nodes * gpusPerNode`) and `NCCL_DEBUG`; with `network: rdma` it adds `NCCL_IB_DISABLE=0`, `NCCL_NET_GDR_LEVEL=5` and RDMA annotations. Node ranks come from your launcher or the pod ordinal. Pods are placed by the Kubernetes scheduler, without gang scheduling. See [Scheduling](SCHEDULING.md).
 
 ---
 
@@ -262,49 +155,23 @@ Gryvia handles:
 
 ### My training is slow. How do I optimize?
 
-```bash
-# 1. Profile the job
-kfctl profile my-job
+Start with measurements:
 
-# 2. Get recommendations
-kfctl optimize my-job
+```bash
+gryvia gpu training --job my-job
+gryvia gpu nccl --job my-job
+gryvia health gpu
 ```
 
-**Common fixes:**
-- Enable mixed precision (2-3x speedup)
-- Increase batch size
-- Optimize data loading
-- Enable torch.compile
-- Use GPUDirect RDMA
-
-See [OPERATIONAL_PLAYBOOKS.md](OPERATIONAL_PLAYBOOKS.md#performance-issues) for details.
+`gryvia gpu` reads data from the network-intelligence collector, which is off by default and unverified on real GPUs. Common ML advice applies (mixed precision, batch size, data loading, `torch.compile`); it is not something Gryvia automates. Operational steps are in [OPERATIONAL_PLAYBOOKS.md](OPERATIONAL_PLAYBOOKS.md).
 
 ### How do I enable GPUDirect RDMA?
 
-```yaml
-spec:
-  network:
-    gpuDirectRequired: true
-
-  env:
-    - name: NCCL_NET_GDR_LEVEL
-      value: "5"
-```
-
-Requires InfiniBand or RoCE network.
+Set `network: rdma` on the job. The controller then selects nodes labelled `gryvia.io/rdma=true`, adds the `gryvia.io/rdma` and `rdma-network` annotations and the two NCCL variables above. It requires RDMA-capable NICs, the NVIDIA driver stack with GPUDirect support and a network attachment named `rdma-network` in the namespace; none of that has been verified by this project on hardware.
 
 ### What is good GPU utilization?
 
-**Targets:**
-- **Training**: >85% GPU utilization
-- **Inference**: >70% (varies by latency requirements)
-- **Development**: >50% (intermittent usage expected)
-
-Check with:
-
-```bash
-kfctl metrics gpu-utilization my-job
-```
+That depends on the workload; Gryvia sets no target. Use the dashboard, the DCGM exporter metrics or `gryvia status` to look at your own jobs.
 
 ---
 
@@ -313,149 +180,51 @@ kfctl metrics gpu-utilization my-job
 ### How do I create a team?
 
 ```bash
-kfctl tenant create ml-research \
+gryvia tenant create ml-research \
   --display-name "ML Research Team" \
-  --quota-gpus 128 \
-  --quota-cost 50000
+  --allowed-sku a100-80g \
+  --max-gpus 128 \
+  --isolated true
+gryvia tenant list
 ```
+
+The tenant's workloads run in the namespace `tenant-ml-research`. See [GPU as a service](GPU_AS_A_SERVICE.md).
 
 ### How do I add team members?
 
-```bash
-kfctl tenant add-member ml-research alice --role admin
-kfctl tenant add-member ml-research bob --role member
-kfctl tenant add-member ml-research charlie --role viewer
-```
-
-**Roles:**
-- **Admin**: Manage team, budgets, members
-- **Member**: Submit jobs, view team resources
-- **Viewer**: Read-only access
+`GryviaTenant.spec.members` records usernames and roles (`admin`, `member`, `viewer`) but the controller does not enforce them. Access in the gateway comes from authentication: the API key or session is a provider admin, and OIDC users are tenant users whose tenant is taken from the `org` or `groups` claim. Kubernetes RBAC for `kubectl` users is yours to configure. See [Auth and TLS](AUTH_AND_TLS.md).
 
 ### Can teams share GPUs?
 
-Yes, configure sharing policy:
-
-```yaml
-spec:
-  strategy: time-slicing
-  timeSlicing:
-    maxPodsPerGPU: 4
-  qos:
-    isolationLevel: memory  # Memory isolated between tenants
-```
+Only through Kubernetes and NVIDIA mechanisms (for example the device plugin's time-slicing). `GryviaGPUSharingPolicy` is a CRD without a controller.
 
 ---
 
-## Security & Compliance
+## Security and Compliance
 
-### Is Gryvia SOC2 compliant?
+### Is Gryvia SOC2 or HIPAA compliant?
 
-Yes, with audit trail enabled:
-
-```yaml
-apiVersion: gryvia.io/v1alpha1
-kind: GryviaAudit
-spec:
-  compliance:
-    frameworks: [SOC2, ISO27001]
-  retention:
-    duration: 7y
-  events:
-    # All required events tracked
-```
-
-Features:
-- 7-year audit retention
-- Comprehensive event logging
-- Automated compliance reports
-- Anomaly detection
+No. Gryvia has no compliance certification, and it does not implement an audit trail: `GryviaAudit` is a CRD with no controller. Whether your deployment meets a framework depends on your cluster, storage, identity provider and processes. See [SECURITY.md](https://github.com/zyvorai/gryvia/blob/main/SECURITY.md) and [Auth and TLS](AUTH_AND_TLS.md) for what the project does provide (signed sessions, rate-limited login, tenant scoping, TLS on the gateway and dashboard).
 
 ### How is data encrypted?
 
-- **At rest**: AES-256 encryption (storage layer)
-- **In transit**: TLS 1.3 for all API calls
-- **Secrets**: Kubernetes secrets (optionally Vault)
-- **Volumes**: Encrypted by storage provider
-
-### Can I use Gryvia for HIPAA workloads?
-
-Yes:
-
-```yaml
-spec:
-  compliance:
-    frameworks: [HIPAA]
-    dataClassification: restricted
-  retention:
-    duration: 6y
-```
-
-Requirements:
-- Enable audit trail
-- Configure network isolation
-- Use encrypted storage
-- Enable access controls
+Gryvia does not encrypt your data itself. The gateway serves HTTPS with the chart's certificate (self-signed by default; cert-manager is optional). Encryption at rest for volumes and Kubernetes Secrets is whatever your cluster and storage provider give you.
 
 ---
 
-## Advanced Features
+## Other Features
 
 ### What are job hooks?
 
-Hooks execute actions at job lifecycle events:
+`GryviaJobHook` is a CRD for actions at job lifecycle events. No controller runs them today; use your own automation.
 
-```yaml
-apiVersion: gryvia.io/v1alpha1
-kind: GryviaJobHook
-spec:
-  trigger: post-completion
-  action:
-    type: webhook
-    webhook:
-      url: https://api.example.com/notify
-```
+### Does auto-scaling work?
 
-**Use cases:**
-- Upload model to registry
-- Send Slack notification
-- Trigger downstream jobs
-- Clean up resources
-
-### How does auto-scaling work?
-
-Queue-based auto-scaling:
-
-```yaml
-spec:
-  scaleUpPolicy:
-    pendingJobs: 10  # Scale up if >10 pending
-    queueTimeMinutes: 30  # Or queue time >30min
-    increment: 2  # Add 2 nodes at a time
-
-  scaleDownPolicy:
-    idleTimeMinutes: 15  # Scale down after 15min idle
-    decrement: 1
-```
+No. `GryviaAutoScaler` is a CRD without a controller and Gryvia does not add or remove nodes. Use your cloud or cluster autoscaler.
 
 ### Can I reserve GPUs in advance?
 
-Yes:
-
-```bash
-kfctl reservation create paper-deadline \
-  --gpu-type H100 \
-  --gpu-count 64 \
-  --start "2024-02-01 00:00" \
-  --end "2024-02-05 23:59" \
-  --exclusive
-```
-
-Benefits:
-- Guaranteed availability
-- 15-25% discount
-- No queue time
-- SLA guarantees
+No. `GryviaReservation` is a CRD without a controller. Nothing holds capacity.
 
 ---
 
@@ -463,96 +232,63 @@ Benefits:
 
 ### My job is stuck in Pending
 
-The scheduler reports why no nodes matched when scheduling fails. Check the
-job's conditions for a message like:
-`no nodes meet the job requirements (gpuType="H100", gpus=8, network="rdma", 12 nodes evaluated)`
-
-**Check:**
+When node selection fails the controller sets the `Scheduled` condition with a message such as `no nodes meet the job requirements (gpuType="H100", gpus=8, network="rdma", 12 nodes evaluated)` and retries after 30 seconds.
 
 ```bash
-# 1. Why is it pending? (look at conditions for scheduler error details)
+# 1. Why? Read the conditions
 kubectl describe gryviaaijob my-job
 
-# 2. Check capacity
-kfctl cluster status
+# 2. Jobs waiting, and free GPUs
+gryvia queue
+gryvia capacity
+gryvia list nodes
 
-# 3. Check quota
-kfctl quota status --team my-team
-
-# 4. Check budget
-kfctl budget status --team my-team
-
-# 5. View queue position
-kfctl queue status
+# 3. Quota
+gryvia quota my-team
 ```
+
+Check that nodes carry the labels the job needs (`gryvia.io/gpu`, `gryvia.io/gpu-count` or allocatable `nvidia.com/gpu`, `gryvia.io/rdma=true` for RDMA jobs). If the pods exist but stay unscheduled, look at the pod events: placement is done by the Kubernetes scheduler.
 
 ### Jobs keep failing
 
 ```bash
-# 1. View logs
-kfctl job logs my-job --tail 100
-
-# 2. Check events
+gryvia logs my-job --tail 100
 kubectl describe gryviaaijob my-job
-
-# 3. Common issues:
-# - OOM: Increase memory or use larger GPU
-# - Image pull error: Check image name and credentials
-# - Quota exceeded: Request more quota
-# - GPU error: Check node health
+kubectl get pods -l gryvia.io/job=my-job
 ```
+
+Typical causes: out-of-memory, image pull errors, a missing volume or secret, an unhealthy GPU node (`gryvia health gpu`).
 
 ### How do I get support?
 
-1. **Documentation**: https://gryvia.io/docs
+1. **Documentation**: this site
 2. **GitHub Issues**: https://github.com/zyvorai/gryvia/issues
-3. **Slack**: #gryvia-users
-4. **Email**: support@gryvia.io (Enterprise only)
+3. **GitHub Discussions**: https://github.com/zyvorai/gryvia/discussions
 
 ---
 
 ## Best Practices
 
-### Job Submission
-
 ```yaml
-# ✓ Good
+# Reasonable
 spec:
-  priorityClassName: normal  # Set appropriate priority
-  retryPolicy:
-    maxRetries: 3
-  checkpointing:
-    enabled: true
+  type: training
+  image: nvcr.io/nvidia/pytorch:24.01-py3
+  gpus: 8
+  gpuType: A100-80G
   resources:
-    gpuType: A100-80G
-    gpuCount: 8
-    memory: 512Gi  # Realistic memory
-    cpu: 64
-
-# ✗ Bad
-spec:
-  priorityClassName: high  # Don't abuse high priority
-  resources:
-    gpuType: H100  # Don't always use most expensive
-    gpuCount: 128  # Don't over-request
-    memory: 2Ti  # Don't over-provision
+    requests:
+      cpu: "64"
+      memory: 512Gi
+  storage: fast-nfs        # a GryviaStorage backend name; PVC mounted at /data
+  storageRequest: 500Gi
 ```
 
-### Cost Management
-
-1. **Enable budgets**: Set monthly limits
-2. **Monitor regularly**: Review weekly
-3. **Use spot when possible**: 40-70% savings
-4. **Right-size resources**: Profile first
-5. **Enable auto-scaling**: No idle resources
-
-### Performance
-
-1. **Profile before optimizing**: Data beats guessing
-2. **Enable mixed precision**: Easy 2x speedup
-3. **Optimize data loading**: Often the bottleneck
-4. **Use topology-aware placement**: For multi-node
-5. **Monitor continuously**: Catch regressions early
+1. Label jobs with team and project so usage can be grouped.
+2. Request realistic CPU and memory; do not over-request GPUs.
+3. Checkpoint from your training code to a persistent volume.
+4. Set quotas for tenants; budgets are not enforced.
+5. Profile before optimizing.
 
 ---
 
@@ -560,49 +296,17 @@ spec:
 
 ### From Slurm
 
-```bash
-# Export Slurm jobs
-squeue -u $USER -o "%i,%j,%N,%p" > slurm-jobs.csv
-
-# Convert to Gryvia
-kfctl import slurm slurm-jobs.csv
-
-# Or manually:
-srun --gres=gpu:8 python train.py  # Slurm
-kfctl submit job.yaml --gpu-count 8  # Gryvia
-```
+There is no importer. Translate each `srun`/`sbatch` job into a `GryviaAIJob` by hand, for example `--gres=gpu:8` becomes `gpus: 8`, and the command becomes `command`/`args`.
 
 ### From Kubernetes Jobs
 
-```bash
-# Migrate existing K8s jobs
-kfctl import kubernetes job.yaml
-
-# Or use directly:
-kubectl apply -f gryviaaijob.yaml
-```
+There is no importer either. Write a `GryviaAIJob` with the same image and command; the controller wraps it in a StatefulSet.
 
 ---
 
-## Limits and Quotas
+## Limits
 
-### System Limits
-
-- Max GPUs per job: 512
-- Max concurrent jobs per user: 1000
-- Max job duration: 30 days
-- Max checkpoint size: 1TB
-- Max dataset size: 10TB
-
-### API Rate Limits
-
-- Job submissions: 100/minute
-- Status queries: 1000/minute
-- Metrics queries: 500/minute
-
-### Resource Limits
-
-Depends on cluster size and quotas. Contact admin for increases.
+The documented limits of older versions of this page (GPUs per job, job duration, API rate limits, dataset sizes) were not enforced or measured. What the code actually enforces: `spec.gpus` must be greater than 0, `spec.priority` between 0 and 100, and a distributed job's total GPUs (nodes times GPUs per node) at most 1024 (webhook). The gateway rate-limits login attempts per client address.
 
 ---
 
@@ -612,10 +316,9 @@ Depends on cluster size and quotas. Contact admin for increases.
 - **GPUDirect**: NVIDIA peer-to-peer GPU communication
 - **NCCL**: NVIDIA Collective Communications Library
 - **DDP**: Distributed Data Parallel (PyTorch)
-- **SLA**: Service Level Agreement
-- **QoS**: Quality of Service
 - **RDMA**: Remote Direct Memory Access
+- **CRD**: Custom Resource Definition
 
 ---
 
-*Still have questions? See [ADVANCED_FEATURES.md](ADVANCED_FEATURES.md) or ask in Slack #gryvia-users*
+*See [ADVANCED_FEATURES.md](ADVANCED_FEATURES.md) for the status of the advanced kinds.*

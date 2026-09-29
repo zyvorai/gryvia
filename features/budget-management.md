@@ -2,6 +2,25 @@
 
 Advanced budget management with cost controls, alerts, and forecasting.
 
+> **Status: design document. `GryviaBudget` is a CRD with no controller wired yet.**
+> The CRD (`crds/gryvia.io_gryviabudgets.yaml`) exists and the API accepts the spec, but no
+> operator registers a reconciler for it (a `GryviaBudgetReconciler` exists under
+> `operators/quota-operator/controllers/` but is not created in `main.go`), so nothing
+> evaluates limits, sends the email/Slack/webhook alerts, forecasts, rolls budgets over, or
+> blocks jobs for this kind. The `kfctl` CLI used below does not exist, and the `gryvia`
+> CLI has no `budget` subcommand; `kfctl` commands and `status` outputs in this document are
+> illustrative. Numbers and outputs in the examples are made up.
+>
+> **What actually works today:** a simpler budget on `GryviaQuota`
+> (`spec.budget.monthlyBudget`, `alertThreshold`, `hardLimit`). The quota operator computes
+> `status.budgetStatus` (`spentThisMonth`, `remainingBudget`, `percentUsed`, `projectedSpend`),
+> logs when the alert threshold is reached (no email/Slack/webhook is sent), and with
+> `hardLimit: true` rejects pending `GryviaAIJob`s once 100% is reached
+> (`operators/quota-operator/controllers/gryviaquota_controller.go`). The gateway and
+> `gryvia quota` / `gryvia cost` surface these figures. Real-cluster and real-billing
+> behaviour is unverified; cost is derived from the GPU SKU catalog rates, not from a cloud
+> bill. No `gryvia_budget_*` Prometheus metrics are exported (see `monitoring/README.md`).
+
 ## Overview
 
 Gryvia provides sophisticated budget management to control GPU compute costs:
@@ -294,7 +313,9 @@ priority:
 ```
 
 Submit high-priority job:
-```yaml
+Design sketch, not accepted by the current CRD schema:
+
+```text
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
@@ -357,6 +378,8 @@ Output:
 ```
 
 ## CLI Commands
+
+> The `kfctl budget ...` commands below are a proposed interface; they do not exist. Use `gryvia quota` and `gryvia cost` for the figures that are implemented.
 
 ### Check Budget Status
 

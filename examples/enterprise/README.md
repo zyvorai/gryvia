@@ -2,6 +2,8 @@
 
 Example YAML manifests for Gryvia enterprise CRDs covering cost tracking, observability, multi-tenancy, budgets, and SLAs.
 
+> **Status.** Controllers are registered for `GryviaNetworkCost`, `GryviaTrainingInsight`, `GryviaInferenceInsight` and `GryviaTenant`. `GryviaBudget` and `GryviaSLA` have a CRD and API only; no controller is wired, so those two manifests are not acted on today. The insight controllers do not collect live metrics yet.
+
 ## Examples
 
 - **[network-cost.yaml](network-cost.yaml)** - `GryviaNetworkCost` tracking per-team network costs with zone-based pricing

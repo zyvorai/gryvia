@@ -5,6 +5,9 @@ and the project aims to follow [Semantic Versioning](https://semver.org/) once i
 
 ## [Unreleased]
 
+Entries are newest first within each section. Counts in an entry (for example "24 programs") are as of that entry; the
+current numbers are 49 CRDs (24 with a registered controller) and 30 eBPF programs.
+
 ### Added
 - Flight Recorder cluster view: `GET /api/flight/jobs/{job}?namespace=` on the gateway signs a request to every Running collector pod in `apiGateway.flightCollectorNamespace` (HMAC-SHA256 over method, request URI and timestamp with a shared token, 30 s window, replay inside it possible) and merges the node-local reports with a `coverage` field (`total`, `reachable`, `reporting`, `complete`) and a `truncated` flag; tenant callers are limited to their tenant namespaces. The collector's `GET /api/v1/flight/diagnose` now requires that token (`-flight-token-file`, chart values `ebpf.flightTokenSecret` and `apiGateway.flightTokenSecret`) and answers 503 when it is unset; the rest of the collector listener stays unauthenticated. NCCL events carry their operation name and the gateway flags ranks whose observed API duration is an outlier (an API timing, not a GPU or network cause). A Go test and a Python test pin the same signature vector. Unit-tested only; not run against a real cluster.
 - Fabric signals, second part: `overlap` (a `cudaDeviceSynchronize` nested inside an in-flight `ncclAllReduce`), `roce_cnp` (XDP counter of RoCEv2 congestion notifications, always `XDP_PASS`, attached only with `-iface`) and `infer_latency` (accept to first read on inference ports, new `-infer-ports` flag, default `8000,8001`). The fabric folder adds `overlapIdleRatio`, `cnpRate` and `inferWaitP99ms` (also in the `GryviaFabricSignal` status and `gryvia_fabric_*` gauges); the first two add up to 0.15 each to `scoreDelta`, which stays in `[0,1]`. `FabricPenalty` (up to 25 points) is in the ai-operator scheduler package but is not called yet. Load-verified on Linux 7.0 (x86_64, arm64 compiles); `roce_cnp` and `overlap` were also run (test-run packets, stand-in library); real RoCE traffic, GPUs and a live inference server are untested.
@@ -36,6 +39,8 @@ and the project aims to follow [Semantic Versioning](https://semver.org/) once i
 - Open tabs recover automatically after a redeploy.
 
 ### Changed
+- Documentation refreshed against the code: the API reference now lists every gateway route with its access rule (there is no `/api/v1` prefix and no webhook, WebSocket or `/metrics` endpoint on the gateway); the CRD reference has a Controller column generated from `operators/*/main.go` and states the real API version; the admin guide, quick start, chart READMEs, SECURITY.md, the ebpf and collector READMEs and the guides were corrected, and design-only material (kinds without a controller, multi-cluster, disaster recovery, budgets, gang scheduling and fair-share queues, which exist only as library code) is labelled as such. `scripts/gen-crd-docs.py` reads the version from the CRDs instead of hard-coding `v1`.
+- CI: `ebpf.yml` expects 30 compiled programs on the arm64 cross-build (it still said 24); the legacy-name check in `repo-checks.yml` no longer matches the current `GryviaFabricSignal` kind or the `FabricPenalty` helper. `scripts/check-examples.py` (run in the docs-accuracy job) now also validates the fenced `yaml` manifests in the Markdown docs against the CRD schemas, as its description already claimed.
 - Fixed struct-layout mismatches between the eBPF programs and the collector's Go decoders (implicit padding made every field after the gap misread; security and GPU enums disagreed).
 - The `network-intelligence` chart now runs the collector with the flags it actually has (`ebpf.interface`, `ebpf.cgroupPath`, `ebpf.ncclLib`, `ebpf.cudaLib`); the old `--enable-program` list is gone.
 - **Breaking for OIDC installs:** an OIDC token must now match a `GryviaTenant` (by `org` or `groups`); previously the claim was trusted as a namespace and every user could read cluster-wide data. Set `apiGateway.oidc.legacyNamespaces=true` only while no tenants exist.
@@ -50,7 +55,7 @@ and the project aims to follow [Semantic Versioning](https://semver.org/) once i
 - Status vocabulary unified across pages (`Succeeded` counts as completed, `Scheduling` as pending).
 
 ### Fixed
-- The release rehearsal showed the eBPF collector image has never built (its kernel programs do not compile). It is no longer published and is off by default in the network-intelligence chart; documented as experimental.
+- The release rehearsal showed the eBPF collector image has never built (its kernel programs do not compile). It is no longer published and is off by default in the network-intelligence chart; documented as experimental. (The image builds again since the CO-RE port listed under Added, but it is still not published.)
 - Costs are labelled as spend to date; empty states name the operator or collector that feeds the data instead
   of showing reassuring zeros.
 - Rate limits count per client address instead of per proxy pod.

@@ -1,6 +1,8 @@
 # NetPredator - Network Intelligence Layer
 
-NetPredator is the network intelligence layer for the Gryvia GPU platform. It provides Cilium/eBPF-based network visibility, security, and traffic control through six Kubernetes custom resources.
+NetPredator is the network intelligence layer for the Gryvia GPU platform. It provides Cilium/eBPF-based network visibility, security, and traffic control through Kubernetes custom resources. The operator registers ten controllers; this page details the first six (`GryviaSecurityPolicy`, `GryviaNetworkCost`, `GryviaTrainingInsight` and `GryviaInferenceInsight` are also registered but not described here).
+
+> **Status.** The CRDs and controllers are registered and unit-tested, but the data-collection side is largely a stub. Only the Kubernetes-side actions are real: `GryviaFlowPolicy` builds and applies a CiliumNetworkPolicy, `GryviaAutoPolicy` has learn/suggest/enforce state handling, and `GryviaNetworkAnomaly` can create a temporary deny CiliumNetworkPolicy. The Hubble relay gRPC and Prometheus PromQL queries are **not implemented** (the code only checks whether the `hubble-relay` / `prometheus-server` services exist and otherwise preserves existing status values). As a result `GryviaTrafficInsight` does not measure latency or throughput, `GryviaTraceSession` does not capture flows, `GryviaServiceGraph` does not discover edges from live traffic, and `GryviaNetworkAnomaly` currently sees empty metrics. Nothing here has been verified on a cluster running Cilium and Hubble.
 
 ## Architecture
 
@@ -38,7 +40,7 @@ NetPredator is the network intelligence layer for the Gryvia GPU platform. It pr
 
 ## Custom Resources
 
-### GryviaFlowPolicy (ffp)
+### GryviaFlowPolicy
 
 Intent-based network policy that translates high-level traffic intents into CiliumNetworkPolicies.
 
@@ -72,9 +74,9 @@ spec:
   priority: 100
 ```
 
-### GryviaTrafficInsight (fti)
+### GryviaTrafficInsight
 
-Real-time traffic analysis with percentile latencies, throughput measurements, drop rate tracking, top talker identification, and anomaly detection.
+Traffic analysis (design intent; live metric collection is not implemented, see Status) with percentile latencies, throughput measurements, drop rate tracking, top talker identification, and anomaly detection.
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
@@ -93,7 +95,7 @@ spec:
     - retransmits
 ```
 
-### GryviaAutoPolicy (fap)
+### GryviaAutoPolicy
 
 Self-healing firewall that learns traffic patterns and automatically generates network policies.
 
@@ -120,9 +122,9 @@ spec:
   approvalRequired: true
 ```
 
-### GryviaTraceSession (fts)
+### GryviaTraceSession
 
-Time-limited network trace/debug sessions with flow capture stored in ConfigMaps.
+Time-limited network trace/debug sessions. Session lifecycle and the results ConfigMap are managed, but flow capture from Hubble is not implemented yet.
 
 **Trace levels:**
 - `l3` - IP-level flow capture
@@ -146,9 +148,9 @@ spec:
   captureHeaders: false
 ```
 
-### GryviaServiceGraph (fsg)
+### GryviaServiceGraph
 
-Service dependency graph built from Hubble flow data with health status, latency, and throughput per edge.
+Service dependency graph intended to be built from Hubble flow data (not yet implemented; existing edges are preserved) with health status, latency, and throughput per edge.
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
@@ -166,7 +168,7 @@ spec:
   depth: 3
 ```
 
-### GryviaNetworkAnomaly (fna)
+### GryviaNetworkAnomaly
 
 Network anomaly detection with threshold-based rules, webhook alerting, and automatic mitigation.
 
@@ -177,7 +179,7 @@ Network anomaly detection with threshold-based rules, webhook alerting, and auto
 - Unusual port activity
 - Elevated error/drop rates
 
-**Auto-mitigation:** Creates temporary CiliumNetworkPolicy deny rules for critical/high severity anomalies, with automatic expiration after 15 minutes.
+**Auto-mitigation:** For critical/high severity anomalies, creates temporary CiliumNetworkPolicy deny rules, with automatic expiration after 15 minutes.
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
@@ -206,9 +208,9 @@ spec:
 
 ## Prerequisites
 
-- Kubernetes cluster with Cilium CNI
-- Hubble observability enabled in Cilium
-- Prometheus for metrics collection (optional, enhances TrafficInsight and NetworkAnomaly)
+- Kubernetes cluster with Cilium CNI (needed for CiliumNetworkPolicy resources)
+- Hubble observability enabled in Cilium (checked for, not yet queried)
+- Prometheus (checked for, not yet queried)
 
 ## Building
 
@@ -225,3 +227,5 @@ make docker-push  # Push Docker image
 make deploy      # Apply CRDs and deploy the operator
 make undeploy    # Remove the operator deployment
 ```
+
+Note: `make deploy` applies `config/`, which does not exist in this directory, so it will fail as is. Use the Helm chart in `helm/network-intelligence` (or the main `helm/gryvia` chart) instead.

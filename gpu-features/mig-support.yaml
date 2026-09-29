@@ -1,6 +1,11 @@
 ---
 # Multi-Instance GPU (MIG) Support
 # Split A100/H100 GPUs into smaller instances for better utilization
+#
+# STATUS: reference/design sketch. The ConfigMaps and the mig-manager DaemonSet are the standard NVIDIA
+# approach and are unverified here; the Gryvia-kind documents below (GryviaAIJob with `mig`, GryviaJobTemplate,
+# GryviaGPUNode with `mig`, SchedulingPolicy) do NOT match the CRDs in crds/ (no such fields; GryviaJobTemplate
+# and SchedulingPolicy do not exist) and would be rejected. See gpu-features/README.md.
 
 apiVersion: v1
 kind: ConfigMap

@@ -1,19 +1,28 @@
-# Storage and Network Operators - Implementation Summary
+# Storage and Network Operators
 
-This document provides a comprehensive overview of the Gryvia Storage and Network operators built for enterprise AI infrastructure.
+Overview of the optional Gryvia Storage and Network operators.
+
+:::caution Status
+Both operators are registered controllers (`GryviaStorage`, `GryviaNetwork`) and are **off by default** in the chart
+(`storageOperator.enabled`, `networkOperator.enabled`). They are covered by unit tests against a fake Kubernetes client
+only. Nothing here has been verified against real VAST, Weka, DDN, Lustre or Ceph systems, or on InfiniBand, RoCE or
+SR-IOV hardware, and the operators do not install the CSI drivers' backends, Multus or the NIC drivers for you. Treat the
+backend integrations as unproven. The storage operator's `GryviaDataset` reconciler exists in the source tree but is not
+registered in `main.go`, so `GryviaDataset` objects are not acted on.
+:::
 
 ## Overview
 
-Both operators are Kubernetes controllers built with Go and the controller-runtime framework. They automate the deployment and configuration of critical AI infrastructure components:
+Both operators are Kubernetes controllers built with Go and the controller-runtime framework. They generate and apply the Kubernetes objects needed for these infrastructure components:
 
-- **Storage Operator**: Manages parallel filesystem CSI drivers for high-performance data access
-- **Network Operator**: Configures RDMA and SR-IOV for ultra-low latency distributed training
+- **Storage Operator**: Generates CSI driver Deployments/DaemonSets and a StorageClass for a parallel filesystem you already run
+- **Network Operator**: Deploys RDMA / SR-IOV device plugins, labels nodes and creates Multus NetworkAttachmentDefinitions
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                   Gryvia Platform                    │
+│                     Gryvia Platform                     │
 ├──────────────────────┬──────────────────────────────────┤
 │  Storage Operator    │     Network Operator             │
 ├──────────────────────┼──────────────────────────────────┤
@@ -38,21 +47,15 @@ Both operators are Kubernetes controllers built with Go and the controller-runti
 ### Components
 
 **Main Controller** (`operators/storage-operator/controllers/gryviastorage_controller.go`)
-- Full reconciliation loop with 5-minute requeue
-- CSI driver lifecycle management
-- StorageClass auto-creation
-- Health monitoring integration
-- ~400 lines of code
+- Reconciliation loop (60-second requeue when healthy)
+- CSI driver install, StorageClass creation and a per-backend health probe of `spec.endpoint`
+- Status `phase` (Pending, Configuring, Ready, Degraded, Failed) and conditions `CSIInstalled`, `StorageClassReady`, `Healthy`
 
 **VAST Integration** (`operators/storage-operator/pkg/vast/vast.go`)
-- Complete CSI driver deployment
-- ServiceAccount + RBAC setup
-- Controller Deployment (1 replica)
-- Node DaemonSet (all storage nodes)
-- ~330 lines of production code
+- CSI driver manifests: ServiceAccount + RBAC, controller Deployment, node DaemonSet
 
 **Weka Integration** (`operators/storage-operator/pkg/weka/weka.go`)
-- Complete CSI driver deployment (quay.io/weka.io/csi-wekafs)
+- CSI driver manifests (quay.io/weka.io/csi-wekafs)
 - ServiceAccount + RBAC setup
 - Controller Deployment with provisioner and attacher sidecars
 - Node DaemonSet with driver registrar
@@ -60,7 +63,7 @@ Both operators are Kubernetes controllers built with Go and the controller-runti
 - Health check via Weka REST API
 
 **DDN Integration** (`operators/storage-operator/pkg/ddn/ddn.go`)
-- Complete EXAScaler CSI driver deployment
+- EXAScaler CSI driver manifests
 - ServiceAccount + RBAC setup
 - Controller Deployment with provisioner sidecar
 - Node DaemonSet with Lustre mount support
@@ -68,14 +71,14 @@ Both operators are Kubernetes controllers built with Go and the controller-runti
 - Health check via DDN REST API
 
 **Lustre Integration** (`operators/storage-operator/pkg/lustre/lustre.go`)
-- Complete Lustre CSI driver deployment (kubernetes-sigs/lustre-csi-driver)
+- Lustre CSI driver manifests (kubernetes-sigs/lustre-csi-driver)
 - ServiceAccount + RBAC setup
 - Controller Deployment with provisioner sidecar
 - Node DaemonSet with Lustre mount propagation
 - Health check endpoint
 
 **Ceph Integration** (`operators/storage-operator/pkg/ceph/ceph.go`)
-- Complete CephFS CSI driver deployment (cephcsi)
+- CephFS CSI driver manifests (cephcsi)
 - ServiceAccount + RBAC setup
 - ConfigMap-based Ceph cluster configuration (generated via `json.Marshal` for safe serialization)
 - Controller Deployment with provisioner sidecar
@@ -84,12 +87,12 @@ Both operators are Kubernetes controllers built with Go and the controller-runti
 
 ### Key Features
 
-✅ **Automated CSI Deployment** - One-click CSI driver installation
-✅ **Multi-Backend Support** - VAST, Weka, DDN, Lustre, Ceph
-✅ **Dynamic StorageClasses** - Auto-created based on backend type
-✅ **Health Monitoring** - Context-aware endpoint health checks with proper HTTP connection management
-✅ **Node Selection** - Label-based node targeting
-✅ **Credential Management** - Kubernetes Secret integration
+- **CSI manifests** - generated per backend (unverified against real systems)
+- **Backends** - `vast`, `weka`, `ddn`, `lustre`, `ceph` (`spec.backend`)
+- **StorageClass** - created from `spec.storageClass` (default name `<backend>-<name>`)
+- **Health probe** - an HTTP check of `spec.endpoint` per backend
+- **Node selection** - label-based node targeting
+- **Credentials** - referenced from a Kubernetes Secret (`spec.credentials`)
 
 ### Example Usage
 
@@ -99,18 +102,20 @@ kind: GryviaStorage
 metadata:
   name: vast-production
 spec:
-  backendType: vast
+  backend: vast
   endpoint: vast-mgmt.example.com
   capacity: 100Ti
+  storageClass:
+    name: vast-production
   credentials:
     secretName: vast-credentials
+    secretNamespace: gryvia-system
 ```
 
-Result: Automatic deployment of:
-- VAST CSI controller pod
-- VAST CSI node DaemonSet
-- StorageClass `vast-production` (RWX)
-- Node labels for storage capability
+What the controller is written to create (not verified against a real VAST cluster):
+- VAST CSI controller Deployment and node DaemonSet
+- A StorageClass (`vast-production` here; without `storageClass.name` it is `<backend>-<name>`)
+- Status `phase`, `csiDriverInstalled` and `storageClassCreated`
 
 ## Network Operator
 
@@ -118,39 +123,35 @@ Result: Automatic deployment of:
 
 **Main Controller** (`operators/network-operator/controllers/gryvianetwork_controller.go`)
 - Network type detection and routing
-- Node discovery via label selectors
-- RDMA/SR-IOV configuration orchestration
-- Multus NAD auto-creation
-- ~250 lines of code
+- Node discovery via `spec.nodeSelector`
+- RDMA/SR-IOV configuration orchestration (types `rdma`, `sriov`, `standard`)
+- Multus NAD creation in `spec.targetNamespace`; status `phase` and a `Ready` condition, 5-minute requeue
 
 **RDMA Module** (`operators/network-operator/pkg/rdma/rdma.go`)
 - RDMA device plugin DaemonSet deployment
 - ConfigMap-based device configuration
 - Node labeling with RDMA capabilities
-- Mellanox/NVIDIA adapter detection
-- ~200 lines of code
+- Mellanox/NVIDIA adapter detection (via the NFD label `feature.node.kubernetes.io/pci-15b3.present`)
 
 **SR-IOV Module** (`operators/network-operator/pkg/sriov/sriov.go`)
 - SR-IOV CNI installation
 - SR-IOV device plugin deployment
 - VF configuration management
 - Per-network ConfigMap generation
-- ~250 lines of code
 
 **Multus Integration** (`operators/network-operator/pkg/multus/multus.go`)
 - NetworkAttachmentDefinition generation
 - CNI config templating per network type
-- IPAM integration (Whereabouts, host-local)
-- ~200 lines of code
+- IPAM integration (Whereabouts, host-local); Multus itself must already be installed
 
 ### Key Features
 
-✅ **RDMA Support** - InfiniBand and RoCE configuration
-✅ **SR-IOV Management** - Automated VF allocation
-✅ **Multus Integration** - Automatic NAD creation
-✅ **Device Plugins** - RDMA and SR-IOV resource exposure
-✅ **MTU Configuration** - Jumbo frames for high throughput
-✅ **Node Auto-Labeling** - Network capability tracking
+- **RDMA** - InfiniBand and RoCE configuration (`spec.rdma.mode`)
+- **SR-IOV** - VF configuration via a DaemonSet (`spec.sriov`)
+- **Multus** - NAD creation
+- **Device plugins** - RDMA and SR-IOV resource exposure
+- **MTU** - `spec.mtu`
+- **Node labels** - `gryvia.io/rdma`, `gryvia.io/rdma-mode`, `gryvia.io/sriov` and related annotations
 
 ### Example Usage
 
@@ -163,17 +164,18 @@ metadata:
 spec:
   networkType: rdma
   mtu: 9000
+  targetNamespace: default
   rdma:
     mode: infiniband
     devices: [mlx5_0, mlx5_1]
     subnet: 10.100.0.0/16
 ```
 
-Result:
-- RDMA device plugin deployed
-- Nodes labeled `gryvia.io/rdma=enabled`
-- NetworkAttachmentDefinition `rdma-ib` created
-- RDMA resources exposed to scheduler
+What the controller is written to do (needs hardware to verify):
+- Deploy the RDMA shared-device plugin DaemonSet
+- Label matched nodes `gryvia.io/rdma=true` and `gryvia.io/rdma-mode=infiniband`
+- Create a NetworkAttachmentDefinition named `rdma-ib` (requires Multus)
+- Expose the `rdma/rdma_shared_device_a` resource to the scheduler
 
 **SR-IOV Network:**
 ```yaml
@@ -189,11 +191,12 @@ spec:
     resourceName: intel_sriov_netdevice
 ```
 
-Result:
-- SR-IOV CNI installed
-- SR-IOV device plugin deployed
-- 32 VFs exposed as schedulable resources
-- NAD created for pod attachment
+Both network examples select nodes with `spec.nodeSelector`; with none, all nodes match.
+
+What the controller is written to do (needs hardware to verify):
+- Deploy the SR-IOV CNI and device plugin DaemonSets
+- Configure 32 VFs through a DaemonSet
+- Create a NetworkAttachmentDefinition for pod attachment
 
 ## File Structure
 
@@ -204,11 +207,11 @@ operators/
 │   ├── api/v1/gryviastorage_types.go          # CRD types
 │   ├── controllers/gryviastorage_controller.go # Reconciler
 │   ├── pkg/
-│   │   ├── vast/vast.go                       # VAST CSI (~330 LOC)
-│   │   ├── weka/weka.go                       # Weka CSI (~400 LOC)
-│   │   ├── ddn/ddn.go                         # DDN CSI (~400 LOC)
-│   │   ├── lustre/lustre.go                   # Lustre CSI (~350 LOC)
-│   │   └── ceph/ceph.go                       # Ceph CSI (~380 LOC)
+│   │   ├── vast/vast.go
+│   │   ├── weka/weka.go
+│   │   ├── ddn/ddn.go
+│   │   ├── lustre/lustre.go
+│   │   └── ceph/ceph.go
 │   ├── config/
 │   │   ├── deployment.yaml                    # Operator deployment
 │   │   └── namespace.yaml                     # gryvia-system NS
@@ -221,9 +224,9 @@ operators/
     ├── api/v1/gryvianetwork_types.go         # CRD types
     ├── controllers/gryvianetwork_controller.go # Reconciler
     ├── pkg/
-    │   ├── rdma/rdma.go                      # RDMA plugin (~200 LOC)
-    │   ├── sriov/sriov.go                    # SR-IOV plugin (~250 LOC)
-    │   └── multus/multus.go                  # NAD generator (~200 LOC)
+    │   ├── rdma/rdma.go
+    │   ├── sriov/sriov.go
+    │   └── multus/multus.go
     ├── config/
     │   ├── deployment.yaml                   # Operator deployment
     │   └── namespace.yaml                    # gryvia-system NS
@@ -241,35 +244,22 @@ examples/
     └── sriov-network-example.yaml            # SR-IOV + inference
 ```
 
-## Code Statistics
-
-| Component | Lines of Code | Files |
-|-----------|--------------|-------|
-| Storage Operator | ~2,800 | 12 |
-| Network Operator | ~1,300 | 10 |
-| Examples | ~300 | 5 |
-| Documentation | ~1,000 | 2 |
-| **Total** | **~5,400** | **29** |
-
 ## Deployment
 
 ### Install Both Operators
 
+The chart installs the CRDs and both operators when enabled:
+
 ```bash
-# Create namespace
-kubectl create namespace gryvia-system
+helm upgrade --install gryvia oci://ghcr.io/zyvorai/charts/gryvia \
+  --namespace gryvia-system --create-namespace \
+  --set storageOperator.enabled=true \
+  --set networkOperator.enabled=true
 
-# Apply CRDs
-kubectl apply -f crds/gryviastorage.yaml
-kubectl apply -f crds/gryvianetwork.yaml
-
-# Deploy operators
-kubectl apply -f operators/storage-operator/config/
-kubectl apply -f operators/network-operator/config/
-
-# Verify
 kubectl get pods -n gryvia-system
 ```
+
+`operators/*/config/deployment.yaml` are plain manifests for the operators alone; the chart is the supported route.
 
 ### Configure Storage
 
@@ -278,7 +268,7 @@ kubectl get pods -n gryvia-system
 kubectl apply -f examples/storage/vast-storage-example.yaml
 
 # Wait for CSI driver
-kubectl wait --for=condition=Ready gryviastorage/vast-production --timeout=300s
+kubectl wait --for=jsonpath='{.status.phase}'=Ready gryviastorage/vast-production --timeout=300s
 
 # Create PVC
 kubectl apply -f - <<EOF
@@ -301,7 +291,7 @@ EOF
 # Create RDMA network
 kubectl apply -f examples/network/rdma-network-example.yaml
 
-# Wait for device plugin
+# Wait for the Ready condition
 kubectl wait --for=condition=Ready gryvianetwork/rdma-infiniband --timeout=300s
 
 # Verify RDMA resources
@@ -337,7 +327,7 @@ spec:
       claimName: training-data  # VAST storage
 ```
 
-**Performance:** depends on your storage system and fabric (for example NFS/NVMe-oF to VAST, RDMA over InfiniBand). No benchmark results are published yet.
+**Performance:** not measured; depends on your storage system and fabric (for example NFS/NVMe-oF to VAST, RDMA over InfiniBand). No benchmark results are published yet.
 
 ## RBAC Permissions
 
@@ -371,7 +361,7 @@ make run
 
 # Integration test
 kubectl apply -f examples/storage/vast-storage-example.yaml
-kubectl wait --for=condition=Ready gryviastorage/vast-production
+kubectl wait --for=jsonpath='{.status.phase}'=Ready gryviastorage/vast-production
 ```
 
 ### Network Operator
@@ -390,24 +380,18 @@ kubectl exec -it <pod-with-rdma> -- ibv_devinfo
 
 ## Implementation Status
 
+Everything below means "code exists and passes unit tests against a fake client", not "works on real systems".
+
 ### Storage Operator
 
-- ✅ Full VAST CSI implementation
-- ✅ Full Weka CSI implementation
-- ✅ Full DDN EXAScaler CSI implementation
-- ✅ Full Lustre CSI implementation
-- ✅ Full CephFS CSI implementation
-- ✅ Health monitoring for all backends
-- ✅ Error handling and retries
-- ✅ Status conditions
+- CSI manifest generation for VAST, Weka, DDN EXAScaler, Lustre and CephFS
+- Per-backend HTTP health probe, status phase and conditions, finalizer cleanup of the StorageClass
 
 ### Network Operator
 
-- ✅ RDMA device plugin deployment
-- ✅ SR-IOV configuration
-- ✅ Multus integration
-- ✅ Node labeling
-- ✅ Automated VF enablement via DaemonSet
+- RDMA shared-device plugin DaemonSet and ConfigMap
+- SR-IOV CNI, device plugin and VF configuration DaemonSet
+- Multus NetworkAttachmentDefinition creation, node labels
 
 ## Roadmap
 
@@ -429,38 +413,19 @@ kubectl exec -it <pod-with-rdma> -- ibv_devinfo
 - [ ] Network topology-aware scheduling
 - [ ] NCCL auto-tuning
 
-## Performance Benchmarks
-
-### Performance
+## Performance
 
 No measured results are published yet. Throughput, IOPS and latency depend on the storage system, fabric and node hardware; validate with `benchmarks/suite.yaml` on your own cluster.
-
-## Conclusion
-
-Both operators automate the setup for AI infrastructure:
-
-- **Storage Operator**: Simplifies parallel filesystem deployment with full VAST, Weka, DDN, Lustre, and CephFS implementations
-- **Network Operator**: Automates RDMA/SR-IOV with automated VF enablement for maximum training performance
-
-Total implementation: **~5,400 lines of production Go code** across **29 files**, providing complete infrastructure automation for bare metal AI clusters.
 
 ## Quick Start
 
 ```bash
-# 1. Deploy operators
-kubectl apply -f crds/
-kubectl apply -f operators/storage-operator/config/
-kubectl apply -f operators/network-operator/config/
+# 1. Install the chart with both operators enabled (see above)
 
-# 2. Configure infrastructure
+# 2. Declare your infrastructure (edit endpoints and secrets first)
 kubectl apply -f examples/storage/vast-storage-example.yaml
-kubectl apply -f examples/network/rdma-network-example.yaml
-
-# 3. Launch training
-kubectl apply -f examples/network/rdma-network-example.yaml  # See pod spec
-
-# Done! Your AI workload now has:
-#   ✅ Parallel-filesystem storage
-#   ✅ RDMA networking
-#   ✅ Automatic CSI/device plugin management
+kubectl apply -f examples/network/rdma-network-example.yaml   # also contains an example pod
 ```
+
+Requirements you must meet yourself: a reachable storage system, Multus for NetworkAttachmentDefinitions, RDMA-capable
+NICs and drivers (for example NVIDIA OFED) on the nodes, and matching node labels for `spec.nodeSelector`.

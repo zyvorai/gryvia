@@ -1,5 +1,14 @@
 # Advanced Features
 
+> **Status: the DAG workflow feature below is a design; `GryviaWorkflow` is a CRD with no controller wired
+> yet.** A reconciler exists under `operators/ai-operator/controllers/` but is not registered in `main.go`,
+> so `dependsOn`, conditions, fan-out, retry strategies and schedules are not executed. The `kfctl` CLI in
+> this file does not exist (the `gryvia` CLI has no `workflow` command), there is no Argo export, and the
+> `gryvia_workflow_*` metrics are not exported. Outputs and numbers are illustrative. Features that do
+> have a registered controller are documented in their own pages in this directory (checkpoint guard,
+> cost predictor, GPU memory optimizer, live experiment, model lineage, training profiler, training time
+> machine); budget management and priority/preemption are designs (see their status notes).
+
 ## Job Dependencies and DAG Workflows
 
 Build complex ML workflows with job dependencies and conditional execution.
@@ -17,7 +26,9 @@ Build complex ML workflows with job dependencies and conditional execution.
 
 ### Simple Linear Workflow
 
-```yaml
+Design sketch, not accepted by the current CRD schema:
+
+```text
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaWorkflow
 metadata:
@@ -106,7 +117,9 @@ jobs:
 
 ### Scheduled Workflows
 
-```yaml
+Design sketch, not accepted by the current CRD schema:
+
+```text
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaWorkflow
 metadata:
@@ -183,6 +196,8 @@ jobs:
 ```
 
 ## CLI Commands
+
+Proposed interface only; `kfctl` does not exist.
 
 ```bash
 # Submit workflow
@@ -308,7 +323,7 @@ gryvia_workflow_duration_seconds{workflow="training-pipeline"} 3600
 
 ## Integration with Argo
 
-Gryvia workflows are compatible with Argo Workflows:
+Proposed (not implemented): export to Argo Workflows:
 
 ```bash
 # Convert to Argo

@@ -2,6 +2,15 @@
 
 Track complete model provenance, compliance, and reproducibility for AI/ML models.
 
+> **Status: partly implemented (ai-operator controller registered).** The controller collects
+> provenance from referenced `GryviaAIJob`s, computes a SHA-256 provenance hash (chained to the previous
+> hash when `cryptographicChain` is set) and sets a simple `complianceStatus` by checking that code
+> commit, job reference and dataset checksums are present. Limits: the hash is a self-computed integrity
+> value, not a signature or external attestation; `immutableRecord` is a field the controller does not
+> enforce; `attachToRegistry` only sets a status flag (nothing is pushed to a model registry, and
+> `GryviaModelRegistry` has no controller); the "regulatory framework" check is a completeness check, not a
+> compliance certification. Unverified in production.
+
 ## Overview
 
 GryviaModelLineage provides end-to-end tracking of how a model was produced:

@@ -1,6 +1,26 @@
 # Advanced Features Guide
 
-Complete guide to Gryvia's advanced capabilities for enterprise GPU infrastructure management.
+Overview of Gryvia's advanced capability areas, with what is implemented and what is only a CRD or a design.
+
+## Status of each area
+
+| Area | Kind(s) | State |
+|------|---------|-------|
+| GPU health monitoring | `GryviaHealthCheck` | CRD only, no controller registered. `gryvia health` is separate and reads `GryviaGpuNode`, `GryviaStorage` and `GryviaNetwork` status |
+| Retry policies | `GryviaRetryPolicy` | CRD only, no controller |
+| Reservations | `GryviaReservation` | CRD only, no controller |
+| Multi-tenancy | `GryviaTenant`, `GryviaQuota` | Running: quota-operator creates the `tenant-<name>` namespace, ResourceQuota, LimitRange and an optional NetworkPolicy |
+| Job templates | `GryviaTemplate` | CRD only, no controller |
+| Auto-scaling | `GryviaAutoScaler` | CRD only, no controller; no node provisioning exists |
+| Budgets | `GryviaBudget` | CRD only, no controller; nothing enforces or alerts |
+| Priority and preemption | `GryviaPriority` | CRD only; no preemption. `GryviaAIJob.spec.priority` (0 to 100) is validated but not acted on |
+| ML workflows | AutoTuner, Workflow, ModelRegistry, InferenceService, Workspace | CRD and gateway/dashboard CRUD only; see [ML Workflows](ML_WORKFLOWS.md) |
+| Network intelligence | 10 kinds | Running via the network-intelligence operator (own chart); eBPF collector off by default; see [Network Intelligence](NETWORK_INTELLIGENCE.md) |
+| Advanced scheduling | | Mostly library code; see [Scheduling](SCHEDULING.md) |
+| OIDC/SSO | gateway | Implemented in the gateway; not verified against a real identity provider |
+| SDKs | | Python REST client and Go Kubernetes client, from source |
+
+"CRD only" means the manifest is accepted by the API server and the schema is real, but nothing reconciles its spec, so it has no effect. The full list is in the [CRD reference](../reference/crds.md). Numbers such as discounts, savings percentages and speedups that appeared in earlier versions of this page were illustrative, not measured, and have been removed.
 
 ## Table of Contents
 
@@ -22,17 +42,9 @@ Complete guide to Gryvia's advanced capabilities for enterprise GPU infrastructu
 
 ## GPU Health Monitoring
 
-Proactive health monitoring and diagnostics for GPU infrastructure.
+Status: the `GryviaHealthCheck` CRD exists, but no controller is registered for it, so scheduled checks, alerting, auto-remediation and automatic cordoning do not happen. What does work is the CLI view of node, storage and network status written by the gpu-, storage- and network-operators.
 
-### Features
-
-- **Automated Health Checks**: Scheduled GPU diagnostics
-- **Multiple Check Types**: Temperature, ECC errors, NVLink, PCIe bandwidth
-- **Auto-Remediation**: Automatic GPU reset, driver reload, node reboot
-- **Alerting**: Email, Slack, webhook notifications
-- **Cordon/Drain**: Automatic node isolation on failure
-
-### Quick Start
+### Schema example (not acted on today)
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
@@ -75,63 +87,24 @@ gryvia health gpu
 # Inspect one GPU node
 gryvia get node gpu-node-05
 
-# Manual remediation: cordon and drain the node, then reset the GPU on the host
+# Manual remediation: cordon and drain the node (Eviction API, respects PDBs),
+# then reset the GPU on the host yourself
 gryvia maintenance start gpu-node-05 --reason gpu-reset --drain
 
 # Return the node to service
 gryvia maintenance end gpu-node-05
 
-# View the health check status and recent results
-kubectl describe gryviahealthcheck cluster-gpu-health
+# The GryviaHealthCheck object can be created and read, but has no status yet
+kubectl get gryviahealthcheck cluster-gpu-health -o yaml
 ```
-
-### Health Check Types
-
-| Check Type | Description | Thresholds |
-|------------|-------------|------------|
-| gpu-utilization | GPU compute usage | 0-100% |
-| gpu-memory | GPU memory usage | 0-100% |
-| gpu-temperature | GPU temperature | °C |
-| gpu-ecc-errors | ECC error count | 0 = healthy |
-| gpu-nvlink | NVLink connectivity | Links up |
-| pcie-bandwidth | PCIe throughput | GB/s |
-| gpu-power | Power draw | Watts |
-| clock-speeds | GPU clock speeds | MHz |
 
 ---
 
 ## Advanced Retry Policies
 
-Sophisticated retry mechanisms with resource adaptation.
+Status: CRD only. `GryviaRetryPolicy` defines `maxRetries`, `backoff`, `retryOn`/`noRetryOn`, `circuitBreaker`, `resourceAdjustment` and `budget`, but no controller applies it and `GryviaAIJob` has no field that references a policy. The only retry-related job fields are `spec.retryLimit` and `status.retries`, which the controller does not act on today.
 
-### Features
-
-- **Multiple Backoff Strategies**: Fixed, exponential, fibonacci, random
-- **Conditional Retry**: Only retry on specific errors
-- **Resource Adjustment**: Increase resources on OOM
-- **Retry Budget**: Limit total cost and time
-- **Circuit Breaker**: Stop retrying after N failures
-
-### Backoff Strategies
-
-```yaml
-# Exponential backoff
-backoff:
-  type: exponential
-  initialDelay: 1m
-  maxDelay: 1h
-  multiplier: 2
-# Delays: 1m, 2m, 4m, 8m, 16m, 32m, 1h (capped)
-
-# Fibonacci backoff
-backoff:
-  type: fibonacci
-  initialDelay: 1m
-  maxDelay: 2h
-# Delays: 1m, 1m, 2m, 3m, 5m, 8m, 13m, 21m...
-```
-
-### Resource Adaptation
+### Schema example (not acted on today)
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
@@ -152,32 +125,13 @@ spec:
     maxTotalTime: 24h
 ```
 
-### Use in Jobs
-
-```yaml
-spec:
-  retryPolicyRef: adaptive-retry
-
-  checkpointing:
-    enabled: true  # Required for retries
-    frequency: 10m
-```
-
 ---
 
 ## Resource Reservations
 
-Reserve GPU resources in advance with guaranteed availability.
+Status: CRD only. Nothing reserves capacity, blocks other teams or bills for a reservation. The schema has `owner`, `resources`, `schedule`, `guarantees`, `billing` and `notifications`.
 
-### Reservation Types
-
-1. **Immediate**: Start now, end at specific time
-2. **Scheduled**: Start and end at specific times
-3. **Recurring**: Regular time slots (e.g., weekly)
-
-### Examples
-
-#### Exclusive Team Reservation
+### Schema examples (not acted on today)
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
@@ -208,55 +162,24 @@ spec:
     discount: 15
 ```
 
-#### Recurring Weekly Slot
+### Working with it today
 
-```yaml
-spec:
-  schedule:
-    type: recurring
-    recurrence:
-      cron: "0 9 * * 1"  # Every Monday 9 AM
-      duration: 8h
-    autoExtend: true
-```
-
-### Cost Model
-
-- **Exclusive Reservations**: Pay whether used or not
-- **Shared Reservations**: Pay only when used
-- **Discounts**: 5-25% off for reservations
-- **Prepaid**: Additional discount for upfront payment
-
-### Managing Reservations
-
-The `gryvia` CLI does not manage reservations. Create them by applying a `GryviaReservation`
-manifest (see the examples above) and inspect them with `kubectl`:
+The `gryvia` CLI does not manage reservations. You can create and read the object with `kubectl`, but it has no effect:
 
 ```bash
-# Create a reservation
 kubectl apply -f my-reservation.yaml
-
-# List reservations
 kubectl get gryviareservations
-
-# View a reservation and its status
-kubectl get gryviareservation my-reservation -o yaml
 ```
+
+The `guarantees.sla.availability` and `billing.discount` values in the example are placeholders; no SLA is enforced and no discounts are computed.
 
 ---
 
 ## Multi-Tenancy
 
-Hierarchical team organization with quotas, isolation, and governance.
+Status: implemented by the quota-operator (`GryviaTenant`, `GryviaQuota`). For each tenant the controller ensures the namespace `tenant-<name>`, a ResourceQuota when `spec.quotas` is set, a LimitRange, and a NetworkPolicy when `spec.networkPolicy.isolated` is true, and it writes usage and quota utilisation into the tenant status. The admission webhook checks the tenant's allowed SKUs and the namespace quotas when jobs are created. Tested with unit tests against fake clients, not on a production cluster. Fields such as `billing`, `governance`, `priorities` and `notifications` are stored in the spec; the controller does not enforce them.
 
-### Features
-
-- **Hierarchical Teams**: Sub-teams inherit from parents
-- **Per-Team Quotas**: GPU hours, cost, concurrent resources
-- **Network Isolation**: Optional tenant isolation
-- **Storage Quotas**: Per-team storage limits
-- **Compliance**: Data classification, audit retention
-- **Cost Centers**: Chargeback and billing
+For the tenant and quota model, see [GPU as a service](GPU_AS_A_SERVICE.md). Costs are estimates from the `GryviaGpuSku` catalog; there is no payment integration.
 
 ### Example Tenant
 
@@ -299,31 +222,24 @@ spec:
     complianceRequirements: [SOC2]
 ```
 
-### Hierarchical Teams
+### Hierarchy
 
-```
-ml-research (parent)
-├── ml-research-cv (computer vision)
-├── ml-research-nlp (NLP)
-└── ml-research-rl (reinforcement learning)
-```
-
-Each sub-team gets a portion of parent's quota.
+The schema has `parentTenant`, but the controller does not inherit quotas from a parent tenant; each tenant is reconciled on its own.
 
 ### Managing Tenants
 
-The `gryvia` CLI does not manage tenants. Create them by applying a `GryviaTenant` manifest (see
-the example above); members and quotas are part of the tenant spec. Inspect tenants with `kubectl`
-and view spending with `gryvia cost`:
-
 ```bash
-# Create or update a tenant
-kubectl apply -f ml-research-tenant.yaml
+# Create or update a tenant with the CLI (namespace tenant-ml-research)
+gryvia tenant create ml-research --display-name "Machine Learning Research" \
+  --allowed-sku a100-80g --max-gpus 128 --isolated true
+gryvia tenant list
+gryvia tenant get ml-research
 
-# View the tenant and its status
+# Or apply a full manifest
+kubectl apply -f ml-research-tenant.yaml
 kubectl get gryviatenant ml-research -o yaml
 
-# View GPU quota and spend for the team
+# GPU quota and estimated spend
 gryvia quota ml-research --budget
 gryvia cost ml-research --period month --detailed
 ```
@@ -332,32 +248,18 @@ gryvia cost ml-research --period month --detailed
 
 ## Job Templates
 
-Reusable job configurations with parameters.
-
-### Built-in Templates
-
-1. **pytorch-ddp-training**: Distributed PyTorch training
-2. **llm-inference-vllm**: LLM serving with vLLM
-3. **jupyter-dev-env**: JupyterLab environment
-4. **mlperf-training-benchmark**: MLPerf benchmarks
-
-### Using Templates
-
-Templates are cluster-scoped `GryviaTemplate` resources. The `gryvia` CLI does not manage or
-instantiate them, so list them with `kubectl` and copy the defaults into your job manifest:
+Status: CRD only. `GryviaTemplate` (cluster-scoped, `category` and `defaults` required) is plain data: no controller renders `{{ .param }}` placeholders, validates parameters or instantiates jobs, and no built-in templates are shipped in this repository. The `gryvia` CLI does not manage them.
 
 ```bash
-# List templates
 kubectl get gryviatemplates
-
-# View a template
-kubectl get gryviatemplate pytorch-ddp-training -o yaml
-
-# Submit the resulting job
-gryvia submit --file job.yaml
+kubectl get gryviatemplate my-training-template -o yaml
 ```
 
-### Custom Template
+Use the defaults as a reference when writing a `GryviaAIJob` manifest and submit that with `gryvia submit --file job.yaml`.
+
+### Schema example (not acted on today)
+
+Note that the template's `defaults` schema (`framework`, `resources.gpuType`, `resources.gpuCount`) does not match the `GryviaAIJob` spec (`gpus`, `gpuType`), so defaults cannot be copied into a job verbatim.
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
@@ -395,17 +297,9 @@ spec:
 
 ## Auto-Scaling
 
-Queue-based auto-scaling with predictive capabilities.
+Status: CRD only. `GryviaAutoScaler` has `queueRef`, `gpuType`, `minNodes`, `maxNodes`, `scaleUpPolicy`, `scaleDownPolicy`, `costControls`, `nodeProvider` and `advanced`, but no controller reads it, there is no queue kind for `queueRef` to point at, and no code provisions or removes nodes or cloud instances. Predictive scaling, scale-to-zero and spot handling are not implemented. Use your cluster autoscaler for node scaling.
 
-### Features
-
-- **Queue-Based**: Scale based on pending jobs
-- **Multiple Triggers**: Queue time, utilization, job count
-- **Cost Controls**: Budget limits, spot instances
-- **Predictive Scaling**: ML-based demand forecasting
-- **Scale-to-Zero**: Reduce costs when idle
-
-### Example
+### Schema example (not acted on today)
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
@@ -435,34 +329,13 @@ spec:
     maxHourlyCost: 1000
 ```
 
-### Cloud Integration
-
-```yaml
-nodeProvider:
-  type: cloud-provision
-  cloud:
-    provider: aws
-    instanceType: p4d.24xlarge
-    region: us-west-2
-    spotInstances: true
-```
-
 ---
 
 ## Budget Management
 
-Multi-tiered budget system with forecasting.
+Status: CRD only. `GryviaBudget` has `scope`, `period`, `limits`, `alerts`, `enforcement`, `rollover` and `priority`, but no controller evaluates it: nothing sends alerts, blocks jobs or forecasts exhaustion. The admission webhook does not check budgets. For real numbers today use `gryvia cost` and `gryvia usage` (estimates from metered GPU usage and the SKU catalog) and the quota limits in `GryviaQuota`.
 
-### Features
-
-- **Flexible Periods**: Daily, weekly, monthly, quarterly, annual
-- **Multi-Dimensional Limits**: Cost, GPU hours, job count
-- **Graduated Alerts**: 50%, 75%, 90%, 100%
-- **Enforcement**: Warn, block, or throttle
-- **Forecasting**: Predict budget exhaustion
-- **Rollover**: Carry unused budget
-
-### Example
+### Schema example (not acted on today)
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
@@ -492,65 +365,25 @@ spec:
     action: block
 ```
 
-### Budget Hierarchy
-
-```
-Organization: $2M/year
-└── Department: $300k/quarter
-    └── Team: $50k/month
-        └── User: $1k/day
-```
-
 ---
 
 ## Priority & Preemption
 
-7-tier priority system with smart preemption.
+Status: not implemented. A `GryviaPriority` CRD (`value` required, plus `preemptionPolicy`, `quotaOverride`, `sla`) exists but no controller is registered for it. `GryviaAIJob.spec.priority` is an integer from 0 to 100 that the admission webhook range-checks; the scheduler and controller do not order or preempt by it, and there is no `priorityClassName` on the job. The seven-tier table with quota override percentages that earlier versions showed was a proposal.
 
-### Priority Levels
-
-| Level | Value | Use Case | Can Preempt | Quota Override |
-|-------|-------|----------|-------------|----------------|
-| system-critical | 1,000,000 | Infrastructure | Yes | 50% |
-| production | 100,000 | Serving | Yes | 25% |
-| high | 10,000 | Critical research | Yes | 10% |
-| normal | 1,000 | Standard work | No | 0% |
-| low | 100 | Batch jobs | No | 0% |
-| best-effort | 10 | Opportunistic | No | 0% |
-| spot | 50 | Spot instances | No | 0% |
-
-### Preemption Flow
-
-1. High-priority job submitted
-2. Cluster at capacity
-3. Scheduler identifies lower-priority jobs
-4. Jobs checkpoint state
-5. Jobs gracefully terminate
-6. High-priority job starts
-7. Preempted jobs auto-queue for restart
-
-### Example
-
-```yaml
-spec:
-  priorityClassName: high
-
-  checkpointing:
-    enabled: true  # Required for preemption
-    frequency: 10m
-```
+See [Scheduling](SCHEDULING.md#priority-preemption) for the details.
 
 ---
 
 ## ML Workflows
 
-Gryvia provides a complete ML workflow toolkit for managing the full lifecycle of machine learning projects.
+The ML workflow kinds have CRDs and gateway/dashboard CRUD, but no controller is registered for any of them (no trials, DAG execution, model serving or workspace pods).
 
-- **GryviaAutoTuner**: Hyperparameter optimization with Grid, Random, Bayesian (TPE), and ASHA early stopping strategies.
-- **GryviaWorkflow**: DAG-based multi-step ML pipelines with dependency management, conditional execution, and fan-out/fan-in patterns.
-- **GryviaModelRegistry**: Model versioning with dev, staging, and production stage promotion. Supports auto-deploy on production promotion.
-- **GryviaInferenceService**: Production model serving with Triton, vLLM, TensorRT-LLM, and TorchServe backends. Includes canary deployments and auto-rollback.
-- **GryviaWorkspace**: Managed interactive Jupyter and VS Code environments with GPU access, persistent storage, and idle pause/resume.
+- **GryviaAutoTuner**: hyperparameter study spec (grid, random, bayesian, asha).
+- **GryviaWorkflow**: DAG step spec with `dependsOn`.
+- **GryviaModelRegistry**: model version records with a `stage` field (the gateway can patch it; nothing deploys).
+- **GryviaInferenceService**: serving spec with canary and autoscaling fields; no rollout runs.
+- **GryviaWorkspace**: notebook environment spec; no pod is created.
 
 For full documentation, examples, and CLI usage, see the **[ML Workflows Guide](ML_WORKFLOWS.md)**.
 
@@ -560,13 +393,13 @@ For full documentation, examples, and CLI usage, see the **[ML Workflows Guide](
 
 eBPF-powered network observability, security, and performance optimization for GPU clusters.
 
-- **27 eBPF programs** covering GPU communication (NCCL, RDMA, GPUDirect Storage), security (container escape, crypto mining, exfiltration), performance (TCP tuning, NUMA path optimization), and AI-specific analysis (training patterns, data pipeline bottlenecks, gradient compression).
-- **Intent-based network policies** (GryviaFlowPolicy) for high-level traffic control.
-- **Self-healing firewall** (GryviaAutoPolicy) that learns traffic patterns and generates policies automatically.
+- **30 CO-RE eBPF programs** covering GPU communication (NCCL, RDMA, GPUDirect Storage), security detections and network paths. They have been verified only on Linux 7.0 x86_64 (arm64 is compile-only); the collector is off by default, runs privileged with host networking, and GPU/NCCL/RDMA behaviour is unverified on real hardware.
+- **Network policy kinds** (GryviaFlowPolicy) with a registered controller in the network-intelligence operator.
+- **GryviaAutoPolicy** for policy suggestions from observed traffic.
 - **Anomaly detection** (GryviaNetworkAnomaly) with baseline-driven alerting.
 - **Service dependency graphs** (GryviaServiceGraph) generated from observed traffic.
 - **Cost attribution** (GryviaNetworkCost) per team, job, and service.
-- **Training insights** (GryviaTrainingInsight) with straggler detection and communication analysis.
+- **Training insights** (GryviaTrainingInsight) and a fabric-signal CRD (`gryviafabricsignals`) for straggler and fabric health signals (the fabric signal kind has a CRD but no controller yet).
 
 For full documentation, CRD examples, and CLI commands, see the **[Network Intelligence Guide](NETWORK_INTELLIGENCE.md)**.
 
@@ -574,177 +407,67 @@ For full documentation, CRD examples, and CLI commands, see the **[Network Intel
 
 ## Advanced Scheduling
 
-Sophisticated scheduling capabilities for GPU workloads.
+What runs: GPU-aware node selection and a validating admission webhook (quota and SKU policy, fails open). What is library code only, not called by the controller: gang scheduling, DRF fair-share queues, elastic scaling and the mutating NCCL-injection webhook. Backfill and preemption are not implemented.
 
-- **Gang Scheduling**: Atomic multi-pod placement to prevent deadlocks in distributed training.
-- **DRF Fair-Share Queue**: Dominant Resource Fairness with hierarchical queues, backfill, and borrowing.
-- **Elastic Training**: Dynamic worker scaling via PyTorch Elastic integration with fault tolerance.
-- **Admission Webhooks**: Validating webhook for quota/budget enforcement and mutating webhook for automatic NCCL environment injection.
-- **Priority Preemption**: Checkpoint-aware preemption with automatic requeueing.
-
-For full documentation and configuration examples, see the **[Advanced Scheduling Guide](SCHEDULING.md)**.
+For details, see the **[Scheduling Guide](SCHEDULING.md)**.
 
 ---
 
 ## OIDC/SSO Authentication
 
-Gryvia supports enterprise authentication via OIDC (OpenID Connect) and SSO providers.
+The API gateway can validate OIDC JWTs. The gateway is configured through environment variables set by chart values (`OIDC_ENABLED`, `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_AUDIENCE`, `GRYVIA_OIDC_ADMIN_GROUPS`), not through a `gryvia-operator-config` ConfigMap. OIDC users are tenant users (namespaces `tenant-<name>`) unless their `groups` claim matches an admin group. The API key and session tokens keep working alongside OIDC. Token refresh and MFA are functions of your identity provider and the dashboard's OIDC flow, not features Gryvia adds.
 
-- **Supported Providers**: Okta, Azure AD, Google Workspace, Keycloak, Auth0, and any OIDC-compliant provider.
-- **RBAC Integration**: OIDC groups are mapped to Gryvia roles (admin, member, viewer) for team-based access control.
-- **Token Refresh**: Automatic token refresh for long-running CLI sessions and API access.
-- **MFA Support**: Multi-factor authentication enforced through the identity provider.
-
-Configure OIDC via the operator ConfigMap:
-
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: gryvia-operator-config
-  namespace: gryvia-system
-data:
-  auth.yaml: |
-    oidc:
-      enabled: true
-      issuerURL: https://auth.example.com
-      clientID: gryvia
-      clientSecret:
-        secretRef: oidc-client-secret
-      scopes: [openid, profile, email, groups]
-      groupsClaim: groups
-      roleMapping:
-        admin: ["platform-admins"]
-        member: ["ml-engineers", "data-scientists"]
-        viewer: ["ml-viewers"]
-```
+This has not been verified against a real identity provider. Details and the full option list are in [Auth and TLS](AUTH_AND_TLS.md).
 
 ---
 
 ## Python and Go SDKs
 
-Gryvia provides official SDKs for programmatic access to all platform features.
+There are two SDKs in the repository, neither published as a package by this project (install from source), and they are not equivalent:
 
-### Python SDK
-
-```bash
-pip install gryvia
-```
-
-```python
-from gryvia import GryviaClient
-
-client = GryviaClient(
-    api_url="http://gryvia-api:8000",
-    api_key="your-api-key"
-)
-
-# Submit a job
-job = client.jobs.create(namespace="default", spec={...})
-
-# List models in registry
-models = client.models.list(stage="production")
-
-# Get training insights
-insight = client.insights.training(job="llm-training")
-
-# Stream logs
-for line in client.jobs.logs("default", "my-job", follow=True):
-    print(line)
-```
-
-### Go SDK
+- **Python** (`sdk/python`): an async REST client of the gateway API for jobs, nodes, quotas, costs and metrics. It has no `models` or `insights` clients and does not cover tenants, SKUs, usage or invoices.
+- **Go** (`sdk/go`): a controller-runtime Kubernetes client for the Gryvia custom resources. It talks to the Kubernetes API, not to the REST gateway.
 
 ```bash
-go get github.com/zyvorai/gryvia/sdk/go/gryvia
+pip install -e sdk/python
 ```
 
-```go
-import "github.com/zyvorai/gryvia/sdk/go/gryvia"
-
-client := gryvia.NewClient(gryvia.Config{
-    APIURL: "http://gryvia-api:8000",
-    APIKey: "your-api-key",
-})
-
-// Submit a job
-job, err := client.Jobs.Create(ctx, "default", &gryvia.JobSpec{...})
-
-// List models in registry
-models, err := client.Models.List(ctx, gryvia.ModelFilter{Stage: "production"})
-
-// Get training insights
-insight, err := client.Insights.Training(ctx, "llm-training")
-```
-
-For full SDK documentation and examples, see the [API Reference](developer-guide/api-reference.md#sdks).
+See the [API Reference](../developer-guide/api-reference.md#sdks) and `sdk/python/README.md`.
 
 ---
 
 ## Performance Tips
 
-### GPU Utilization
+General ML practice, not Gryvia-specific and not measured here:
 
-- **Target**: >85% GPU utilization
-- **Enable Mixed Precision**: 2-3x speedup
-- **Optimize Data Loading**: Use prefetching
-- **Increase Batch Size**: Fill GPU memory
-
-### Cost Optimization
-
-- **Use Spot Instances**: 40-70% savings
-- **Enable MIG**: 86% savings for small workloads
-- **Right-Size Resources**: Profile and adjust
-- **Use Reservations**: 15-25% discount
-
-### Reliability
-
-- **Enable Checkpointing**: Resume after failures
-- **Use Retry Policies**: Automatic recovery
-- **Health Monitoring**: Proactive maintenance
-- **Resource Reservations**: Guaranteed availability
+- Keep GPUs fed: prefetch data, increase batch size until memory is filled, use mixed precision where it suits the model.
+- Right-size requests: profile before choosing GPU count and type.
+- Checkpoint from your training code so a restarted pod can resume.
+- Use `gryvia capacity` and `gryvia cost` to see free GPUs and estimated spend.
 
 ---
 
 ## Best Practices
 
-### 1. Always Enable Checkpointing
+### 1. Checkpoint from your training code
 
-```yaml
-spec:
-  checkpointing:
-    enabled: true
-    frequency: 10m
-    path: /checkpoints
-```
+Write checkpoints to a mounted volume (`spec.volumes` and `spec.volumeMounts`, or `spec.storage` for a PVC at `/data`). There is no `checkpointing` block on `GryviaAIJob`.
 
-### 2. Use Templates
+### 2. Keep job manifests in version control
 
-Don't repeat job configurations. Create templates.
+Templates are not instantiated by any controller today, so copy a known-good manifest.
 
-### 3. Set Realistic Budgets
+### 3. Set quotas
 
-Analyze historical usage before setting budgets.
+Use `GryviaQuota` and `GryviaTenant` limits; budgets are not enforced.
 
-### 4. Monitor Health
+### 4. Monitor health
 
-Enable cluster-wide health checks.
+Use `gryvia health` and `gryvia status`; `GryviaHealthCheck` objects are not evaluated.
 
-### 5. Use Appropriate Priorities
-
-Don't abuse high priority. Reserve for critical work.
-
-### 6. Profile Jobs
+### 5. Profile jobs
 
 Use `gryvia gpu training` and `gryvia gpu nccl` to identify optimization opportunities.
-
-### 7. Reserve for Deadlines
-
-Book reservations in advance for critical work.
-
-### 8. Enable Auto-Scaling
-
-Let the system scale based on demand.
 
 ---
 
@@ -753,12 +476,15 @@ Let the system scale based on demand.
 ### Job Won't Start
 
 ```bash
-# Check budget
-kubectl get gryviabudgets
-gryvia quota my-team --budget
+# Why was it not scheduled? See the Scheduled condition and message
+kubectl describe gryviaaijob my-job
 
-# Check reservation
-kubectl get gryviareservations
+# Jobs waiting for resources, and free GPUs
+gryvia queue
+gryvia capacity
+
+# Quota and tenant limits
+gryvia quota my-team --budget
 
 # Check health
 gryvia health
@@ -773,7 +499,7 @@ gryvia cost my-team --detailed
 # Compare periods
 gryvia cost my-team --period week
 
-# Check for idle GPUs
+# Free GPUs
 gryvia capacity
 ```
 
@@ -801,7 +527,6 @@ gryvia gpu nccl --job my-job
 - **Documentation**: https://gryvia.io/docs
 - **Issues**: https://github.com/zyvorai/gryvia/issues
 - **Discussions**: https://github.com/zyvorai/gryvia/discussions
-- **Slack**: #gryvia-users
 
 ---
 

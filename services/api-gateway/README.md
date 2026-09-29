@@ -1,6 +1,7 @@
 # Gryvia API Gateway
 
-REST API service that provides aggregated metrics and cluster data for the Gryvia Web UI.
+REST API service (FastAPI) that provides aggregated metrics and cluster data for the Gryvia web dashboard. The full route list with the access rule of each route is in the
+[API reference](../../website/docs/developer-guide/api-reference.md); the route code is `main.py` and `routers/*.py`.
 
 ## Features
 
@@ -21,7 +22,7 @@ Returns overall cluster statistics including GPU counts, utilization, and job co
 
 ### Jobs CRUD
 ```
-GET  /api/jobs              # List all jobs (supports ?limit=100&offset=0)
+GET  /api/jobs              # List jobs (?limit=500&offset=0, limit up to 1000)
 POST /api/jobs              # Create a new job
 GET  /api/jobs/{name}       # Get job details
 DELETE /api/jobs/{name}     # Delete a job
@@ -31,17 +32,17 @@ GET  /api/jobs/{name}/events # Events for the job and its pods
 ```
 
 - `create_job` (POST) validates `apiVersion` and `kind` against known Gryvia types and enforces the namespace server-side.
-- List endpoint supports pagination via `limit` (default 100) and `offset` query parameters.
+- List endpoints take `limit` and `offset` (defaults 500 for jobs, quotas and nodes; 100 for node health and quota usage; maximum 1000).
 
 ### Quotas
 ```
-GET /api/quotas             # List all quotas (supports ?limit=100&offset=0)
+GET /api/quotas             # List quotas (?limit=500&offset=0)
 GET /api/quotas/{name}      # Get quota details
 ```
 
 ### Nodes
 ```
-GET /api/nodes              # List all nodes (supports ?limit=100&offset=0)
+GET /api/nodes              # List nodes (admin only; ?limit=500&offset=0)
 GET /api/nodes/{name}       # Get node details
 ```
 
@@ -49,7 +50,7 @@ GET /api/nodes/{name}       # Get node details
 ```
 GET /api/metrics/gpu?time_range=1h
 ```
-Returns GPU metrics over time. Time ranges: `1h`, `6h`, `24h`, `7d`.
+Returns GPU metrics over time (admin only). Time ranges: `1h`, `6h`, `24h`, `7d`, `30d`.
 
 ### Cost Metrics
 ```
@@ -73,7 +74,7 @@ Returns quota usage across all teams.
 ```
 GET /api/nodes/health
 ```
-Returns GPU node health status.
+Returns GPU node health status (admin only).
 
 ### Roles and tenant isolation
 
@@ -85,6 +86,7 @@ Returns GPU node health status.
 - `GET /api/auth/me` returns `role` (`admin`|`tenant`), `tenant`, `tenants` and `tenantNamespaces`.
 - Admin only (403 for tenants): nodes, node health, `/api/metrics/gpu`, `/api/network/*`, `/api/security/*`,
   `/api/ai/*`, `/api/gpu/memory`, and all writes to `/api/skus` and `/api/tenants`.
+- Admin and tenants both allowed, with a namespace check: `GET /api/flight/jobs/{job}` (see below). The admin (API key or session) reads jobs, workspaces, workflows and the like from one namespace, `GRYVIA_JOB_NAMESPACE` (the chart sets it to the release namespace; `default` when unset).
 - Tenant-scoped (a tenant sees only its own namespaces): jobs, workspaces, models, inference, workflows, tuners,
   `/api/quotas`, `/api/quota/usage` (quotas whose `spec.namespaces` intersect), `/api/metrics/costs`,
   `/api/metrics/jobs`, `/api/cluster/stats` (jobs only, no node capacity), `/api/usage`.
@@ -106,6 +108,17 @@ GET    /api/invoices/{tenant}/{YYYY-MM}?format=json|csv      # one invoice; 404 
 Usage comes from `GryviaUsageRecord` objects (metered estimates from job wall-clock time; no billing). Tenant users are
 always limited to their own tenant, whatever `tenant` says. `/api/metrics/costs` uses usage records when any exist and
 otherwise computes from jobs, priced from `GryviaGpuSku` (a built-in table only when no SKU exists).
+
+### Flight Recorder and Netra
+
+```
+GET /api/flight/jobs/{job}?namespace=   # merged node-local Flight Recorder timeline; needs GRYVIA_FLIGHT_TOKEN
+GET /api/network/flows                  # Netra flows when GRYVIA_NETRA_URL is set, else service-graph edges (admin)
+```
+The Flight Recorder route signs a request to each Running collector pod in `GRYVIA_FLIGHT_COLLECTOR_NAMESPACE` (default
+`gryvia-network`) and merges the answers with a `coverage` field; it answers 503 without the token or without a
+reachable collector. See [docs/flight-recorder.md](../../docs/flight-recorder.md). Netra: `GRYVIA_NETRA_URL`,
+`GRYVIA_NETRA_TOKEN`, `GRYVIA_NETRA_INSECURE=1` (skip TLS verification).
 
 Invoices are computed on demand from usage records (nothing stored, no payments): records are bucketed by the UTC month
 of `spec.start`, one line per SKU (GPU type when the SKU is empty), `status` is always `estimate`, `open: true` marks
@@ -164,9 +177,15 @@ The service will be exposed internally at `https://gryvia-api-gateway.gryvia-sys
 
 The service is configured via environment variables:
 
+- `GRYVIA_API_KEY`: the admin API key (no key means API-key sign-in is disabled)
 - `PROMETHEUS_URL`: Prometheus endpoint (default: `http://prometheus-operated.gryvia-system:9090`)
-- `KUBERNETES_NAMESPACE`: Default namespace for jobs (default: `default`)
-- `LOG_LEVEL`: Logging level (default: `INFO`)
+- `GRYVIA_JOB_NAMESPACE`: namespace the admin's job routes read and write (default: `default`; the chart sets the release namespace)
+- `OIDC_ENABLED`, `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_AUDIENCE`, `GRYVIA_OIDC_ADMIN_GROUPS`, `GRYVIA_OIDC_LEGACY_NAMESPACES`: see [Authentication and TLS](../../website/docs/guides/AUTH_AND_TLS.md)
+- `GRYVIA_SESSION_TTL_SECONDS` (default 28800), `GRYVIA_SESSION_SECRET`
+- `GRYVIA_COLLECTOR_URLS`, `GRYVIA_FLIGHT_TOKEN`, `GRYVIA_FLIGHT_COLLECTOR_NAMESPACE`, `GRYVIA_NETRA_URL`, `GRYVIA_NETRA_TOKEN`, `GRYVIA_NETRA_INSECURE`
+- `GRYVIA_TLS_CERT`, `GRYVIA_TLS_KEY`: serve HTTPS (the chart sets them)
+- `CORS_ALLOWED_ORIGINS`: comma-separated origins (default: the local dev origins)
+- `HTTP_TIMEOUT_SECONDS`, `LOG_LEVEL`
 
 ## Integration with Web UI
 
@@ -191,7 +210,7 @@ In production, configure nginx to proxy `/api` requests to the API gateway servi
 - All Kubernetes API calls are async, executed via `run_in_executor` to avoid blocking the event loop.
 - `datetime.now(timezone.utc)` is used instead of the deprecated `datetime.utcnow()`.
 - The Prometheus client is optional and initialized inside a `try/except` block; the service operates without Prometheus for basic CRUD functionality.
-- All list endpoints support pagination with `limit` (default 100) and `offset` query parameters.
+- Jobs, quotas, nodes, node health and quota usage lists paginate with `limit` and `offset`.
 
 ## Metrics Collection
 
@@ -201,31 +220,20 @@ The API gateway collects data from multiple sources:
 2. **Prometheus**: GPU metrics from DCGM exporter (optional)
 3. **Node Status**: GPU health from GryviaGpuNode CRDs
 
-## Performance
-
-- Responses are typically < 100ms for cluster stats
-- GPU metrics queries scale with number of nodes
-- Cost calculations are cached for 5 minutes
-- Supports 1000+ requests/second with proper resource allocation
-
 ## Security
 
-- Runs as non-root user (UID 1000)
-- Uses Kubernetes RBAC for API access
-- CORS enabled for development (disable in production)
-- No authentication built-in (use ingress-level auth)
+- Runs as non-root user; Kubernetes RBAC limits what it can read and write.
+- Authentication is built in: API key, signed session tokens and (optionally) OIDC JWTs; every `/api/` route except
+  `/api/auth/config` and `/api/auth/login` requires one. Roles (admin or tenant) are described above.
+- Sign-in and API routes are rate limited per client address.
+- CORS allows only the origins in `CORS_ALLOWED_ORIGINS` (local dev origins by default).
+- The gateway has no `/metrics` endpoint. Health check: `curl http://localhost:8080/health` (HTTPS when a certificate
+  is configured).
 
-## Monitoring
+## Performance
 
-Health check endpoint:
-```bash
-curl http://localhost:8080/health
-```
-
-Prometheus metrics (if enabled):
-```bash
-curl http://localhost:8080/metrics
-```
+No throughput or latency figures have been measured for the gateway; treat any such number as unverified. Kubernetes
+calls run in an executor so they do not block the event loop.
 
 ## License
 

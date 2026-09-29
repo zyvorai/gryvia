@@ -1,39 +1,31 @@
 # Gryvia Platform Setup Guide
 
 This guide covers everything **after** the Kubernetes cluster exists: installing the operators, dashboard and
-gateway, and configuring storage, RDMA and monitoring. To provision the cluster itself (Terraform, Ansible,
-GPU drivers) start with the [Bare Metal Deployment Guide](./DEPLOYMENT_GUIDE.md). For a quick trial without GPUs
-see the [Quick Start](../getting-started/quickstart.md).
+gateway, and optionally wiring storage, RDMA and monitoring. To prepare hardware and get a cluster with working GPUs,
+start with the [Bare Metal Deployment Guide](./DEPLOYMENT_GUIDE.md) and [GPU nodes](./GPU_NODES.md). For a quick trial
+without GPUs see the [Quick Start](../getting-started/quickstart.md). The shorter, canonical install reference is the
+[Cluster Setup Guide](../admin-guide/cluster-setup.md).
+
+:::caution What has and has not been run
+The chart, operators and gateway are covered by unit tests, chart rendering and a kind job in CI. The GPU path, RDMA and
+InfiniBand handling, the storage and network operators against real systems, and the eBPF collector have **not** been
+run on real GPU, RDMA or parallel-filesystem hardware. Steps 4 and 5 below are templates for that hardware, not
+verified procedures.
+:::
 
 ## Prerequisites
 
-### Hardware Requirements
+### Hardware
 
-**GPU Nodes (minimum 4 nodes):**
-- CPU: 2x AMD EPYC or Intel Xeon (96+ cores)
-- RAM: 1TB DDR5 ECC
-- GPU: 8x NVIDIA H100/A100 per node
-- Network: 2x 400Gb/s InfiniBand NDR adapters
-- Storage: 2TB NVMe for OS, connected to parallel filesystem
+Gryvia has no fixed hardware requirements and there is no tested sizing guidance. The chart's default requests are
+50 to 200 millicores and 64 to 256 MiB per component (`helm/gryvia/values.yaml`). For real GPU work you need NVIDIA
+GPU nodes; RDMA (InfiniBand or RoCE) and a shared parallel filesystem are optional and entirely yours to provide.
 
-**Storage (VAST/Weka/DDN):**
-- 500TB+ usable capacity
-- High aggregate bandwidth (size to your workload)
-- NFS/NVMe-oF connectivity
+### Software
 
-**Network Infrastructure:**
-- InfiniBand NDR switches (400Gb/s)
-- Subnet manager (OpenSM or vendor equivalent)
-- 10/25/100Gb/s Ethernet for management
-
-### Software Requirements
-
-- Ubuntu 22.04 LTS (on all nodes)
-- Kubernetes 1.30+ cluster
-- Helm 3.12+
-- kubectl 1.30+
-- NVIDIA driver on GPU nodes: installed by the GPU Operator (`nvidia.enabled=true`) or already on the host
-- NVIDIA OFED 24.01+ for InfiniBand (you install it; Gryvia does not)
+- A Kubernetes 1.30+ cluster (the chart sets `kubeVersion: ">=1.30.0"`), `kubectl`, and Helm 3.14+
+- NVIDIA driver and container toolkit on GPU nodes: installed by the bundled GPU Operator (`nvidia.enabled=true`) or already on the host
+- For RDMA: NVIDIA OFED (or your distribution's equivalent), Multus and, if you use SR-IOV, SR-IOV support. Gryvia does not install any of these.
 
 ## Step-by-Step Deployment
 
@@ -46,131 +38,121 @@ Gryvia needs a Kubernetes cluster whose GPU nodes can run GPU containers. Pick o
 | A fresh Ubuntu 22.04/24.04 server with an NVIDIA GPU | `sudo ./scripts/install-k3s-gpu.sh server` installs k3s, Gryvia and NVIDIA's GPU Operator (driver, container toolkit, device plugin, DCGM) in one step. Add more GPU nodes with `agent`. |
 | An existing Kubernetes cluster | Install the chart with `--set nvidia.enabled=true` to have NVIDIA's GPU Operator prepare the GPU nodes, or leave it off if your cluster already has the driver, toolkit and device plugin. |
 
-Both paths are described in [GPU nodes](./GPU_NODES.md). What Gryvia does **not** install: Kubernetes itself
-(kubeadm), a CNI plugin (Calico), Multus, NVIDIA OFED/InfiniBand drivers or Fabric Manager. The Terraform and
-Ansible directories are experimental and incomplete (see `ansible/README.md`); do not rely on them.
+Both paths are described in [GPU nodes](./GPU_NODES.md). What Gryvia does **not** install: Kubernetes itself, a CNI
+plugin, Multus, NVIDIA OFED/InfiniBand drivers or Fabric Manager. The Terraform and Ansible directories are experimental
+and incomplete (see `ansible/README.md`); do not rely on them.
 
-### 2. Install Gryvia
-
-Verify:
+Check the cluster:
 
 ```bash
 kubectl get nodes
-# All nodes should be Ready with correct labels
-
-kubectl get nodes -o json | jq '.items[].status.capacity'
-# Should show nvidia.com/gpu resources
+kubectl get nodes -o json | jq '.items[].status.capacity'   # GPU nodes should list nvidia.com/gpu
 ```
 
-### 3. Install Gryvia Operators
+### 2. Install Gryvia
 
-#### Option A: Helm Installation (Recommended)
-
-One chart installs the GPU, AI workload and quota operators, the API gateway and the dashboard. The storage and
-network operators are off by default; enable them if you use them. The network-intelligence operator has its own
-chart (`helm/network-intelligence`).
+One chart installs the CRDs, the GPU, AI workload and quota operators, the API gateway and the dashboard. The storage and
+network operators are off by default; enable them if you use them (steps 4 and 5). The network-intelligence operator has
+its own chart (`helm/network-intelligence`, see [Network Intelligence](./NETWORK_INTELLIGENCE.md)).
 
 ```bash
 helm install gryvia oci://ghcr.io/zyvorai/charts/gryvia \
   --namespace gryvia-system --create-namespace \
-  --set auth.apiKey='a-long-random-secret' \
-  --set storageOperator.enabled=true \
-  --set networkOperator.enabled=true
+  --set auth.apiKey='a-long-random-secret'
 
-# Optional: network intelligence (eBPF flow analysis)
-helm install network-intelligence helm/network-intelligence --namespace gryvia-system
-
-# Verify installation
 kubectl get pods -n gryvia-system
 ```
 
-Expected output (names include a hash suffix; the NVIDIA device plugin and DCGM exporter run on GPU nodes only):
+From a checkout, run `helm dependency build helm/gryvia` first and install `./helm/gryvia`.
+
+Expected pods with the defaults (names include a hash suffix; the NVIDIA device plugin and DCGM exporter run on GPU
+nodes only):
+
 ```
-NAME                                     READY   STATUS    RESTARTS   AGE
-gryvia-gpu-operator-...                  1/1     Running   0          2m
-gryvia-ai-operator-...                   1/1     Running   0          2m
-gryvia-quota-operator-...                1/1     Running   0          2m
-gryvia-storage-operator-...              1/1     Running   0          2m
-gryvia-network-operator-...              1/1     Running   0          2m
-gryvia-api-gateway-... (x2)              1/1     Running   0          2m
-gryvia-ui-... (x2)                       1/1     Running   0          2m
+gryvia-gpu-operator-...
+gryvia-ai-operator-...
+gryvia-quota-operator-...
+gryvia-api-gateway-... (x2)
+gryvia-ui-... (x2)
 ```
 
-Chart options (Ingress, TLS, NodePort, PodDisruptionBudgets) are described in the
-[chart README](https://github.com/zyvorai/gryvia/tree/main/helm/gryvia); sign-in and certificates in
+`gryvia-storage-operator` and `gryvia-network-operator` appear when enabled. Chart options (Ingress, TLS, NodePort,
+PodDisruptionBudgets) are in the [chart README](https://github.com/zyvorai/gryvia/tree/main/helm/gryvia) and the
+[Cluster Setup Guide](../admin-guide/cluster-setup.md); sign-in and certificates are in
 [Authentication and TLS](./AUTH_AND_TLS.md).
 
-#### Option B: Manual Installation
+There is no supported "manual" install: the repository has no raw manifests for the operators. To get plain YAML,
+render the chart with `helm template gryvia ./helm/gryvia -n gryvia-system`.
+
+### 3. Register GPU nodes
+
+Nodes labelled `nvidia.com/gpu.present=true` (by the GPU Operator or your own GPU Feature Discovery) get a
+`GryviaGpuNode` automatically (`gpuOperator.autoRegister`, on by default):
 
 ```bash
-# Apply CRDs
-kubectl apply -f crds/
-
-# Deploy operators individually
-kubectl apply -f operators/gpu-operator/config/
-kubectl apply -f operators/ai-operator/config/
-kubectl apply -f operators/storage-operator/config/
-kubectl apply -f operators/network-operator/config/
-kubectl apply -f operators/quota-operator/config/
-
-# Deploy Network Intelligence Operator
-kubectl apply -f operators/network-intelligence/config/
-
-# Deploy eBPF Collector DaemonSet
-kubectl apply -f collector/deploy/daemonset.yaml
+kubectl get gryviagpunodes
+gryvia status
 ```
 
-### 4. Configure Storage Backend
+The reported GPU type, count and other fields depend on what your nodes' labels say; check
+`kubectl get gryviagpunodes -o yaml`. See [GPU nodes](./GPU_NODES.md).
 
-#### VAST Data Configuration
+### 4. Optional: storage backend
+
+Enable the storage operator, then declare a backend. `spec.backend`, `spec.endpoint` and `spec.capacity` are required;
+the credentials Secret must exist first. See [Storage and Network Operators](./STORAGE_NETWORK_OPERATORS.md) for what the
+controller does and its limits (never run against a real VAST, Weka, DDN, Lustre or Ceph system).
 
 ```bash
-# Create storage credentials
-kubectl create secret generic vast-credentials \
-  -n gryvia-system \
-  --from-literal=username=admin \
-  --from-literal=password=your-vast-password
+helm upgrade gryvia oci://ghcr.io/zyvorai/charts/gryvia -n gryvia-system --reuse-values \
+  --set storageOperator.enabled=true
 
-# Deploy VAST storage
-kubectl apply -f - <<EOF
+kubectl create secret generic vast-credentials -n gryvia-system \
+  --from-literal=username=admin --from-literal=password='<your-password>'
+```
+
+```yaml
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaStorage
 metadata:
   name: vast-production
 spec:
-  backendType: vast
+  backend: vast
   endpoint: vast-mgmt.example.com
   capacity: 500Ti
-  nodeSelector:
-    gryvia.io/storage: "true"
+  storageClass:
+    name: vast-production
   credentials:
     secretName: vast-credentials
     secretNamespace: gryvia-system
-EOF
+```
 
-# Wait for CSI driver deployment
-kubectl wait --for=condition=Ready gryviastorage/vast-production --timeout=300s
-
-# Verify CSI driver
-kubectl get pods -n kube-system | grep vast-csi
+```bash
+kubectl wait --for=jsonpath='{.status.phase}'=Ready gryviastorage/vast-production --timeout=300s
 kubectl get storageclass vast-production
 ```
 
-### 5. Configure RDMA Network
+### 5. Optional: RDMA network
+
+RDMA needs InfiniBand or RoCE hardware, its drivers and Multus, all installed by you. Label the nodes the network
+should cover, enable the network operator and declare the network:
 
 ```bash
-# Label nodes with RDMA capability
-kubectl label nodes gpu-worker-{01..04} gryvia.io/rdma=true
+kubectl label nodes gpu-worker-01 gpu-worker-02 gryvia.io/rdma=true
 
-# Deploy RDMA network
-kubectl apply -f - <<EOF
+helm upgrade gryvia oci://ghcr.io/zyvorai/charts/gryvia -n gryvia-system --reuse-values \
+  --set networkOperator.enabled=true
+```
+
+```yaml
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaNetwork
 metadata:
-  name: rdma-training
+  name: rdma-network
 spec:
   networkType: rdma
   mtu: 9000
+  targetNamespace: ml-training
   nodeSelector:
     gryvia.io/rdma: "true"
   rdma:
@@ -178,386 +160,179 @@ spec:
     devices: [mlx5_0, mlx5_1]
     subnet: 10.100.0.0/16
     gateway: 10.100.0.1
-EOF
+```
 
-# Wait for RDMA device plugin
-kubectl wait --for=condition=Ready gryvianetwork/rdma-training --timeout=300s
-
-# Verify RDMA resources
+```bash
+kubectl wait --for=condition=Ready gryvianetwork/rdma-network --timeout=300s
 kubectl get nodes -o json | jq '.items[].status.allocatable' | grep rdma
 ```
 
-### 6. Register GPU Nodes
+The AI operator adds the pod annotation `k8s.v1.cni.cncf.io/networks: rdma-network` for jobs with `spec.network: rdma`,
+so the NetworkAttachmentDefinition must be named `rdma-network` and live in the job's namespace (`targetNamespace`).
+
+### 6. Create team quotas
 
 ```bash
-# GPU nodes are auto-discovered by the GPU operator
-# Verify GryviaGpuNode resources were created
-kubectl get gryviagpunodes
-
-# Expected output:
-# NAME            GPU TYPE   COUNT   STATUS    RDMA      NVLINK
-# gpu-worker-01   H100       8       Healthy   Enabled   Enabled
-# gpu-worker-02   H100       8       Healthy   Enabled   Enabled
-# gpu-worker-03   H100       8       Healthy   Enabled   Enabled
-# gpu-worker-04   H100       8       Healthy   Enabled   Enabled
-```
-
-### 7. Create Team Quotas
-
-```bash
-# Create namespaces
 kubectl create namespace ml-training
-kubectl create namespace cv-training
-kubectl create namespace nlp-training
-
-# Deploy quotas
 kubectl apply -f examples/quota/team-ml-quota.yaml
-kubectl apply -f examples/quota/team-cv-quota.yaml
-kubectl apply -f examples/quota/team-nlp-quota.yaml
-
-# Verify quotas
 kubectl get gryviaquotas
 ```
 
-### 8. Deploy Monitoring Stack
+The other files in `examples/quota/` cover further teams. Quota semantics, tenants and billing are in
+[GPU as a Service](./GPU_AS_A_SERVICE.md).
+
+### 7. Monitoring
+
+The Gryvia chart does not install Prometheus or Grafana. `helm/observability` wraps `kube-prometheus-stack`:
 
 ```bash
-cd helm/observability
-
-# Install Prometheus and Grafana
-helm install monitoring . \
-  --namespace monitoring \
-  --create-namespace
-
-# Wait for pods
-kubectl wait --for=condition=Ready pods --all -n monitoring --timeout=300s
-
-# Get Grafana password
-kubectl get secret -n monitoring monitoring-grafana \
-  -o jsonpath='{.data.admin-password}' | base64 -d
-
-# Port-forward to access Grafana
-kubectl port-forward -n monitoring svc/monitoring-grafana 3000:80
-# Open http://localhost:3000 (admin/<password>)
+helm dependency build helm/observability
+helm install monitoring ./helm/observability --namespace monitoring --create-namespace \
+  --set grafana.adminPassword='<choose one>'
 ```
 
-### 9. Run Test Workload
+Point the gateway at Prometheus with `apiGateway.prometheusUrl` for GPU metrics and cost history. `monitoring/` holds
+dashboards, a ServiceMonitor and Prometheus rules as templates; not every metric they query is guaranteed to exist in
+your cluster. Service names depend on the release name you choose; list them with `kubectl get svc -n monitoring`.
 
-```bash
-# Submit distributed training job
-kubectl apply -f - <<EOF
+### 8. Run a test workload
+
+A minimal GPU job (needs a schedulable GPU node):
+
+```yaml
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: test-training
   namespace: ml-training
 spec:
-  framework: pytorch
-  distributed:
-    enabled: true
-    strategy: ddp
-    nodes: 2         # 2 nodes
-    gpusPerNode: 8   # 8 GPUs per node = 16 GPUs total
-
-  resources:
-    gpuType: H100
-    gpuCount: 8
-    memory: 512Gi
-    cpu: 96
-
+  type: training
+  gpus: 1
+  gpuType: any
   image: nvcr.io/nvidia/pytorch:24.01-py3
-
-  command:
-    - python
-    - -m
-    - torch.distributed.run
-    - --nproc_per_node=8
-    - --nnodes=2
-    - test_script.py
-
-  storage:
-    - name: data
-      storageClassName: vast-production
-      size: 1Ti
-      mountPath: /data
-
-  network:
-    rdma: rdma-training
-EOF
-
-# Monitor job
-kubectl get gryviaaijob -n ml-training test-training -w
-
-# Check pods
-kubectl get pods -n ml-training -l job-name=test-training
-
-# View logs
-kubectl logs -n ml-training test-training-0
+  command: ["python", "-c", "import torch; print(torch.cuda.is_available())"]
 ```
+
+```bash
+kubectl apply -f test-training.yaml
+gryvia get job test-training -n ml-training
+gryvia logs test-training -n ml-training
+```
+
+For a multi-node job see `examples/distributed/multi-gpu-training.yaml`. Relevant `GryviaAIJob` fields, as implemented by
+the AI operator: `distributed.{enabled,nodes,gpusPerNode}` (the operator sets `MASTER_ADDR`, `MASTER_PORT`,
+`WORLD_SIZE` and NCCL defaults), `storage` (a StorageClass name; the operator creates a PVC `<job>-data` mounted at
+`/data`) and `network` (`rdma` or `sriov`, see step 5). Gang scheduling and fair-share are not wired into the running
+operator; see the [Scheduling guide](./SCHEDULING.md).
 
 ## Verification Checklist
 
-### ✅ Operators Running
-
 ```bash
-kubectl get pods -n gryvia-system
-# All 6 operators should be Running
+kubectl get pods -n gryvia-system            # operators, gateway and dashboard Running
+kubectl get gryviagpunodes                   # GPU nodes registered
+kubectl get crd | grep -c '\.gryvia\.io'     # 49 with this release
+gryvia status                                # component banner, workloads, per-node table
+./scripts/doctor.sh                          # prerequisite and health checks
 ```
 
-### ✅ GPUs Discovered
+If you enabled the optional pieces:
 
 ```bash
-kubectl get gryviagpunodes
-# Should show all GPU nodes with correct count
-```
-
-### ✅ Storage Ready
-
-```bash
-kubectl get gryviastorage
-# STATUS should be Ready
-
+kubectl get gryviastorage                    # PHASE Ready
 kubectl get storageclass
-# Should include vast-production (or your backend)
-```
-
-### ✅ RDMA Configured
-
-```bash
-kubectl get gryvianetwork
-# STATUS should be Ready
-
-kubectl get pods -n kube-system | grep rdma-device-plugin
-# DaemonSet pods should be Running
-
-# Test RDMA from a pod
-kubectl run -it --rm rdma-test \
-  --image=nvcr.io/nvidia/pytorch:24.01-py3 \
-  --overrides='{"metadata":{"annotations":{"k8s.v1.cni.cncf.io/networks":"rdma-training"}}}' \
-  -- ibv_devinfo
-```
-
-### ✅ Quotas Active
-
-```bash
+kubectl get gryvianetwork                    # then check nodes advertise the RDMA resource
 kubectl get gryviaquotas
-# All quotas should show Phase: Active
-```
-
-### ✅ Monitoring Working
-
-```bash
-# Check Prometheus targets
-kubectl port-forward -n monitoring svc/prometheus-server 9090:80
-# Open http://localhost:9090/targets
-# All Gryvia targets should be UP
-
-# Check GPU metrics in Grafana
-# Dashboard: "Gryvia - GPU Overview"
 ```
 
 ## Production Configuration
 
-### Enable High Availability
+### High availability
+
+Leader election is on by default (`ha.leaderElection`), so running more than one replica of a component is safe.
+Set replicas per component; the values are `gpuOperator.replicas`, `aiOperator.replicas`, `quotaOperator.replicas`,
+`storageOperator.replicas`, `networkOperator.replicas`, `apiGateway.replicas` and `ui.replicas`:
 
 ```bash
-# Update Helm values (--reuse-values keeps your API key and other overrides)
-helm upgrade gryvia ./helm/gryvia \
-  --namespace gryvia-system \
-  --reuse-values \
-  --set ha.enabled=true \
-  --set gpuOperator.replicas=3 \
-  --set aiOperator.replicas=3 \
-  --set storageOperator.replicas=2 \
-  --set networkOperator.replicas=2 \
-  --set quotaOperator.replicas=2 \
-  --set networkIntelligenceOperator.replicas=2
+helm upgrade gryvia ./helm/gryvia -n gryvia-system --reuse-values \
+  --set gpuOperator.replicas=2 --set aiOperator.replicas=2 --set quotaOperator.replicas=2
 ```
 
-### Configure GPU Pricing
+`ha.enabled` exists in `values.yaml` but no template reads it; `podDisruptionBudget.enabled` is the related switch that
+does something. There are no `highAvailability.*` or `networkIntelligenceOperator.*` values; the network-intelligence
+operator has its own chart (`operator.replicas`, `ha.*`). No failover test has been published.
 
-Edit quota operator ConfigMap:
+### GPU pricing
 
-```bash
-kubectl create configmap gpu-pricing \
-  -n gryvia-system \
-  --from-literal=H100=8.00 \
-  --from-literal=A100-80G=4.00 \
-  --from-literal=L40=2.50 \
-  -o yaml --dry-run=client | kubectl apply -f -
-```
+Prices come from the `GryviaGpuSku` catalog (`gryvia catalog`, the dashboard Catalog page, `POST /api/skus`). With no
+SKUs, a built-in default table is used. The old `gpu-pricing` ConfigMap is not read, and `quotaOperator.pricing` in
+`values.yaml` is not consumed by any chart template. See [GPU as a Service](./GPU_AS_A_SERVICE.md).
 
-### Set Up Backup
+### Backup
 
-```bash
-# Install Velero for cluster backups
-velero install \
-  --provider aws \
-  --bucket gryvia-backups \
-  --backup-location-config region=us-west-2
-
-# Schedule daily CRD backups
-velero schedule create daily-backup \
-  --schedule="0 2 * * *" \
-  --include-namespaces gryvia-system,ml-training,cv-training,nlp-training
-```
+Gryvia keeps its state in custom resources; see [Operations](./OPERATIONS.md) for export, restore, upgrade and
+uninstall, and `tools/backup-restore.sh`. A cluster-level tool such as Velero can also back up the namespaces; that is
+independent of Gryvia and not tested with it.
 
 ## Troubleshooting
 
-### GPU Not Detected
+### GPU not detected
 
 ```bash
-# Check NVIDIA driver
-nvidia-smi
-
-# Check device plugin logs
-kubectl logs -n kube-system -l app=nvidia-device-plugin
-
-# Verify node labels
+nvidia-smi                                       # on the node
 kubectl get nodes -o jsonpath='{.items[*].metadata.labels}' | grep nvidia
+kubectl describe node <gpu-node>                 # look for nvidia.com/gpu under Capacity
+./tools/gpu-diagnostics.sh
 ```
 
-### Storage PVC Stuck in Pending
+With `nvidia.enabled=true` look at the pods of the GPU Operator; otherwise at the `nvidia-device-plugin` DaemonSet in
+`gryvia-system`. See [GPU nodes](./GPU_NODES.md).
+
+### Storage PVC stuck in Pending
 
 ```bash
-# Check StorageClass
 kubectl get storageclass
-
-# Check CSI driver pods
-kubectl get pods -n kube-system | grep csi
-
-# Describe PVC for events
+kubectl get pods -A | grep csi
 kubectl describe pvc <pvc-name>
+kubectl describe gryviastorage <name>            # phase and conditions
 ```
 
-### RDMA Not Working
+### RDMA not working
 
 ```bash
-# Check InfiniBand status on node
-ibstat
-
-# Verify RDMA device plugin
-kubectl get pods -n kube-system | grep rdma-device-plugin
-
-# Check NetworkAttachmentDefinition
-kubectl get network-attachment-definitions
+ibstat                                           # on the node
+kubectl get gryvianetwork -o yaml                # phase, conditions
+kubectl get network-attachment-definitions -A
 ```
 
-### Job Not Scheduling
+### Job not scheduling
 
 ```bash
-# Check quota
 kubectl get gryviaquota -o yaml
-
-# Check job status
+gryvia get job <job-name>
 kubectl describe gryviaaijob <job-name>
-
-# Check scheduler logs
-kubectl logs -n gryvia-system -l app=ai-operator
+kubectl logs -n gryvia-system deploy/gryvia-ai-operator
 ```
 
-## Performance Tuning
+## Performance tuning
 
-### GPU Optimization
+These are general NVIDIA and NCCL practices, not settings Gryvia applies or has validated:
 
 ```bash
-# Set persistence mode (not done automatically)
-nvidia-smi -pm 1
-
-# Set GPU clocks to max
-nvidia-smi -ac 1593,2100  # For H100
-
-# Disable ECC for max performance (optional)
-nvidia-smi -e 0
+nvidia-smi -pm 1          # persistence mode (not enabled automatically)
 ```
 
-### NCCL Tuning
-
-Add to job env vars:
-
-```yaml
-env:
-  - name: NCCL_IB_HCA
-    value: "mlx5_0,mlx5_1"
-  - name: NCCL_IB_GID_INDEX
-    value: "3"
-  - name: NCCL_IB_TC
-    value: "106"
-  - name: NCCL_NET_GDR_LEVEL
-    value: "5"
-  - name: NCCL_SOCKET_IFNAME
-    value: "eth0"
-```
-
-### Storage Performance
-
-```bash
-# Enable client-side caching (VAST)
-mount -o remount,actimeo=120 /mnt/vast
-
-# Increase read-ahead
-echo 16384 > /sys/block/sda/queue/read_ahead_kb
-```
+NCCL environment variables go in the job's `spec.env`; the right values depend on your fabric (`NCCL_IB_HCA`,
+`NCCL_IB_GID_INDEX`, `NCCL_SOCKET_IFNAME` and so on). The AI operator already sets `NCCL_DEBUG=INFO` for distributed jobs
+and `NCCL_IB_DISABLE=0`, `NCCL_NET_GDR_LEVEL=5` when `spec.network` is `rdma`. See `benchmarks/suite.yaml`
+for how to measure on your own cluster; no results are published.
 
 ## Scaling
 
-### Add GPU Nodes
-
-```bash
-# Provision new hardware with Terraform
-cd terraform/bare-metal
-vim terraform.tfvars  # Add new nodes
-terraform apply
-
-# Deploy to new nodes
-cd ../../ansible
-ansible-playbook -i ../terraform/bare-metal/inventory.ini \
-  playbooks/add-node.yaml --limit new-nodes
-
-# Join to cluster
-# Nodes auto-register with GPU operator
-```
-
-### Increase Storage Capacity
-
-```bash
-# Update GryviaStorage
-kubectl edit gryviastorage vast-production
-# Change capacity: 1Pi
-
-# Expand existing PVCs
-kubectl patch pvc training-data \
-  -p '{"spec":{"resources":{"requests":{"storage":"100Ti"}}}}'
-```
-
-## Next Steps
-
-- [ ] Set up CI/CD pipelines for model training
-- [ ] Configure auto-scaling policies
-- [ ] Implement custom scheduling policies
-- [ ] Set up centralized logging (ELK/Loki)
-- [ ] Configure alerting (PagerDuty, Slack)
-- [ ] Enable cost tracking and chargeback
-- [ ] Deploy model registry (MLflow, Weights & Biases)
-- [ ] Set up experiment tracking
+- **Add GPU nodes:** join them to the cluster (for k3s, `install-k3s-gpu.sh agent`); labelled nodes register themselves.
+- **Increase storage capacity:** edit `spec.capacity` of the `GryviaStorage` and expand PVCs through your CSI driver
+  (whether the driver supports expansion depends on the backend).
 
 ## Support
 
 - GitHub Issues: https://github.com/zyvorai/gryvia/issues
-- Documentation: https://gryvia.readthedocs.io
-- Slack: #gryvia
-
-## Cost Estimate
-
-For a 32x H100 cluster (4 nodes x 8 GPUs):
-
-- **Hardware**: ~$800k (one-time)
-- **Power**: ~$10k/month (64kW @ $0.10/kWh)
-- **Cooling**: ~$5k/month
-- **Network**: ~$50k (one-time for IB switches)
-- **Storage**: ~$200k (500TB VAST cluster)
-
-**Total TCO (3 years)**: ~$1.6M
-**Per GPU-hour**: ~$2.30
-
-Compare to cloud (H100 @ $8/hour): **72% savings**
+- Discussions: https://github.com/zyvorai/gryvia/discussions

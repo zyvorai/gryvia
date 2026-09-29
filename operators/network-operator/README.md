@@ -2,6 +2,8 @@
 
 The Network Operator manages high-performance networking for AI workloads in Gryvia. It automates RDMA and SR-IOV configuration for ultra-low latency distributed training.
 
+> **Status.** The `GryviaNetwork` controller is registered and, for `rdma` and `sriov` networks, creates device-plugin DaemonSets, ConfigMaps, node labels/annotations and a Multus NetworkAttachmentDefinition. It does **not** install Kubernetes, Multus, Whereabouts, NVIDIA OFED or GPU drivers, and does not enable IOMMU or SR-IOV firmware settings for you; those are prerequisites (see below). Everything here is unit-tested with a fake client only. It has **not** been verified on real InfiniBand/RoCE or SR-IOV hardware. The NCCL bandwidth figure in the benchmarking section is an expectation, not a measurement.
+
 ## Supported Network Types
 
 - **RDMA (InfiniBand/RoCE)** - Remote Direct Memory Access for distributed training
@@ -14,7 +16,7 @@ The Network Operator manages high-performance networking for AI workloads in Gry
 - **SR-IOV Device Plugin** - Manages SR-IOV VF allocation
 - **Multus Integration** - Creates NetworkAttachmentDefinitions automatically
 - **Node Auto-Configuration** - Labels and annotates nodes with network capabilities
-- **Health Monitoring** - Tracks network device availability
+- **Status** - Reports `configuredNodes` / `totalNodes` and a phase; there is no continuous device-level health monitoring
 
 ## Architecture
 
@@ -37,7 +39,7 @@ Pod Network Interfaces
 
 ```bash
 # Apply CRD
-kubectl apply -f crds/gryvianetwork.yaml
+kubectl apply -f crds/   # or install the Helm chart, which ships the CRDs
 
 # Deploy operator
 kubectl apply -f operators/network-operator/config/
@@ -153,7 +155,7 @@ spec:
 
 **Files:**
 - `controllers/gryvianetwork_controller.go` - Main reconciliation
-- `pkg/rdma/rdma.go` - RDMA device plugin and node config (~200 LOC)
+- `pkg/rdma/rdma.go` - RDMA device plugin and node config
 
 ### SR-IOV Configuration
 
@@ -163,7 +165,7 @@ spec:
 - Per-network ConfigMaps for device selection
 
 **Files:**
-- `pkg/sriov/sriov.go` - SR-IOV setup and VF management (~250 LOC)
+- `pkg/sriov/sriov.go` - SR-IOV setup and VF management
 
 ### Multus Integration
 
@@ -173,7 +175,7 @@ spec:
 - SR-IOV: Uses SR-IOV CNI with host-local IPAM
 
 **Files:**
-- `pkg/multus/multus.go` - NAD creation and config generation (~200 LOC)
+- `pkg/multus/multus.go` - NAD creation and config generation
 
 ## RDMA Verification
 
@@ -227,7 +229,7 @@ spec:
         rdma/rdma_shared_device_a: 1
 EOF
 
-# Expected: ~400GB/s with 8x H100 + InfiniBand NDR
+# Design expectation on suitable hardware (not measured by this project); compare your own results against NVIDIA's published nccl-tests numbers
 ```
 
 ## Troubleshooting

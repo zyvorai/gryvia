@@ -2,12 +2,14 @@
 
 End-to-end tests for Gryvia platform.
 
+> **Status.** These four Go tests (`tests/e2e/e2e_test.go`) run against whatever cluster your default kubeconfig points at (they read `~/.kube/config` directly, not `$KUBECONFIG`) and expect the CRDs and operators to be installed. They are **not run in CI**: no workflow under `.github/workflows` invokes `tests/e2e`. The CI job that exercises a real install is `kind-e2e.yml` (kind cluster with demo data, no GPUs, API and CLI checks), which is a separate thing. The GPU node test only logs and asserts on nodes that already exist. Nothing here has been run against real GPU, VAST or RDMA hardware.
+
 ## Prerequisites
 
 - Running Kubernetes cluster
 - Gryvia operators deployed
 - `kubectl` configured
-- Go 1.22+
+- Go (the module in `tests/e2e/go.mod` declares the required version)
 
 ## Running Tests
 
@@ -38,8 +40,8 @@ go test -v -parallel 4 ./...
 ### 1. AI Job Lifecycle Test
 Tests complete job lifecycle:
 - Create GryviaAIJob
-- Wait for job to be scheduled
-- Verify job transitions through phases
+- Wait for the job status to be set by the operator
+- Verify the status
 - Clean up job
 
 ### 2. Quota Enforcement Test
@@ -64,23 +66,16 @@ Tests storage backend:
 
 ## Test Environment
 
-The tests create a dedicated namespace `gryvia-e2e-test` for isolation.
-
-All resources are cleaned up after tests complete.
+Each test creates its own namespace named `gryvia-e2e-<test-name>` and deletes it when the test ends. Cluster-scoped objects (quota, storage) are deleted by the test that creates them; a failed run may leave some behind.
 
 ## CI/CD Integration
 
-These tests run automatically in GitHub Actions on:
-- Push to main branch
-- Pull requests
-- Scheduled daily runs
+These tests are not wired into GitHub Actions today, so they run only when you run them by hand. See `.github/workflows/kind-e2e.yml` for the install-path check that does run on pull requests.
 
 ## Troubleshooting
 
 ### Tests fail to connect to cluster
-```bash
-export KUBECONFIG=/path/to/kubeconfig
-```
+The tests load `~/.kube/config` (the default kubeconfig), so make that file point at the target cluster; setting `KUBECONFIG` alone has no effect.
 
 ### Timeout errors
 Increase timeout:

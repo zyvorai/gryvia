@@ -1,6 +1,10 @@
 # Job Management Guide
 
-Complete guide to submitting and managing AI workloads with Gryvia.
+Guide to submitting and managing AI workloads with Gryvia.
+
+> **Status.** What the ai-operator actually does with a `GryviaAIJob` is described in the [Scheduling guide](../guides/SCHEDULING.md#what-runs-today): it picks nodes, then creates a StatefulSet, a headless Service and an optional PVC. Many features that appear in older versions of this page (checkpointing and restart policy fields, spot, preemption, budget alerts) are not fields of the job schema; this page now says so where relevant. Nothing here has been verified on real GPU hardware.
+
+Required spec fields are `type` (`training`, `inference`, `fine-tuning` or `evaluation`), `gpus` and `image`. The full schema is in `crds/gryvia.io_gryviaaijobs.yaml` and the [CRD reference](../reference/crds.md).
 
 ## Job Basics
 
@@ -16,16 +20,18 @@ metadata:
     team: ml-research
     project: llama-training
 spec:
-  framework: pytorch
-  resources:
-    gpuType: A100-80G
-    gpuCount: 8
-    memory: 512Gi
-    cpu: 64
+  type: training
   image: nvcr.io/nvidia/pytorch:24.01-py3
+  gpus: 8
+  gpuType: A100-80G
+  resources:
+    requests:
+      cpu: "64"
+      memory: 512Gi
   command:
     - python
     - train.py
+  args:
     - --model=llama-7b
     - --data=/data/openwebtext
 ```
@@ -44,23 +50,33 @@ gryvia submit --file job.yaml
 
 # Submit and wait for completion
 gryvia submit --file job.yaml --wait
+
+# Validate a manifest without submitting it
+gryvia validate job.yaml
 ```
 
 ## Job Lifecycle
 
 ### States
 
-1. **Pending**: Job is queued, waiting for resources
-2. **Running**: Job is executing
-3. **Succeeded**: Job completed successfully
-4. **Failed**: Job terminated with error
-5. **Cancelled**: Job was manually cancelled
+Set by the ai-operator (`status.phase`):
+
+1. **Pending**: new job, or no node currently qualifies (retried every 30 seconds)
+2. **Scheduling**: nodes are being selected
+3. **Running**: at least one replica is ready
+4. **Succeeded**: all pods have succeeded
+5. **Failed**: all pods have terminated and at least one failed
+
+`gryvia cancel` writes `Cancelled` into `status.phase`, but the controller has no handling for that value (it will keep reconciling the StatefulSet and can overwrite the phase while pods are ready). To actually stop a job's pods, delete it (see below).
 
 ### Monitoring Jobs
 
 ```bash
 # List all jobs
 gryvia list jobs
+
+# Jobs waiting for resources (Pending/Queued/Scheduling)
+gryvia queue
 
 # Get job status
 gryvia status my-training-job
@@ -84,133 +100,138 @@ gryvia logs my-training-job -f
 # Get logs from specific replica
 gryvia logs my-training-job --replica 0
 
+# Last 500 lines
+gryvia logs my-training-job --tail 500
+
 # Save logs to file
 gryvia logs my-training-job > training.log
 ```
 
-### Cancelling Jobs
+### Cancelling and Deleting Jobs
 
 ```bash
-# Cancel job
+# Mark the job cancelled (asks for confirmation; see the note under States)
 gryvia cancel my-training-job
 
-# Delete job
-kubectl delete gryviaaijob my-training-job
+# Delete the job; the StatefulSet, Service and PVC are garbage-collected via owner references
+gryvia delete job my-training-job --yes
 ```
 
 ## Distributed Training
 
-### PyTorch DDP
+### Single node (PyTorch DDP)
 
 ```yaml
 spec:
-  framework: pytorch
+  type: training
+  image: nvcr.io/nvidia/pytorch:24.01-py3
+  gpus: 8
+  gpuType: A100-80G
   distributed:
     enabled: true
-    strategy: ddp
+    framework: pytorch
+    backend: nccl
+    nodes: 1
     gpusPerNode: 8
-  resources:
-    gpuType: A100-80G
-    gpuCount: 8
-  command:
-    - torchrun
-    - --nproc_per_node=8
-    - --nnodes=1
-    - train.py
+  command: ["torchrun", "--nproc_per_node=8", "--nnodes=1", "train.py"]
 ```
+
+`distributed.framework` accepts pytorch, tensorflow, horovod, deepspeed or megatron; `backend` accepts nccl, gloo or mpi. There is no `strategy` field: DDP, DeepSpeed and so on are chosen by your command line, not by Gryvia.
 
 ### Multi-Node Training
 
 ```yaml
 spec:
-  framework: pytorch
+  type: training
+  image: nvcr.io/nvidia/pytorch:24.01-py3
+  gpus: 8
+  gpuType: A100-80G
+  network: rdma            # optional: needs RDMA-labelled nodes
   distributed:
     enabled: true
-    strategy: ddp
-    nodes: 4          # 4 nodes
-    gpusPerNode: 8    # 8 GPUs per node = 32 total
-  resources:
-    gpuType: A100-80G
-    gpuCount: 8
-  command:
-    - torchrun
+    framework: pytorch
+    backend: nccl
+    nodes: 4               # 4 pods (StatefulSet replicas)
+    gpusPerNode: 8         # 8 GPUs per pod = 32 total
+  command: ["torchrun"]
+  args:
     - --nproc_per_node=8
     - --nnodes=4
-    - --node_rank=$NODE_RANK
-    - --master_addr=$MASTER_ADDR
-    - --master_port=$MASTER_PORT
+    - --master_addr=$(MASTER_ADDR)
+    - --master_port=$(MASTER_PORT)
     - train.py
 ```
 
-Gryvia automatically sets `WORLD_SIZE` to `nodes * gpusPerNode` (e.g., 32
-for the example above), along with `MASTER_ADDR`, `MASTER_PORT`, and NCCL
-environment variables.
+For distributed jobs the controller sets `MASTER_ADDR` (`<job>-training-0.<job>-headless`), `MASTER_PORT=29500`, `WORLD_SIZE` (`nodes * gpusPerNode`, 32 above) and `NCCL_DEBUG=INFO`, plus `NCCL_IB_DISABLE=0` and `NCCL_NET_GDR_LEVEL=5` when `network: rdma`. It also mounts a memory-backed `/dev/shm`. It does not set `NODE_RANK`; each pod's rank must be derived from its StatefulSet ordinal (the pod hostname suffix) by your entrypoint, or by torchrun's rendezvous (`--rdzv_backend=c10d`). Use `$(VAR)` syntax in `args` for Kubernetes to expand variables; `$VAR` inside a `command` list is not expanded. Total GPUs are capped at 1024 by the admission webhook.
 
 ### DeepSpeed
 
 ```yaml
 spec:
-  framework: pytorch
+  type: training
+  image: nvcr.io/nvidia/pytorch:24.01-py3
+  gpus: 8
+  gpuType: A100-80G
   distributed:
     enabled: true
-    strategy: deepspeed
+    framework: deepspeed
+    backend: nccl
     nodes: 2
     gpusPerNode: 8
-  resources:
-    gpuType: A100-80G
-    gpuCount: 8
-  command:
-    - deepspeed
-    - --num_gpus=8
-    - train.py
-    - --deepspeed
-    - --deepspeed_config=ds_config.json
+  command: ["deepspeed"]
+  args: ["--num_gpus=8", "train.py", "--deepspeed", "--deepspeed_config=ds_config.json"]
 ```
+
+Multi-node DeepSpeed usually needs a hostfile or launcher setup that Gryvia does not create.
 
 ## Resource Configuration
 
 ### GPU Selection
 
-```yaml
-resources:
-  # Specific GPU type
-  gpuType: A100-80G
-  gpuCount: 8
+`spec.gpus` is the GPU count and `spec.gpuType` selects nodes by the `gryvia.io/gpu` label (`any` or empty means no constraint). Nodes get that label from GPU node registration; see [GPU nodes](../guides/GPU_NODES.md). There is no `gpuSelector` (memory or compute-capability) field; use `nodeSelector` or `affinity` on your own node labels instead.
 
-  # Or use selectors
-  gpuSelector:
-    memory: ">=40GB"
-    computeCapability: ">=8.0"
+```yaml
+spec:
+  gpus: 8
+  gpuType: A100-80G
+  nodeSelector:
+    topology.kubernetes.io/zone: us-east-1a
 ```
 
 ### Memory and CPU
 
-```yaml
-resources:
-  memory: 512Gi  # Total memory
-  cpu: 64        # Total CPU cores
+Standard Kubernetes resources, per pod. The controller adds the `nvidia.com/gpu` limit itself.
 
-  # Or per-GPU
-  memoryPerGPU: 64Gi
-  cpuPerGPU: 8
+```yaml
+spec:
+  resources:
+    requests:
+      cpu: "64"
+      memory: 512Gi
+    limits:
+      memory: 512Gi
 ```
+
+There is no per-GPU CPU or memory field.
 
 ### Storage
 
-```yaml
-volumeMounts:
-  - name: dataset
-    mountPath: /data
-  - name: checkpoints
-    mountPath: /checkpoints
+Set `spec.storage` (and `spec.storageRequest`) to have the controller create a PVC named `<job>-data` mounted at `/data`. You can also mount your own volumes:
 
-volumes:
-  - name: dataset
-    persistentVolumeClaim:
-      claimName: shared-dataset
-  - name: checkpoints
-    persistentVolumeClaim:
-      claimName: my-checkpoints
+```yaml
+spec:
+  volumeMounts:
+    - name: dataset
+      mountPath: /datasets
+    - name: checkpoints
+      mountPath: /checkpoints
+  volumes:
+    - name: dataset
+      persistentVolumeClaim:
+        claimName: shared-dataset
+    - name: checkpoints
+      persistentVolumeClaim:
+        claimName: my-checkpoints
 ```
 
 ## Environment Configuration
@@ -218,30 +239,25 @@ volumes:
 ### Environment Variables
 
 ```yaml
-env:
-  - name: NCCL_DEBUG
-    value: "INFO"
-  - name: MLFLOW_TRACKING_URI
-    value: "http://mlflow:5000"
-  - name: WANDB_API_KEY
-    valueFrom:
-      secretKeyRef:
-        name: wandb-secret
-        key: api-key
+spec:
+  env:
+    - name: MLFLOW_TRACKING_URI
+      value: "http://mlflow:5000"
+    - name: WANDB_API_KEY
+      valueFrom:
+        secretKeyRef:
+          name: wandb-secret
+          key: api-key
 ```
 
 ### Secrets
 
-```yaml
-envFrom:
-  - secretRef:
-      name: training-secrets
-```
+Use `secretKeyRef` in `env` as above, or a `secret` volume. There is no `envFrom` field on `GryviaAIJob`.
 
 ## Job Templates
 
-Reusable job defaults are stored as cluster-scoped `GryviaTemplate` resources. The `gryvia` CLI does
-not manage templates, so use `kubectl`:
+Reusable job defaults are stored as cluster-scoped `GryviaTemplate` resources. The CRD exists but no controller reconciles it and the `gryvia` CLI does
+not manage templates; they are plain data you can read with `kubectl`:
 
 ```bash
 # List templates
@@ -254,43 +270,14 @@ kubectl get gryviatemplate pytorch-ddp -o yaml
 Copy the defaults you want from a template into your `GryviaAIJob` manifest and submit it with
 `gryvia submit --file job.yaml`.
 
-## Advanced Features
+## Features that are not job fields
 
-### Checkpointing
+Older versions of this page showed `checkpointing`, `restartPolicy`/`backoffLimit`, `priority: high`, `preemptible` and `spot` blocks on the job. None of those exist in the `GryviaAIJob` schema, so `kubectl apply` rejects them. What exists:
 
-```yaml
-spec:
-  checkpointing:
-    enabled: true
-    interval: 3600  # Save every hour
-    path: /checkpoints
-    maxCheckpoints: 5
-```
-
-### Auto-restart
-
-```yaml
-spec:
-  restartPolicy: OnFailure
-  backoffLimit: 3
-```
-
-### Preemption
-
-```yaml
-spec:
-  priority: high  # high, medium, low
-  preemptible: false
-```
-
-### Spot Instances
-
-```yaml
-spec:
-  spot:
-    enabled: true
-    maxPrice: 15.0  # Max $/hour per GPU
-```
+- **Checkpointing**: write checkpoints to a mounted volume from your own training code. The separate `GryviaCheckpointGuard` kind (reconciled by the ai-operator) manages checkpoint policies; see the [ML workflows guide](../guides/ML_WORKFLOWS.md).
+- **Retries**: `spec.retryLimit` is in the schema and `status.retries` exists, but the controller does not implement retries today. Pods of the StatefulSet restart in place.
+- **Priority**: `spec.priority` is an integer 0 to 100 that the admission webhook range-checks; nothing schedules or preempts by it yet. See [Scheduling](../guides/SCHEDULING.md#priority-preemption).
+- **Spot**: no spot field or controller. Spot-related services in `services/` are separate and not part of the job API.
 
 ## Cost Management
 
@@ -304,21 +291,16 @@ gryvia cost my-team --detailed
 gryvia cost my-team --period week
 ```
 
-### Budget Alerts
+### Budgets
 
-```yaml
-metadata:
-  annotations:
-    gryvia.io/budget-alert: "100.00"
-    gryvia.io/alert-email: "team@company.com"
-```
+Budget alert annotations (`gryvia.io/budget-alert`) are not read by anything. A `GryviaBudget` CRD exists but no controller reconciles it. Cost figures from `gryvia cost` are estimates based on the GPU SKU catalog prices; there is no billing or payment integration.
 
 ## Performance Optimization
 
 ### Profile Jobs
 
 ```bash
-# Profile GPU utilization
+# Helper script in the repository (needs the python kubernetes package and a kubeconfig)
 python3 tools/profiler.py --job my-training-job \
   --gpu-type A100-80G \
   --gpu-count 8
@@ -330,7 +312,7 @@ gryvia health gpu
 ### Common Optimizations
 
 1. **Increase Batch Size**: Improve GPU utilization
-2. **Mixed Precision**: Enable AMP for 2-3x speedup
+2. **Mixed Precision**: Enable AMP (gains depend on model and GPU; measure)
 3. **Gradient Accumulation**: Simulate larger batches
 4. **Data Loading**: Increase num_workers
 5. **Distributed Training**: Scale to multiple GPUs
@@ -340,15 +322,22 @@ gryvia health gpu
 ### Job Stuck in Pending
 
 ```bash
-# Check scheduling events
+# The Scheduled condition and message explain why no node qualified
+# (GPU type label, free GPUs, network mode, nodeSelector)
 kubectl describe gryviaaijob my-training-job
+
+# Jobs waiting for resources
+gryvia queue
 
 # Check GPU availability
 gryvia list nodes
+gryvia capacity
 
 # Check quota
 gryvia quota my-team
 ```
+
+The admission webhook can also deny a job at create time (quota, GPU type, per-job GPU limit); the error is returned by `kubectl apply` or `gryvia submit`.
 
 ### Job Failed
 
@@ -399,14 +388,14 @@ python3 tools/profiler.py --job my-training-job
 ## Examples
 
 See [Job Examples](https://github.com/zyvorai/gryvia/tree/main/examples/jobs/) for complete examples:
-- PyTorch distributed training
-- TensorFlow multi-worker
-- DeepSpeed ZeRO
-- LoRA fine-tuning
-- vLLM inference
+- PyTorch distributed training (`pytorch-distributed.yaml`)
+- TensorFlow multi-node (`tensorflow-multi-node.yaml`)
+- JAX inference (`jax-inference.yaml`)
+- Hyperparameter tuning sweep (`hyperparameter-tuning.yaml`)
+
+The examples are schema-checked but have not been run on GPU hardware.
 
 ## Support
 
 - Job Issues: https://github.com/zyvorai/gryvia/issues
-- Optimization Help: Use profiler tool
 - Documentation: https://github.com/zyvorai/gryvia/docs

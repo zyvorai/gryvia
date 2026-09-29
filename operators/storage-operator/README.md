@@ -2,6 +2,8 @@
 
 The Storage Operator manages parallel filesystem integrations for AI workloads in Gryvia. It automates CSI driver deployment and storage configuration for enterprise-grade parallel filesystems.
 
+> **Status.** The `GryviaStorage` controller is registered and has code paths for the vast, weka, ddn, lustre and ceph backends (CSI driver manifests, StorageClass, health probe). It has only been exercised by unit tests against a fake client. It has **not** been verified against real VAST, Weka, DDN, Lustre or Ceph systems, so treat the backend integrations as unproven. The operator does not yet act on `GryviaDataset` (CRD exists, reconciler code exists, but it is not registered in `main.go`). Performance tuning notes and roadmap items below are guidance, not implemented features.
+
 ## Supported Storage Backends
 
 - **VAST Data** - Disaggregated shared everything architecture
@@ -36,7 +38,7 @@ StorageClass (ReadWriteMany PVCs)
 
 ```bash
 # Apply CRD
-kubectl apply -f crds/gryviastorage.yaml
+kubectl apply -f crds/   # or install the Helm chart, which ships the CRDs
 
 # Deploy operator
 kubectl apply -f operators/storage-operator/config/
@@ -55,11 +57,12 @@ kind: GryviaStorage
 metadata:
   name: vast-production
 spec:
-  backendType: vast
+  backend: vast
   endpoint: vast-mgmt.example.com
   capacity: 100Ti
-  nodeSelector:
-    gryvia.io/storage: "true"
+  storageClass:
+    name: vast-production
+    reclaimPolicy: Retain
   credentials:
     secretName: vast-credentials
     secretNamespace: gryvia
@@ -93,16 +96,16 @@ spec:
 The operator deploys:
 - ServiceAccount with RBAC permissions
 - CSI Controller Deployment (1 replica)
-- CSI Node DaemonSet (on all storage nodes)
-- StorageClass with RWX access mode and `Retain` reclaim policy (default)
+- CSI Node DaemonSet
+- StorageClass named `spec.storageClass.name` (default `<backend>-<name>`), `WaitForFirstConsumer` binding, and reclaim policy `Delete` unless `spec.storageClass.reclaimPolicy: Retain`
 
 **Files:**
 - `controllers/gryviastorage_controller.go` - Main reconciliation loop
-- `pkg/vast/vast.go` - VAST-specific CSI deployment (~300 LOC)
+- `pkg/vast/vast.go` - VAST-specific CSI deployment
 
 ### Health Monitoring
 
-The operator performs health checks every 5 minutes:
+The operator performs a health check on each reconcile (every 1-2 minutes) against the backend endpoint. Probe URLs in the code:
 - VAST: `https://<endpoint>/api/health`
 - Weka: `https://<endpoint>/api/v2/healthcheck`
 - DDN: `https://<endpoint>/api/health`

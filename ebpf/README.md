@@ -2,28 +2,46 @@
 
 Kernel-space eBPF programs that form the data-plane of the Gryvia
 network intelligence layer.  They run inside the Linux kernel and feed
-structured events to the userspace flow collector.
+structured events to the userspace flow collector (`../collector/`).
+
+**Status: experimental.** There are 30 programs (`ls *.c`). All build and load through the kernel verifier on
+Linux 7.0 x86_64; the collector attached the kprobe/tracepoint subset there and decoded real TCP flows. GPU, NCCL,
+RDMA and GPUDirect Storage behaviour, arm64 loading and the gated XDP/TCX/sockops attachments have not been verified on
+hardware. Nothing in the rest of the platform depends on them, and the collector is off by default.
 
 ## Programs
 
 | Program | Hook Type | Purpose |
 |---------|-----------|---------|
-| `tcp_trace.c` | kprobe (`tcp_v4_connect`, `inet_csk_accept`, `tcp_close`, `tcp_retransmit_skb`) | TCP connection lifecycle tracking -- establishment latency, bytes transferred, retransmits |
+| `tcp_trace.c` | kprobe (`tcp_v4_connect`, `tcp_close`, `tcp_retransmit_skb`), kretprobe (`inet_csk_accept`) | TCP connection lifecycle tracking -- establishment latency, bytes transferred, retransmits |
 | `packet_filter.c` | XDP | Ultra-fast inline packet filtering with dynamic rule maps and per-rule hit counters |
 | `latency_probe.c` | kprobe (`tcp_sendmsg`, `tcp_recvmsg`) | Per-connection round-trip latency measurement with histogram buckets |
 | `syscall_monitor.c` | raw_tracepoint (`sys_enter`) | Tracks which processes make `connect`, `sendto`, `recvfrom` syscalls; alerts on first-time network activity |
 | `dns_tracker.c` | XDP | Passive DNS query/response correlation, resolution latency, NXDOMAIN/SERVFAIL tracking |
 | `nccl_trace.c` | uprobe (`ncclAllReduce`, `ncclAllGather`, `ncclBroadcast`, `ncclReduce`, `ncclReduceScatter`, `ncclSend`, `ncclRecv`, `ncclGroupStart`, `ncclGroupEnd`) | NCCL collective communication tracing with per-op histograms and latency distribution |
 | `gpu_mem_trace.c` | uprobe (`cudaMemcpy`, `cudaMemcpyAsync`, `cudaMalloc`, `cudaFree`, `cudaLaunchKernel`, `cudaDeviceSynchronize`) | GPU memory transfer monitoring with direction-aware byte counters and allocation tracking |
-| `rdma_trace.c` | kprobe (`ib_post_send`, `ib_post_recv`, `ib_poll_cq`), tracepoint (`rdma/rdma_create_qp`, `rdma/rdma_destroy_qp`) | RDMA/InfiniBand traffic analysis with per-QP statistics and completion tracking |
-| `training_pattern.c` | uprobe (`ncclAllReduce`), kprobe (`tcp_sendmsg`, `tcp_recvmsg`) | AI training communication pattern detection -- rank communication matrix and compute/comm cycle analysis |
-| `datapipe_bottleneck.c` | tracepoint (`block/block_rq_complete`), kprobe (`tcp_recvmsg`), uprobe (`cudaLaunchKernel`, `cudaDeviceSynchronize`) | Data pipeline bottleneck detection -- correlates storage I/O, network ingestion, and GPU busy/idle phases |
+| `rdma_trace.c` | kprobe (`ib_post_send`, `ib_post_recv`, `ib_poll_cq`, `ib_destroy_qp_user`), kretprobe (`ib_poll_cq`, `ib_create_qp_kernel`) | RDMA/InfiniBand traffic analysis with per-QP statistics and completion tracking |
+| `training_pattern.c` | uprobe/uretprobe (`ncclAllReduce`), kretprobe (`tcp_sendmsg`, `tcp_recvmsg`) | AI training communication pattern detection -- rank communication matrix and compute/comm cycle analysis |
+| `datapipe_bottleneck.c` | tp_btf (`block_rq_complete`), kretprobe (`tcp_recvmsg`), uprobe (`cudaLaunchKernel`), uretprobe (`cudaDeviceSynchronize`) | Data pipeline bottleneck detection -- correlates storage I/O, network ingestion, and GPU busy/idle phases |
 | `gradient_compress.c` | uprobe (`ncclAllReduce`) | Gradient compression analysis -- compares expected vs actual bytes per collective to detect compression ratios |
 | `straggler.c` | uprobe (`ncclAllReduce`) | Per-rank NCCL skew -- emits a `fabric_signal` when a collective takes >2x the fastest recent span of the same size (and >5 ms) |
 | `rdma_health.c` | kprobe (`ib_post_send`, `mlx5_ib_post_send`, `ib_poll_cq`, `mlx5_ib_poll_cq`) | Per-QP send counts and retry-exceeded / RNR-exceeded completions; emits a `fabric_signal` above operator-set thresholds (all four probes optional) |
 | `gds_trace.c` | uprobe (`cuFileRead`, `cuFileWrite`), kprobe (`nvidia_fs_read`, optional) | GPU Direct Storage vs bounce-buffer reads -- byte counters, and a `fabric_signal` for slow (>2 ms) calls |
 | `overlap.c` | uprobe/uretprobe (`ncclAllReduce`, `cudaDeviceSynchronize`) | GPU sync while a collective is in flight -- emits `FABRIC_SIG_OVERLAP` when a `cudaDeviceSynchronize` (>= 1 ms) runs nested inside an `ncclAllReduce` on the same thread; per-thread nesting counters, state deleted on every exit path |
 | `roce_cnp.c` | XDP | RoCEv2 congestion notification packets (UDP 4791, BTH opcode 0x81; Ethernet, up to 2 VLAN tags, IPv4 or IPv6). Per-CPU counters only (`cnp_count`), always `XDP_PASS`; attached only with `-iface` |
+| `connpool_analyze.c` | kprobe (`tcp_v4_connect`, `tcp_close`), kretprobe (`tcp_v4_connect`) | TCP connection lifecycle for connection-pool analysis: short-lived connections and churn |
+| `latency_breakdown.c` | kprobe (`tcp_v4_connect`, `tcp_sendmsg`, `tcp_recvmsg`, `udp_sendmsg`, `tls_sw_sendmsg`), kretprobe (`inet_stream_connect`, `tcp_recvmsg`) | Per-request latency phases (connect, TLS, request/response) |
+| `tcp_tuning.c` | tracepoint (`tcp/tcp_probe`) | Per-connection cwnd, RTT and window histograms for TCP tuning advice |
+| `numa_path.c` | tracepoint (`net/netif_receive_skb`), kprobe (`__napi_poll`) | Cross-NUMA packet processing detection |
+| `cost_tracker.c` | TCX ingress and egress | Per-pod byte counters classified by zone (same-zone, cross-zone, external); needs `-iface` and Linux 6.6+ |
+| `trace_correlator.c` | TCX ingress | Extracts W3C `traceparent` trace and span ids from HTTP requests and keys them by 4-tuple; needs `-iface` and Linux 6.6+ |
+| `sockops_optimize.c` | sockops, sk_msg | Redirects same-node TCP connections past the TCP/IP stack; needs `-cgroup-path` |
+| `container_escape.c` | raw_tracepoint (`sys_enter`), kprobe (`security_file_open`) | Suspicious syscalls (`unshare`, `setns`, `mount`, `pivot_root`, `ptrace`) and access to sensitive host paths from containers |
+| `privesc_monitor.c` | raw_tracepoint (`sys_enter`), kprobe (`commit_creds`) | UID/GID transitions to root, credential changes, capability acquisition |
+| `crypto_detect.c` | kprobe (`tcp_v4_connect`), tracepoint (`sched/sched_process_exec`) | Connections to known mining-pool ports and known miner binaries |
+| `exfil_detect.c` | kprobe (`tcp_sendmsg`, `tcp_v4_connect`) | Outbound byte volume per PID and external destination against a threshold |
+| `fingerprint.c` | kprobe (`tcp_v4_connect`), raw_tracepoint (`sys_enter`) | Per-process syscall and connection behaviour compared with baselines |
+| `driver_fim.c` | raw_tracepoint (`sys_enter`), kprobe (`security_file_open`) | File-integrity monitoring of NVIDIA driver files and CUDA libraries, module loading |
 | `infer_latency.c` | kretprobe (`inet_csk_accept`), kprobe (`tcp_recvmsg`) | Accept -> first recv wait of connections to the ports in `infer_ports` (collector `-infer-ports`, default 8000 vLLM and 8001 Triton) as `FABRIC_SIG_INFER_WAIT`; other ports are never recorded |
 
 ## Portability (CO-RE)

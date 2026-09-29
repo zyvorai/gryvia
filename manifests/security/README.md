@@ -2,28 +2,31 @@
 
 Security configurations for Gryvia platform.
 
+> **Status: example manifests, not applied by the Helm charts and not audited.**
+> `helm/gryvia` ships its own RBAC; the files here are optional hardening templates you
+> apply by hand and adapt (namespaces, group names, CIDRs). They have not been tested on
+> a live cluster in CI. The "Compliance" section below (SOC 2, HIPAA, PCI DSS) lists
+> general controls a deployer would need; Gryvia holds no compliance certification or
+> attestation. Gryvia's own security posture and known limitations are in the top-level
+> `SECURITY.md`.
+
 ## Components
 
-### 1. Pod Security Policies (PSP)
+### 1. Pod Security Standards (namespace labels)
 
 **File**: `pod-security-policies.yaml`
 
-Two PSPs are defined:
+The file does not define PodSecurityPolicy objects (PSP was removed in Kubernetes 1.25).
+It sets Pod Security Admission labels on three namespaces and a ResourceQuota:
 
-#### gryvia-restricted
-For operator and control plane pods:
-- Non-privileged
-- No privilege escalation
-- Drops all capabilities
-- RunAsNonRoot enforced
-- Read-only root filesystem
+- `gryvia-system` (operators): `restricted` enforced
+- `gryvia` (UI, API gateway): `baseline` enforced, `restricted` audit/warn
+- `gpu-workloads` (GPU training jobs): `privileged` enforced (needed for GPU device
+  access and host IPC), `baseline` audit/warn, plus a `gpu-workload-limits`
+  ResourceQuota (100 pods, 64 GPUs)
 
-#### gryvia-gpu-workload
-For GPU training jobs:
-- Allows privilege escalation (required for GPU access)
-- Allows SYS_ADMIN capability (required for NVIDIA drivers)
-- Allows hostPath volumes (for GPU devices)
-- Allows host IPC (for shared memory in distributed training)
+Note that the collector DaemonSet (privileged, hostNetwork) cannot run in a namespace
+enforcing `restricted`; see `collector/` and `helm/network-intelligence`.
 
 ### 2. Network Policies
 
@@ -55,7 +58,7 @@ Network segmentation for:
 - Deny unnecessary traffic
 
 #### Default Deny
-- Deny all ingress by default in gryvia namespace
+- Deny all ingress by default in the `gryvia-system` namespace (`default-deny-ingress`)
 - Explicit allow required for all traffic
 
 ### 3. RBAC Policies
@@ -134,7 +137,9 @@ kubectl create rolebinding ml-research-users \
 
 ### Use service account in jobs
 
-```yaml
+Design sketch, not accepted by the current CRD schema:
+
+```text
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
@@ -319,14 +324,10 @@ kubectl get networkpolicies -A
 kubectl describe networkpolicy gryvia-operators-policy
 ```
 
-### Review PSP usage
+### Review Pod Security labels
 
 ```bash
-# List PSPs
-kubectl get psp
-
-# Check which PSP is used by pod
-kubectl get pod <pod-name> -o yaml | grep psp
+kubectl get ns --show-labels | grep pod-security
 ```
 
 ## Incident Response
@@ -350,13 +351,14 @@ kubectl delete rolebinding alice-ml-user
 kubectl patch serviceaccount gryvia-job-runner \
   -p '{"secrets": []}'
 
-# Block pod network access
+# Block pod network access (requires you to author a NetworkPolicy that selects
+# this label; none of the shipped policies does)
 kubectl label pod <pod-name> network-policy=deny
 ```
 
 ## Support
 
 For security issues:
-- Report to: security@gryvia.io
+- Report privately through GitHub (Security > Report a vulnerability); see `SECURITY.md`
 - Include: Description, impact, reproduction steps
-- Response time: Critical issues within 4 hours
+- No response-time SLA is committed to; see `SECURITY.md`

@@ -2,6 +2,8 @@
 
 Gryvia integrations with popular ML tools and platforms.
 
+> **Status.** Examples only. The `GryviaAIJob` manifests match the CRD schema (checked by tooling), but none of the third-party integrations (JupyterHub, Ray, Kubeflow, Dask, RStudio, MLflow) has been deployed and verified end to end here. `GryviaAIJob` has no `ports` field, so port-forward the pod (or create a Service yourself) to reach the web UIs shown. Gryvia provides no Kubeflow, Ray or Dask operator.
+
 ## Available Integrations
 
 ### Interactive Development
@@ -14,8 +16,7 @@ Gryvia integrations with popular ML tools and platforms.
 - [Dask Gateway](#dask-gateway) - Parallel computing with Dask
 
 ### ML Platforms
-- [Kubeflow](#kubeflow) - End-to-end ML platform
-- [MLflow](#mlflow) - Experiment tracking (see services/mlflow/)
+- [MLflow](../../services/mlflow/README.md) - Experiment tracking (design sketch, see that README)
 
 ## JupyterHub
 
@@ -123,9 +124,6 @@ spec:
   env:
     - name: PASSWORD
       value: "change-me-in-production"
-  ports:
-    - containerPort: 8080
-      name: http
   volumeMounts:
     - name: workspace
       mountPath: /home/coder/workspace
@@ -343,9 +341,6 @@ spec:
   env:
     - name: PASSWORD
       value: "change-me"
-  ports:
-    - containerPort: 8787
-      name: http
 ```
 
 ### R GPU Example

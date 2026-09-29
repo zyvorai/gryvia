@@ -1,6 +1,23 @@
 # Gryvia Monitoring & Observability
 
-Comprehensive monitoring setup for Gryvia with Prometheus metrics, alerts, and Grafana dashboards.
+Monitoring templates for Gryvia: Prometheus alert rules, ServiceMonitors, and Grafana dashboards.
+
+> **Status: templates, most metric names are not exported yet.** The six operators
+> serve the standard controller-runtime `/metrics` endpoint (`controller_runtime_*`,
+> `workqueue_*`, Go/process metrics) and do not register the custom `gryvia_gpu_*`,
+> `gryvia_job_*`, `gryvia_quota_*`, `gryvia_budget_*`, `gryvia_storage_*`, `gryvia_rdma_*`,
+> `gryvia_sriov_*` or `gryvia_operator_*` series listed below (checked by grepping
+> `operators/`, `services/` and `collector/`; the `operators/*/pkg/metrics/` packages
+> do not exist). The only custom `gryvia_*` metrics defined in this repo come from the
+> eBPF collector (`collector/pkg/exporter/prometheus.go`, disabled by default): e.g.
+> `gryvia_network_flow_bytes_total`, `gryvia_network_drops_total`,
+> `gryvia_network_latency_seconds`, `gryvia_nccl_bytes_total`,
+> `gryvia_security_alerts_total`, `gryvia_training_straggler_events_total`. GPU health
+> data is available from DCGM exporter (`DCGM_FI_*`, deployed by `helm/gryvia` when
+> enabled), not under the `gryvia_gpu_*` names. Budget metrics have no producer because
+> the `GryviaBudget` CRD has no controller. Dashboards and alert rules here are starting
+> points; treat every query on an un-exported metric as unverified until you wire an
+> exporter for it. Nothing here was validated against a live Prometheus.
 
 ## Overview
 
@@ -17,7 +34,7 @@ This monitoring stack provides complete visibility into:
 
 ### Prometheus Metrics
 
-**Exposed by operators via `/metrics` endpoint:**
+**Planned metric names (design; not currently exported by the operators, see status above):**
 
 #### GPU Metrics
 ```
@@ -82,9 +99,9 @@ gryvia_operator_reconcile_duration_seconds  # Reconciliation time
 
 ### Alert Rules
 
-**40+ Prometheus alerts organized by category:**
+**24 Prometheus alert rules in `prometheus-rules.yaml`, organized by category (all depend on the planned metrics above):**
 
-1. **GPU Alerts** (7 rules)
+1. **GPU Alerts** (6 rules)
    - High temperature (>85°C warning, >90°C critical)
    - Low utilization (<20% for 30m)
    - High memory usage (>95%)
@@ -97,7 +114,7 @@ gryvia_operator_reconcile_duration_seconds  # Reconciliation time
    - High queue depth (>10 jobs)
    - Low completion rate
 
-3. **Quota Alerts** (6 rules)
+3. **Quota and Budget Alerts** (5 rules)
    - Quota almost exceeded (>90%)
    - Quota exceeded
    - Budget alert threshold reached
@@ -106,7 +123,7 @@ gryvia_operator_reconcile_duration_seconds  # Reconciliation time
 
 4. **Storage Alerts** (3 rules)
    - Backend unhealthy
-   - High latency (>100ms)
+   - High latency (>50ms)
    - Low throughput (<1GB/s)
 
 5. **Network Alerts** (3 rules)
@@ -121,7 +138,7 @@ gryvia_operator_reconcile_duration_seconds  # Reconciliation time
 
 ### Grafana Dashboards
 
-**4 comprehensive dashboards:**
+**Dashboards (8 JSON files are provided; the four below are described in detail, the others are `gryvia-gpu-training`, `gryvia-inference`, `gryvia-ebpf-network`, `gryvia-security`, which use the collector's metrics and need `ebpf.enabled`):**
 
 #### 1. Cluster Overview (`gryvia-overview.json`)
 - GPU cluster summary stats
@@ -415,7 +432,7 @@ gryvia_gpu_utilization_percent{node="worker-01", gpu_id="0", uuid="GPU-xyz..."} 
 ## Custom Metrics
 
 To add custom metrics to operators, see:
-- `operators/*/pkg/metrics/` (to be implemented)
+- `operators/*/pkg/metrics/` (does not exist yet; not implemented)
 - Prometheus client library documentation
 - Controller-runtime metrics integration
 

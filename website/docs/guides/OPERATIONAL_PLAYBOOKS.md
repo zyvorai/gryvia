@@ -3,6 +3,8 @@
 Standard operating procedures and runbooks for Gryvia operations.
 
 > Run `gryvia <command> --help` for options. Commands not shown here are not implemented yet; the playbooks use `kubectl` for those steps.
+>
+> These are generic runbook templates written for this CLI and CRDs, not procedures validated on a production GPU fleet. The CLI reads the Kubernetes API through your kubeconfig. Several diagnostics depend on optional components that are off by default or unverified: `gryvia gpu nccl/training` and `gryvia network ...` read `GryviaTrainingInsight` and network-intelligence objects that only fill in when the network-intelligence operator and the eBPF collector are running (see [Network Intelligence](./NETWORK_INTELLIGENCE.md)), and `gryvia gpu rdma` / `gryvia gpu memory` print hints or placeholders rather than measurements. Team names, node names and thresholds below are examples.
 
 ## Table of Contents
 
@@ -164,34 +166,24 @@ gryvia network status
 gryvia gpu nccl --job training-job-42
 ```
 
-**Common Fixes:**
+**Common fixes (generic PyTorch practice):**
+
+These are training-script settings, not Gryvia features. Gryvia passes `spec.env` and `spec.command` to your container;
+whether a variable such as the ones below has any effect depends entirely on your code.
 
 ```yaml
-# Fix 1: Enable mixed precision
 spec:
   env:
-    - name: PYTORCH_ENABLE_AMP
-      value: "1"
-
-# Fix 2: Increase data loader workers
-spec:
-  env:
-    - name: NUM_WORKERS
-      value: "16"  # Up from 4
-
-# Fix 3: Optimize batch size
-spec:
-  env:
-    - name: BATCH_SIZE
-      value: "192"  # Up from 128
-
-# Fix 4: Enable torch.compile
-spec:
+    - name: NUM_WORKERS      # only if your script reads it
+      value: "16"
   command:
     - python
     - train.py
-    - --compile=True
+    - --compile=True         # only if your script defines the flag
 ```
+
+Typical levers are mixed precision, more data loader workers, a larger batch size and `torch.compile`; check GPU
+utilisation (`kubectl exec <pod> -- nvidia-smi`, or DCGM metrics in Prometheus) before and after each change.
 
 ---
 
@@ -215,30 +207,24 @@ gryvia network anomalies
 gryvia logs training-job-42 --tail 500 | grep NCCL
 ```
 
-**Common Fixes:**
+**Common fixes:**
 
 ```yaml
-# Fix 1: Enable GPUDirect RDMA
+# The job's network mode is a string (rdma or sriov); it adds the NetworkAttachmentDefinition
+# annotation and, for distributed jobs, NCCL_IB_DISABLE=0 and NCCL_NET_GDR_LEVEL=5
 spec:
-  network:
-    gpuDirectRequired: true
-
-# Fix 2: Optimize NCCL settings
-spec:
+  network: rdma
   env:
     - name: NCCL_SOCKET_IFNAME
-      value: "ib0"
-    - name: NCCL_NET_GDR_LEVEL
-      value: "5"
-    - name: NCCL_MIN_NRINGS
-      value: "8"
-
-# Fix 3: Use topology-aware placement
-spec:
-  placement:
-    topologyAware: true
-    preferNVLink: true
+      value: "ib0"          # depends on your fabric
+    - name: NCCL_DEBUG
+      value: "INFO"
 ```
+
+`GryviaAIJob` has no topology-aware placement or GPUDirect fields. Node selection is a filter/score over node labels and
+free GPUs; use `spec.nodeSelector` or `spec.affinity` to steer placement. RDMA needs the hardware, drivers and Multus
+set up by you (see [Storage and Network Operators](./STORAGE_NETWORK_OPERATORS.md)); none of it has been validated on
+real RDMA hardware by the project.
 
 ---
 
@@ -435,17 +421,17 @@ gryvia list jobs -a
 # Incident Post-Mortem: [Title]
 
 ## Summary
-- **Date**: 2024-01-21
-- **Duration**: 2h 15m
+- **Date**: <date>
+- **Duration**: <hh:mm>
 - **Severity**: P0
-- **Impact**: 150 jobs affected, $5,000 cost impact
+- **Impact**: <jobs affected, cost impact>
 
 ## Timeline
-- 10:30 - Initial alert
-- 10:35 - Incident declared
-- 10:45 - Root cause identified
-- 12:00 - Fix implemented
-- 12:45 - Verified resolution
+- <time> - Initial alert
+- <time> - Incident declared
+- <time> - Root cause identified
+- <time> - Fix implemented
+- <time> - Verified resolution
 
 ## Root Cause
 [Detailed analysis]
@@ -470,16 +456,16 @@ gryvia list jobs -a
 
 ### New Node Onboarding
 
-```bash
+```text
 ☐ Physical installation complete
 ☐ Network cables connected (IB + Ethernet)
 ☐ Power verified (redundant PSUs)
 ☐ BIOS configured
 ☐ OS installed and patched
 ☐ GPU drivers installed
-☐ NVIDIA Fabric Manager configured
+☐ NVIDIA Fabric Manager configured (NVSwitch systems; not installed by Gryvia)
 ☐ Kubernetes joined cluster
-☐ Node labeled correctly
+☐ Node labelled nvidia.com/gpu.present=true and visible via `kubectl get gryviagpunodes`
 ☐ Health checks passing
 ☐ Test job successful
 ☐ Added to monitoring
@@ -489,7 +475,7 @@ gryvia list jobs -a
 
 ### Job Troubleshooting
 
-```bash
+```text
 ☐ Check job status: gryvia status <name>
 ☐ View logs: gryvia logs <name>
 ☐ Check events: kubectl describe gryviaaijob <name>
@@ -504,49 +490,21 @@ gryvia list jobs -a
 
 ---
 
-## Emergency Contacts
+## Escalation and Alerting Template
 
-```yaml
-Severity: P0/P1
-  Primary: On-call SRE (PagerDuty)
-  Escalation: Engineering Manager
-  Notify: VP Engineering
+Gryvia does not page anyone or define an escalation policy. Fill in your own, for example:
 
-Severity: P2
-  Primary: SRE Team (Slack #incidents)
-  Escalation: On-call SRE
-
-Severity: P3
-  Primary: Support Team (Slack #support)
+```text
+Severity P0/P1: primary on-call, then engineering manager
+Severity P2:    SRE team channel, then on-call
+Severity P3:    support queue
 ```
 
----
-
-## Monitoring Alerts
-
-### Critical Alerts
-
-```yaml
-ClusterDown:
-  severity: P0
-  response: "Execute emergency response playbook"
-
-NodeFailure:
-  severity: P1
-  response: "Cordon, drain, diagnose per GPU node failure playbook"
-
-BudgetExceeded:
-  severity: P1
-  response: "Execute budget management playbook"
-
-DiskFull:
-  severity: P1
-  response: "Clean up logs, expand storage"
-
-GPUError:
-  severity: P1
-  response: "Run diagnostics, potentially replace GPU"
-```
+Sample Prometheus alert rules ship in `monitoring/prometheus-rules.yaml` and `manifests/monitoring/alerts/gpu-alerts.yaml`
+(for example `GPUHighTemperature`, `GPUXIDError`, `NodeGPUDown`, `TrainingJobFailed`, `QuotaExceeded`,
+`BudgetExceeded`, `StorageBackendUnhealthy`, `RDMADeviceDown`). They are templates: not every metric they query is
+guaranteed to exist in your cluster, and they have not been run against production data. Map your own alerts to the
+playbooks above (node failure: GPU Node Failure; `BudgetExceeded`: Out of Budget; capacity: Cluster at Capacity).
 
 ---
 

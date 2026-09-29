@@ -23,7 +23,7 @@ Page markup follows netra's patterns: `PageHero`, then `<div className="grid">` 
 | Tier | Pages | Building blocks |
 |---|---|---|
 | Story | Login, Dashboard | netra's login composition, `PageHero`, `.apple-metric-band` |
-| Browse | Jobs, Nodes, Flows, Workspaces, Models | `PageHero`, `PagePulse`, `.toolbar`/`.filters`, `.table-wrap` |
+| Browse | Jobs, Nodes, Flows, Workspaces, Models (Workspaces and Models are CRUD over CRs with no controller yet) | `PageHero`, `PagePulse`, `.toolbar`/`.filters`, `.table-wrap` |
 | Work | Quotas, Policies, Tuner, Workflows, Submit Job | `.card` panels, `.card-grid`, `.modal-card` |
 
 ## Tokens

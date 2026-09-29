@@ -2,13 +2,29 @@
 
 Advanced scheduling policies for optimizing GPU resource allocation in Gryvia.
 
+> **Status: design catalog; the policy framework described here does not exist.** There is no
+> `SchedulingPolicy` CRD (so `kubectl apply -f policies/scheduling-policies.yaml` is rejected), no
+> `gryvia.io/priority` or `gryvia.io/scheduling-policy` annotation handling, no `spec.schedulingPolicy`
+> on `GryviaQuota`, no `scheduling-policies.json` dashboard, no `kfctl` CLI, and no adaptive or ML
+> policy switching. What is implemented today, in `operators/ai-operator/pkg/scheduler`: the `GryviaAIJob`
+> controller picks nodes with a fixed heuristic (ready nodes with enough free GPUs, `nodeSelector`,
+> then a score favouring matching `gryvia.io/gpu` label, RDMA and NVLink/NVSwitch labels, free GPUs and
+> GPU memory). A gang-scheduling library and a DRF fair-share queue (`pkg/queue`) exist with unit
+> tests but are not called by the controller. Quota limits (max GPUs, running jobs, allowed GPU
+> types, hard budget) are enforced by the quota operator by rejecting pending jobs. Backfilling, bin
+> packing, locality, topology-aware, SLA and preemption policies, borrowing and the percentages and
+> savings quoted below are design targets, not measured. `GryviaSLA`, `GryviaPriority` and
+> `GryviaReservation` are CRDs with no controller wired yet.
+
 ## Available Policies
 
 ### 1. Priority-Based Scheduling
 
 Schedule jobs based on priority levels (critical, high, medium, low).
 
-```yaml
+Design sketch, not accepted by the current CRD schema:
+
+```text
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
@@ -238,7 +254,9 @@ kubectl patch configmap gryvia-config -n gryvia-system \
 
 ### Per-Job Policy
 
-```yaml
+Design sketch, not accepted by the current CRD schema:
+
+```text
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
@@ -250,7 +268,9 @@ spec:
 
 ### Per-Team Policy
 
-```yaml
+Design sketch, not accepted by the current CRD schema:
+
+```text
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaQuota
 metadata:
@@ -386,7 +406,9 @@ kfctl policy test <policy-name>
 
 Create custom scheduling policies:
 
-```yaml
+Design sketch, not accepted by the current CRD schema:
+
+```text
 apiVersion: gryvia.io/v1alpha1
 kind: SchedulingPolicy
 metadata:

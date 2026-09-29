@@ -2,6 +2,8 @@
 
 Example YAML manifests for Gryvia network intelligence CRDs powered by eBPF and Cilium.
 
+> **Status.** The controllers are registered, but live Hubble and Prometheus data collection is not implemented, so insight, trace, graph and anomaly resources will not show measured data. `GryviaFlowPolicy` (creates a CiliumNetworkPolicy) requires Cilium. See `operators/network-intelligence/README.md`.
+
 ## Examples
 
 - **[flow-policy.yaml](flow-policy.yaml)** - `GryviaFlowPolicy` allowing payment-to-database traffic with low-latency intent

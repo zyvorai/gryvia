@@ -10,8 +10,8 @@ helm upgrade gryvia oci://ghcr.io/zyvorai/charts/gryvia -n gryvia-system --reuse
 ```
 
 Gryvia is alpha and `gryvia.io/v1alpha1` may change between releases; read the [changelog](https://github.com/zyvorai/gryvia/blob/main/CHANGELOG.md)
-before upgrading. **Two changes are breaking: the `Fabric*` → `Gryvia*` kind rename and the move from `gryvia.io/v1alpha1` to `gryvia.io/v1alpha1`**: objects created under the old kinds
-(`FabricAIJob`, ...) are not migrated. Export them, change `kind:` to the new name and re-apply, then delete the old CRDs.
+before upgrading. **Two changes are breaking: the `Fabric*` → `Gryvia*` kind rename and the move from `gryvia.io/v1` to `gryvia.io/v1alpha1`**: objects created under the old kinds
+(`FabricAIJob`, ...) or the old `v1` version are not converted. Export them, change `kind:` and `apiVersion:` and re-apply, then delete the old CRDs (`scripts/rename-kinds.sh` and `scripts/rename-version.sh` document the mapping).
 
 The self-signed certificate (`gryvia-tls`) and the API key Secret are kept across upgrades. Open dashboard tabs
 reload themselves once when a new version is deployed.

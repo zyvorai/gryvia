@@ -2,15 +2,17 @@
 
 The Quota Operator manages GPU quotas and budgets for teams in Gryvia. It enforces resource limits, tracks spending, and ensures fair resource allocation across teams.
 
+> **Status.** This operator registers four controllers in `main.go`: `GryviaQuota` (quota and budget evaluation, namespace labelling, rejection of pending jobs), `GryviaTenant` (creates namespace `tenant-<name>`, a ResourceQuota, a LimitRange and, when isolation is requested, a NetworkPolicy), `GryviaUsageRecord` (metering from job wall-clock time, refreshed every minute while a job runs and finalised when it ends) and `GryviaCostPredictor`. GPU prices come from the `GryviaGpuSku` catalog, with a built-in default table used only when no SKU exists. The `GryviaBudget`, `GryviaChargeback`, `GryviaSLA`, `GryviaAudit`, `GryviaQuotaPolicy`, `GryviaReservation`, `GryviaPriority` and `GryviaRetryPolicy` kinds have CRDs, and some have reconciler code under `controllers/`, but **no controller for them is registered**, so their specs are not acted on today. The ai-operator admission webhook (chart `webhook.enabled`, default on, `failurePolicy: Ignore`) also denies jobs whose GPU type is not allowed by the namespace quota or tenant SKUs, or that exceed the per-job GPU limit, and fails open when quotas cannot be read. Enforcement has not been exercised on a large multi-team cluster.
+
 ## Features
 
 - **GPU Quotas** - Limit max GPUs per team and per job
 - **Job Limits** - Control max running and queued jobs
 - **Budget Management** - Track spending and enforce budget limits
 - **GPU Type Restrictions** - Allow/deny specific GPU models per team
-- **Priority Scheduling** - Higher priority teams get preference
+- **Priority field** - `spec.priority` is part of the schema; the quota controller does not use it for scheduling today
 - **Namespace Labeling** - Automatic team labeling of namespaces
-- **Cost Tracking** - GPU-hour tracking with configurable pricing
+- **Cost Tracking** - GPU-hour tracking priced from the `GryviaGpuSku` catalog (built-in default table when no SKU exists)
 
 ## Architecture
 
@@ -32,9 +34,9 @@ Team Tags  GPU Count  Reject    Monthly
 
 ```bash
 # Apply CRD
-kubectl apply -f crds/gryviaquota.yaml
+kubectl apply -f crds/   # or install the Helm chart, which ships the CRDs
 
-# Deploy operator
+# Deploy operator (the Helm chart is the supported path; config/ holds raw manifests)
 kubectl apply -f operators/quota-operator/config/
 
 # Verify deployment
@@ -104,10 +106,9 @@ status:
 - Uses `EnqueueRequestsFromMapFunc` to watch GryviaAIJob changes and map them to the corresponding GryviaQuota objects, ensuring quotas are re-evaluated promptly when jobs change
 - Labels namespaces with team info
 - Calculates current GPU usage
-- Enforces quota limits (including `AllowedGPUTypes` -- jobs requesting a disallowed GPU type are queued rather than scheduled)
+- Enforces quota limits (including `AllowedGPUTypes` -- pending jobs requesting a disallowed GPU type are marked `Rejected` with reason `GpuTypeNotAllowed`)
 - Tracks budget spending
 - Leader election is enabled by default
-- ~250 lines of code
 
 ### Usage Tracking
 
@@ -130,20 +131,21 @@ status:
 ```go
 H100:     $8.00/hour
 A100-80G: $4.00/hour
-A100-40G: $3.00/hour
+A100-40G: $3.50/hour
 L40:      $2.50/hour
-A10:      $1.50/hour
 V100:     $2.00/hour
-T4:       $0.75/hour
+T4:       $1.00/hour
+default:  $1.00/hour   (unknown GPU types)
 ```
+
+The authoritative table is `pkg/pricing/pricing.go`. Once any `GryviaGpuSku` exists in the cluster, the SKU catalog is the source of truth and this table is ignored. These are placeholder rates, not real cloud prices.
 
 ### Quota Enforcement
 
 When quota is exceeded:
-1. **GPU Limit**: New jobs are rejected if they would exceed `maxGPUs`
-2. **Job Limit**: Jobs are queued if `maxRunningJobs` reached
-3. **Budget Limit**: If `hardLimit: true`, new jobs rejected when budget exceeded
-4. **GPU Type**: Jobs requesting disallowed GPU types are queued (not scheduled)
+1. **GPU Limit**: When allocated GPUs exceed `maxGPUs` (or running jobs exceed `maxRunningJobs`), the quota phase becomes `QuotaExceeded`. Pending jobs larger than `maxGPUsPerJob` are then rejected.
+2. **Budget Limit**: If `hardLimit: true` and the budget is used up, the phase becomes `BudgetExceeded` and pending jobs are rejected.
+3. **GPU Type**: Pending jobs requesting a GPU type outside `allowedGPUTypes` (or with no enabled SKU among the tenant's allowed SKUs) are rejected with a `Rejected` condition.
 
 Job rejection is atomic — if the status update to mark a job as "Rejected"
 fails, the operator returns an error and retries on the next reconciliation,
@@ -239,12 +241,11 @@ kubectl get gryviaquota team-ml -o jsonpath='{.status.conditions[?(@.type=="Budg
 
 ## Integration with AI Workload Operator
 
-The Quota Operator works with the AI Workload Operator to:
+The Quota Operator works alongside the AI operator:
 
-1. **Pre-Submission Validation**: Check quotas before scheduling jobs
-2. **Job Rejection**: Mark jobs as "Rejected" if quota exceeded
-3. **Priority Scheduling**: Higher priority teams get scheduled first
-4. **Cost Attribution**: Track GPU-hours per team for chargeback
+1. **Pre-Submission Validation**: The ai-operator admission webhook (when enabled) denies jobs with a disallowed GPU type or above the per-job GPU limit at create time
+2. **Job Rejection**: The quota controller marks pending jobs as "Rejected" if quota is exceeded
+3. **Cost Attribution**: `GryviaUsageRecord` metering records GPU-hours per tenant. There is no chargeback controller yet
 
 ### Job Rejection Example
 
@@ -282,7 +283,7 @@ The operator requires:
 - `gryviaquotas`: Full CRUD
 - `gryviaaijobs`: Get, List, Watch, Update, Patch
 - `namespaces`: Get, List, Watch, Update, Patch
-- `resourcequotas`: Full CRUD (future use)
+- `resourcequotas`, `limitranges`, `networkpolicies`: managed for `GryviaTenant` namespaces (see `config/deployment.yaml` and the Helm chart for the exact rules)
 
 ## Troubleshooting
 
@@ -301,14 +302,11 @@ kubectl get namespace ml-training -o yaml | grep gryvia.io/team
 **Incorrect Budget Calculation**
 ```bash
 # Verify GPU pricing
-kubectl exec -it <operator-pod> -- env | grep GPU_PRICING
+kubectl get gryviagpuskus   # catalog prices; the default table is in pkg/pricing/pricing.go
 
 # Check job timestamps
 kubectl get gryviaaijobs -n ml-training -o yaml | grep startTime
 
-# Recalculate manually
-kubectl delete gryviaquota team-ml
-kubectl apply -f examples/quota/team-ml-quota.yaml
 ```
 
 **Jobs Not Being Rejected**
@@ -325,15 +323,13 @@ kubectl get gryviaaijob -n ml-training <job-name> -o jsonpath='{.status.phase}'
 
 ## Performance
 
-- **Reconciliation**: Every 1 minute
-- **Memory Usage**: ~50MB per quota
-- **CPU**: <100m per quota
-- **Scalability**: Tested with 100+ quotas
+- **Reconciliation**: Every 1 minute for quotas
+- No memory, CPU or scale benchmarks have been measured for this operator
 
 ## Roadmap
 
 - [ ] Prometheus metrics export (quota usage, budget)
-- [ ] Webhook for admission control (pre-validate jobs)
+- [x] Webhook for admission control: implemented in the ai-operator (GPU type and per-job limit)
 - [ ] Slack/Email notifications for budget alerts
 - [ ] Grafana dashboard for quota visualization
 - [ ] Historical usage reporting
@@ -369,10 +365,9 @@ metadata:
   name: llm-training
   namespace: nlp-training
 spec:
-  framework: pytorch
-  resources:
-    gpuType: H100
-    gpuCount: 32
+  type: training
+  gpus: 32
+  gpuType: H100
   image: nvcr.io/nvidia/pytorch:24.01-py3
   command: ["torchrun", "train.py"]
 EOF

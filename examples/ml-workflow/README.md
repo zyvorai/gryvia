@@ -2,6 +2,8 @@
 
 Example YAML manifests for Gryvia ML workflow CRDs.
 
+> **Status.** None of these five kinds (`GryviaAutoTuner`, `GryviaWorkflow`, `GryviaModelRegistry`, `GryviaInferenceService`, `GryviaWorkspace`) has a registered controller. The CRDs and gateway/dashboard CRUD exist, so the manifests apply and can be listed, but nothing reconciles them. Treat these as schema examples.
+
 ## Examples
 
 - **[hyperparameter-tuning.yaml](hyperparameter-tuning.yaml)** - `GryviaAutoTuner` running Bayesian HPO for ResNet with 50 trials

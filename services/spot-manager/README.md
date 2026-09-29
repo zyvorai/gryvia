@@ -1,5 +1,7 @@
 # Spot Instance Management
 
+> **Status: design sketch, not implemented in this repo.** This directory holds only this README and a Dockerfile that references a `requirements.txt` that does not exist; there is no source code. No spot manager, price monitor, bidding or multi-cloud migration logic exists. Checkpoint-related CRDs (for example `GryviaCheckpointGuard`) are handled by the ai-operator, but nothing here integrates with cloud spot APIs. Savings percentages are illustrative, not measured.
+
 Optimize costs with spot/preemptible GPU instances while maintaining reliability.
 
 ## Features
@@ -33,7 +35,9 @@ Optimize costs with spot/preemptible GPU instances while maintaining reliability
 
 ### Enable Spot Instances
 
-```yaml
+Design sketch, not accepted by the current CRD schema:
+
+```text
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
@@ -92,7 +96,9 @@ data:
 
 ### Cost-Optimized Training
 
-```yaml
+Design sketch, not accepted by the current CRD schema:
+
+```text
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
@@ -129,7 +135,9 @@ spec:
 
 Mix spot and on-demand for optimal cost/reliability:
 
-```yaml
+Design sketch, not accepted by the current CRD schema:
+
+```text
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:

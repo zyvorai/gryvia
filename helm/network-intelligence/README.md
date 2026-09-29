@@ -1,119 +1,95 @@
 # Gryvia Network Intelligence Helm Chart
 
-Deploy the Gryvia Network Intelligence Operator with eBPF-based network monitoring for Kubernetes GPU clusters.
+Deploys the Gryvia network-intelligence operator and, optionally, the experimental eBPF collector DaemonSet. This is the
+sixth Gryvia operator; the other five are installed by [`helm/gryvia`](../gryvia/README.md). The two charts are
+independent: neither requires the other.
+
+**Status: experimental.**
+
+- The operator reconciles ten kinds (`GryviaFlowPolicy`, `GryviaTrafficInsight`, `GryviaAutoPolicy`,
+  `GryviaTraceSession`, `GryviaServiceGraph`, `GryviaNetworkAnomaly`, `GryviaSecurityPolicy`, `GryviaNetworkCost`,
+  `GryviaTrainingInsight`, `GryviaInferenceInsight`). Several of them read data from Hubble, Prometheus or the collector; see
+  the [operator README](../../operators/network-intelligence/README.md) for which paths are real.
+- The collector (`ebpf.enabled`) is **off by default**, runs privileged with `hostNetwork` and `hostPID`, and its image
+  (`gryvia-ebpf-collector`) is built in CI but **not published by the release workflow**: build it from
+  `collector/Dockerfile` and set `collector.image.repository`/`tag`. It was verified on Linux 7.0 x86_64 only; GPU, RDMA,
+  arm64 and the gated attachments are unverified on hardware. See [collector/README.md](../../collector/README.md) and
+  [ebpf/README.md](../../ebpf/README.md).
+- Known issue found by reading the code, not yet run against a cluster: the operator Deployment passes
+  `--security-enabled` and `--security-auto-block` (from `security.enabled` and `security.autoBlock`), but
+  `operators/network-intelligence/main.go` defines no such flags, so Go's flag parser rejects them and the operator
+  container exits at start-up. Until the chart and the operator agree, treat `security.*` as non-functional and expect
+  to remove those two arguments from `templates/operator-deployment.yaml` (or add the flags to the operator).
+- Known issue (code reading, not run): the operator's controllers call the collector at the hard-coded
+  `http://gryvia-collector.gryvia-system.svc.cluster.local:9090`, but this chart creates no Service with that name (the
+  collector is in `gryvia-network`), and the operator asks for some paths the collector does not serve. Treat the
+  operator-to-collector data path as not working.
+- Flow data can also come from [Netra](https://github.com/zyvorai/netra) through the gateway
+  (`apiGateway.netra.url` in the main chart), which needs neither this collector nor its privileges.
 
 ## Prerequisites
 
-- Kubernetes >= 1.30
-- Helm >= 3.0
-- Linux kernel >= 5.8 (for eBPF support)
-- Prometheus Operator (optional, for ServiceMonitor)
+- Kubernetes 1.30 or newer (as the main chart), Helm 3
+- For the collector: a Linux kernel with BTF (`/sys/kernel/btf/vmlinux`); Linux 6.6 or newer for the TCX programs
+- Prometheus Operator (optional, for the ServiceMonitors)
 
 ## Installation
 
-### Add the Helm repository
-
 ```bash
-helm repo add gryvia https://zyvorai.github.io/gryvia/charts
-helm repo update
-```
+# published chart
+helm install network-intelligence oci://ghcr.io/zyvorai/charts/gryvia-network-intelligence \
+  --namespace gryvia-network --create-namespace
 
-### Install the chart
-
-```bash
-helm install network-intelligence gryvia/gryvia-network-intelligence \
-  --namespace gryvia-network \
-  --create-namespace
-```
-
-### Install from local source
-
-```bash
+# or from a checkout
 helm install network-intelligence ./helm/network-intelligence \
-  --namespace gryvia-network \
-  --create-namespace
+  --namespace gryvia-network --create-namespace
 ```
+
+The chart is also in the classic repository (`helm repo add gryvia https://zyvorai.github.io/gryvia/charts`), where its
+name is `gryvia-network-intelligence`.
 
 ## Configuration
 
-### Key values
-
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `operator.image.repository` | Operator image | `gryvia/network-intelligence-operator` |
-| `operator.replicas` | Operator replicas | `1` |
-| `operator.resources` | Operator resource limits | `500m CPU, 512Mi memory` |
-| `collector.image.repository` | Collector image | `gryvia/ebpf-collector` |
-| `collector.hostNetwork` | Use host networking | `true` |
-| `collector.resources` | Collector resource limits | `500m CPU, 512Mi memory` |
+| `operator.image.repository` / `.tag` | Operator image | `ghcr.io/zyvorai/gryvia-network-intelligence-operator`, chart appVersion |
+| `operator.replicas`, `operator.resources` | Operator size | `1`, 100m/128Mi requests, 500m/512Mi limits |
 | `ebpf.enabled` | Run the eBPF collector DaemonSet | `false` |
-| `ebpf.interface` | Interface for the XDP/TCX programs (empty: not attached) | `""` |
-| `ebpf.cgroupPath` | cgroup v2 path for sockops/sk_msg (empty: not attached) | `""` |
-| `ebpf.ncclLib`, `ebpf.cudaLib` | Library paths for the GPU uprobes (empty: discover) | `""` |
-| `prometheus.enabled` | Enable Prometheus metrics | `true` |
-| `prometheus.serviceMonitor.enabled` | Create ServiceMonitor | `true` |
-| `security.enabled` | Enable security monitoring | `true` |
-| `security.autoBlock` | Auto-block suspicious traffic | `false` |
+| `collector.image.repository` / `.tag` | Collector image (not published; build your own) | `ghcr.io/zyvorai/gryvia-ebpf-collector` |
+| `collector.hostNetwork` | Host networking for the collector; the pod's port 9090 is then bound on the node | `true` |
+| `ebpf.interface` | Interface for the XDP/TCX programs (`-iface`); empty means they are not attached | `""` |
+| `ebpf.cgroupPath` | cgroup v2 path for sockops/sk_msg (`-cgroup-path`); empty means not attached | `""` |
+| `ebpf.ncclLib`, `ebpf.cudaLib` | Library paths for the GPU uprobes; empty means auto-discover | `""` |
+| `ebpf.flightTokenSecret`, `ebpf.flightTokenKey` | Secret holding the Flight Recorder token (`-flight-token-file`); empty disables that endpoint | `""`, `token` |
+| `prometheus.serviceMonitor.enabled` | Create ServiceMonitors (only when the Prometheus Operator CRD exists) | `true` |
+| `security.enabled`, `security.autoBlock` | See the known issue above | `true`, `false` |
+| `namespace.name`, `namespace.create` | Target namespace | `gryvia-network`, `true` |
+| `ha.leaderElection` | Operator leader election | `true` |
 
-### Custom values example
+The collector runs as root and privileged (a requirement of loading eBPF programs); its port 9090 serves unauthenticated
+endpoints except the Flight Recorder route. Do not expose it outside the cluster operators: restrict ingress with a
+NetworkPolicy or use node firewall rules, since a pod NetworkPolicy does not apply with `hostNetwork: true`. Details
+and a policy example are in [docs/flight-recorder.md](../../docs/flight-recorder.md).
 
-```yaml
-# custom-values.yaml
-operator:
-  replicas: 2
-  resources:
-    limits:
-      cpu: 1000m
-      memory: 1Gi
-
-collector:
-  resources:
-    limits:
-      cpu: 1000m
-      memory: 1Gi
-
-ebpf:
-  programs:
-    - name: tcp_connect
-      enabled: true
-    - name: tcp_close
-      enabled: true
-    - name: dns_monitor
-      enabled: true
-    - name: packet_drop
-      enabled: true
-    - name: nccl_monitor
-      enabled: true
-
-security:
-  enabled: true
-  autoBlock: true
-```
+The program list is not configurable per program: the collector loads every `.o` in its image and attaches what it can.
+Check which ones attached on a node:
 
 ```bash
-helm install network-intelligence ./helm/network-intelligence -f custom-values.yaml
+kubectl -n gryvia-network port-forward pod/<collector-pod> 9090:9090
+curl -s localhost:9090/api/v1/ebpf/status
 ```
 
-## Upgrading
+## Upgrading and uninstalling
 
 ```bash
-helm upgrade network-intelligence ./helm/network-intelligence
+helm upgrade network-intelligence ./helm/network-intelligence --namespace gryvia-network
+helm uninstall network-intelligence --namespace gryvia-network
 ```
 
-## Uninstalling
-
-```bash
-helm uninstall network-intelligence
-kubectl delete namespace gryvia-network
-```
-
-## Architecture
-
-The chart deploys two main components:
-
-1. **Operator Deployment** - Manages network policies, processes flow data, and detects anomalies.
-2. **Collector DaemonSet** - Runs on every node with privileged access to load eBPF programs that capture network flows, DNS queries, and packet drops.
+The CRDs come from `helm/gryvia` (or `crds/`), not from this chart, and are kept on uninstall.
 
 ## Monitoring
 
-When `prometheus.serviceMonitor.enabled` is `true`, ServiceMonitor resources are created for both the operator and collector. Import the Grafana dashboards from `monitoring/grafana-dashboards/` for visualization.
+With `prometheus.serviceMonitor.enabled=true` and the Prometheus Operator installed, ServiceMonitors are created for the
+operator (`:8080/metrics`) and the collector (`:9090/metrics`). `monitoring/grafana-dashboards/` holds dashboard
+templates; most metric names they query are not produced by any Gryvia component yet (see `monitoring/README.md`).

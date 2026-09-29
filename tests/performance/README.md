@@ -2,19 +2,21 @@
 
 Performance benchmarking tools for Gryvia platform.
 
+> **Status.** `benchmark.go` is a manual load generator, not a validated benchmark suite. It uses the default kubeconfig (`~/.kube/config`) and creates real `GryviaAIJob` objects (1 GPU of type H100 each, in a hard-coded namespace) in whatever cluster it points at, so it needs a cluster with GPUs and quota, and it should not be pointed at a production cluster. There are no published results: the JSON below and the "Performance Targets" are illustrative design targets, not measurements of this project. It is not run in CI.
+
 ## Benchmarks
 
 ### 1. Sequential Job Submission
-Tests scheduler performance with jobs submitted one at a time.
+Submits 10 jobs one at a time.
 
 ### 2. Parallel Job Submission
-Tests concurrent job submission with controlled parallelism.
+Submits 20 jobs with a parallelism of 5.
 
 ### 3. Burst Submission
-Tests system behavior under sudden load spikes.
+Submits 50 jobs at once.
 
 ### 4. Large-Scale Submission
-Tests platform scalability with hundreds of jobs.
+Submits 100 jobs with a parallelism of 10.
 
 ## Running Benchmarks
 
@@ -25,7 +27,7 @@ go run benchmark.go
 
 ## Results
 
-Results are saved to `benchmark_results.json`:
+Results are saved to `benchmark_results.json`. The values below are an example of the format only:
 
 ```json
 [
@@ -54,7 +56,7 @@ Results are saved to `benchmark_results.json`:
 
 ## Performance Targets
 
-Target metrics for a healthy cluster:
+Aspirational targets, not measured or guaranteed (nobody has established that Gryvia meets them):
 
 - **Time to Schedule**: < 5 seconds
 - **Jobs/Second**: > 10 jobs/second
@@ -71,7 +73,7 @@ Edit `benchmark.go` to customize:
 
 ## CI/CD Integration
 
-Benchmarks run nightly and on major releases to track performance trends.
+The benchmarks are not run automatically in CI; there is no nightly job or trend tracking today.
 
 ## Interpreting Results
 

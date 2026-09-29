@@ -2,6 +2,18 @@
 
 Comprehensive disaster recovery and business continuity for Gryvia.
 
+> **Status: design document; automated DR is not implemented.** Nothing in this repo runs continuous backup,
+> replication, automatic failover or DR drills. `GryviaDRTest` is a CRD with no controller wired yet. The
+> `BackupPolicy`, `DataReplication`, `MultiRegionConfig` and `DRDrill` kinds do not exist, the `kfctl` CLI
+> used throughout does not exist (the `gryvia` CLI has no `backup`, `restore` or `dr` command), and the
+> `gryvia_backup_*` / replication metrics are not exported. The RPO/RTO tiers are targets you would have
+> to design and test, not measured or promised figures. What does exist is `tools/backup-restore.sh`, a
+> manual kubectl-based script that saves the Gryvia CRDs, GryviaGpuNode/AIJob/Quota/Storage/Network
+> objects, gryvia-system ConfigMaps and RBAC to a tar.gz (Secrets are deliberately skipped; see
+> `tools/README.md`). It does not back up checkpoints, datasets, PVC contents or model artifacts, and a
+> restore has not been validated on a real cluster. Use a proper cluster backup tool (for example Velero
+> plus your storage vendor's replication) for real DR.
+
 ## Overview
 
 ```
@@ -38,7 +50,9 @@ Comprehensive disaster recovery and business continuity for Gryvia.
 
 ### 1. Continuous Backup
 
-```yaml
+Design sketch, not accepted by the current CRD schema:
+
+```text
 apiVersion: gryvia.io/v1alpha1
 kind: BackupPolicy
 metadata:
@@ -83,7 +97,9 @@ spec:
 
 ### 2. Data Replication
 
-```yaml
+Design sketch, not accepted by the current CRD schema:
+
+```text
 apiVersion: gryvia.io/v1alpha1
 kind: DataReplication
 metadata:
@@ -123,7 +139,9 @@ spec:
 
 ### 3. Multi-Region Setup
 
-```yaml
+Design sketch, not accepted by the current CRD schema:
+
+```text
 apiVersion: gryvia.io/v1alpha1
 kind: MultiRegionConfig
 metadata:
@@ -389,7 +407,9 @@ kubectl get gryviaaijob critical-training
 
 ### Regular DR Drills
 
-```yaml
+Design sketch, not accepted by the current CRD schema:
+
+```text
 apiVersion: gryvia.io/v1alpha1
 kind: DRDrill
 metadata:

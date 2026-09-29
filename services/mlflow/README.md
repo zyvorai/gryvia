@@ -1,5 +1,7 @@
 # MLflow Integration
 
+> **Status: integration sketch, not implemented in this repo.** This directory holds only this README and `deploy.yaml` (example manifests for an MLflow server). They are not part of the Helm chart and have not been verified on a live cluster. The replica counts, storage sizes and the VAST Data backend are example choices, not defaults Gryvia sets up. No Gryvia component logs to MLflow automatically.
+
 MLflow tracking server for experiment management and model registry.
 
 ## Features
@@ -108,7 +110,9 @@ with mlflow.start_run(run_name="run-001"):
 
 ### Using in AI Jobs
 
-```yaml
+Design sketch, not accepted by the current CRD schema:
+
+```text
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:

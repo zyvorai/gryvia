@@ -2,12 +2,16 @@
 
 Command-line interface for managing Gryvia GPU clusters.
 
+> **Status.** The CLI is written in Rust and talks to the Kubernetes API directly through your kubeconfig (it does not use the API gateway). It has 25 top-level commands (see the reference table at the end); `gryvia --help` and `gryvia <command> --help` are authoritative. Every `gryvia ...` command shown in the docs is checked against the built binary by `scripts/check-cli-docs.py`, which verifies that the syntax is accepted, not that the output matches. Commands were exercised against a kind cluster with demo data; behaviour on real GPU clusters is unverified. Sample output blocks below are illustrative.
+
 ## Features
 
 - **Job Management**: Submit, list, monitor, and cancel AI training jobs
-- **Quota Monitoring**: View team quotas and budget status
+- **Quota Monitoring**: View team quotas and budget status (read from `GryviaQuota` status)
 - **Cluster Overview**: Real-time cluster status and GPU utilization
-- **Cost Analysis**: Track spending and budget usage
+- **Cost Analysis**: Spending and budget usage from `GryviaQuota` status; `usage` and `invoice` aggregate `GryviaUsageRecord` metering into estimates (not real invoices)
+- **Tenants and Catalog**: `gryvia tenant list|get|create|delete` and `gryvia catalog` (alias `skus`)
+- **Network, Security and GPU insight**: `gryvia network`, `gryvia security` and `gryvia gpu` read the network-intelligence custom resources; these depend on collectors that are not fully implemented, so they can be empty (see operators/network-intelligence/README.md)
 - **Health Checks**: Monitor GPU, storage, and network health
 - **Capacity Report**: `gryvia capacity` shows total/allocated/free GPUs per type, pending demand and shortfall
 - **Node Maintenance**: `gryvia maintenance start|end|list` cordons, optionally drains (Eviction API), and tracks nodes
@@ -238,7 +242,7 @@ gryvia delete job my-training-job
 # Delete a quota
 gryvia delete quota team-dev
 
-# Delete storage or network resources (stub - not yet implemented)
+# Delete storage or network resources
 gryvia delete storage my-storage
 gryvia delete network my-network
 
@@ -366,18 +370,29 @@ cargo test
 |---------|-------------|
 | `submit` | Submit a job from YAML file |
 | `list` | List resources (jobs, quotas, nodes) |
-| `get` | Get detailed resource information |
+| `get` | Get resource details (job, quota, node, storage, network) |
 | `delete` | Delete a resource (supports job, quota, storage, network) |
-| `status` | Show job status |
+| `status` | Show platform status, or one job's status |
 | `logs` | View job logs |
 | `cancel` | Cancel running jobs (patches status to "Cancelled") |
 | `cluster` | Show cluster overview |
 | `quota` | View team quotas |
 | `cost` | Show cost analysis |
 | `queue` | View job queue status |
-| `create` | Interactive resource creation |
+| `create` | Interactive creation wizard (job, quota) |
 | `validate` | Validate YAML files |
 | `health` | Check cluster health |
+| `capacity` | GPU capacity per type: free, pending demand, shortfall |
+| `maintenance` | `start`, `end`, `list` nodes under maintenance |
+| `tenant` | `list`, `get`, `create`, `delete` tenants |
+| `catalog` | List GPU SKUs and hourly rates (alias `skus`) |
+| `usage` | Metered GPU usage and estimated cost |
+| `invoice` | Monthly invoice estimates from metered usage |
+| `network` | Subcommands `trace`, `flows`, `graph`, `policy`, `status`, `anomalies` |
+| `security` | Subcommands `alerts`, `status`, `policy` |
+| `gpu` | Subcommands `nccl`, `memory`, `rdma`, `training` |
+| `version` | Client and platform versions |
+| `completion` | Shell completions (bash, zsh, fish, powershell) |
 
 ## Technical Notes
 

@@ -2,6 +2,17 @@
 
 Deploy and manage Gryvia across multiple Kubernetes clusters for high availability, disaster recovery, and geographic distribution.
 
+> **Status: design document; multi-cluster federation is not implemented.** Gryvia runs per cluster today.
+> `GryviaFederation` and `GryviaDataset` are CRDs with no controller wired yet (reconcilers exist under
+> `operators/ai-operator/controllers/` but are not registered in `main.go`), so nothing registers clusters,
+> places jobs across clusters, fails over, replicates data, or aggregates cost. Not present in this repo:
+> the `gryvia/gryvia-federation` Helm chart, the `GryviaCluster` and `GryviaFederatedQuota` kinds, the
+> `gryvia.io/placement*`, `target-cluster`, `cluster-affinity`, `failover` annotations, `spec.dataAffinity`
+> and `spec.checkpointing` job fields, and the `kfctl` CLI (the `gryvia` CLI has no `federation` command).
+> The only cross-cluster piece that exists is the Flight Recorder cluster view (gateway fan-out to
+> collectors, read-only, unrelated to job placement). Snippets below marked as design sketches are not
+> accepted by the current CRD schemas; all numbers are illustrative.
+
 ## Architecture
 
 ```
@@ -49,7 +60,9 @@ helm install gryvia-federation gryvia/gryvia-federation \
 
 ### Register Member Clusters
 
-```yaml
+Design sketch, not accepted by the current CRD schema:
+
+```text
 # cluster-a.yaml
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaCluster
@@ -120,7 +133,9 @@ Jobs are automatically placed based on:
 4. Geographic constraints
 5. Team preferences
 
-```yaml
+Design sketch, not accepted by the current CRD schema:
+
+```text
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
@@ -178,7 +193,9 @@ metadata:
 
 ### Cross-Cluster Data
 
-```yaml
+Design sketch, not accepted by the current CRD schema:
+
+```text
 # Replicate dataset across clusters
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaDataset
@@ -199,7 +216,9 @@ spec:
 
 ### Data Locality
 
-```yaml
+Design sketch, not accepted by the current CRD schema:
+
+```text
 # Schedule job where data exists
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
@@ -216,7 +235,9 @@ spec:
 
 ### Automatic Failover
 
-```yaml
+Design sketch, not accepted by the current CRD schema:
+
+```text
 # Enable automatic failover
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
@@ -281,7 +302,9 @@ kfctl federation costs --by-team ml-research
 
 ### Budget Allocation
 
-```yaml
+Design sketch, not accepted by the current CRD schema:
+
+```text
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaFederatedQuota
 metadata:

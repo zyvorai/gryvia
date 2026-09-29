@@ -2,6 +2,8 @@
 
 Example YAML manifests for Gryvia GPU scheduling CRDs covering elastic training, gang scheduling, and priority-based preemption.
 
+> **Status.** Design examples. `GryviaPriority` has no registered controller. The `gryvia.io/elastic*` annotations and gang scheduling have package code in the ai-operator (`pkg/elastic`, `pkg/scheduler/gang.go`) that is not called from the job controller, so they have no effect today.
+
 ## Examples
 
 - **[elastic-training.yaml](elastic-training.yaml)** - `GryviaAIJob` with elastic annotations scaling between 2 and 8 nodes
