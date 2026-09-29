@@ -75,11 +75,11 @@ func (nopLogger) Warnw(string, ...interface{}) {}
 // Pacer drives the pace_rate map of quota_pace.c under a Lease: Grant writes
 // an entry, Expire deletes lapsed ones, Shutdown deletes every entry it wrote.
 //
-// NOTHING in the collector calls Grant today: there is no GryviaQuota watch and
-// no HTTP or RPC entry point. -quota-pace only attaches the program, builds a
-// Pacer and runs its expiry loop; pacing therefore stays off until code or an
-// operator (bpftool on the map id) inserts an entry. This is a library for a
-// future controller, deliberately not an API.
+// The only caller of Grant in the collector is QuotaSyncer, and only with
+// -quota-pace-sync (off by default); there is no HTTP or RPC entry point.
+// Without it -quota-pace only attaches the program, builds a Pacer and runs its
+// expiry loop, so pacing stays off until an operator (bpftool on the map id)
+// inserts an entry.
 type Pacer struct {
 	mu     sync.Mutex
 	m      PaceMap

@@ -51,6 +51,24 @@ ebpf:
   interface: ""
   # cgroup v2 path for the sockops/sk_msg programs (for example /host/sys/fs/cgroup). Empty leaves them unattached.
   cgroupPath: ""
+  # Publish the folded fabric signals of attributed jobs into the status of an EXISTING GryviaFabricSignal
+  # (spec.jobRef = job name) every 30 s (flag -publish-fabric-status). Off by default. When on, the collector
+  # ClusterRole additionally gets list on gryviafabricsignals and patch on gryviafabricsignals/status; it creates
+  # nothing. Jobs are attributed through the Flight Recorder's pod resolver (needs NODE_NAME, set by this chart).
+  publishFabricStatus: false
+  # quota_pace is the only eBPF program that changes anything: it lowers SO_MAX_PACING_RATE of new outbound TCP
+  # connections of cgroups that hold a lease. Everything here is off by default and needs cgroupPath.
+  quotaPace:
+    # Attach quota_pace (-quota-pace). Alone it paces nothing: the pace map stays empty.
+    enabled: false
+    # MUTATING. Also run the GryviaQuota reconcile (-quota-pace-sync): every 30 s, pods on the node in the
+    # namespaces of a GryviaQuota with spec.network.maxEgressMbps get a 2-minute pace lease (renewed while the
+    # quota holds; API errors change nothing and leases expire = fail open). Never touches kube-system,
+    # gryvia-system, kube-public, kube-node-lease or this release's namespace. Adds list on gryviaquotas to
+    # the collector ClusterRole.
+    sync: false
+    # Log what sync would grant or revoke and write nothing (-quota-pace-dry-run). Try this first.
+    dryRun: false
   # Paths of libnccl.so / libcudart.so for the GPU uprobes. Empty tries to discover them from running processes.
   ncclLib: ""
   cudaLib: ""
