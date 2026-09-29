@@ -97,7 +97,7 @@ fi
 step "Test 4: Submit test GryviaAIJob"
 
 JOB_YAML=$(cat <<EOF
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: $TEST_JOB

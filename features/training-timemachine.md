@@ -62,7 +62,7 @@ llama-70b-finetune (source)
 ### Basic Time Machine
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaTrainingTimeMachine
 metadata:
   name: my-experiment-tm

@@ -2,7 +2,7 @@
 # Advanced Scheduling Policies for Gryvia
 
 # Priority-based Scheduling
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: SchedulingPolicy
 metadata:
   name: priority-based
@@ -36,7 +36,7 @@ spec:
 
 ---
 # Fair Share Scheduling
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: SchedulingPolicy
 metadata:
   name: fair-share
@@ -73,7 +73,7 @@ spec:
 
 ---
 # Cost-Optimized Scheduling
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: SchedulingPolicy
 metadata:
   name: cost-optimized
@@ -105,7 +105,7 @@ spec:
 
 ---
 # Locality-Aware Scheduling
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: SchedulingPolicy
 metadata:
   name: locality-aware
@@ -134,7 +134,7 @@ spec:
 
 ---
 # Gang Scheduling (All-or-Nothing)
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: SchedulingPolicy
 metadata:
   name: gang-scheduling
@@ -157,7 +157,7 @@ spec:
 
 ---
 # Bin Packing (Resource Consolidation)
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: SchedulingPolicy
 metadata:
   name: bin-packing
@@ -181,7 +181,7 @@ spec:
 
 ---
 # Backfilling Scheduling
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: SchedulingPolicy
 metadata:
   name: backfilling
@@ -204,7 +204,7 @@ spec:
 
 ---
 # Quota-Based Scheduling
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: SchedulingPolicy
 metadata:
   name: quota-based
@@ -230,7 +230,7 @@ spec:
 
 ---
 # Preemption Policy
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: SchedulingPolicy
 metadata:
   name: preemption
@@ -260,7 +260,7 @@ spec:
 
 ---
 # GPU Affinity Scheduling
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: SchedulingPolicy
 metadata:
   name: gpu-affinity
@@ -292,7 +292,7 @@ spec:
 
 ---
 # Topology-Aware Scheduling
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: SchedulingPolicy
 metadata:
   name: topology-aware
@@ -323,7 +323,7 @@ spec:
 
 ---
 # Adaptive Scheduling
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: SchedulingPolicy
 metadata:
   name: adaptive
@@ -354,7 +354,7 @@ spec:
 
 ---
 # SLA-Based Scheduling
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: SchedulingPolicy
 metadata:
   name: sla-based

@@ -1,5 +1,5 @@
 # Example: Immediate Exclusive Reservation
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaReservation
 metadata:
   name: ml-research-reservation
@@ -32,7 +32,7 @@ spec:
     onExpiry: true
 ---
 # Example: Scheduled Reservation (Future)
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaReservation
 metadata:
   name: paper-deadline-reservation
@@ -65,7 +65,7 @@ spec:
     beforeExpiry: 12h
 ---
 # Example: Recurring Weekly Reservation
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaReservation
 metadata:
   name: weekly-training-slot
@@ -94,7 +94,7 @@ spec:
     discount: 10
 ---
 # Example: Node-Specific Reservation
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaReservation
 metadata:
   name: dgx-node-reservation
@@ -122,7 +122,7 @@ spec:
     discount: 25  # Higher discount for whole-node reservation
 ---
 # Example: Development Reservation (Non-Exclusive)
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaReservation
 metadata:
   name: dev-team-reservation
@@ -151,7 +151,7 @@ spec:
     discount: 5
 ---
 # Reservation Status Example
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaReservation
 metadata:
   name: ml-research-reservation
@@ -181,7 +181,7 @@ status:
     wastedCost: 12960.00 # 25% idle time
 ---
 # Using Reservation in Job
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: reserved-training

@@ -430,7 +430,7 @@ async fn execute_policy_create(
         .collect();
 
     let policy_obj = serde_json::from_value(json!({
-        "apiVersion": "gryvia.io/v1",
+        "apiVersion": "gryvia.io/v1alpha1",
         "kind": "GryviaSecurityPolicy",
         "metadata": {
             "name": name,

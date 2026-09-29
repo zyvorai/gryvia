@@ -1,5 +1,5 @@
 # Example: Standard Retry Policy
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaRetryPolicy
 metadata:
   name: standard-retry
@@ -30,7 +30,7 @@ spec:
       - "permission denied"
 ---
 # Example: Aggressive Retry with Resource Adjustment
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaRetryPolicy
 metadata:
   name: adaptive-retry
@@ -70,7 +70,7 @@ spec:
     resetTimeout: 2h
 ---
 # Example: Spot Instance Retry Policy
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaRetryPolicy
 metadata:
   name: spot-retry
@@ -92,7 +92,7 @@ spec:
     maxCostUSD: 500
 ---
 # Example: Job Using Retry Policy
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: resilient-training
@@ -153,7 +153,7 @@ message: |
     Final Resource: 8x A100-80G
 ---
 # Retry with Different Resources
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaRetryPolicy
 metadata:
   name: escalating-resources
@@ -168,7 +168,7 @@ spec:
       increaseGPUMemory: true   # move to a GPU type with more memory
 ---
 # Fibonacci Backoff Example
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaRetryPolicy
 metadata:
   name: fibonacci-retry

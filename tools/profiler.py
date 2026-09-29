@@ -37,7 +37,7 @@ class GPUProfiler:
         try:
             job = self.api.get_namespaced_custom_object(
                 group="gryvia.io",
-                version="v1",
+                version="v1alpha1",
                 namespace=self.namespace,
                 plural="gryviaaijobs",
                 name=job_name
@@ -317,7 +317,7 @@ class GPUProfiler:
         try:
             jobs = self.api.list_namespaced_custom_object(
                 group="gryvia.io",
-                version="v1",
+                version="v1alpha1",
                 namespace=self.namespace,
                 plural="gryviaaijobs"
             )

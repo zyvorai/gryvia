@@ -354,7 +354,7 @@ spec:
 Yes, with audit trail enabled:
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAudit
 spec:
   compliance:
@@ -406,7 +406,7 @@ Requirements:
 Hooks execute actions at job lifecycle events:
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaJobHook
 spec:
   trigger: post-completion

@@ -1,7 +1,7 @@
 # GryviaNetworkCost - Track and report network costs per team and zone
 # Monitors network traffic across production namespaces, applies zone-based
 # pricing, and generates hourly cost reports attributed to specific teams.
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaNetworkCost
 metadata:
   name: production-network-costs

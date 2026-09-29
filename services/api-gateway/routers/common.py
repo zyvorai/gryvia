@@ -13,7 +13,7 @@ from fastapi import HTTPException
 from kubernetes.client.exceptions import ApiException
 
 GROUP = "gryvia.io"
-VERSION = "v1"
+VERSION = "v1alpha1"
 
 # Plurals of the cluster-scoped Gryvia CRDs (from crds/*.yaml); everything else is namespaced.
 CLUSTER_SCOPED = frozenset({

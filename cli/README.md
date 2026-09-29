@@ -175,7 +175,7 @@ gryvia delete job my-job --yes
 
 ### Validate YAML
 
-Validates the YAML file structure and checks that `apiVersion` and `kind` match known Gryvia types (e.g., `gryvia.io/v1` / `GryviaAIJob`).
+Validates the YAML file structure and checks that `apiVersion` and `kind` match known Gryvia types (e.g., `gryvia.io/v1alpha1` / `GryviaAIJob`).
 
 ```bash
 gryvia validate job.yaml

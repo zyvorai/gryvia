@@ -37,7 +37,7 @@ class PerformanceProfiler:
         try:
             job = self.api.get_namespaced_custom_object(
                 group="gryvia.io",
-                version="v1",
+                version="v1alpha1",
                 namespace=namespace,
                 plural="gryviaaijobs",
                 name=job_name

@@ -1,5 +1,6 @@
 // +kubebuilder:object:generate=true
 // +groupName=gryvia.io
+// +versionName=v1alpha1
 
 package v1
 
@@ -9,7 +10,7 @@ import (
 )
 
 var (
-	GroupVersion  = schema.GroupVersion{Group: "gryvia.io", Version: "v1"}
+	GroupVersion  = schema.GroupVersion{Group: "gryvia.io", Version: "v1alpha1"}
 	SchemeBuilder = &scheme.Builder{GroupVersion: GroupVersion}
 	AddToScheme   = SchemeBuilder.AddToScheme
 )

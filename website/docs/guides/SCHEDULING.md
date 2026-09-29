@@ -32,7 +32,7 @@ Key properties:
 Gang scheduling is enabled per-job via the `scheduling` section:
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: distributed-llm-training
@@ -103,7 +103,7 @@ Features:
 ### Queue Configuration
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaQueue
 metadata:
   name: ml-research-queue
@@ -221,7 +221,7 @@ Elastic training allows distributed training jobs to scale their worker count up
 ### Configuration
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: elastic-training
@@ -449,7 +449,7 @@ Gryvia extends the [Priority & Preemption](ADVANCED_FEATURES.md#priority--preemp
 ### Preemption Configuration
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: critical-inference

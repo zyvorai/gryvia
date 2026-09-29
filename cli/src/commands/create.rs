@@ -159,7 +159,7 @@ async fn create_job(client: &GryviaClient) -> Result<()> {
     let cmd_parts: Vec<&str> = command.split_whitespace().collect();
 
     let job_spec = json!({
-        "apiVersion": "gryvia.io/v1",
+        "apiVersion": "gryvia.io/v1alpha1",
         "kind": "GryviaAIJob",
         "metadata": {
             "name": name,
@@ -293,7 +293,7 @@ async fn create_quota(client: &GryviaClient) -> Result<()> {
 
     let quota_name = format!("{}-quota", team);
     let mut quota_spec = json!({
-        "apiVersion": "gryvia.io/v1",
+        "apiVersion": "gryvia.io/v1alpha1",
         "kind": "GryviaQuota",
         "metadata": {
             "name": quota_name,

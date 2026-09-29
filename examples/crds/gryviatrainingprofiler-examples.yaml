@@ -1,5 +1,5 @@
 # Example: Automatic GPU Profiler for all training jobs
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaTrainingProfiler
 metadata:
   name: cluster-gpu-profiler

@@ -6,7 +6,7 @@ set -e
 echo "Submitting LLM training job..."
 
 gryvia submit -f - <<EOF
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: llm-training

@@ -19,7 +19,7 @@ Gryvia provides sophisticated budget management to control GPU compute costs:
 ### Create a Monthly Team Budget
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaBudget
 metadata:
   name: ml-team-budget
@@ -295,7 +295,7 @@ priority:
 
 Submit high-priority job:
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: critical-job
@@ -602,7 +602,7 @@ kubectl get gryviabudget my-budget \
 ```yaml
 # Organization-wide annual budget
 ---
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaBudget
 metadata:
   name: org-annual
@@ -613,7 +613,7 @@ spec:
 
 # Department quarterly budgets
 ---
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaBudget
 metadata:
   name: ml-dept-q1
@@ -624,7 +624,7 @@ spec:
 
 # Team monthly budgets
 ---
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaBudget
 metadata:
   name: ml-research-monthly
@@ -635,7 +635,7 @@ spec:
 
 # User daily budgets
 ---
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaBudget
 metadata:
   name: alice-daily

@@ -36,7 +36,7 @@ class CostCalculator:
         try:
             jobs = self.api.list_namespaced_custom_object(
                 group="gryvia.io",
-                version="v1",
+                version="v1alpha1",
                 namespace=namespace,
                 plural="gryviaaijobs"
             )

@@ -58,7 +58,7 @@ class AdvancedAnalytics:
         try:
             jobs = self.api.list_cluster_custom_object(
                 group="gryvia.io",
-                version="v1",
+                version="v1alpha1",
                 plural="gryviaaijobs"
             )
 

@@ -217,7 +217,7 @@ func submitAndTrackJob(ctx context.Context, namespace, jobName string) JobMetric
 
 	job := &unstructured.Unstructured{
 		Object: map[string]interface{}{
-			"apiVersion": "gryvia.io/v1",
+			"apiVersion": "gryvia.io/v1alpha1",
 			"kind":       "GryviaAIJob",
 			"metadata": map[string]interface{}{
 				"name":      jobName,

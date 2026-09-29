@@ -135,7 +135,7 @@ gryvia cancel pytorch-distributed-training
 Create job chains using dependencies:
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: inference-job
@@ -150,7 +150,7 @@ spec:
 Set job priorities:
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: urgent-job
@@ -164,7 +164,7 @@ spec:
 Allow job preemption for higher priority work:
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: preemptible-job

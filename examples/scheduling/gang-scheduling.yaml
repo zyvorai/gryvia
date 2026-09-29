@@ -2,7 +2,7 @@
 # All 4 nodes must be allocated simultaneously (gang scheduling) to prevent
 # deadlocks where partial allocations block other jobs. Uses RDMA networking
 # and NCCL for high-performance inter-node communication.
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: gpt-distributed-training

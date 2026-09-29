@@ -4,7 +4,7 @@
 ---
 # Critical priority - for production inference and urgent training jobs
 # These jobs can preempt any lower-priority workload and have guaranteed resources
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaPriority
 metadata:
   name: critical
@@ -28,7 +28,7 @@ spec:
 ---
 # Normal priority - for standard research and training workloads
 # These jobs run with fair-share scheduling and cannot preempt others
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaPriority
 metadata:
   name: normal
@@ -51,7 +51,7 @@ spec:
 # Preemptible priority - for batch processing and non-urgent experimentation
 # These jobs can be preempted by critical or normal jobs at any time.
 # Ideal for long-running HPO trials, data preprocessing, or low-priority sweeps.
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaPriority
 metadata:
   name: preemptible

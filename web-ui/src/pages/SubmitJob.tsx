@@ -133,7 +133,7 @@ export default function SubmitJob() {
     }
 
     const job: Partial<GryviaAIJob> = {
-      apiVersion: 'gryvia.io/v1',
+      apiVersion: 'gryvia.io/v1alpha1',
       kind: 'GryviaAIJob',
       metadata: {
         name: formData.name,

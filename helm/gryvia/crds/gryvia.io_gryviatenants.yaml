@@ -14,7 +14,7 @@ spec:
     singular: gryviatenant
   scope: Cluster
   versions:
-  - name: v1
+  - name: v1alpha1
     schema:
       openAPIV3Schema:
         description: GryviaTenant is the Schema for the gryviatenants API

@@ -20,7 +20,7 @@ GryviaModelLineage provides end-to-end tracking of how a model was produced:
 ### Create a Model Lineage Record
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaModelLineage
 metadata:
   name: llama-70b-finetune-v1

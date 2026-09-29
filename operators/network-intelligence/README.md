@@ -49,7 +49,7 @@ Intent-based network policy that translates high-level traffic intents into Cili
 - `default` - Standard traffic handling
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaFlowPolicy
 metadata:
   name: gpu-training-data
@@ -77,7 +77,7 @@ spec:
 Real-time traffic analysis with percentile latencies, throughput measurements, drop rate tracking, top talker identification, and anomaly detection.
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaTrafficInsight
 metadata:
   name: model-server-insight
@@ -103,7 +103,7 @@ Self-healing firewall that learns traffic patterns and automatically generates n
 - `enforce` - Apply suggested policies (with optional approval gate)
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAutoPolicy
 metadata:
   name: ml-namespace-autopolicy
@@ -130,7 +130,7 @@ Time-limited network trace/debug sessions with flow capture stored in ConfigMaps
 - `l7` - Application-layer protocol inspection (HTTP headers with `captureHeaders: true`)
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaTraceSession
 metadata:
   name: debug-model-server
@@ -151,7 +151,7 @@ spec:
 Service dependency graph built from Hubble flow data with health status, latency, and throughput per edge.
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaServiceGraph
 metadata:
   name: ml-platform-graph
@@ -180,7 +180,7 @@ Network anomaly detection with threshold-based rules, webhook alerting, and auto
 **Auto-mitigation:** Creates temporary CiliumNetworkPolicy deny rules for critical/high severity anomalies, with automatic expiration after 15 minutes.
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaNetworkAnomaly
 metadata:
   name: model-server-anomaly-detector

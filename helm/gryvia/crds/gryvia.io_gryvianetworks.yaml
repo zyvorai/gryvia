@@ -14,7 +14,7 @@ spec:
     singular: gryvianetwork
   scope: Cluster
   versions:
-  - name: v1
+  - name: v1alpha1
     schema:
       openAPIV3Schema:
         description: GryviaNetwork is the Schema for the gryvianetworks API

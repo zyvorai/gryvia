@@ -241,7 +241,7 @@ Storage and network throughput depend on the hardware, filesystem and fabric you
 
 ## Status and security
 
-Gryvia is **alpha**. APIs (`gryvia.io/v1` CRDs) may change between releases and there is no upgrade
+Gryvia is **alpha**. APIs (`gryvia.io/v1alpha1` CRDs) may change between releases and there is no upgrade
 guarantee yet; see the [changelog](CHANGELOG.md). What exists today:
 
 - OIDC/SSO with PKCE and JWT validation in the API gateway, plus a shared-key login (constant-time

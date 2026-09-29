@@ -60,7 +60,7 @@ async fn delete_quota(client: &GryviaClient, name: &str) -> Result<()> {
 }
 
 async fn delete_storage(client: &GryviaClient, name: &str) -> Result<()> {
-    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("gryvia.io", "v1", "GryviaStorage"));
+    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("gryvia.io", "v1alpha1", "GryviaStorage"));
     let api: Api<DynamicObject> = Api::all_with(client.kube_client.clone(), &ar);
 
     api.delete(name, &DeleteParams::default())
@@ -73,7 +73,7 @@ async fn delete_storage(client: &GryviaClient, name: &str) -> Result<()> {
 }
 
 async fn delete_network(client: &GryviaClient, name: &str) -> Result<()> {
-    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("gryvia.io", "v1", "GryviaNetwork"));
+    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("gryvia.io", "v1alpha1", "GryviaNetwork"));
     let api: Api<DynamicObject> = Api::all_with(client.kube_client.clone(), &ar);
 
     api.delete(name, &DeleteParams::default())

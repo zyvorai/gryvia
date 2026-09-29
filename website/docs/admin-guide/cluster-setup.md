@@ -248,7 +248,7 @@ kubectl label nodes gpu-node-1 gryvia.io/infiniband=true
 
 ```yaml
 # gpu-node-profile.yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaGPUNode
 metadata:
   name: gpu-node-1
@@ -516,7 +516,7 @@ kubectl get crds | grep gryvia.io
 ```bash
 # Submit test job
 kubectl apply -f - <<EOF
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: gpu-test

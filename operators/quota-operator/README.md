@@ -46,7 +46,7 @@ kubectl get pods -n gryvia-system -l app=quota-operator
 ### Create Team Quota
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaQuota
 metadata:
   name: team-ml
@@ -154,7 +154,7 @@ ensuring no job silently bypasses quota enforcement.
 ### High-Priority LLM Team
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaQuota
 metadata:
   name: team-nlp
@@ -176,7 +176,7 @@ spec:
 ### Development Team with Soft Limits
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaQuota
 metadata:
   name: team-dev
@@ -363,7 +363,7 @@ kubectl get gryviaquotas
 
 # Launch a training job
 kubectl apply -f - <<EOF
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: llm-training

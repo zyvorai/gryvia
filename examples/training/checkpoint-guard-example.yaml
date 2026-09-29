@@ -1,6 +1,6 @@
 ---
 # GryviaAIJob: Distributed LLM training job with checkpointing support
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: llama-70b-finetune
@@ -66,7 +66,7 @@ spec:
 
 ---
 # GryviaCheckpointGuard: Monitors the above job and manages checkpoints
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaCheckpointGuard
 metadata:
   name: llama-training-guard

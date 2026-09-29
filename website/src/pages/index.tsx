@@ -45,7 +45,7 @@ function ProjectStatus() {
               Early, and honest about it
             </Heading>
             <p>
-              Gryvia is in active development. The API is <code>gryvia.io/v1</code>, and it may change
+              Gryvia is in active development. The API is <code>gryvia.io/v1alpha1</code>, and it may change
               before a stable release. Performance figures are targets until they are backed by
               published benchmark results.
             </p>

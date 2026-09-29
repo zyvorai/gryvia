@@ -37,7 +37,7 @@ gryvia --help
 ```bash
 # Create job YAML
 cat > llm-training.yaml <<EOF
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: llm-training
@@ -394,7 +394,7 @@ gryvia delete job my-job --yes
 
 #### Validate YAML
 
-Validates the YAML file structure and checks that `apiVersion` and `kind` match known Gryvia types (e.g., `gryvia.io/v1` / `GryviaAIJob`, `GryviaQuota`, `GryviaGpuNode`, etc.).
+Validates the YAML file structure and checks that `apiVersion` and `kind` match known Gryvia types (e.g., `gryvia.io/v1alpha1` / `GryviaAIJob`, `GryviaQuota`, `GryviaGpuNode`, etc.).
 
 ```bash
 # Validate job YAML before submission

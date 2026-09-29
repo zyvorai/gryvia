@@ -19,7 +19,7 @@ describe('env redaction', () => {
 
 const job = (over: Partial<GryviaAIJob['spec']> & Record<string, unknown> = {}, labels: Record<string, string> = {}): GryviaAIJob =>
   ({
-    apiVersion: 'gryvia.io/v1',
+    apiVersion: 'gryvia.io/v1alpha1',
     kind: 'GryviaAIJob',
     metadata: { name: 'src', labels },
     spec: { type: 'fine-tuning', image: 'img:1', gpus: 8, gpuType: 'A100-80G', command: ['python', 'train.py'], args: ['--name', 'a b'], ...over },

@@ -1,7 +1,7 @@
 # GryviaBudget - Monthly GPU compute budget with alert thresholds
 # Defines a $50,000/month budget for the ML research team with graduated
 # alerts at 50%, 80%, and 95% consumption, and hard enforcement at the limit.
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaBudget
 metadata:
   name: ml-research-monthly

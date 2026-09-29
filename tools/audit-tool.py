@@ -98,7 +98,7 @@ class AuditTool:
         try:
             jobs = self.api.list_namespaced_custom_object(
                 group="gryvia.io",
-                version="v1",
+                version="v1alpha1",
                 namespace=self.namespace,
                 plural="gryviaaijobs"
             )
@@ -167,7 +167,7 @@ class AuditTool:
         try:
             quotas = self.api.list_namespaced_custom_object(
                 group="gryvia.io",
-                version="v1",
+                version="v1alpha1",
                 namespace=self.namespace,
                 plural="gryviaquotas"
             )
@@ -191,7 +191,7 @@ class AuditTool:
         try:
             jobs = self.api.list_namespaced_custom_object(
                 group="gryvia.io",
-                version="v1",
+                version="v1alpha1",
                 namespace=self.namespace,
                 plural="gryviaaijobs"
             )
@@ -227,7 +227,7 @@ class AuditTool:
         try:
             quotas = self.api.list_namespaced_custom_object(
                 group="gryvia.io",
-                version="v1",
+                version="v1alpha1",
                 namespace=self.namespace,
                 plural="gryviaquotas"
             )

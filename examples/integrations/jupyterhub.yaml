@@ -260,7 +260,7 @@ subjects:
 
 ---
 # GPU quota integration
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaQuota
 metadata:
   name: jupyterhub-users

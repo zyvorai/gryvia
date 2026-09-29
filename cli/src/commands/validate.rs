@@ -25,9 +25,9 @@ pub async fn execute(file: &str) -> Result<()> {
         "GryviaNetwork",
     ];
     if let Some(ref types) = obj.types {
-        if types.api_version != "gryvia.io/v1" {
+        if types.api_version != "gryvia.io/v1alpha1" {
             display::print_warning(&format!(
-                "apiVersion '{}' is not gryvia.io/v1",
+                "apiVersion '{}' is not gryvia.io/v1alpha1",
                 types.api_version
             ));
         }
@@ -65,7 +65,7 @@ mod tests {
     async fn accepts_a_known_resource() {
         let path = write_temp(
             "ok",
-            "apiVersion: gryvia.io/v1\nkind: GryviaAIJob\nmetadata:\n  name: demo\n",
+            "apiVersion: gryvia.io/v1alpha1\nkind: GryviaAIJob\nmetadata:\n  name: demo\n",
         );
         assert!(execute(path.to_str().unwrap()).await.is_ok());
         let _ = fs::remove_file(path);
@@ -75,7 +75,7 @@ mod tests {
     async fn warns_but_succeeds_for_unknown_kinds() {
         let path = write_temp(
             "unknown",
-            "apiVersion: gryvia.io/v1\nkind: Nope\nmetadata:\n  name: demo\n",
+            "apiVersion: gryvia.io/v1alpha1\nkind: Nope\nmetadata:\n  name: demo\n",
         );
         assert!(execute(path.to_str().unwrap()).await.is_ok());
         let _ = fs::remove_file(path);

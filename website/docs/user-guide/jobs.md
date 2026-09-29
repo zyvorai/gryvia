@@ -7,7 +7,7 @@ Complete guide to submitting and managing AI workloads with Gryvia.
 ### Creating a Job
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: my-training-job

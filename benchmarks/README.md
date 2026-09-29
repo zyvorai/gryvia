@@ -406,7 +406,7 @@ nvidia-smi -lgc 1410
 ### Add Custom Benchmark
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: custom-benchmark

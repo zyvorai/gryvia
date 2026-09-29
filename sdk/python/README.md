@@ -66,7 +66,7 @@ tr = Gryvia()
 async with Gryvia(...) as tr:
     # Submit a job from a dict
     job = await tr.jobs.create({
-        "apiVersion": "gryvia.io/v1",
+        "apiVersion": "gryvia.io/v1alpha1",
         "kind": "GryviaAIJob",
         "metadata": {"name": "my-training"},
         "spec": {

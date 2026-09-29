@@ -153,7 +153,7 @@ kubectl create secret generic vast-credentials \
 
 # Deploy VAST storage
 kubectl apply -f - <<EOF
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaStorage
 metadata:
   name: vast-production
@@ -184,7 +184,7 @@ kubectl label nodes gpu-worker-{01..04} gryvia.io/rdma=true
 
 # Deploy RDMA network
 kubectl apply -f - <<EOF
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaNetwork
 metadata:
   name: rdma-training
@@ -266,7 +266,7 @@ kubectl port-forward -n monitoring svc/monitoring-grafana 3000:80
 ```bash
 # Submit distributed training job
 kubectl apply -f - <<EOF
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: test-training

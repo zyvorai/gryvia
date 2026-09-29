@@ -1,5 +1,5 @@
 # Example: SOC2 Compliance Audit
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAudit
 metadata:
   name: soc2-audit
@@ -62,7 +62,7 @@ spec:
         action: block
 ---
 # Example: HIPAA Compliance Audit
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAudit
 metadata:
   name: hipaa-audit
@@ -103,7 +103,7 @@ spec:
     format: pdf
 ---
 # Example: Team-Specific Audit
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAudit
 metadata:
   name: ml-research-audit

@@ -55,7 +55,7 @@ class MigrationTool:
             try:
                 items = self.source_api.list_cluster_custom_object(
                     group="gryvia.io",
-                    version="v1",
+                    version="v1alpha1",
                     plural=resource_type
                 )
                 resources[resource_type] = items.get("items", [])
@@ -221,7 +221,7 @@ class MigrationTool:
                                         "gryviaqueues", "gryviausers"]:
                         dest_api.create_namespaced_custom_object(
                             group="gryvia.io",
-                            version="v1",
+                            version="v1alpha1",
                             namespace=resource["metadata"].get("namespace", "default"),
                             plural=resource_type,
                             body=resource
@@ -269,7 +269,7 @@ class MigrationTool:
         try:
             jobs = self.source_api.list_cluster_custom_object(
                 group="gryvia.io",
-                version="v1",
+                version="v1alpha1",
                 plural="gryviaaijobs"
             )
         except Exception as e:
@@ -324,7 +324,7 @@ class MigrationTool:
 
                     dest_api.create_namespaced_custom_object(
                         group="gryvia.io",
-                        version="v1",
+                        version="v1alpha1",
                         namespace=namespace,
                         plural="gryviaaijobs",
                         body=cleaned_job
@@ -367,7 +367,7 @@ class MigrationTool:
             try:
                 items = dest_api.list_cluster_custom_object(
                     group="gryvia.io",
-                    version="v1",
+                    version="v1alpha1",
                     plural=resource_type
                 )
                 found_count = len(items.get("items", []))

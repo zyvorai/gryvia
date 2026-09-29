@@ -35,7 +35,7 @@ Proactive health monitoring and diagnostics for GPU infrastructure.
 ### Quick Start
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaHealthCheck
 metadata:
   name: cluster-gpu-health
@@ -128,7 +128,7 @@ backoff:
 ### Resource Adaptation
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaRetryPolicy
 metadata:
   name: adaptive-retry
@@ -174,7 +174,7 @@ Reserve GPU resources in advance with guaranteed availability.
 #### Exclusive Team Reservation
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaReservation
 metadata:
   name: ml-team-reservation
@@ -255,7 +255,7 @@ Hierarchical team organization with quotas, isolation, and governance.
 ### Example Tenant
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaTenant
 metadata:
   name: ml-research
@@ -348,7 +348,7 @@ gryvia job create --template pytorch-ddp-training \
 ### Custom Template
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaTemplate
 metadata:
   name: my-training-template
@@ -396,7 +396,7 @@ Queue-based auto-scaling with predictive capabilities.
 ### Example
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAutoScaler
 metadata:
   name: a100-autoscaler
@@ -453,7 +453,7 @@ Multi-tiered budget system with forecasting.
 ### Example
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaBudget
 metadata:
   name: ml-team-budget

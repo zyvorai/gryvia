@@ -1,7 +1,7 @@
 # GryviaAutoTuner - Bayesian hyperparameter optimization for ResNet training
 # Runs up to 50 trials (4 in parallel) using Bayesian search to find optimal
 # learning rate, batch size, and optimizer for maximizing validation accuracy.
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAutoTuner
 metadata:
   name: resnet-hpo

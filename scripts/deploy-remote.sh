@@ -241,6 +241,20 @@ for f in crds/*.yaml; do
   crd="\$(sed -n 's/^  name: \\(.*\\.gryvia\\.io\\)\$/\\1/p' "\$f" | head -1)"
   want="\$(sed -n 's/^  scope: //p' "\$f" | head -1)"
   have="\$(kubectl get crd "\$crd" -o jsonpath='{.spec.scope}' 2>/dev/null || true)"
+  # The API moved from v1 to v1alpha1. A CRD that still stores v1 cannot be updated in place, so recreate
+  # it, but only when it has no objects (deleting a CRD deletes them).
+  wantv="\$(grep -m1 -E '^    name: v1' "\$f" | sed 's/.*name: //')"
+  havev="\$(kubectl get crd "\$crd" -o jsonpath='{.status.storedVersions[*]}' 2>/dev/null || true)"
+  if [[ -n "\$havev" && " \$havev " != *" \$wantv "* ]]; then
+    n="\$(kubectl get "\$crd" -A --no-headers 2>/dev/null | wc -l | tr -d ' ')"
+    if [[ "\$n" != "0" ]]; then
+      echo "CRD \$crd stores version \$havev but the API is now \$wantv and it has \$n object(s); export them (kubectl get \$crd -A -o yaml), change apiVersion to gryvia.io/\$wantv, delete them and the CRD, then redeploy" >&2
+      exit 1
+    fi
+    echo "Recreating \$crd (version \$havev -> \$wantv, no objects)"
+    kubectl delete crd "\$crd"
+    have=""
+  fi
   if [[ -n "\$have" && "\$have" != "\$want" ]]; then
     n="\$(kubectl get "\$crd" -A --no-headers 2>/dev/null | wc -l | tr -d ' ')"
     if [[ "\$n" != "0" ]]; then

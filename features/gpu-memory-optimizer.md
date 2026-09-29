@@ -63,7 +63,7 @@ The optimizer can operate at three levels:
 ### Cluster-Wide Memory Optimizer
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaGpuMemoryOptimizer
 metadata:
   name: cluster-memory-optimizer
@@ -94,7 +94,7 @@ spec:
 ### Namespace-Scoped with Inference Packing
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaGpuMemoryOptimizer
 metadata:
   name: inference-optimizer
@@ -119,7 +119,7 @@ spec:
 ### Job-Specific Optimizer
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaGpuMemoryOptimizer
 metadata:
   name: training-optimizer

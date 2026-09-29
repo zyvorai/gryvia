@@ -28,7 +28,7 @@ GryviaAutoTuner provides a Kubernetes-native hyperparameter tuning system that i
 ### Example
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAutoTuner
 metadata:
   name: resnet-hpo
@@ -170,7 +170,7 @@ GryviaWorkflow lets you define complex ML pipelines as directed acyclic graphs (
 ### Example
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaWorkflow
 metadata:
   name: llm-training-pipeline
@@ -343,7 +343,7 @@ GryviaModelRegistry provides a Kubernetes-native model registry for tracking tra
 ### Example
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaModelRegistry
 metadata:
   name: llama-3-fine-tuned
@@ -460,7 +460,7 @@ GryviaInferenceService deploys trained models as scalable inference endpoints. I
 ### Example
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaInferenceService
 metadata:
   name: llama-3-serving
@@ -589,7 +589,7 @@ Workspaces include persistent storage, automatic idle detection, and pause/resum
 ### Example
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaWorkspace
 metadata:
   name: research-notebook

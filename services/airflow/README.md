@@ -199,7 +199,7 @@ def submit_gryvia_job(**context):
     config.load_incluster_config()
 
     job_spec = {
-        'apiVersion': 'gryvia.io/v1',
+        'apiVersion': 'gryvia.io/v1alpha1',
         'kind': 'GryviaAIJob',
         'metadata': {
             'name': 'airflow-training',
@@ -219,7 +219,7 @@ def submit_gryvia_job(**context):
     api = client.CustomObjectsApi()
     api.create_namespaced_custom_object(
         group='gryvia.io',
-        version='v1',
+        version='v1alpha1',
         namespace='default',
         plural='gryviaaijobs',
         body=job_spec
@@ -245,7 +245,7 @@ def check_job_status(**context):
 
     job = api.get_namespaced_custom_object(
         group='gryvia.io',
-        version='v1',
+        version='v1alpha1',
         namespace='default',
         plural='gryviaaijobs',
         name='airflow-training'
@@ -277,7 +277,7 @@ def calculate_cost(**context):
     api = client.CustomObjectsApi()
     job = api.get_namespaced_custom_object(
         group='gryvia.io',
-        version='v1',
+        version='v1alpha1',
         namespace='default',
         plural='gryviaaijobs',
         name='airflow-training'

@@ -34,7 +34,7 @@ Automatically optimize hyperparameters, resource allocation, and training config
 ### 1. Enable Auto-Tuning
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAutoTuner
 metadata:
   name: llama-tuning

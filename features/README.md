@@ -18,7 +18,7 @@ Build complex ML workflows with job dependencies and conditional execution.
 ### Simple Linear Workflow
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaWorkflow
 metadata:
   name: training-pipeline
@@ -107,7 +107,7 @@ jobs:
 ### Scheduled Workflows
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaWorkflow
 metadata:
   name: daily-retraining

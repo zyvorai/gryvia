@@ -8,7 +8,7 @@
 #
 ---
 # Step 1: Create the source training job
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: resnet50-baseline
@@ -63,7 +63,7 @@ spec:
 
 ---
 # Step 2: Create the time machine to track checkpoints and enable forking
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaTrainingTimeMachine
 metadata:
   name: resnet50-timemachine

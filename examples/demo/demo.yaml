@@ -1,5 +1,5 @@
 # Demo data for evaluating Gryvia without GPUs. Every object below is fictional.
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaGpuNode
 metadata:
   name: demo-h100-1
@@ -11,7 +11,7 @@ spec:
   interconnect: nvlink
   rdma: true
 ---
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaGpuNode
 metadata:
   name: demo-a100-1
@@ -23,7 +23,7 @@ spec:
   interconnect: nvlink
   rdma: false
 ---
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaQuota
 metadata:
   name: demo-team
@@ -40,7 +40,7 @@ spec:
     monthlyBudget: 5000
     alertThreshold: 80
 ---
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: demo-train

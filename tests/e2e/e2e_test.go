@@ -81,7 +81,7 @@ func TestE2E_AIJobLifecycle(t *testing.T) {
 
 	job := &unstructured.Unstructured{
 		Object: map[string]interface{}{
-			"apiVersion": "gryvia.io/v1",
+			"apiVersion": "gryvia.io/v1alpha1",
 			"kind":       "GryviaAIJob",
 			"metadata": map[string]interface{}{
 				"name":      jobName,
@@ -175,7 +175,7 @@ func TestE2E_QuotaEnforcement(t *testing.T) {
 
 	quota := &unstructured.Unstructured{
 		Object: map[string]interface{}{
-			"apiVersion": "gryvia.io/v1",
+			"apiVersion": "gryvia.io/v1alpha1",
 			"kind":       "GryviaQuota",
 			"metadata": map[string]interface{}{
 				"name": quotaName,
@@ -295,7 +295,7 @@ func TestE2E_StorageProvisioning(t *testing.T) {
 
 	storage := &unstructured.Unstructured{
 		Object: map[string]interface{}{
-			"apiVersion": "gryvia.io/v1",
+			"apiVersion": "gryvia.io/v1alpha1",
 			"kind":       "GryviaStorage",
 			"metadata": map[string]interface{}{
 				"name": storageName,

@@ -1,5 +1,5 @@
 # Example: ImageNet Dataset
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaDataset
 metadata:
   name: imagenet-2012
@@ -44,7 +44,7 @@ spec:
     fileCount: 1281167
 ---
 # Example: LLM Training Corpus
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaDataset
 metadata:
   name: llm-training-corpus-v2
@@ -87,7 +87,7 @@ spec:
     fileCount: 10000
 ---
 # Example: Audio Dataset with Augmentation
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaDataset
 metadata:
   name: speech-recognition-corpus
@@ -114,7 +114,7 @@ spec:
     totalSizeBytes: 500000000000
 ---
 # Example: Using Dataset in Job
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: imagenet-training
@@ -143,7 +143,7 @@ spec:
     - --batch-size=256
 ---
 # Dataset Version History
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaDataset
 metadata:
   name: imagenet-2012

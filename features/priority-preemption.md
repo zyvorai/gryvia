@@ -19,7 +19,7 @@ Gryvia provides a priority-based scheduling system that:
 For system and infrastructure jobs.
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: system-job
@@ -142,7 +142,7 @@ spec:
 ### Basic Priority Assignment
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: my-job
@@ -267,7 +267,7 @@ High-priority jobs can exceed team quotas:
 
 ```yaml
 # Priority class configuration
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaPriority
 metadata:
   name: high
@@ -425,7 +425,7 @@ spec:
 ### Custom Priority Classes
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaPriority
 metadata:
   name: paper-deadline

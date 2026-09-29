@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 // GryviaAIJob CRD
 #[derive(CustomResource, Clone, Debug, Serialize, Deserialize, JsonSchema)]
-#[kube(group = "gryvia.io", version = "v1", kind = "GryviaAIJob", namespaced)]
+#[kube(group = "gryvia.io", version = "v1alpha1", kind = "GryviaAIJob", namespaced)]
 #[kube(status = "AIJobStatus")]
 pub struct AIJobSpec {
     pub framework: String,
@@ -59,7 +59,7 @@ pub struct AIJobStatus {
 
 // GryviaQuota CRD
 #[derive(CustomResource, Clone, Debug, Serialize, Deserialize, JsonSchema)]
-#[kube(group = "gryvia.io", version = "v1", kind = "GryviaQuota")]
+#[kube(group = "gryvia.io", version = "v1alpha1", kind = "GryviaQuota")]
 #[kube(status = "QuotaStatus")]
 pub struct QuotaSpec {
     pub team: String,
@@ -130,7 +130,7 @@ pub struct BudgetStatus {
 
 // GryviaGpuNode CRD
 #[derive(CustomResource, Clone, Debug, Serialize, Deserialize, JsonSchema)]
-#[kube(group = "gryvia.io", version = "v1", kind = "GryviaGpuNode")]
+#[kube(group = "gryvia.io", version = "v1alpha1", kind = "GryviaGpuNode")]
 #[kube(status = "GpuNodeStatus")]
 pub struct GpuNodeSpec {
     #[serde(rename = "nodeName")]

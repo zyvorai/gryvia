@@ -105,7 +105,7 @@ Gryvia ships 24 eBPF programs organized into six categories. All programs are lo
 Intent-based network policies that describe allowed traffic using high-level semantics rather than raw IP/port rules.
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaFlowPolicy
 metadata:
   name: training-data-access
@@ -152,7 +152,7 @@ spec:
 Per-service traffic metrics aggregated from eBPF flow data.
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaTrafficInsight
 metadata:
   name: training-cluster-insight
@@ -206,7 +206,7 @@ status:
 Self-healing firewall that learns traffic patterns and generates or enforces network policies automatically.
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAutoPolicy
 metadata:
   name: ml-namespace-autopolicy
@@ -256,7 +256,7 @@ status:
 On-demand network debugging sessions for troubleshooting connectivity and performance issues.
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaTraceSession
 metadata:
   name: debug-training-latency
@@ -309,7 +309,7 @@ status:
 Service dependency visualization generated from observed network traffic.
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaServiceGraph
 metadata:
   name: ml-platform-graph
@@ -356,7 +356,7 @@ status:
 Anomaly detection rules and alerts for network traffic patterns.
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaNetworkAnomaly
 metadata:
   name: training-anomaly-detector
@@ -414,7 +414,7 @@ status:
 Security detection rules for identifying threats and policy violations.
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaSecurityPolicy
 metadata:
   name: gpu-cluster-security
@@ -474,7 +474,7 @@ spec:
 Network cost attribution per team, job, and service.
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaNetworkCost
 metadata:
   name: monthly-network-costs
@@ -518,7 +518,7 @@ status:
 AI training-specific network analysis for distributed training jobs.
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaTrainingInsight
 metadata:
   name: llm-training-insight
@@ -566,7 +566,7 @@ status:
 Serving latency breakdown and optimization analysis for inference services.
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaInferenceInsight
 metadata:
   name: llm-serving-insight

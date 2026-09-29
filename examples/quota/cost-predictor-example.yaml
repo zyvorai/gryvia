@@ -1,6 +1,6 @@
 ---
 # Cost Predictor: Predicts costs, training time, and queue wait for AI jobs
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaCostPredictor
 metadata:
   name: default-predictor
@@ -68,7 +68,7 @@ spec:
 
 ---
 # Example: Submit a dry-run job to get a cost estimate without running it
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: llm-training-cost-check
