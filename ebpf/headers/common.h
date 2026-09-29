@@ -28,6 +28,15 @@ struct flow_event {
     __u32 _pad3;
 };
 
+_Static_assert(sizeof(struct flow_event) == 64,
+               "flow_event ABI: keep in sync with rawFlowEvent in collector/pkg/decoder/decoder.go");
+_Static_assert(__builtin_offsetof(struct flow_event, protocol) == 20, "flow_event.protocol");
+_Static_assert(__builtin_offsetof(struct flow_event, verdict) == 21, "flow_event.verdict");
+_Static_assert(__builtin_offsetof(struct flow_event, bytes) == 24, "flow_event.bytes");
+_Static_assert(__builtin_offsetof(struct flow_event, latency_ns) == 32, "flow_event.latency_ns");
+_Static_assert(__builtin_offsetof(struct flow_event, pid) == 40, "flow_event.pid");
+_Static_assert(__builtin_offsetof(struct flow_event, comm) == 44, "flow_event.comm");
+
 /* Connection tracking entry */
 struct conn_info {
     __u64 start_ns;
@@ -35,6 +44,10 @@ struct conn_info {
     __u64 bytes_recv;
     __u32 retransmits;
     __u32 drops;
+    __u32 owner_pid;   /* tgid that opened the connection (host PID) */
+    __u32 _pad;
 };
+
+_Static_assert(sizeof(struct conn_info) == 40, "conn_info size");
 
 #endif /* __COMMON_H__ */

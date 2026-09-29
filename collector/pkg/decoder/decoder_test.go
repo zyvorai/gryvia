@@ -34,3 +34,11 @@ func TestDecodeFlowEventLayout(t *testing.T) {
 		t.Fatalf("unexpected decode: %+v", ev)
 	}
 }
+
+// TestRawFlowEventSize pins the Go mirror to the C static asserts in
+// ebpf/headers/common.h (sizeof == 64).
+func TestRawFlowEventSize(t *testing.T) {
+	if got := binary.Size(rawFlowEvent{}); got != 64 {
+		t.Fatalf("rawFlowEvent is %d bytes, C struct flow_event is 64", got)
+	}
+}

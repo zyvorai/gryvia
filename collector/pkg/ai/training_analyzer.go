@@ -70,6 +70,12 @@ func (a *TrainingAnalyzer) Process(event decoder.GPUEvent) {
 }
 
 func (a *TrainingAnalyzer) processCollective(event decoder.GPUEvent) {
+	// The current NCCL uprobe emits zero for rank and world size. Do not
+	// represent all ranks as rank 0 or claim a communication topology.
+	if event.WorldSize == 0 {
+		a.totalCommNs += float64(event.LatencyNs)
+		return
+	}
 	// Update rank stats.
 	rs, ok := a.rankStats[event.SrcRank]
 	if !ok {
@@ -90,6 +96,10 @@ func (a *TrainingAnalyzer) processCollective(event decoder.GPUEvent) {
 }
 
 func (a *TrainingAnalyzer) processRDMA(event decoder.GPUEvent) {
+	if event.WorldSize == 0 { // rank unknown: do not fabricate a (0,0) pair
+		a.totalCommNs += float64(event.LatencyNs)
+		return
+	}
 	pair := RankPair{Src: event.SrcRank, Dst: event.DstRank}
 	a.commMatrix[pair] += int64(event.Bytes)
 	a.totalCommNs += float64(event.LatencyNs)

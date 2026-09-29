@@ -66,6 +66,9 @@ spec:
             - name: proc
               mountPath: /proc
               readOnly: true
+            - name: host-proc
+              mountPath: /host/proc
+              readOnly: true
             - name: sys-fs-bpf
               mountPath: /sys/fs/bpf
             - name: sys-kernel-btf
@@ -96,6 +99,10 @@ spec:
             path: /sys/kernel/debug
             type: Directory
         - name: proc
+          hostPath:
+            path: /proc
+            type: Directory
+        - name: host-proc
           hostPath:
             path: /proc
             type: Directory

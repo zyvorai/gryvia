@@ -25,6 +25,7 @@ import (
 	"github.com/zyvorai/gryvia/collector/pkg/decoder"
 	"github.com/zyvorai/gryvia/collector/pkg/exporter"
 	"github.com/zyvorai/gryvia/collector/pkg/fabric"
+	"github.com/zyvorai/gryvia/collector/pkg/flight"
 	"github.com/zyvorai/gryvia/collector/pkg/graph"
 	"github.com/zyvorai/gryvia/collector/pkg/loader"
 	"github.com/zyvorai/gryvia/collector/pkg/security"
@@ -100,6 +101,12 @@ func main() {
 
 	// ---- Initialize subsystems ----
 	metrics := exporter.NewMetrics()
+	node := os.Getenv("NODE_NAME")
+	identity := flight.NewResolver(node, "/host/proc")
+	if node != "" {
+		go identity.Run(ctx, func(err error) { log.Warnw("pod identity refresh failed", "error", err) })
+	}
+	recorder := flight.New(node)
 	agg := aggregator.New(*windowSec)
 	graphBuilder := graph.NewBuilder()
 	detector := anomaly.NewDetector(log)
@@ -169,6 +176,21 @@ func main() {
 		eventCh := dec.Events()
 		go func() {
 			for ev := range eventCh {
+				if id, ok := identity.Resolve(ev.PID); ok {
+					ev.SrcPod, ev.Namespace = id.Pod, id.Namespace
+					kind := "flow"
+					if ev.Verdict == 2 {
+						kind = "tcp_retransmit"
+					}
+					observation := flight.Event{Identity: id, Source: "ebpf", Kind: kind, Bytes: uint64(ev.Bytes), DurationNs: ev.LatencyNs}
+					if ev.Verdict == 2 {
+						observation.Retransmits, observation.Bytes = ev.Bytes, 0
+					}
+					recorder.Record(observation)
+				}
+				if ev.Verdict == 2 {
+					continue // observation, not traffic or a drop
+				}
 				// Update aggregator.
 				agg.Record(ev)
 				// Update graph.
@@ -204,6 +226,20 @@ func main() {
 	// ---- GPU event processing pipeline ----
 	go func() {
 		for ev := range gpuDecoder.Events() {
+			if id, ok := identity.Resolve(ev.PID); ok {
+				kind := "gpu_api"
+				switch ev.EventType {
+				case decoder.GPUEvtNCCLOp:
+					kind = "nccl_collective"
+				case decoder.GPUEvtRDMASend, decoder.GPUEvtRDMARecv:
+					kind = "rdma_kernel"
+				case decoder.GPUEvtPipeStall:
+					kind = "pipeline_stall"
+				case decoder.GPUEvtMemTransfer:
+					kind = "cuda_memcpy"
+				}
+				recorder.Record(flight.Event{Identity: id, Source: "ebpf", Kind: kind, Bytes: ev.Bytes, DurationNs: ev.LatencyNs})
+			}
 			// Update NCCL aggregator.
 			ncclAgg.Process(ev)
 			// Update GPU memory aggregator.
@@ -324,6 +360,7 @@ func main() {
 	// AI/training endpoints.
 	mux.HandleFunc("/api/v1/ai/training", trainingAnalyzer.ServeHTTP)
 	mux.HandleFunc("/api/v1/ai/pipeline", pipelineAnalyzer.ServeHTTP)
+	mux.HandleFunc("/api/v1/flight/diagnose", recorder.ServeHTTP)
 
 	// TCP tuning endpoint.
 	mux.HandleFunc("/api/v1/tuning/tcp", tcpAdvisor.ServeHTTP)

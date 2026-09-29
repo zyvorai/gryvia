@@ -64,7 +64,7 @@ func (r *GryviaTrainingInsightReconciler) Reconcile(ctx context.Context, req ctr
 	for _, rd := range trainingData.RankStats {
 		rankStats = append(rankStats, gryviav1.RankStat{
 			Rank:         rd.Rank,
-			AvgLatencyNs: rd.AvgLatencyNs,
+			AvgLatencyNs: int64(rd.AvgLatencyNs),
 			TotalBytes:   rd.TotalBytes,
 			IsStraggler:  rd.IsStraggler,
 		})
@@ -76,7 +76,7 @@ func (r *GryviaTrainingInsightReconciler) Reconcile(ctx context.Context, req ctr
 	// Detect communication pattern
 	commPattern := trainingData.CommPattern
 	if commPattern == "" {
-		commPattern = "ring_allreduce"
+		commPattern = "unknown"
 	}
 
 	// Calculate communication-to-compute ratio
@@ -84,9 +84,14 @@ func (r *GryviaTrainingInsightReconciler) Reconcile(ctx context.Context, req ctr
 
 	// Identify bottleneck
 	bottleneck := r.identifyBottleneck(commComputeRatio)
+	phase := "Active"
+	if len(rankStats) == 0 {
+		phase = "AwaitingData"
+		bottleneck = "unknown"
+	}
 
 	// Update status
-	r.updateTrainingInsightStatus(ctx, req.NamespacedName, "Active", rankStats, commPattern, commComputeRatio, stragglers, bottleneck)
+	r.updateTrainingInsightStatus(ctx, req.NamespacedName, phase, rankStats, commPattern, commComputeRatio, stragglers, bottleneck)
 
 	logger.Info("GryviaTrainingInsight analysis complete",
 		"ranks", len(rankStats),
@@ -100,14 +105,14 @@ func (r *GryviaTrainingInsightReconciler) Reconcile(ctx context.Context, req ctr
 
 // collectorTrainingResponse represents the response from the collector training API
 type collectorTrainingResponse struct {
-	RankStats []struct {
-		Rank         int   `json:"rank"`
-		AvgLatencyNs int64 `json:"avgLatencyNs"`
-		TotalBytes   int64 `json:"totalBytes"`
-		IsStraggler  bool  `json:"isStraggler"`
-	} `json:"rankStats"`
-	CommPattern      string  `json:"commPattern"`
-	CommComputeRatio float64 `json:"commComputeRatio"`
+	RankStats map[string]struct {
+		Rank         int     `json:"rank"`
+		AvgLatencyNs float64 `json:"avg_latency_ns"`
+		TotalBytes   int64   `json:"total_bytes"`
+		IsStraggler  bool    `json:"is_straggler"`
+	} `json:"rank_stats"`
+	CommPattern      string  `json:"pattern"`
+	CommComputeRatio float64 `json:"comm_compute_ratio"`
 }
 
 // queryTrainingStats fetches NCCL training stats from the collector API
@@ -147,33 +152,26 @@ func (r *GryviaTrainingInsightReconciler) detectStragglers(rankStats []gryviav1.
 		return nil
 	}
 
-	// Calculate median latency
+	// Calculate mean latency across ranks.
 	var totalLatency int64
 	for _, rs := range rankStats {
 		totalLatency += rs.AvgLatencyNs
 	}
-	medianLatency := totalLatency / int64(len(rankStats))
+	meanLatency := totalLatency / int64(len(rankStats))
 
-	if medianLatency == 0 {
+	if meanLatency == 0 {
 		return nil
 	}
 
 	// Identify ranks that are significantly slower than the median
 	var stragglers []gryviav1.StragglerInfo
 	for _, rs := range rankStats {
-		slowdownFactor := float64(rs.AvgLatencyNs) / float64(medianLatency)
+		slowdownFactor := float64(rs.AvgLatencyNs) / float64(meanLatency)
 		if slowdownFactor > 1.5 {
-			reason := "high_communication_latency"
-			if rs.TotalBytes > 0 {
-				avgBytesPerRank := totalLatency / int64(len(rankStats))
-				if float64(rs.TotalBytes) > float64(avgBytesPerRank)*2.0 {
-					reason = "excessive_data_transfer"
-				}
-			}
 			stragglers = append(stragglers, gryviav1.StragglerInfo{
 				Rank:           rs.Rank,
 				SlowdownFactor: slowdownFactor,
-				Reason:         reason,
+				Reason:         "high_communication_latency",
 			})
 		}
 	}
