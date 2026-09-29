@@ -44,3 +44,31 @@ func TestApplyFabricPenalty(t *testing.T) {
 		t.Errorf("got %v, want 0", got)
 	}
 }
+
+func TestRescoreNodes(t *testing.T) {
+	in := []NodeScore{{NodeName: "a", Score: 80}, {NodeName: "b", Score: 60}, {NodeName: "c", Score: 10}}
+	// No feed: a copy with identical scores.
+	for _, m := range []map[string]float64{nil, {}} {
+		out := RescoreNodes(in, m)
+		if len(out) != 3 || out[0] != in[0] || out[1] != in[1] || out[2] != in[2] {
+			t.Fatalf("empty feed changed scores: %v", out)
+		}
+		out[0].Score = 1
+		if in[0].Score != 80 {
+			t.Fatal("output aliases the input")
+		}
+	}
+	out := RescoreNodes(in, map[string]float64{"a": 0.4, "c": 1, "unknown": 1, "b": math.NaN()})
+	if out[0].Score != 70 || out[1].Score != 60 || out[2].Score != 0 {
+		t.Fatalf("got %v", out)
+	}
+	if out[0].NodeName != "a" || out[2].NodeName != "c" {
+		t.Fatalf("order changed: %v", out)
+	}
+	if in[0].Score != 80 || in[2].Score != 10 {
+		t.Fatal("input modified")
+	}
+	if got := RescoreNodes(nil, map[string]float64{"a": 1}); len(got) != 0 {
+		t.Fatal(got)
+	}
+}

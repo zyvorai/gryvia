@@ -28,7 +28,7 @@ structured events to the userspace flow collector.
 | `ucx_gloo.c` | uprobe/uretprobe (`ucp_tag_send_nb`, `ucp_tag_send_nbx` in `libucp.so`) | UCX tag-send calls that blocked for >= 5 ms as `FABRIC_SIG_UCX_SLOW` (span of the posting call, not of the transfer). Skipped when `libucp.so` is not found (`-ucx-lib`, `-uprobe-pid`, standard dirs). **Gloo is not probed**: its C++ entry points are mangled, version-specific and usually linked statically into `libtorch_cpu.so`, so a fixed-symbol probe could never attach |
 | `pfc_pause.c` | XDP | 802.1Qbb PFC pause frames (EtherType 0x8808, opcode 0x0101; per-priority counts from the enable vector and quanta) and 802.3x pause frames in per-CPU counters (`pause_count`); always `XDP_PASS`, attached only with `-iface`. **One XDP program per interface**: conflicts with `roce_cnp`, `packet_filter` and `dns_tracker`; the collector attaches the first and skips the rest with a logged reason. Many NICs consume pause frames in the MAC and never show them to XDP |
 | `weight_exfil.c` | kprobe (`vfs_read`, `tcp_v4_connect`) | Observe only. A read request >= 8 MiB from a file named `*.safetensors/.gguf/.ckpt/.onnx/.pt/.pth/.bin/.h5`, then a `tcp_v4_connect` by the same process within 30 s to a destination that is not loopback, RFC1918, link-local or 0.0.0.0/8, emits one `FABRIC_SIG_EXFIL`. A read alone never fires. IPv4 only, `read()` only (not mmap), name-based |
-| `quota_pace.c` | sockops (cgroup v2) | **The only mutating program. Off by default.** Lowers `SO_MAX_PACING_RATE` of an outbound TCP connection (`TCP_CONNECT_CB`) when `pace_rate[<full 64-bit cgroup id>]` has an entry; no entry means the socket is untouched. Rate clamped up to 1 Mbit/s, never raised, fail open. Attached only with `-quota-pace` **and** `-cgroup-path`; entries are lease-gated by `collector/pkg/fabric` (`Pacer`), but nothing grants leases yet |
+| `quota_pace.c` | sockops (cgroup v2) | **The only mutating program. Off by default.** Lowers `SO_MAX_PACING_RATE` of an outbound TCP connection (`TCP_CONNECT_CB`) when `pace_rate[<full 64-bit cgroup id>]` has an entry; no entry means the socket is untouched. Rate clamped up to 1 Mbit/s, never raised, fail open. Attached only with `-quota-pace` **and** `-cgroup-path`; entries are lease-gated by `collector/pkg/fabric` (`Pacer`); the only writer is the opt-in `-quota-pace-sync` reconcile of `GryviaQuota` `spec.network.maxEgressMbps` (see `docs/fabric-status.md`) |
 
 ## Portability (CO-RE)
 
@@ -71,6 +71,14 @@ outbound connections are paced (the ESTABLISHED callbacks run in softirq where t
 sockops programs cannot ask for a socket's cgroup); the key is the exact cgroup id (the directory's inode number), not
 its descendants; the kernel takes the rate as 32-bit bytes per second (max about 4.29 GB/s); a socket that is already
 paced keeps its rate until it closes, deleting the entry only unpaces new connections.
+
+The optional `-quota-pace-sync` reconcile (off by default, needs `-quota-pace`, `-cgroup-path`, a cluster and `NODE_NAME`)
+fills that map from `GryviaQuota` objects: pods on the node in the quota's namespaces get their pod and container
+cgroup ids granted a 2-minute lease every 30 s. It was functionally tested on the Linux 7.0 host against the real
+`pace_rate` map and real sockops on a throwaway cgroup tree: only the granted cgroup's new connections were clamped,
+a sibling stayed unlimited, and revoke, an API failure (nothing changed), lease expiry and shutdown behaved as designed
+(the Kubernetes calls were fakes; there is no API server there). Not tested: real quotas on real workloads. The cap is
+per connection (`SO_MAX_PACING_RATE`), not an aggregate limit.
 
 ## Prerequisites
 

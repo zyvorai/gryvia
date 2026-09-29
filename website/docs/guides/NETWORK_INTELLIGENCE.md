@@ -74,7 +74,7 @@ Ten programs are listed here. Nine feed the scheduler-facing fabric signals and 
 emit `struct fabric_signal` on their own `fabric_events` ring buffer instead of extending the frozen 72-byte `gpu_event`.
 The collector folds the signals per job over a 5-minute window and serves them, with a `[0,1]` score penalty, at
 `GET :9090/api/v1/fabric` and as `gryvia_fabric_*` Prometheus gauges. The `GryviaFabricSignal` CRD (short name `gfs`)
-carries the same fields in its status; no controller fills it yet and the score is not wired into the scheduler.
+carries the same fields in its status. With `-publish-fabric-status` (off by default) the collector patches the status of an existing `GryviaFabricSignal` whose `spec.jobRef` names the job; nothing else fills it, and the score is not wired into the scheduler.
 
 | Program | Hook Type | Description |
 |---------|-----------|-------------|
@@ -87,13 +87,13 @@ carries the same fields in its status; no controller fills it yet and the score 
 | `ucx_gloo` | uprobe/uretprobe (`ucp_tag_send_nb`, `ucp_tag_send_nbx`) | UCX tag-send calls that blocked for at least 5 ms (the span of the posting call, not of the transfer). Skipped when `libucp.so` is not found (`-ucx-lib`, `-uprobe-pid`). Gloo is **not** probed: its allreduce symbols are C++ mangled, vary by version and are normally linked statically into `libtorch_cpu.so`, so a fixed probe could never attach. Folded as `ucxSlowP99ms`, informational only. |
 | `pfc_pause` | XDP | Counts 802.1Qbb priority-flow-control pause frames (EtherType 0x8808, opcode 0x0101) in per-CPU counters, with a count per paused priority, plus 802.3x pause frames; always `XDP_PASS`. Attached only with `-iface`; folded as `pfcRate` (frames per second, job `_node/pfc`) and `gryvia_pfc_*_total` counters. Only one XDP program can own an interface, so it conflicts with `roce_cnp`, `packet_filter` and `dns_tracker`: the collector attaches the first one and skips the others with a logged reason instead of replacing it. Many NICs handle pause frames in the MAC and never pass them to XDP, in which case the counters stay 0. |
 | `weight_exfil` | kprobe (`vfs_read`, `tcp_v4_connect`) | Observe only. A read of at least 8 MiB from a model-weight file (by name: `.safetensors`, `.gguf`, `.ckpt`, `.onnx`, `.pt`, `.pth`, `.bin`, `.h5`), followed within 30 s by a `connect` from the same process to a destination outside loopback, RFC1918 and link-local ranges, produces one signal (also logged as a warning). A read alone never does. It is a heuristic (IPv4 only, `read()` only, name-based) and a model server that legitimately calls an external API after loading weights will trip it. Folded as `exfilEvents`; it never changes `scoreDelta`. |
-| `quota_pace` | sockops (cgroup v2) | **The only program that changes anything, and it is off by default.** When a process in a cgroup that has an entry in the `pace_rate` map opens an outbound TCP connection, the socket's `SO_MAX_PACING_RATE` is lowered to that rate (never raised, and never below 1 Mbit/s). No entry, no change. Attached only with `-quota-pace` **and** `-cgroup-path`. Entries are lease-gated (15 minutes, `Pacer` in `collector/pkg/fabric`): expiry deletes the entry and the collector deletes every entry it wrote when it shuts down. Sockets that are already paced keep their rate until they close; only new connections are unpaced. **Nothing grants leases yet:** there is no `GryviaQuota` watch and no API, so enabling the flag only attaches the program and paces nothing until an operator or a future controller writes an entry. |
+| `quota_pace` | sockops (cgroup v2) | **The only program that changes anything, and it is off by default.** When a process in a cgroup that has an entry in the `pace_rate` map opens an outbound TCP connection, the socket's `SO_MAX_PACING_RATE` is lowered to that rate (never raised, and never below 1 Mbit/s). No entry, no change. Attached only with `-quota-pace` **and** `-cgroup-path`. Entries are lease-gated (`Pacer` in `collector/pkg/fabric`): expiry deletes the entry and the collector deletes every entry it wrote when it shuts down. Sockets that are already paced keep their rate until they close; only new connections are unpaced. Alone the flag only attaches the program and paces nothing; the opt-in `-quota-pace-sync` reconcile of `GryviaQuota` `spec.network.maxEgressMbps` is the only thing that grants leases (see [Fabric status and quota pacing](#fabric-status-and-quota-pacing)). |
 
 The fabric score penalty (`scoreDelta`, capped at 1) adds 0.15 when `overlapIdleRatio` exceeds 0.3, 0.15 when
 `cnpRate` exceeds 100 packets per second and 0.10 when `pfcRate` exceeds 1000 pause frames per second, on top of the
 straggler, RDMA and GDS terms. `exfilEvents`, `ucxSlowP99ms` and `inferWaitP99ms` are informational. The thresholds are heuristics
 that have not been calibrated on real fabrics. `FabricPenalty` in the ai-operator scheduler package turns `scoreDelta`
-into up to 25 points to subtract, but nothing calls it yet.
+into up to 25 points to subtract, and `RescoreNodes` applies a per-node map of them, but nothing calls either yet and nothing produces a per-node map.
 
 :::caution Unverified on hardware
 These programs compile and pass the kernel verifier (Linux 7.0 x86_64; arm64 compiles only). `roce_cnp` and
@@ -106,8 +106,25 @@ line (they show as `skipped: symbol not found` in `/api/v1/ebpf/status`). `ib_po
 wrappers, so kernel-side hooks only see in-kernel RDMA users; user-space verbs (NCCL) bypass them. The straggler span
 is the host-side duration of the NCCL call, which is the enqueue time for asynchronous collectives. Inside pods the
 uprobes need the library resolved through `/proc/<pid>/root` (`-uprobe-pid`); the per-container mount-namespace
-resolver is not built yet. Signals are attributed to a job by pid; until the cgroup-to-pod resolver binds pids, they
-are grouped under `_unattributed` by process name.
+resolver is not built yet. Signals are attributed to a job by pid through the Flight Recorder's resolver (host PID, then
+cgroup pod UID, then the node's pod list and its `gryvia.io/job` label); a pid that cannot be resolved (not in a pod, pod
+not on this node, no `gryvia.io/job` label, stale pod list) is never guessed and stays grouped under `_unattributed` by
+process name, and node-level counters stay under `_node/*`. Neither is ever published to a `GryviaFabricSignal`.
+
+### Fabric status and quota pacing
+
+Both are opt-in collector features; see [`docs/fabric-status.md`](https://github.com/zyvorai/gryvia/blob/main/docs/fabric-status.md)
+for the flags, RBAC and safety rules.
+
+| Feature | Flag (chart value) | Default | Changes anything? |
+|---------|--------------------|---------|-------------------|
+| Publish fabric status into `GryviaFabricSignal.status` | `-publish-fabric-status` (`ebpf.publishFabricStatus`) | off | Writes the status subresource of existing objects every 30 s; needs extra RBAC |
+| Quota pacing from `GryviaQuota` | `-quota-pace` + `-cgroup-path` + `-quota-pace-sync` (`ebpf.quotaPace.enabled`, `.sync`) | off | **Yes**: lowers the pacing rate of new outbound TCP connections of the quota's pods on the node |
+| Dry run of the above | `-quota-pace-dry-run` (`ebpf.quotaPace.dryRun`) | off | No: logs what would be granted or revoked |
+
+`spec.network.maxEgressMbps` (1 to 32000) on a `GryviaQuota` is the per-connection egress cap for pods in the quota's
+namespaces (`SO_MAX_PACING_RATE`, not an aggregate limit, TCP only). `kube-system`, `gryvia-system`, `kube-public`,
+`kube-node-lease` and the collector's own namespace are never paced.
 :::
 
 ### Security Programs

@@ -85,6 +85,20 @@ spec:
                 items:
                   type: string
                 type: array
+              network:
+                description: Network defines optional network limits (optional)
+                properties:
+                  maxEgressMbps:
+                    description: |-
+                      MaxEgressMbps caps the outbound TCP rate of each new connection opened by
+                      pods in the listed namespaces, in megabits per second. It is enforced by the
+                      eBPF collector (SO_MAX_PACING_RATE at connect time), only when that opt-in
+                      is enabled; it is not a bandwidth guarantee and does not limit UDP, RDMA or
+                      connections that already exist. Omit it for no cap.
+                    maximum: 32000
+                    minimum: 1
+                    type: integer
+                type: object
               priority:
                 description: Priority for this team (1-100, higher is more important)
                 type: integer
