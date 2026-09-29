@@ -54,7 +54,7 @@ jobs:
           pytest --cov=. --cov-report=xml
 
       - name: Upload coverage
-        uses: codecov/codecov-action@e28ff129e5465c2c0dcc6f003fc735cb6ae0c673 # v4
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v4
         with:
           files: services/api-gateway/coverage.xml
           flags: api-gateway
