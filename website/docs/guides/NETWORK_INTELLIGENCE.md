@@ -70,7 +70,7 @@ Gryvia ships 27 eBPF programs organized into seven categories. All programs are 
 
 ### Fabric Signal Programs
 
-Three programs feed the scheduler-facing fabric signals. They are observe-only (nothing is dropped or modified) and
+Six programs feed the scheduler-facing fabric signals (`roce_cnp` keeps counters only). They are observe-only (nothing is dropped or modified) and
 emit `struct fabric_signal` on their own `fabric_events` ring buffer instead of extending the frozen 72-byte `gpu_event`.
 The collector folds the signals per job over a 5-minute window and serves them, with a `[0,1]` score penalty, at
 `GET :9090/api/v1/fabric` and as `gryvia_fabric_*` Prometheus gauges. The `GryviaFabricSignal` CRD (short name `gfs`)
@@ -81,10 +81,19 @@ carries the same fields in its status; no controller fills it yet and the score 
 | `straggler` | uprobe (`ncclAllReduce`) | Flags a rank whose collective takes more than 2x the fastest recent span of the same payload size (and more than 5 ms) on the same node. |
 | `rdma_health` | kprobe (`ib_post_send`, `mlx5_ib_post_send`, `ib_poll_cq`, `mlx5_ib_poll_cq`) | Counts sends per QP and retry-exceeded / RNR-exceeded work completions; emits a signal above thresholds set in the `rdma_thresh` map. Every probe is optional. |
 | `gds_trace` | uprobe (`cuFileRead`, `cuFileWrite`), kprobe (`nvidia_fs_read`) | Counts bytes and times cuFile calls; a call is "direct" only when the nvidia-fs kernel hook is also seen, otherwise it counts as bounce/unknown. Only calls slower than 2 ms are emitted. |
+| `overlap` | uprobe/uretprobe (`ncclAllReduce`, `cudaDeviceSynchronize`) | Reports a `cudaDeviceSynchronize` of at least 1 ms that runs nested inside an in-flight `ncclAllReduce` on the same thread (GPU idle while communicating). Folded as `overlapIdleRatio`, the share of the window spent in such syncs. |
+| `roce_cnp` | XDP | Counts RoCEv2 congestion notification packets (UDP 4791, BTH opcode 0x81) in per-CPU counters; always returns `XDP_PASS`. Attached only with `-iface`; the collector polls the counters and folds them as `cnpRate` (packets per second, job `_node/cnp`) and `gryvia_roce_cnp_packets_total`. |
+| `infer_latency` | kretprobe (`inet_csk_accept`), kprobe (`tcp_recvmsg`) | Time from accept to the first read on connections to the inference ports (`-infer-ports`, default `8000,8001`: vLLM and Triton HTTP; skipped when the list is empty). Folded as `inferWaitP99ms`, informational only. |
+
+The fabric score penalty (`scoreDelta`, capped at 1) adds 0.15 when `overlapIdleRatio` exceeds 0.3 and 0.15 when
+`cnpRate` exceeds 100 packets per second, on top of the straggler, RDMA and GDS terms. Both thresholds are heuristics
+that have not been calibrated on real fabrics. `FabricPenalty` in the ai-operator scheduler package turns `scoreDelta`
+into up to 25 points to subtract, but nothing calls it yet.
 
 :::caution Unverified on hardware
-These three programs compile and pass the kernel verifier (Linux 7.0 x86_64; arm64 compiles only), but the GPU, RDMA
-and GDS paths have not been exercised on GPU, RDMA or GPUDirect Storage hardware. On the test host none of
+These programs compile and pass the kernel verifier (Linux 7.0 x86_64; arm64 compiles only). `roce_cnp` was run on
+crafted packets with `BPF_PROG_TEST_RUN` and `overlap` on a stand-in library; the GPU, RDMA
+and GDS paths, real RoCE traffic and `infer_latency` attached to a live server have not been exercised on GPU, RDMA or GPUDirect Storage hardware. On the test host none of
 `ib_post_send`, `ib_poll_cq`, `mlx5_ib_*` or `nvidia_fs_read` exists, and the collector skips those hooks with a log
 line (they show as `skipped: symbol not found` in `/api/v1/ebpf/status`). `ib_post_send` and `ib_poll_cq` are inline
 wrappers, so kernel-side hooks only see in-kernel RDMA users; user-space verbs (NCCL) bypass them. The straggler span

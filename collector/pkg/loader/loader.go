@@ -54,6 +54,7 @@ type Manager struct {
 	readers     []MapReader
 	status      []ProgramStatus
 	exes        map[string]*link.Executable
+	objMaps     map[string]map[string]*ebpf.Map // object file -> map name -> map
 }
 
 // New creates a Manager for the given configuration.
@@ -64,7 +65,8 @@ func New(cfg Config, log *zap.SugaredLogger) (*Manager, error) {
 	if _, err := os.Stat(cfg.Dir); err != nil {
 		return nil, fmt.Errorf("ebpf directory not found: %w", err)
 	}
-	return &Manager{cfg: cfg, log: log, exes: map[string]*link.Executable{}}, nil
+	return &Manager{cfg: cfg, log: log, exes: map[string]*link.Executable{},
+		objMaps: map[string]map[string]*ebpf.Map{}}, nil
 }
 
 // LoadAndAttach loads every .o file in the directory and attaches its
@@ -118,6 +120,22 @@ func (m *Manager) loadObject(file, path string) error {
 		return fmt.Errorf("create collection: %w", err)
 	}
 	m.collections = append(m.collections, coll)
+	m.mu.Lock()
+	m.objMaps[file] = coll.Maps
+	m.mu.Unlock()
+
+	// infer_latency.c watches only the ports userspace writes into infer_ports.
+	// The map must be filled before any probe attaches; with no ports configured
+	// the object is skipped entirely (its tcp_recvmsg kprobe would fire on every
+	// receive for nothing).
+	skipAll := ""
+	if mp, ok := coll.Maps[InferPortsMap]; ok {
+		if len(m.cfg.InferPorts) == 0 {
+			skipAll = "no inference ports configured (set -infer-ports)"
+		} else if err := FillInferPorts(mp, m.cfg.InferPorts); err != nil {
+			return fmt.Errorf("fill %s: %w", InferPortsMap, err)
+		}
+	}
 
 	names := make([]string, 0, len(coll.Programs))
 	for n := range coll.Programs {
@@ -138,7 +156,11 @@ func (m *Manager) loadObject(file, path string) error {
 		}
 		st.Kind = string(as.Kind)
 		st.Target = as.Symbol
-		if reason := SkipReason(as, m.cfg); reason != "" {
+		reason := skipAll
+		if reason == "" {
+			reason = SkipReason(as, m.cfg)
+		}
+		if reason != "" {
 			st.Reason = "skipped: " + reason
 			m.log.Infow("skipping program", "object", file, "program", name, "reason", reason)
 			m.addStatus(st)
@@ -262,6 +284,39 @@ func (m *Manager) attach(as AttachSpec, prog *ebpf.Program, coll *ebpf.Collectio
 		return nil, fmt.Errorf("no sockmap/sockhash in object")
 	}
 	return nil, fmt.Errorf("unsupported attach kind %q", as.Kind)
+}
+
+// ReadCounter returns the sum over all CPUs of a __u64 counter in a map of the
+// given object (e.g. roce_cnp.o, cnp_count, slot 0). It works for per-CPU and
+// plain arrays. An error means the object or map was not loaded.
+func (m *Manager) ReadCounter(object, name string, key uint32) (uint64, error) {
+	m.mu.Lock()
+	mp := m.objMaps[object][name]
+	m.mu.Unlock()
+	if mp == nil {
+		return 0, fmt.Errorf("map %s/%s not loaded", object, name)
+	}
+	return sumCounter(mp, key)
+}
+
+func sumCounter(mp *ebpf.Map, key uint32) (uint64, error) {
+	switch mp.Type() {
+	case ebpf.PerCPUArray, ebpf.PerCPUHash, ebpf.LRUCPUHash:
+		var per []uint64
+		if err := mp.Lookup(&key, &per); err != nil {
+			return 0, err
+		}
+		var sum uint64
+		for _, v := range per {
+			sum += v
+		}
+		return sum, nil
+	}
+	var v uint64
+	if err := mp.Lookup(&key, &v); err != nil {
+		return 0, err
+	}
+	return v, nil
 }
 
 // Readers returns all opened event readers.

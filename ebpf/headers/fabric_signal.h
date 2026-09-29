@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /*
  * fabric_signal.h - side-channel ABI for scheduler-facing fabric signals
- * (straggler.c, rdma_health.c, gds_trace.c).
+ * (straggler.c, rdma_health.c, gds_trace.c, overlap.c, roce_cnp.c,
+ * infer_latency.c).
  *
  * struct gpu_event is frozen at 72 bytes (see gpu_common.h) and must NOT be
  * extended; these programs emit struct fabric_signal on their own
@@ -22,7 +23,11 @@ enum fabric_signal_type {
 	FABRIC_SIG_STRAGGLER   = 1, /* rank skew on a collective */
 	FABRIC_SIG_RDMA_RETRY  = 2, /* QP retry / RNR above threshold */
 	FABRIC_SIG_GDS         = 3, /* GPU-direct vs bounce-buffer read */
-	FABRIC_SIG_OVERLAP     = 4, /* reserved: GPU idle while NCCL in flight */
+	FABRIC_SIG_OVERLAP     = 4, /* cudaDeviceSynchronize nested in an in-flight ncclAllReduce */
+	FABRIC_SIG_INFER_WAIT  = 5, /* inference socket: accept -> first recv */
+	/* Never on a ring buffer: the collector synthesises it from the
+	 * roce_cnp cnp_count map so per-packet CNPs cannot flood a ring. */
+	FABRIC_SIG_CNP         = 6, /* bytes = RoCEv2 CNP packets since the last poll */
 };
 
 /*
@@ -37,6 +42,13 @@ enum fabric_signal_type {
  *   GDS         latency_ns = call latency, bytes = bytes transferred,
  *               retry_count = 1 when the nvidia-fs kernel path was seen
  *               (confirmed direct), 0 otherwise (bounce or unknown).
+ *   OVERLAP     latency_ns = duration of the cudaDeviceSynchronize call,
+ *               retry_count = ncclAllReduce calls in flight on that thread
+ *               (nesting depth), nccl_op = nccl_op_type of the collective.
+ *   INFER_WAIT  latency_ns = accept -> first tcp_recvmsg on the accepted
+ *               socket, rank = local TCP port.
+ *   CNP         bytes = CNP packets counted since the previous poll
+ *               (userspace only).
  */
 struct fabric_signal {
 	__u64 timestamp_ns;
@@ -102,6 +114,19 @@ struct gds_inflight {
 	__u32 _pad;
 };
 _Static_assert(sizeof(struct gds_inflight) == 24, "gds_inflight size");
+
+/* overlap.c: per-thread (pid_tgid) nesting state. */
+struct overlap_state {
+	__u64 sync_start_ns;    /* outermost cudaDeviceSynchronize entry, 0 = none */
+	__u32 nccl_inflight;    /* nested ncclAllReduce calls in flight */
+	__u32 sync_depth;       /* nested cudaDeviceSynchronize calls in flight */
+};
+_Static_assert(sizeof(struct overlap_state) == 16, "overlap_state size");
+
+/* roce_cnp.c: slots of the per-CPU cnp_count array (Go mirror: collector/main.go). */
+#define CNP_SLOT_CNP   0        /* RoCEv2 congestion notification packets */
+#define CNP_SLOT_ROCE  1        /* all RoCEv2 (UDP 4791) packets seen */
+#define CNP_SLOTS      2
 
 #define GDS_FLAG_NVFS_SEEN 1    /* nvidia-fs kernel path observed */
 

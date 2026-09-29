@@ -22,6 +22,9 @@ structured events to the userspace flow collector.
 | `straggler.c` | uprobe (`ncclAllReduce`) | Per-rank NCCL skew -- emits a `fabric_signal` when a collective takes >2x the fastest recent span of the same size (and >5 ms) |
 | `rdma_health.c` | kprobe (`ib_post_send`, `mlx5_ib_post_send`, `ib_poll_cq`, `mlx5_ib_poll_cq`) | Per-QP send counts and retry-exceeded / RNR-exceeded completions; emits a `fabric_signal` above operator-set thresholds (all four probes optional) |
 | `gds_trace.c` | uprobe (`cuFileRead`, `cuFileWrite`), kprobe (`nvidia_fs_read`, optional) | GPU Direct Storage vs bounce-buffer reads -- byte counters, and a `fabric_signal` for slow (>2 ms) calls |
+| `overlap.c` | uprobe/uretprobe (`ncclAllReduce`, `cudaDeviceSynchronize`) | GPU sync while a collective is in flight -- emits `FABRIC_SIG_OVERLAP` when a `cudaDeviceSynchronize` (>= 1 ms) runs nested inside an `ncclAllReduce` on the same thread; per-thread nesting counters, state deleted on every exit path |
+| `roce_cnp.c` | XDP | RoCEv2 congestion notification packets (UDP 4791, BTH opcode 0x81; Ethernet, up to 2 VLAN tags, IPv4 or IPv6). Per-CPU counters only (`cnp_count`), always `XDP_PASS`; attached only with `-iface` |
+| `infer_latency.c` | kretprobe (`inet_csk_accept`), kprobe (`tcp_recvmsg`) | Accept -> first recv wait of connections to the ports in `infer_ports` (collector `-infer-ports`, default 8000 vLLM and 8001 Triton) as `FABRIC_SIG_INFER_WAIT`; other ports are never recorded |
 
 ## Portability (CO-RE)
 
@@ -35,12 +38,18 @@ syscall numbers are `GRYVIA_NR_*` in the same header.
 Requirements on the node: a kernel with BTF (`CONFIG_DEBUG_INFO_BTF=y`, standard on Ubuntu 22.04+, RHEL 9, Debian 12+);
 `tcx/*` programs (`cost_tracker`, `trace_correlator`) need Linux 6.6+.
 
-Verified: all 27 programs compile with `-Wall -Werror` (clang 21; the original 24 also with clang 18) and pass the
+Verified: all 30 programs compile with `-Wall -Werror` (clang 21; the original 24 also with clang 18) and pass the
 kernel verifier on Linux 7.0 x86_64; the same sources cross-compile for arm64 (clang 21) but have not been loaded on
 an arm64 kernel. Runtime behaviour of the GPU/NCCL/RDMA/GDS programs (including `straggler`, `rdma_health` and
-`gds_trace`) has not been exercised on GPU, RDMA or GPUDirect Storage hardware; the kprobe symbols they use
+`gds_trace`, `overlap`, `infer_latency`) has not been exercised on GPU, RDMA or GPUDirect Storage hardware; the kprobe symbols they use
 (`ib_post_send`, `ib_poll_cq`, `mlx5_ib_*`, `nvidia_fs_read`) are absent on the test host and are skipped by the
 collector when missing.
+
+`roce_cnp` was exercised with `BPF_PROG_TEST_RUN` on crafted packets (CNP counted for IPv4, IPv4 with options, VLAN
+and IPv6; non-CNP RoCE, other UDP ports, TCP, fragments and truncated frames left alone; always `XDP_PASS`, packet
+bytes unchanged; 20000 random frames all `XDP_PASS`), and `overlap` on a private stand-in library with the real
+uprobe/uretprobe attach path (nested sync reported, sync alone and sub-millisecond sync silent, no state left behind).
+`infer_latency` is load-verified only: attaching it needs the live `inet_csk_accept` / `tcp_recvmsg` hooks.
 
 ## Prerequisites
 
@@ -81,13 +90,15 @@ for GPU/AI workload tracing:
 - `struct rdma_qp_info` -- per-RDMA queue pair statistics (bytes sent/received, retransmits, completions)
 - Enums: `gpu_event_type`, `mem_direction`, `nccl_op_type`
 
-`headers/fabric_signal.h` defines the side channel used by `straggler.c`, `rdma_health.c` and `gds_trace.c`
+`headers/fabric_signal.h` defines the side channel used by `straggler.c`, `rdma_health.c`, `gds_trace.c`, `overlap.c` and
+`infer_latency.c` (`roce_cnp.c` only keeps counters)
 (`gpu_event` is frozen at 72 bytes and is not extended):
 
 - `struct fabric_signal` -- 80-byte scheduler-facing signal emitted on each program's own `fabric_events` ring buffer
-  (straggler, RDMA retry/RNR, GDS). Mirrored by `collector/pkg/fabric/signal.go`; both sides are checked against the same
+  (straggler, RDMA retry/RNR, GDS, overlap, inference wait). Mirrored by `collector/pkg/fabric/signal.go`; both sides are checked against the same
   offsets (`_Static_assert` in C, a unit test in Go)
-- `struct rank_span`, `struct rdma_health_val`, `struct gds_inflight` -- per-program map values
+- `struct rank_span`, `struct rdma_health_val`, `struct gds_inflight`, `struct overlap_state` -- per-program map values
+- `CNP_SLOT_*` -- slots of `roce_cnp`'s per-CPU `cnp_count` array (`FABRIC_SIG_CNP` is synthesised by the collector from it and never appears on a ring)
 - Enum: `fabric_signal_type`
 
 ## How It Works

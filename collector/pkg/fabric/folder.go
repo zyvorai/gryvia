@@ -22,11 +22,15 @@ const (
 	retryRateHigh   = 0.02
 	gdsHitLow       = 0.5
 	stragglerHitsHi = 10
+	overlapIdleHigh = 0.3 // fraction of the window spent in sync inside a collective
+	cnpRateHigh     = 100 // RoCEv2 CNPs per second, averaged over the window
 
 	penaltyP99       = 0.25
 	penaltyRDMA      = 0.35
 	penaltyGDS       = 0.15
 	penaltyStraggler = 0.25
+	penaltyOverlap   = 0.15
+	penaltyCNP       = 0.15
 )
 
 // JobKey identifies the job a signal belongs to. It is filled from Bind (a
@@ -40,15 +44,25 @@ type JobKey struct {
 // Status is the folded view of one job's recent signals; it carries the
 // fields of GryviaFabricSignal.status.
 type Status struct {
-	StragglerRank uint32    `json:"stragglerRank"`
-	StragglerPID  uint32    `json:"stragglerPid"`
-	StragglerHits uint64    `json:"stragglerHits"`
-	NCCLP99MS     float64   `json:"ncclP99ms"`
-	RDMARetryRate float64   `json:"rdmaRetryRate"`
-	GDSHitRatio   float64   `json:"gdsHitRatio"`
-	GDSMeasured   bool      `json:"gdsMeasured"`
-	ScoreDelta    float64   `json:"scoreDelta"`
-	UpdatedAt     time.Time `json:"updatedAt"`
+	StragglerRank uint32  `json:"stragglerRank"`
+	StragglerPID  uint32  `json:"stragglerPid"`
+	StragglerHits uint64  `json:"stragglerHits"`
+	NCCLP99MS     float64 `json:"ncclP99ms"`
+	RDMARetryRate float64 `json:"rdmaRetryRate"`
+	GDSHitRatio   float64 `json:"gdsHitRatio"`
+	GDSMeasured   bool    `json:"gdsMeasured"`
+	// OverlapIdleRatio is the time spent in cudaDeviceSynchronize nested inside
+	// ncclAllReduce (GPU idle while communication is in flight), as a fraction
+	// of the window, summed over threads and capped at 1.
+	OverlapIdleRatio float64 `json:"overlapIdleRatio"`
+	// CNPRate is RoCEv2 congestion notification packets per second averaged
+	// over the window (node-level, reported under job _node/cnp).
+	CNPRate float64 `json:"cnpRate"`
+	// InferWaitP99MS is the p99 accept -> first recv wait on inference ports.
+	// Informational: it does not feed ScoreDelta.
+	InferWaitP99MS float64   `json:"inferWaitP99ms"`
+	ScoreDelta     float64   `json:"scoreDelta"`
+	UpdatedAt      time.Time `json:"updatedAt"`
 }
 
 type sample struct {
@@ -103,6 +117,21 @@ func (f *Folder) Unbind(pid uint32) {
 	f.mu.Unlock()
 }
 
+// CNPJob is the node-level key under which CNP counts are folded: congestion
+// notifications belong to the NIC, not to a pod.
+var CNPJob = JobKey{Namespace: "_node", Job: "cnp"}
+
+// AddCNP records n RoCEv2 congestion notification packets counted since the
+// previous call (the collector polls roce_cnp's cnp_count map). Zero is ignored.
+func (f *Folder) AddCNP(n uint64) {
+	if n == 0 {
+		return
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.addLocked(CNPJob, Signal{Type: SigCNP, Bytes: n, Comm: "cnp"})
+}
+
 // Add records one signal.
 func (f *Folder) Add(s Signal) {
 	f.mu.Lock()
@@ -111,6 +140,10 @@ func (f *Folder) Add(s Signal) {
 	if !ok {
 		key = JobKey{Namespace: "_unattributed", Job: s.Comm}
 	}
+	f.addLocked(key, s)
+}
+
+func (f *Folder) addLocked(key JobKey, s Signal) {
 	list := append(f.jobs[key], sample{at: f.now(), sig: s})
 	if len(list) > maxSamples {
 		list = append(list[:0], list[len(list)-maxSamples:]...)
@@ -134,15 +167,15 @@ func (f *Folder) Snapshot() map[JobKey]Status {
 			continue
 		}
 		f.jobs[k] = list
-		out[k] = fold(list, f.gdsDirect)
+		out[k] = fold(list, f.gdsDirect, f.window)
 	}
 	return out
 }
 
-func fold(list []sample, gdsDirect bool) Status {
+func fold(list []sample, gdsDirect bool, window time.Duration) Status {
 	var st Status
-	var lat []float64
-	var errs, posted, direct, total uint64
+	var lat, inferLat []float64
+	var errs, posted, direct, total, overlapNS, cnps uint64
 	for _, sm := range list {
 		s := sm.sig
 		if sm.at.After(st.UpdatedAt) {
@@ -162,6 +195,12 @@ func fold(list []sample, gdsDirect bool) Status {
 			if s.Retries == 1 {
 				direct += s.Bytes
 			}
+		case SigOverlap:
+			overlapNS += s.LatencyNS
+		case SigInferWait:
+			inferLat = append(inferLat, float64(s.LatencyNS)/1e6)
+		case SigCNP:
+			cnps += s.Bytes
 		}
 	}
 	st.NCCLP99MS = percentile(lat, 0.99)
@@ -175,6 +214,11 @@ func fold(list []sample, gdsDirect bool) Status {
 	if gdsDirect && total > 0 {
 		st.GDSMeasured = true
 		st.GDSHitRatio = float64(direct) / float64(total)
+	}
+	st.InferWaitP99MS = percentile(inferLat, 0.99)
+	if secs := window.Seconds(); secs > 0 {
+		st.OverlapIdleRatio = math.Min(1, float64(overlapNS)/1e9/secs)
+		st.CNPRate = float64(cnps) / secs
 	}
 	st.ScoreDelta = ScoreDelta(st)
 	return st
@@ -209,7 +253,13 @@ func ScoreDelta(st Status) float64 {
 	if st.StragglerHits > stragglerHitsHi {
 		d += penaltyStraggler
 	}
-	return math.Min(d, 1)
+	if st.OverlapIdleRatio > overlapIdleHigh {
+		d += penaltyOverlap
+	}
+	if st.CNPRate > cnpRateHigh {
+		d += penaltyCNP
+	}
+	return math.Max(0, math.Min(d, 1))
 }
 
 // JobStatus is one entry of the HTTP response.

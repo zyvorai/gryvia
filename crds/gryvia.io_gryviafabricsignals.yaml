@@ -73,13 +73,26 @@ spec:
           status:
             description: GryviaFabricSignalStatus defines the observed state of GryviaFabricSignal
             properties:
+              cnpRate:
+                description: CNPRate is the RoCEv2 congestion notification packets
+                  per second seen on the node
+                type: number
               gdsHitRatio:
                 description: GDSHitRatio is the fraction of cuFile bytes served over
                   the direct GPUDirect Storage path
                 type: number
+              inferWaitP99ms:
+                description: InferWaitP99Ms is the p99 wait in milliseconds from accept
+                  to first read on inference ports
+                type: number
               ncclP99ms:
                 description: NCCLP99Ms is the p99 latency in milliseconds of straggler-flagged
                   NCCL collectives
+                type: number
+              overlapIdleRatio:
+                description: |-
+                  OverlapIdleRatio is the fraction of the window the job spent in cudaDeviceSynchronize
+                  inside an in-flight ncclAllReduce (GPU idle while communicating)
                 type: number
               rdmaRetryRate:
                 description: RDMARetryRate is the ratio of RDMA retry/RNR error completions

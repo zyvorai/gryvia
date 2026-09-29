@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/cilium/ebpf"
@@ -99,6 +100,67 @@ type Config struct {
 	CUDALib    string // path to libcudart.so; empty = auto-discover
 	CuFileLib  string // path to libcufile.so (GPUDirect Storage); empty = auto-discover
 	UprobePID  int    // if >0, find libraries via /proc/<pid>/maps
+	// InferPorts are the local TCP ports infer_latency.c watches (at most
+	// MaxInferPorts); empty skips that object.
+	InferPorts []uint16
+}
+
+// InferPortsMap is the array map infer_latency.c reads its watched ports from.
+const InferPortsMap = "infer_ports"
+
+// MaxInferPorts is INFER_MAX_PORTS in infer_latency.c.
+const MaxInferPorts = 8
+
+// ParsePorts parses a comma-separated port list such as "8000,8001". Empty
+// input yields no ports; duplicates are dropped.
+func ParsePorts(s string) ([]uint16, error) {
+	var out []uint16
+	seen := map[uint16]bool{}
+	for _, f := range strings.Split(s, ",") {
+		f = strings.TrimSpace(f)
+		if f == "" {
+			continue
+		}
+		n, err := strconv.ParseUint(f, 10, 16)
+		if err != nil || n == 0 {
+			return nil, fmt.Errorf("invalid port %q (want 1-65535)", f)
+		}
+		if seen[uint16(n)] {
+			continue
+		}
+		seen[uint16(n)] = true
+		out = append(out, uint16(n))
+	}
+	if len(out) > MaxInferPorts {
+		return nil, fmt.Errorf("%d ports given, at most %d are supported", len(out), MaxInferPorts)
+	}
+	return out, nil
+}
+
+// portSlots lays ports out as the MaxInferPorts array values (0 = empty slot).
+func portSlots(ports []uint16) ([MaxInferPorts]uint16, error) {
+	var slots [MaxInferPorts]uint16
+	if len(ports) > MaxInferPorts {
+		return slots, fmt.Errorf("%d ports given, at most %d are supported", len(ports), MaxInferPorts)
+	}
+	copy(slots[:], ports)
+	return slots, nil
+}
+
+// FillInferPorts writes ports into the infer_ports array map, clearing the
+// unused slots.
+func FillInferPorts(mp *ebpf.Map, ports []uint16) error {
+	slots, err := portSlots(ports)
+	if err != nil {
+		return err
+	}
+	for i, p := range slots {
+		k := uint32(i)
+		if err := mp.Put(&k, &p); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // SkipReason returns a non-empty explanation when the program described by
@@ -211,7 +273,8 @@ var mapClasses = map[string]MapClass{
 	"pattern_events":  ClassGPU,
 	"pipeline_events": ClassGPU,
 	"grad_events":     ClassGPU,
-	// ring buffers carrying struct fabric_signal (straggler, rdma_health, gds_trace)
+	// ring buffers carrying struct fabric_signal (straggler, rdma_health, gds_trace,
+	// overlap, infer_latency; roce_cnp has counters only, no ring)
 	"fabric_events": ClassFabric,
 	// ring buffers carrying struct security_event
 	"escape_events":  ClassSecurity,
