@@ -174,12 +174,12 @@ async def _fetch_oidc_discovery() -> Dict[str, Any]:
         return _oidc_discovery
 
 
-async def _get_jwks() -> Dict[str, Any]:
-    """Fetch and cache JWKS from the OIDC provider."""
+async def _get_jwks(force: bool = False) -> Dict[str, Any]:
+    """Fetch and cache JWKS from the OIDC provider. `force` skips the cache (a key rotation was detected)."""
     global _jwks_cache, _jwks_cache_time
 
     now = time.monotonic()
-    if _jwks_cache and (now - _jwks_cache_time) < _JWKS_CACHE_TTL:
+    if not force and _jwks_cache and (now - _jwks_cache_time) < _JWKS_CACHE_TTL:
         return _jwks_cache
 
     discovery = await _fetch_oidc_discovery()
@@ -195,10 +195,10 @@ async def _get_jwks() -> Dict[str, Any]:
         return _jwks_cache
 
 
-async def _fetch_jwks_or_503() -> Dict[str, Any]:
+async def _fetch_jwks_or_503(force: bool = False) -> Dict[str, Any]:
     """_get_jwks, with an unreachable or broken identity provider reported as 503, not a crash."""
     try:
-        return await _get_jwks()
+        return await _get_jwks(force)
     except HTTPException:
         raise
     except Exception:
@@ -227,10 +227,8 @@ async def _validate_jwt_token(token: str) -> Dict[str, Any]:
     if not rsa_key:
         # Key not found - maybe keys rotated, refresh the cache and retry once. Skipped when the keys
         # were fetched moments ago, so unknown-kid tokens cannot force a fetch per request.
-        global _jwks_cache_time
         if time.monotonic() - _jwks_cache_time >= _JWKS_MIN_REFRESH_SECONDS:
-            _jwks_cache_time = 0
-            jwks_data = await _fetch_jwks_or_503()
+            jwks_data = await _fetch_jwks_or_503(force=True)
             for key in jwks_data.get("keys", []):
                 if key.get("kid") == kid:
                     rsa_key = key
