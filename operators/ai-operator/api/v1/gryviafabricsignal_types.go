@@ -40,6 +40,13 @@ type GryviaFabricSignalStatus struct {
 	// InferWaitP99Ms is the p99 wait in milliseconds from accept to first read on inference ports
 	InferWaitP99Ms float64 `json:"inferWaitP99ms,omitempty"`
 
+	// PFCRate is the 802.1Qbb priority-flow-control pause frames per second seen on the node
+	PFCRate float64 `json:"pfcRate,omitempty"`
+
+	// ExfilEvents is the number of large model-file reads followed by a connect to a non-internal
+	// address from the same process in the window (observe only, never part of scoreDelta)
+	ExfilEvents int64 `json:"exfilEvents,omitempty"`
+
 	// ScoreDelta is the penalty in [0,1] for the topology scorer (0 = healthy fabric)
 	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:validation:Maximum=1

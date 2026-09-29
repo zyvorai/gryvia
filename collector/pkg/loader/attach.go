@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
@@ -99,10 +100,66 @@ type Config struct {
 	NCCLLib    string // path to libnccl.so; empty = auto-discover
 	CUDALib    string // path to libcudart.so; empty = auto-discover
 	CuFileLib  string // path to libcufile.so (GPUDirect Storage); empty = auto-discover
+	UCXLib     string // path to libucp.so (UCX) for ucx_gloo.c; empty = auto-discover
 	UprobePID  int    // if >0, find libraries via /proc/<pid>/maps
 	// InferPorts are the local TCP ports infer_latency.c watches (at most
 	// MaxInferPorts); empty skips that object.
 	InferPorts []uint16
+	// QuotaPace lets quota_pace.c (the only program that changes sockets) attach.
+	// Default false; it also needs CgroupPath.
+	QuotaPace bool
+}
+
+// PaceRateMap is the hash map quota_pace.c reads its per-cgroup rates from. An
+// object that has it is the pacing program and is skipped unless Config.QuotaPace.
+const PaceRateMap = "pace_rate"
+
+// QuotaPaceSkipReason explains why the pacing object must not attach ("" = it may).
+// Pacing is opt-in twice over: -quota-pace, and a cgroup to attach to.
+func QuotaPaceSkipReason(cfg Config) string {
+	switch {
+	case !cfg.QuotaPace:
+		return "quota pacing is off (mutating program; set -quota-pace together with -cgroup-path)"
+	case cfg.CgroupPath == "":
+		return "no cgroup path configured (set -cgroup-path)"
+	}
+	return ""
+}
+
+// xdpOwners remembers which program owns the XDP hook of each interface. Only
+// one XDP program can be attached per interface, so a second one is skipped
+// with an explicit reason instead of failing (or replacing the first).
+type xdpOwners struct {
+	mu sync.Mutex
+	by map[string]string // interface -> "object/program"
+}
+
+// claim registers owner for iface. It returns the current owner and false when
+// the interface is already taken.
+func (x *xdpOwners) claim(iface, owner string) (string, bool) {
+	x.mu.Lock()
+	defer x.mu.Unlock()
+	if cur, ok := x.by[iface]; ok {
+		return cur, false
+	}
+	if x.by == nil {
+		x.by = map[string]string{}
+	}
+	x.by[iface] = owner
+	return owner, true
+}
+
+// release gives the interface back (the attach failed after claiming it).
+func (x *xdpOwners) release(iface string) {
+	x.mu.Lock()
+	delete(x.by, iface)
+	x.mu.Unlock()
+}
+
+// XDPConflictReason is the skip message for a second XDP program on an interface.
+func XDPConflictReason(iface, owner string) string {
+	return "interface " + iface + " already has XDP program " + owner +
+		" attached (one XDP program per interface: roce_cnp, pfc_pause, packet_filter and dns_tracker conflict; use a separate -iface or run one collector per program)"
 }
 
 // InferPortsMap is the array map infer_latency.c reads its watched ports from.
@@ -177,7 +234,7 @@ func SkipReason(spec AttachSpec, cfg Config) string {
 		}
 	case KindUprobe, KindUretprobe:
 		if LibraryFor(spec.Symbol, cfg) == "" {
-			return "no library found for symbol " + spec.Symbol + " (set -nccl-lib/-cuda-lib/-cufile-lib or -uprobe-pid)"
+			return "no library found for symbol " + spec.Symbol + " (set -nccl-lib/-cuda-lib/-cufile-lib/-ucx-lib or -uprobe-pid)"
 		}
 	}
 	return ""
@@ -192,6 +249,8 @@ func LibraryFor(symbol string, cfg Config) string {
 		return cfg.CUDALib
 	case strings.HasPrefix(symbol, "cuFile"):
 		return cfg.CuFileLib
+	case strings.HasPrefix(symbol, "ucp_"):
+		return cfg.UCXLib
 	}
 	return ""
 }
@@ -200,7 +259,7 @@ func LibraryFor(symbol string, cfg Config) string {
 var defaultLibDirs = []string{
 	"/usr/lib/x86_64-linux-gnu", "/usr/lib/aarch64-linux-gnu", "/usr/lib64", "/usr/lib",
 	"/usr/local/lib", "/usr/local/cuda/lib64", "/usr/local/cuda/targets/x86_64-linux/lib",
-	"/opt/nccl/lib",
+	"/opt/nccl/lib", "/opt/ucx/lib", "/usr/local/ucx/lib",
 }
 
 // findLibInDirs returns the first existing file whose name starts with
@@ -218,7 +277,7 @@ func findLibInDirs(dirs []string, prefix string) string {
 	return ""
 }
 
-// ResolveLibraries fills NCCLLib/CUDALib/CuFileLib when unset, first from the process
+// ResolveLibraries fills NCCLLib/CUDALib/CuFileLib/UCXLib when unset, first from the process
 // given by UprobePID, then from standard library directories.
 func ResolveLibraries(cfg Config, res *UprobeResolver, dirs []string) Config {
 	if dirs == nil {
@@ -239,6 +298,11 @@ func ResolveLibraries(cfg Config, res *UprobeResolver, dirs []string) Config {
 			cfg.CuFileLib = p
 		}
 	}
+	if cfg.UCXLib == "" && cfg.UprobePID > 0 && res != nil {
+		if p, err := res.FindUCXLibrary(cfg.UprobePID); err == nil {
+			cfg.UCXLib = p
+		}
+	}
 	if cfg.NCCLLib == "" {
 		cfg.NCCLLib = findLibInDirs(dirs, "libnccl.so")
 	}
@@ -247,6 +311,9 @@ func ResolveLibraries(cfg Config, res *UprobeResolver, dirs []string) Config {
 	}
 	if cfg.CuFileLib == "" {
 		cfg.CuFileLib = findLibInDirs(dirs, "libcufile.so")
+	}
+	if cfg.UCXLib == "" {
+		cfg.UCXLib = findLibInDirs(dirs, "libucp.so")
 	}
 	return cfg
 }
@@ -274,7 +341,8 @@ var mapClasses = map[string]MapClass{
 	"pipeline_events": ClassGPU,
 	"grad_events":     ClassGPU,
 	// ring buffers carrying struct fabric_signal (straggler, rdma_health, gds_trace,
-	// overlap, infer_latency; roce_cnp has counters only, no ring)
+	// overlap, infer_latency, ucx_gloo, weight_exfil; roce_cnp and pfc_pause have
+	// counters only, no ring)
 	"fabric_events": ClassFabric,
 	// ring buffers carrying struct security_event
 	"escape_events":  ClassSecurity,

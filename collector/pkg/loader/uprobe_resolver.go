@@ -76,6 +76,12 @@ func (r *UprobeResolver) FindCuFileLibrary(pid int) (string, error) {
 	return r.FindLibrary(pid, "libcufile.so")
 }
 
+// FindUCXLibrary finds libucp.so (UCX; exports ucp_tag_send_nb/nbx) for a given
+// container PID. libucs.so is the UCX service layer and does not export them.
+func (r *UprobeResolver) FindUCXLibrary(pid int) (string, error) {
+	return r.FindLibrary(pid, "libucp.so")
+}
+
 // FindContainerPIDs finds PIDs for pods matching a label selector by scanning
 // /proc for processes whose cgroup path contains the pod name.
 func (r *UprobeResolver) FindContainerPIDs(namespace, podName string) ([]int, error) {

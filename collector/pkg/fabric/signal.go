@@ -1,6 +1,7 @@
 // Package fabric decodes the fabric_signal ring buffers emitted by
-// ebpf/straggler.c, rdma_health.c, gds_trace.c, overlap.c and infer_latency.c
-// (roce_cnp.c only keeps counters, see AddCNP), folds them per
+// ebpf/straggler.c, rdma_health.c, gds_trace.c, overlap.c, infer_latency.c,
+// ucx_gloo.c and weight_exfil.c (roce_cnp.c and pfc_pause.c only keep counters,
+// see AddCNP and AddPFC), folds them per
 // job, and derives a [0,1] score penalty for the topology scorer.
 //
 // The signals are a side channel next to gpu_event (which is frozen at 72
@@ -10,6 +11,8 @@ package fabric
 import (
 	"encoding/binary"
 	"errors"
+	"net"
+	"strconv"
 
 	"github.com/cilium/ebpf/ringbuf"
 )
@@ -24,12 +27,29 @@ const (
 	// SigCNP is synthesised by the collector from the roce_cnp cnp_count map
 	// (Bytes = CNP packets since the previous poll); it never appears on a ring.
 	SigCNP uint8 = 6
+	// SigPFC is synthesised from the pfc_pause pause_count map (Bytes = PFC
+	// pause frames since the previous poll); it never appears on a ring.
+	SigPFC uint8 = 7
+	// SigExfil: a large model-file read followed by a connect to a non-internal
+	// IPv4 address from the same process (weight_exfil.c). Observe only.
+	SigExfil uint8 = 8
+	// SigUCXSlow: a ucp_tag_send_nb/nbx call that blocked for a long time (ucx_gloo.c).
+	SigUCXSlow uint8 = 9
 )
 
 // Slots of roce_cnp.c's per-CPU cnp_count array (CNP_SLOT_* in fabric_signal.h).
 const (
 	CNPSlotCNP  uint32 = 0 // RoCEv2 congestion notification packets
 	CNPSlotRoCE uint32 = 1 // all RoCEv2 packets
+)
+
+// Slots of pfc_pause.c's per-CPU pause_count array (PFC_SLOT_* in fabric_signal.h).
+const (
+	PFCSlotFrames uint32 = 0 // 802.1Qbb PFC frames
+	PFCSlotLegacy uint32 = 1 // 802.3x link-level pause frames
+	PFCSlotPrio0  uint32 = 2 // PFC frames pausing priority 0; PFCSlotPrio0+7 = priority 7
+	PFCPriorities        = 8
+	PFCSlots      uint32 = 10
 )
 
 // SignalSize is sizeof(struct fabric_signal).
@@ -65,6 +85,11 @@ const (
 //	SigOverlap:   LatencyNS = sync duration, Retries = nested ncclAllReduce depth.
 //	SigInferWait: LatencyNS = accept -> first recv, Rank = local TCP port.
 //	SigCNP:       Bytes = CNP packets (userspace only).
+//	SigPFC:       Bytes = PFC pause frames (userspace only).
+//	SigExfil:     Bytes = bytes requested by the large reads, LatencyNS = last
+//	              large read -> connect, Rank = destination port, PeerRank =
+//	              destination IPv4 address (host order).
+//	SigUCXSlow:   LatencyNS = call duration, Bytes = payload when known.
 type Signal struct {
 	TimestampNS   uint64
 	PID           uint32
@@ -104,6 +129,12 @@ func Decode(b []byte) (Signal, bool) {
 		RNR:           le.Uint32(b[offRNR:]),
 		Comm:          cstr(b[offComm : offComm+commLen]),
 	}, true
+}
+
+// ExfilDest is the destination "ip:port" of a SigExfil signal.
+func (s Signal) ExfilDest() string {
+	ip := net.IPv4(byte(s.PeerRank>>24), byte(s.PeerRank>>16), byte(s.PeerRank>>8), byte(s.PeerRank))
+	return net.JoinHostPort(ip.String(), strconv.FormatUint(uint64(s.Rank), 10))
 }
 
 func cstr(b []byte) string {

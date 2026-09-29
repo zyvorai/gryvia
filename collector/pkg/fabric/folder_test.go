@@ -51,6 +51,10 @@ func TestScoreDeltaFolding(t *testing.T) {
 		{"cnp storm", Status{CNPRate: 101}, 0.15},
 		{"cnp at threshold", Status{CNPRate: 100}, 0},
 		{"inference wait is informational", Status{InferWaitP99MS: 5000}, 0},
+		{"pfc storm", Status{PFCRate: 1001}, 0.10},
+		{"pfc at threshold", Status{PFCRate: 1000}, 0},
+		{"exfil is informational", Status{ExfilEvents: 50}, 0},
+		{"ucx slow sends are informational", Status{UCXSlowP99MS: 5000}, 0},
 		{"sum", Status{NCCLP99MS: 60, RDMARetryRate: 0.05}, 0.6},
 		{"clamped", Status{NCCLP99MS: 60, RDMARetryRate: 0.05, GDSMeasured: true, StragglerHits: 20}, 1},
 		{"everything bad stays <= 1", Status{NCCLP99MS: 60, RDMARetryRate: 1, GDSMeasured: true, StragglerHits: 20, OverlapIdleRatio: 1, CNPRate: 1e6}, 1},
@@ -248,5 +252,64 @@ func TestFoldInferWait(t *testing.T) {
 	}
 	if st.ScoreDelta != 0 || st.StragglerHits != 0 || st.NCCLP99MS != 0 {
 		t.Errorf("inference wait must not leak into the fabric score: %+v", st)
+	}
+}
+
+func TestFoldPFC(t *testing.T) {
+	f, c := newTestFolder() // 60 s window
+	f.AddPFC(0)
+	if len(f.Snapshot()) != 0 {
+		t.Fatal("zero pause frames must not create a job")
+	}
+	f.AddPFC(30000)
+	c.t = c.t.Add(10 * time.Second)
+	f.AddPFC(30000)
+	snap := f.Snapshot()
+	st, ok := snap[PFCJob]
+	if !ok || len(snap) != 1 {
+		t.Fatalf("PFC must fold under %v: %v", PFCJob, snap)
+	}
+	if st.PFCRate != 1000 || st.ScoreDelta != 0 { // 60000 / 60 s: at, not above, the threshold
+		t.Errorf("at threshold: %+v", st)
+	}
+	f.AddPFC(60)
+	if st = f.Snapshot()[PFCJob]; st.PFCRate != 1001 || st.ScoreDelta != 0.10 {
+		t.Errorf("above threshold: %+v", st)
+	}
+	if st.CNPRate != 0 || st.ExfilEvents != 0 {
+		t.Errorf("PFC must not leak into other fields: %+v", st)
+	}
+	c.t = c.t.Add(2 * time.Minute)
+	if len(f.Snapshot()) != 0 {
+		t.Error("PFC samples must expire with the window")
+	}
+}
+
+func TestFoldExfilDoesNotChangeScore(t *testing.T) {
+	f, _ := newTestFolder()
+	f.Bind(7, "ml", "train")
+	for i := 0; i < 20; i++ {
+		f.Add(Signal{Type: SigExfil, PID: 7, Bytes: 9 << 20, LatencyNS: 1e9, Rank: 443, PeerRank: 0xC0000201, Comm: "python3"})
+	}
+	st := f.Snapshot()[JobKey{Namespace: "ml", Job: "train"}]
+	if st.ExfilEvents != 20 {
+		t.Errorf("exfil events = %d, want 20", st.ExfilEvents)
+	}
+	if st.ScoreDelta != 0 || st.StragglerHits != 0 || st.NCCLP99MS != 0 || st.RDMARetryRate != 0 || st.CNPRate != 0 {
+		t.Errorf("exfil must not change the score or any other field: %+v", st)
+	}
+}
+
+func TestFoldUCXSlow(t *testing.T) {
+	f, _ := newTestFolder()
+	for i := 1; i <= 100; i++ {
+		f.Add(Signal{Type: SigUCXSlow, PID: 9, LatencyNS: uint64(i) * 1_000_000, Comm: "ucx"})
+	}
+	st := only(t, f)
+	if st.UCXSlowP99MS != 99 {
+		t.Errorf("ucx p99 = %v, want 99", st.UCXSlowP99MS)
+	}
+	if st.ScoreDelta != 0 || st.StragglerHits != 0 || st.NCCLP99MS != 0 {
+		t.Errorf("ucx must not leak into the NCCL straggler fields or score: %+v", st)
 	}
 }

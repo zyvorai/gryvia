@@ -2,7 +2,7 @@
 /*
  * fabric_signal.h - side-channel ABI for scheduler-facing fabric signals
  * (straggler.c, rdma_health.c, gds_trace.c, overlap.c, roce_cnp.c,
- * infer_latency.c).
+ * infer_latency.c, ucx_gloo.c, weight_exfil.c, pfc_pause.c).
  *
  * struct gpu_event is frozen at 72 bytes (see gpu_common.h) and must NOT be
  * extended; these programs emit struct fabric_signal on their own
@@ -28,6 +28,10 @@ enum fabric_signal_type {
 	/* Never on a ring buffer: the collector synthesises it from the
 	 * roce_cnp cnp_count map so per-packet CNPs cannot flood a ring. */
 	FABRIC_SIG_CNP         = 6, /* bytes = RoCEv2 CNP packets since the last poll */
+	/* Never on a ring buffer either: synthesised from the pfc_pause pause_count map. */
+	FABRIC_SIG_PFC         = 7, /* bytes = 802.1Qbb PFC pause frames since the last poll */
+	FABRIC_SIG_EXFIL       = 8, /* large model-file read, then connect to a non-internal IPv4 */
+	FABRIC_SIG_UCX_SLOW    = 9, /* a UCX tag-send call that blocked for a long time */
 };
 
 /*
@@ -49,6 +53,14 @@ enum fabric_signal_type {
  *               socket, rank = local TCP port.
  *   CNP         bytes = CNP packets counted since the previous poll
  *               (userspace only).
+ *   PFC         bytes = PFC pause frames counted since the previous poll
+ *               (userspace only; per-priority counts stay in pause_count).
+ *   EXFIL       bytes = bytes requested by the large reads in the window,
+ *               latency_ns = last large read -> connect, rank = destination
+ *               TCP port (host order), peer_rank = destination IPv4 address
+ *               (host order), comm = process name.
+ *   UCX_SLOW    latency_ns = duration of the ucp_tag_send_nb/nbx call,
+ *               bytes = payload bytes when known (0 otherwise), comm = "ucx".
  */
 struct fabric_signal {
 	__u64 timestamp_ns;
@@ -127,6 +139,20 @@ _Static_assert(sizeof(struct overlap_state) == 16, "overlap_state size");
 #define CNP_SLOT_CNP   0        /* RoCEv2 congestion notification packets */
 #define CNP_SLOT_ROCE  1        /* all RoCEv2 (UDP 4791) packets seen */
 #define CNP_SLOTS      2
+
+/* pfc_pause.c: slots of the per-CPU pause_count array (Go mirror: collector/pkg/fabric/signal.go). */
+#define PFC_SLOT_FRAMES  0      /* 802.1Qbb PFC frames (MAC control opcode 0x0101) */
+#define PFC_SLOT_LEGACY  1      /* 802.3x link-level pause frames (opcode 0x0001) */
+#define PFC_SLOT_PRIO0   2      /* PFC frames that pause priority 0 (enabled, quanta != 0); PRIO0+7 = priority 7 */
+#define PFC_PRIORITIES   8
+#define PFC_SLOTS        (PFC_SLOT_PRIO0 + PFC_PRIORITIES)
+
+/* weight_exfil.c: per-process (tgid) record of recent large model-file reads. */
+struct exfil_mark {
+	__u64 last_read_ns;     /* monotonic time of the latest large read */
+	__u64 bytes;            /* bytes requested by the large reads in the window */
+};
+_Static_assert(sizeof(struct exfil_mark) == 16, "exfil_mark size");
 
 #define GDS_FLAG_NVFS_SEEN 1    /* nvidia-fs kernel path observed */
 

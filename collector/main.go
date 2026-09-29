@@ -42,9 +42,11 @@ func main() {
 		ncclLib         = flag.String("nccl-lib", "", "path to libnccl.so for uprobes (empty = auto-discover)")
 		cudaLib         = flag.String("cuda-lib", "", "path to libcudart.so for uprobes (empty = auto-discover)")
 		cufileLib       = flag.String("cufile-lib", "", "path to libcufile.so for GPUDirect Storage uprobes (empty = auto-discover)")
-		uprobePID       = flag.Int("uprobe-pid", 0, "find NCCL/CUDA/cuFile libraries via /proc/<pid>/maps of this process")
+		ucxLib          = flag.String("ucx-lib", "", "path to libucp.so (UCX) for ucx_gloo uprobes (empty = auto-discover)")
+		uprobePID       = flag.Int("uprobe-pid", 0, "find NCCL/CUDA/cuFile/UCX libraries via /proc/<pid>/maps of this process")
 		inferPorts      = flag.String("infer-ports", "8000,8001", "local TCP ports of inference servers for infer_latency (vLLM 8000, Triton HTTP 8001; at most 8, empty disables it)")
 		flightTokenFile = flag.String("flight-token-file", "", "file containing the Flight Recorder API token; empty disables the endpoint")
+		quotaPace       = flag.Bool("quota-pace", false, "attach quota_pace (the only program that changes sockets: caps SO_MAX_PACING_RATE of cgroups that hold a lease). Off by default; needs -cgroup-path. Nothing grants leases yet, so pacing stays inert until an operator or a future controller does")
 		windowSec       = flag.Int("window", 300, "Aggregation sliding window in seconds")
 	)
 	flag.Parse()
@@ -68,6 +70,10 @@ func main() {
 		os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
+	if *quotaPace && *cgroupPath == "" {
+		log.Fatalw("-quota-pace needs -cgroup-path: pacing is only ever attached to an explicit cgroup")
+	}
+
 	ports, err := loader.ParsePorts(*inferPorts)
 	if err != nil {
 		log.Fatalw("invalid -infer-ports", "error", err)
@@ -77,7 +83,8 @@ func main() {
 	mgr, err := loader.New(loader.Config{
 		InferPorts: ports,
 		Dir:        *ebpfDir, Iface: *iface, CgroupPath: *cgroupPath,
-		NCCLLib: *ncclLib, CUDALib: *cudaLib, CuFileLib: *cufileLib, UprobePID: *uprobePID,
+		NCCLLib: *ncclLib, CUDALib: *cudaLib, CuFileLib: *cufileLib, UCXLib: *ucxLib, UprobePID: *uprobePID,
+		QuotaPace: *quotaPace,
 	}, log)
 	if err != nil {
 		log.Fatalw("failed to create eBPF loader", "error", err)
@@ -149,6 +156,54 @@ func main() {
 		lastCNP, lastRoCE = cnp, roce
 		fabricFolder.AddCNP(dCNP)
 		metrics.RecordRoCE(dCNP, dRoCE)
+	}
+
+	// pfc_pause keeps per-CPU counters only (no ring): poll them, fold the
+	// frame delta and export the per-priority counts.
+	pfcAttached := false
+	for _, s := range mgr.Status() {
+		if s.Object == "pfc_pause.o" && s.Attached {
+			pfcAttached = true
+		}
+	}
+	var lastPFC [fabric.PFCSlots]uint64
+	pollPFC := func() {
+		var cur, delta [fabric.PFCSlots]uint64
+		for slot := uint32(0); slot < fabric.PFCSlots; slot++ {
+			v, err := mgr.ReadCounter("pfc_pause.o", "pause_count", slot)
+			if err != nil {
+				log.Warnw("reading pfc_pause counters", "slot", slot, "error", err)
+				return
+			}
+			cur[slot] = v
+			delta[slot] = v - lastPFC[slot]
+			if v < lastPFC[slot] { // counter reset (program reloaded)
+				delta[slot] = v
+			}
+		}
+		lastPFC = cur
+		var perPrio [fabric.PFCPriorities]uint64
+		copy(perPrio[:], delta[fabric.PFCSlotPrio0:])
+		fabricFolder.AddPFC(delta[fabric.PFCSlotFrames])
+		metrics.RecordPFC(delta[fabric.PFCSlotFrames], delta[fabric.PFCSlotLegacy], perPrio)
+	}
+
+	// quota_pace is the only program that mutates sockets. With -quota-pace the
+	// Pacer owns its pace_rate map: it deletes lapsed leases and, at shutdown,
+	// every entry it wrote. Nothing calls Pacer.Grant: there is no GryviaQuota
+	// watch and no API, so no cgroup is paced until an operator or a future
+	// controller inserts an entry.
+	var pacer *fabric.Pacer
+	if *quotaPace {
+		if pm := mgr.Map("quota_pace.o", loader.PaceRateMap); pm != nil {
+			pacer = fabric.NewPacer(fabric.NewEBPFPaceMap(pm), fabric.DefaultLeaseTTL, log)
+			go pacer.Run(ctx, 10*time.Second)
+			defer func() { _ = pacer.Shutdown() }()
+			log.Warnw("quota pacing enabled: the pace_rate map is empty, no cgroup is paced until a lease is granted (nothing grants one yet)",
+				"cgroup_path", *cgroupPath, "lease_ttl", fabric.DefaultLeaseTTL.String())
+		} else {
+			log.Warnw("-quota-pace set but quota_pace.o is not loaded (missing object or verifier rejection); pacing stays off")
+		}
 	}
 
 	// GPU aggregators.
@@ -268,10 +323,16 @@ func main() {
 		}
 	}()
 
-	// ---- Fabric signal pipeline (straggler, RDMA health, GDS, overlap, inference wait) ----
+	// ---- Fabric signal pipeline (straggler, RDMA health, GDS, overlap, inference wait, UCX, weight exfil) ----
 	go func() {
 		for sig := range fabricDecoder.Events() {
 			fabricFolder.Add(sig)
+			if sig.Type == fabric.SigExfil {
+				// Observe only: the probe emits one signal per read burst. Never enforced here.
+				log.Warnw("possible model-weight exfiltration: large model-file read followed by a connect to a non-internal address",
+					"pid", sig.PID, "comm", sig.Comm, "dest", sig.ExfilDest(),
+					"bytes_read", sig.Bytes, "read_to_connect_ms", sig.LatencyNS/1_000_000)
+			}
 		}
 	}()
 
@@ -301,6 +362,9 @@ func main() {
 
 				if roceAttached {
 					pollRoCE()
+				}
+				if pfcAttached {
+					pollPFC()
 				}
 
 				// Publish per-job fabric status.
@@ -397,6 +461,12 @@ func main() {
 	// Wait for shutdown.
 	<-ctx.Done()
 	log.Info("shutting down collector")
+	if pacer != nil {
+		// Fail open first: remove every pace entry this collector wrote.
+		if err := pacer.Shutdown(); err != nil {
+			log.Errorw("removing pace entries at shutdown", "error", err)
+		}
+	}
 	if err := srv.Close(); err != nil {
 		log.Errorw("HTTP server close error", "error", err)
 	}

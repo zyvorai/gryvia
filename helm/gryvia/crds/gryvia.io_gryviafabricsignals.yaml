@@ -77,6 +77,12 @@ spec:
                 description: CNPRate is the RoCEv2 congestion notification packets
                   per second seen on the node
                 type: number
+              exfilEvents:
+                description: |-
+                  ExfilEvents is the number of large model-file reads followed by a connect to a non-internal
+                  address from the same process in the window (observe only, never part of scoreDelta)
+                format: int64
+                type: integer
               gdsHitRatio:
                 description: GDSHitRatio is the fraction of cuFile bytes served over
                   the direct GPUDirect Storage path
@@ -93,6 +99,10 @@ spec:
                 description: |-
                   OverlapIdleRatio is the fraction of the window the job spent in cudaDeviceSynchronize
                   inside an in-flight ncclAllReduce (GPU idle while communicating)
+                type: number
+              pfcRate:
+                description: PFCRate is the 802.1Qbb priority-flow-control pause frames
+                  per second seen on the node
                 type: number
               rdmaRetryRate:
                 description: RDMARetryRate is the ratio of RDMA retry/RNR error completions
