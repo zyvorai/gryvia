@@ -28,7 +28,7 @@ PROGS = tcp_trace packet_filter latency_probe syscall_monitor dns_tracker \
         tcp_tuning connpool_analyze numa_path sockops_optimize trace_correlator \
         latency_breakdown cost_tracker fingerprint \
         straggler rdma_health gds_trace overlap roce_cnp infer_latency \
-        ucx_gloo pfc_pause quota_pace weight_exfil
+        ucx_gloo pfc_pause quota_pace weight_exfil ibv_verbs
 
 # Where `make check` pins programs while verifying them (removed afterwards).
 CHECK_DIR ?= /sys/fs/bpf/gryvia-check-$(shell echo $$PPID)

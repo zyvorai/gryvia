@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -23,14 +24,21 @@ import (
 	"github.com/zyvorai/gryvia/collector/pkg/aggregator"
 	"github.com/zyvorai/gryvia/collector/pkg/ai"
 	"github.com/zyvorai/gryvia/collector/pkg/anomaly"
+	"github.com/zyvorai/gryvia/collector/pkg/dcgm"
 	"github.com/zyvorai/gryvia/collector/pkg/decoder"
+	"github.com/zyvorai/gryvia/collector/pkg/diagnosis"
 	"github.com/zyvorai/gryvia/collector/pkg/exporter"
 	"github.com/zyvorai/gryvia/collector/pkg/fabric"
 	"github.com/zyvorai/gryvia/collector/pkg/flight"
 	"github.com/zyvorai/gryvia/collector/pkg/graph"
+	"github.com/zyvorai/gryvia/collector/pkg/incident"
+	"github.com/zyvorai/gryvia/collector/pkg/inference"
 	"github.com/zyvorai/gryvia/collector/pkg/kube"
 	"github.com/zyvorai/gryvia/collector/pkg/loader"
+	"github.com/zyvorai/gryvia/collector/pkg/netcost"
+	"github.com/zyvorai/gryvia/collector/pkg/nic"
 	"github.com/zyvorai/gryvia/collector/pkg/security"
+	"github.com/zyvorai/gryvia/collector/pkg/trace"
 	"github.com/zyvorai/gryvia/collector/pkg/tuning"
 )
 
@@ -52,6 +60,14 @@ func main() {
 		quotaPaceSync   = flag.Bool("quota-pace-sync", false, "MUTATING, off by default: every 30 s grant a pace lease to the cgroups of pods on this node whose namespace is listed by a GryviaQuota with spec.network.maxEgressMbps (needs -quota-pace, -cgroup-path, running in a cluster and NODE_NAME). Fails open: an API error changes nothing and leases expire after 2 minutes")
 		quotaPaceDry    = flag.Bool("quota-pace-dry-run", false, "with -quota-pace-sync: log what would be granted or revoked and write nothing to the pace map")
 		publishNodeFab  = flag.Bool("publish-node-fabric", false, "every 30 s write this node's fabric health (worst scoreDelta + top reasons, ttl 5 min) to the cluster-scoped GryviaNodeFabric named after NODE_NAME, for the ai-operator's opt-in fabric-aware scheduling; creates only that one object; needs a cluster, NODE_NAME and RBAC (chart value ebpf.publishNodeFabric)")
+		ibverbsLib      = flag.String("ibverbs-lib", "", "path to libibverbs.so for the ibv_verbs uprobes (empty = auto-discover)")
+		ibverbsProbes   = flag.Bool("ibverbs-probes", false, "attach ibv_verbs (uprobes on libibverbs ibv_create_qp/ibv_destroy_qp/ibv_reg_mr: QP and registered-memory counters). Off by default")
+		nicCounters     = flag.Bool("nic-counters", false, "read RDMA NIC hardware counters from /sys/class/infiniband and fold retry/error/CNP/pause rates into the fabric status (NCCL's userspace verbs path is invisible to the kernel RDMA kprobes). Off by default; skipped when no RDMA device exists")
+		nicSysfs        = flag.String("nic-sysfs", nic.DefaultRoot, "with -nic-counters: sysfs directory of RDMA devices")
+		dcgmCorrelate   = flag.Bool("dcgm-correlate", false, "scrape this node's dcgm-exporter and correlate GPU activity with NCCL call windows (gpuIdleDuringCommRatio etc.; informational). Off by default; run dcgm-exporter with a short --collect-interval")
+		dcgmURL         = flag.String("dcgm-url", dcgm.DefaultURL, "with -dcgm-correlate: dcgm-exporter metrics URL")
+		dcgmInterval    = flag.Duration("dcgm-interval", time.Second, "with -dcgm-correlate: scrape interval")
+		dcgmIdle        = flag.Float64("dcgm-idle-threshold", dcgm.DefaultIdleThreshold, "with -dcgm-correlate: SM activity (0-1) below which the GPU counts as idle")
 		publishFabric   = flag.Bool("publish-fabric-status", false, "every 30 s patch the status of an existing GryviaFabricSignal (spec.jobRef = job) with the folded fabric signals; needs a cluster (KUBERNETES_SERVICE_HOST) and RBAC (chart value ebpf.publishFabricStatus)")
 		tlsCertFile     = flag.String("tls-cert-file", "", "serve the HTTP listener over TLS (>= 1.2) with this certificate; re-read when the file changes (rotation). Needs -tls-key-file")
 		tlsKeyFile      = flag.String("tls-key-file", "", "private key for -tls-cert-file")
@@ -60,8 +76,23 @@ func main() {
 		metricsToken    = flag.String("metrics-token-file", "", "file with a bearer token (>= 32 chars) that Prometheus may present on /metrics only")
 		insecureListen  = flag.Bool("insecure-listener", false, "explicitly serve every endpoint without authentication (acknowledges the risk; contradicts the auth flags)")
 		requireAuth     = flag.Bool("require-auth", false, "refuse to start unless -api-token-file, -metrics-token-file or -tls-client-ca-file is set")
+		attributeNet    = flag.Bool("attribute-network", false, "attribute the bytes counted by cost_tracker (needs -iface, a cluster and NODE_NAME) to tenants and peer/zone classes; reads pods, nodes and namespaces. Off by default; see docs/network-cost-attribution.md")
+		publishNetUsage = flag.Bool("publish-network-usage", false, "every 60 s write per-tenant egress as GryviaNetworkUsageRecord objects into tenant-<name> namespaces (needs -attribute-network and RBAC: chart value ebpf.publishNetworkUsage)")
 		windowSec       = flag.Int("window", 300, "Aggregation sliding window in seconds")
+		diagCgroup      = flag.String("flight-diagnosis-cgroup", "", "cgroup v2 root (for example /host/sys/fs/cgroup) from which /api/v1/flight/diagnosis reads cpu.stat, memory.events and *.pressure of the job's pods, read-only and userspace only; empty reports those signals as unavailable")
+		diagThresholds  = flag.String("flight-diagnosis-thresholds", "", "JSON file overriding the diagnosis rule thresholds (docs/flight-diagnosis.md); empty uses the defaults")
+		storeDir        = flag.String("flight-store-dir", "", "directory for the persistent incident history (append-only JSON-lines segments); empty disables it")
+		storeRetention  = flag.Duration("flight-retention", 24*time.Hour, "with -flight-store-dir: drop history older than this")
+		storeMaxBytes   = flag.Int64("flight-store-max-bytes", 64<<20, "with -flight-store-dir: bound on the total size of the segments (the newest segment may exceed it by one segment)")
+		storeFsync      = flag.String("flight-store-fsync", "interval", "with -flight-store-dir: always, interval (incidents at once, samples every 10 s) or none")
+		incidentMinDur  = flag.Duration("flight-incident-min-duration", 60*time.Second, "with -flight-store-dir: a warning-or-worse finding must persist this long to become an incident")
+		inferDiscover   = flag.Bool("infer-metrics-discover", false, "opt in: also scrape http://<podIP>:<port>/metrics of pods on this node that carry a gryvia.io/job label and declare a container port from -infer-metrics-ports (needs a cluster and NODE_NAME; uses the pod-list RBAC the collector already has)")
+		inferPorts2     = flag.String("infer-metrics-ports", "8000,8002,8080", "container ports probed by -infer-metrics-discover (vLLM 8000, Triton metrics 8002, TGI 8080)")
+		inferInterval   = flag.Duration("infer-metrics-interval", inference.DefaultInterval, "scrape period of the serving-engine metrics (minimum 5s)")
+		traceCorrelate  = flag.Bool("trace-correlate", false, "opt in: consume trace_correlator's trace_events ring (W3C traceparent of plaintext HTTP/1.x requests to job pods, IPv4), attach trace ids to the Flight Recorder timeline and serve GET /api/v1/flight/trace (HMAC-protected like the flight endpoint). Needs -iface and -flight-token-file")
 	)
+	var inferTargets stringList
+	flag.Var(&inferTargets, "infer-metrics", "opt in: scrape a serving engine's Prometheus endpoint (vLLM, Triton, TGI); repeatable, or ';'-separated: name=vllm,url=http://10.0.0.5:8000/metrics[,engine=vllm|triton|tgi][,namespace=NS,job=JOB]")
 	flag.Parse()
 
 	// Logger.
@@ -96,6 +127,10 @@ func main() {
 		log.Fatalw("-quota-pace needs -cgroup-path: pacing is only ever attached to an explicit cgroup")
 	}
 
+	if *traceCorrelate && (*iface == "" || *flightTokenFile == "") {
+		log.Fatalw("-trace-correlate needs -iface (trace_correlator attaches to it) and -flight-token-file (the trace lookup is HMAC-protected)")
+	}
+
 	if (*quotaPaceSync || *quotaPaceDry) && !*quotaPace {
 		log.Fatalw("-quota-pace-sync and -quota-pace-dry-run need -quota-pace (and -cgroup-path)")
 	}
@@ -113,6 +148,7 @@ func main() {
 		InferPorts: ports,
 		Dir:        *ebpfDir, Iface: *iface, CgroupPath: *cgroupPath,
 		NCCLLib: *ncclLib, CUDALib: *cudaLib, CuFileLib: *cufileLib, UCXLib: *ucxLib, UprobePID: *uprobePID,
+		IBVerbsLib: *ibverbsLib, IBVerbs: *ibverbsProbes,
 		QuotaPace: *quotaPace,
 	}, log)
 	if err != nil {
@@ -194,6 +230,24 @@ func main() {
 		metrics.RecordRoCE(dCNP, dRoCE)
 	}
 
+	// Opt-in extras (see fabricextras.go).
+	var nicPoll *nicPoller
+	if *nicCounters {
+		nicPoll = newNICPoller(*nicSysfs, fabricFolder, metrics, log)
+	}
+	var ibvPoll *ibvPoller
+	for _, s := range mgr.Status() {
+		if s.Object == "ibv_verbs.o" && s.Attached {
+			ibvPoll = &ibvPoller{mgr: mgr, metrics: metrics, log: log}
+			break
+		}
+	}
+	if *dcgmCorrelate {
+		if err := startDCGM(ctx, log, fabricFolder, identity, *dcgmURL, *dcgmInterval, *dcgmIdle); err != nil {
+			log.Warnw("-dcgm-correlate ignored", "error", err)
+		}
+	}
+
 	// pfc_pause keeps per-CPU counters only (no ring): poll them, fold the
 	// frame delta and export the per-priority counts.
 	pfcAttached := false
@@ -250,13 +304,18 @@ func main() {
 		}
 	}
 
+	// Serving-engine metrics (vLLM / Triton / TGI): opt-in, read-only HTTP GETs of the engines' own
+	// /metrics endpoints. Kernel probes cannot see tokens, so TTFT, ITL and engine queue time can
+	// only come from the engine.
+	scraper := startInferenceScraper(ctx, log, fabricFolder, node, inferTargets, *inferDiscover, *inferPorts2, *inferInterval)
+
 	// Publishing fabric status writes to the cluster, so it needs an explicit flag and a cluster.
 	if *publishFabric {
 		client, err := kube.NewInCluster()
 		if err != nil {
 			log.Warnw("-publish-fabric-status ignored", "error", err)
 		} else {
-			go (&fabric.Publisher{API: client, Folder: fabricFolder, Log: log}).Run(ctx)
+			go (&fabric.Publisher{API: client, Folder: fabricFolder, Log: log, Inference: scraper != nil}).Run(ctx)
 			log.Infow("publishing fabric status to GryviaFabricSignal (existing objects only)", "interval", fabric.PublishInterval.String())
 		}
 	}
@@ -275,6 +334,13 @@ func main() {
 		}
 	}
 
+	if *publishNetUsage && !*attributeNet {
+		log.Fatalw("-publish-network-usage needs -attribute-network")
+	}
+	if *attributeNet {
+		startNetworkAttribution(ctx, log, mgr, node, *publishNetUsage)
+	}
+
 	// GPU aggregators.
 	window := time.Duration(*windowSec) * time.Second
 	ncclAgg := aggregator.NewNCCLAggregator(window)
@@ -289,6 +355,22 @@ func main() {
 
 	// TCP tuning advisor.
 	tcpAdvisor := tuning.NewTCPAdvisor()
+
+	// Trace correlation (opt-in): index the traceparent headers trace_correlator saw, keyed by
+	// connection, and let the Flight Recorder attach trace ids to events of the same connection.
+	var traceIndex *trace.Index
+	if *traceCorrelate {
+		traceIndex = trace.NewIndex()
+		recorder.SetCorrelator(traceIndex)
+		rings := mgr.RingBufReaders(loader.ClassTrace)
+		if len(rings) == 0 {
+			log.Warnw("-trace-correlate: trace_correlator is not loaded, so no trace ids will be seen (needs -iface and a loadable trace_correlator.o)")
+		}
+		for _, rr := range rings {
+			go traceIndex.Consume(rr, identity)
+		}
+		log.Infow("trace correlation enabled (plaintext HTTP/1.x, IPv4, requests to gryvia.io/job pods on this node)", "trace_rings", len(rings))
+	}
 
 	// ---- Decode perf events (existing flow events) ----
 	dec, err := decoder.New(mgr.PerfReaders(loader.ClassFlow), log)
@@ -308,6 +390,10 @@ func main() {
 						kind = "tcp_retransmit"
 					}
 					observation := flight.Event{Identity: id, Source: "ebpf", Kind: kind, Bytes: uint64(ev.Bytes), DurationNs: ev.LatencyNs}
+					if traceIndex != nil && ev.Protocol == 6 {
+						tp := trace.TupleFromFlow(ev.SrcIP, ev.SrcPort, ev.DstIP, ev.DstPort)
+						observation.Tuple = &tp
+					}
 					if ev.Verdict == 2 {
 						observation.Retransmits, observation.Bytes = ev.Bytes, 0
 					}
@@ -396,6 +482,24 @@ func main() {
 	go func() {
 		for sig := range fabricDecoder.Events() {
 			fabricBinder.Add(sig)
+			if sig.Type == fabric.SigInferWait && traceIndex != nil {
+				// Only with trace correlation on: the accept wait joins a request by pod, port and time.
+				if id, ok := identity.Resolve(sig.PID); ok {
+					recorder.Record(flight.Event{Identity: id, Source: "ebpf", Kind: "inference_accept_wait", DurationNs: sig.LatencyNS, LocalPort: uint16(sig.Rank)})
+				}
+			}
+			if sig.Type == fabric.SigCollective {
+				if id, ok := identity.Resolve(sig.PID); ok {
+					ev := flight.Event{Identity: id, Source: "ebpf", Operation: decoder.NCCLOpName(sig.NCCLOp), Bytes: sig.Bytes,
+						DurationNs: sig.LatencyNS, CommOrdinal: sig.CommOrdinal(), CommSeq: sig.CollSeq(), CommWorld: sig.WorldSize,
+						CommLate: sig.Retries&fabric.CollFlagLate != 0}
+					if sig.Rank != fabric.RankUnknown {
+						r := sig.Rank
+						ev.CommRank = &r
+					}
+					recorder.RecordCollective(ev)
+				}
+			}
 			if sig.Type == fabric.SigExfil {
 				// Observe only: the probe emits one signal per read burst. Never enforced here.
 				log.Warnw("possible model-weight exfiltration: large model-file read followed by a connect to a non-internal address",
@@ -434,6 +538,13 @@ func main() {
 				}
 				if pfcAttached {
 					pollPFC()
+				}
+
+				if nicPoll != nil {
+					nicPoll.poll(time.Now())
+				}
+				if ibvPoll != nil {
+					ibvPoll.poll()
 				}
 
 				// Publish per-job fabric status.
@@ -499,6 +610,47 @@ func main() {
 	mux.HandleFunc("/api/v1/ai/training", trainingAnalyzer.ServeHTTP)
 	mux.HandleFunc("/api/v1/ai/pipeline", pipelineAnalyzer.ServeHTTP)
 	mux.Handle("/api/v1/flight/diagnose", flightAuth(recorder, *flightTokenFile))
+	if traceIndex != nil {
+		mux.Handle("/api/v1/flight/trace", flightAuth(&trace.Handler{Index: traceIndex, Recorder: recorder, Node: node}, *flightTokenFile))
+	}
+	if scraper != nil {
+		// Same HMAC protection as the flight endpoint: the answer lists target addresses.
+		mux.Handle("/api/v1/inference", flightAuth(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_ = encodeJSON(w, scraper.Status())
+		}), *flightTokenFile))
+	}
+
+	// Unified diagnosis, incident history and comparison (same HMAC protection as the flight route).
+	diag := &diagnosisService{node: node, recorder: recorder, identity: identity, folder: fabricFolder,
+		probes: managerProbes{mgr}, now: time.Now,
+		gauge: prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "gryvia_measurement_dropped_events",
+			Help: "Events lost before analysis (producer ring/perf failures and consumer backlog), monotonic since start."}, []string{"source"})}
+	prometheus.MustRegister(diag.gauge)
+	diag.cfg, err = diagnosis.LoadConfig(*diagThresholds)
+	if err != nil {
+		log.Fatalw("invalid -flight-diagnosis-thresholds", "error", err)
+	}
+	diag.sampler = diagnosis.NewSampler(*diagCgroup, identity)
+	diag.userDrops = func() []diagnosis.DropCount {
+		out := []diagnosis.DropCount{{Source: "userspace/gpu-decoder", Count: gpuDecoder.Dropped()},
+			{Source: "userspace/fabric-decoder", Count: fabricDecoder.Dropped()}}
+		if dec != nil {
+			out = append(out, diagnosis.DropCount{Source: "userspace/flow-perf-lost", Count: dec.Lost()})
+		}
+		return out
+	}
+	if *storeDir != "" {
+		st, err := incident.Open(incident.Options{Dir: *storeDir, Retention: *storeRetention, MaxBytes: *storeMaxBytes, Fsync: *storeFsync})
+		if err != nil {
+			log.Fatalw("cannot open -flight-store-dir", "error", err)
+		}
+		diag.store = st
+		diag.tracker = incident.NewTracker(st, incident.TrackerOptions{MinDuration: *incidentMinDur})
+		log.Infow("flight incident history enabled", "dir", *storeDir, "retention", storeRetention.String(), "max_bytes", *storeMaxBytes, "fsync", *storeFsync)
+	}
+	diag.register(mux, *flightTokenFile)
+	go diag.Run(ctx, 10*time.Second)
 
 	// TCP tuning endpoint.
 	mux.HandleFunc("/api/v1/tuning/tcp", tcpAdvisor.ServeHTTP)
@@ -592,4 +744,95 @@ func startQuotaSync(ctx context.Context, log *zap.SugaredLogger, pacer *fabric.P
 	go s.Run(ctx, fabric.QuotaSyncInterval)
 	log.Warnw("quota pace sync running", "interval", fabric.QuotaSyncInterval.String(), "dry_run", dryRun, "node", node,
 		"own_namespace", strings.TrimSpace(string(own)), "cgroup_root", cgroupPath)
+}
+
+// startNetworkAttribution runs the opt-in tenant network cost pipeline: the cost_tracker byte counters are
+// folded per scan into per-(hour, tenant, peer, zone) totals and, with publish, written as
+// GryviaNetworkUsageRecord. Every prerequisite is checked; a missing one leaves the feature off with a log line.
+func startNetworkAttribution(ctx context.Context, log *zap.SugaredLogger, mgr *loader.Manager, node string, publish bool) {
+	m := mgr.Map("cost_tracker.o", "traffic_costs")
+	if m == nil {
+		log.Warnw("-attribute-network ignored: cost_tracker.o is not loaded (needs -iface, kernel >= 6.6 with tcx)")
+		return
+	}
+	if node == "" {
+		log.Warnw("-attribute-network ignored: NODE_NAME is not set")
+		return
+	}
+	client, err := kube.NewInCluster()
+	if err != nil {
+		log.Warnw("-attribute-network ignored", "error", err)
+		return
+	}
+	dir := netcost.NewDirectory()
+	meter := netcost.NewMeter(dir, node)
+	go dir.Run(ctx, client, func(err error) { log.Warnw("network attribution: directory refresh failed", "error", err) })
+	go netcost.RunScan(ctx, m, meter, func(err error) { log.Warnw("network attribution: reading traffic_costs failed", "error", err) })
+	prometheus.MustRegister(prometheus.NewCounterFunc(prometheus.CounterOpts{
+		Name: "gryvia_netcost_unattributed_bytes_total",
+		Help: "Bytes seen by cost_tracker that were not attributed to a tenant (unknown, non-tenant, hostNetwork, loopback, same-node).",
+	}, func() float64 {
+		var n uint64
+		for _, v := range meter.Stats().Skipped {
+			n += v
+		}
+		return float64(n)
+	}))
+	log.Infow("network attribution running (unverified on a real cluster; egress-only billing)", "node", node, "publish", publish)
+	if publish {
+		go (&netcost.Publisher{API: client, Meter: meter, Node: node, Log: log}).Run(ctx)
+	}
+}
+
+// stringList is a repeatable string flag.
+type stringList []string
+
+func (l *stringList) String() string     { return strings.Join(*l, ";") }
+func (l *stringList) Set(v string) error { *l = append(*l, v); return nil }
+
+// startInferenceScraper starts the serving-engine metrics scraper when it was asked for
+// (-infer-metrics and/or -infer-metrics-discover) and returns it; nil means it is off. Readings
+// are folded into the fabric folder under the target's namespace/job (or "_unattributed"/name
+// for a static target without attribution).
+func startInferenceScraper(ctx context.Context, log *zap.SugaredLogger, folder *fabric.Folder, node string,
+	specs []string, discover bool, discoverPorts string, interval time.Duration) *inference.Scraper {
+	if len(specs) == 0 && !discover {
+		return nil
+	}
+	static, err := inference.ParseTargets(strings.Join(specs, ";"))
+	if err != nil {
+		log.Fatalw("invalid -infer-metrics", "error", err)
+	}
+	var disc func(context.Context) ([]inference.Target, error)
+	if discover {
+		ports, err := inference.ParsePorts(discoverPorts)
+		if err != nil {
+			log.Fatalw("invalid -infer-metrics-ports", "error", err)
+		}
+		if client, err := kube.NewInCluster(); err != nil {
+			log.Warnw("-infer-metrics-discover ignored", "error", err)
+		} else if node == "" {
+			log.Warnw("-infer-metrics-discover ignored: NODE_NAME is not set")
+		} else {
+			disc = func(ctx context.Context) ([]inference.Target, error) {
+				return inference.Discover(ctx, client, node, ports)
+			}
+		}
+	}
+	if len(static) == 0 && disc == nil {
+		return nil
+	}
+	sink := func(t inference.Target, r inference.Reading) {
+		key := fabric.JobKey{Namespace: t.Namespace, Job: t.Job}
+		if t.Namespace == "" {
+			key = fabric.JobKey{Namespace: "_unattributed", Job: t.Name}
+		}
+		folder.SetInference(key, t.Name, r)
+	}
+	s := inference.NewScraper(static, disc, sink, log)
+	s.Interval = interval
+	go s.Run(ctx)
+	log.Infow("scraping serving-engine metrics (read-only HTTP GET)", "static_targets", len(static),
+		"discover", disc != nil, "interval", fmt.Sprint(interval))
+	return s
 }

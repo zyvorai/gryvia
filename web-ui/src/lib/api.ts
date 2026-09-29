@@ -457,6 +457,73 @@ export interface FlightReport {
   events: FlightEvent[]
 }
 
+// Unified diagnosis: the gateway's merge of the per-node evidence-backed diagnoses.
+export interface DiagnosisEvidence {
+  node?: string
+  source: string
+  metric: string
+  value: number
+  window: string
+}
+
+export interface DiagnosisFinding {
+  kind: string
+  severity: 'info' | 'warning' | 'critical'
+  confidence: 'low' | 'medium' | 'high'
+  nodes: string[]
+  evidence: DiagnosisEvidence[]
+  summary: string
+  whatWasNotMeasured: string[]
+}
+
+export interface MeasurementCompleteness {
+  probesAttached: number
+  probesSkipped: Array<{ node?: string; object: string; program?: string; reason?: string }>
+  droppedEvents: { total: number; byNode?: Record<string, number> }
+  sampling: { ratio: number; note?: string }
+  /** A number, or the string "unknown" when the gateway could not list the job's pods. */
+  nodesExpected: number | 'unknown'
+  nodesReporting: number
+  missingNodes: string[]
+  complete: boolean
+  reasons: string[]
+}
+
+export interface FlightDiagnosis {
+  namespace: string
+  job: string
+  summary: string
+  partial: boolean
+  coverage: { total: number; reachable: number; reporting: number; complete: boolean }
+  nodes: string[]
+  findings: DiagnosisFinding[]
+  unavailable: Array<{ node: string; signal: string; reason: string }>
+  measured: Record<string, string[]>
+  measurementCompleteness: MeasurementCompleteness
+}
+
+// Serving-engine latency of a job (vLLM, Triton, TGI), read from GryviaFabricSignal.status by the gateway.
+// Every figure is optional: a missing key means "not measured", never zero. Latencies are milliseconds.
+export interface InferenceLatency {
+  namespace: string
+  job: string
+  /** False unless the collector's opt-in metrics scraper published an engine. */
+  available: boolean
+  engine?: string
+  updatedAt?: string
+  ttftP99ms?: number
+  itlP99ms?: number
+  queueTimeP99ms?: number
+  e2eP99ms?: number
+  /** Means, for engines that export only duration counters (Triton without summaries). */
+  queueTimeMeanMs?: number
+  e2eMeanMs?: number
+  requestsWaiting?: number
+  kvCacheUsage?: number
+  /** Network accept -> first recv wait (eBPF). Not engine queue time. */
+  inferWaitP99ms?: number
+}
+
 const apiClient = axios.create({
   baseURL: '/api',
   timeout: 30000,
@@ -714,6 +781,16 @@ export const api = {
 
   getFlightReport: async (job: string, namespace: string): Promise<FlightReport> => {
     const { data } = await apiClient.get(`/flight/jobs/${encodeURIComponent(job)}`, { params: { namespace } })
+    return data
+  },
+
+  getFlightDiagnosis: async (job: string, namespace: string): Promise<FlightDiagnosis> => {
+    const { data } = await apiClient.get(`/flight/jobs/${encodeURIComponent(job)}/diagnosis`, { params: { namespace } })
+    return data
+  },
+
+  getInferenceLatency: async (job: string, namespace: string): Promise<InferenceLatency> => {
+    const { data } = await apiClient.get(`/flight/inference/${encodeURIComponent(job)}`, { params: { namespace } })
     return data
   },
 

@@ -152,6 +152,17 @@ rules:
       - create
       - patch
   {{- end }}
+  {{- if and .Values.ebpf.enabled .Values.ebpf.attributeNetwork .Values.ebpf.publishNetworkUsage }}
+  # ebpf.publishNetworkUsage: write per-tenant network usage records (no update/delete of anything else)
+  - apiGroups:
+      - gryvia.io
+    resources:
+      - gryvianetworkusagerecords
+    verbs:
+      - get
+      - create
+      - patch
+  {{- end }}
   {{- if and .Values.ebpf.enabled .Values.ebpf.quotaPace.enabled .Values.ebpf.quotaPace.sync }}
   # ebpf.quotaPace.sync: read the egress caps of GryviaQuota objects (read-only)
   - apiGroups:

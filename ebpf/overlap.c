@@ -39,6 +39,8 @@ struct {
 	__uint(max_entries, FABRIC_RINGBUF_SIZE);
 } fabric_events SEC(".maps");
 
+GRYVIA_DECLARE_DROPS();
+
 static __always_inline struct overlap_state *get_state(__u64 id)
 {
 	struct overlap_state init = {};
@@ -127,8 +129,10 @@ int BPF_URETPROBE(overlap_sync_exit, int ret)
 		return 0;
 
 	ev = bpf_ringbuf_reserve(&fabric_events, sizeof(*ev), 0);
-	if (!ev)
+	if (!ev) {
+		GRYVIA_COUNT_DROP(GRYVIA_DROP_RINGBUF);
 		return 0;
+	}
 	__builtin_memset(ev, 0, sizeof(*ev));
 	ev->timestamp_ns = now;
 	ev->pid = id >> 32;

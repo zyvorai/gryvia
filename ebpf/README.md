@@ -4,7 +4,7 @@ Kernel-space eBPF programs that form the data-plane of the Gryvia
 network intelligence layer.  They run inside the Linux kernel and feed
 structured events to the userspace flow collector (`../collector/`).
 
-**Status: experimental.** There are 30 programs (`ls *.c`). All build and load through the kernel verifier on
+**Status: experimental.** There are 35 programs (`ls *.c`). All build and load through the kernel verifier on
 Linux 7.0 x86_64; the collector attached the kprobe/tracepoint subset there and decoded real TCP flows. GPU, NCCL,
 RDMA and GPUDirect Storage behaviour, arm64 loading and the gated XDP/TCX/sockops attachments have not been verified on
 hardware. Nothing in the rest of the platform depends on them, and the collector is off by default.
@@ -42,7 +42,7 @@ hardware. Nothing in the rest of the platform depends on them, and the collector
 | `exfil_detect.c` | kprobe (`tcp_sendmsg`, `tcp_v4_connect`) | Outbound byte volume per PID and external destination against a threshold |
 | `fingerprint.c` | kprobe (`tcp_v4_connect`), raw_tracepoint (`sys_enter`) | Per-process syscall and connection behaviour compared with baselines |
 | `driver_fim.c` | raw_tracepoint (`sys_enter`), kprobe (`security_file_open`) | File-integrity monitoring of NVIDIA driver files and CUDA libraries, module loading |
-| `infer_latency.c` | kretprobe (`inet_csk_accept`), kprobe (`tcp_recvmsg`) | Accept -> first recv wait of connections to the ports in `infer_ports` (collector `-infer-ports`, default 8000 vLLM and 8001 Triton) as `FABRIC_SIG_INFER_WAIT`; other ports are never recorded |
+| `infer_latency.c` | kretprobe (`inet_csk_accept`), kprobe (`tcp_recvmsg`) | Accept -> first recv wait of connections to the ports in `infer_ports` (collector `-infer-ports`, default 8000 vLLM and 8001 Triton) as `FABRIC_SIG_INFER_WAIT`; other ports are never recorded. It is a network accept wait, not queue time, TTFT or ITL (see [docs/inference-latency.md](../docs/inference-latency.md)) |
 | `ucx_gloo.c` | uprobe/uretprobe (`ucp_tag_send_nb`, `ucp_tag_send_nbx` in `libucp.so`) | UCX tag-send calls that blocked for >= 5 ms as `FABRIC_SIG_UCX_SLOW` (span of the posting call, not of the transfer). Skipped when `libucp.so` is not found (`-ucx-lib`, `-uprobe-pid`, standard dirs). **Gloo is not probed**: its C++ entry points are mangled, version-specific and usually linked statically into `libtorch_cpu.so`, so a fixed-symbol probe could never attach |
 | `pfc_pause.c` | XDP | 802.1Qbb PFC pause frames (EtherType 0x8808, opcode 0x0101; per-priority counts from the enable vector and quanta) and 802.3x pause frames in per-CPU counters (`pause_count`); always `XDP_PASS`, attached only with `-iface`. **One XDP program per interface**: conflicts with `roce_cnp`, `packet_filter` and `dns_tracker`; the collector attaches the first and skips the rest with a logged reason. Many NICs consume pause frames in the MAC and never show them to XDP |
 | `weight_exfil.c` | kprobe (`vfs_read`, `tcp_v4_connect`) | Observe only. A read request >= 8 MiB from a file named `*.safetensors/.gguf/.ckpt/.onnx/.pt/.pth/.bin/.h5`, then a `tcp_v4_connect` by the same process within 30 s to a destination that is not loopback, RFC1918, link-local or 0.0.0.0/8, emits one `FABRIC_SIG_EXFIL`. A read alone never fires. IPv4 only, `read()` only (not mmap), name-based |

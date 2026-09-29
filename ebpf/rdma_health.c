@@ -59,6 +59,8 @@ struct {
 	__uint(max_entries, FABRIC_RINGBUF_SIZE);
 } fabric_events SEC(".maps");
 
+GRYVIA_DECLARE_DROPS();
+
 static __always_inline __u32 thresh(__u32 idx, __u32 def)
 {
 	__u32 *v = bpf_map_lookup_elem(&rdma_thresh, &idx);
@@ -74,8 +76,10 @@ static __always_inline void emit_rdma(__u32 qpn, struct rdma_health_val *v)
 	__u64 now = bpf_ktime_get_ns();
 
 	ev = bpf_ringbuf_reserve(&fabric_events, sizeof(*ev), 0);
-	if (!ev)
+	if (!ev) {
+		GRYVIA_COUNT_DROP(GRYVIA_DROP_RINGBUF);
 		return; /* keep the counts; retry on the next error */
+	}
 
 	__builtin_memset(ev, 0, sizeof(*ev));
 	ev->timestamp_ns = now;

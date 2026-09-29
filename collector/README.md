@@ -13,7 +13,7 @@ been verified on real hardware. Most HTTP endpoints below are **unauthenticated*
 ## Architecture
 
 ```
-   kernel eBPF programs (../ebpf, 30 CO-RE objects)
+   kernel eBPF programs (../ebpf, 35 CO-RE objects)
         |  perf event arrays (flow)   ring buffers (GPU, security, fabric)
         v
    +--------------------------- collector ---------------------------+
@@ -57,6 +57,8 @@ been verified on real hardware. Most HTTP endpoints below are **unauthenticated*
 | `/api/v1/ai/training`, `/api/v1/ai/pipeline` | none | Training communication and pipeline analysis |
 | `/api/v1/tuning/tcp` | none | TCP tuning advice |
 | `/api/v1/flight/diagnose?namespace=&job=` | HMAC token | Flight Recorder timeline; answers 503 until `-flight-token-file` is set |
+| `/api/v1/flight/diagnosis?namespace=&job=` | HMAC token | Evidence-backed bottleneck diagnosis with unavailable telemetry and `measurementCompleteness` ([docs/flight-diagnosis.md](../docs/flight-diagnosis.md)) |
+| `/api/v1/flight/incidents`, `/incidents/export`, `/compare` | HMAC token | Persistent incident history, export and before/after comparison; `{"enabled":false}` unless `-flight-store-dir` is set |
 
 Metric families include `gryvia_network_*` (flow bytes, latency, active connections, drops, DNS latency, cost bytes),
 `gryvia_nccl_*`, `gryvia_gpu_memcpy_*`, `gryvia_rdma_*`, `gryvia_roce_*`, `gryvia_fabric_*`, `gryvia_training_*`,
@@ -69,11 +71,19 @@ Metric families include `gryvia_network_*` (flow bytes, latency, active connecti
 | `-metrics-addr` | `:9090` | HTTP listen address |
 | `-ebpf-dir` | `/opt/gryvia/ebpf` | Directory with the compiled `.o` files |
 | `-iface` | empty | Interface for XDP/TCX programs (`packet_filter`, `dns_tracker`, `roce_cnp`, `cost_tracker`, `trace_correlator`); empty skips them |
+| `-attribute-network` | off | Attribute `cost_tracker` byte counters to tenants and peer/zone classes (needs `-iface`, a cluster, `NODE_NAME`); see [`docs/network-cost-attribution.md`](../docs/network-cost-attribution.md) |
+| `-publish-network-usage` | off | Write per-tenant egress as `GryviaNetworkUsageRecord` objects every 60 s (needs `-attribute-network`) |
 | `-cgroup-path` | empty | cgroup v2 path for `sockops`/`sk_msg`; empty skips them |
 | `-nccl-lib`, `-cuda-lib`, `-cufile-lib` | empty | Library paths for the NCCL, CUDA runtime and cuFile uprobes; empty means auto-discover |
 | `-uprobe-pid` | `0` | Find those libraries through `/proc/<pid>/maps` of this process |
-| `-infer-ports` | `8000,8001` | Local TCP ports of inference servers for `infer_latency` (at most 8; empty disables it) |
+| `-infer-ports` | `8000,8001` | Local TCP ports of inference servers for `infer_latency` (at most 8; empty disables it). Measures the network accept wait only |
+| `-infer-metrics` | empty | Opt in: scrape a serving engine's own Prometheus endpoint (vLLM, Triton, TGI) for TTFT, ITL, queue time; repeatable, `name=..,url=..[,engine=..][,namespace=..,job=..]`. See [docs/inference-latency.md](../docs/inference-latency.md) |
+| `-infer-metrics-discover`, `-infer-metrics-ports`, `-infer-metrics-interval` | off, `8000,8002,8080`, `15s` | Also scrape labelled job pods of this node that declare one of the ports |
+| `-trace-correlate` | off | Opt in: attach W3C trace ids to the Flight Recorder timeline and serve `GET /api/v1/flight/trace` (HMAC-protected); needs `-iface` and `-flight-token-file` |
 | `-flight-token-file` | empty | File with the Flight Recorder token (at least 32 characters); empty disables the endpoint |
+| `-flight-diagnosis-cgroup` | empty | cgroup v2 root the diagnosis reads (read-only) for CPU throttling, memory events and PSI; empty reports those signals as unavailable |
+| `-flight-diagnosis-thresholds` | empty | JSON file overriding the diagnosis thresholds |
+| `-flight-store-dir` | empty | Persistent incident history directory; empty disables it. Also `-flight-retention` (24h), `-flight-store-max-bytes` (64 MiB), `-flight-store-fsync` (interval), `-flight-incident-min-duration` (60s) |
 | `-window` | `300` | Aggregation window in seconds |
 | `-nats-url` | empty | Accepted but not implemented: no NATS connection is made |
 

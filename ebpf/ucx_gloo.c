@@ -62,6 +62,8 @@ struct {
 	__uint(max_entries, FABRIC_RINGBUF_SIZE);
 } fabric_events SEC(".maps");
 
+GRYVIA_DECLARE_DROPS();
+
 static __always_inline void call_begin(__u32 which, __u64 bytes)
 {
 	struct ucx_key key = {};
@@ -94,8 +96,10 @@ static __always_inline void call_end(__u32 which)
 		return;
 
 	ev = bpf_ringbuf_reserve(&fabric_events, sizeof(*ev), 0);
-	if (!ev)
+	if (!ev) {
+		GRYVIA_COUNT_DROP(GRYVIA_DROP_RINGBUF);
 		return;
+	}
 	__builtin_memset(ev, 0, sizeof(*ev));
 	ev->timestamp_ns = now;
 	ev->pid = key.id >> 32;

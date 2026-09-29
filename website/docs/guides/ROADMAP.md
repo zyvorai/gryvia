@@ -24,7 +24,7 @@ The project is alpha: the API is `gryvia.io/v1alpha1` and can change. For what e
 
 ### Experimental
 
-- **eBPF collector.** 30 CO-RE programs. Compile and pass the kernel verifier on Linux 7.0 x86_64; arm64 is compile-only. Off by default, runs privileged with host networking, and its image is not part of the release images. GPU, NCCL, RDMA and GPUDirect Storage behaviour is unverified on hardware. Flight Recorder and fabric signals are node-local previews.
+- **eBPF collector.** 35 CO-RE programs. Compile and pass the kernel verifier on Linux 7.0 x86_64; arm64 is compile-only. Off by default, runs privileged with host networking, and its image is not part of the release images. GPU, NCCL, RDMA and GPUDirect Storage behaviour is unverified on hardware. Flight Recorder and fabric signals are node-local previews.
 - **Fabric signal CRD (`gryviafabricsignals`).** CRD and collector endpoint exist; no controller fills the CRD, and the penalty function in the scheduler package is not called.
 - **Terraform and Ansible automation** under the repository's infrastructure directories: marked experimental and incomplete; they do not install Kubernetes, a CNI or GPU drivers.
 - **Scheduling library code.** Gang scheduling, DRF fair share and queue ordering, and elastic scaling exist as Go packages with tests, but the running job controller does not call them.

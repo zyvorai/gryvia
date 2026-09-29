@@ -13,6 +13,7 @@ import (
 	"errors"
 	"net"
 	"strconv"
+	"sync/atomic"
 
 	"github.com/cilium/ebpf/ringbuf"
 )
@@ -148,8 +149,12 @@ func cstr(b []byte) string {
 
 // Decoder decodes fabric signals from eBPF ring buffers.
 type Decoder struct {
-	events chan Signal
+	events  chan Signal
+	dropped atomic.Uint64
 }
+
+// Dropped counts signals discarded in userspace because the consumer was behind.
+func (d *Decoder) Dropped() uint64 { return d.dropped.Load() }
 
 // NewDecoder creates a Decoder with the given channel buffer size.
 func NewDecoder(bufSize int) *Decoder {
@@ -178,6 +183,7 @@ func (d *Decoder) DecodeRingBuf(reader *ringbuf.Reader) {
 		case d.events <- s:
 		default:
 			// Drop when the consumer is behind rather than block the reader.
+			d.dropped.Add(1)
 		}
 	}
 }

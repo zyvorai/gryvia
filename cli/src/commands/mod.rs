@@ -15,6 +15,7 @@ pub mod list;
 pub mod logs;
 pub mod maintenance;
 pub mod network;
+pub mod network_usage;
 pub mod platform_status;
 pub mod policy;
 pub mod queue;

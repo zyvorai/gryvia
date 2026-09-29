@@ -278,10 +278,10 @@ enum Commands {
 
     /// Show metered GPU usage and estimated cost
     ///
-    /// Aggregates GryviaUsageRecord objects: GPU hours, cost and distinct jobs per tenant, SKU or day.
+    /// Aggregates GryviaUsageRecord objects: GPU hours, cost and distinct jobs per tenant, SKU or day. With --network it reports measured egress bytes per tenant, peer class, zone class or day from GryviaNetworkUsageRecord objects (egress only; estimates).
     /// Records are filtered on their start time; a date-only --to covers that whole day. Costs are
     /// estimates from job run time multiplied by the SKU rate, not invoices.
-    #[command(after_help = examples(&["gryvia usage", "gryvia usage --tenant acme --from 2026-09-01 --to 2026-09-30", "gryvia usage --group-by sku -o json", "gryvia usage --group-by day -o csv"]))]
+    #[command(after_help = examples(&["gryvia usage", "gryvia usage --tenant acme --from 2026-09-01 --to 2026-09-30", "gryvia usage --group-by sku -o json", "gryvia usage --group-by day -o csv", "gryvia usage --network --group-by zone-class", "gryvia usage --network --tenant acme --from 2026-09-01 -o csv"]))]
     Usage {
         /// Only this tenant
         #[arg(long)]
@@ -298,6 +298,10 @@ enum Commands {
         /// How to group the rows
         #[arg(long, value_enum, default_value_t = GroupBy::Tenant)]
         group_by: GroupBy,
+
+        /// Show measured network egress (GryviaNetworkUsageRecord) instead of GPU usage
+        #[arg(long)]
+        network: bool,
 
         /// Output format
         #[arg(short, long, value_enum, default_value_t = UsageFormat::Table, env = "GRYVIA_OUTPUT")]
@@ -934,16 +938,28 @@ async fn run() -> Result<()> {
             from,
             to,
             group_by,
+            network,
             output,
         } => {
-            let opts = commands::usage::Options {
-                tenant,
-                from,
-                to,
-                group_by,
-                output,
-            };
-            commands::usage::execute(&client, opts).await?;
+            if network {
+                let opts = commands::network_usage::Options {
+                    tenant,
+                    from,
+                    to,
+                    group_by,
+                    output,
+                };
+                commands::network_usage::execute(&client, opts).await?;
+            } else {
+                let opts = commands::usage::Options {
+                    tenant,
+                    from,
+                    to,
+                    group_by,
+                    output,
+                };
+                commands::usage::execute(&client, opts).await?;
+            }
         }
         Commands::Invoice {
             tenant,
@@ -1389,6 +1405,15 @@ mod tests {
             vec!["gryvia", "tenant", "get", "acme", "-o", "json"],
             vec!["gryvia", "usage", "-o", "csv"],
             vec!["gryvia", "usage", "--group-by", "day", "-o", "json"],
+            vec![
+                "gryvia",
+                "usage",
+                "--network",
+                "--group-by",
+                "zone-class",
+                "-o",
+                "csv",
+            ],
             vec!["gryvia", "invoice", "-o", "csv"],
             vec![
                 "gryvia", "invoice", "--tenant", "acme", "--month", "2026-09", "-o", "yaml",

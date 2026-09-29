@@ -69,6 +69,9 @@ detail page, for the job's own namespace. It loads only when you press Load
 observations (each load contacts every collector) and is not polled. A tenant
 user without access to the namespace sees a 403 message.
 
+Opt-in request tracing (W3C `traceparent` ids attached to events, `GET /api/flight/trace/{traceId}`) and engine latency
+(`gryvia-flight -inference`) are described in [inference-latency.md](inference-latency.md).
+
 ## Collector authentication
 
 The gateway signs each collector request with
@@ -161,5 +164,10 @@ spec:
   node's addresses and a pod NetworkPolicy does not apply. Use node firewall
   rules, or set `collector.hostNetwork=false` before relying on the policy above.
 
-GPU/RDMA validation and per-job rank identity in the underlying NCCL probe
-still precede general availability.
+GPU/RDMA/NCCL validation on real hardware still precedes general availability. Collective identity (communicator
+ordinal, sequence, rank) is now learned from public NCCL API uprobes, but only against a stand-in library so far;
+see [nccl-rdma-gpu-correlation.md](nccl-rdma-gpu-correlation.md).
+
+See [flight-diagnosis.md](flight-diagnosis.md) for the unified bottleneck diagnosis, persistent incident history and measurement completeness.
+
+See [nccl-rdma-gpu-correlation.md](nccl-rdma-gpu-correlation.md) for collective identity (the `collectives` list), RDMA NIC counters and DCGM GPU correlation, and [network-cost-attribution.md](network-cost-attribution.md) for tenant network cost attribution.

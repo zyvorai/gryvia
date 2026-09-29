@@ -72,6 +72,22 @@ spec:
             {{- with .Values.ebpf.cgroupPath }}
             - -cgroup-path={{ . }}
             {{- end }}
+            {{- if .Values.ebpf.diagnosis.cgroupSignals }}
+            - -flight-diagnosis-cgroup=/host/sys/fs/cgroup
+            {{- end }}
+            {{- if .Values.ebpf.diagnosis.thresholds }}
+            - -flight-diagnosis-thresholds=/etc/gryvia/diagnosis/thresholds.json
+            {{- end }}
+            {{- if .Values.ebpf.flightStore.enabled }}
+            {{- if not (has .Values.ebpf.flightStore.volume (list "emptyDir" "hostPath")) }}
+            {{- fail "ebpf.flightStore.volume must be emptyDir or hostPath" }}
+            {{- end }}
+            - -flight-store-dir=/var/lib/gryvia-flight
+            - -flight-retention={{ .Values.ebpf.flightStore.retention }}
+            - -flight-store-max-bytes={{ int64 .Values.ebpf.flightStore.maxBytes }}
+            - -flight-store-fsync={{ .Values.ebpf.flightStore.fsync }}
+            - -flight-incident-min-duration={{ .Values.ebpf.flightStore.incidentMinDuration }}
+            {{- end }}
             {{- if .Values.ebpf.quotaPace.enabled }}
             {{- if not .Values.ebpf.cgroupPath }}
             {{- fail "ebpf.quotaPace.enabled needs ebpf.cgroupPath (for example /host/sys/fs/cgroup)" }}
@@ -95,6 +111,49 @@ spec:
             {{- end }}
             {{- if .Values.ebpf.publishNodeFabric }}
             - -publish-node-fabric
+            {{- end }}
+            {{- if .Values.ebpf.attributeNetwork }}
+            {{- if not .Values.ebpf.interface }}
+            {{- fail "ebpf.attributeNetwork needs ebpf.interface (cost_tracker is a tcx program)" }}
+            {{- end }}
+            - -attribute-network
+            {{- end }}
+            {{- if .Values.ebpf.publishNetworkUsage }}
+            {{- if not .Values.ebpf.attributeNetwork }}
+            {{- fail "ebpf.publishNetworkUsage needs ebpf.attributeNetwork" }}
+            {{- end }}
+            - -publish-network-usage
+            {{- end }}
+            {{- if .Values.ebpf.traceCorrelation }}
+            {{- if not (and .Values.ebpf.interface .Values.ebpf.flightTokenSecret) }}
+            {{- fail "ebpf.traceCorrelation needs ebpf.interface and ebpf.flightTokenSecret" }}
+            {{- end }}
+            - -trace-correlate
+            {{- end }}
+            {{- range .Values.ebpf.inferMetrics.targets }}
+            - {{ printf "-infer-metrics=%s" . | quote }}
+            {{- end }}
+            {{- if .Values.ebpf.inferMetrics.discover }}
+            - -infer-metrics-discover
+            - -infer-metrics-ports={{ .Values.ebpf.inferMetrics.ports }}
+            {{- end }}
+            {{- if or .Values.ebpf.inferMetrics.targets .Values.ebpf.inferMetrics.discover }}
+            - -infer-metrics-interval={{ .Values.ebpf.inferMetrics.interval }}
+            {{- end }}
+            {{- if .Values.ebpf.nicCounters }}
+            - -nic-counters
+            {{- end }}
+            {{- if .Values.ebpf.ibverbsProbes }}
+            - -ibverbs-probes
+            {{- end }}
+            {{- if .Values.ebpf.dcgm.enabled }}
+            {{- if and (contains "127.0.0.1" .Values.ebpf.dcgm.url) (not .Values.collector.hostNetwork) }}
+            {{- fail "ebpf.dcgm.url points at 127.0.0.1, which only reaches the node's dcgm-exporter with collector.hostNetwork=true" }}
+            {{- end }}
+            - -dcgm-correlate
+            - -dcgm-url={{ .Values.ebpf.dcgm.url }}
+            - -dcgm-interval={{ .Values.ebpf.dcgm.interval }}
+            - -dcgm-idle-threshold={{ .Values.ebpf.dcgm.idleThreshold }}
             {{- end }}
             {{- with .Values.ebpf.ncclLib }}
             - -nccl-lib={{ . }}
@@ -150,6 +209,15 @@ spec:
               mountPath: /var/run/gryvia-tls
               readOnly: true
             {{- end }}
+            {{- if .Values.ebpf.diagnosis.thresholds }}
+            - name: diagnosis-thresholds
+              mountPath: /etc/gryvia/diagnosis
+              readOnly: true
+            {{- end }}
+            {{- if .Values.ebpf.flightStore.enabled }}
+            - name: flight-store
+              mountPath: /var/lib/gryvia-flight
+            {{- end }}
       volumes:
         - name: sys-fs-bpf
           hostPath:
@@ -200,6 +268,22 @@ spec:
         - name: collector-tls
           secret:
             secretName: {{ include "network-intelligence.collectorTLSSecret" . | quote }}
+        {{- end }}
+        {{- if .Values.ebpf.diagnosis.thresholds }}
+        - name: diagnosis-thresholds
+          configMap:
+            name: {{ include "network-intelligence.fullname" . }}-diagnosis-thresholds
+        {{- end }}
+        {{- if .Values.ebpf.flightStore.enabled }}
+        - name: flight-store
+          {{- if eq .Values.ebpf.flightStore.volume "hostPath" }}
+          hostPath:
+            path: {{ .Values.ebpf.flightStore.hostPath | quote }}
+            type: DirectoryOrCreate
+          {{- else }}
+          emptyDir:
+            sizeLimit: {{ .Values.ebpf.flightStore.sizeLimit | quote }}
+          {{- end }}
         {{- end }}
       {{- with .Values.collector.nodeSelector }}
       nodeSelector:

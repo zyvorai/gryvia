@@ -44,6 +44,23 @@ type Publisher struct {
 	API    KubeAPI
 	Folder *Folder
 	Log    Logger
+	// Inference adds the engine latency fields (-infer-metrics) to every patch. Off, the patch
+	// body is exactly what it was before the scraper existed.
+	Inference bool
+}
+
+// InferencePatch holds the engine fields of the status patch. Every field is sent every time
+// (null when not measured) so a stale value is removed instead of left behind.
+type InferencePatch struct {
+	TTFTP99Ms       *float64 `json:"ttftP99ms"`
+	ITLP99Ms        *float64 `json:"itlP99ms"`
+	QueueTimeP99Ms  *float64 `json:"queueTimeP99ms"`
+	E2EP99Ms        *float64 `json:"e2eP99ms"`
+	QueueTimeMeanMs *float64 `json:"queueTimeMeanMs"`
+	E2EMeanMs       *float64 `json:"e2eMeanMs"`
+	RequestsWaiting *int64   `json:"requestsWaiting"`
+	KVCacheUsage    *float64 `json:"kvCacheUsage"`
+	Engine          *string  `json:"engine"`
 }
 
 // signalStatusPatch is the merge-patch body. Every field is sent every time (no
@@ -60,8 +77,15 @@ type signalStatusPatch struct {
 		InferWaitP99Ms   float64  `json:"inferWaitP99ms"`
 		PFCRate          float64  `json:"pfcRate"`
 		ExfilEvents      int64    `json:"exfilEvents"`
-		ScoreDelta       float64  `json:"scoreDelta"`
-		UpdatedAt        string   `json:"updatedAt"`
+		// CollectiveMaxSkewMs is always sent (0 = none matched); the GPU fields
+		// are null (field removed) unless the DCGM correlation measured them.
+		CollectiveMaxSkewMs    float64  `json:"collectiveMaxSkewMs"`
+		GPUIdleDuringCommRatio *float64 `json:"gpuIdleDuringCommRatio"`
+		SMActiveDuringCompute  *float64 `json:"smActiveDuringCompute"`
+		GPUCorrelationCoverage *float64 `json:"gpuCorrelationCoverage"`
+		ScoreDelta             float64  `json:"scoreDelta"`
+		UpdatedAt              string   `json:"updatedAt"`
+		*InferencePatch
 	} `json:"status"`
 }
 
@@ -72,9 +96,47 @@ func finite(v float64) float64 {
 	return v
 }
 
-// StatusPatchBody renders the merge-patch for one job's status.
-func StatusPatchBody(st Status) ([]byte, error) {
+func clamp01(v float64) float64 { return math.Max(0, math.Min(1, v)) }
+
+// StatusPatchBody renders the merge-patch for one job's status (without the engine fields).
+func StatusPatchBody(st Status) ([]byte, error) { return statusPatchBody(st, false) }
+
+func finitePtr(v *float64) *float64 {
+	if v == nil || math.IsNaN(*v) || math.IsInf(*v, 0) {
+		return nil
+	}
+	c := *v
+	return &c
+}
+
+func inferencePatch(in *Inference) *InferencePatch {
+	p := &InferencePatch{}
+	if in == nil {
+		return p // every field null: nothing measured
+	}
+	p.TTFTP99Ms, p.ITLP99Ms = finitePtr(in.TTFTP99MS), finitePtr(in.ITLP99MS)
+	p.QueueTimeP99Ms, p.E2EP99Ms = finitePtr(in.QueueP99MS), finitePtr(in.E2EP99MS)
+	p.QueueTimeMeanMs, p.E2EMeanMs = finitePtr(in.QueueMeanMS), finitePtr(in.E2EMeanMS)
+	if w := finitePtr(in.RequestsWaiting); w != nil {
+		n := int64(math.Round(math.Max(0, math.Min(*w, 1e12))))
+		p.RequestsWaiting = &n
+	}
+	if kv := finitePtr(in.KVCacheUsage); kv != nil {
+		c := math.Max(0, math.Min(1, *kv))
+		p.KVCacheUsage = &c
+	}
+	if in.Engine != "" {
+		e := in.Engine
+		p.Engine = &e
+	}
+	return p
+}
+
+func statusPatchBody(st Status, withInference bool) ([]byte, error) {
 	var p signalStatusPatch
+	if withInference {
+		p.Status.InferencePatch = inferencePatch(st.Inference)
+	}
 	s := &p.Status
 	if st.StragglerRank > math.MaxInt32 {
 		s.StragglerRank = math.MaxInt32
@@ -95,6 +157,15 @@ func StatusPatchBody(st Status) ([]byte, error) {
 		s.ExfilEvents = math.MaxInt64
 	} else {
 		s.ExfilEvents = int64(st.ExfilEvents)
+	}
+	s.CollectiveMaxSkewMs = finite(st.CollectiveMaxSkewMS)
+	if st.GPUCorrelationMeasured {
+		idle, cov := clamp01(finite(st.GPUIdleDuringCommRatio)), clamp01(finite(st.GPUCorrelationCoverage))
+		s.GPUIdleDuringCommRatio, s.GPUCorrelationCoverage = &idle, &cov
+		if st.GPUComputeMeasured {
+			v := clamp01(finite(st.SMActiveDuringCompute))
+			s.SMActiveDuringCompute = &v
+		}
 	}
 	s.ScoreDelta = math.Max(0, math.Min(1, finite(st.ScoreDelta)))
 	s.UpdatedAt = st.UpdatedAt.UTC().Format(time.RFC3339)
@@ -179,7 +250,7 @@ func (p *Publisher) PublishOnce(ctx context.Context) int {
 		if len(names) == 0 {
 			continue // nothing to update: never create
 		}
-		body, err := StatusPatchBody(snap[k])
+		body, err := statusPatchBody(snap[k], p.Inference)
 		if err != nil {
 			log.Warnw("fabric status: encode failed", "namespace", k.Namespace, "job", k.Job, "error", err)
 			continue

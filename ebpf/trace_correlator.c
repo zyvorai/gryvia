@@ -34,6 +34,15 @@ struct trace_context {
     __u64 timestamp;
 };
 
+/* The collector (collector/pkg/trace) decodes this struct as a 56-byte little-endian record. */
+_Static_assert(sizeof(struct trace_context) == 56, "trace_context size");
+_Static_assert(__builtin_offsetof(struct trace_context, span_id) == 16, "span_id offset");
+_Static_assert(__builtin_offsetof(struct trace_context, src_ip) == 32, "src_ip offset");
+_Static_assert(__builtin_offsetof(struct trace_context, dst_ip) == 36, "dst_ip offset");
+_Static_assert(__builtin_offsetof(struct trace_context, src_port) == 40, "src_port offset");
+_Static_assert(__builtin_offsetof(struct trace_context, dst_port) == 42, "dst_port offset");
+_Static_assert(__builtin_offsetof(struct trace_context, timestamp) == 48, "timestamp offset");
+
 /* 4-tuple key for trace context map */
 struct trace_key {
     __u32 src_ip;
@@ -57,6 +66,8 @@ struct {
     __uint(type, BPF_MAP_TYPE_RINGBUF);
     __uint(max_entries, 128 * 1024);
 } trace_events SEC(".maps");
+
+GRYVIA_DECLARE_DROPS();
 
 /* ---- helpers ---------------------------------------------------------- */
 
@@ -251,8 +262,10 @@ int trace_correlator_ingress(struct __sk_buff *skb)
     /* Emit event to ring buffer */
     struct trace_context *ev;
     ev = bpf_ringbuf_reserve(&trace_events, sizeof(*ev), 0);
-    if (!ev)
+    if (!ev) {
+        GRYVIA_COUNT_DROP(GRYVIA_DROP_RINGBUF);
         return TC_ACT_OK;
+    }
 
     *ev = tctx;
     bpf_ringbuf_submit(ev, 0);

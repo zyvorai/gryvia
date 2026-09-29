@@ -101,6 +101,7 @@ type Config struct {
 	CUDALib    string // path to libcudart.so; empty = auto-discover
 	CuFileLib  string // path to libcufile.so (GPUDirect Storage); empty = auto-discover
 	UCXLib     string // path to libucp.so (UCX) for ucx_gloo.c; empty = auto-discover
+	IBVerbsLib string // path to libibverbs.so for ibv_verbs.c; empty = auto-discover
 	UprobePID  int    // if >0, find libraries via /proc/<pid>/maps
 	// InferPorts are the local TCP ports infer_latency.c watches (at most
 	// MaxInferPorts); empty skips that object.
@@ -108,6 +109,21 @@ type Config struct {
 	// QuotaPace lets quota_pace.c (the only program that changes sockets) attach.
 	// Default false; it also needs CgroupPath.
 	QuotaPace bool
+	// IBVerbs lets ibv_verbs.c (libibverbs control-path uprobes) attach. Default false.
+	IBVerbs bool
+}
+
+// IBVCountsMap is the counter map of ibv_verbs.c; an object that has it is
+// skipped unless Config.IBVerbs (opt-in: it probes a library shared by every
+// RDMA application on the node).
+const IBVCountsMap = "ibv_counts"
+
+// IBVerbsSkipReason explains why the libibverbs probes must not attach ("" = they may).
+func IBVerbsSkipReason(cfg Config) string {
+	if !cfg.IBVerbs {
+		return "libibverbs probes are off (set -ibverbs-probes)"
+	}
+	return ""
 }
 
 // PaceRateMap is the hash map quota_pace.c reads its per-cgroup rates from. An
@@ -251,6 +267,8 @@ func LibraryFor(symbol string, cfg Config) string {
 		return cfg.CuFileLib
 	case strings.HasPrefix(symbol, "ucp_"):
 		return cfg.UCXLib
+	case strings.HasPrefix(symbol, "ibv_"):
+		return cfg.IBVerbsLib
 	}
 	return ""
 }
@@ -303,6 +321,11 @@ func ResolveLibraries(cfg Config, res *UprobeResolver, dirs []string) Config {
 			cfg.UCXLib = p
 		}
 	}
+	if cfg.IBVerbsLib == "" && cfg.UprobePID > 0 && res != nil {
+		if p, err := res.FindIBVerbsLibrary(cfg.UprobePID); err == nil {
+			cfg.IBVerbsLib = p
+		}
+	}
 	if cfg.NCCLLib == "" {
 		cfg.NCCLLib = findLibInDirs(dirs, "libnccl.so")
 	}
@@ -315,6 +338,9 @@ func ResolveLibraries(cfg Config, res *UprobeResolver, dirs []string) Config {
 	if cfg.UCXLib == "" {
 		cfg.UCXLib = findLibInDirs(dirs, "libucp.so")
 	}
+	if cfg.IBVerbsLib == "" {
+		cfg.IBVerbsLib = findLibInDirs(dirs, "libibverbs.so")
+	}
 	return cfg
 }
 
@@ -326,6 +352,7 @@ const (
 	ClassGPU      MapClass = "gpu"
 	ClassSecurity MapClass = "security"
 	ClassFabric   MapClass = "fabric"
+	ClassTrace    MapClass = "trace"
 	ClassNone     MapClass = ""
 )
 
@@ -344,6 +371,8 @@ var mapClasses = map[string]MapClass{
 	// overlap, infer_latency, ucx_gloo, weight_exfil; roce_cnp and pfc_pause have
 	// counters only, no ring)
 	"fabric_events": ClassFabric,
+	// ring buffer carrying struct trace_context (W3C traceparent seen at ingress, trace_correlator.c)
+	"trace_events": ClassTrace,
 	// ring buffers carrying struct security_event
 	"escape_events":  ClassSecurity,
 	"mining_events":  ClassSecurity,
@@ -364,7 +393,7 @@ func ClassifyMap(name string, t ebpf.MapType) MapClass {
 	switch {
 	case c == ClassFlow && t == ebpf.PerfEventArray:
 		return c
-	case (c == ClassGPU || c == ClassSecurity || c == ClassFabric) && t == ebpf.RingBuf:
+	case (c == ClassGPU || c == ClassSecurity || c == ClassFabric || c == ClassTrace) && t == ebpf.RingBuf:
 		return c
 	}
 	return ClassNone

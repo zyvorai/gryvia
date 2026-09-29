@@ -11,6 +11,7 @@ import (
 
 	"github.com/zyvorai/gryvia/collector/pkg/decoder"
 	"github.com/zyvorai/gryvia/collector/pkg/fabric"
+	"github.com/zyvorai/gryvia/collector/pkg/nic"
 )
 
 // Metrics holds all Prometheus metric handles.
@@ -54,6 +55,21 @@ type Metrics struct {
 	fabricPFCRate       *prometheus.GaugeVec
 	fabricExfilEvents   *prometheus.GaugeVec
 	fabricUCXSlowP99    *prometheus.GaugeVec
+	engineLatency       *prometheus.GaugeVec // gryvia_inference_latency_seconds{namespace,job,engine,metric}
+	engineRequests      *prometheus.GaugeVec // gryvia_inference_requests{namespace,job,engine,state}
+	engineKVCache       *prometheus.GaugeVec
+	fabricCollCompared  *prometheus.GaugeVec
+	fabricCollSkew      *prometheus.GaugeVec
+	fabricNICRetryRate  *prometheus.GaugeVec
+	fabricNICErrorRate  *prometheus.GaugeVec
+	fabricGPUIdleComm   *prometheus.GaugeVec
+	fabricSMActiveComp  *prometheus.GaugeVec
+	fabricGPUCorrCov    *prometheus.GaugeVec
+	nicCounterRate      *prometheus.GaugeVec
+	ibvQPCreated        prometheus.Counter
+	ibvQPDestroyed      prometheus.Counter
+	ibvMRRegistered     prometheus.Counter
+	ibvMRBytes          prometheus.Counter
 	pfcFrames           prometheus.Counter
 	pfcLegacyFrames     prometheus.Counter
 	pfcPriorityFrames   *prometheus.CounterVec
@@ -207,7 +223,7 @@ func NewMetrics() *Metrics {
 		}, fabricLabels),
 		fabricInferWaitP99: promauto.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "gryvia_fabric_infer_wait_p99_seconds",
-			Help: "p99 accept -> first recv wait on inference ports (vLLM/Triton).",
+			Help: "p99 NETWORK wait from accept to first recv on inference ports (vLLM/Triton). Not engine queue time, TTFT or ITL: see gryvia_inference_latency_seconds.",
 		}, fabricLabels),
 		fabricPFCRate: promauto.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "gryvia_fabric_pfc_rate",
@@ -221,6 +237,66 @@ func NewMetrics() *Metrics {
 			Name: "gryvia_fabric_ucx_slow_p99_seconds",
 			Help: "p99 duration of UCX tag-send calls that blocked for at least 5 ms.",
 		}, fabricLabels),
+		engineLatency: promauto.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "gryvia_inference_latency_seconds",
+			Help: "Latency read from the serving engine's own metrics (opt-in -infer-metrics). metric is ttft_p99, itl_p99, queue_time_p99, e2e_p99, prefill_p99, decode_p99 (quantiles over a 5 minute window of per-interval histogram deltas) or queue_time_mean, e2e_mean, compute_mean (engines that export only duration counters). Absent when not measured.",
+		}, []string{"namespace", "job", "engine", "metric"}),
+		engineRequests: promauto.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "gryvia_inference_requests",
+			Help: "Requests the serving engine reports as running or waiting (state label), summed over the job's scraped replicas on this node.",
+		}, []string{"namespace", "job", "engine", "state"}),
+		engineKVCache: promauto.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "gryvia_inference_kv_cache_usage_ratio",
+			Help: "KV cache usage in [0,1] reported by the engine (worst replica); absent when the engine does not export it.",
+		}, []string{"namespace", "job", "engine"}),
+		fabricCollCompared: promauto.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "gryvia_fabric_collectives_compared",
+			Help: "NCCL collectives (same communicator ordinal, sequence, op) seen on >= 2 local ranks in the window.",
+		}, fabricLabels),
+		fabricCollSkew: promauto.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "gryvia_fabric_collective_max_skew_seconds",
+			Help: "Largest slowest-minus-fastest host-side NCCL call duration among matched local collectives (not GPU time).",
+		}, fabricLabels),
+		fabricNICRetryRate: promauto.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "gryvia_fabric_nic_retry_rate",
+			Help: "RDMA NIC transport retry / sequence error events per second (hardware counters; job _node/nic). Informational.",
+		}, fabricLabels),
+		fabricNICErrorRate: promauto.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "gryvia_fabric_nic_error_rate",
+			Help: "RDMA NIC link/symbol/discard error events per second (hardware counters; job _node/nic). Informational.",
+		}, fabricLabels),
+		fabricGPUIdleComm: promauto.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "gryvia_fabric_gpu_idle_during_comm_ratio",
+			Help: "Fraction of covered NCCL communication time with DCGM SM_ACTIVE (else GPU_UTIL) below the idle threshold. Absent unless -dcgm-correlate measured it. Informational.",
+		}, fabricLabels),
+		fabricSMActiveComp: promauto.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "gryvia_fabric_sm_active_during_compute",
+			Help: "Mean DCGM SM activity outside NCCL call windows (between the job's first and last collective). Absent unless measured. Informational.",
+		}, fabricLabels),
+		fabricGPUCorrCov: promauto.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "gryvia_fabric_gpu_correlation_coverage",
+			Help: "Fraction of NCCL communication time covered by a DCGM sample (low = exporter collect interval too coarse).",
+		}, fabricLabels),
+		nicCounterRate: promauto.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "gryvia_nic_counter_rate",
+			Help: "RDMA NIC hardware counter rate per second from /sys/class/infiniband (port_*_bytes derived from 4-byte data units).",
+		}, []string{"device", "port", "counter"}),
+		ibvQPCreated: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "gryvia_ibverbs_qp_created_total",
+			Help: "Queue pairs created via libibverbs ibv_create_qp on this node (ibv_verbs uprobes, -ibverbs-probes).",
+		}),
+		ibvQPDestroyed: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "gryvia_ibverbs_qp_destroyed_total",
+			Help: "Queue pairs destroyed via libibverbs ibv_destroy_qp on this node.",
+		}),
+		ibvMRRegistered: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "gryvia_ibverbs_mr_registered_total",
+			Help: "Memory regions registered via ibv_reg_mr / ibv_reg_mr_iova2 on this node.",
+		}),
+		ibvMRBytes: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "gryvia_ibverbs_mr_registered_bytes_total",
+			Help: "Bytes registered via ibv_reg_mr / ibv_reg_mr_iova2 on this node.",
+		}),
 		pfcFrames: promauto.NewCounter(prometheus.CounterOpts{
 			Name: "gryvia_pfc_pause_frames_total",
 			Help: "802.1Qbb priority flow control pause frames seen by the pfc_pause XDP program.",
@@ -382,7 +458,18 @@ func (m *Metrics) RecordFabric(jobs []fabric.JobStatus) {
 	m.fabricPFCRate.Reset()
 	m.fabricExfilEvents.Reset()
 	m.fabricUCXSlowP99.Reset()
+	m.engineLatency.Reset()
+	m.engineRequests.Reset()
+	m.engineKVCache.Reset()
+	m.fabricCollCompared.Reset()
+	m.fabricCollSkew.Reset()
+	m.fabricNICRetryRate.Reset()
+	m.fabricNICErrorRate.Reset()
+	m.fabricGPUIdleComm.Reset()
+	m.fabricSMActiveComp.Reset()
+	m.fabricGPUCorrCov.Reset()
 	for _, j := range jobs {
+		m.recordInference(j)
 		m.fabricScoreDelta.WithLabelValues(j.Namespace, j.Job).Set(j.ScoreDelta)
 		m.fabricStragglerRank.WithLabelValues(j.Namespace, j.Job).Set(float64(j.StragglerRank))
 		m.fabricNCCLP99.WithLabelValues(j.Namespace, j.Job).Set(j.NCCLP99MS / 1e3)
@@ -396,7 +483,86 @@ func (m *Metrics) RecordFabric(jobs []fabric.JobStatus) {
 		if j.GDSMeasured {
 			m.fabricGDSHitRatio.WithLabelValues(j.Namespace, j.Job).Set(j.GDSHitRatio)
 		}
+		if j.CollectivesCompared > 0 {
+			m.fabricCollCompared.WithLabelValues(j.Namespace, j.Job).Set(float64(j.CollectivesCompared))
+			m.fabricCollSkew.WithLabelValues(j.Namespace, j.Job).Set(j.CollectiveMaxSkewMS / 1e3)
+		}
+		if j.Namespace == fabric.NICJob.Namespace && j.Job == fabric.NICJob.Job {
+			m.fabricNICRetryRate.WithLabelValues(j.Namespace, j.Job).Set(j.NICRetryRate)
+			m.fabricNICErrorRate.WithLabelValues(j.Namespace, j.Job).Set(j.NICErrorRate)
+		}
+		if j.GPUCorrelationCoverage > 0 || j.GPUCorrelationMeasured {
+			m.fabricGPUCorrCov.WithLabelValues(j.Namespace, j.Job).Set(j.GPUCorrelationCoverage)
+		}
+		if j.GPUCorrelationMeasured {
+			m.fabricGPUIdleComm.WithLabelValues(j.Namespace, j.Job).Set(j.GPUIdleDuringCommRatio)
+			if j.GPUComputeMeasured {
+				m.fabricSMActiveComp.WithLabelValues(j.Namespace, j.Job).Set(j.SMActiveDuringCompute)
+			}
+		}
 	}
+}
+
+// recordInference publishes the engine figures of one job. Unmeasured figures are simply absent.
+func (m *Metrics) recordInference(j fabric.JobStatus) {
+	in := j.Inference
+	if in == nil {
+		return
+	}
+	lat := func(metric string, ms *float64) {
+		if ms != nil {
+			m.engineLatency.WithLabelValues(j.Namespace, j.Job, in.Engine, metric).Set(*ms / 1e3)
+		}
+	}
+	lat("ttft_p99", in.TTFTP99MS)
+	lat("itl_p99", in.ITLP99MS)
+	lat("queue_time_p99", in.QueueP99MS)
+	lat("e2e_p99", in.E2EP99MS)
+	lat("prefill_p99", in.PrefillP99MS)
+	lat("decode_p99", in.DecodeP99MS)
+	lat("queue_time_mean", in.QueueMeanMS)
+	lat("e2e_mean", in.E2EMeanMS)
+	lat("compute_mean", in.ComputeMeanMS)
+	if in.RequestsRunning != nil {
+		m.engineRequests.WithLabelValues(j.Namespace, j.Job, in.Engine, "running").Set(*in.RequestsRunning)
+	}
+	if in.RequestsWaiting != nil {
+		m.engineRequests.WithLabelValues(j.Namespace, j.Job, in.Engine, "waiting").Set(*in.RequestsWaiting)
+	}
+	if in.KVCacheUsage != nil {
+		m.engineKVCache.WithLabelValues(j.Namespace, j.Job, in.Engine).Set(*in.KVCacheUsage)
+	}
+}
+
+// RecordNIC publishes the per-port NIC counter rates (whitelisted counters
+// only: label cardinality stays bounded whatever the driver exports). The
+// gauge is reset first so ports that disappear vanish.
+func (m *Metrics) RecordNIC(r nic.Rates) {
+	m.nicCounterRate.Reset()
+	for _, k := range r.SortedPorts() {
+		rates := r.Ports[k]
+		for _, name := range nic.GaugeNames {
+			v, ok := rates[name]
+			if !ok {
+				continue
+			}
+			switch name {
+			case "port_xmit_data":
+				name, v = "port_xmit_bytes", v*nic.BytesPerDataUnit
+			case "port_rcv_data":
+				name, v = "port_rcv_bytes", v*nic.BytesPerDataUnit
+			}
+			m.nicCounterRate.WithLabelValues(k.Device, k.Port, name).Set(v)
+		}
+	}
+}
+
+// RecordIBVerbs adds the libibverbs control-path counts seen since the previous poll.
+func (m *Metrics) RecordIBVerbs(qpCreated, qpDestroyed, mrRegistered, mrBytes uint64) {
+	m.ibvQPCreated.Add(float64(qpCreated))
+	m.ibvQPDestroyed.Add(float64(qpDestroyed))
+	m.ibvMRRegistered.Add(float64(mrRegistered))
+	m.ibvMRBytes.Add(float64(mrBytes))
 }
 
 // RecordRoCE adds the RoCEv2 packet counts seen since the previous poll.

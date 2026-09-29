@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { currentMonth, formatMoney, invoiceFilename, invoiceParams, invoiceTotalDisplay, invoiceTotalLabel, isValidMonth, monthLabel, parseMonth, periodLabel } from './invoices'
+import { classLabel, networkRateDisplay, currentMonth, formatMoney, invoiceFilename, invoiceParams, invoiceTotalDisplay, invoiceTotalLabel, isValidMonth, monthLabel, parseMonth, periodLabel } from './invoices'
 
 describe('months', () => {
   it('validates YYYY-MM', () => {
@@ -37,5 +37,16 @@ describe('display', () => {
     expect(invoiceTotalLabel({ open: true })).toMatch(/running/)
     expect(invoiceTotalLabel({})).toBe('Subtotal')
     expect(periodLabel({ from: '2026-09-01T00:00:00Z', to: '2026-09-30' })).toBe('2026-09-01 to 2026-09-30')
+  })
+})
+
+describe('network lines', () => {
+  it('labels kebab-case classes', () => {
+    expect(classLabel('cross-zone')).toBe('cross zone')
+    expect(classLabel('internet')).toBe('internet')
+  })
+  it('shows a per GB price or says the class is not priced', () => {
+    expect(networkRateDisplay({ rate: 0.09, priced: true, currency: 'USD' })).toBe('$0.09/GB')
+    expect(networkRateDisplay({ rate: null, priced: false, currency: 'USD' })).toBe('not priced')
   })
 })
