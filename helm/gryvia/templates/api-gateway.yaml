@@ -175,6 +175,7 @@ rules:
   - gryviagpuskus
   - gryviatenants
   - gryviausagerecords
+  - gryviafabricsignals
   verbs: ["get", "list", "watch"]
 # Write only the kinds the API creates, deletes or updates.
 - apiGroups: ["gryvia.io"]

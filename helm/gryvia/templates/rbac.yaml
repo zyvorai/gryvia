@@ -359,6 +359,8 @@ rules:
       - gryviametrics/status
       - gryviaretrypolicies
       - gryviaretrypolicies/status
+      - gryviafabricsignals
+      - gryviafabricsignals/status
       - gryviadrtests
       - gryviadrtests/status
       - gryviareservations

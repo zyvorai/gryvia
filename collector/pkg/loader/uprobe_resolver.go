@@ -71,6 +71,11 @@ func (r *UprobeResolver) FindCUDALibrary(pid int) (string, error) {
 	return r.FindLibrary(pid, "libcudart.so")
 }
 
+// FindCuFileLibrary finds libcufile.so (GPUDirect Storage) for a given container PID.
+func (r *UprobeResolver) FindCuFileLibrary(pid int) (string, error) {
+	return r.FindLibrary(pid, "libcufile.so")
+}
+
 // FindContainerPIDs finds PIDs for pods matching a label selector by scanning
 // /proc for processes whose cgroup path contains the pod name.
 func (r *UprobeResolver) FindContainerPIDs(namespace, podName string) ([]int, error) {

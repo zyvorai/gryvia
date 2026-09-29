@@ -26,7 +26,8 @@ PROGS = tcp_trace packet_filter latency_probe syscall_monitor dns_tracker \
         nccl_trace gpu_mem_trace rdma_trace training_pattern datapipe_bottleneck gradient_compress \
         container_escape crypto_detect exfil_detect privesc_monitor driver_fim \
         tcp_tuning connpool_analyze numa_path sockops_optimize trace_correlator \
-        latency_breakdown cost_tracker fingerprint
+        latency_breakdown cost_tracker fingerprint \
+        straggler rdma_health gds_trace
 
 # Where `make check` pins programs while verifying them (removed afterwards).
 CHECK_DIR ?= /sys/fs/bpf/gryvia-check-$(shell echo $$PPID)
@@ -35,7 +36,7 @@ CHECK_DIR ?= /sys/fs/bpf/gryvia-check-$(shell echo $$PPID)
 
 all: $(PROGS:%=%.o)
 
-HDRS = headers/gryvia_core.h headers/common.h headers/gpu_common.h headers/security_common.h
+HDRS = headers/gryvia_core.h headers/common.h headers/gpu_common.h headers/security_common.h headers/fabric_signal.h
 
 %.o: %.c $(HDRS)
 	$(CLANG) $(CFLAGS) -c $< -o $@

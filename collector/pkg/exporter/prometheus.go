@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/zyvorai/gryvia/collector/pkg/decoder"
+	"github.com/zyvorai/gryvia/collector/pkg/fabric"
 )
 
 // Metrics holds all Prometheus metric handles.
@@ -40,6 +41,13 @@ type Metrics struct {
 	trainingStragglerEvents  prometheus.Counter
 	pipelineBottleneck       *prometheus.GaugeVec
 
+	// Fabric signal metrics (per job, from pkg/fabric).
+	fabricScoreDelta    *prometheus.GaugeVec
+	fabricStragglerRank *prometheus.GaugeVec
+	fabricNCCLP99       *prometheus.GaugeVec
+	fabricRDMARetryRate *prometheus.GaugeVec
+	fabricGDSHitRatio   *prometheus.GaugeVec
+
 	// Performance / TCP metrics.
 	tcpCwndHistogram prometheus.Histogram
 	tcpRTTHistogram  prometheus.Histogram
@@ -49,6 +57,7 @@ type Metrics struct {
 // NewMetrics registers and returns all collector metrics.
 func NewMetrics() *Metrics {
 	labels := []string{"src_service", "dst_service", "protocol", "namespace"}
+	fabricLabels := []string{"namespace", "job"}
 
 	return &Metrics{
 		// ---- Network metrics ----
@@ -154,6 +163,28 @@ func NewMetrics() *Metrics {
 			Name: "gryvia_pipeline_bottleneck",
 			Help: "Current pipeline bottleneck indicator (1.0 = bottleneck).",
 		}, []string{"phase"}),
+
+		// ---- Fabric signal metrics ----
+		fabricScoreDelta: promauto.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "gryvia_fabric_score_delta",
+			Help: "Fabric health penalty in [0,1] for the topology scorer (0 = healthy).",
+		}, fabricLabels),
+		fabricStragglerRank: promauto.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "gryvia_fabric_straggler_rank",
+			Help: "Rank of the most recent NCCL straggler (0 when the rank is unknown).",
+		}, fabricLabels),
+		fabricNCCLP99: promauto.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "gryvia_fabric_nccl_p99_seconds",
+			Help: "p99 latency of straggler-flagged NCCL collectives in the window.",
+		}, fabricLabels),
+		fabricRDMARetryRate: promauto.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "gryvia_fabric_rdma_retry_rate",
+			Help: "RDMA retry/RNR error completions per posted send in the window.",
+		}, fabricLabels),
+		fabricGDSHitRatio: promauto.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "gryvia_fabric_gds_hit_ratio",
+			Help: "Fraction of cuFile bytes confirmed direct (GPUDirect Storage); absent when not measurable.",
+		}, fabricLabels),
 
 		// ---- Performance / TCP metrics ----
 		tcpCwndHistogram: promauto.NewHistogram(prometheus.HistogramOpts{
@@ -277,6 +308,25 @@ func (m *Metrics) RecordPipelineBottleneck(bottleneck string) {
 			m.pipelineBottleneck.WithLabelValues(phase).Set(1.0)
 		} else {
 			m.pipelineBottleneck.WithLabelValues(phase).Set(0.0)
+		}
+	}
+}
+
+// RecordFabric publishes the per-job fabric status. The vectors are reset
+// first so jobs whose signals aged out of the window disappear.
+func (m *Metrics) RecordFabric(jobs []fabric.JobStatus) {
+	m.fabricScoreDelta.Reset()
+	m.fabricStragglerRank.Reset()
+	m.fabricNCCLP99.Reset()
+	m.fabricRDMARetryRate.Reset()
+	m.fabricGDSHitRatio.Reset()
+	for _, j := range jobs {
+		m.fabricScoreDelta.WithLabelValues(j.Namespace, j.Job).Set(j.ScoreDelta)
+		m.fabricStragglerRank.WithLabelValues(j.Namespace, j.Job).Set(float64(j.StragglerRank))
+		m.fabricNCCLP99.WithLabelValues(j.Namespace, j.Job).Set(j.NCCLP99MS / 1e3)
+		m.fabricRDMARetryRate.WithLabelValues(j.Namespace, j.Job).Set(j.RDMARetryRate)
+		if j.GDSMeasured {
+			m.fabricGDSHitRatio.WithLabelValues(j.Namespace, j.Job).Set(j.GDSHitRatio)
 		}
 	}
 }

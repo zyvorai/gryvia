@@ -24,6 +24,7 @@ import (
 	"github.com/zyvorai/gryvia/collector/pkg/anomaly"
 	"github.com/zyvorai/gryvia/collector/pkg/decoder"
 	"github.com/zyvorai/gryvia/collector/pkg/exporter"
+	"github.com/zyvorai/gryvia/collector/pkg/fabric"
 	"github.com/zyvorai/gryvia/collector/pkg/graph"
 	"github.com/zyvorai/gryvia/collector/pkg/loader"
 	"github.com/zyvorai/gryvia/collector/pkg/security"
@@ -39,7 +40,8 @@ func main() {
 		cgroupPath  = flag.String("cgroup-path", "", "cgroup v2 path for sockops/sk_msg attachment (empty = skip)")
 		ncclLib     = flag.String("nccl-lib", "", "path to libnccl.so for uprobes (empty = auto-discover)")
 		cudaLib     = flag.String("cuda-lib", "", "path to libcudart.so for uprobes (empty = auto-discover)")
-		uprobePID   = flag.Int("uprobe-pid", 0, "find NCCL/CUDA libraries via /proc/<pid>/maps of this process")
+		cufileLib   = flag.String("cufile-lib", "", "path to libcufile.so for GPUDirect Storage uprobes (empty = auto-discover)")
+		uprobePID   = flag.Int("uprobe-pid", 0, "find NCCL/CUDA/cuFile libraries via /proc/<pid>/maps of this process")
 		windowSec   = flag.Int("window", 300, "Aggregation sliding window in seconds")
 	)
 	flag.Parse()
@@ -66,7 +68,7 @@ func main() {
 	// ---- Load eBPF programs ----
 	mgr, err := loader.New(loader.Config{
 		Dir: *ebpfDir, Iface: *iface, CgroupPath: *cgroupPath,
-		NCCLLib: *ncclLib, CUDALib: *cudaLib, UprobePID: *uprobePID,
+		NCCLLib: *ncclLib, CUDALib: *cudaLib, CuFileLib: *cufileLib, UprobePID: *uprobePID,
 	}, log)
 	if err != nil {
 		log.Fatalw("failed to create eBPF loader", "error", err)
@@ -98,6 +100,14 @@ func main() {
 	// GPU and security decoders.
 	gpuDecoder := decoder.NewGPUDecoder(4096)
 	secDecoder := decoder.NewSecurityDecoder(4096)
+	fabricDecoder := fabric.NewDecoder(4096)
+	fabricFolder := fabric.NewFolder(fabric.DefaultWindow)
+	// GDS direct/bounce is only meaningful when the nvidia-fs kernel hook is attached.
+	for _, s := range mgr.Status() {
+		if s.Object == "gds_trace.o" && s.Target == "nvidia_fs_read" && s.Attached {
+			fabricFolder.SetGDSDirectVisible(true)
+		}
+	}
 
 	// GPU aggregators.
 	window := time.Duration(*windowSec) * time.Second
@@ -148,9 +158,14 @@ func main() {
 	for _, rr := range secRings {
 		go secDecoder.DecodeRingBuf(rr)
 	}
+	fabricRings := mgr.RingBufReaders(loader.ClassFabric)
+	for _, rr := range fabricRings {
+		go fabricDecoder.DecodeRingBuf(rr)
+	}
 	log.Infow("event readers started",
 		"flow_perf", len(mgr.PerfReaders(loader.ClassFlow)),
-		"gpu_ringbuf", len(gpuRings), "security_ringbuf", len(secRings))
+		"gpu_ringbuf", len(gpuRings), "security_ringbuf", len(secRings),
+		"fabric_ringbuf", len(fabricRings))
 
 	// ---- GPU event processing pipeline ----
 	go func() {
@@ -178,6 +193,13 @@ func main() {
 		}
 	}()
 
+	// ---- Fabric signal pipeline (straggler, RDMA health, GDS) ----
+	go func() {
+		for sig := range fabricDecoder.Events() {
+			fabricFolder.Add(sig)
+		}
+	}()
+
 	// ---- Periodic straggler detection and metric updates ----
 	go func() {
 		ticker := time.NewTicker(10 * time.Second)
@@ -201,6 +223,9 @@ func main() {
 				// Update pipeline bottleneck metric.
 				bottleneck, _ := pipelineAnalyzer.GetBottleneck()
 				metrics.RecordPipelineBottleneck(bottleneck)
+
+				// Publish per-job fabric status.
+				metrics.RecordFabric(fabricFolder.List())
 			}
 		}
 	}()
@@ -251,6 +276,9 @@ func main() {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	})
+
+	// Fabric signals: per-job straggler / RDMA / GDS status and score penalty.
+	mux.HandleFunc("/api/v1/fabric", fabricFolder.ServeHTTP)
 
 	// Security endpoint.
 	mux.HandleFunc("/api/v1/security/alerts", secAgg.ServeHTTP)

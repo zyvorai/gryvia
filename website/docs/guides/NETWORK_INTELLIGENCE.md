@@ -10,8 +10,8 @@ example `https://<netra-public-ip>:30870`; a `*.svc` name only works when Netra 
 Gryvia's **own collector** (the `ebpf-collector` DaemonSet of the `network-intelligence` chart, `ebpf.enabled=true`,
 off by default).
 
-The 24 eBPF programs in `ebpf/` are now CO-RE (no per-kernel builds; they need a node kernel with BTF, and the
-`tcx` programs Linux 6.6+). All 24 compile and pass the kernel verifier on Linux 7.0 x86_64, and on that host the
+The 27 eBPF programs in `ebpf/` are now CO-RE (no per-kernel builds; they need a node kernel with BTF, and the
+`tcx` programs Linux 6.6+). All 27 compile and pass the kernel verifier on Linux 7.0 x86_64, and on that host the
 collector attached 36 of the 83 hooks (the kprobes and tracepoints) and decoded real TCP flows. **Not yet verified:**
 arm64 (compiles, never loaded), the XDP/TCX/sockops programs (attach is config-gated: `ebpf.interface`,
 `ebpf.cgroupPath`), and everything GPU-related (NCCL/CUDA uprobes, RDMA), which needs GPU or RDMA hardware. RDMA
@@ -58,7 +58,7 @@ Gryvia's network intelligence stack uses eBPF programs attached to kernel hooks 
 
 ## eBPF Programs
 
-Gryvia ships 24 eBPF programs organized into six categories. All programs are loaded and managed by the Flow Collector DaemonSet.
+Gryvia ships 27 eBPF programs organized into seven categories. All programs are loaded and managed by the Flow Collector DaemonSet.
 
 ### GPU Programs
 
@@ -67,6 +67,32 @@ Gryvia ships 24 eBPF programs organized into six categories. All programs are lo
 | `nccl_trace` | uprobe | Traces NCCL collective operations (AllReduce, AllGather, Broadcast) with timing, message size, and ring/tree algorithm details. Identifies communication bottlenecks in distributed training. |
 | `gpu_mem_trace` | kprobe | Monitors GPU memory allocations and deallocations via the NVIDIA kernel driver. Detects memory leaks, fragmentation, and OOM patterns before they cause job failures. |
 | `rdma_trace` | tracepoint | Traces RDMA/InfiniBand verbs (post_send, post_recv, poll_cq) for RoCE and IB gryvias. Measures RDMA latency, throughput, and error rates per queue pair. |
+
+### Fabric Signal Programs
+
+Three programs feed the scheduler-facing fabric signals. They are observe-only (nothing is dropped or modified) and
+emit `struct fabric_signal` on their own `fabric_events` ring buffer instead of extending the frozen 72-byte `gpu_event`.
+The collector folds the signals per job over a 5-minute window and serves them, with a `[0,1]` score penalty, at
+`GET :9090/api/v1/fabric` and as `gryvia_fabric_*` Prometheus gauges. The `GryviaFabricSignal` CRD (short name `gfs`)
+carries the same fields in its status; no controller fills it yet and the score is not wired into the scheduler.
+
+| Program | Hook Type | Description |
+|---------|-----------|-------------|
+| `straggler` | uprobe (`ncclAllReduce`) | Flags a rank whose collective takes more than 2x the fastest recent span of the same payload size (and more than 5 ms) on the same node. |
+| `rdma_health` | kprobe (`ib_post_send`, `mlx5_ib_post_send`, `ib_poll_cq`, `mlx5_ib_poll_cq`) | Counts sends per QP and retry-exceeded / RNR-exceeded work completions; emits a signal above thresholds set in the `rdma_thresh` map. Every probe is optional. |
+| `gds_trace` | uprobe (`cuFileRead`, `cuFileWrite`), kprobe (`nvidia_fs_read`) | Counts bytes and times cuFile calls; a call is "direct" only when the nvidia-fs kernel hook is also seen, otherwise it counts as bounce/unknown. Only calls slower than 2 ms are emitted. |
+
+:::caution Unverified on hardware
+These three programs compile and pass the kernel verifier (Linux 7.0 x86_64; arm64 compiles only), but the GPU, RDMA
+and GDS paths have not been exercised on GPU, RDMA or GPUDirect Storage hardware. On the test host none of
+`ib_post_send`, `ib_poll_cq`, `mlx5_ib_*` or `nvidia_fs_read` exists, and the collector skips those hooks with a log
+line (they show as `skipped: symbol not found` in `/api/v1/ebpf/status`). `ib_post_send` and `ib_poll_cq` are inline
+wrappers, so kernel-side hooks only see in-kernel RDMA users; user-space verbs (NCCL) bypass them. The straggler span
+is the host-side duration of the NCCL call, which is the enqueue time for asynchronous collectives. Inside pods the
+uprobes need the library resolved through `/proc/<pid>/root` (`-uprobe-pid`); the per-container mount-namespace
+resolver is not built yet. Signals are attributed to a job by pid; until the cgroup-to-pod resolver binds pids, they
+are grouped under `_unattributed` by process name.
+:::
 
 ### Security Programs
 
