@@ -626,114 +626,107 @@ status:
 
 ### Network Tracing
 
+Traces target a service. Use `--level` to choose the capture depth (`l3`, `l4`, `l7`; default `l7`).
+
 ```bash
-# Start a live trace session
-gryvia network trace --pod training-worker-0 --duration 5m
+# Start a trace of a service for 5 minutes
+gryvia network trace training-worker --duration 5m --trace-namespace ml-research
 
-# Trace with filters
-gryvia network trace --pod training-worker-0 \
-  --protocol TCP --port 29500 --duration 2m
+# Trace at L4 only (TCP/UDP, no payload parsing) for 2 minutes
+gryvia network trace training-worker --level l4 --duration 2m --trace-namespace ml-research
 
-# Trace across a namespace
-gryvia network trace --namespace ml-research --duration 1m
+# Follow a live trace
+gryvia network trace training-worker --follow --trace-namespace ml-research
 
-# View trace results
-gryvia network trace --session debug-training-latency --results
+# View trace sessions and their results
+kubectl get gryviatracesessions -n ml-research
+kubectl get gryviatracesession debug-training-latency -n ml-research -o yaml
 ```
 
 ### Flow Analysis
 
 ```bash
-# View real-time flows
-gryvia network flows --namespace ml-research
+# View recent flows in a namespace
+gryvia network flows --flow-namespace ml-research
 
-# Top flows by volume
-gryvia network flows --top 20 --sort bytes
-
-# Flows for a specific pod
-gryvia network flows --pod training-worker-0
+# Flows for a specific service over the last hour
+gryvia network flows --service training-worker --flow-namespace ml-research --last 1h
 
 # Export flows as JSON
-gryvia network flows --namespace ml-research --output json
+gryvia network flows --flow-namespace ml-research --output json
 ```
 
 ### Service Graph
 
 ```bash
 # View service dependency graph (ASCII)
-gryvia network graph --namespace ml-research
+gryvia network graph --graph-namespace ml-research
 
-# Generate graph for multiple namespaces
-gryvia network graph --namespace ml-research,ml-platform,storage
-
-# Export graph as DOT format
-gryvia network graph --namespace ml-research --output dot > graph.dot
-
-# Include external endpoints
-gryvia network graph --namespace ml-research --external
+# Export the graph as JSON
+gryvia network graph --graph-namespace ml-research --format json > graph.json
 ```
 
 ### Policy Management
 
 ```bash
 # List active flow policies
-gryvia network policy list
+gryvia network policy list --policy-namespace ml-research
 
-# Apply a flow policy
-gryvia network policy apply -f flow-policy.yaml
-
-# Audit mode (log but don't enforce)
-gryvia network policy audit --namespace ml-research
+# Apply a flow policy from a manifest
+kubectl apply -f flow-policy.yaml
 
 # View autopolicy suggestions
-gryvia network policy suggestions
+gryvia network policy suggest --policy-namespace ml-research
 
-# Accept an autopolicy suggestion
-gryvia network policy accept suggestion-name
-
-# View blocked traffic
-gryvia network policy blocked --namespace ml-research
+# Accept (apply) an autopolicy suggestion
+gryvia network policy apply suggestion-name --policy-namespace ml-research
 ```
+
+To evaluate a policy without enforcing it, set the policy's mode in its manifest (for a
+GryviaAutoPolicy, `learn` or `suggest`) instead of `enforce`.
 
 ### Anomaly Detection
 
 ```bash
 # View active anomalies
-gryvia network anomalies
+gryvia network anomalies --anomaly-namespace ml-research
 
 # Filter by severity
-gryvia network anomalies --severity critical
+gryvia network anomalies --severity critical --anomaly-namespace ml-research
 
-# View anomaly details
-gryvia network anomalies --name latency-degradation --details
+# Filter by service
+gryvia network anomalies --service training-worker --anomaly-namespace ml-research
 
-# Acknowledge an anomaly
-gryvia network anomalies ack latency-degradation
-
-# View anomaly history
-gryvia network anomalies --history --days 7
+# View the full detail of one anomaly
+kubectl get gryvianetworkanomaly latency-degradation -n ml-research -o yaml
 ```
 
 ### Security
 
 ```bash
 # View security alerts
-gryvia security alerts
+gryvia security alerts --security-namespace ml-research
 
 # Filter by severity
-gryvia security alerts --severity critical
+gryvia security alerts --severity critical --security-namespace ml-research
 
-# View security policy status
+# Filter by alert type (escape, mining, exfiltration, privesc)
+gryvia security alerts --alert-type mining --security-namespace ml-research
+
+# View security status
 gryvia security status
 
-# Apply security policy
-gryvia security policy apply -f security-policy.yaml
+# List security policies
+gryvia security policy list --security-namespace ml-research
 
-# View blocked threats
-gryvia security alerts --type blocked
+# Create a security policy
+gryvia security policy create gpu-hardening \
+  --namespaces ml-research \
+  --rules escape,mining,exfiltration,privesc \
+  --auto-block
 
-# Export security report
-gryvia security alerts --output json --days 30 > security-report.json
+# Or apply a security policy from a manifest
+kubectl apply -f security-policy.yaml
 ```
 
 ### GPU Network Analysis
@@ -742,20 +735,21 @@ gryvia security alerts --output json --days 30 > security-report.json
 # View NCCL communication metrics
 gryvia gpu nccl --job llm-distributed-training
 
-# Monitor GPU memory usage per pod
-gryvia gpu memory --namespace ml-research
+# View GPU memory transfer stats for a node
+gryvia gpu memory --node gpu-node-01
 
 # View RDMA statistics
 gryvia gpu rdma --node gpu-node-01
 
 # Training communication analysis
 gryvia gpu training --job llm-distributed-training
+```
 
-# Straggler detection
-gryvia gpu training --job llm-distributed-training --stragglers
+Straggler detection and gradient compression analysis are reported in the GryviaTrainingInsight
+resource for the job:
 
-# Gradient compression analysis
-gryvia gpu training --job llm-distributed-training --gradients
+```bash
+kubectl get gryviatraininginsights -n ml-research
 ```
 
 ---
@@ -771,12 +765,11 @@ gryvia gpu training --job llm-distributed-training --gradients
 
 ### Install Flow Collector
 
-The Flow Collector is deployed as a DaemonSet on every node:
+The Flow Collector is deployed as a DaemonSet on every node. The `gryvia` CLI has no installer for it,
+and no collector image is published yet (see the note at the top of this page). Once a collector is
+deployed, verify it with:
 
 ```bash
-gryvia install network-intelligence
-
-# Verify deployment
 kubectl get daemonset -n gryvia-system flow-collector
 kubectl get pods -n gryvia-system -l app=flow-collector
 ```
@@ -784,14 +777,11 @@ kubectl get pods -n gryvia-system -l app=flow-collector
 ### Verify eBPF Programs
 
 ```bash
-# Check loaded eBPF programs
-gryvia network status
+# Check network health, including the collector
+gryvia network status --status-namespace ml-research
 
-# View per-program status
-gryvia network status --programs
-
-# Check for program errors
-gryvia network status --errors
+# Check the collector pods for eBPF program load errors
+kubectl logs -n gryvia-system -l app=flow-collector --tail 100
 ```
 
 ---

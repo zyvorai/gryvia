@@ -30,6 +30,147 @@ gryvia --version
 gryvia --help
 ```
 
+## Platform status
+
+`gryvia status` with no argument reports on the whole platform, in the style of `cilium status`: one line per
+component with an `OK`, `Warning`, `Error` or `disabled` marker, then workload readiness, cluster totals, image
+versions, any errors, and a per-node table. It reads only the Kubernetes API, so it needs no agent on the nodes.
+
+```bash
+gryvia status
+```
+
+Example output (from the CLI's own snapshot tests):
+
+```text
+    ______      Gryvia:       OK
+   /      \     Operators:    OK  gpu, ai, quota
+  /   G    \    API gateway:  OK  2/2 ready
+  \        /    Dashboard:    OK  2/2 ready
+   \______/     GPU nodes:    OK  2/2 ready
+                GPU add-ons:  OK  dcgm-exporter 2/2, nvidia-device-plugin 2/2
+                Collectors:   disabled  not installed
+
+Deployment gryvia-gpu-operator          Desired: 1, Ready: 1/1, Available: 1/1
+Deployment gryvia-ai-operator           Desired: 1, Ready: 1/1, Available: 1/1
+Deployment gryvia-quota-operator        Desired: 1, Ready: 1/1, Available: 1/1
+Deployment gryvia-api-gateway           Desired: 2, Ready: 2/2, Available: 2/2
+Deployment gryvia-ui                    Desired: 2, Ready: 2/2, Available: 2/2
+DaemonSet  gryvia-dcgm-exporter         Desired: 2, Ready: 2/2, Available: 2/2
+DaemonSet  gryvia-nvidia-device-plugin  Desired: 2, Ready: 2/2, Available: 2/2
+
+Cluster Pods:   5/5 running
+Jobs:           1 running, 2 pending, 3 completed, 0 failed
+Namespace:      gryvia-system
+
+Image versions
+  gryvia-ai-operator           ghcr.io/zyvorai/gryvia-ai-operator:1.0.0
+  gryvia-api-gateway           ghcr.io/zyvorai/gryvia-api-gateway:1.0.0
+  gryvia-dcgm-exporter         ghcr.io/zyvorai/gryvia-dcgm-exporter:1.0.0
+  gryvia-gpu-operator          ghcr.io/zyvorai/gryvia-gpu-operator:1.0.0
+  gryvia-nvidia-device-plugin  ghcr.io/zyvorai/gryvia-nvidia-device-plugin:1.0.0
+  gryvia-quota-operator        ghcr.io/zyvorai/gryvia-quota-operator:1.0.0
+  gryvia-ui                    ghcr.io/zyvorai/gryvia-ui:1.0.0
+
+Nodes
+  NODE    STATE  GPUS      DRIVER              GPU HEALTH  DCGM  PLUGIN  COLLECTOR  PODS
+  node-a  Ready  8 x H100  550.54 / CUDA 12.4  8/8         ✓     ✓       -          3
+  node-b  Ready  8 x H100  550.54 / CUDA 12.4  8/8         ✓     ✓       -          2
+```
+
+The per-node table has one row per Kubernetes node (plus a row for any `GryviaGpuNode` whose node does not exist):
+readiness, GPUs, driver and CUDA versions, how many GPUs report healthy, whether the DCGM exporter, NVIDIA device
+plugin and collector pods run on that node (`✓` running, `✗` present but not ready, `-` none), pod count, and a note
+when the node is cordoned or in maintenance. When something is wrong the platform line turns `Warning` or `Error`
+and the problems are listed:
+
+```text
+    ______      Gryvia:       Warning
+   /      \     Operators:    OK  gpu, ai
+  /   G    \    API gateway:  Warning  1/2 ready
+  \        /    Dashboard:    OK  2/2 ready
+   \______/     GPU nodes:    Warning  2/3 ready
+                GPU add-ons:  OK  dcgm-exporter 2/2, nvidia-device-plugin 2/2
+                Collectors:   disabled  not installed
+
+Deployment gryvia-gpu-operator          Desired: 1, Ready: 1/1, Available: 1/1
+Deployment gryvia-ai-operator           Desired: 1, Ready: 1/1, Available: 1/1
+Deployment gryvia-api-gateway           Desired: 2, Ready: 1/2, Available: 1/2
+Deployment gryvia-ui                    Desired: 2, Ready: 2/2, Available: 2/2
+DaemonSet  gryvia-dcgm-exporter         Desired: 2, Ready: 2/2, Available: 2/2
+DaemonSet  gryvia-nvidia-device-plugin  Desired: 2, Ready: 2/2, Available: 2/2
+
+Cluster Pods:   5/6 running
+Jobs:           1 running, 2 pending, 3 completed, 0 failed
+Namespace:      gryvia-system
+
+Image versions
+  gryvia-ai-operator           ghcr.io/zyvorai/gryvia-ai-operator:1.0.0
+  gryvia-api-gateway           ghcr.io/zyvorai/gryvia-api-gateway:1.0.0
+  gryvia-dcgm-exporter         ghcr.io/zyvorai/gryvia-dcgm-exporter:1.0.0
+  gryvia-gpu-operator          ghcr.io/zyvorai/gryvia-gpu-operator:1.0.0
+  gryvia-nvidia-device-plugin  ghcr.io/zyvorai/gryvia-nvidia-device-plugin:1.0.0
+  gryvia-ui                    ghcr.io/zyvorai/gryvia-ui:1.0.0
+
+Warnings
+  ! could not list jobs: forbidden
+
+Errors
+  ✗ pod gryvia-quota-operator-q1: ImagePullBackOff
+
+Nodes
+  NODE    STATE         GPUS      DRIVER              GPU HEALTH  DCGM  PLUGIN  COLLECTOR  PODS  NOTES
+  ghost   no such node  8 x H100  550.54 / CUDA 12.4  Failed      -     -       -          0
+  node-a  Ready         8 x H100  550.54 / CUDA 12.4  8/8         ✓     ✓       -          3     driver update
+  node-b  NotReady      8 x H100  550.54 / CUDA 12.4  6/8         ✓     ✓       -          3
+```
+
+Only the required components (operators, API gateway, dashboard) decide the result: `gryvia status` exits with
+code 1 when one of them is in `Error`. GPU nodes, GPU add-ons and collectors are reported but never fail the
+command, so a cluster without GPUs (for example the kind demo) still reports healthy.
+
+Useful flags:
+
+```bash
+gryvia status --brief                       # OK, or the failing components; exit code 1 on failure
+gryvia status --wait --wait-timeout 5m      # block until the platform is OK (for scripts and CI)
+gryvia status --node gpu-node-01            # only that node in the per-node table
+gryvia status -o json                       # the same data as JSON (or -o yaml)
+gryvia status --platform-namespace my-ns    # when Gryvia is not installed in gryvia-system
+gryvia status my-job                        # with a job name it shows that job instead
+```
+
+## Global options, colors and output formats
+
+`gryvia --help` lists the commands in groups (Workloads, Cluster, Operations, Observe, Utilities) and every
+command's `--help` ends with examples. Help and output are colored when stdout is a terminal.
+
+| Option | Effect |
+|--------|--------|
+| `--no-color` | Turn colors off. The `NO_COLOR` environment variable does the same. |
+| `CLICOLOR_FORCE=1` | Keep colors when piping (for example into `less -R`). |
+| `-o, --output table\|json\|yaml` | Output format of commands that print data (`GRYVIA_OUTPUT` sets the default where supported). |
+| `--context`, `-n/--namespace` | Kubernetes context and namespace. |
+
+Piped output has no color codes, so `gryvia list jobs | grep Running` and `gryvia status -o json | jq` work as
+expected. Errors are printed to stderr with a short hint, for example when no kubeconfig is found.
+
+```bash
+gryvia --no-color status
+NO_COLOR=1 gryvia cluster --detailed
+```
+
+## Shell completion and versions
+
+```bash
+gryvia completion bash > /etc/bash_completion.d/gryvia
+gryvia completion zsh > ~/.zsh/completions/_gryvia
+gryvia completion fish > ~/.config/fish/completions/gryvia.fish
+```
+
+`gryvia version` prints the client version and the image of every workload in the platform namespace;
+`gryvia version --client` needs no cluster.
+
 ## Quick Start
 
 ### 1. Submit a Training Job

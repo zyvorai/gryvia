@@ -1,10 +1,10 @@
 use anyhow::Result;
-use colored::*;
 use kube::api::{Api, ApiResource, GroupVersionKind, ListParams};
 use kube::core::DynamicObject;
-use prettytable::{format, Cell, Row, Table};
 
 use crate::client::GryviaClient;
+use crate::display;
+use crate::ui::{self, Cell2, Marker};
 
 pub async fn execute(
     client: &GryviaClient,
@@ -13,15 +13,10 @@ pub async fn execute(
     last: &str,
     output: &str,
 ) -> Result<()> {
-    println!("{}", "━━━ Network Flows ━━━".bold().cyan());
-    println!();
-
-    if let Some(svc) = service {
-        println!("  {} {}", "Service:".bold(), svc);
+    let color = ui::color_enabled();
+    for line in flows_header_lines(service, namespace, last, color) {
+        println!("{line}");
     }
-    println!("  {} {}", "Namespace:".bold(), namespace);
-    println!("  {} {}", "Time window:".bold(), last);
-    println!();
 
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
         "gryvia.io",
@@ -40,25 +35,24 @@ pub async fn execute(
     let flows = match api.list(&params).await {
         Ok(list) => list,
         Err(e) => {
-            println!(
-                "  {} Could not query flow resources: {}",
-                "⚠".yellow().bold(),
-                e
-            );
+            display::print_warning(&format!("Could not query flow resources: {}", e));
             println!();
             return Ok(());
         }
     };
 
     if flows.items.is_empty() {
-        println!("  {}", "No network flows found.".dimmed());
+        println!(
+            "{}",
+            Marker::Disabled.paint_with("No network flows found.", color)
+        );
         println!();
         return Ok(());
     }
 
     match output {
-        "json" => {
-            println!("{}", serde_json::to_string_pretty(&flows)?);
+        "json" | "yaml" => {
+            crate::output::print_serialized(output, &flows)?;
         }
         _ => {
             print_flows_table(&flows.items);
@@ -68,78 +62,151 @@ pub async fn execute(
     Ok(())
 }
 
+/// Marker for a flow verdict (`FORWARDED`, `DROP`, ...), case-insensitive.
+pub fn verdict_marker(verdict: &str) -> Marker {
+    match verdict.to_ascii_uppercase().as_str() {
+        "FORWARDED" | "ALLOW" | "ALLOWED" => Marker::Ok,
+        "DROP" | "DROPPED" | "DENY" | "DENIED" | "BLOCKED" => Marker::Error,
+        _ => Marker::Warn,
+    }
+}
+
+/// The banner and the query summary above the flows.
+pub fn flows_header_lines(
+    service: Option<&str>,
+    namespace: &str,
+    last: &str,
+    color: bool,
+) -> Vec<String> {
+    let mut lines = vec![ui::header("Network Flows", color), String::new()];
+    if let Some(svc) = service {
+        lines.push(ui::kv("Service", svc, 13, color));
+    }
+    lines.push(ui::kv("Namespace", namespace, 13, color));
+    lines.push(ui::kv("Time window", last, 13, color));
+    lines.push(String::new());
+    lines
+}
+
+/// Lines of the flows table.
+pub fn flows_lines(flows: &[DynamicObject], color: bool) -> Vec<String> {
+    let text = |spec: Option<&serde_json::Value>, key: &str, default: &str| -> String {
+        spec.and_then(|s| s.get(key))
+            .and_then(|v| v.as_str())
+            .unwrap_or(default)
+            .to_string()
+    };
+    let rows: Vec<Vec<Cell2>> = flows
+        .iter()
+        .map(|flow| {
+            let spec = flow.data.get("spec");
+            let port = spec
+                .and_then(|s| s.get("port"))
+                .and_then(|v| v.as_u64())
+                .map(|p| p.to_string())
+                .unwrap_or_else(|| "-".to_string());
+            let verdict = text(spec, "verdict", "FORWARDED");
+            let marker = verdict_marker(&verdict);
+            vec![
+                (text(spec, "timestamp", "-"), None),
+                (text(spec, "source", "-"), None),
+                (text(spec, "destination", "-"), None),
+                (text(spec, "protocol", "TCP"), None),
+                (port, None),
+                (text(spec, "bytes", "0B"), None),
+                (text(spec, "latency", "-"), None),
+                (verdict, Some(marker)),
+            ]
+        })
+        .collect();
+    ui::grid(
+        &[
+            "TIMESTAMP",
+            "SOURCE",
+            "DESTINATION",
+            "PROTOCOL",
+            "PORT",
+            "BYTES",
+            "LATENCY",
+            "VERDICT",
+        ],
+        &rows,
+        color,
+    )
+}
+
 fn print_flows_table(flows: &[DynamicObject]) {
-    let mut table = Table::new();
-    table.set_format(*format::consts::FORMAT_BOX_CHARS);
+    for line in flows_lines(flows, ui::color_enabled()) {
+        println!("{line}");
+    }
+    println!();
+    display::print_info(&format!("Total flows: {}", flows.len()));
+    println!();
+}
 
-    table.add_row(Row::new(vec![
-        Cell::new("TIMESTAMP").style_spec("Fb"),
-        Cell::new("SOURCE").style_spec("Fb"),
-        Cell::new("DESTINATION").style_spec("Fb"),
-        Cell::new("PROTOCOL").style_spec("Fb"),
-        Cell::new("PORT").style_spec("Fb"),
-        Cell::new("BYTES").style_spec("Fb"),
-        Cell::new("LATENCY").style_spec("Fb"),
-        Cell::new("VERDICT").style_spec("Fb"),
-    ]));
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::commands::network::strip_ansi;
+    use serde_json::json;
 
-    for flow in flows {
-        let spec = flow.data.get("spec");
-
-        let timestamp = spec
-            .and_then(|s| s.get("timestamp"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("-");
-        let source = spec
-            .and_then(|s| s.get("source"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("-");
-        let destination = spec
-            .and_then(|s| s.get("destination"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("-");
-        let protocol = spec
-            .and_then(|s| s.get("protocol"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("TCP");
-        let port = spec
-            .and_then(|s| s.get("port"))
-            .and_then(|v| v.as_u64())
-            .map(|p| p.to_string())
-            .unwrap_or_else(|| "-".to_string());
-        let bytes = spec
-            .and_then(|s| s.get("bytes"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("0B");
-        let latency = spec
-            .and_then(|s| s.get("latency"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("-");
-        let verdict = spec
-            .and_then(|s| s.get("verdict"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("FORWARDED");
-
-        let verdict_colored = match verdict {
-            "FORWARDED" | "ALLOW" => verdict.green().to_string(),
-            "DROP" | "DENIED" => verdict.red().to_string(),
-            _ => verdict.yellow().to_string(),
-        };
-
-        table.add_row(Row::new(vec![
-            Cell::new(timestamp),
-            Cell::new(source),
-            Cell::new(destination),
-            Cell::new(protocol),
-            Cell::new(&port),
-            Cell::new(bytes),
-            Cell::new(latency),
-            Cell::new(&verdict_colored),
-        ]));
+    fn flow(spec: serde_json::Value) -> DynamicObject {
+        serde_json::from_value(json!({
+            "apiVersion": "gryvia.io/v1alpha1",
+            "kind": "GryviaFlow",
+            "metadata": {"name": "f"},
+            "spec": spec,
+        }))
+        .unwrap()
     }
 
-    table.printstd();
-    println!();
-    println!("  {} Total flows: {}", "ℹ".cyan().bold(), flows.len());
-    println!();
+    fn fixture() -> Vec<DynamicObject> {
+        vec![
+            flow(
+                json!({"timestamp": "10:00:01", "source": "web", "destination": "api",
+                "protocol": "HTTP", "port": 8080, "bytes": "1.2KB", "latency": "3ms",
+                "verdict": "FORWARDED"}),
+            ),
+            flow(json!({"source": "web", "destination": "db", "verdict": "DROP"})),
+        ]
+    }
+
+    #[test]
+    fn flows_table_is_aligned() {
+        assert_eq!(
+            flows_lines(&fixture(), false),
+            vec![
+                "TIMESTAMP  SOURCE  DESTINATION  PROTOCOL  PORT  BYTES  LATENCY  VERDICT",
+                "10:00:01   web     api          HTTP      8080  1.2KB  3ms      FORWARDED",
+                "-          web     db           TCP       -     0B     -        DROP",
+            ]
+        );
+    }
+
+    #[test]
+    fn flows_header_and_color() {
+        assert_eq!(
+            flows_header_lines(Some("api"), "prod", "5m", false),
+            vec![
+                "━━━ Network Flows ━━━",
+                "",
+                "Service      api",
+                "Namespace    prod",
+                "Time window  5m",
+                "",
+            ]
+        );
+        let plain = flows_lines(&fixture(), false);
+        let colored = flows_lines(&fixture(), true);
+        assert!(colored.iter().any(|l| l.contains('\x1b')));
+        let stripped: Vec<String> = colored.iter().map(|l| strip_ansi(l)).collect();
+        assert_eq!(stripped, plain);
+    }
+
+    #[test]
+    fn verdicts() {
+        assert_eq!(verdict_marker("FORWARDED"), Marker::Ok);
+        assert_eq!(verdict_marker("drop"), Marker::Error);
+        assert_eq!(verdict_marker("AUDIT"), Marker::Warn);
+    }
 }

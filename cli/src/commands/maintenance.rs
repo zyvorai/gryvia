@@ -7,11 +7,11 @@ use chrono::{DateTime, SecondsFormat, Utc};
 use dialoguer::Confirm;
 use k8s_openapi::api::core::v1::{Node, Pod};
 use kube::api::{Api, EvictParams, ListParams, Patch, PatchParams};
-use prettytable::{format, Cell, Row, Table};
 use serde_json::json;
 
 use crate::client::GryviaClient;
 use crate::display;
+use crate::ui::{self, Cell2, Marker};
 
 pub const ANN_START: &str = "gryvia.io/maintenance";
 pub const ANN_REASON: &str = "gryvia.io/maintenance-reason";
@@ -177,7 +177,7 @@ pub fn format_duration(d: chrono::Duration) -> String {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, serde::Serialize)]
 pub struct MaintenanceRow {
     pub node: String,
     pub cordoned: bool,
@@ -311,7 +311,7 @@ pub async fn end(client: &GryviaClient, node: &str) -> Result<()> {
     Ok(())
 }
 
-pub async fn list(client: &GryviaClient) -> Result<()> {
+pub async fn list(client: &GryviaClient, output: &str) -> Result<()> {
     let nodes: Api<Node> = Api::all(client.kube_client.clone());
     let items = nodes
         .list(&ListParams::default())
@@ -323,29 +323,41 @@ pub async fn list(client: &GryviaClient) -> Result<()> {
         .iter()
         .filter_map(|n| maintenance_row(n, now))
         .collect();
+    if output != "table" {
+        return crate::output::print_serialized(output, &rows);
+    }
     if rows.is_empty() {
         display::print_info("No nodes are marked for maintenance");
         return Ok(());
     }
-    let mut table = Table::new();
-    table.set_format(*format::consts::FORMAT_BOX_CHARS);
-    table.add_row(Row::new(
-        ["NODE", "CORDONED", "AGE", "SINCE", "REASON"]
-            .iter()
-            .map(|h| Cell::new(h).style_spec("Fb"))
-            .collect(),
-    ));
-    for r in rows {
-        table.add_row(Row::new(vec![
-            Cell::new(&r.node),
-            Cell::new(if r.cordoned { "yes" } else { "no" }),
-            Cell::new(&r.age),
-            Cell::new(&r.since),
-            Cell::new(&r.reason),
-        ]));
+    for line in maintenance_lines(&rows, ui::color_enabled()) {
+        println!("{line}");
     }
-    table.printstd();
     Ok(())
+}
+
+/// The table of nodes marked for maintenance.
+pub fn maintenance_lines(rows: &[MaintenanceRow], color: bool) -> Vec<String> {
+    let cells: Vec<Vec<Cell2>> = rows
+        .iter()
+        .map(|r| {
+            vec![
+                (r.node.clone(), None),
+                (
+                    if r.cordoned { "yes" } else { "no" }.to_string(),
+                    if r.cordoned { Some(Marker::Warn) } else { None },
+                ),
+                (r.age.clone(), None),
+                (r.since.clone(), None),
+                (r.reason.clone(), None),
+            ]
+        })
+        .collect();
+    ui::grid(
+        &["NODE", "CORDONED", "AGE", "SINCE", "REASON"],
+        &cells,
+        color,
+    )
 }
 
 #[cfg(test)]
@@ -573,5 +585,36 @@ mod tests {
         assert_eq!(row.age, "unknown");
         assert_eq!(row.reason, "");
         assert!(!row.cordoned);
+    }
+
+    #[test]
+    fn maintenance_table_aligned() {
+        let rows = vec![
+            MaintenanceRow {
+                node: "gpu-node-1".into(),
+                cordoned: true,
+                age: "3h".into(),
+                since: "2026-09-29T09:00:00Z".into(),
+                reason: "psu swap".into(),
+            },
+            MaintenanceRow {
+                node: "n2".into(),
+                cordoned: false,
+                age: "2d".into(),
+                since: "2026-09-27T09:00:00Z".into(),
+                reason: String::new(),
+            },
+        ];
+        assert_eq!(
+            maintenance_lines(&rows, false),
+            vec![
+                "NODE        CORDONED  AGE  SINCE                 REASON",
+                "gpu-node-1  yes       3h   2026-09-29T09:00:00Z  psu swap",
+                "n2          no        2d   2026-09-27T09:00:00Z",
+            ]
+        );
+        let colored = maintenance_lines(&rows, true);
+        assert!(colored[1].contains("\x1b[33myes"));
+        assert!(colored[0].contains("\x1b["));
     }
 }

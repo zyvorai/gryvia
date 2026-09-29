@@ -616,7 +616,7 @@ EOF
 kubectl get nodes
 kubectl get pods -n gryvia-system
 kubectl get gryviagpunodes
-gryvia cluster status
+gryvia status
 ```
 
 ### Log Rotation
@@ -715,10 +715,10 @@ kubectl get nodes --show-labels | grep gpu
 
 ```bash
 # Check GPU availability
-gryvia cluster nodes
+gryvia list nodes
 
 # Check quotas
-gryvia quota list
+gryvia quota
 
 # Check job events
 kubectl describe gryviaaijob <job-name>

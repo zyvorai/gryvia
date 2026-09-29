@@ -1,10 +1,12 @@
 use anyhow::Result;
-use colored::*;
 use kube::api::{Api, ApiResource, GroupVersionKind, ListParams};
 use kube::core::DynamicObject;
 use std::collections::{HashMap, HashSet};
 
 use crate::client::GryviaClient;
+use crate::commands::flows::verdict_marker;
+use crate::display;
+use crate::ui::{self, Marker};
 
 pub async fn execute(client: &GryviaClient, namespace: &str, format: &str) -> Result<()> {
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
@@ -17,11 +19,7 @@ pub async fn execute(client: &GryviaClient, namespace: &str, format: &str) -> Re
     let flows = match api.list(&ListParams::default()).await {
         Ok(list) => list,
         Err(e) => {
-            println!(
-                "{} Could not query flow resources: {}",
-                "⚠".yellow().bold(),
-                e
-            );
+            display::print_warning(&format!("Could not query flow resources: {}", e));
             println!("  Showing empty graph.");
             println!();
             return Ok(());
@@ -77,7 +75,9 @@ pub async fn execute(client: &GryviaClient, namespace: &str, format: &str) -> Re
             print_json_graph(&services, &edges)?;
         }
         _ => {
-            print_ascii_graph(&services, &edges);
+            for line in ascii_graph_lines(&services, &edges, ui::color_enabled()) {
+                println!("{line}");
+            }
         }
     }
 
@@ -92,14 +92,14 @@ struct Edge {
     verdict: String,
 }
 
-fn print_ascii_graph(services: &HashSet<String>, edges: &[Edge]) {
-    println!("{}", "━━━ Service Dependency Graph ━━━".bold().cyan());
-    println!();
+/// Lines of the ascii service dependency graph.
+fn ascii_graph_lines(services: &HashSet<String>, edges: &[Edge], color: bool) -> Vec<String> {
+    let mut lines = vec![ui::header("Service Dependency Graph", color), String::new()];
 
     if services.is_empty() {
-        println!("  {}", "No services or flows found.".dimmed());
-        println!();
-        return;
+        lines.push(Marker::Disabled.paint_with("No services or flows found.", color));
+        lines.push(String::new());
+        return lines;
     }
 
     // Group edges by source
@@ -108,22 +108,23 @@ fn print_ascii_graph(services: &HashSet<String>, edges: &[Edge]) {
         adjacency.entry(&edge.source).or_default().push(edge);
     }
 
-    // Collect services that only appear as destinations (leaf nodes)
-    let sources: HashSet<&str> = edges.iter().map(|e| e.source.as_str()).collect();
-    let mut printed: HashSet<&str> = HashSet::new();
-
-    // Print the graph starting from services that are sources
-    let mut sorted_sources: Vec<&str> = sources.iter().copied().collect();
+    let mut sorted_sources: Vec<&str> = edges
+        .iter()
+        .map(|e| e.source.as_str())
+        .collect::<HashSet<&str>>()
+        .into_iter()
+        .collect();
     sorted_sources.sort();
 
+    let mut printed: HashSet<&str> = HashSet::new();
     for source in &sorted_sources {
         if printed.contains(source) {
             continue;
         }
-        print_node(source, &adjacency, &mut printed, 0);
+        node_lines(source, &adjacency, &mut printed, color, &mut lines);
     }
 
-    // Print any remaining services not yet printed (isolated nodes)
+    // Services that only appear as destinations (leaf nodes)
     let mut remaining: Vec<&String> = services
         .iter()
         .filter(|s| !printed.contains(s.as_str()))
@@ -131,45 +132,43 @@ fn print_ascii_graph(services: &HashSet<String>, edges: &[Edge]) {
     remaining.sort();
 
     for svc in remaining {
-        println!("  {}", format!("[{}]", svc).bright_white());
-        println!("    {} (no outgoing connections)", "(leaf)".dimmed());
-        println!();
+        lines.push(format!("  {}", ui::ansi(&format!("[{svc}]"), "1", color)));
+        lines.push(format!(
+            "    {}",
+            Marker::Disabled.paint_with("(leaf) (no outgoing connections)", color)
+        ));
+        lines.push(String::new());
     }
 
-    // Summary
-    println!(
-        "  {} {} services, {} connections",
-        "ℹ".cyan().bold(),
+    lines.push(format!(
+        "{} {} services, {} connections",
+        ui::ansi("ℹ", "1;36", color),
         services.len(),
         edges.len()
-    );
-    println!();
+    ));
+    lines.push(String::new());
+    lines
 }
 
-fn print_node<'a>(
+fn node_lines<'a>(
     service: &'a str,
     adjacency: &HashMap<&'a str, Vec<&Edge>>,
     printed: &mut HashSet<&'a str>,
-    depth: usize,
+    color: bool,
+    lines: &mut Vec<String>,
 ) {
     if printed.contains(service) {
-        let indent = "  ".repeat(depth);
-        println!(
-            "{}  {} (circular ref)",
-            indent,
-            format!("[{}]", service).dimmed()
-        );
+        lines.push(format!(
+            "  {} (circular ref)",
+            Marker::Disabled.paint_with(&format!("[{service}]"), color)
+        ));
         return;
     }
-
     printed.insert(service);
-
-    let indent = "  ".repeat(depth);
-    println!(
-        "{}  {}",
-        indent,
-        format!("[{}]", service).bright_white().bold()
-    );
+    lines.push(format!(
+        "  {}",
+        ui::ansi(&format!("[{service}]"), "1", color)
+    ));
 
     if let Some(targets) = adjacency.get(service) {
         for (i, edge) in targets.iter().enumerate() {
@@ -178,32 +177,31 @@ fn print_node<'a>(
             } else {
                 "├──"
             };
-
-            let verdict_symbol = match edge.verdict.as_str() {
-                "FORWARDED" | "ALLOW" => "→".green().to_string(),
-                "DROP" | "DENIED" => "✗".red().to_string(),
-                _ => "?".yellow().to_string(),
+            let marker = verdict_marker(&edge.verdict);
+            let symbol = match marker {
+                Marker::Ok => "→",
+                Marker::Error => "✗",
+                _ => "?",
             };
-
-            let latency_display = if edge.latency == "-" {
+            let latency = if edge.latency == "-" {
                 String::new()
             } else {
-                format!(" ({})", edge.latency).dimmed().to_string()
+                format!(
+                    " {}",
+                    Marker::Disabled.paint_with(&format!("({})", edge.latency), color)
+                )
             };
-
-            println!(
-                "{}    {} {} {} {}{}",
-                indent,
-                connector.dimmed(),
-                verdict_symbol,
-                edge.destination.bright_white(),
-                edge.protocol.cyan(),
-                latency_display,
-            );
+            lines.push(format!(
+                "    {} {} {} {}{}",
+                Marker::Disabled.paint_with(connector, color),
+                marker.paint_with(symbol, color),
+                edge.destination,
+                edge.protocol,
+                latency,
+            ));
         }
     }
-
-    println!();
+    lines.push(String::new());
 }
 
 fn print_json_graph(services: &HashSet<String>, edges: &[Edge]) -> Result<()> {
@@ -238,4 +236,70 @@ fn print_json_graph(services: &HashSet<String>, edges: &[Edge]) -> Result<()> {
     println!("{}", serde_json::to_string_pretty(&graph)?);
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::commands::network::strip_ansi;
+
+    fn edge(src: &str, dst: &str, latency: &str, verdict: &str) -> Edge {
+        Edge {
+            source: src.into(),
+            destination: dst.into(),
+            latency: latency.into(),
+            protocol: "TCP".into(),
+            verdict: verdict.into(),
+        }
+    }
+
+    fn fixture() -> (HashSet<String>, Vec<Edge>) {
+        let edges = vec![
+            edge("web", "api", "3ms", "FORWARDED"),
+            edge("web", "db", "-", "DROP"),
+            edge("api", "db", "1ms", "ALLOW"),
+        ];
+        let services = ["web", "api", "db"].iter().map(|s| s.to_string()).collect();
+        (services, edges)
+    }
+
+    #[test]
+    fn ascii_graph_renders() {
+        let (services, edges) = fixture();
+        assert_eq!(
+            ascii_graph_lines(&services, &edges, false),
+            vec![
+                "━━━ Service Dependency Graph ━━━",
+                "",
+                "  [api]",
+                "    └── → db TCP (1ms)",
+                "",
+                "  [web]",
+                "    ├── → api TCP (3ms)",
+                "    └── ✗ db TCP",
+                "",
+                "  [db]",
+                "    (leaf) (no outgoing connections)",
+                "",
+                "ℹ 3 services, 3 connections",
+                "",
+            ]
+        );
+    }
+
+    #[test]
+    fn ascii_graph_color_strips_to_plain() {
+        let (services, edges) = fixture();
+        let plain = ascii_graph_lines(&services, &edges, false);
+        let colored = ascii_graph_lines(&services, &edges, true);
+        assert!(colored.iter().any(|l| l.contains('\x1b')));
+        let stripped: Vec<String> = colored.iter().map(|l| strip_ansi(l)).collect();
+        assert_eq!(stripped, plain);
+    }
+
+    #[test]
+    fn empty_graph_says_so() {
+        let lines = ascii_graph_lines(&HashSet::new(), &[], false);
+        assert_eq!(lines[2], "No services or flows found.");
+    }
 }

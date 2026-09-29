@@ -1,37 +1,193 @@
 use anyhow::{Context, Result};
-use colored::*;
 use kube::api::{Api, ListParams};
-use prettytable::{format, Cell, Row, Table};
 use tokio::time::{sleep, Duration};
 
 use crate::client::GryviaClient;
 use crate::display;
 use crate::types::*;
+use crate::ui::{self, Cell2, Marker};
 
 pub async fn execute(
     client: &GryviaClient,
     name: Option<String>,
     watch: Option<u64>,
+    output: &str,
 ) -> Result<()> {
     if let Some(interval) = watch {
         if interval == 0 {
             anyhow::bail!("Watch interval must be greater than 0");
         }
+        if output != "table" {
+            anyhow::bail!("--watch needs the table output format");
+        }
         loop {
             print!("\x1B[2J\x1B[1;1H"); // Clear screen
-            if let Err(e) = show_queue(client, &name).await {
+            if let Err(e) = show_queue(client, &name, output).await {
                 eprintln!("Error refreshing queue: {}", e);
             }
             sleep(Duration::from_secs(interval)).await;
         }
     } else {
-        show_queue(client, &name).await?;
+        show_queue(client, &name, output).await?;
     }
 
     Ok(())
 }
 
-async fn show_queue(client: &GryviaClient, name: &Option<String>) -> Result<()> {
+/// Pending/queued/scheduling jobs, optionally only those whose name contains `filter`.
+fn queued_jobs<'a>(jobs: &'a [GryviaAIJob], filter: Option<&str>) -> Vec<&'a GryviaAIJob> {
+    jobs.iter()
+        .filter(|j| {
+            let phase = j.status.as_ref().map(|s| s.phase.as_str()).unwrap_or("");
+            matches!(phase, "Pending" | "Queued" | "Scheduling")
+        })
+        .filter(|j| match filter {
+            Some(f) => j.metadata.name.as_deref().unwrap_or("").contains(f),
+            None => true,
+        })
+        .collect()
+}
+
+fn running_jobs(jobs: &[GryviaAIJob]) -> Vec<&GryviaAIJob> {
+    jobs.iter()
+        .filter(|j| j.status.as_ref().map(|s| s.phase.as_str()) == Some("Running"))
+        .collect()
+}
+
+fn duration_short(d: chrono::Duration, with_seconds: bool) -> String {
+    if d.num_hours() > 0 {
+        format!("{}h{}m", d.num_hours(), d.num_minutes() % 60)
+    } else if d.num_minutes() > 0 || !with_seconds {
+        format!("{}m", d.num_minutes())
+    } else {
+        format!("{}s", d.num_seconds())
+    }
+}
+
+/// The queue report. Ends after the summary when nothing is queued.
+pub fn queue_lines(
+    jobs: &[GryviaAIJob],
+    filter: Option<&str>,
+    now: chrono::DateTime<chrono::Utc>,
+    color: bool,
+) -> Vec<String> {
+    let queued = queued_jobs(jobs, filter);
+    let running = running_jobs(jobs);
+    let unknown = "<unknown>".to_string();
+
+    let mut lines = vec![ui::header("Job Queue", color), String::new()];
+    lines.push(ui::section("Queue Summary", color));
+    lines.push(format!(
+        "  {}",
+        ui::kv(
+            "Queued/Pending",
+            &Marker::Warn.paint_with(&queued.len().to_string(), color),
+            16,
+            color
+        )
+    ));
+    lines.push(format!(
+        "  {}",
+        ui::kv(
+            "Running",
+            &Marker::Ok.paint_with(&running.len().to_string(), color),
+            16,
+            color
+        )
+    ));
+    lines.push(String::new());
+    if queued.is_empty() {
+        return lines;
+    }
+
+    lines.push(ui::section("Queued Jobs", color));
+    let rows: Vec<Vec<Cell2>> = queued
+        .iter()
+        .enumerate()
+        .map(|(i, job)| {
+            let phase = job.status.clone().unwrap_or_default().phase;
+            let waiting = match job.metadata.creation_timestamp {
+                Some(ref ts) => {
+                    let created =
+                        chrono::DateTime::from_timestamp(ts.0.as_second(), 0).unwrap_or_default();
+                    duration_short(now.signed_duration_since(created), true)
+                }
+                None => "-".to_string(),
+            };
+            vec![
+                (format!("#{}", i + 1), None),
+                (job.metadata.name.as_ref().unwrap_or(&unknown).clone(), None),
+                (job.spec.job_type.clone(), None),
+                (job.spec.gpus.to_string(), None),
+                (job.spec.gpu_type.clone(), None),
+                (phase.clone(), Some(Marker::from_phase(&phase))),
+                (waiting, None),
+            ]
+        })
+        .collect();
+    lines.extend(ui::grid(
+        &[
+            "POSITION",
+            "NAME",
+            "FRAMEWORK",
+            "GPUs",
+            "GPU TYPE",
+            "STATUS",
+            "WAITING",
+        ],
+        &rows,
+        color,
+    ));
+    lines.push(String::new());
+
+    if !running.is_empty() {
+        lines.push(ui::section("Running Jobs", color));
+        let rows: Vec<Vec<Cell2>> = running
+            .iter()
+            .map(|job| {
+                let running_for = match job.status.as_ref().and_then(|s| s.start_time) {
+                    Some(start) => duration_short(now.signed_duration_since(start), false),
+                    None => "-".to_string(),
+                };
+                vec![
+                    (job.metadata.name.as_ref().unwrap_or(&unknown).clone(), None),
+                    (job.spec.gpus.to_string(), None),
+                    (job.spec.gpu_type.clone(), None),
+                    (running_for, None),
+                ]
+            })
+            .collect();
+        lines.extend(ui::grid(
+            &["NAME", "GPUs", "GPU TYPE", "RUNNING FOR"],
+            &rows,
+            color,
+        ));
+        lines.push(String::new());
+    }
+
+    let queued_gpus: u32 = queued.iter().map(|j| j.spec.gpus).sum();
+    let running_gpus: u32 = running.iter().map(|j| j.spec.gpus).sum();
+    lines.push(ui::section("GPU Demand", color));
+    for (key, value) in [
+        (
+            "Running",
+            Marker::Ok.paint_with(&format!("{running_gpus} GPUs"), color),
+        ),
+        (
+            "Queued",
+            Marker::Warn.paint_with(&format!("{queued_gpus} GPUs"), color),
+        ),
+        (
+            "Total",
+            ui::ansi(&format!("{} GPUs", running_gpus + queued_gpus), "1", color),
+        ),
+    ] {
+        lines.push(format!("  {}", ui::kv(key, &value, 9, color)));
+    }
+    lines
+}
+
+async fn show_queue(client: &GryviaClient, name: &Option<String>, output: &str) -> Result<()> {
     let api: Api<GryviaAIJob> = Api::all(client.kube_client.clone());
 
     let jobs = api
@@ -39,165 +195,124 @@ async fn show_queue(client: &GryviaClient, name: &Option<String>) -> Result<()> 
         .await
         .context("Failed to list jobs")?;
 
-    // Filter to pending/queued/scheduling jobs
-    let queued: Vec<_> = jobs
-        .items
-        .iter()
-        .filter(|j| {
-            let phase = j.status.as_ref().map(|s| s.phase.as_str()).unwrap_or("");
-            matches!(phase, "Pending" | "Queued" | "Scheduling")
-        })
-        .filter(|j| {
-            if let Some(ref filter) = name {
-                j.metadata
-                    .name
-                    .as_deref()
-                    .unwrap_or("")
-                    .contains(filter.as_str())
-            } else {
-                true
-            }
-        })
-        .collect();
+    if output != "table" {
+        let queued = queued_jobs(&jobs.items, name.as_deref());
+        return crate::output::print_serialized(output, &queued);
+    }
 
-    let running: Vec<_> = jobs
-        .items
-        .iter()
-        .filter(|j| j.status.as_ref().map(|s| s.phase.as_str()) == Some("Running"))
-        .collect();
-
-    println!("{}", "━━━ Job Queue ━━━".bold().cyan());
-    println!();
-
-    // Summary
-    println!("{}", "Queue Summary:".bold());
-    println!(
-        "  Queued/Pending: {}",
-        queued.len().to_string().yellow().bold()
-    );
-    println!(
-        "  Running:        {}",
-        running.len().to_string().green().bold()
-    );
-    println!();
-
-    if queued.is_empty() {
+    for line in queue_lines(
+        &jobs.items,
+        name.as_deref(),
+        chrono::Utc::now(),
+        ui::color_enabled(),
+    ) {
+        println!("{line}");
+    }
+    if queued_jobs(&jobs.items, name.as_deref()).is_empty() {
         display::print_info("No jobs in queue");
-        return Ok(());
     }
-
-    // Queue table
-    println!("{}", "Queued Jobs:".bold().underline());
-
-    let mut table = Table::new();
-    table.set_format(*format::consts::FORMAT_BOX_CHARS);
-
-    table.add_row(Row::new(vec![
-        Cell::new("POSITION").style_spec("Fb"),
-        Cell::new("NAME").style_spec("Fb"),
-        Cell::new("FRAMEWORK").style_spec("Fb"),
-        Cell::new("GPUs").style_spec("Fb"),
-        Cell::new("GPU TYPE").style_spec("Fb"),
-        Cell::new("STATUS").style_spec("Fb"),
-        Cell::new("WAITING").style_spec("Fb"),
-    ]));
-
-    let unknown = "<unknown>".to_string();
-    for (i, job) in queued.iter().enumerate() {
-        let name = job.metadata.name.as_ref().unwrap_or(&unknown);
-        let framework = &job.spec.job_type;
-        let gpus = job.spec.gpus.to_string();
-        let gpu_type = &job.spec.gpu_type;
-        let job_status = job.status.clone().unwrap_or_default();
-        let status = display::colorize_status(&job_status.phase);
-
-        let waiting = if let Some(ref ts) = job.metadata.creation_timestamp {
-            let age = display::age_since(ts);
-            if age.num_hours() > 0 {
-                format!("{}h{}m", age.num_hours(), age.num_minutes() % 60)
-            } else if age.num_minutes() > 0 {
-                format!("{}m", age.num_minutes())
-            } else {
-                format!("{}s", age.num_seconds())
-            }
-        } else {
-            "-".to_string()
-        };
-
-        table.add_row(Row::new(vec![
-            Cell::new(&format!("#{}", i + 1)),
-            Cell::new(name),
-            Cell::new(framework),
-            Cell::new(&gpus),
-            Cell::new(gpu_type),
-            Cell::new(&status),
-            Cell::new(&waiting),
-        ]));
-    }
-
-    table.printstd();
-    println!();
-
-    // Running jobs summary
-    if !running.is_empty() {
-        println!("{}", "Running Jobs:".bold().underline());
-
-        let mut table = Table::new();
-        table.set_format(*format::consts::FORMAT_BOX_CHARS);
-
-        table.add_row(Row::new(vec![
-            Cell::new("NAME").style_spec("Fb"),
-            Cell::new("GPUs").style_spec("Fb"),
-            Cell::new("GPU TYPE").style_spec("Fb"),
-            Cell::new("RUNNING FOR").style_spec("Fb"),
-        ]));
-
-        for job in &running {
-            let name = job.metadata.name.as_ref().unwrap_or(&unknown);
-            let gpus = job.spec.gpus.to_string();
-            let gpu_type = &job.spec.gpu_type;
-            let job_status = job.status.clone().unwrap_or_default();
-
-            let running_for = if let Some(start) = job_status.start_time {
-                let duration = chrono::Utc::now().signed_duration_since(start);
-                if duration.num_hours() > 0 {
-                    format!("{}h{}m", duration.num_hours(), duration.num_minutes() % 60)
-                } else {
-                    format!("{}m", duration.num_minutes())
-                }
-            } else {
-                "-".to_string()
-            };
-
-            table.add_row(Row::new(vec![
-                Cell::new(name),
-                Cell::new(&gpus),
-                Cell::new(gpu_type),
-                Cell::new(&running_for),
-            ]));
-        }
-
-        table.printstd();
-        println!();
-    }
-
-    // GPU utilization
-    let total_queued_gpus: u32 = queued.iter().map(|j| j.spec.gpus).sum();
-    let total_running_gpus: u32 = running.iter().map(|j| j.spec.gpus).sum();
-
-    println!("{}", "GPU Demand:".bold());
-    println!(
-        "  Running:  {} GPUs",
-        total_running_gpus.to_string().green()
-    );
-    println!(
-        "  Queued:   {} GPUs",
-        total_queued_gpus.to_string().yellow()
-    );
-    println!(
-        "  Total:    {} GPUs",
-        (total_running_gpus + total_queued_gpus).to_string().bold()
-    );
-
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn job(
+        name: &str,
+        phase: &str,
+        gpus: u32,
+        created: &str,
+        started: Option<&str>,
+    ) -> GryviaAIJob {
+        let mut status = serde_json::json!({"phase": phase});
+        if let Some(s) = started {
+            status["startTime"] = s.into();
+        }
+        serde_json::from_value(serde_json::json!({
+            "apiVersion": "gryvia.io/v1alpha1", "kind": "GryviaAIJob",
+            "metadata": {"name": name, "creationTimestamp": created},
+            "spec": {"type": "pytorch", "gpus": gpus, "gpuType": "H100"},
+            "status": status
+        }))
+        .unwrap()
+    }
+
+    fn now() -> chrono::DateTime<chrono::Utc> {
+        chrono::DateTime::parse_from_rfc3339("2026-09-29T12:00:00Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc)
+    }
+
+    fn fixture() -> Vec<GryviaAIJob> {
+        vec![
+            job("train-a", "Pending", 8, "2026-09-29T11:30:00Z", None),
+            job("train-bb", "Queued", 4, "2026-09-29T09:15:00Z", None),
+            job(
+                "serve-1",
+                "Running",
+                2,
+                "2026-09-29T08:00:00Z",
+                Some("2026-09-29T10:00:00Z"),
+            ),
+        ]
+    }
+
+    fn strip(s: &str) -> String {
+        let mut out = String::new();
+        let mut esc = false;
+        for c in s.chars() {
+            match (esc, c) {
+                (false, '\x1b') => esc = true,
+                (true, 'm') => esc = false,
+                (false, c) => out.push(c),
+                _ => {}
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn queue_report_aligned() {
+        let text = queue_lines(&fixture(), None, now(), false).join("\n");
+        let expected = "\
+━━━ Job Queue ━━━
+
+Queue Summary
+  Queued/Pending  2
+  Running         1
+
+Queued Jobs
+POSITION  NAME      FRAMEWORK  GPUs  GPU TYPE  STATUS   WAITING
+#1        train-a   pytorch    8     H100      Pending  30m
+#2        train-bb  pytorch    4     H100      Queued   2h45m
+
+Running Jobs
+NAME     GPUs  GPU TYPE  RUNNING FOR
+serve-1  2     H100      2h0m
+
+GPU Demand
+  Running  2 GPUs
+  Queued   12 GPUs
+  Total    14 GPUs";
+        assert_eq!(text, expected);
+    }
+
+    #[test]
+    fn empty_queue_stops_after_summary_and_filter_applies() {
+        let lines = queue_lines(&fixture(), Some("nomatch"), now(), false);
+        assert_eq!(lines.last().map(String::as_str), Some(""));
+        assert!(!lines.join("\n").contains("Queued Jobs"));
+        assert_eq!(queued_jobs(&fixture(), Some("bb")).len(), 1);
+    }
+
+    #[test]
+    fn color_output_strips_to_plain() {
+        let colored = queue_lines(&fixture(), None, now(), true).join("\n");
+        assert!(colored.contains("\x1b["));
+        assert_eq!(
+            strip(&colored),
+            queue_lines(&fixture(), None, now(), false).join("\n")
+        );
+    }
 }

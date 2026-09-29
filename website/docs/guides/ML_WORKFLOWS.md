@@ -106,24 +106,14 @@ spec:
 ### CLI Usage
 
 ```bash
-# Create a tuning job interactively
-gryvia create job --tuner \
-  --algorithm bayesian \
-  --max-trials 100 \
-  --parallelism 4 \
-  --objective "val_accuracy:maximize"
-
 # Submit from YAML
 gryvia submit -f resnet-hpo.yaml
 
-# Monitor tuning progress
-gryvia status resnet-hpo
-
-# View trial results sorted by objective
-gryvia get autotuner resnet-hpo --trials
+# Monitor tuning progress (phase, trial counts, best trial)
+kubectl get gryviaautotuner resnet-hpo -n ml-research -o yaml
 
 # Get best trial parameters
-gryvia get autotuner resnet-hpo --best
+kubectl get gryviaautotuner resnet-hpo -n ml-research -o jsonpath='{.status.bestTrial}'
 
 # Cancel tuning early (preserves completed trial results)
 gryvia cancel resnet-hpo
@@ -314,13 +304,7 @@ Steps can run conditionally based on upstream results:
 gryvia submit -f llm-pipeline.yaml
 
 # View workflow DAG status
-gryvia status llm-training-pipeline
-
-# View logs for a specific step
-gryvia logs llm-training-pipeline --step model-training --follow
-
-# Retry a failed step (re-runs from that step forward)
-gryvia retry llm-training-pipeline --step evaluation
+kubectl get gryviaworkflow llm-training-pipeline -n ml-research -o yaml
 
 # Cancel entire workflow
 gryvia cancel llm-training-pipeline
@@ -415,20 +399,22 @@ spec:
 # Register a new model version
 gryvia submit -f model-registry.yaml
 
-# List all versions of a model
-gryvia get modelregistry --model llama-3-fine-tuned
+# List registered models
+kubectl get gryviamodelregistries -n ml-research
 
 # Promote to staging
-gryvia promote model llama-3-fine-tuned --version 2.1.0 --stage staging
+kubectl patch gryviamodelregistry llama-3-fine-tuned -n ml-research \
+  --type merge -p '{"spec":{"stage":"staging"}}'
 
 # Promote to production (triggers auto-deploy if configured)
-gryvia promote model llama-3-fine-tuned --version 2.1.0 --stage production
+kubectl patch gryviamodelregistry llama-3-fine-tuned -n ml-research \
+  --type merge -p '{"spec":{"stage":"production"}}'
 
-# Rollback to a previous version
-gryvia promote model llama-3-fine-tuned --version 2.0.0 --stage production
+# Roll back: re-apply the manifest of the previous version with stage: production
+kubectl apply -f model-registry-v2.0.0.yaml
 
 # View model details and metrics
-gryvia get modelregistry llama-3-fine-tuned --output yaml
+kubectl get gryviamodelregistry llama-3-fine-tuned -n ml-research -o yaml
 ```
 
 ### Auto-Deploy on Production Promotion
@@ -551,23 +537,20 @@ When a new model version is deployed, the canary rollout proceeds as follows:
 # Deploy an inference service
 gryvia submit -f inference-service.yaml
 
-# View serving status
-gryvia get inferenceservice llama-3-serving
-
-# Check canary rollout progress
-gryvia status llama-3-serving --canary
+# View serving status, including canary rollout progress (status.canaryStatus)
+kubectl get gryviainferenceservice llama-3-serving -n ml-production -o yaml
 
 # Manually promote canary to full traffic
-gryvia promote inference llama-3-serving --weight 100
+kubectl patch gryviainferenceservice llama-3-serving -n ml-production \
+  --type merge -p '{"spec":{"canary":{"weight":100}}}'
 
-# Rollback to previous version
-gryvia rollback inference llama-3-serving
+# Roll back: disable the canary so traffic stays on the primary version
+kubectl patch gryviainferenceservice llama-3-serving -n ml-production \
+  --type merge -p '{"spec":{"canary":{"enabled":false}}}'
 
 # Scale replicas manually
-gryvia scale inference llama-3-serving --replicas 5
-
-# View inference metrics
-gryvia metrics inference llama-3-serving
+kubectl patch gryviainferenceservice llama-3-serving -n ml-production \
+  --type merge -p '{"spec":{"replicas":5}}'
 ```
 
 ---
@@ -649,27 +632,29 @@ spec:
 
 ### Pause and Resume
 
-Workspaces can be paused to release GPU resources while preserving storage state. This is triggered automatically after the idle timeout or manually via CLI:
+Workspaces can be paused to release GPU resources while preserving storage state. This is triggered automatically after the idle timeout or manually by setting `spec.paused`:
 
 ```bash
 # Create a workspace
 gryvia submit -f workspace.yaml
 
-# Get workspace URL
-gryvia get workspace research-notebook
-# Output includes: URL: https://research-notebook.gryvia.example.com
+# Get workspace URL (status.url)
+kubectl get gryviaworkspace research-notebook -n ml-research -o jsonpath='{.status.url}'
+# Output: https://research-notebook.gryvia.example.com
 
 # Pause workspace (releases GPU, preserves storage)
-gryvia pause workspace research-notebook
+kubectl patch gryviaworkspace research-notebook -n ml-research \
+  --type merge -p '{"spec":{"paused":true}}'
 
 # Resume workspace (re-acquires GPU, restores state)
-gryvia resume workspace research-notebook
+kubectl patch gryviaworkspace research-notebook -n ml-research \
+  --type merge -p '{"spec":{"paused":false}}'
 
 # Terminate workspace
-gryvia delete workspace research-notebook
+kubectl delete gryviaworkspace research-notebook -n ml-research
 
 # List all workspaces with status
-gryvia list workspaces
+kubectl get gryviaworkspaces -n ml-research
 ```
 
 ### Idle Detection

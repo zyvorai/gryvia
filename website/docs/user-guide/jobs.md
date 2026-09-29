@@ -40,15 +40,10 @@ kubectl apply -f job.yaml
 **Using gryvia:**
 ```bash
 # Submit from file
-gryvia submit job.yaml
+gryvia submit --file job.yaml
 
-# Submit with parameters
-gryvia submit --template pytorch-ddp \
-  --param model=llama-7b \
-  --param gpu-count=8
-
-# Submit and wait
-gryvia submit job.yaml --wait
+# Submit and wait for completion
+gryvia submit --file job.yaml --wait
 ```
 
 ## Job Lifecycle
@@ -65,7 +60,7 @@ gryvia submit job.yaml --wait
 
 ```bash
 # List all jobs
-gryvia list
+gryvia list jobs
 
 # Get job status
 gryvia status my-training-job
@@ -245,30 +240,19 @@ envFrom:
 
 ## Job Templates
 
-### Using Templates
+Reusable job defaults are stored as cluster-scoped `GryviaTemplate` resources. The `gryvia` CLI does
+not manage templates, so use `kubectl`:
 
 ```bash
 # List templates
-gryvia templates list
+kubectl get gryviatemplates
 
-# View template
-gryvia templates show pytorch-ddp
-
-# Submit from template
-gryvia submit --template pytorch-ddp \
-  --param model=llama-7b \
-  --param dataset=/data/openwebtext \
-  --param gpu-count=8 \
-  --param batch-size=32
+# View a template
+kubectl get gryviatemplate pytorch-ddp -o yaml
 ```
 
-### Common Templates
-
-- `pytorch-ddp`: PyTorch distributed training
-- `tensorflow-distributed`: TensorFlow multi-worker
-- `deepspeed-training`: DeepSpeed ZeRO optimization
-- `lora-finetuning`: Parameter-efficient fine-tuning
-- `vllm-inference`: High-throughput inference
+Copy the defaults you want from a template into your `GryviaAIJob` manifest and submit it with
+`gryvia submit --file job.yaml`.
 
 ## Advanced Features
 
@@ -310,14 +294,14 @@ spec:
 
 ## Cost Management
 
-### Cost Estimation
+### Cost Tracking
 
 ```bash
-# Estimate job cost
-gryvia cost estimate --job my-training-job
+# Cost for the team that owns the job, with a detailed breakdown
+gryvia cost my-team --detailed
 
-# Track running costs
-gryvia cost --job my-training-job
+# Costs over the last week
+gryvia cost my-team --period week
 ```
 
 ### Budget Alerts
@@ -339,8 +323,8 @@ python3 tools/profiler.py --job my-training-job \
   --gpu-type A100-80G \
   --gpu-count 8
 
-# Get recommendations
-gryvia profile my-training-job
+# Check GPU health across the cluster
+gryvia health gpu
 ```
 
 ### Common Optimizations
@@ -360,7 +344,7 @@ gryvia profile my-training-job
 kubectl describe gryviaaijob my-training-job
 
 # Check GPU availability
-gryvia cluster nodes
+gryvia list nodes
 
 # Check quota
 gryvia quota my-team

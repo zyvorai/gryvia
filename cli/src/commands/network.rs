@@ -1,14 +1,13 @@
 use anyhow::Result;
-use colored::*;
 use kube::api::{Api, ApiResource, GroupVersionKind, ListParams};
 use kube::core::DynamicObject;
-use prettytable::{format, Cell, Row, Table};
 
 use crate::client::GryviaClient;
+use crate::display;
+use crate::ui::{self, Cell2, Marker};
 
 pub async fn execute_status(client: &GryviaClient, namespace: &str) -> Result<()> {
-    println!("{}", "━━━ Network Health Overview ━━━".bold().cyan());
-    println!();
+    let color = ui::color_enabled();
 
     // Query flows
     let flow_ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
@@ -106,48 +105,87 @@ pub async fn execute_status(client: &GryviaClient, namespace: &str) -> Result<()
         Err(_) => 0,
     };
 
-    // Print summary
-    println!("{}", "Overview:".bold().underline());
-    println!(
-        "  Active Flows:      {}",
-        active_flows.to_string().bright_white().bold()
-    );
-    println!(
-        "  Policies:          {} ({} enforced)",
-        total_policies.to_string().bright_white().bold(),
-        enforced_policies.to_string().green()
-    );
-
-    let anomaly_display = if critical_anomalies > 0 {
-        format!(
-            "{} ({} critical)",
-            total_anomalies.to_string().yellow().bold(),
-            critical_anomalies.to_string().red().bold()
-        )
-    } else if total_anomalies > 0 {
-        total_anomalies.to_string().yellow().bold().to_string()
-    } else {
-        "0".green().to_string()
+    let overview = NetworkOverview {
+        active_flows,
+        total_policies,
+        enforced_policies,
+        total_anomalies,
+        critical_anomalies,
+        active_traces,
     };
-    println!("  Anomalies:         {}", anomaly_display);
-    println!(
-        "  Active Traces:     {}",
-        active_traces.to_string().cyan().bold()
-    );
-    println!();
-
-    // Network health indicator
-    let health = if critical_anomalies > 0 {
-        "DEGRADED".red().bold().to_string()
-    } else if total_anomalies > 0 {
-        "WARNING".yellow().bold().to_string()
-    } else {
-        "HEALTHY".green().bold().to_string()
-    };
-    println!("  Network Status:    {}", health);
-    println!();
+    for line in overview_lines(&overview, color) {
+        println!("{line}");
+    }
 
     Ok(())
+}
+
+/// Counts shown on the network overview page.
+pub struct NetworkOverview {
+    pub active_flows: usize,
+    pub total_policies: usize,
+    pub enforced_policies: usize,
+    pub total_anomalies: usize,
+    pub critical_anomalies: usize,
+    pub active_traces: usize,
+}
+
+/// Lines of the network health overview.
+pub fn overview_lines(o: &NetworkOverview, color: bool) -> Vec<String> {
+    let anomaly_marker = if o.critical_anomalies > 0 {
+        Marker::Error
+    } else if o.total_anomalies > 0 {
+        Marker::Warn
+    } else {
+        Marker::Ok
+    };
+    let anomalies = if o.critical_anomalies > 0 {
+        format!("{} ({} critical)", o.total_anomalies, o.critical_anomalies)
+    } else {
+        o.total_anomalies.to_string()
+    };
+    let (health_marker, health) = match anomaly_marker {
+        Marker::Error => (Marker::Error, "DEGRADED"),
+        Marker::Warn => (Marker::Warn, "WARNING"),
+        _ => (Marker::Ok, "HEALTHY"),
+    };
+    let w = 16;
+    vec![
+        ui::header("Network Health Overview", color),
+        String::new(),
+        ui::section("Overview", color),
+        ui::kv("Active Flows", &o.active_flows.to_string(), w, color),
+        ui::kv(
+            "Policies",
+            &format!("{} ({} enforced)", o.total_policies, o.enforced_policies),
+            w,
+            color,
+        ),
+        ui::kv(
+            "Anomalies",
+            &anomaly_marker.paint_with(&anomalies, color),
+            w,
+            color,
+        ),
+        ui::kv("Active Traces", &o.active_traces.to_string(), w, color),
+        String::new(),
+        ui::kv(
+            "Network Status",
+            &health_marker.paint_with(&format!("{} {}", health_marker.glyph(), health), color),
+            w,
+            color,
+        ),
+    ]
+}
+
+/// Marker for an anomaly or alert severity.
+pub fn severity_marker(severity: &str) -> Marker {
+    match severity.to_ascii_lowercase().as_str() {
+        "critical" => Marker::Error,
+        "high" | "medium" | "warning" => Marker::Warn,
+        "low" | "info" => Marker::Disabled,
+        _ => Marker::Unknown,
+    }
 }
 
 pub async fn execute_anomalies(
@@ -157,7 +195,8 @@ pub async fn execute_anomalies(
     severity: Option<&str>,
     output: &str,
 ) -> Result<()> {
-    println!("{}", "━━━ Network Anomalies ━━━".bold().cyan());
+    let color = ui::color_enabled();
+    println!("{}", ui::header("Network Anomalies", color));
     println!();
 
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
@@ -176,7 +215,7 @@ pub async fn execute_anomalies(
     let anomalies = match api.list(&params).await {
         Ok(list) => list,
         Err(e) => {
-            println!("  {} Could not query anomalies: {}", "⚠".yellow().bold(), e);
+            display::print_warning(&format!("Could not query anomalies: {}", e));
             println!();
             return Ok(());
         }
@@ -201,15 +240,18 @@ pub async fn execute_anomalies(
         .collect();
 
     if filtered.is_empty() {
-        println!("  {}", "No anomalies detected.".green());
+        println!(
+            "{} No anomalies detected.",
+            Marker::Ok.paint_with(Marker::Ok.glyph(), color)
+        );
         println!();
         return Ok(());
     }
 
     match output {
-        "json" => {
+        "json" | "yaml" => {
             let items: Vec<&serde_json::Value> = filtered.iter().map(|a| &a.data).collect();
-            println!("{}", serde_json::to_string_pretty(&items)?);
+            crate::output::print_serialized(output, &items)?;
         }
         _ => {
             print_anomalies_table(&filtered);
@@ -219,65 +261,136 @@ pub async fn execute_anomalies(
     Ok(())
 }
 
+/// Lines of the anomalies table (SEVERITY SERVICE TYPE DESCRIPTION DETECTED AT).
+pub fn anomalies_lines(anomalies: &[&DynamicObject], color: bool) -> Vec<String> {
+    let text = |spec: Option<&serde_json::Value>, key: &str| -> String {
+        spec.and_then(|s| s.get(key))
+            .and_then(|v| v.as_str())
+            .unwrap_or("-")
+            .to_string()
+    };
+    let rows: Vec<Vec<Cell2>> = anomalies
+        .iter()
+        .map(|anomaly| {
+            let spec = anomaly.data.get("spec");
+            let severity = spec
+                .and_then(|s| s.get("severity"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
+            vec![
+                (severity.to_string(), Some(severity_marker(severity))),
+                (text(spec, "service"), None),
+                (text(spec, "type"), None),
+                (text(spec, "description"), None),
+                (text(spec, "detectedAt"), None),
+            ]
+        })
+        .collect();
+    ui::grid(
+        &["SEVERITY", "SERVICE", "TYPE", "DESCRIPTION", "DETECTED AT"],
+        &rows,
+        color,
+    )
+}
+
 fn print_anomalies_table(anomalies: &[&DynamicObject]) {
-    let mut table = Table::new();
-    table.set_format(*format::consts::FORMAT_BOX_CHARS);
+    for line in anomalies_lines(anomalies, ui::color_enabled()) {
+        println!("{line}");
+    }
+    println!();
+    display::print_info(&format!("Total anomalies: {}", anomalies.len()));
+    println!();
+}
 
-    table.add_row(Row::new(vec![
-        Cell::new("SEVERITY").style_spec("Fb"),
-        Cell::new("SERVICE").style_spec("Fb"),
-        Cell::new("TYPE").style_spec("Fb"),
-        Cell::new("DESCRIPTION").style_spec("Fb"),
-        Cell::new("DETECTED AT").style_spec("Fb"),
-    ]));
+/// Remove ANSI color codes, for tests that compare colored and plain output.
+#[cfg(test)]
+pub(crate) fn strip_ansi(s: &str) -> String {
+    let mut out = String::new();
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c == '\x1b' {
+            for n in chars.by_ref() {
+                if n == 'm' {
+                    break;
+                }
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
 
-    for anomaly in anomalies {
-        let spec = anomaly.data.get("spec");
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use strip_ansi as strip;
 
-        let severity = spec
-            .and_then(|s| s.get("severity"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown");
-        let svc = spec
-            .and_then(|s| s.get("service"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("-");
-        let anomaly_type = spec
-            .and_then(|s| s.get("type"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("-");
-        let description = spec
-            .and_then(|s| s.get("description"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("-");
-        let detected_at = spec
-            .and_then(|s| s.get("detectedAt"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("-");
-
-        let severity_colored = match severity {
-            "critical" => severity.red().bold().to_string(),
-            "high" => severity.red().to_string(),
-            "medium" | "warning" => severity.yellow().to_string(),
-            "low" | "info" => severity.cyan().to_string(),
-            _ => severity.normal().to_string(),
-        };
-
-        table.add_row(Row::new(vec![
-            Cell::new(&severity_colored),
-            Cell::new(svc),
-            Cell::new(anomaly_type),
-            Cell::new(description),
-            Cell::new(detected_at),
-        ]));
+    fn anomaly(spec: serde_json::Value) -> DynamicObject {
+        serde_json::from_value(json!({
+            "apiVersion": "gryvia.io/v1alpha1",
+            "kind": "GryviaNetworkAnomaly",
+            "metadata": {"name": "a"},
+            "spec": spec,
+        }))
+        .unwrap()
     }
 
-    table.printstd();
-    println!();
-    println!(
-        "  {} Total anomalies: {}",
-        "ℹ".cyan().bold(),
-        anomalies.len()
-    );
-    println!();
+    #[test]
+    fn anomalies_table_is_aligned() {
+        let a = anomaly(
+            json!({"severity": "critical", "service": "api", "type": "latency-spike",
+            "description": "p99 above 2s", "detectedAt": "2026-09-29T10:00:00Z"}),
+        );
+        let b = anomaly(json!({"severity": "low", "service": "db"}));
+        let lines = anomalies_lines(&[&a, &b], false);
+        assert_eq!(
+            lines,
+            vec![
+                "SEVERITY  SERVICE  TYPE           DESCRIPTION   DETECTED AT",
+                "critical  api      latency-spike  p99 above 2s  2026-09-29T10:00:00Z",
+                "low       db       -              -             -",
+            ]
+        );
+    }
+
+    #[test]
+    fn overview_renders_and_colors() {
+        let o = NetworkOverview {
+            active_flows: 12,
+            total_policies: 4,
+            enforced_policies: 3,
+            total_anomalies: 2,
+            critical_anomalies: 1,
+            active_traces: 0,
+        };
+        let plain = overview_lines(&o, false);
+        assert_eq!(
+            plain,
+            vec![
+                "━━━ Network Health Overview ━━━",
+                "",
+                "Overview",
+                "Active Flows    12",
+                "Policies        4 (3 enforced)",
+                "Anomalies       2 (1 critical)",
+                "Active Traces   0",
+                "",
+                "Network Status  ✗ DEGRADED",
+            ]
+        );
+        let colored = overview_lines(&o, true);
+        assert!(colored.iter().any(|l| l.contains('\x1b')));
+        let stripped: Vec<String> = colored.iter().map(|l| strip(l)).collect();
+        assert_eq!(stripped, plain);
+    }
+
+    #[test]
+    fn severity_markers() {
+        assert_eq!(severity_marker("critical"), Marker::Error);
+        assert_eq!(severity_marker("high"), Marker::Warn);
+        assert_eq!(severity_marker("info"), Marker::Disabled);
+        assert_eq!(severity_marker("weird"), Marker::Unknown);
+    }
 }

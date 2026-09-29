@@ -187,20 +187,11 @@ Requirements for backfill:
 # View queue status
 gryvia queue
 
-# View queue hierarchy
-gryvia queue --tree
+# View one queue
+gryvia queue ml-research-queue
 
-# View queue details
-gryvia get queue ml-research-queue
-
-# View fair-share allocations
-gryvia queue --fair-share
-
-# Drain a queue (no new jobs, existing finish)
-gryvia queue drain ml-research-queue
-
-# Resume a drained queue
-gryvia queue resume ml-research-queue
+# Watch queues, refreshing every 5 seconds
+gryvia queue --watch 5
 ```
 
 ---
@@ -295,11 +286,8 @@ spec:
 # View elastic job status
 gryvia status elastic-training
 
-# Manually scale workers
-gryvia scale job elastic-training --workers 6
-
-# View scaling events
-gryvia get job elastic-training --events
+# View scaling events (see the Events section)
+kubectl describe gryviaaijob elastic-training
 ```
 
 ---
@@ -504,16 +492,16 @@ When multiple candidates exist for preemption, the scheduler uses this ranking:
 
 ```bash
 # View priority classes
-gryvia get priorityclasses
+kubectl get gryviapriorities
 
-# View preemption events
-gryvia get events --type preemption
+# View preemption events and status for a job
+kubectl describe gryviaaijob my-job
 
-# View re-queued jobs
-gryvia queue --requeued
+# View queued (including re-queued) jobs
+gryvia queue
 
-# Check job preemption status
-gryvia status my-job --preemption
+# Check job status
+gryvia status my-job
 ```
 
 ---

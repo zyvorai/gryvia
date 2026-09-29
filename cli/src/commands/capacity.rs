@@ -9,14 +9,13 @@
 use std::collections::BTreeMap;
 
 use anyhow::{Context, Result};
-use colored::*;
 use kube::api::{Api, ApiResource, GroupVersionKind, ListParams};
 use kube::core::DynamicObject;
-use prettytable::{format, Cell, Row, Table};
 use serde::Serialize;
 
 use crate::client::GryviaClient;
 use crate::display;
+use crate::ui::{self, Cell2, Marker};
 
 /// A GPU node as far as capacity is concerned.
 #[derive(Clone, Debug, PartialEq)]
@@ -214,7 +213,7 @@ pub fn compute_capacity(
     }
 }
 
-fn gvk_api(client: &GryviaClient, kind: &str, plural: &str) -> Api<DynamicObject> {
+pub(crate) fn gvk_api(client: &GryviaClient, kind: &str, plural: &str) -> Api<DynamicObject> {
     let gvk = GroupVersionKind::gvk("gryvia.io", "v1alpha1", kind);
     let ar = ApiResource::from_gvk_with_plural(&gvk, plural);
     Api::all_with(client.kube_client.clone(), &ar)
@@ -258,12 +257,6 @@ pub fn job_from_json(v: &serde_json::Value) -> JobInfo {
 }
 
 pub async fn execute(client: &GryviaClient, output: &str, gpu_type: Option<&str>) -> Result<()> {
-    if output != "table" && output != "json" {
-        anyhow::bail!(
-            "Unknown output format '{}'. Valid formats: table, json",
-            output
-        );
-    }
     let nodes_api = gvk_api(client, "GryviaGpuNode", "gryviagpunodes");
     let jobs_api = gvk_api(client, "GryviaAIJob", "gryviaaijobs");
     let nodes = nodes_api
@@ -287,8 +280,8 @@ pub async fn execute(client: &GryviaClient, output: &str, gpu_type: Option<&str>
         .collect();
 
     let report = compute_capacity(&node_infos, &job_infos, gpu_type);
-    if output == "json" {
-        println!("{}", serde_json::to_string_pretty(&report)?);
+    if output == "json" || output == "yaml" {
+        crate::output::print_serialized(output, &report)?;
     } else {
         print_report(&report, gpu_type);
     }
@@ -300,17 +293,61 @@ fn to_value(o: &DynamicObject) -> serde_json::Value {
 }
 
 fn print_report(r: &CapacityReport, filter: Option<&str>) {
-    println!("{}", "━━━ GPU CAPACITY ━━━".bold().cyan());
-    println!();
+    let lines = capacity_lines(r, filter, ui::color_enabled());
+    for line in &lines {
+        println!("{line}");
+    }
     if r.types.is_empty() && r.unspecified == Unspecified::default() {
         display::print_warning("No GPU nodes or active jobs found");
-        return;
+    }
+}
+
+/// The human-readable capacity report. When there is nothing to show it is only the header; the caller
+/// prints the "nothing found" warning.
+pub fn capacity_lines(r: &CapacityReport, filter: Option<&str>, color: bool) -> Vec<String> {
+    let mut lines = vec![ui::header("GPU Capacity", color), String::new()];
+    if r.types.is_empty() && r.unspecified == Unspecified::default() {
+        return lines;
     }
 
-    let mut table = Table::new();
-    table.set_format(*format::consts::FORMAT_BOX_CHARS);
-    table.add_row(Row::new(
-        [
+    let rows: Vec<Vec<Cell2>> = r
+        .types
+        .iter()
+        .map(|t| {
+            let (note, note_marker) = if t.unknown_type {
+                (
+                    "no node registers this type".to_string(),
+                    Some(Marker::Warn),
+                )
+            } else if t.oversubscribed_by > 0 {
+                (
+                    format!("allocated exceeds total by {}", t.oversubscribed_by),
+                    Some(Marker::Warn),
+                )
+            } else {
+                (String::new(), None)
+            };
+            vec![
+                (t.gpu_type.clone(), None),
+                (t.total.to_string(), None),
+                (t.allocated.to_string(), None),
+                (t.free.to_string(), None),
+                (t.pending_demand.to_string(), None),
+                (
+                    t.shortfall.to_string(),
+                    if t.shortfall > 0 {
+                        Some(Marker::Error)
+                    } else {
+                        None
+                    },
+                ),
+                (t.headroom.to_string(), None),
+                (note, note_marker),
+            ]
+        })
+        .collect();
+    lines.extend(ui::grid(
+        &[
             "GPU TYPE",
             "TOTAL",
             "ALLOCATED",
@@ -319,57 +356,37 @@ fn print_report(r: &CapacityReport, filter: Option<&str>) {
             "SHORTFALL",
             "HEADROOM",
             "NOTE",
-        ]
-        .iter()
-        .map(|h| Cell::new(h).style_spec("Fb"))
-        .collect(),
+        ],
+        &rows,
+        color,
     ));
-    for t in &r.types {
-        let note = if t.unknown_type {
-            "no node registers this type".to_string()
-        } else if t.oversubscribed_by > 0 {
-            format!("allocated exceeds total by {}", t.oversubscribed_by)
-        } else {
-            String::new()
-        };
-        table.add_row(Row::new(vec![
-            Cell::new(&t.gpu_type),
-            Cell::new(&t.total.to_string()),
-            Cell::new(&t.allocated.to_string()),
-            Cell::new(&t.free.to_string()),
-            Cell::new(&t.pending_demand.to_string()),
-            Cell::new(&t.shortfall.to_string()),
-            Cell::new(&t.headroom.to_string()),
-            Cell::new(&note),
-        ]));
-    }
-    table.printstd();
-    println!();
-    println!(
+    lines.push(String::new());
+    lines.push(format!(
         "  Total {}  Allocated {}  Free {}  Pending demand {}",
         r.total, r.allocated, r.free, r.pending_demand
-    );
+    ));
     if filter.is_none() {
-        println!(
+        lines.push(format!(
             "  Jobs without a GPU type: {} allocated, {} pending (counted only in the totals above)",
             r.unspecified.allocated, r.unspecified.pending_demand
-        );
+        ));
     } else {
-        println!("  Jobs without a GPU type are excluded while --gpu-type is set");
+        lines.push("  Jobs without a GPU type are excluded while --gpu-type is set".to_string());
     }
     if r.shortfall > 0 {
-        println!(
+        lines.push(format!(
             "  {} pending demand exceeds free GPUs by {}",
-            "Shortfall:".red().bold(),
+            Marker::Error.paint_with("Shortfall:", color),
             r.shortfall
-        );
+        ));
     } else {
-        println!(
+        lines.push(format!(
             "  {} {} GPUs after pending demand",
-            "Headroom:".green().bold(),
+            Marker::Ok.paint_with("Headroom:", color),
             r.headroom
-        );
+        ));
     }
+    lines
 }
 
 #[cfg(test)]
@@ -552,5 +569,71 @@ mod tests {
         let j = job_from_json(&json!({"spec": {"gpus": 4}}));
         assert_eq!(j.phase, "");
         assert_eq!(j.gpus, 4);
+    }
+
+    fn strip(s: &str) -> String {
+        let mut out = String::new();
+        let mut esc = false;
+        for c in s.chars() {
+            match (esc, c) {
+                (false, '\x1b') => esc = true,
+                (true, 'm') => esc = false,
+                (false, c) => out.push(c),
+                _ => {}
+            }
+        }
+        out
+    }
+
+    fn sample_report() -> CapacityReport {
+        compute_capacity(
+            &[node("H100", 16), node("A100", 8)],
+            &[
+                job("Running", 12, Some("H100")),
+                job("Pending", 8, Some("H100")),
+                job("Running", 2, None),
+            ],
+            None,
+        )
+    }
+
+    #[test]
+    fn capacity_report_aligned() {
+        let text = capacity_lines(&sample_report(), None, false).join("\n");
+        let expected = "\
+━━━ GPU Capacity ━━━
+
+GPU TYPE  TOTAL  ALLOCATED  FREE  PENDING  SHORTFALL  HEADROOM  NOTE
+A100      8      0          8     0        0          8
+H100      16     12         4     8        4          0
+
+  Total 24  Allocated 14  Free 10  Pending demand 8
+  Jobs without a GPU type: 2 allocated, 0 pending (counted only in the totals above)
+  Headroom: 2 GPUs after pending demand";
+        assert_eq!(text, expected);
+    }
+
+    #[test]
+    fn capacity_notes_and_empty_report() {
+        let r = compute_capacity(&[], &[job("Running", 4, Some("T4"))], Some("T4"));
+        let text = capacity_lines(&r, Some("T4"), false).join("\n");
+        assert!(text.contains("no node registers this type"));
+        assert!(text.contains("excluded while --gpu-type is set"));
+        assert!(
+            text.contains("Shortfall: pending demand exceeds free GPUs by 0")
+                || text.contains("Headroom:")
+        );
+        assert_eq!(
+            capacity_lines(&CapacityReport::default(), None, false),
+            vec!["━━━ GPU Capacity ━━━", ""]
+        );
+    }
+
+    #[test]
+    fn capacity_color_strips_to_plain() {
+        let r = sample_report();
+        let colored = capacity_lines(&r, None, true).join("\n");
+        assert!(colored.contains("\x1b["));
+        assert_eq!(strip(&colored), capacity_lines(&r, None, false).join("\n"));
     }
 }
