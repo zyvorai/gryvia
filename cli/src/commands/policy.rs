@@ -1,23 +1,36 @@
 use anyhow::{Context, Result};
-use kube::api::{Api, ApiResource, GroupVersionKind, ListParams, PatchParams, Patch};
-use kube::core::DynamicObject;
-use prettytable::{Table, Row, Cell, format};
 use colored::*;
+use kube::api::{Api, ApiResource, GroupVersionKind, ListParams, Patch, PatchParams};
+use kube::core::DynamicObject;
+use prettytable::{format, Cell, Row, Table};
 use serde_json::json;
 
 use crate::client::GryviaClient;
 
 pub enum PolicyAction {
-    Suggest { namespace: String },
-    Apply { policy_name: String, namespace: String },
-    List { namespace: String, output: String },
+    Suggest {
+        namespace: String,
+    },
+    Apply {
+        policy_name: String,
+        namespace: String,
+    },
+    List {
+        namespace: String,
+        output: String,
+    },
 }
 
 pub async fn execute(client: &GryviaClient, action: PolicyAction) -> Result<()> {
     match action {
         PolicyAction::Suggest { namespace } => suggest_policies(client, &namespace).await,
-        PolicyAction::Apply { policy_name, namespace } => apply_policy(client, &policy_name, &namespace).await,
-        PolicyAction::List { namespace, output } => list_policies(client, &namespace, &output).await,
+        PolicyAction::Apply {
+            policy_name,
+            namespace,
+        } => apply_policy(client, &policy_name, &namespace).await,
+        PolicyAction::List { namespace, output } => {
+            list_policies(client, &namespace, &output).await
+        }
     }
 }
 
@@ -30,11 +43,7 @@ async fn list_policies(client: &GryviaClient, namespace: &str, output: &str) -> 
         "v1",
         "GryviaFlowPolicy",
     ));
-    let api: Api<DynamicObject> = Api::namespaced_with(
-        client.kube_client.clone(),
-        namespace,
-        &ar,
-    );
+    let api: Api<DynamicObject> = Api::namespaced_with(client.kube_client.clone(), namespace, &ar);
 
     let policies = match api.list(&ListParams::default()).await {
         Ok(list) => list,
@@ -153,10 +162,7 @@ fn print_policies_table(policies: &[DynamicObject]) {
 async fn suggest_policies(client: &GryviaClient, namespace: &str) -> Result<()> {
     println!("{}", "━━━ Suggested Policies ━━━".bold().cyan());
     println!();
-    println!(
-        "  {}",
-        "Analyzing observed traffic patterns...".dimmed()
-    );
+    println!("  {}", "Analyzing observed traffic patterns...".dimmed());
     println!();
 
     // Query for suggested policies (those with phase=Suggested)
@@ -165,11 +171,7 @@ async fn suggest_policies(client: &GryviaClient, namespace: &str) -> Result<()> 
         "v1",
         "GryviaFlowPolicy",
     ));
-    let api: Api<DynamicObject> = Api::namespaced_with(
-        client.kube_client.clone(),
-        namespace,
-        &ar,
-    );
+    let api: Api<DynamicObject> = Api::namespaced_with(client.kube_client.clone(), namespace, &ar);
 
     let label_selector = "gryvia.io/suggested=true";
     let params = ListParams::default().labels(label_selector);
@@ -190,8 +192,7 @@ async fn suggest_policies(client: &GryviaClient, namespace: &str) -> Result<()> 
     if suggestions.items.is_empty() {
         println!(
             "  {}",
-            "No policy suggestions available. Traffic analysis may still be in progress."
-                .dimmed()
+            "No policy suggestions available. Traffic analysis may still be in progress.".dimmed()
         );
         println!();
         return Ok(());
@@ -256,11 +257,7 @@ async fn suggest_policies(client: &GryviaClient, namespace: &str) -> Result<()> 
     Ok(())
 }
 
-async fn apply_policy(
-    client: &GryviaClient,
-    policy_name: &str,
-    namespace: &str,
-) -> Result<()> {
+async fn apply_policy(client: &GryviaClient, policy_name: &str, namespace: &str) -> Result<()> {
     println!(
         "{} Applying policy: {}",
         "→".cyan().bold(),
@@ -272,11 +269,7 @@ async fn apply_policy(
         "v1",
         "GryviaFlowPolicy",
     ));
-    let api: Api<DynamicObject> = Api::namespaced_with(
-        client.kube_client.clone(),
-        namespace,
-        &ar,
-    );
+    let api: Api<DynamicObject> = Api::namespaced_with(client.kube_client.clone(), namespace, &ar);
 
     // Check policy exists
     let policy = api

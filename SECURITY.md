@@ -25,7 +25,8 @@ Gryvia is alpha software. Read this before exposing it beyond a lab.
   dashboard shows a warning while it is in use. **Change it** for anything reachable from an untrusted
   network: `--set auth.apiKey=<secret>`, an existing Secret, or `auth.apiKey=""` to generate a random one.
 - **Login hardening.** `POST /api/auth/login` compares credentials in constant time, slows failed
-  attempts and is rate limited per client address (10 per minute).
+  attempts and is rate limited per client address (10 per minute). It returns a signed session token that
+  expires after 8 hours, so the browser never stores the API key; rotating the key ends all sessions.
 - **TLS.** The dashboard and gateway serve HTTPS. The default certificate is self-signed; use
   `tls.mode=certManager` or `existingSecret` for a trusted one. Traffic between the dashboard and the
   gateway inside the cluster uses the same certificate without verification, so enable the chart's

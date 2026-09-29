@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use dialoguer::{Input, Select, Confirm};
+use dialoguer::{Confirm, Input, Select};
 use kube::api::{Api, PostParams};
 use serde_json::json;
 
@@ -11,7 +11,10 @@ pub async fn execute(client: &GryviaClient, resource: &str) -> Result<()> {
         "job" => create_job(client).await?,
         "quota" => create_quota(client).await?,
         _ => {
-            anyhow::bail!("Unknown resource type: {}. Valid types: job, quota", resource);
+            anyhow::bail!(
+                "Unknown resource type: {}. Valid types: job, quota",
+                resource
+            );
         }
     }
 
@@ -34,7 +37,10 @@ async fn create_job(client: &GryviaClient) -> Result<()> {
             if input.starts_with('-') || input.ends_with('-') {
                 return Err("Name must not start or end with a hyphen");
             }
-            if !input.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
+            if !input
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+            {
                 return Err("Name must contain only lowercase letters, digits, and hyphens");
             }
             Ok(())
@@ -63,7 +69,9 @@ async fn create_job(client: &GryviaClient) -> Result<()> {
         })
         .interact_text()?;
 
-    let gpu_types = vec!["H100", "A100-80G", "A100-40G", "L40", "A10", "V100", "T4", "any"];
+    let gpu_types = vec![
+        "H100", "A100-80G", "A100-40G", "L40", "A10", "V100", "T4", "any",
+    ];
     let gpu_type_idx = Select::new()
         .with_prompt("GPU type")
         .items(&gpu_types)
@@ -89,7 +97,7 @@ async fn create_job(client: &GryviaClient) -> Result<()> {
                 return Err("Memory cannot be empty");
             }
             // Must start with a digit
-            if !trimmed.chars().next().map_or(false, |c| c.is_ascii_digit()) {
+            if !trimmed.chars().next().is_some_and(|c| c.is_ascii_digit()) {
                 return Err("Memory must start with a number (e.g., 32Gi)");
             }
             Ok(())
@@ -186,19 +194,19 @@ async fn create_job(client: &GryviaClient) -> Result<()> {
         return Ok(());
     }
 
-    let ar = kube::api::ApiResource::from_gvk(
-        &kube::api::GroupVersionKind::gvk("gryvia.io", "v1", "GryviaAIJob"),
-    );
-    let api: Api<kube::core::DynamicObject> = Api::namespaced_with(
-        client.kube_client.clone(),
-        client.namespace(),
-        &ar,
-    );
+    let ar = kube::api::ApiResource::from_gvk(&kube::api::GroupVersionKind::gvk(
+        "gryvia.io",
+        "v1",
+        "GryviaAIJob",
+    ));
+    let api: Api<kube::core::DynamicObject> =
+        Api::namespaced_with(client.kube_client.clone(), client.namespace(), &ar);
 
-    let job_obj: kube::core::DynamicObject = serde_json::from_value(job_spec)
-        .context("Failed to construct job object")?;
+    let job_obj: kube::core::DynamicObject =
+        serde_json::from_value(job_spec).context("Failed to construct job object")?;
 
-    api.create(&PostParams::default(), &job_obj).await
+    api.create(&PostParams::default(), &job_obj)
+        .await
         .context("Failed to create job")?;
 
     display::print_success(&format!("Job '{}' created successfully", name));
@@ -217,8 +225,13 @@ async fn create_quota(client: &GryviaClient) -> Result<()> {
             if trimmed.is_empty() {
                 return Err("Team name cannot be empty");
             }
-            if !trimmed.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
-                return Err("Team name must only contain alphanumeric characters, hyphens, or underscores");
+            if !trimmed
+                .chars()
+                .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+            {
+                return Err(
+                    "Team name must only contain alphanumeric characters, hyphens, or underscores",
+                );
             }
             Ok(())
         })
@@ -229,7 +242,8 @@ async fn create_quota(client: &GryviaClient) -> Result<()> {
         .default(format!("{}-ns", team))
         .interact_text()?;
 
-    let namespace_list: Vec<String> = namespaces.split(',')
+    let namespace_list: Vec<String> = namespaces
+        .split(',')
         .map(|s| s.trim().to_string())
         .collect();
 
@@ -314,18 +328,18 @@ async fn create_quota(client: &GryviaClient) -> Result<()> {
         return Ok(());
     }
 
-    let ar = kube::api::ApiResource::from_gvk(
-        &kube::api::GroupVersionKind::gvk("gryvia.io", "v1", "GryviaQuota"),
-    );
-    let api: Api<kube::core::DynamicObject> = Api::all_with(
-        client.kube_client.clone(),
-        &ar,
-    );
+    let ar = kube::api::ApiResource::from_gvk(&kube::api::GroupVersionKind::gvk(
+        "gryvia.io",
+        "v1",
+        "GryviaQuota",
+    ));
+    let api: Api<kube::core::DynamicObject> = Api::all_with(client.kube_client.clone(), &ar);
 
-    let quota_obj: kube::core::DynamicObject = serde_json::from_value(quota_spec)
-        .context("Failed to construct quota object")?;
+    let quota_obj: kube::core::DynamicObject =
+        serde_json::from_value(quota_spec).context("Failed to construct quota object")?;
 
-    api.create(&PostParams::default(), &quota_obj).await
+    api.create(&PostParams::default(), &quota_obj)
+        .await
         .context("Failed to create quota")?;
 
     display::print_success(&format!("Quota '{}' created successfully", quota_name));

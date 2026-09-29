@@ -31,6 +31,7 @@ and the project aims to follow [Semantic Versioning](https://semver.org/) once i
 - Rate limits count per client address instead of per proxy pod.
 
 ### Security
+- Dashboard sessions are signed, expiring tokens issued by `/api/auth/login`; the API key is no longer stored in the browser.
 - The dashboard bundle no longer contains a login credential; the gateway validates sign-in.
 - The chart runs no root containers: the TLS Secret is mounted with `fsGroup` instead of a root init container.
 - Login attempts are constant-time compared, delayed on failure and rate limited per client address.

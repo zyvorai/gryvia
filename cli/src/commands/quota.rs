@@ -1,19 +1,23 @@
 use anyhow::{Context, Result};
-use kube::api::{Api, ListParams};
 use colored::*;
+use kube::api::{Api, ListParams};
 
 use crate::client::GryviaClient;
-use crate::types::*;
 use crate::display;
+use crate::types::*;
 
 pub async fn execute(client: &GryviaClient, team: Option<String>, budget: bool) -> Result<()> {
     let api: Api<GryviaQuota> = Api::all(client.kube_client.clone());
 
-    let quotas = api.list(&ListParams::default()).await
+    let quotas = api
+        .list(&ListParams::default())
+        .await
         .context("Failed to list quotas")?;
 
     let filtered: Vec<_> = if let Some(team_name) = team {
-        quotas.items.iter()
+        quotas
+            .items
+            .iter()
             .filter(|q| q.spec.team == team_name)
             .collect()
     } else {
@@ -48,14 +52,22 @@ fn print_quota_details(quota: &GryviaQuota, show_budget: bool) {
     let usage = &quota_status.current_usage;
     let spec = &quota.spec.gpu_quota;
 
-    println!("  Allocated GPUs: {}/{} ({}%)",
+    println!(
+        "  Allocated GPUs: {}/{} ({}%)",
         usage.allocated_gpus.to_string().yellow(),
         spec.max_gpus,
-        if spec.max_gpus > 0 { ((usage.allocated_gpus as f64 / spec.max_gpus as f64) * 100.0).round() as i32 } else { 0 }
+        if spec.max_gpus > 0 {
+            ((usage.allocated_gpus as f64 / spec.max_gpus as f64) * 100.0).round() as i32
+        } else {
+            0
+        }
     );
 
     println!("  Max GPUs per Job: {}", spec.max_gpus_per_job);
-    println!("  Running Jobs: {}/{}", usage.running_jobs, spec.max_running_jobs);
+    println!(
+        "  Running Jobs: {}/{}",
+        usage.running_jobs, spec.max_running_jobs
+    );
     println!("  Queued Jobs: {}", usage.queued_jobs);
 
     if !spec.allowed_gpu_types.is_empty() {
@@ -80,8 +92,14 @@ fn print_quota_details(quota: &GryviaQuota, show_budget: bool) {
             };
 
             println!("  Spent: ${:.2}", budget_status.spent_this_month);
-            println!("  Budget: ${:.2}",
-                quota.spec.budget.as_ref().map(|b| b.monthly_budget).unwrap_or(0.0)
+            println!(
+                "  Budget: ${:.2}",
+                quota
+                    .spec
+                    .budget
+                    .as_ref()
+                    .map(|b| b.monthly_budget)
+                    .unwrap_or(0.0)
             );
             println!("  Remaining: ${:.2}", budget_status.remaining_budget);
 
@@ -97,9 +115,22 @@ fn print_quota_details(quota: &GryviaQuota, show_budget: bool) {
 
             if let Some(ref budget) = quota.spec.budget {
                 if budget.hard_limit && percent >= 100.0 {
-                    println!("  {}", "⚠ HARD LIMIT REACHED - New jobs will be blocked".red().bold());
+                    println!(
+                        "  {}",
+                        "⚠ HARD LIMIT REACHED - New jobs will be blocked"
+                            .red()
+                            .bold()
+                    );
                 } else if percent >= budget.alert_threshold * 100.0 {
-                    println!("  {}", format!("⚠ Alert threshold ({:.0}%) reached", budget.alert_threshold * 100.0).yellow().bold());
+                    println!(
+                        "  {}",
+                        format!(
+                            "⚠ Alert threshold ({:.0}%) reached",
+                            budget.alert_threshold * 100.0
+                        )
+                        .yellow()
+                        .bold()
+                    );
                 }
             }
         }
@@ -107,6 +138,9 @@ fn print_quota_details(quota: &GryviaQuota, show_budget: bool) {
 
     // Status
     println!();
-    println!("{} {}", "Status:".bold(), display::colorize_status(&quota_status.phase));
+    println!(
+        "{} {}",
+        "Status:".bold(),
+        display::colorize_status(&quota_status.phase)
+    );
 }
-

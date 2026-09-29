@@ -1,12 +1,12 @@
 use anyhow::{Context, Result};
 use colored::*;
 use kube::api::{Api, ListParams};
-use prettytable::{Table, Row, Cell, format};
+use prettytable::{format, Cell, Row, Table};
 use tokio::time::{sleep, Duration};
 
 use crate::client::GryviaClient;
-use crate::types::*;
 use crate::display;
+use crate::types::*;
 
 pub async fn execute(
     client: &GryviaClient,
@@ -34,28 +34,36 @@ pub async fn execute(
 async fn show_queue(client: &GryviaClient, name: &Option<String>) -> Result<()> {
     let api: Api<GryviaAIJob> = Api::all(client.kube_client.clone());
 
-    let jobs = api.list(&ListParams::default()).await
+    let jobs = api
+        .list(&ListParams::default())
+        .await
         .context("Failed to list jobs")?;
 
     // Filter to pending/queued/scheduling jobs
-    let queued: Vec<_> = jobs.items.iter()
+    let queued: Vec<_> = jobs
+        .items
+        .iter()
         .filter(|j| {
             let phase = j.status.as_ref().map(|s| s.phase.as_str()).unwrap_or("");
             matches!(phase, "Pending" | "Queued" | "Scheduling")
         })
         .filter(|j| {
             if let Some(ref filter) = name {
-                j.metadata.name.as_deref().unwrap_or("").contains(filter.as_str())
+                j.metadata
+                    .name
+                    .as_deref()
+                    .unwrap_or("")
+                    .contains(filter.as_str())
             } else {
                 true
             }
         })
         .collect();
 
-    let running: Vec<_> = jobs.items.iter()
-        .filter(|j| {
-            j.status.as_ref().map(|s| s.phase.as_str()) == Some("Running")
-        })
+    let running: Vec<_> = jobs
+        .items
+        .iter()
+        .filter(|j| j.status.as_ref().map(|s| s.phase.as_str()) == Some("Running"))
         .collect();
 
     println!("{}", "━━━ Job Queue ━━━".bold().cyan());
@@ -63,8 +71,14 @@ async fn show_queue(client: &GryviaClient, name: &Option<String>) -> Result<()> 
 
     // Summary
     println!("{}", "Queue Summary:".bold());
-    println!("  Queued/Pending: {}", queued.len().to_string().yellow().bold());
-    println!("  Running:        {}", running.len().to_string().green().bold());
+    println!(
+        "  Queued/Pending: {}",
+        queued.len().to_string().yellow().bold()
+    );
+    println!(
+        "  Running:        {}",
+        running.len().to_string().green().bold()
+    );
     println!();
 
     if queued.is_empty() {
@@ -172,9 +186,18 @@ async fn show_queue(client: &GryviaClient, name: &Option<String>) -> Result<()> 
     let total_running_gpus: u32 = running.iter().map(|j| j.spec.resources.gpu_count).sum();
 
     println!("{}", "GPU Demand:".bold());
-    println!("  Running:  {} GPUs", total_running_gpus.to_string().green());
-    println!("  Queued:   {} GPUs", total_queued_gpus.to_string().yellow());
-    println!("  Total:    {} GPUs", (total_running_gpus + total_queued_gpus).to_string().bold());
+    println!(
+        "  Running:  {} GPUs",
+        total_running_gpus.to_string().green()
+    );
+    println!(
+        "  Queued:   {} GPUs",
+        total_queued_gpus.to_string().yellow()
+    );
+    println!(
+        "  Total:    {} GPUs",
+        (total_running_gpus + total_queued_gpus).to_string().bold()
+    );
 
     Ok(())
 }

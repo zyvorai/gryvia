@@ -1,26 +1,14 @@
 use anyhow::Result;
+use colored::*;
 use kube::api::{Api, ApiResource, GroupVersionKind, ListParams};
 use kube::core::DynamicObject;
-use colored::*;
 use std::collections::{HashMap, HashSet};
 
 use crate::client::GryviaClient;
 
-pub async fn execute(
-    client: &GryviaClient,
-    namespace: &str,
-    format: &str,
-) -> Result<()> {
-    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
-        "gryvia.io",
-        "v1",
-        "GryviaFlow",
-    ));
-    let api: Api<DynamicObject> = Api::namespaced_with(
-        client.kube_client.clone(),
-        namespace,
-        &ar,
-    );
+pub async fn execute(client: &GryviaClient, namespace: &str, format: &str) -> Result<()> {
+    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("gryvia.io", "v1", "GryviaFlow"));
+    let api: Api<DynamicObject> = Api::namespaced_with(client.kube_client.clone(), namespace, &ar);
 
     let flows = match api.list(&ListParams::default()).await {
         Ok(list) => list,
@@ -139,10 +127,7 @@ fn print_ascii_graph(services: &HashSet<String>, edges: &[Edge]) {
     remaining.sort();
 
     for svc in remaining {
-        println!(
-            "  {}",
-            format!("[{}]", svc).bright_white()
-        );
+        println!("  {}", format!("[{}]", svc).bright_white());
         println!("    {} (no outgoing connections)", "(leaf)".dimmed());
         println!();
     }
@@ -217,10 +202,7 @@ fn print_node<'a>(
     println!();
 }
 
-fn print_json_graph(
-    services: &HashSet<String>,
-    edges: &[Edge],
-) -> Result<()> {
+fn print_json_graph(services: &HashSet<String>, edges: &[Edge]) -> Result<()> {
     let nodes: Vec<serde_json::Value> = services
         .iter()
         .map(|s| {

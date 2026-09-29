@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
+use colored::*;
 use kube::api::{Api, ApiResource, GroupVersionKind, ListParams, PostParams};
 use kube::core::DynamicObject;
-use prettytable::{Table, Row, Cell, format};
-use colored::*;
+use prettytable::{format, Cell, Row, Table};
 use serde_json::json;
 
 use crate::client::GryviaClient;
@@ -31,16 +31,30 @@ pub enum SecurityAction {
 
 pub async fn execute(client: &GryviaClient, action: SecurityAction) -> Result<()> {
     match action {
-        SecurityAction::Alerts { severity, alert_type, namespace } => {
-            execute_alerts(client, &namespace, severity.as_deref(), alert_type.as_deref()).await
+        SecurityAction::Alerts {
+            severity,
+            alert_type,
+            namespace,
+        } => {
+            execute_alerts(
+                client,
+                &namespace,
+                severity.as_deref(),
+                alert_type.as_deref(),
+            )
+            .await
         }
-        SecurityAction::Status { namespace } => {
-            execute_status(client, &namespace).await
-        }
+        SecurityAction::Status { namespace } => execute_status(client, &namespace).await,
         SecurityAction::PolicyList { namespace, output } => {
             execute_policy_list(client, &namespace, &output).await
         }
-        SecurityAction::PolicyCreate { name, namespaces, rules, auto_block, namespace } => {
+        SecurityAction::PolicyCreate {
+            name,
+            namespaces,
+            rules,
+            auto_block,
+            namespace,
+        } => {
             execute_policy_create(client, &namespace, &name, &namespaces, &rules, auto_block).await
         }
     }
@@ -60,11 +74,7 @@ async fn execute_alerts(
         "v1",
         "GryviaSecurityPolicy",
     ));
-    let api: Api<DynamicObject> = Api::namespaced_with(
-        client.kube_client.clone(),
-        namespace,
-        &ar,
-    );
+    let api: Api<DynamicObject> = Api::namespaced_with(client.kube_client.clone(), namespace, &ar);
 
     let policies = match api.list(&ListParams::default()).await {
         Ok(list) => list,
@@ -165,11 +175,7 @@ async fn execute_alerts(
 
     table.printstd();
     println!();
-    println!(
-        "  {} Total alerts: {}",
-        "i".cyan().bold(),
-        all_alerts.len()
-    );
+    println!("  {} Total alerts: {}", "i".cyan().bold(), all_alerts.len());
     println!();
 
     Ok(())
@@ -178,10 +184,18 @@ async fn execute_alerts(
 fn classify_alert_severity(alert_type: &str, count: i64) -> &'static str {
     match alert_type {
         "escape" | "privesc" => {
-            if count > 5 { "critical" } else { "high" }
+            if count > 5 {
+                "critical"
+            } else {
+                "high"
+            }
         }
         "mining" | "exfiltration" => {
-            if count > 10 { "high" } else { "medium" }
+            if count > 10 {
+                "high"
+            } else {
+                "medium"
+            }
         }
         "driver_fim" => "medium",
         _ => "low",
@@ -197,11 +211,7 @@ async fn execute_status(client: &GryviaClient, namespace: &str) -> Result<()> {
         "v1",
         "GryviaSecurityPolicy",
     ));
-    let api: Api<DynamicObject> = Api::namespaced_with(
-        client.kube_client.clone(),
-        namespace,
-        &ar,
-    );
+    let api: Api<DynamicObject> = Api::namespaced_with(client.kube_client.clone(), namespace, &ar);
 
     let policies = match api.list(&ListParams::default()).await {
         Ok(list) => list,
@@ -277,11 +287,7 @@ async fn execute_status(client: &GryviaClient, namespace: &str) -> Result<()> {
     Ok(())
 }
 
-async fn execute_policy_list(
-    client: &GryviaClient,
-    namespace: &str,
-    output: &str,
-) -> Result<()> {
+async fn execute_policy_list(client: &GryviaClient, namespace: &str, output: &str) -> Result<()> {
     println!("{}", "━━━ Security Policies ━━━".bold().cyan());
     println!();
 
@@ -290,11 +296,7 @@ async fn execute_policy_list(
         "v1",
         "GryviaSecurityPolicy",
     ));
-    let api: Api<DynamicObject> = Api::namespaced_with(
-        client.kube_client.clone(),
-        namespace,
-        &ar,
-    );
+    let api: Api<DynamicObject> = Api::namespaced_with(client.kube_client.clone(), namespace, &ar);
 
     let policies = match api.list(&ListParams::default()).await {
         Ok(list) => list,
@@ -316,8 +318,7 @@ async fn execute_policy_list(
 
     match output {
         "json" => {
-            let items: Vec<&serde_json::Value> =
-                policies.items.iter().map(|p| &p.data).collect();
+            let items: Vec<&serde_json::Value> = policies.items.iter().map(|p| &p.data).collect();
             println!("{}", serde_json::to_string_pretty(&items)?);
         }
         _ => {
@@ -415,11 +416,7 @@ async fn execute_policy_create(
         "v1",
         "GryviaSecurityPolicy",
     ));
-    let api: Api<DynamicObject> = Api::namespaced_with(
-        client.kube_client.clone(),
-        namespace,
-        &ar,
-    );
+    let api: Api<DynamicObject> = Api::namespaced_with(client.kube_client.clone(), namespace, &ar);
 
     let detection_rules: Vec<serde_json::Value> = rules
         .iter()
@@ -458,7 +455,11 @@ async fn execute_policy_create(
             println!("  Rules: {}", rules.join(", "));
             println!(
                 "  Auto-block: {}",
-                if auto_block { "enabled".green() } else { "disabled".dimmed() }
+                if auto_block {
+                    "enabled".green()
+                } else {
+                    "disabled".dimmed()
+                }
             );
         }
         Err(e) => {

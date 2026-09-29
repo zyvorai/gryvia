@@ -3,8 +3,11 @@
 ## Signing in
 
 The dashboard and API use one shared bearer key. Sign in as **`admin`** with the key as the password.
-The dashboard sends the credentials to `POST /api/auth/login`; the gateway checks them and returns the
-bearer used for later requests. The web UI itself contains no credential.
+The dashboard sends the credentials to `POST /api/auth/login`; the gateway checks them and returns a signed,
+short-lived session token (8 hours by default) that the browser uses for later requests. The web UI contains
+no credential and the long-lived API key is never stored in the browser. Sessions end at expiry (the dashboard
+returns you to the sign-in page) and also when the API key is rotated. Tune them on the gateway with
+`GRYVIA_SESSION_TTL_SECONDS`, and set `GRYVIA_SESSION_SECRET` to sign sessions with a key of their own.
 
 Scripts and `curl` can skip the login and send the key directly:
 

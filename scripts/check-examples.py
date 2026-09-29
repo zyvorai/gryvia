@@ -74,7 +74,7 @@ def main() -> int:
             bad.append((rel, "-", [f"YAML parse error: {str(e).splitlines()[0]}"]))
             continue
         for d in docs:
-            if not isinstance(d, dict) or not str(d.get("apiVersion", "")).startswith("gryvia.io"):
+            if not isinstance(d, dict) or not re.match(r"^gryvia\.io/", str(d.get("apiVersion", ""))):
                 continue
             if "spec" not in d and "status" in d:
                 continue  # illustrative status output, not a manifest
