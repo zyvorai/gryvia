@@ -3,11 +3,12 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/lib/auth'
 
 export default function Login() {
-  const { isAuthenticated, authConfig, loginWithApiKey, loginWithSSO, error: authError } = useAuth()
+  const { isAuthenticated, authConfig, loginWithPassword, loginWithSSO, error: authError } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
 
-  const [apiKey, setApiKey] = useState('')
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
 
@@ -21,16 +22,12 @@ export default function Login() {
 
   const error = localError || authError
 
-  const handleApiKeySubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!apiKey.trim()) {
-      setLocalError('Please enter an API key')
-      return
-    }
     setLocalError(null)
     setIsSubmitting(true)
     try {
-      await loginWithApiKey(apiKey.trim())
+      await loginWithPassword(username, password)
       navigate(from, { replace: true })
     } catch (err) {
       setLocalError(err instanceof Error ? err.message : 'Authentication failed')
@@ -65,23 +62,39 @@ export default function Login() {
         {authConfig?.oidcEnabled && authConfig?.apiKeyEnabled && <p className="faint" style={{ textAlign: 'center', margin: 0 }}>or</p>}
 
         {authConfig?.apiKeyEnabled !== false && (
-          <form onSubmit={handleApiKeySubmit} className="stack" style={{ gap: 14 }}>
-            <label htmlFor="api-key">
-              API key
+          <form onSubmit={handleSubmit} className="stack" style={{ gap: 14 }} noValidate>
+            <label htmlFor="username">
+              Username
               <input
-                id="api-key"
-                type="password"
-                value={apiKey}
+                id="username"
+                value={username}
                 onChange={(e) => {
-                  setApiKey(e.target.value)
+                  setUsername(e.target.value)
                   setLocalError(null)
                 }}
-                placeholder="Enter your API key"
-                autoComplete="current-password"
+                autoFocus
+                autoComplete="username"
+                disabled={isSubmitting}
+                aria-invalid={Boolean(error)}
               />
             </label>
-            <button type="submit" className={authConfig?.oidcEnabled ? 'btn-secondary' : 'primary'} disabled={isSubmitting || !apiKey.trim()}>
-              {isSubmitting ? 'Authenticating…' : 'Sign in with API key'}
+            <label htmlFor="password">
+              Password
+              <input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value)
+                  setLocalError(null)
+                }}
+                autoComplete="current-password"
+                disabled={isSubmitting}
+                aria-invalid={Boolean(error)}
+              />
+            </label>
+            <button type="submit" className={authConfig?.oidcEnabled ? 'btn-secondary' : 'primary'} disabled={isSubmitting}>
+              {isSubmitting ? 'Signing in…' : 'Sign in'}
             </button>
           </form>
         )}

@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { formatDistanceToNow } from 'date-fns'
 import { phaseTone } from '@/lib/phase'
 import { FabricAIJob } from '@/types'
+import { jobFramework, jobGpus } from '@/lib/jobs'
 
 interface JobsTableProps {
   jobs: FabricAIJob[]
@@ -36,10 +37,8 @@ export default function JobsTable({ jobs, compact = false }: JobsTableProps) {
                     {job.metadata.name}
                   </Link>
                 </td>
-                <td>{job.spec.framework}</td>
-                <td>
-                  {job.spec.resources.gpuCount} × {job.spec.resources.gpuType}
-                </td>
+                <td>{jobFramework(job)}</td>
+                <td>{jobGpus(job)}</td>
                 <td>
                   <span className={`pill ${phaseTone(job.status?.phase)}`}>{job.status?.phase || 'Unknown'}</span>
                 </td>

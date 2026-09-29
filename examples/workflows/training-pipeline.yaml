@@ -64,12 +64,13 @@ spec:
             name: data-prep-{{workflow.name}}
             namespace: default
           spec:
-            framework: pytorch
+            type: training
+            gpus: 1
+            gpuType: T4
             resources:
-              gpuType: T4
-              gpuCount: 1
-              memory: 32Gi
-              cpu: 16
+              requests:
+                cpu: "16"
+                memory: 32Gi
             image: nvcr.io/nvidia/pytorch:24.01-py3
             command:
               - python
@@ -91,17 +92,18 @@ spec:
             name: training-{{workflow.name}}
             namespace: default
           spec:
-            framework: pytorch
+            type: training
             distributed:
+              framework: pytorch
               enabled: true
-              strategy: ddp
               nodes: 1
               gpusPerNode: {{workflow.parameters.gpu-count}}
+            gpus: {{workflow.parameters.gpu-count}}
+            gpuType: {{workflow.parameters.gpu-type}}
             resources:
-              gpuType: {{workflow.parameters.gpu-type}}
-              gpuCount: {{workflow.parameters.gpu-count}}
-              memory: 512Gi
-              cpu: 64
+              requests:
+                cpu: "64"
+                memory: 512Gi
             image: nvcr.io/nvidia/pytorch:24.01-py3
             command:
               - torchrun
@@ -127,12 +129,13 @@ spec:
             name: eval-{{workflow.name}}
             namespace: default
           spec:
-            framework: pytorch
+            type: training
+            gpus: 1
+            gpuType: A100-80G
             resources:
-              gpuType: A100-80G
-              gpuCount: 1
-              memory: 128Gi
-              cpu: 16
+              requests:
+                cpu: "16"
+                memory: 128Gi
             image: nvcr.io/nvidia/pytorch:24.01-py3
             command:
               - python
@@ -155,12 +158,13 @@ spec:
             name: export-{{workflow.name}}
             namespace: default
           spec:
-            framework: pytorch
+            type: training
+            gpus: 1
+            gpuType: T4
             resources:
-              gpuType: T4
-              gpuCount: 1
-              memory: 32Gi
-              cpu: 8
+              requests:
+                cpu: "8"
+                memory: 32Gi
             image: nvcr.io/nvidia/pytorch:24.01-py3
             command:
               - python

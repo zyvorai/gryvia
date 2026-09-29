@@ -38,7 +38,7 @@ export default function Nodes() {
         </div>
         <div>
           <span>RDMA Enabled</span>
-          <b>{nodes?.filter((n) => n.spec?.rdmaEnabled).length || 0}</b>
+          <b>{nodes?.filter((n) => n.spec?.rdma).length || 0}</b>
         </div>
         <div>
           <span>Ready Nodes · {notReady} degraded</span>
@@ -56,7 +56,7 @@ export default function Nodes() {
                 <h2>{node.spec?.nodeName || node.metadata?.name}</h2>
                 <div className="row">
                   <span className={`pill ${phaseCls}`}>{phase || 'Unknown'}</span>
-                  {node.spec?.rdmaEnabled && <span className="pill info">RDMA</span>}
+                  {node.spec?.rdma && <span className="pill info">RDMA</span>}
                 </div>
               </div>
 
@@ -71,15 +71,17 @@ export default function Nodes() {
                 </div>
                 <div>
                   <span>Memory</span>
-                  <b>{node.spec?.memory || 'N/A'}</b>
+                  <b>{node.spec?.memoryGB ? `${node.spec.memoryGB} GB` : 'N/A'}</b>
                 </div>
               </div>
 
-              {node.status?.gpus && node.status.gpus.length > 0 && (
+              {node.status?.gpuStatus && node.status.gpuStatus.length > 0 && (
                 <div className="card-grid">
-                  {node.status.gpus.map((gpu) => {
+                  {node.status.gpuStatus.map((gpu) => {
                     const memUsedGB = Number(gpu.memoryUsed) / 1024 || 0
                     const memTotalGB = Number(gpu.memoryTotal) / 1024 || 0
+                    const temperature = gpu.temperature ?? 0
+                    const utilization = gpu.utilization ?? 0
                     const memPercent = memTotalGB > 0 ? Math.min(100, (memUsedGB / memTotalGB) * 100) : 0
                     return (
                       <div key={gpu.index}>
@@ -89,11 +91,11 @@ export default function Nodes() {
                         </div>
                         <MetricBar
                           label="Temperature"
-                          value={`${gpu.temperature}°C`}
-                          percent={Math.min(gpu.temperature, 100)}
-                          tone={gpu.temperature > 80 ? 'bad' : gpu.temperature > 70 ? 'warn' : ''}
+                          value={`${temperature}°C`}
+                          percent={Math.min(temperature, 100)}
+                          tone={temperature > 80 ? 'bad' : temperature > 70 ? 'warn' : ''}
                         />
-                        <MetricBar label="Utilization" value={`${gpu.utilization}%`} percent={Math.min(gpu.utilization, 100)} />
+                        <MetricBar label="Utilization" value={`${utilization}%`} percent={Math.min(utilization, 100)} />
                         <MetricBar
                           label="Memory"
                           value={`${memUsedGB.toFixed(1)} / ${memTotalGB.toFixed(1)} GB`}

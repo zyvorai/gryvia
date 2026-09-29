@@ -287,6 +287,11 @@ register_routers(app, Deps(
 ))
 
 
+def _node_gpu_status(status: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Per-GPU status of a FabricGpuNode: ``status.gpuStatus`` (older objects used ``gpus``)."""
+    return status.get("gpuStatus") or status.get("gpus") or []
+
+
 @app.get("/")
 async def root():
     return {"status": "healthy", "service": "gryvia-api-gateway"}
@@ -337,7 +342,7 @@ async def get_cluster_stats(request: Request, _=Depends(verify_auth)):
 
             # Get GPU metrics from status
             status = node.get("status", {})
-            for gpu in status.get("gpus", []):
+            for gpu in _node_gpu_status(status):
                 gpu_utilization_sum += gpu.get("utilization", 0)
                 gpu_count += 1
 
@@ -402,7 +407,7 @@ async def get_gpu_metrics(
         for node in nodes.get("items", []):
             spec = node.get("spec", {})
             status = node.get("status", {})
-            for gpu in status.get("gpus", []):
+            for gpu in _node_gpu_status(status):
                 metrics.append({
                     "node": spec.get("nodeName", "unknown"),
                     "gpuIndex": gpu.get("index", 0),
@@ -946,7 +951,7 @@ async def get_node_health(
             gpu_health = "Healthy"
             issues = []
 
-            for gpu in status.get("gpus", []):
+            for gpu in _node_gpu_status(status):
                 temp = gpu.get("temperature", 0)
                 if temp > 90:
                     gpu_health = "Critical"
@@ -962,7 +967,7 @@ async def get_node_health(
                 "phase": status.get("phase", "Unknown"),
                 "health": gpu_health,
                 "issues": issues,
-                "rdmaEnabled": spec.get("rdmaEnabled", False)
+                "rdmaEnabled": bool(spec.get("rdma", spec.get("rdmaEnabled", False)))
             })
 
         total = len(health_data)
@@ -1039,7 +1044,7 @@ async def get_current_user(request: Request, _=Depends(verify_auth)):
         "method": "api_key",
         "sub": "api-key-user",
         "email": "",
-        "name": "API Key User",
+        "name": "admin",
         "groups": [],
         "org": "",
         "tenantNamespaces": None,

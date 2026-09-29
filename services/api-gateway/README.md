@@ -117,7 +117,7 @@ docker run -p 8080:8080 \
 kubectl apply -f ../../manifests/deploy/api-gateway-deployment.yaml
 ```
 
-The service will be exposed internally at `http://gryvia-api-gateway.gryvia-system:8080`.
+The service will be exposed internally at `https://gryvia-api-gateway.gryvia-system:8080` (self-signed certificate; clients must skip verification or trust it).
 
 ### Configuration
 

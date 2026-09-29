@@ -7,6 +7,7 @@ import LoadingSpinner from '@/components/LoadingSpinner'
 import PageHero from '@/components/PageHero'
 import Reveal from '@/components/Reveal'
 import { phaseTone } from '@/lib/phase'
+import { jobFramework, jobGpus } from '@/lib/jobs'
 
 export default function Dashboard() {
   const { data: clusterStats, isLoading: statsLoading, isError: statsError } = useQuery({
@@ -182,7 +183,7 @@ function JobRow({ job }: { job: FabricAIJob }) {
       <div className="grow">
         <b>{job.metadata?.name}</b>
         <small>
-          {job.spec?.framework || 'job'} · {job.spec?.resources?.gpuType || 'GPU'} × {job.spec?.resources?.gpuCount || '?'}
+          {jobFramework(job)} · {jobGpus(job)}
         </small>
       </div>
       <span className={`pill ${phaseTone(phase)}`}>{phase}</span>

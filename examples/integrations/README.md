@@ -107,12 +107,13 @@ kind: FabricAIJob
 metadata:
   name: vscode-server
 spec:
-  framework: pytorch
+  type: training
+  gpus: 1
+  gpuType: A100-80G
   resources:
-    gpuType: A100-80G
-    gpuCount: 1
-    memory: 64Gi
-    cpu: 16
+    requests:
+      cpu: "16"
+      memory: 64Gi
   image: codercom/code-server:4.96.4
   command:
     - code-server
@@ -243,10 +244,9 @@ kind: FabricAIJob
 metadata:
   name: kfp-training
 spec:
-  framework: pytorch
-  resources:
-    gpuType: {gpu_type}
-    gpuCount: {gpu_count}
+  type: training
+  gpus: {gpu_count}
+  gpuType: {gpu_type}
   image: nvcr.io/nvidia/pytorch:24.01-py3
   command:
     - python
@@ -330,12 +330,13 @@ kind: FabricAIJob
 metadata:
   name: rstudio-server
 spec:
-  framework: pytorch  # For GPU access
+  type: training
+  gpus: 1
+  gpuType: A100-40G
   resources:
-    gpuType: A100-40G
-    gpuCount: 1
-    memory: 64Gi
-    cpu: 16
+    requests:
+      cpu: "16"
+      memory: 64Gi
   image: rocker/ml-gpu:4.4.0
   command:
     - /init

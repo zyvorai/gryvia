@@ -8,22 +8,27 @@ export interface FabricAIJob {
     labels?: Record<string, string>
   }
   spec: {
-    framework: string
-    resources: {
-      gpuType: string
-      gpuCount: number
-      memory: string
-      cpu: number
-    }
+    /** training | inference | fine-tuning | evaluation */
+    type: string
+    image: string
+    /** Total GPUs for the job. */
+    gpus: number
+    gpuType?: string
+    model?: string
+    command?: string[]
+    args?: string[]
+    env?: Array<{ name: string; value: string }>
     distributed?: {
-      enabled: boolean
-      strategy?: string
+      enabled?: boolean
+      framework?: string
       nodes?: number
       gpusPerNode?: number
+      backend?: string
     }
-    image: string
-    command: string[]
-    env?: Array<{ name: string; value: string }>
+    resources?: {
+      requests?: { cpu?: string | number; memory?: string }
+      limits?: { cpu?: string | number; memory?: string }
+    }
   }
   status?: {
     phase: 'Pending' | 'Running' | 'Completed' | 'Succeeded' | 'Failed' | 'Queued'
@@ -82,18 +87,20 @@ export interface FabricGpuNode {
     nodeName: string
     gpuType: string
     gpuCount: number
-    memory: string
-    rdmaEnabled: boolean
+    memoryGB?: number
+    rdma?: boolean
+    interconnect?: string
   }
   status?: {
     phase: string
-    gpus?: Array<{
+    gpuStatus?: Array<{
       index: number
-      uuid: string
-      temperature: number
-      utilization: number
-      memoryUsed: number
-      memoryTotal: number
+      uuid?: string
+      health?: string
+      temperature?: number
+      utilization?: number
+      memoryUsed?: number
+      memoryTotal?: number
     }>
   }
 }

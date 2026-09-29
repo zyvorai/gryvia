@@ -5,6 +5,7 @@ import LoadingSpinner from '@/components/LoadingSpinner'
 import PageHero from '@/components/PageHero'
 import { useNow } from '@/lib/useNow'
 import { phaseTone } from '@/lib/phase'
+import { jobFramework } from '@/lib/jobs'
 
 export default function JobDetails() {
   const { name } = useParams<{ name: string }>()
@@ -87,19 +88,19 @@ export default function JobDetails() {
         <div className="apple-metric-band">
           <div>
             <span>GPU Type</span>
-            <b>{job.spec.resources.gpuType}</b>
+            <b>{job.spec.gpuType || '-'}</b>
           </div>
           <div>
             <span>GPU Count</span>
-            <b>{job.spec.resources.gpuCount}</b>
+            <b>{job.spec.gpus}</b>
           </div>
           <div>
             <span>Memory</span>
-            <b>{job.spec.resources.memory}</b>
+            <b>{job.spec.resources?.requests?.memory ?? '-'}</b>
           </div>
           <div>
             <span>CPU Cores</span>
-            <b>{job.spec.resources.cpu}</b>
+            <b>{job.spec.resources?.requests?.cpu ?? '-'}</b>
           </div>
         </div>
       </section>
@@ -109,7 +110,7 @@ export default function JobDetails() {
         <div className="card-grid">
           <div>
             <span className="faint">Framework</span>
-            <p>{job.spec.framework}</p>
+            <p>{jobFramework(job)}</p>
           </div>
           <div>
             <span className="faint">Image</span>
@@ -120,10 +121,6 @@ export default function JobDetails() {
               <div>
                 <span className="faint">Distributed Training</span>
                 <p>Enabled</p>
-              </div>
-              <div>
-                <span className="faint">Strategy</span>
-                <p>{job.spec.distributed.strategy}</p>
               </div>
               {job.spec.distributed.nodes && (
                 <div>

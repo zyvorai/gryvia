@@ -16,13 +16,37 @@ spec:
         app: gryvia-api-gateway
     spec:
       serviceAccountName: gryvia-api-gateway
+      initContainers:
+      - name: gen-cert
+        image: alpine/openssl:3.3.2
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          openssl req -x509 -nodes -days 3650 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -keyout /tls/tls.key -out /tls/tls.crt -subj "/CN=gryvia-api-gateway/O=Gryvia" -addext "subjectAltName=DNS:gryvia-api-gateway,DNS:gryvia-api-gateway.gryvia-system.svc,DNS:localhost,IP:127.0.0.1,IP:$HOST_IP"
+          chown 1000:1000 /tls/tls.key /tls/tls.crt
+          chmod 600 /tls/tls.key
+        env:
+        - name: HOST_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+        securityContext:
+          runAsUser: 0
+          runAsNonRoot: false
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+            add: ["CHOWN", "DAC_OVERRIDE", "FOWNER"]
+        volumeMounts:
+        - name: tls
+          mountPath: /tls
       containers:
       - name: api-gateway
         image: gryvia/api-gateway:1.0.0
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8080
-          name: http
+          name: https
         env:
         - name: PROMETHEUS_URL
           valueFrom:
@@ -36,6 +60,10 @@ spec:
               fieldPath: metadata.namespace
         - name: LOG_LEVEL
           value: "INFO"
+        - name: GRYVIA_TLS_CERT
+          value: /tls/tls.crt
+        - name: GRYVIA_TLS_KEY
+          value: /tls/tls.key
         resources:
           requests:
             cpu: 200m
@@ -46,13 +74,15 @@ spec:
         livenessProbe:
           httpGet:
             path: /health
-            port: http
+            port: https
+            scheme: HTTPS
           initialDelaySeconds: 10
           periodSeconds: 10
         readinessProbe:
           httpGet:
             path: /health
-            port: http
+            port: https
+            scheme: HTTPS
           initialDelaySeconds: 5
           periodSeconds: 5
         securityContext:
@@ -66,8 +96,13 @@ spec:
         volumeMounts:
         - name: tmp
           mountPath: /tmp
+        - name: tls
+          mountPath: /tls
+          readOnly: true
       volumes:
       - name: tmp
+        emptyDir: {}
+      - name: tls
         emptyDir: {}
 ---
 apiVersion: v1
@@ -83,9 +118,9 @@ spec:
     app: gryvia-api-gateway
   ports:
   - port: 8080
-    targetPort: http
+    targetPort: https
     protocol: TCP
-    name: http
+    name: https
 ---
 apiVersion: v1
 kind: ServiceAccount

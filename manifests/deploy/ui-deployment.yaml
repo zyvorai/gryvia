@@ -16,13 +16,37 @@ spec:
         app: gryvia-ui
     spec:
       serviceAccountName: gryvia-ui
+      initContainers:
+      - name: gen-cert
+        image: alpine/openssl:3.3.2
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          openssl req -x509 -nodes -days 3650 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -keyout /tls/tls.key -out /tls/tls.crt -subj "/CN=gryvia-ui/O=Gryvia" -addext "subjectAltName=DNS:gryvia-ui,DNS:gryvia-ui.gryvia-system.svc,DNS:localhost,IP:127.0.0.1,IP:$HOST_IP"
+          chown 101:101 /tls/tls.key /tls/tls.crt
+          chmod 600 /tls/tls.key
+        env:
+        - name: HOST_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+        securityContext:
+          runAsUser: 0
+          runAsNonRoot: false
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+            add: ["CHOWN", "DAC_OVERRIDE", "FOWNER"]
+        volumeMounts:
+        - name: tls
+          mountPath: /tls
       containers:
       - name: ui
         image: gryvia/ui:1.0.0
         imagePullPolicy: IfNotPresent
         ports:
-        - containerPort: 80
-          name: http
+        - containerPort: 8443
+          name: https
         resources:
           requests:
             cpu: 100m
@@ -33,13 +57,15 @@ spec:
         livenessProbe:
           httpGet:
             path: /
-            port: http
+            port: https
+            scheme: HTTPS
           initialDelaySeconds: 10
           periodSeconds: 10
         readinessProbe:
           httpGet:
             path: /
-            port: http
+            port: https
+            scheme: HTTPS
           initialDelaySeconds: 5
           periodSeconds: 5
         securityContext:
@@ -57,7 +83,12 @@ spec:
           mountPath: /var/run
         - name: nginx-tmp
           mountPath: /tmp
+        - name: tls
+          mountPath: /tls
+          readOnly: true
       volumes:
+      - name: tls
+        emptyDir: {}
       - name: nginx-cache
         emptyDir: {}
       - name: nginx-run
@@ -77,10 +108,10 @@ spec:
   selector:
     app: gryvia-ui
   ports:
-  - port: 80
-    targetPort: http
+  - port: 443
+    targetPort: https
     protocol: TCP
-    name: http
+    name: https
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -120,6 +151,7 @@ metadata:
   namespace: gryvia-system
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
 spec:
   ingressClassName: nginx
@@ -137,4 +169,4 @@ spec:
           service:
             name: gryvia-ui
             port:
-              number: 80
+              number: 443

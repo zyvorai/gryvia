@@ -7,7 +7,8 @@
 #   2. build the gpu-operator, ai-operator, api-gateway and ui images with podman
 #      and import them into k3s's containerd
 #   3. install the CRDs, then the gryvia-core Helm chart (operators)
-#   4. deploy the API gateway and web UI, expose the UI on NodePort 30880
+#   4. deploy the API gateway and web UI (both HTTPS, self-signed certificates minted by
+#      an init container in each pod), expose the UI on NodePort 30880
 #   5. wait for every rollout, then smoke-test the UI, the API and a custom resource
 #
 # Usage:
@@ -19,8 +20,10 @@
 #   ./scripts/deploy-remote.sh user@10.0.1.5 --dry-run      # print the remote script
 #
 # Environment:
-#   GRYVIA_API_KEY          API key for the gateway (default: generated once and kept
-#                           in ~/.gryvia/api-key on the host, mode 600)
+#   GRYVIA_API_KEY          Gateway bearer / dashboard password (default: Admin@321, so
+#                           you can sign in as admin / Admin@321). Set your own for
+#                           anything reachable from an untrusted network. Written to
+#                           ~/.gryvia/api-key on the host (mode 600).
 #   GRYVIA_REMOTE_SUBDIR    checkout dir relative to the remote $HOME
 #                           (default: .deployments/gryvia)
 #   GRYVIA_UI_NODEPORT      NodePort for the web UI (default: 30880)
@@ -109,34 +112,45 @@ EOF
   exit 0
 fi
 
-# Smoke test, run on the host against the NodePort and the cluster.
+# Smoke test, run on the host against the NodePort and the cluster. The certificate is
+# self-signed, so curl runs with -k.
 smoke_script=$(cat <<EOF
 set -uo pipefail
 $(preamble)
 KEY="\$(cat "\$HOME/.gryvia/api-key" 2>/dev/null || true)"
-BASE="http://127.0.0.1:${UI_NODEPORT}"
+BASE="https://127.0.0.1:${UI_NODEPORT}"
 fail=0
 check() { # check <name> <command...>
   local name="\$1"; shift
   if "\$@" >/dev/null 2>&1; then echo "  PASS  \$name"; else echo "  FAIL  \$name"; fail=1; fi
 }
-authed() { curl -sf -H "Authorization: Bearer \$KEY" "\$@"; }
-unauth_rejected() { local c; c="\$(curl -s -o /dev/null -w '%{http_code}' "\$BASE/api/cluster/stats")"; [[ "\$c" == 401 || "\$c" == 403 ]]; }
+authed() { curl -sfk -H "Authorization: Bearer \$KEY" "\$@"; }
+unauth_rejected() { local c; c="\$(curl -sk -o /dev/null -w '%{http_code}' "\$BASE/api/cluster/stats")"; [[ "\$c" == 401 || "\$c" == 403 ]]; }
 echo "Gryvia smoke test"
 check "namespace exists" kubectl get ns gryvia-system
 check "CRD fabricaijobs.gryvia.io established" kubectl wait --for=condition=Established crd/fabricaijobs.gryvia.io --timeout=30s
 for d in gryvia-core-gpu-operator gryvia-core-ai-operator gryvia-api-gateway gryvia-ui; do
   check "deployment \$d available" kubectl -n gryvia-system wait --for=condition=Available deployment/\$d --timeout=60s
 done
-check "UI serves index" curl -sf "\$BASE/"
+check "UI serves index" curl -sfk "\$BASE/"
 check "API rejects a request without a key" unauth_rejected
 check "API accepts the key (cluster stats)" authed "\$BASE/api/cluster/stats"
+check "auth/me identifies admin" bash -c "curl -sfk -H 'Authorization: Bearer \$KEY' '\$BASE/api/auth/me' | grep -q '\\"name\\": *\\"admin\\"'"
+bad_bearer_rejected() { local c; c="\$(curl -sk -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer not-the-key' "\$BASE/api/auth/me")"; [[ "\$c" == 401 || "\$c" == 403 ]]; }
+check "auth/me rejects a wrong bearer" bad_bearer_rejected
 check "API lists jobs" authed "\$BASE/api/jobs"
 check "API lists nodes" authed "\$BASE/api/nodes"
+# Every read endpoint the dashboard calls must answer 200 with JSON.
+for path in cluster/stats jobs quotas nodes metrics/gpu metrics/costs \\
+    network/flows network/policies network/insights network/graph network/anomalies network/costs network/traces \\
+    security/alerts security/policies ai/training/insight ai/training/nccl gpu/memory \\
+    workspaces models inference workflows tuners; do
+  check "GET /api/\$path" bash -c "curl -sfk -H 'Authorization: Bearer \$KEY' '\$BASE/api/\$path' | python3 -c 'import sys,json; json.load(sys.stdin)'"
+done
 # Custom resource: accepted by the API server and visible through the Gryvia API.
 kubectl delete fabricquota gryvia-smoke --ignore-not-found >/dev/null 2>&1 || true
 if kubectl apply -f "\$HOME/${REMOTE_SUBDIR}/scripts/lib/smoke-quota.yaml" >/dev/null 2>&1; then
-  check "FabricQuota visible through the API" bash -c "curl -sf -H 'Authorization: Bearer \$KEY' '\$BASE/api/quotas' | grep -q gryvia-smoke"
+  check "FabricQuota visible through the API" bash -c "curl -sfk -H 'Authorization: Bearer \$KEY' '\$BASE/api/quotas' | grep -q gryvia-smoke"
   kubectl delete fabricquota gryvia-smoke --ignore-not-found >/dev/null 2>&1 || true
 else
   echo "  FAIL  apply FabricQuota"; fail=1
@@ -178,11 +192,9 @@ REG="ghcr.io/zyvorai"
 source scripts/lib/deploy-guards.sh
 deploy_disk_guard /
 
-# API key: explicit > previously generated > new. Kept on the host, mode 600.
+# API key (dashboard password for user "admin"): explicit env, else the lab default.
 mkdir -p "\$HOME/.gryvia"
-API_KEY="${API_KEY_LOCAL}"
-if [[ -z "\$API_KEY" && -r "\$HOME/.gryvia/api-key" ]]; then API_KEY="\$(cat "\$HOME/.gryvia/api-key")"; fi
-if [[ -z "\$API_KEY" ]]; then API_KEY="\$(openssl rand -hex 24)"; fi
+API_KEY="${API_KEY_LOCAL:-Admin@321}"
 printf '%s\n' "\$API_KEY" > "\$HOME/.gryvia/api-key"
 chmod 600 "\$HOME/.gryvia/api-key"
 
@@ -252,7 +264,7 @@ sed "s#image: gryvia/api-gateway:.*#image: \$REG/gryvia-api-gateway:\$VERSION#" 
 sed "s#image: gryvia/ui:.*#image: \$REG/gryvia-ui:\$VERSION#" manifests/deploy/ui-deployment.yaml | kubectl apply -f -
 kubectl -n gryvia-system set env deployment/gryvia-api-gateway --from=secret/gryvia-api-key
 kubectl -n gryvia-system patch svc gryvia-ui --type merge \\
-  -p "{\"spec\":{\"type\":\"NodePort\",\"ports\":[{\"name\":\"http\",\"port\":80,\"targetPort\":\"http\",\"protocol\":\"TCP\",\"nodePort\":\$UI_NODEPORT}]}}"
+  -p "{\"spec\":{\"type\":\"NodePort\",\"ports\":[{\"name\":\"https\",\"port\":443,\"targetPort\":\"https\",\"protocol\":\"TCP\",\"nodePort\":\$UI_NODEPORT}]}}"
 
 # A fixed tag never changes the pod template, so restart to pick up freshly imported images.
 # image-name:deployment:label selector
@@ -270,8 +282,11 @@ for spec in "\${WORKLOADS[@]}"; do
   deploy_wait_ready deployment/\$dep "\$sel" "\$ref"
 done
 
-echo "GRYVIA_UI=http://\$(hostname -I | awk '{print \$1}'):\$UI_NODEPORT"
-echo "API key stored in ~/.gryvia/api-key on the host"
+echo "GRYVIA_UI=https://\$(hostname -I | awk '{print \$1}'):\$UI_NODEPORT"
+echo "Sign in as: admin / \$API_KEY  (stored in ~/.gryvia/api-key on the host)"
+if [[ "\$API_KEY" == "Admin@321" ]]; then
+  echo "WARNING: this is the default lab credential. Set GRYVIA_API_KEY for anything reachable from an untrusted network."
+fi
 EOF
 )
 

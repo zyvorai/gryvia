@@ -77,12 +77,13 @@ spec:
             labels:
               sweep: "{{workflow.name}}"
           spec:
-            framework: pytorch
+            type: training
+            gpus: 1
+            gpuType: A100-40G
             resources:
-              gpuType: A100-40G
-              gpuCount: 1
-              memory: 64Gi
-              cpu: 16
+              requests:
+                cpu: "16"
+                memory: 64Gi
             image: nvcr.io/nvidia/pytorch:24.01-py3
             command:
               - python

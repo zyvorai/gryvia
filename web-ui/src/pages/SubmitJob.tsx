@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
+import { FRAMEWORK_LABEL } from '@/lib/jobs'
 import { api } from '@/lib/api'
 import type { FabricAIJob } from '@/types'
 import { Trash2 } from 'lucide-react'
@@ -18,7 +19,6 @@ export default function SubmitJob() {
     image: 'nvcr.io/nvidia/pytorch:24.01-py3',
     command: '',
     distributedEnabled: false,
-    distributedStrategy: 'ddp',
     nodes: 1,
     gpusPerNode: 1,
     env: [] as Array<{ id: number; name: string; value: string }>,
@@ -50,20 +50,20 @@ export default function SubmitJob() {
       kind: 'FabricAIJob',
       metadata: {
         name: formData.name,
+        labels: { [FRAMEWORK_LABEL]: formData.framework },
       },
       spec: {
-        framework: formData.framework,
-        resources: {
-          gpuType: formData.gpuType,
-          gpuCount: formData.gpuCount,
-          memory: formData.memory,
-          cpu: formData.cpu,
-        },
+        type: 'training',
         image: formData.image,
+        gpus: formData.distributedEnabled ? formData.nodes * formData.gpusPerNode : formData.gpuCount,
+        gpuType: formData.gpuType,
         command: splitCommand(formData.command),
+        resources: {
+          requests: { cpu: String(formData.cpu), memory: formData.memory },
+        },
         distributed: formData.distributedEnabled ? {
           enabled: true,
-          strategy: formData.distributedStrategy,
+          framework: formData.framework,
           nodes: formData.nodes,
           gpusPerNode: formData.gpusPerNode,
         } : undefined,
@@ -212,19 +212,6 @@ export default function SubmitJob() {
 
             {formData.distributedEnabled && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <label className="stack" style={{ gap: 6 }}>
-                  <span className="faint">Strategy</span>
-                  <select
-                    value={formData.distributedStrategy}
-                    onChange={(e) => setFormData({ ...formData, distributedStrategy: e.target.value })}
-                  >
-                    <option value="ddp">DDP (Distributed Data Parallel)</option>
-                    <option value="fsdp">FSDP (Fully Sharded Data Parallel)</option>
-                    <option value="horovod">Horovod</option>
-                    <option value="deepspeed">DeepSpeed</option>
-                  </select>
-                </label>
-
                 <label className="stack" style={{ gap: 6 }}>
                   <span className="faint">Nodes</span>
                   <input

@@ -133,10 +133,10 @@ Example jobs:
 ### Web UI
 
 ```bash
-kubectl port-forward -n gryvia-system svc/gryvia-ui 8080:80
+kubectl port-forward -n gryvia-system svc/gryvia-ui 8443:443
 ```
 
-Open http://localhost:8080
+Open https://localhost:8443 (self-signed certificate; accept the browser warning)
 
 ### CLI
 
@@ -183,17 +183,18 @@ metadata:
   labels:
     team: nlp
 spec:
-  framework: pytorch
+  type: training
   distributed:
+    framework: pytorch
     enabled: true
-    strategy: fsdp
     nodes: 1
     gpusPerNode: 8
+  gpus: 8
+  gpuType: H100
   resources:
-    gpuType: H100
-    gpuCount: 8
-    memory: 512Gi
-    cpu: 64
+    requests:
+      cpu: "64"
+      memory: 512Gi
   image: nvcr.io/nvidia/pytorch:24.01-py3
   command:
     - torchrun

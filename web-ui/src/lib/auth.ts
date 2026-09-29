@@ -31,6 +31,7 @@ export interface AuthContextType {
   user: UserInfo | null
   authConfig: AuthConfig | null
   loginWithApiKey: (apiKey: string) => Promise<void>
+  loginWithPassword: (username: string, password: string) => Promise<void>
   loginWithSSO: () => void
   handleOIDCCallback: (code: string) => Promise<void>
   logout: () => void
@@ -82,6 +83,7 @@ export const AuthContext = createContext<AuthContextType>({
   user: null,
   authConfig: null,
   loginWithApiKey: async () => {},
+  loginWithPassword: async () => {},
   loginWithSSO: () => {},
   handleOIDCCallback: async () => {},
   logout: () => {},

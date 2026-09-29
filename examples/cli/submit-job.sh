@@ -12,18 +12,19 @@ metadata:
   name: llm-training
   namespace: ml-training
 spec:
-  framework: pytorch
+  type: training
   distributed:
+    framework: pytorch
     enabled: true
-    strategy: ddp
     nodes: 4
     gpusPerNode: 8
 
+  gpus: 32   # 4 nodes x 8 GPUs
+  gpuType: H100
   resources:
-    gpuType: H100
-    gpuCount: 8
-    memory: 1Ti
-    cpu: 96
+    requests:
+      cpu: "96"
+      memory: 1Ti
 
   image: nvcr.io/nvidia/pytorch:24.01-py3
 

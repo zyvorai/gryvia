@@ -11,30 +11,32 @@ Get Gryvia running in minutes.
 
 ## Option 1: One-Command Remote Deploy
 
-Deploy to any server with a Kubernetes cluster:
+Deploy to a single-node k3s server over SSH (key authentication; the SSH user needs `sudo`,
+`podman`, `helm`, and access to the k3s cluster):
 
 ```bash
-# Full deployment (rsync + CRDs + operators + Web UI)
-./scripts/deploy-remote.sh <host> <user> <password>
+# Full deployment: rsync, build images on the host, CRDs, operators, API gateway, Web UI
+./scripts/deploy-remote.sh <host> <user>        # or: user@host
 
-# Example
-./scripts/deploy-remote.sh 185.165.240.5 root mypassword
+# Skip the image builds (images already imported on the host)
+./scripts/deploy-remote.sh <host> <user> --quick
 
-# Quick mode (skip system deps, just rsync + kubectl apply)
-./scripts/deploy-remote.sh 185.165.240.5 root mypassword --quick
-
-# SSH key auth (no password)
-./scripts/deploy-remote.sh 185.165.240.5 root --quick
+# Re-run only the health and API checks
+./scripts/deploy-remote.sh <host> <user> --verify-only
 ```
 
-Expected output:
-```
-  ✅ Synced to 185.165.240.5:/root/gryvia
-  ✅ Prerequisites checked
-  ✅ CRDs installed
-  ✅ Operators deployed
-  ✅ API gateway and Web UI deployed
-  ✅ Deployment verified
+The script finishes with a smoke test (deployments, UI, API authentication, every dashboard
+endpoint, and a custom-resource round trip) and prints the dashboard URL, `https://<host>:30880`. The UI and the API gateway serve HTTPS with a
+self-signed certificate generated when the pod starts, so the browser shows a warning to accept once, and `curl` needs `-k`.
+
+### Signing in
+
+Open the dashboard and sign in as **`admin`** with password **`Admin@321`**. That is a
+well-known lab default, so for anything reachable from an untrusted network deploy with your
+own key. It becomes the `admin` password:
+
+```bash
+GRYVIA_API_KEY='a-long-random-secret' ./scripts/deploy-remote.sh <host> <user>
 ```
 
 ## Option 2: Manual Install
@@ -227,7 +229,7 @@ gryvia cost --period month
 
 ```bash
 # Via deploy script
-./scripts/deploy-remote.sh <host> <user> <password> --uninstall
+./scripts/deploy-remote.sh <host> <user> --uninstall
 
 # Or manually
 kubectl delete namespace gryvia-system
