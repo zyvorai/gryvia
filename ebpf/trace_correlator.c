@@ -77,13 +77,13 @@ static __always_inline int hex_to_val(char c)
  * distinct state per offset and exceeds its complexity limit on some kernels (E2BIG on 6.17). */
 #define SCAN_BUF 1024 /* power of two: indexes are masked with SCAN_BUF - 1 */
 
-/* Mask an index and keep the mask: the empty asm stops clang from dropping the AND (it can prove the index is small
- * from earlier checks, but older verifiers cannot, and reject the access as unbounded). */
+/* Mask an index so the verifier can bound the access. The empty asm comes first so clang cannot prove the value
+ * is already small (from earlier checks) and drop the AND; older verifiers cannot see that bound and would reject
+ * the access as unbounded. */
 static __always_inline __u32 clamp_idx(__u32 i)
 {
-    i &= SCAN_BUF - 1;
     asm volatile("" : "+r"(i));
-    return i;
+    return i & (SCAN_BUF - 1);
 }
 #define SB(b, i) ((b)->d[clamp_idx(i)])
 
