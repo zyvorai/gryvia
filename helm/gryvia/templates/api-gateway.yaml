@@ -36,6 +36,15 @@ spec:
         - containerPort: 8080
           name: https
         env:
+        - name: GRYVIA_FLIGHT_COLLECTOR_NAMESPACE
+          value: {{ .Values.apiGateway.flightCollectorNamespace | quote }}
+        {{- if .Values.apiGateway.flightTokenSecret }}
+        - name: GRYVIA_FLIGHT_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.apiGateway.flightTokenSecret | quote }}
+              key: {{ .Values.apiGateway.flightTokenKey | quote }}
+        {{- end }}
         {{- if .Values.apiGateway.prometheusUrl }}
         - name: PROMETHEUS_URL
           value: {{ .Values.apiGateway.prometheusUrl | quote }}

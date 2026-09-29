@@ -91,6 +91,11 @@ apiGateway:
   replicas: 2
   # Optional Prometheus URL for cost and metrics history.
   prometheusUrl: ""
+  # Same random token as network-intelligence ebpf.flightTokenSecret, copied
+  # into the gateway namespace as a separate Kubernetes Secret.
+  flightTokenSecret: ""
+  flightTokenKey: token
+  flightCollectorNamespace: gryvia-network
   # Roles: the API key and dashboard login are the provider admin; an OIDC user is a tenant user whose
   # `org`/`groups` claim must match a GryviaTenant (name or namespace tenant-<name>).
   oidc:

@@ -42,6 +42,10 @@ collector:
 # Alternatively read flows from Netra (see apiGateway.netra in the gryvia chart).
 ebpf:
   enabled: false
+  # A Secret in the network-intelligence namespace containing a random >=32 character token.
+  # Leave empty to disable the diagnostic HTTP endpoint.
+  flightTokenSecret: ""
+  flightTokenKey: token
   # Attach the XDP/TCX programs (packet filter, DNS tracker, cost tracker, trace correlator) to this interface.
   # Empty leaves them unattached.
   interface: ""

@@ -482,6 +482,10 @@ deps = Deps(
         if u.strip()
     ]
     or None,
+    flight_token=os.environ.get("GRYVIA_FLIGHT_TOKEN", "").strip() or None,
+    flight_collector_namespace=os.environ.get(
+        "GRYVIA_FLIGHT_COLLECTOR_NAMESPACE", "gryvia-network"
+    ),
     netra_url=os.environ.get("GRYVIA_NETRA_URL", "").strip().rstrip("/") or None,
     netra_token=os.environ.get("GRYVIA_NETRA_TOKEN", "").strip() or None,
     netra_verify_tls=os.environ.get("GRYVIA_NETRA_INSECURE", "") != "1",
