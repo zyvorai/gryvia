@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Literal, Optional, Union
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from .common import Deps, create_item
+from .common import Deps, create_item, delete_item
 from .uiutil import NAME_MAX, NAME_PATTERN, JobTemplate, find_one, fmt_duration, list_all, meta, namespaces, prune
 
 PLURAL = "gryviaautotuners"
@@ -202,5 +202,12 @@ def build_router(deps: Deps) -> APIRouter:
             spec["ashaConfig"] = {k: v for k, v in body.ashaConfig.model_dump().items() if v}
         ns = namespaces(request, deps)[0]
         return to_ui(await create_item(deps, PLURAL, KIND, body.name, spec, namespace=ns))
+
+    @router.delete("/api/tuners/{name}")
+    @deps.limiter.limit("10/minute")
+    async def delete_tuner(request: Request, name: str, _=Depends(deps.verify_auth)):
+        _obj, ns = await find_one(request, deps, PLURAL, name)
+        await delete_item(deps, PLURAL, name, namespace=ns)
+        return {"status": "deleted", "name": name}
 
     return router

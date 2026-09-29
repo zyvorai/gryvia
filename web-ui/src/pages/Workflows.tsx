@@ -14,6 +14,7 @@ import { initialSpecState, specBody, specError, type SpecState } from '@/lib/wor
 import type { FilterDef, SortAccessor } from '@/lib/tableState'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { useTableState } from '@/hooks/useTableState'
+import ConfirmDialog from '@/components/ConfirmDialog'
 import PageHero from '@/components/PageHero'
 import PagePulse from '@/components/kit/PagePulse'
 import { countTone } from '@/components/kit/tone'
@@ -41,6 +42,21 @@ export default function Workflows() {
   useDocumentTitle('Workflows')
   const [showCreate, setShowCreate] = useState(false)
   const [openName, setOpenName] = useState<string | null>(null)
+  const queryClient = useQueryClient()
+  const [deleting, setDeleting] = useState<string | null>(null)
+  const deleteMutation = useMutation({
+    mutationFn: (name: string) => api.deleteWorkflow(name),
+    onSuccess: (_d, name) => {
+      notify.success(`Deleted workflow ${name}`)
+      setDeleting(null)
+      if (openName === name) setOpenName(null)
+      return queryClient.invalidateQueries({ queryKey: ['workflows'] })
+    },
+    onError: (err, name) => {
+      notify.error(`Could not delete ${name}`, err)
+      setDeleting(null)
+    },
+  })
   const now = useNow(30000)
   const { data: workflows, isLoading, isError, error, refetch, isRefetching, dataUpdatedAt } = useQuery({
     queryKey: ['workflows'],
@@ -155,6 +171,9 @@ export default function Workflows() {
                 <div className="card" id="workflow-detail" role="region" aria-label={`${nameOf(openWorkflow)} details`}>
                   <div className="row">
                     <p className="eyebrow">Steps: {nameOf(openWorkflow)}</p>
+                    <button type="button" className="danger" onClick={() => setDeleting(nameOf(openWorkflow))}>
+                      Delete workflow
+                    </button>
                     <button type="button" className="btn-secondary" onClick={() => setOpenName(null)}>
                       Close details
                     </button>
@@ -195,6 +214,17 @@ export default function Workflows() {
           )}
         </section>
       </div>
+      {deleting && (
+        <ConfirmDialog
+          title={`Delete workflow ${deleting}?`}
+          confirmLabel="Delete workflow"
+          busy={deleteMutation.isPending}
+          onCancel={() => setDeleting(null)}
+          onConfirm={() => deleteMutation.mutate(deleting)}
+        >
+          Deleting {deleting} also stops its running jobs. This cannot be undone.
+        </ConfirmDialog>
+      )}
       {showCreate && <CreateWorkflowModal onClose={() => setShowCreate(false)} />}
     </>
   )

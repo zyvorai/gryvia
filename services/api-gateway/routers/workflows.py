@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Literal, Optional
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from .common import Deps, create_item
+from .common import Deps, create_item, delete_item
 from .uiutil import NAME_MAX, NAME_PATTERN, JobTemplate, find_one, fmt_duration, list_all, meta, namespaces, prune
 
 PLURAL = "gryviaworkflows"
@@ -156,5 +156,12 @@ def build_router(deps: Deps) -> APIRouter:
             spec["parameters"] = body.spec.parameters
         ns = namespaces(request, deps)[0]
         return to_ui(await create_item(deps, PLURAL, KIND, body.metadata.name, spec, namespace=ns))
+
+    @router.delete("/api/workflows/{name}")
+    @deps.limiter.limit("10/minute")
+    async def delete_workflow(request: Request, name: str, _=Depends(deps.verify_auth)):
+        _obj, ns = await find_one(request, deps, PLURAL, name)
+        await delete_item(deps, PLURAL, name, namespace=ns)
+        return {"status": "deleted", "name": name}
 
     return router

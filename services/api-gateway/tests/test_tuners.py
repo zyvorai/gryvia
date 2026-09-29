@@ -132,3 +132,11 @@ def test_direction_defaults_to_maximize(make_client, fake_k8s):
     seed(fake_k8s)
     del fake_k8s.store[("gryviaautotuners", NS, "t1")]["spec"]["objective"]["direction"]
     assert make_client("tuners").get("/api/tuners/t1").json()["spec"]["direction"] == "maximize"
+
+
+def test_delete(make_client, fake_k8s):
+    seed(fake_k8s)
+    c = make_client("tuners")
+    assert c.delete("/api/tuners/t1").json() == {"status": "deleted", "name": "t1"}
+    assert not fake_k8s.store
+    assert c.delete("/api/tuners/t1").status_code == 404
