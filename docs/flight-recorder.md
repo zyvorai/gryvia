@@ -168,3 +168,5 @@ GPU/RDMA validation and per-job rank identity in the underlying NCCL probe
 still precede general availability.
 
 See [flight-diagnosis.md](flight-diagnosis.md) for the unified bottleneck diagnosis, persistent incident history and measurement completeness.
+
+See [nccl-rdma-gpu-correlation.md](nccl-rdma-gpu-correlation.md) for collective identity (the `collectives` list), RDMA NIC counters and DCGM GPU correlation, and [network-cost-attribution.md](network-cost-attribution.md) for tenant network cost attribution.
