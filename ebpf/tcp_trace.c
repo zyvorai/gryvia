@@ -34,7 +34,8 @@ struct {
 static __always_inline void emit_event(void *ctx, __u32 src_ip, __u32 dst_ip,
                                        __u16 src_port, __u16 dst_port,
                                        __u8 protocol, __u8 verdict,
-                                       __u32 bytes, __u64 latency_ns)
+                                       __u32 bytes, __u64 latency_ns,
+                                       __u32 owner_pid)
 {
     struct flow_event ev = {};
 
@@ -49,8 +50,12 @@ static __always_inline void emit_event(void *ctx, __u32 src_ip, __u32 dst_ip,
     ev.latency_ns = latency_ns;
 
     __u64 pid_tgid = bpf_get_current_pid_tgid();
-    ev.pid = pid_tgid >> 32;
-    bpf_get_current_comm(&ev.comm, sizeof(ev.comm));
+    __u32 cur_pid = pid_tgid >> 32;
+    ev.pid = owner_pid ? owner_pid : cur_pid;
+    /* Close and retransmit run in an arbitrary task or softirq; only report
+     * a command name when it belongs to the PID being reported. */
+    if (!owner_pid || owner_pid == cur_pid)
+        bpf_get_current_comm(&ev.comm, sizeof(ev.comm));
 
     bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU, &ev, sizeof(ev));
 }
@@ -64,6 +69,7 @@ static __always_inline void track_open(void *ctx, struct sock *sk,
     __u64 key = (__u64)sk;
     struct conn_info ci = {};
     ci.start_ns = bpf_ktime_get_ns();
+    ci.owner_pid = bpf_get_current_pid_tgid() >> 32;
     bpf_map_update_elem(&conn_map, &key, &ci, BPF_ANY);
 
     __u32 src_ip, dst_ip;
@@ -75,7 +81,7 @@ static __always_inline void track_open(void *ctx, struct sock *sk,
         dport = dst_port_hint;
 
     emit_event(ctx, src_ip, dst_ip, sport, dport, IPPROTO_TCP,
-               0 /* forward */, 0, 0);
+               0 /* forward */, 0, 0, ci.owner_pid);
 }
 
 // tcp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
@@ -123,7 +129,14 @@ int BPF_KPROBE(tcp_conn_close, struct sock *sk)
     gryvia_sock_v4_tuple(sk, &src_ip, &dst_ip, &sport, &dport);
 
     emit_event(ctx, src_ip, dst_ip, sport, dport, IPPROTO_TCP, 0, bytes,
-               latency);
+               latency, ci->owner_pid);
+
+    /* Verdict 2 is an observation, not a packet drop. The bytes field is
+     * the retransmission count for this connection. Emit once at close so
+     * softirq retransmits retain the process identity captured at open. */
+    if (ci->retransmits)
+        emit_event(ctx, src_ip, dst_ip, sport, dport, IPPROTO_TCP, 2,
+                   ci->retransmits, 0, ci->owner_pid);
 
     bpf_map_delete_elem(&conn_map, &key);
     return 0;

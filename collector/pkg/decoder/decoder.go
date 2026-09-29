@@ -182,10 +182,8 @@ func (d *Decoder) enrich(ev *FlowEvent) {
 		}
 	}
 
-	// Try to read Kubernetes namespace from the downward API.
-	if ns := os.Getenv("POD_NAMESPACE"); ns != "" {
-		ev.Namespace = ns
-	}
+	// The collector's downward API namespace is not the workload namespace.
+	// A Kubernetes pod cache resolves the workload in the event pipeline.
 }
 
 // IPToString converts a uint32 IP (network byte order) to dotted quad.

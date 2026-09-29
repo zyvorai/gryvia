@@ -32,6 +32,9 @@ type StragglerEvent struct {
 	Timestamp time.Time
 }
 
+// maxSamples bounds the latency samples kept per operation and per rank.
+const maxSamples = 4096
+
 // NCCLAggregator aggregates NCCL collective operation metrics.
 type NCCLAggregator struct {
 	mu          sync.RWMutex
@@ -71,12 +74,21 @@ func (a *NCCLAggregator) Process(event decoder.GPUEvent) {
 	stats.Count++
 	stats.TotalBytes += int64(event.Bytes)
 	stats.Samples = append(stats.Samples, latency)
+	if len(stats.Samples) > maxSamples {
+		stats.Samples = append(stats.Samples[:0], stats.Samples[len(stats.Samples)-maxSamples:]...)
+	}
 
 	// Update running average.
 	stats.AvgLatencyNs = stats.AvgLatencyNs + (latency-stats.AvgLatencyNs)/float64(stats.Count)
 
 	// Track per-rank latency for straggler detection.
-	a.rankLatency[event.SrcRank] = append(a.rankLatency[event.SrcRank], latency)
+	if event.WorldSize > 0 {
+		rl := append(a.rankLatency[event.SrcRank], latency)
+		if len(rl) > maxSamples {
+			rl = append(rl[:0], rl[len(rl)-maxSamples:]...)
+		}
+		a.rankLatency[event.SrcRank] = rl
+	}
 
 	// Recompute percentiles periodically (every 100 samples).
 	if stats.Count%100 == 0 {
@@ -105,11 +117,8 @@ func (a *NCCLAggregator) GetOpStats() map[string]*NCCLOpStats {
 	result := make(map[string]*NCCLOpStats, len(a.opStats))
 	for k, v := range a.opStats {
 		cp := *v
+		a.computePercentiles(&cp)
 		cp.Samples = nil // don't expose raw samples
-		a.computePercentiles(v)
-		cp.P50LatencyNs = v.P50LatencyNs
-		cp.P95LatencyNs = v.P95LatencyNs
-		cp.P99LatencyNs = v.P99LatencyNs
 		result[k] = &cp
 	}
 	return result

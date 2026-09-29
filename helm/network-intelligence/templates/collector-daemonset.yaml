@@ -46,6 +46,11 @@ spec:
             {{- with .Values.ebpf.cudaLib }}
             - -cuda-lib={{ . }}
             {{- end }}
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
           ports:
             - name: metrics
               containerPort: 9090

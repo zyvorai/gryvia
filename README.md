@@ -251,10 +251,12 @@ guarantee yet; see the [changelog](CHANGELOG.md). What exists today:
   offers an opt-in NetworkPolicy for the gateway.
 - Release images and the Helm chart are signed with cosign and ship SBOM and provenance attestations.
 
-**Experimental, not working yet:** the eBPF flow collector (`ebpf/`, `collector/`). Its 23 kernel programs do not
-compile today (they need porting to CO-RE with a generated `vmlinux.h`), so no collector image is published and
-the network graph, flows and security event pages stay empty until a flow source exists. The rest of the platform
-does not depend on it.
+**Experimental:** the 27 CO-RE eBPF programs (including the fabric-signal ones) build and pass the verifier on a
+Linux 7.0 x86_64 host, the only place they have been verified (arm64 is compile-only); there the collector attached
+the supported kprobe/tracepoint subset and decoded TCP flows. GPU, NCCL, RDMA and GPUDirect Storage runtime behavior
+and the gated XDP/TCX/sockops attachments have not been validated on hardware. The collector is disabled by
+default; see [Flight Recorder](docs/flight-recorder.md) for its node-local, job-attributed diagnostic preview and its
+limits. The rest of the platform does not depend on it.
 
 Read the [threat model and known limits](SECURITY.md) before exposing an install beyond a lab, and report
 vulnerabilities privately as described there.
