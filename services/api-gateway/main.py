@@ -431,6 +431,9 @@ register_routers(
             if u.strip()
         ]
         or None,
+        netra_url=os.environ.get("GRYVIA_NETRA_URL", "").strip().rstrip("/") or None,
+        netra_token=os.environ.get("GRYVIA_NETRA_TOKEN", "").strip() or None,
+        netra_verify_tls=os.environ.get("GRYVIA_NETRA_INSECURE", "") != "1",
     ),
 )
 

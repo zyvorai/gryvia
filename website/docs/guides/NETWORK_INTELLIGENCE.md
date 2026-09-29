@@ -2,11 +2,14 @@
 
 Complete guide to Gryvia's eBPF-powered network intelligence system for deep observability, security, and performance optimization of GPU clusters.
 
-:::caution Experimental
-The eBPF collector does not work yet. Its kernel programs in `ebpf/` do not compile today (they need porting to
-CO-RE with a generated `vmlinux.h`), so no collector image is published, the chart leaves the collector off
-(`ebpf.enabled=false`), and the network graph, flows and security event pages stay empty until a flow source
-exists. The operator, CRDs and CLI described below are implemented; the data they analyse is not produced yet.
+:::caution Flow source
+Gryvia's own eBPF collector does not work yet: its kernel programs in `ebpf/` do not compile today (they need porting
+to CO-RE), so no collector image is published and the chart leaves it off (`ebpf.enabled=false`). Rather than
+duplicate that work, real flows can come from **[Netra](https://github.com/zyvorai/netra)**, the separate standalone
+eBPF network observability product. Install Netra, then set `apiGateway.netra.url` to an address the gateway pod can reach (its public IP, for example `https://<netra-public-ip>:30870`; a `*.svc` name only works when Netra runs in the same cluster) (and `apiGateway.netra.tokenSecret`
+for its API token) and the flows page reads Netra's flow history. Without either source the network graph, flows and
+security event pages stay empty. The operator, CRDs and CLI described below are implemented; the data they analyse
+comes from Netra or from a collector that is not produced yet. Netra has its own license; Gryvia only calls its HTTP API.
 :::
 
 ## Table of Contents

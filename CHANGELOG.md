@@ -6,6 +6,7 @@ and the project aims to follow [Semantic Versioning](https://semver.org/) once i
 ## [Unreleased]
 
 ### Added
+- Network flows can come from [Netra](https://github.com/zyvorai/netra): set `apiGateway.netra.url` and `/api/network/flows` returns Netra's recent flows (falls back to service-graph edges when it is unset or unreachable).
 - Workflows and auto tuners can be deleted from the dashboard and the gateway (`DELETE /api/workflows/{name}`, `DELETE /api/tuners/{name}`).
 - GPU nodes prepare themselves: the chart can bundle NVIDIA's GPU Operator (`nvidia.enabled=true`: driver, container toolkit, device plugin, DCGM, node feature discovery), and `scripts/install-k3s-gpu.sh` takes a fresh Ubuntu server to k3s + Gryvia + GPU support (`agent` mode joins more nodes). CI runs the script on a real k3s (without a GPU) and dry-run tests for the GPU branches. See `website/docs/guides/GPU_NODES.md` and `docs/gpu-validation.md`.
 - The GPU operator registers a `GryviaGpuNode` for every node labelled by NVIDIA GPU feature discovery (`--auto-register`, chart value `gpuOperator.autoRegister`) and reads readiness, driver and CUDA versions from the node's labels and allocatable GPUs; per-GPU numbers come from the DCGM exporter on that node.

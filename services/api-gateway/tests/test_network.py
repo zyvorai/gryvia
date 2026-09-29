@@ -178,3 +178,48 @@ def test_graph_node_health_vocabulary(client, fake_k8s, raw, expected):
         node["health"] = raw
     fake_k8s.add("gryviaservicegraphs", {"metadata": {"name": "g"}, "status": {"nodes": [node]}}, "default")
     assert client.get("/api/network/graph").json()["nodes"][0]["health"] == expected
+
+
+NETRA_RECORDS = [
+    {"observedAt": "2026-01-02T00:00:00Z", "namespace": "ml", "pod": "trainer-0", "peer": "10.0.0.9", "port": 443,
+     "protocol": "tcp", "bytes": 4096, "srttUs": 2500},
+    {"observedAt": "2026-01-02T00:00:01Z", "workloadName": "gateway", "peer": "10.0.0.7", "port": 53,
+     "protocol": "udp", "bytes": 10, "blocked": 3},
+]
+
+
+def test_flows_come_from_netra_when_configured(make_client, fake_k8s):
+    fake_k8s.add("gryviaservicegraphs", GRAPH, namespace=NS)
+
+    async def fetch():
+        return NETRA_RECORDS
+
+    body = make_client("network", netra_fetch=fetch).get("/api/network/flows").json()
+    assert body["source"] == "netra"
+    assert [f["spec"] for f in body["items"]] == [
+        {"timestamp": "2026-01-02T00:00:00Z", "source": "ml/trainer-0", "destination": "10.0.0.9", "protocol": "TCP",
+         "port": 443, "bytes": "4096", "latency": "2.5ms", "verdict": "FORWARDED"},
+        {"timestamp": "2026-01-02T00:00:01Z", "source": "gateway", "destination": "10.0.0.7", "protocol": "UDP",
+         "port": 53, "bytes": "10", "latency": "", "verdict": "DROP"},
+    ]
+
+
+def test_flows_fall_back_to_the_service_graph_without_netra(make_client, fake_k8s):
+    fake_k8s.add("gryviaservicegraphs", GRAPH, namespace=NS)
+    body = make_client("network").get("/api/network/flows").json()
+    assert "source" not in body and len(body["items"]) == 2
+
+
+def test_unreachable_netra_falls_back(make_client, fake_k8s):
+    fake_k8s.add("gryviaservicegraphs", GRAPH, namespace=NS)
+    # nothing listens on this port, so the request fails and the graph edges are used
+    body = make_client("network", netra_url="http://127.0.0.1:9").get("/api/network/flows").json()
+    assert "source" not in body and len(body["items"]) == 2
+
+
+def test_netra_host_process_flow_is_named_by_process_and_node(make_client):
+    async def fetch():
+        return [{"node": "n1", "comm": "kubelet", "peer": "10.43.0.1", "port": 443, "protocol": "tcp"}]
+
+    item = make_client("network", netra_fetch=fetch).get("/api/network/flows").json()["items"][0]
+    assert item["spec"]["source"] == "kubelet@n1"
