@@ -14,7 +14,7 @@
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-1.32+-0071e3?style=flat-square&labelColor=1d1d1f&logo=kubernetes&logoColor=white)](https://kubernetes.io/)
 [![NVIDIA](https://img.shields.io/badge/NVIDIA-GPU-0071e3?style=flat-square&labelColor=1d1d1f&logo=nvidia&logoColor=white)](https://nvidia.com)
 
-[**Quick Start**](#quick-start-bare-metal) · [**Docs**](website/docs/intro.md) · [**Architecture**](#architecture) · [**Demo**](#5-minute-demo) · [**License**](#license)
+[**Quick Start**](#install-on-your-cluster) · [**Docs**](website/docs/intro.md) · [**Architecture**](#architecture) · [**Demo**](#5-minute-demo) · [**License**](#license)
 
 </div>
 
@@ -132,22 +132,21 @@ gryvia list jobs
 gryvia status <job-name>
 ```
 
-## Bare-metal deployment
+## GPU servers: drivers, CUDA and the device plugin
+
+On a fresh Ubuntu 22.04/24.04 server with an NVIDIA GPU, one command installs k3s, Gryvia and NVIDIA's GPU Operator
+(driver, container toolkit, device plugin, DCGM):
 
 ```bash
-cd terraform/bare-metal
-cp terraform.tfvars.example terraform.tfvars   # your server IPs and GPU types
-terraform init && terraform apply
-cd generated && ./deploy.sh
-
-export KUBECONFIG=./generated/kubeconfig
-kubectl get gryviagpunodes
-kubectl apply -f ../../examples/training/simple-pytorch-training.yaml
+sudo ./scripts/install-k3s-gpu.sh server
 ```
 
-Full deployment time: 30-45 minutes, automated. Every step, including managed-Kubernetes targets
-(EKS, GKE, AKS): [Deployment guide](website/docs/guides/DEPLOYMENT_GUIDE.md) ·
-[Complete deployment guide](website/docs/guides/COMPLETE_DEPLOYMENT_GUIDE.md).
+On an existing cluster, add `--set nvidia.enabled=true` to the Helm install. Gryvia then registers every GPU node
+automatically. It does not install Kubernetes, a CNI, Multus or InfiniBand drivers, and the GPU path has not yet been
+validated on real hardware (see [docs/gpu-validation.md](docs/gpu-validation.md)). Details:
+[GPU nodes](website/docs/guides/GPU_NODES.md) · [Deployment guide](website/docs/guides/DEPLOYMENT_GUIDE.md) ·
+[Complete deployment guide](website/docs/guides/COMPLETE_DEPLOYMENT_GUIDE.md). The Terraform and Ansible directories
+are experimental and incomplete.
 
 ---
 

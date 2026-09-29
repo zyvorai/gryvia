@@ -6,5 +6,6 @@ chart-dirs:
 chart-repos:
   - bitnami=https://charts.bitnami.com/bitnami
   - prometheus-community=https://prometheus-community.github.io/helm-charts
+  - nvidia=https://helm.ngc.nvidia.com/nvidia
 helm-extra-args: --timeout 600s
 validate-maintainers: false

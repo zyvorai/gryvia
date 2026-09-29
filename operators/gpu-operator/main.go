@@ -33,12 +33,17 @@ func main() {
 	var metricsAddr string
 	var enableLeaderElection bool
 	var probeAddr string
+	var autoRegister bool
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", true,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
+
+	flag.BoolVar(&autoRegister, "auto-register", true,
+		"Create a GryviaGpuNode for every node labelled nvidia.com/gpu.present=true by GPU Feature Discovery "+
+			"(only objects labelled gryvia.io/auto-registered=true are ever modified or deleted).")
 
 	opts := zap.Options{
 		Development: false,
@@ -69,6 +74,17 @@ func main() {
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "GryviaGpuNode")
 		os.Exit(1)
+	}
+
+	if autoRegister {
+		if err = (&controllers.NodeDiscoveryReconciler{
+			Client: mgr.GetClient(),
+			Scheme: mgr.GetScheme(),
+			Log:    ctrl.Log.WithName("controllers").WithName("NodeDiscovery"),
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "NodeDiscovery")
+			os.Exit(1)
+		}
 	}
 
 	if err = (&controllers.GryviaGpuMemoryOptimizerReconciler{

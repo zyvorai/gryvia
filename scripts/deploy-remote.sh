@@ -305,6 +305,8 @@ for sec in gryvia-tls gryvia-api-key; do
   fi
 done
 HOST_IP="\$(hostname -I | awk '{print \$1}')"
+helm repo add nvidia https://helm.ngc.nvidia.com/nvidia --force-update >/dev/null
+helm dependency build ./helm/gryvia >/dev/null
 helm upgrade --install gryvia ./helm/gryvia \\
   --namespace gryvia-system --create-namespace \\
   --set namespace.create=false \\

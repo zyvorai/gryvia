@@ -127,6 +127,8 @@ deploy-monitoring: ## Deploy monitoring stack
 
 install: ## Install using Helm
 	@echo "${GREEN}Installing Gryvia with Helm...${RESET}"
+	helm repo add nvidia https://helm.ngc.nvidia.com/nvidia --force-update
+	helm dependency build helm/gryvia
 	helm install gryvia helm/gryvia -n gryvia-system --create-namespace
 
 uninstall: ## Uninstall using Helm

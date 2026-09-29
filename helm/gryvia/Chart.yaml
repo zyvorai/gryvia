@@ -16,6 +16,15 @@ keywords:
 home: https://github.com/zyvorai/gryvia
 sources:
   - https://github.com/zyvorai/gryvia
+dependencies:
+  # NVIDIA's own GPU Operator: driver container, container toolkit, device plugin, DCGM exporter, GPU feature
+  # discovery. Disabled unless `nvidia.enabled=true`. Run `helm dependency build helm/gryvia` before installing
+  # from a checkout (published chart packages already contain it).
+  - name: gpu-operator
+    alias: nvidia
+    version: v26.7.1
+    repository: https://helm.ngc.nvidia.com/nvidia
+    condition: nvidia.enabled
 maintainers:
   - name: Gryvia Team
     email: team@gryvia.io

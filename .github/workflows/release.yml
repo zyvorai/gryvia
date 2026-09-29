@@ -110,6 +110,9 @@ jobs:
       - name: Package
         run: |
           v="${TAG#v}"
+          # helm/gryvia depends on NVIDIA's GPU Operator chart; fetch it so the package is self-contained.
+          helm repo add nvidia https://helm.ngc.nvidia.com/nvidia
+          helm dependency build helm/gryvia
           for c in helm/gryvia helm/network-intelligence; do
             helm lint "$c"
             helm package "$c" --version "$v" --app-version "$v" -d dist

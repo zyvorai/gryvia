@@ -1,4 +1,5 @@
-{{- if .Values.dcgmExporter.enabled }}
+{{- /* Gryvia's own add-on: only when the NVIDIA GPU Operator sub-chart is not installed. */ -}}
+{{- if and .Values.dcgmExporter.enabled (not .Values.nvidia.enabled) }}
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -19,6 +20,13 @@ spec:
       labels:
         app.kubernetes.io/component: dcgm-exporter
     spec:
+      {{- with .Values.dcgmExporter.runtimeClassName }}
+      runtimeClassName: {{ . }}
+      {{- end }}
+      {{- with .Values.dcgmExporter.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       tolerations:
         - key: nvidia.com/gpu
           operator: Exists

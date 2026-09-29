@@ -1,7 +1,9 @@
 # Gryvia Bare Metal Deployment Guide
 
-Provisioning guide for bare metal GPU clusters: hardware and network preparation, Terraform, Ansible, GPU drivers
-and RDMA. Once the cluster is up, continue with the [Platform Setup Guide](./COMPLETE_DEPLOYMENT_GUIDE.md) to install
+Hardware and network preparation for bare metal GPU clusters. **The Terraform and Ansible automation described in
+later sections is experimental and incomplete** (the playbook references roles that do not exist and has never been
+run in CI); for a working install use `scripts/install-k3s-gpu.sh` or the Helm chart with `--set nvidia.enabled=true`
+(see [GPU nodes](./GPU_NODES.md)). Once the cluster is up, continue with the [Platform Setup Guide](./COMPLETE_DEPLOYMENT_GUIDE.md) to install
 Gryvia itself. Operating an install (upgrade, uninstall, backup, troubleshooting) is covered in
 [Operations](./OPERATIONS.md).
 
@@ -164,7 +166,7 @@ cd ../../ansible
 ansible-playbook -i ../terraform/bare-metal/generated/inventory.ini playbooks/site.yaml
 ```
 
-This will:
+If you run it anyway, it is meant to:
 1. Configure all nodes (kernel tuning, packages)
 2. Install NVIDIA drivers
 3. Setup RDMA networking
