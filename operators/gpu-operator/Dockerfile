@@ -14,10 +14,8 @@ COPY controllers/ controllers/
 COPY pkg/ pkg/
 
 # Build
-ARG TARGETOS=linux
-ARG TARGETARCH=amd64
 # go-nvml needs cgo (it dlopen()s libnvidia-ml at runtime), so link against glibc.
-RUN CGO_ENABLED=1 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -a -o manager main.go
+RUN CGO_ENABLED=1 go build -a -o manager main.go
 
 # Runtime stage
 FROM gcr.io/distroless/base-debian12:nonroot

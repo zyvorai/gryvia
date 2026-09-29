@@ -10,9 +10,7 @@ COPY main.go main.go
 COPY api/ api/
 COPY controllers/ controllers/
 
-ARG TARGETOS=linux
-ARG TARGETARCH=amd64
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -a -o manager main.go
+RUN CGO_ENABLED=0 go build -a -o manager main.go
 
 # Runtime stage
 FROM gcr.io/distroless/static:nonroot

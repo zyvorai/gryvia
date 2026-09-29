@@ -4,6 +4,7 @@ BPFTOOL ?= bpftool
 
 ARCH    := $(shell uname -m | sed 's/x86_64/x86/' | sed 's/aarch64/arm64/')
 CFLAGS   = -O2 -g -target bpf -D__TARGET_ARCH_$(ARCH) \
+           -I/usr/include/$(shell uname -m)-linux-gnu \
            -Wall -Werror
 
 PROGS = tcp_trace packet_filter latency_probe syscall_monitor dns_tracker \
