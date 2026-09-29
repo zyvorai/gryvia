@@ -647,8 +647,11 @@ async fn run() -> Result<()> {
     let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
 
     // Setup logging
-    let log_level = if cli.verbose { "debug" } else { "info" };
-    tracing_subscriber::fmt().with_env_filter(log_level).init();
+    // Library log lines (for example the kube client's) are noise in normal use; show them with --verbose or RUST_LOG.
+    let default_level = if cli.verbose { "debug" } else { "error" };
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(default_level));
+    tracing_subscriber::fmt().with_env_filter(filter).init();
 
     // Commands that never touch the cluster run before a kube client is built, so they work with no kubeconfig.
     match &cli.command {

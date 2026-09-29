@@ -70,11 +70,31 @@ jobs:
           assert any(n['name'] == 'demo-h100-1' for n in m['nodes']), [n['name'] for n in m['nodes']]
           print('status JSON ok:', m['overall'], len(m['nodes']), 'nodes')
           "
+          # Every data command reads the demo data (fictional nodes, a quota and a job) through the real API.
+          "$gryvia" cluster | tee /dev/stderr | grep -q "Total GPUs:"
           "$gryvia" cluster --detailed
+          "$gryvia" cluster -o json | python3 -c "import json,sys; d=json.load(sys.stdin); assert len(d['nodes'])>=1 and len(d['jobs'])>=1, d.keys()"
           "$gryvia" capacity
-          "$gryvia" list nodes
-          "$gryvia" version
+          "$gryvia" capacity -o json | python3 -c "import json,sys; json.load(sys.stdin)"
+          "$gryvia" list nodes | grep -q demo-h100-1
+          "$gryvia" -n gryvia-system list jobs | grep -q demo-train
+          "$gryvia" -n gryvia-system get job demo-train -o json | python3 -c "import json,sys; assert json.load(sys.stdin)['metadata']['name']=='demo-train'"
+          "$gryvia" quota | grep -q demo-team
+          "$gryvia" quota -o yaml | grep -q demo-team
+          "$gryvia" queue
+          "$gryvia" maintenance list
+          "$gryvia" health
+          "$gryvia" version | grep -q "gryvia-api-gateway"
           "$gryvia" completion bash | grep -q gryvia
+      - name: The CLI explains a missing API instead of dumping it
+        run: |
+          # Point at an API group that does not exist: the error must be short and actionable.
+          gryvia="$PWD/cli/target/release/gryvia"
+          kubectl delete crd gryviaquotas.gryvia.io --wait=true
+          out="$("$gryvia" quota 2>&1 || true)"
+          echo "$out"
+          echo "$out" | grep -q "not available on this cluster"
+          ! echo "$out" | grep -q "Status {"
       - name: Dump state on failure
         if: failure()
         run: |

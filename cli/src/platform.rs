@@ -90,6 +90,9 @@ pub struct Inputs {
     pub jobs: JobCounts,
     /// Problems reading the cluster (for example a forbidden list). Shown as warnings.
     pub warnings: Vec<String>,
+    /// The GryviaGpuNode or job list could not be read, so an empty list means "unknown", not "none".
+    pub gpu_nodes_failed: bool,
+    pub jobs_failed: bool,
 }
 
 // ── Model ────────────────────────────────────────────────────────────────────────────────────────
@@ -143,7 +146,8 @@ pub struct StatusModel {
     pub workloads: Vec<WorkloadLine>,
     pub pods_running: usize,
     pub pods_total: usize,
-    pub jobs: JobCounts,
+    /// `None` when the jobs could not be listed.
+    pub jobs: Option<JobCounts>,
     pub images: Vec<(String, String)>,
     pub nodes: Vec<NodeRow>,
     pub errors: Vec<String>,
@@ -287,7 +291,9 @@ pub fn build_model(inputs: &Inputs) -> StatusModel {
         .iter()
         .filter(|g| matches!(g.phase.as_str(), "Ready" | "Healthy" | "Active"))
         .count();
-    let (gpu_state, gpu_detail) = if inputs.gpu_nodes.is_empty() {
+    let (gpu_state, gpu_detail) = if inputs.gpu_nodes_failed {
+        (Marker::Unknown, "unavailable".to_string())
+    } else if inputs.gpu_nodes.is_empty() {
         (Marker::Disabled, "none registered".to_string())
     } else if ready_gpu_nodes == inputs.gpu_nodes.len() {
         (
@@ -392,7 +398,7 @@ pub fn build_model(inputs: &Inputs) -> StatusModel {
         workloads,
         pods_running,
         pods_total,
-        jobs: inputs.jobs.clone(),
+        jobs: (!inputs.jobs_failed).then(|| inputs.jobs.clone()),
         images,
         nodes: build_node_rows(inputs),
         errors,
@@ -593,14 +599,14 @@ pub fn render(model: &StatusModel, color: bool) -> String {
             color,
         ),
     ));
-    let j = &model.jobs;
-    out.push_str(&line(
-        "Jobs:",
-        &format!(
+    let jobs_text = match &model.jobs {
+        Some(j) => format!(
             "{} running, {} pending, {} completed, {} failed",
             j.running, j.pending, j.completed, j.failed
         ),
-    ));
+        None => Marker::Unknown.paint_with("unavailable", color),
+    };
+    out.push_str(&line("Jobs:", &jobs_text));
     out.push_str(&line("Namespace:", &model.namespace));
 
     // Image versions
@@ -797,6 +803,7 @@ mod tests {
                 failed: 0,
             },
             warnings: vec![],
+            ..Inputs::default()
         }
     }
 
@@ -912,6 +919,29 @@ mod tests {
         assert_eq!(ghost.ready_text, "no such node");
         assert_eq!(ghost.ready, Marker::Warn);
         assert_eq!(ghost.gpu_health_text, "Failed");
+    }
+
+    #[test]
+    fn unreadable_lists_are_unknown_not_empty() {
+        let mut i = healthy();
+        i.gpu_nodes.clear();
+        i.gpu_nodes_failed = true;
+        i.jobs_failed = true;
+        i.warnings
+            .push("could not list jobs: the gryvia.io/v1alpha1 API is not available".into());
+        let m = build_model(&i);
+        assert_eq!(component(&m, "GPU nodes").state, Marker::Unknown);
+        assert_eq!(component(&m, "GPU nodes").detail, "unavailable");
+        assert!(m.jobs.is_none());
+        assert!(
+            !m.failed(),
+            "an unreadable optional list must not fail the platform"
+        );
+        let text = render(&m, false);
+        assert!(text.contains("Jobs:           unavailable"));
+        assert!(text.contains("GPU nodes:    unknown  unavailable"));
+        let json = serde_json::to_value(&m).unwrap();
+        assert!(json["jobs"].is_null());
     }
 
     #[test]

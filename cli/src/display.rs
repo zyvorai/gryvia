@@ -254,16 +254,46 @@ fn format_age(timestamp: Option<&k8s_openapi::apimachinery::pkg::apis::meta::v1:
     }
 }
 
+/// Plain-language text for common cluster API failures (a missing API or a permission problem), or the
+/// first line of the raw message otherwise.
+pub fn cluster_error_text(raw: &str) -> String {
+    let lower = raw.to_ascii_lowercase();
+    if lower.contains("404 page not found")
+        || lower.contains("could not find the requested resource")
+    {
+        "the gryvia.io/v1alpha1 API is not available on this cluster (CRDs missing or an older version)"
+            .to_string()
+    } else if lower.contains("forbidden") {
+        "permission denied by the cluster (RBAC)".to_string()
+    } else {
+        raw.lines().next().unwrap_or("").chars().take(160).collect()
+    }
+}
+
 /// A fatal error as text: the top message, its causes (deduplicated), and a hint for common problems.
 pub fn fatal_lines(err: &anyhow::Error, color: bool) -> Vec<String> {
     let mut messages: Vec<String> = Vec::new();
+    let api_missing = err.chain().any(|c| {
+        let t = c.to_string().to_ascii_lowercase();
+        t.contains("404 page not found") || t.contains("could not find the requested resource")
+    });
     for cause in err.chain() {
         let text = cause.to_string();
+        if api_missing
+            && (text.contains("ApiError")
+                || text.contains("404 page not found")
+                || text.contains("Failed to parse error data"))
+        {
+            continue;
+        }
         // Long, nested library messages repeat their cause; keep each distinct one, trimmed.
         let text: String = text.chars().take(220).collect();
         if !messages.iter().any(|m| m == &text) {
             messages.push(text);
         }
+    }
+    if api_missing {
+        messages.push(cluster_error_text("404 page not found"));
     }
     let mut lines = vec![format!(
         "{} {}",
@@ -274,7 +304,9 @@ pub fn fatal_lines(err: &anyhow::Error, color: bool) -> Vec<String> {
         lines.push(ui::ansi(&format!("  caused by: {cause}"), "2", color));
     }
     let all = messages.join(" ").to_ascii_lowercase();
-    let hint = if all.contains("kubeconfig") || all.contains("kubernetes config") {
+    let hint = if api_missing {
+        Some("install or update the CRDs (kubectl apply -f crds/, or helm upgrade gryvia); older installs used gryvia.io/v1")
+    } else if all.contains("kubeconfig") || all.contains("kubernetes config") {
         Some("point KUBECONFIG at your cluster, or pass --context <name>")
     } else if all.contains("connection refused")
         || all.contains("error trying to connect")
@@ -385,6 +417,28 @@ mod tests {
         let plain = fatal_lines(&anyhow::anyhow!("boom"), false);
         assert_eq!(plain, vec!["✗ boom"]);
         assert!(fatal_lines(&anyhow::anyhow!("boom"), true)[0].contains("\x1b[1;31m"));
+    }
+
+    #[test]
+    fn a_missing_api_is_explained_not_dumped() {
+        let raw =
+            "ApiError: 404 page not found\n: Failed to parse error data (Status { code: 404 })";
+        let err = anyhow::anyhow!(raw.to_string()).context("Failed to list GPU nodes");
+        let lines = fatal_lines(&err, false);
+        assert_eq!(lines[0], "✗ Failed to list GPU nodes");
+        assert_eq!(
+            lines[1],
+            "  caused by: the gryvia.io/v1alpha1 API is not available on this cluster (CRDs missing or an older version)"
+        );
+        assert!(lines.last().unwrap().contains("kubectl apply -f crds/"));
+        assert!(!lines.join("\n").contains("Status {"));
+    }
+
+    #[test]
+    fn cluster_error_text_is_plain() {
+        assert!(cluster_error_text("ApiError: 404 page not found").contains("not available"));
+        assert!(cluster_error_text("pods is forbidden: User x").contains("permission denied"));
+        assert_eq!(cluster_error_text("boom\nsecond line"), "boom");
     }
 
     #[test]

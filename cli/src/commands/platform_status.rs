@@ -205,9 +205,10 @@ pub async fn collect(client: &GryviaClient, namespace: &str) -> Inputs {
                 });
             }
         }
-        Err(e) => inputs
-            .warnings
-            .push(format!("could not list deployments in {namespace}: {e}")),
+        Err(e) => inputs.warnings.push(format!(
+            "could not list deployments in {namespace}: {}",
+            crate::display::cluster_error_text(&e.to_string())
+        )),
     }
 
     let daemonsets: Api<DaemonSet> = Api::namespaced(client.kube_client.clone(), namespace);
@@ -225,23 +226,28 @@ pub async fn collect(client: &GryviaClient, namespace: &str) -> Inputs {
                 });
             }
         }
-        Err(e) => inputs
-            .warnings
-            .push(format!("could not list daemonsets in {namespace}: {e}")),
+        Err(e) => inputs.warnings.push(format!(
+            "could not list daemonsets in {namespace}: {}",
+            crate::display::cluster_error_text(&e.to_string())
+        )),
     }
 
     let pods: Api<Pod> = Api::namespaced(client.kube_client.clone(), namespace);
     match pods.list(&lp).await {
         Ok(list) => inputs.pods = list.items.iter().map(pod_info).collect(),
-        Err(e) => inputs
-            .warnings
-            .push(format!("could not list pods in {namespace}: {e}")),
+        Err(e) => inputs.warnings.push(format!(
+            "could not list pods in {namespace}: {}",
+            crate::display::cluster_error_text(&e.to_string())
+        )),
     }
 
     let nodes: Api<Node> = Api::all(client.kube_client.clone());
     match nodes.list(&lp).await {
         Ok(list) => inputs.nodes = list.items.iter().map(node_info).collect(),
-        Err(e) => inputs.warnings.push(format!("could not list nodes: {e}")),
+        Err(e) => inputs.warnings.push(format!(
+            "could not list nodes: {}",
+            crate::display::cluster_error_text(&e.to_string())
+        )),
     }
 
     match gvk_api(client, "GryviaGpuNode", "gryviagpunodes")
@@ -256,9 +262,13 @@ pub async fn collect(client: &GryviaClient, namespace: &str) -> Inputs {
                 .filter_map(|v| gpu_node_from_json(&v))
                 .collect();
         }
-        Err(e) => inputs.warnings.push(format!(
-            "could not list GryviaGpuNodes (is the API installed?): {e}"
-        )),
+        Err(e) => {
+            inputs.gpu_nodes_failed = true;
+            inputs.warnings.push(format!(
+                "could not list GPU nodes: {}",
+                crate::display::cluster_error_text(&e.to_string())
+            ));
+        }
     }
 
     match gvk_api(client, "GryviaAIJob", "gryviaaijobs")
@@ -277,7 +287,13 @@ pub async fn collect(client: &GryviaClient, namespace: &str) -> Inputs {
                     .unwrap_or("")
             }));
         }
-        Err(e) => inputs.warnings.push(format!("could not list jobs: {e}")),
+        Err(e) => {
+            inputs.jobs_failed = true;
+            inputs.warnings.push(format!(
+                "could not list jobs: {}",
+                crate::display::cluster_error_text(&e.to_string())
+            ));
+        }
     }
     inputs
 }
