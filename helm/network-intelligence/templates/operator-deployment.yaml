@@ -35,8 +35,6 @@ spec:
             - --leader-elect={{ .Values.ha.leaderElection }}
             - --metrics-bind-address=:8080
             - --health-probe-bind-address=:8081
-            - --security-enabled={{ .Values.security.enabled }}
-            - --security-auto-block={{ .Values.security.autoBlock }}
           ports:
             - name: metrics
               containerPort: 8080

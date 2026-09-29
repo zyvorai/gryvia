@@ -82,7 +82,8 @@ prometheus:
     namespace: ""
     additionalLabels: {}
 
-# Security features
+# Reserved and currently NOT read by any template or by the operator (no auto-blocking exists). The operator
+# binary has no --security-* flags; passing them made it exit at start-up, so the chart no longer passes them.
 security:
   enabled: true
   autoBlock: false

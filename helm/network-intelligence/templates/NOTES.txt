@@ -36,16 +36,4 @@ Operator metrics endpoint: :8080/metrics
 Collector metrics endpoint: :9090/metrics
 {{- end }}
 
-{{- if .Values.security.enabled }}
-
-== Security ==
-
-Network security monitoring is enabled.
-{{- if .Values.security.autoBlock }}
-Auto-blocking of suspicious traffic is ENABLED.
-{{- else }}
-Auto-blocking is disabled. Alerts will be generated but traffic will not be blocked.
-{{- end }}
-{{- end }}
-
 For more information, visit: https://github.com/zyvorai/gryvia
