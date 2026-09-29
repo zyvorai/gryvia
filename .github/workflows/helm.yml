@@ -44,6 +44,9 @@ jobs:
 
       - name: Create kind cluster
         uses: helm/kind-action@0025e74a8c7512023d06dc019c617aa3cf561fde # v1.10.0
+        with:
+          # Charts require Kubernetes >= 1.30 (kubeVersion in Chart.yaml).
+          node_image: kindest/node:v1.31.0
 
       - name: Run chart-testing (install)
         run: ct install --config .github/ct.yaml --all

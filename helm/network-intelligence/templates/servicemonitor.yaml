@@ -36,6 +36,8 @@ spec:
   selector:
     {{- include "network-intelligence.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: collector
+{{- /* ServiceMonitor is a Prometheus Operator CRD; skip the monitors on clusters without it. */ -}}
+{{- if .Capabilities.APIVersions.Has "monitoring.coreos.com/v1" }}
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
@@ -84,4 +86,5 @@ spec:
     - port: metrics
       interval: {{ .Values.prometheus.serviceMonitor.interval }}
       path: /metrics
+{{- end }}
 {{- end }}
