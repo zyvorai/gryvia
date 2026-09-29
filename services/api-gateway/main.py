@@ -1122,6 +1122,80 @@ async def list_nodes(
         raise HTTPException(status_code=500, detail="Failed to list nodes")
 
 
+@app.get("/api/nodes/health")
+@limiter.limit("30/minute")
+async def get_node_health(
+    request: Request,
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    _=Depends(verify_auth),
+    __=Depends(require_admin),
+):
+    """Get GPU node health status"""
+    try:
+        loop = asyncio.get_running_loop()
+
+        nodes = await loop.run_in_executor(
+            None,
+            lambda: k8s_custom.list_cluster_custom_object(
+                group="gryvia.io", version="v1alpha1", plural="gryviagpunodes"
+            ),
+        )
+
+        health_data = []
+        for node in nodes.get("items", []):
+            spec = node.get("spec", {})
+            status = node.get("status", {})
+
+            # Calculate node health based on GPU metrics
+            gpu_health = "Healthy"
+            issues = []
+
+            for gpu in _node_gpu_status(status):
+                temp = gpu.get("temperature", 0)
+                if temp > 90:
+                    gpu_health = "Critical"
+                    issues.append(
+                        f"GPU {gpu.get('index', '?')} critical temperature: {temp}C"
+                    )
+                elif temp > 85:
+                    gpu_health = "Warning"
+                    issues.append(
+                        f"GPU {gpu.get('index', '?')} high temperature: {temp}C"
+                    )
+
+            health_data.append(
+                {
+                    "nodeName": spec.get("nodeName", "unknown"),
+                    "gpuType": spec.get("gpuType", "unknown"),
+                    "gpuCount": spec.get("gpuCount", 0),
+                    "phase": status.get("phase", "Unknown"),
+                    "health": gpu_health,
+                    "issues": issues,
+                    "rdmaEnabled": bool(
+                        spec.get("rdma", spec.get("rdmaEnabled", False))
+                    ),
+                }
+            )
+
+        total = len(health_data)
+        health_data = health_data[offset : offset + limit]
+
+        return {
+            "nodes": health_data,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+    except Exception as e:
+        logger.error("Error getting node health: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to retrieve node health")
+
+
+# ── Auth endpoints ──────────────────────────────────────────────────
+
+
 @app.get("/api/nodes/{name}")
 @limiter.limit("30/minute")
 async def get_node(
@@ -1214,79 +1288,6 @@ async def get_quota_usage(
         logger.error("Error getting quota usage: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to retrieve quota usage")
 
-
-@app.get("/api/nodes/health")
-@limiter.limit("30/minute")
-async def get_node_health(
-    request: Request,
-    limit: int = Query(100, ge=1, le=1000),
-    offset: int = Query(0, ge=0),
-    _=Depends(verify_auth),
-    __=Depends(require_admin),
-):
-    """Get GPU node health status"""
-    try:
-        loop = asyncio.get_running_loop()
-
-        nodes = await loop.run_in_executor(
-            None,
-            lambda: k8s_custom.list_cluster_custom_object(
-                group="gryvia.io", version="v1alpha1", plural="gryviagpunodes"
-            ),
-        )
-
-        health_data = []
-        for node in nodes.get("items", []):
-            spec = node.get("spec", {})
-            status = node.get("status", {})
-
-            # Calculate node health based on GPU metrics
-            gpu_health = "Healthy"
-            issues = []
-
-            for gpu in _node_gpu_status(status):
-                temp = gpu.get("temperature", 0)
-                if temp > 90:
-                    gpu_health = "Critical"
-                    issues.append(
-                        f"GPU {gpu.get('index', '?')} critical temperature: {temp}C"
-                    )
-                elif temp > 85:
-                    gpu_health = "Warning"
-                    issues.append(
-                        f"GPU {gpu.get('index', '?')} high temperature: {temp}C"
-                    )
-
-            health_data.append(
-                {
-                    "nodeName": spec.get("nodeName", "unknown"),
-                    "gpuType": spec.get("gpuType", "unknown"),
-                    "gpuCount": spec.get("gpuCount", 0),
-                    "phase": status.get("phase", "Unknown"),
-                    "health": gpu_health,
-                    "issues": issues,
-                    "rdmaEnabled": bool(
-                        spec.get("rdma", spec.get("rdmaEnabled", False))
-                    ),
-                }
-            )
-
-        total = len(health_data)
-        health_data = health_data[offset : offset + limit]
-
-        return {
-            "nodes": health_data,
-            "total": total,
-            "limit": limit,
-            "offset": offset,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        }
-    except Exception as e:
-        logger.error("Error getting node health: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to retrieve node health")
-
-
-# ── Auth endpoints ──────────────────────────────────────────────────
 
 
 @app.get("/api/auth/config")
