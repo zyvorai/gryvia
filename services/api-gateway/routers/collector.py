@@ -7,10 +7,12 @@ app.kubernetes.io/component=collector. No collector reachable -> no data (never 
 """
 import asyncio
 import logging
+import ssl
 from typing import Any, Dict, List, Tuple
 
 import httpx
 
+from .collector_transport import client_kwargs, collector_scheme, request_extensions, signed_headers
 from .common import Deps, run
 
 logger = logging.getLogger(__name__)
@@ -33,13 +35,14 @@ async def collector_urls(deps: Deps) -> List[str]:
         status = getattr(pod, "status", None)
         ip = getattr(status, "pod_ip", None)
         if ip and getattr(status, "phase", "") == "Running":
-            urls.append(f"http://{ip}:{COLLECTOR_PORT}")
+            urls.append(f"{collector_scheme()}://{ip}:{COLLECTOR_PORT}")
     return urls
 
 
-async def _get(client: httpx.AsyncClient, url: str) -> Any:
+async def _get(client: httpx.AsyncClient, url: str, path: str = "") -> Any:
     try:
-        resp = await client.get(url)
+        # Signed with the shared token when GRYVIA_COLLECTOR_TOKEN(_FILE) is set; else as before.
+        resp = await client.get(url, headers=signed_headers(path) if path else {}, **request_extensions())
         resp.raise_for_status()
         return resp.json()
     except Exception as exc:  # noqa: BLE001 - one node down must not fail the page
@@ -63,8 +66,13 @@ async def fetch_all_with_stats(deps: Deps, path: str) -> Tuple[List[Any], Dict[s
     urls = await collector_urls(deps)
     if not urls:
         return [], {"reachable": 0, "total": 0}
-    async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
-        results = await asyncio.gather(*[_get(client, u + path) for u in urls])
+    try:
+        kwargs = client_kwargs()
+    except (OSError, ssl.SSLError) as exc:  # unreadable CA/client cert: fail closed, never fall back to http/unverified
+        logger.error("collector TLS configuration unusable: %s", type(exc).__name__)
+        return [], {"reachable": 0, "total": len(urls)}
+    async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS, **kwargs) as client:
+        results = await asyncio.gather(*[_get(client, u + path, path) for u in urls])
     bodies = [b for b in results if b is not None]
     return bodies, {"reachable": len(bodies), "total": len(urls)}
 

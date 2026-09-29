@@ -1,4 +1,14 @@
 {{- if .Values.ebpf.enabled }}
+{{- $sec := .Values.ebpf.security }}
+{{- if and (not .Values.collector.hostNetwork) .Values.ebpf.interface }}
+{{- fail "collector.hostNetwork=false cannot attach XDP/TCX to ebpf.interface: the interface is resolved inside the pod network namespace. Set ebpf.interface empty or keep collector.hostNetwork=true" }}
+{{- end }}
+{{- if and $sec.tls.enabled (not $sec.tls.secretName) (not $sec.tls.certManager.enabled) }}
+{{- fail "ebpf.security.tls.enabled needs ebpf.security.tls.secretName or ebpf.security.tls.certManager.enabled" }}
+{{- end }}
+{{- if and $sec.tls.clientCA (not $sec.tls.enabled) }}
+{{- fail "ebpf.security.tls.clientCA (mTLS) needs ebpf.security.tls.enabled" }}
+{{- end }}
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -25,7 +35,7 @@ spec:
       {{- end }}
       hostNetwork: {{ .Values.collector.hostNetwork }}
       hostPID: true
-      dnsPolicy: ClusterFirstWithHostNet
+      dnsPolicy: {{ if .Values.collector.hostNetwork }}ClusterFirstWithHostNet{{ else }}ClusterFirst{{ end }}
       containers:
         - name: collector
           image: "{{ .Values.collector.image.repository }}:{{ .Values.collector.image.tag | default .Chart.AppVersion }}"
@@ -36,6 +46,25 @@ spec:
             - -ebpf-dir=/opt/gryvia/ebpf
             {{- if .Values.ebpf.flightTokenSecret }}
             - -flight-token-file=/var/run/gryvia-flight/token
+            {{- end }}
+            {{- if $sec.requireAuth }}
+            - -require-auth
+            {{- end }}
+            {{- if $sec.insecureListener }}
+            - -insecure-listener
+            {{- end }}
+            {{- if $sec.apiTokenSecret }}
+            - -api-token-file=/var/run/gryvia-api-token/token
+            {{- end }}
+            {{- if $sec.metricsTokenSecret }}
+            - -metrics-token-file=/var/run/gryvia-metrics-token/token
+            {{- end }}
+            {{- if $sec.tls.enabled }}
+            - -tls-cert-file=/var/run/gryvia-tls/tls.crt
+            - -tls-key-file=/var/run/gryvia-tls/tls.key
+            {{- if $sec.tls.clientCA }}
+            - -tls-client-ca-file=/var/run/gryvia-tls/ca.crt
+            {{- end }}
             {{- end }}
             {{- with .Values.ebpf.interface }}
             - -iface={{ . }}
@@ -103,6 +132,21 @@ spec:
               mountPath: /var/run/gryvia-flight
               readOnly: true
             {{- end }}
+            {{- if $sec.apiTokenSecret }}
+            - name: collector-api-token
+              mountPath: /var/run/gryvia-api-token
+              readOnly: true
+            {{- end }}
+            {{- if $sec.metricsTokenSecret }}
+            - name: collector-metrics-token
+              mountPath: /var/run/gryvia-metrics-token
+              readOnly: true
+            {{- end }}
+            {{- if $sec.tls.enabled }}
+            - name: collector-tls
+              mountPath: /var/run/gryvia-tls
+              readOnly: true
+            {{- end }}
       volumes:
         - name: sys-fs-bpf
           hostPath:
@@ -131,6 +175,28 @@ spec:
             items:
               - key: {{ .Values.ebpf.flightTokenKey | quote }}
                 path: token
+        {{- end }}
+        {{- if $sec.apiTokenSecret }}
+        - name: collector-api-token
+          secret:
+            secretName: {{ $sec.apiTokenSecret | quote }}
+            items:
+              - key: {{ $sec.apiTokenKey | quote }}
+                path: token
+        {{- end }}
+        {{- if $sec.metricsTokenSecret }}
+        - name: collector-metrics-token
+          secret:
+            secretName: {{ $sec.metricsTokenSecret | quote }}
+            items:
+              - key: {{ $sec.metricsTokenKey | quote }}
+                path: token
+        {{- end }}
+        {{- if $sec.tls.enabled }}
+        # A whole-Secret mount (no subPath) so rotated files reach the running collector.
+        - name: collector-tls
+          secret:
+            secretName: {{ include "network-intelligence.collectorTLSSecret" . | quote }}
         {{- end }}
       {{- with .Values.collector.nodeSelector }}
       nodeSelector:

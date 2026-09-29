@@ -96,6 +96,19 @@ apiGateway:
   flightTokenSecret: ""
   flightTokenKey: token
   flightCollectorNamespace: gryvia-network
+  # Talking to collectors (network-intelligence chart ebpf.security). All optional; unset keeps plain http and
+  # unsigned requests. See docs/collector-security.md.
+  collector:
+    # Existing Secret in this namespace holding ca.crt (CA that signed the collector certificate). Switches the
+    # gateway to https for discovered collectors (GRYVIA_COLLECTOR_CA_FILE).
+    tlsSecret: ""
+    # Also present tls.crt/tls.key from tlsSecret as a client certificate (collectors with mTLS).
+    clientCert: false
+    # Certificate name to verify (collectors are reached by pod IP); must be in the collector certificate.
+    serverName: gryvia-collector
+    # Secret with the shared token the collectors' apiTokenSecret holds (>= 32 chars); signs non-flight requests.
+    tokenSecret: ""
+    tokenKey: token
   # Roles: the API key and dashboard login are the provider admin; an OIDC user is a tenant user whose
   # `org`/`groups` claim must match a GryviaTenant (name or namespace tenant-<name>).
   oidc:

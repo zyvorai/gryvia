@@ -86,5 +86,32 @@ spec:
     - port: metrics
       interval: {{ .Values.prometheus.serviceMonitor.interval }}
       path: /metrics
+      {{- $sec := .Values.ebpf.security }}
+      {{- if $sec.tls.enabled }}
+      scheme: https
+      tlsConfig:
+        serverName: {{ $sec.serviceMonitor.serverName | quote }}
+        {{- with $sec.serviceMonitor.caSecret.name }}
+        ca:
+          secret:
+            name: {{ . | quote }}
+            key: {{ $sec.serviceMonitor.caSecret.key | quote }}
+        {{- end }}
+        {{- with $sec.serviceMonitor.clientCertSecret.name }}
+        cert:
+          secret:
+            name: {{ . | quote }}
+            key: {{ $sec.serviceMonitor.clientCertSecret.certKey | quote }}
+        keySecret:
+          name: {{ . | quote }}
+          key: {{ $sec.serviceMonitor.clientCertSecret.keyKey | quote }}
+        {{- end }}
+      {{- end }}
+      {{- if $sec.metricsTokenSecret }}
+      # The Secret must exist in the ServiceMonitor's namespace.
+      bearerTokenSecret:
+        name: {{ $sec.metricsTokenSecret | quote }}
+        key: {{ $sec.metricsTokenKey | quote }}
+      {{- end }}
 {{- end }}
 {{- end }}

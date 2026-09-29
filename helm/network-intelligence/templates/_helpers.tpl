@@ -69,3 +69,10 @@ Create the name of the collector service account to use
 {{- default "default" .Values.serviceAccount.collector.name }}
 {{- end }}
 {{- end }}
+
+{{/*
+Secret holding the collector listener certificate (tls.crt, tls.key, ca.crt).
+*/}}
+{{- define "network-intelligence.collectorTLSSecret" -}}
+{{- default (printf "%s-collector-tls" (include "network-intelligence.fullname" . | trunc 45 | trimSuffix "-")) .Values.ebpf.security.tls.secretName }}
+{{- end }}
