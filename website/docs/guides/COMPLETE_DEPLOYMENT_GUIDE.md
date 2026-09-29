@@ -1,6 +1,9 @@
-## Gryvia Complete Deployment Guide
+# Gryvia Platform Setup Guide
 
-This guide walks through deploying a complete Gryvia cluster with all six operators on bare metal infrastructure.
+This guide covers everything **after** the Kubernetes cluster exists: installing the operators, dashboard and
+gateway, and configuring storage, RDMA and monitoring. To provision the cluster itself (Terraform, Ansible,
+GPU drivers) start with the [Bare Metal Deployment Guide](./DEPLOYMENT_GUIDE.md). For a quick trial without GPUs
+see the [Quick Start](../getting-started/quickstart.md).
 
 ## Prerequisites
 
@@ -83,33 +86,39 @@ kubectl get nodes -o json | jq '.items[].status.capacity'
 
 #### Option A: Helm Installation (Recommended)
 
-```bash
-cd helm/gryvia
+One chart installs the GPU, AI workload and quota operators, the API gateway and the dashboard. The storage and
+network operators are off by default; enable them if you use them. The network-intelligence operator has its own
+chart (`helm/network-intelligence`).
 
-# Install all operators at once
-helm install gryvia . \
-  --namespace gryvia-system \
-  --create-namespace \
+```bash
+helm install gryvia oci://ghcr.io/zyvorai/charts/gryvia \
+  --namespace gryvia-system --create-namespace \
+  --set auth.apiKey='a-long-random-secret' \
   --set storageOperator.enabled=true \
-  --set networkOperator.enabled=true \
-  --set quotaOperator.enabled=true
+  --set networkOperator.enabled=true
+
+# Optional: network intelligence (eBPF flow analysis)
+helm install network-intelligence helm/network-intelligence --namespace gryvia-system
 
 # Verify installation
 kubectl get pods -n gryvia-system
 ```
 
-Expected output:
+Expected output (names include a hash suffix; the NVIDIA device plugin and DCGM exporter run on GPU nodes only):
 ```
-NAME                                READY   STATUS    RESTARTS   AGE
-gpu-operator-6d8f9b7c5d-x9k2m      1/1     Running   0          2m
-ai-operator-7b9f8c6d4e-y8l3n       1/1     Running   0          2m
-storage-operator-8c7d9f5e6g-z9m4o  1/1     Running   0          2m
-network-operator-9d8e0g6f7h-a0n5p  1/1     Running   0          2m
-quota-operator-0e9f1h7g8i-b1o6q    1/1     Running   0          2m
-net-intel-operator-1f0g2i8h9j-c2p7r 1/1   Running   0          2m
-nvidia-device-plugin-daemonset-... 8/8     Running   0          2m
-dcgm-exporter-...                  8/8     Running   0          2m
+NAME                                     READY   STATUS    RESTARTS   AGE
+gryvia-gpu-operator-...                  1/1     Running   0          2m
+gryvia-ai-operator-...                   1/1     Running   0          2m
+gryvia-quota-operator-...                1/1     Running   0          2m
+gryvia-storage-operator-...              1/1     Running   0          2m
+gryvia-network-operator-...              1/1     Running   0          2m
+gryvia-api-gateway-... (x2)              1/1     Running   0          2m
+gryvia-ui-... (x2)                       1/1     Running   0          2m
 ```
+
+Chart options (Ingress, TLS, NodePort, PodDisruptionBudgets) are described in the
+[chart README](https://github.com/zyvorai/gryvia/tree/main/helm/gryvia); sign-in and certificates in
+[Authentication and TLS](./AUTH_AND_TLS.md).
 
 #### Option B: Manual Installation
 
@@ -372,9 +381,10 @@ kubectl port-forward -n monitoring svc/prometheus-server 9090:80
 ### Enable High Availability
 
 ```bash
-# Update Helm values
+# Update Helm values (--reuse-values keeps your API key and other overrides)
 helm upgrade gryvia ./helm/gryvia \
   --namespace gryvia-system \
+  --reuse-values \
   --set ha.enabled=true \
   --set gpuOperator.replicas=3 \
   --set aiOperator.replicas=3 \

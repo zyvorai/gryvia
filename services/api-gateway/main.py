@@ -2,6 +2,7 @@
 Gryvia API Gateway
 Provides REST API for Web UI with aggregated metrics and cluster data
 """
+
 import asyncio
 import hmac
 import ipaddress
@@ -22,10 +23,11 @@ from collections import defaultdict
 from routers.phases import count_phases, is_billable, normalize as normalize_phase
 
 import httpx
-from jose import jwt, jwk, JWTError
+from jose import jwt, JWTError
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 
 def _client_ip(request: Request) -> str:
     """Rate-limit key: the real client address.
@@ -52,7 +54,7 @@ limiter = Limiter(key_func=_client_ip)
 app = FastAPI(
     title="Gryvia API Gateway",
     description="REST API for Gryvia Web UI",
-    version="1.0.0"
+    version="1.0.0",
 )
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -78,7 +80,10 @@ LOGIN_USERNAME = "admin"
 
 
 def using_default_key() -> bool:
-    return bool(API_KEY) and hmac.compare_digest(API_KEY.encode(), DEFAULT_LAB_KEY.encode())
+    return bool(API_KEY) and hmac.compare_digest(
+        API_KEY.encode(), DEFAULT_LAB_KEY.encode()
+    )
+
 
 # OIDC configuration
 OIDC_ENABLED = os.environ.get("OIDC_ENABLED", "false").lower() in ("true", "1", "yes")
@@ -109,6 +114,7 @@ async def _fetch_oidc_discovery() -> Dict[str, Any]:
 async def _get_jwks() -> Dict[str, Any]:
     """Fetch and cache JWKS from the OIDC provider."""
     import time
+
     global _jwks_cache, _jwks_cache_time
 
     now = time.monotonic()
@@ -148,7 +154,6 @@ async def _validate_jwt_token(token: str) -> Dict[str, Any]:
 
     if not rsa_key:
         # Key not found - maybe keys rotated, refresh cache and retry once
-        import time
         global _jwks_cache_time
         _jwks_cache_time = 0
         jwks_data = await _get_jwks()
@@ -158,7 +163,9 @@ async def _validate_jwt_token(token: str) -> Dict[str, Any]:
                 break
 
     if not rsa_key:
-        raise HTTPException(status_code=401, detail="Unable to find matching signing key")
+        raise HTTPException(
+            status_code=401, detail="Unable to find matching signing key"
+        )
 
     try:
         payload = jwt.decode(
@@ -192,7 +199,9 @@ def _extract_tenant_namespaces(claims: Dict[str, Any]) -> Optional[List[str]]:
     return None
 
 
-async def verify_auth(authorization: Optional[str] = Header(None), request: Request = None):
+async def verify_auth(
+    authorization: Optional[str] = Header(None), request: Request = None
+):
     """Verify API key or OIDC JWT token for all protected endpoints.
 
     Authentication priority:
@@ -227,10 +236,7 @@ async def verify_auth(authorization: Optional[str] = Header(None), request: Requ
 
     # Fall back to API key authentication
     if not API_KEY:
-        raise HTTPException(
-            status_code=401,
-            detail="Authentication required"
-        )
+        raise HTTPException(status_code=401, detail="Authentication required")
     if not hmac.compare_digest(token, API_KEY):
         raise HTTPException(status_code=403, detail="Invalid credentials")
 
@@ -239,6 +245,7 @@ async def verify_auth(authorization: Optional[str] = Header(None), request: Requ
         request.state.user_claims = None
         request.state.auth_method = "api_key"
         request.state.tenant_namespaces = None
+
 
 # Initialize Kubernetes client
 try:
@@ -254,6 +261,7 @@ except config.ConfigException:
 
 k8s_custom = client.CustomObjectsApi()
 k8s_core = client.CoreV1Api()
+
 
 def _validate_prometheus_url(url: str) -> str:
     parsed = urllib.parse.urlparse(url)
@@ -278,6 +286,7 @@ try:
 
     class _TimeoutSession(_requests.Session):
         """requests.Session subclass that enforces a default timeout."""
+
         def __init__(self, timeout: int = HTTP_TIMEOUT_SECONDS):
             super().__init__()
             self._default_timeout = timeout
@@ -287,11 +296,20 @@ try:
             return super().request(*args, **kwargs)
 
     if PROMETHEUS_URL:
-        prom = PrometheusConnect(url=PROMETHEUS_URL, disable_ssl=PROMETHEUS_URL.startswith("http://"))
+        prom = PrometheusConnect(
+            url=PROMETHEUS_URL, disable_ssl=PROMETHEUS_URL.startswith("http://")
+        )
         prom._session = _TimeoutSession(timeout=HTTP_TIMEOUT_SECONDS)
-        logger.info("Connected to Prometheus at %s (timeout=%ds)", PROMETHEUS_URL, HTTP_TIMEOUT_SECONDS)
+        logger.info(
+            "Connected to Prometheus at %s (timeout=%ds)",
+            PROMETHEUS_URL,
+            HTTP_TIMEOUT_SECONDS,
+        )
 except Exception:
-    logger.warning("Failed to connect to Prometheus at %s - historical metrics unavailable", PROMETHEUS_URL)
+    logger.warning(
+        "Failed to connect to Prometheus at %s - historical metrics unavailable",
+        PROMETHEUS_URL,
+    )
 
 # Namespace for job queries (configurable)
 JOB_NAMESPACE = os.environ.get("GRYVIA_JOB_NAMESPACE", "default")
@@ -309,14 +327,22 @@ GPU_PRICING = {
 
 from routers import Deps, register_routers  # noqa: E402
 
-register_routers(app, Deps(
-    verify_auth=verify_auth,
-    k8s_custom=k8s_custom,
-    k8s_core=k8s_core,
-    limiter=limiter,
-    job_namespace=JOB_NAMESPACE,
-    collector_urls=[u.strip().rstrip("/") for u in os.environ.get("GRYVIA_COLLECTOR_URLS", "").split(",") if u.strip()] or None,
-))
+register_routers(
+    app,
+    Deps(
+        verify_auth=verify_auth,
+        k8s_custom=k8s_custom,
+        k8s_core=k8s_core,
+        limiter=limiter,
+        job_namespace=JOB_NAMESPACE,
+        collector_urls=[
+            u.strip().rstrip("/")
+            for u in os.environ.get("GRYVIA_COLLECTOR_URLS", "").split(",")
+            if u.strip()
+        ]
+        or None,
+    ),
+)
 
 
 def _node_gpu_status(status: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -346,10 +372,8 @@ async def get_cluster_stats(request: Request, _=Depends(verify_auth)):
             loop.run_in_executor(
                 None,
                 lambda: k8s_custom.list_cluster_custom_object(
-                    group="gryvia.io",
-                    version="v1",
-                    plural="gryviagpunodes"
-                )
+                    group="gryvia.io", version="v1", plural="gryviagpunodes"
+                ),
             ),
             loop.run_in_executor(
                 None,
@@ -357,8 +381,8 @@ async def get_cluster_stats(request: Request, _=Depends(verify_auth)):
                     group="gryvia.io",
                     version="v1",
                     namespace=JOB_NAMESPACE,
-                    plural="gryviaaijobs"
-                )
+                    plural="gryviaaijobs",
+                ),
             ),
         )
 
@@ -382,13 +406,17 @@ async def get_cluster_stats(request: Request, _=Depends(verify_auth)):
         for job in jobs.get("items", []):
             status = job.get("status", {})
             if normalize_phase(status.get("phase")) == "running":
-                allocated_gpus += job.get("spec", {}).get("gpus", job.get("spec", {}).get("resources", {}).get("gpuCount", 0))
+                allocated_gpus += job.get("spec", {}).get(
+                    "gpus", job.get("spec", {}).get("resources", {}).get("gpuCount", 0)
+                )
 
         available_gpus = max(0, total_gpus - allocated_gpus)
         avg_utilization = gpu_utilization_sum / gpu_count if gpu_count > 0 else 0
 
         # Count jobs by status (case-insensitive; see phases.py)
-        job_counts = count_phases(job.get("status", {}).get("phase") for job in jobs.get("items", []))
+        job_counts = count_phases(
+            job.get("status", {}).get("phase") for job in jobs.get("items", [])
+        )
 
         return {
             "totalGPUs": total_gpus,
@@ -401,7 +429,7 @@ async def get_cluster_stats(request: Request, _=Depends(verify_auth)):
             "completedJobs": job_counts["completed"],
             "failedJobs": job_counts["failed"],
             "totalNodes": len(nodes.get("items", [])),
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
     except Exception as e:
         logger.error("Error getting cluster stats: %s", e, exc_info=True)
@@ -412,13 +440,19 @@ async def get_cluster_stats(request: Request, _=Depends(verify_auth)):
 @limiter.limit("30/minute")
 async def get_gpu_metrics(
     request: Request,
-    time_range: str = Query("1h", description="Time range (1h, 6h, 24h, 7d) - reserved for Prometheus integration"),
+    time_range: str = Query(
+        "1h",
+        description="Time range (1h, 6h, 24h, 7d) - reserved for Prometheus integration",
+    ),
     _=Depends(verify_auth),
 ):
     """Get GPU utilization metrics over time"""
     allowed_ranges = {"1h", "6h", "24h", "7d", "30d"}
     if time_range not in allowed_ranges:
-        raise HTTPException(status_code=400, detail=f"Invalid time_range. Must be one of: {', '.join(sorted(allowed_ranges))}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid time_range. Must be one of: {', '.join(sorted(allowed_ranges))}",
+        )
     try:
         loop = asyncio.get_running_loop()
 
@@ -426,10 +460,8 @@ async def get_gpu_metrics(
         nodes = await loop.run_in_executor(
             None,
             lambda: k8s_custom.list_cluster_custom_object(
-                group="gryvia.io",
-                version="v1",
-                plural="gryviagpunodes"
-            )
+                group="gryvia.io", version="v1", plural="gryviagpunodes"
+            ),
         )
 
         metrics = []
@@ -437,20 +469,19 @@ async def get_gpu_metrics(
             spec = node.get("spec", {})
             status = node.get("status", {})
             for gpu in _node_gpu_status(status):
-                metrics.append({
-                    "node": spec.get("nodeName", "unknown"),
-                    "gpuIndex": gpu.get("index", 0),
-                    "utilization": gpu.get("utilization", 0),
-                    "temperature": gpu.get("temperature", 0),
-                    "memoryUsed": gpu.get("memoryUsed", 0),
-                    "memoryTotal": gpu.get("memoryTotal", 0),
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                })
+                metrics.append(
+                    {
+                        "node": spec.get("nodeName", "unknown"),
+                        "gpuIndex": gpu.get("index", 0),
+                        "utilization": gpu.get("utilization", 0),
+                        "temperature": gpu.get("temperature", 0),
+                        "memoryUsed": gpu.get("memoryUsed", 0),
+                        "memoryTotal": gpu.get("memoryTotal", 0),
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    }
+                )
 
-        return {
-            "timeRange": time_range,
-            "metrics": metrics
-        }
+        return {"timeRange": time_range, "metrics": metrics}
     except Exception as e:
         logger.error("Error getting GPU metrics: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to retrieve GPU metrics")
@@ -467,10 +498,8 @@ async def get_cost_metrics(request: Request, _=Depends(verify_auth)):
         quotas = await loop.run_in_executor(
             None,
             lambda: k8s_custom.list_cluster_custom_object(
-                group="gryvia.io",
-                version="v1",
-                plural="gryviaquotas"
-            )
+                group="gryvia.io", version="v1", plural="gryviaquotas"
+            ),
         )
 
         # Get all jobs to calculate costs
@@ -480,8 +509,8 @@ async def get_cost_metrics(request: Request, _=Depends(verify_auth)):
                 group="gryvia.io",
                 version="v1",
                 namespace=JOB_NAMESPACE,
-                plural="gryviaaijobs"
-            )
+                plural="gryviaaijobs",
+            ),
         )
 
         # namespace -> team from GryviaQuota (spec.namespaces), used to group costs
@@ -501,17 +530,26 @@ async def get_cost_metrics(request: Request, _=Depends(verify_auth)):
             spec = job.get("spec", {})
 
             if is_billable(status.get("phase")):
-                gpu_type = spec.get("gpuType", spec.get("resources", {}).get("gpuType", "unknown"))
-                gpu_count = spec.get("gpus", spec.get("resources", {}).get("gpuCount", 0))
+                gpu_type = spec.get(
+                    "gpuType", spec.get("resources", {}).get("gpuType", "unknown")
+                )
+                gpu_count = spec.get(
+                    "gpus", spec.get("resources", {}).get("gpuCount", 0)
+                )
 
                 # Calculate hours
                 start_time = status.get("startTime")
-                end_time = status.get("completionTime") or datetime.now(timezone.utc).isoformat()
+                end_time = (
+                    status.get("completionTime")
+                    or datetime.now(timezone.utc).isoformat()
+                )
 
                 if start_time:
                     try:
-                        start = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
-                        end = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
+                        start = datetime.fromisoformat(
+                            start_time.replace("Z", "+00:00")
+                        )
+                        end = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
                     except (ValueError, TypeError):
                         continue
                     hours = (end - start).total_seconds() / 3600
@@ -520,9 +558,11 @@ async def get_cost_metrics(request: Request, _=Depends(verify_auth)):
 
                     # Add to team costs (use namespace or label as team identifier)
                     jmeta = job.get("metadata") or {}
-                    team = (ns_team.get(jmeta.get("namespace"))
-                            or (jmeta.get("labels") or {}).get("gryvia.io/team")
-                            or "unassigned")
+                    team = (
+                        ns_team.get(jmeta.get("namespace"))
+                        or (jmeta.get("labels") or {}).get("gryvia.io/team")
+                        or "unassigned"
+                    )
                     team_costs[team] += cost
 
                     # Add to GPU type costs
@@ -537,8 +577,7 @@ async def get_cost_metrics(request: Request, _=Depends(verify_auth)):
 
         # Format team costs
         by_team = [
-            {"team": team, "cost": round(cost, 2)}
-            for team, cost in team_costs.items()
+            {"team": team, "cost": round(cost, 2)} for team, cost in team_costs.items()
         ]
 
         # Format GPU type costs
@@ -546,7 +585,7 @@ async def get_cost_metrics(request: Request, _=Depends(verify_auth)):
             {
                 "type": gpu_type,
                 "cost": round(data["cost"], 2),
-                "hours": round(data["hours"], 1)
+                "hours": round(data["hours"], 1),
             }
             for gpu_type, data in gpu_type_costs.items()
         ]
@@ -558,7 +597,7 @@ async def get_cost_metrics(request: Request, _=Depends(verify_auth)):
             "byGPUType": by_gpu_type,
             "totalCost": round(current_month_cost, 2),
             "scope": "all-time",
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
     except Exception as e:
         logger.error("Error getting cost metrics: %s", e, exc_info=True)
@@ -582,8 +621,8 @@ async def get_job_metrics(
                 group="gryvia.io",
                 version="v1",
                 namespace=JOB_NAMESPACE,
-                plural="gryviaaijobs"
-            )
+                plural="gryviaaijobs",
+            ),
         )
 
         # Calculate job statistics
@@ -606,8 +645,12 @@ async def get_job_metrics(
             # Calculate duration for completed jobs
             if status.get("startTime") and status.get("completionTime"):
                 try:
-                    start = datetime.fromisoformat(status["startTime"].replace('Z', '+00:00'))
-                    end = datetime.fromisoformat(status["completionTime"].replace('Z', '+00:00'))
+                    start = datetime.fromisoformat(
+                        status["startTime"].replace("Z", "+00:00")
+                    )
+                    end = datetime.fromisoformat(
+                        status["completionTime"].replace("Z", "+00:00")
+                    )
                 except (ValueError, TypeError):
                     continue
                 duration = (end - start).total_seconds() / 3600
@@ -621,7 +664,7 @@ async def get_job_metrics(
             "byStatus": dict(by_status),
             "byFramework": dict(by_framework),
             "averageDurationHours": round(avg_duration, 2),
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
     except Exception as e:
         logger.error("Error getting job metrics: %s", e, exc_info=True)
@@ -652,16 +695,13 @@ async def list_jobs(
             jobs = await loop.run_in_executor(
                 None,
                 lambda ns=ns: k8s_custom.list_namespaced_custom_object(
-                    group="gryvia.io",
-                    version="v1",
-                    namespace=ns,
-                    plural="gryviaaijobs"
-                )
+                    group="gryvia.io", version="v1", namespace=ns, plural="gryviaaijobs"
+                ),
             )
             all_items.extend(jobs.get("items", []))
 
         total = len(all_items)
-        items = all_items[offset:offset + limit]
+        items = all_items[offset : offset + limit]
 
         return {
             "items": items,
@@ -689,7 +729,7 @@ async def get_job(request: Request, name: str, _=Depends(verify_auth)):
                 namespace=JOB_NAMESPACE,
                 plural="gryviaaijobs",
                 name=name,
-            )
+            ),
         )
         return job
     except client.ApiException as e:
@@ -711,9 +751,13 @@ async def create_job(request: Request, _=Depends(verify_auth)):
 
         # Validate required fields
         if not isinstance(body, dict):
-            raise HTTPException(status_code=400, detail="Request body must be a JSON object")
+            raise HTTPException(
+                status_code=400, detail="Request body must be a JSON object"
+            )
         if body.get("apiVersion") != "gryvia.io/v1":
-            raise HTTPException(status_code=400, detail="apiVersion must be gryvia.io/v1")
+            raise HTTPException(
+                status_code=400, detail="apiVersion must be gryvia.io/v1"
+            )
         if body.get("kind") != "GryviaAIJob":
             raise HTTPException(status_code=400, detail="kind must be GryviaAIJob")
 
@@ -740,7 +784,7 @@ async def create_job(request: Request, _=Depends(verify_auth)):
                 namespace=target_ns,
                 plural="gryviaaijobs",
                 body=body,
-            )
+            ),
         )
         return job
     except HTTPException:
@@ -767,7 +811,7 @@ async def delete_job(request: Request, name: str, _=Depends(verify_auth)):
                 namespace=JOB_NAMESPACE,
                 plural="gryviaaijobs",
                 name=name,
-            )
+            ),
         )
         return {"status": "deleted", "name": name}
     except client.ApiException as e:
@@ -794,15 +838,13 @@ async def list_quotas(
         quotas = await loop.run_in_executor(
             None,
             lambda: k8s_custom.list_cluster_custom_object(
-                group="gryvia.io",
-                version="v1",
-                plural="gryviaquotas"
-            )
+                group="gryvia.io", version="v1", plural="gryviaquotas"
+            ),
         )
 
         all_items = quotas.get("items", [])
         total = len(all_items)
-        items = all_items[offset:offset + limit]
+        items = all_items[offset : offset + limit]
 
         return {
             "items": items,
@@ -829,7 +871,7 @@ async def get_quota(request: Request, name: str, _=Depends(verify_auth)):
                 version="v1",
                 plural="gryviaquotas",
                 name=name,
-            )
+            ),
         )
         return quota
     except client.ApiException as e:
@@ -856,15 +898,13 @@ async def list_nodes(
         nodes = await loop.run_in_executor(
             None,
             lambda: k8s_custom.list_cluster_custom_object(
-                group="gryvia.io",
-                version="v1",
-                plural="gryviagpunodes"
-            )
+                group="gryvia.io", version="v1", plural="gryviagpunodes"
+            ),
         )
 
         all_items = nodes.get("items", [])
         total = len(all_items)
-        items = all_items[offset:offset + limit]
+        items = all_items[offset : offset + limit]
 
         return {
             "items": items,
@@ -891,7 +931,7 @@ async def get_node(request: Request, name: str, _=Depends(verify_auth)):
                 version="v1",
                 plural="gryviagpunodes",
                 name=name,
-            )
+            ),
         )
         return node
     except client.ApiException as e:
@@ -918,10 +958,8 @@ async def get_quota_usage(
         quotas = await loop.run_in_executor(
             None,
             lambda: k8s_custom.list_cluster_custom_object(
-                group="gryvia.io",
-                version="v1",
-                plural="gryviaquotas"
-            )
+                group="gryvia.io", version="v1", plural="gryviaquotas"
+            ),
         )
 
         usage_data = []
@@ -933,29 +971,35 @@ async def get_quota_usage(
             gpu_quota = spec.get("gpuQuota", {})
             max_gpus = gpu_quota.get("maxGPUs", 0)
 
-            usage_data.append({
-                "team": spec.get("team", "unknown"),
-                "maxGPUs": max_gpus,
-                "allocatedGPUs": current_usage.get("allocatedGPUs", 0),
-                "utilizationPercent": round(
-                    (current_usage.get("allocatedGPUs", 0) / max_gpus) * 100, 1
-                ) if max_gpus > 0 else 0,
-                "runningJobs": current_usage.get("runningJobs", 0),
-                "queuedJobs": current_usage.get("queuedJobs", 0),
-                "monthlyBudget": spec.get("budget", {}).get("monthlyBudget", 0),
-                "spentThisMonth": budget_status.get("spentThisMonth", 0),
-                "remainingBudget": budget_status.get("remainingBudget", 0)
-            })
+            usage_data.append(
+                {
+                    "team": spec.get("team", "unknown"),
+                    "maxGPUs": max_gpus,
+                    "allocatedGPUs": current_usage.get("allocatedGPUs", 0),
+                    "utilizationPercent": (
+                        round(
+                            (current_usage.get("allocatedGPUs", 0) / max_gpus) * 100, 1
+                        )
+                        if max_gpus > 0
+                        else 0
+                    ),
+                    "runningJobs": current_usage.get("runningJobs", 0),
+                    "queuedJobs": current_usage.get("queuedJobs", 0),
+                    "monthlyBudget": spec.get("budget", {}).get("monthlyBudget", 0),
+                    "spentThisMonth": budget_status.get("spentThisMonth", 0),
+                    "remainingBudget": budget_status.get("remainingBudget", 0),
+                }
+            )
 
         total = len(usage_data)
-        usage_data = usage_data[offset:offset + limit]
+        usage_data = usage_data[offset : offset + limit]
 
         return {
             "quotas": usage_data,
             "total": total,
             "limit": limit,
             "offset": offset,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
     except Exception as e:
         logger.error("Error getting quota usage: %s", e, exc_info=True)
@@ -977,10 +1021,8 @@ async def get_node_health(
         nodes = await loop.run_in_executor(
             None,
             lambda: k8s_custom.list_cluster_custom_object(
-                group="gryvia.io",
-                version="v1",
-                plural="gryviagpunodes"
-            )
+                group="gryvia.io", version="v1", plural="gryviagpunodes"
+            ),
         )
 
         health_data = []
@@ -996,30 +1038,38 @@ async def get_node_health(
                 temp = gpu.get("temperature", 0)
                 if temp > 90:
                     gpu_health = "Critical"
-                    issues.append(f"GPU {gpu.get('index', '?')} critical temperature: {temp}C")
+                    issues.append(
+                        f"GPU {gpu.get('index', '?')} critical temperature: {temp}C"
+                    )
                 elif temp > 85:
                     gpu_health = "Warning"
-                    issues.append(f"GPU {gpu.get('index', '?')} high temperature: {temp}C")
+                    issues.append(
+                        f"GPU {gpu.get('index', '?')} high temperature: {temp}C"
+                    )
 
-            health_data.append({
-                "nodeName": spec.get("nodeName", "unknown"),
-                "gpuType": spec.get("gpuType", "unknown"),
-                "gpuCount": spec.get("gpuCount", 0),
-                "phase": status.get("phase", "Unknown"),
-                "health": gpu_health,
-                "issues": issues,
-                "rdmaEnabled": bool(spec.get("rdma", spec.get("rdmaEnabled", False)))
-            })
+            health_data.append(
+                {
+                    "nodeName": spec.get("nodeName", "unknown"),
+                    "gpuType": spec.get("gpuType", "unknown"),
+                    "gpuCount": spec.get("gpuCount", 0),
+                    "phase": status.get("phase", "Unknown"),
+                    "health": gpu_health,
+                    "issues": issues,
+                    "rdmaEnabled": bool(
+                        spec.get("rdma", spec.get("rdmaEnabled", False))
+                    ),
+                }
+            )
 
         total = len(health_data)
-        health_data = health_data[offset:offset + limit]
+        health_data = health_data[offset : offset + limit]
 
         return {
             "nodes": health_data,
             "total": total,
             "limit": limit,
             "offset": offset,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
     except Exception as e:
         logger.error("Error getting node health: %s", e, exc_info=True)
@@ -1027,6 +1077,7 @@ async def get_node_health(
 
 
 # ── Auth endpoints ──────────────────────────────────────────────────
+
 
 @app.get("/api/auth/config")
 async def get_auth_config():
@@ -1082,7 +1133,12 @@ async def login(request: Request, body: LoginRequest):
     if not (user_ok and pass_ok):
         await asyncio.sleep(0.5)
         raise HTTPException(status_code=401, detail="Wrong username or password.")
-    return {"token": API_KEY, "method": "api_key", "name": LOGIN_USERNAME, "usingDefaultKey": using_default_key()}
+    return {
+        "token": API_KEY,
+        "method": "api_key",
+        "name": LOGIN_USERNAME,
+        "usingDefaultKey": using_default_key(),
+    }
 
 
 @app.get("/api/auth/me")
@@ -1119,4 +1175,5 @@ async def get_current_user(request: Request, _=Depends(verify_auth)):
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8080)
