@@ -127,7 +127,7 @@ helm install gryvia oci://ghcr.io/zyvorai/charts/gryvia \
 Then submit work with the CLI or `kubectl`:
 
 ```bash
-gryvia submit examples/training/simple-pytorch-training.yaml
+gryvia submit --file examples/training/simple-pytorch-training.yaml
 gryvia list jobs
 gryvia status <job-name>
 ```
