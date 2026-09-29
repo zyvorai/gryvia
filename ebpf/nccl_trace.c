@@ -64,6 +64,8 @@ struct {
     __uint(max_entries, RINGBUF_SIZE);
 } nccl_events SEC(".maps");
 
+GRYVIA_DECLARE_DROPS();
+
 // Per-CPU operation histogram: one entry per nccl_op_type (8 entries).
 struct {
     __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
@@ -154,6 +156,8 @@ static __always_inline void emit_nccl_exit(void)
         bpf_get_current_comm(&ev->comm, sizeof(ev->comm));
 
         bpf_ringbuf_submit(ev, 0);
+    } else {
+        GRYVIA_COUNT_DROP(GRYVIA_DROP_RINGBUF);
     }
 
     /* Update per-op histogram */
@@ -353,8 +357,10 @@ int BPF_URETPROBE(nccl_group_end)
 
     struct gpu_event *ev = bpf_ringbuf_reserve(&nccl_events,
                                                sizeof(struct gpu_event), 0);
-    if (!ev)
+    if (!ev) {
+        GRYVIA_COUNT_DROP(GRYVIA_DROP_RINGBUF);
         return 0;
+    }
     __builtin_memset(ev, 0, sizeof(*ev));
     ev->timestamp  = now;
     ev->pid        = pid_tgid >> 32;

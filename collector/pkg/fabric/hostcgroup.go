@@ -102,6 +102,52 @@ func (h *HostCgroups) CgroupIDs(p PodRef) ([]uint64, error) {
 	return nil, fmt.Errorf("no cgroup for pod %s/%s under %s", p.Namespace, p.Name, h.Root)
 }
 
+// Dirs returns the pod's cgroup directory followed by its direct child
+// (container) directories, every one resolved and confined under Root exactly as
+// CgroupIDs does. Userspace readers (the flight diagnosis) use it to read
+// cpu.stat / memory.events / *.pressure; nothing is written. At most
+// maxCgroupsPerPod children are returned.
+func (h *HostCgroups) Dirs(p PodRef) ([]string, error) {
+	cands, err := h.candidates(p)
+	if err != nil {
+		return nil, err
+	}
+	root, err := filepath.EvalSymlinks(h.Root)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := os.Stat(filepath.Join(root, "cgroup.controllers")); err != nil {
+		return nil, fmt.Errorf("%s is not a cgroup v2 mount: %w", h.Root, err)
+	}
+	for _, rel := range cands {
+		dir := filepath.Join(root, rel)
+		fi, err := os.Lstat(dir)
+		if err != nil || !fi.IsDir() {
+			continue
+		}
+		real, err := filepath.EvalSymlinks(dir)
+		if err != nil || !under(root, real) {
+			return nil, fmt.Errorf("%s resolves outside %s", dir, root)
+		}
+		dirs := []string{real}
+		entries, err := os.ReadDir(real)
+		if err != nil {
+			return nil, err
+		}
+		for _, e := range entries {
+			if !e.IsDir() { // DirEntry.IsDir is false for symlinks
+				continue
+			}
+			if len(dirs) > maxCgroupsPerPod {
+				break
+			}
+			dirs = append(dirs, filepath.Join(real, e.Name()))
+		}
+		return dirs, nil
+	}
+	return nil, fmt.Errorf("no cgroup for pod %s/%s under %s", p.Namespace, p.Name, h.Root)
+}
+
 func collectIDs(podDir string, rootID uint64) ([]uint64, error) {
 	var ids []uint64
 	add := func(dir string) error {

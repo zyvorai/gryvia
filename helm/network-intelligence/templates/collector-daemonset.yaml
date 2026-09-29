@@ -72,6 +72,22 @@ spec:
             {{- with .Values.ebpf.cgroupPath }}
             - -cgroup-path={{ . }}
             {{- end }}
+            {{- if .Values.ebpf.diagnosis.cgroupSignals }}
+            - -flight-diagnosis-cgroup=/host/sys/fs/cgroup
+            {{- end }}
+            {{- if .Values.ebpf.diagnosis.thresholds }}
+            - -flight-diagnosis-thresholds=/etc/gryvia/diagnosis/thresholds.json
+            {{- end }}
+            {{- if .Values.ebpf.flightStore.enabled }}
+            {{- if not (has .Values.ebpf.flightStore.volume (list "emptyDir" "hostPath")) }}
+            {{- fail "ebpf.flightStore.volume must be emptyDir or hostPath" }}
+            {{- end }}
+            - -flight-store-dir=/var/lib/gryvia-flight
+            - -flight-retention={{ .Values.ebpf.flightStore.retention }}
+            - -flight-store-max-bytes={{ int64 .Values.ebpf.flightStore.maxBytes }}
+            - -flight-store-fsync={{ .Values.ebpf.flightStore.fsync }}
+            - -flight-incident-min-duration={{ .Values.ebpf.flightStore.incidentMinDuration }}
+            {{- end }}
             {{- if .Values.ebpf.quotaPace.enabled }}
             {{- if not .Values.ebpf.cgroupPath }}
             {{- fail "ebpf.quotaPace.enabled needs ebpf.cgroupPath (for example /host/sys/fs/cgroup)" }}
@@ -162,6 +178,15 @@ spec:
               mountPath: /var/run/gryvia-tls
               readOnly: true
             {{- end }}
+            {{- if .Values.ebpf.diagnosis.thresholds }}
+            - name: diagnosis-thresholds
+              mountPath: /etc/gryvia/diagnosis
+              readOnly: true
+            {{- end }}
+            {{- if .Values.ebpf.flightStore.enabled }}
+            - name: flight-store
+              mountPath: /var/lib/gryvia-flight
+            {{- end }}
       volumes:
         - name: sys-fs-bpf
           hostPath:
@@ -212,6 +237,22 @@ spec:
         - name: collector-tls
           secret:
             secretName: {{ include "network-intelligence.collectorTLSSecret" . | quote }}
+        {{- end }}
+        {{- if .Values.ebpf.diagnosis.thresholds }}
+        - name: diagnosis-thresholds
+          configMap:
+            name: {{ include "network-intelligence.fullname" . }}-diagnosis-thresholds
+        {{- end }}
+        {{- if .Values.ebpf.flightStore.enabled }}
+        - name: flight-store
+          {{- if eq .Values.ebpf.flightStore.volume "hostPath" }}
+          hostPath:
+            path: {{ .Values.ebpf.flightStore.hostPath | quote }}
+            type: DirectoryOrCreate
+          {{- else }}
+          emptyDir:
+            sizeLimit: {{ .Values.ebpf.flightStore.sizeLimit | quote }}
+          {{- end }}
         {{- end }}
       {{- with .Values.collector.nodeSelector }}
       nodeSelector:

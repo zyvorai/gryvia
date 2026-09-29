@@ -59,6 +59,9 @@ name is `gryvia-network-intelligence`.
 | `ebpf.cgroupPath` | cgroup v2 path for sockops/sk_msg (`-cgroup-path`); empty means not attached | `""` |
 | `ebpf.ncclLib`, `ebpf.cudaLib` | Library paths for the GPU uprobes; empty means auto-discover | `""` |
 | `ebpf.flightTokenSecret`, `ebpf.flightTokenKey` | Secret holding the Flight Recorder token (`-flight-token-file`); empty disables that endpoint | `""`, `token` |
+| `ebpf.diagnosis.cgroupSignals` | Let the unified diagnosis read the pods' cgroup counters and pressure files from the host cgroup mount (`-flight-diagnosis-cgroup`, read-only); otherwise those signals are reported unavailable | `false` |
+| `ebpf.diagnosis.thresholds` | Overrides for the diagnosis thresholds (rendered to a ConfigMap, `-flight-diagnosis-thresholds`) | `{}` |
+| `ebpf.flightStore.enabled` | Persist incident history on the node (`-flight-store-dir`); `.volume` is `emptyDir` or `hostPath`, plus `.hostPath`, `.sizeLimit`, `.retention`, `.maxBytes`, `.fsync`, `.incidentMinDuration` | `false` |
 | `ebpf.publishFabricStatus` | Patch the status of existing `GryviaFabricSignal` objects every 30 s (`-publish-fabric-status`); adds `list` on `gryviafabricsignals` and `patch` on `gryviafabricsignals/status` to the collector ClusterRole | `false` |
 | `ebpf.publishNodeFabric` | Write this node's fabric health to the cluster-scoped `GryviaNodeFabric` named after the node every 30 s (`-publish-node-fabric`); adds `create`, `patch` on `gryvianodefabrics` to the collector ClusterRole | `false` |
 | `ebpf.quotaPace.enabled` | Attach `quota_pace`, the one eBPF program that changes sockets (`-quota-pace`); needs `ebpf.cgroupPath`; alone it paces nothing | `false` |

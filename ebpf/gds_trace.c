@@ -38,6 +38,8 @@ struct {
 	__uint(max_entries, FABRIC_RINGBUF_SIZE);
 } fabric_events SEC(".maps");
 
+GRYVIA_DECLARE_DROPS();
+
 static __always_inline void add_bytes(__u32 slot, __u64 n)
 {
 	__u64 *v = bpf_map_lookup_elem(&gds_bytes, &slot);
@@ -85,8 +87,10 @@ static __always_inline int gds_exit(long ret)
 	if (lat < GDS_SLOW_NS)
 		return 0;
 	ev = bpf_ringbuf_reserve(&fabric_events, sizeof(*ev), 0);
-	if (!ev)
+	if (!ev) {
+		GRYVIA_COUNT_DROP(GRYVIA_DROP_RINGBUF);
 		return 0;
+	}
 	__builtin_memset(ev, 0, sizeof(*ev));
 	ev->timestamp_ns = now;
 	ev->pid = id >> 32;

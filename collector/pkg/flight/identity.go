@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -29,7 +30,18 @@ type podList struct {
 		Spec struct {
 			NodeName string `json:"nodeName"`
 		} `json:"spec"`
+		Status struct {
+			Phase    string `json:"phase"`
+			QOSClass string `json:"qosClass"`
+		} `json:"status"`
 	} `json:"items"`
+}
+
+// PodInfo is a running pod of a job on this node, with what is needed to find its cgroup.
+type PodInfo struct {
+	Identity
+	UID string `json:"uid"`
+	QOS string `json:"qos"` // Guaranteed, Burstable, BestEffort; empty when the API did not say
 }
 
 // Resolver caches the Kubernetes pod list. It never guesses an identity when
@@ -37,6 +49,7 @@ type podList struct {
 type Resolver struct {
 	mu      sync.RWMutex
 	byUID   map[string]Identity
+	byJob   map[string][]PodInfo
 	proc    string
 	node    string
 	updated time.Time
@@ -53,7 +66,7 @@ func NewResolver(node, proc string) *Resolver {
 	if _, err := os.Stat(proc); err != nil && os.Getenv("KUBERNETES_SERVICE_HOST") == "" {
 		proc = "/proc"
 	}
-	return &Resolver{byUID: map[string]Identity{}, proc: proc, node: node}
+	return &Resolver{byUID: map[string]Identity{}, byJob: map[string][]PodInfo{}, proc: proc, node: node}
 }
 func normalizeUID(s string) string { return strings.ToLower(strings.ReplaceAll(s, "_", "-")) }
 
@@ -63,6 +76,7 @@ func (r *Resolver) SetPods(raw []byte) error {
 		return err
 	}
 	next := make(map[string]Identity, len(list.Items))
+	nextJobs := map[string][]PodInfo{}
 	for _, p := range list.Items {
 		if p.Spec.NodeName != r.node {
 			continue
@@ -75,13 +89,47 @@ func (r *Resolver) SetPods(raw []byte) error {
 		if rank == "" {
 			rank = p.Metadata.Labels["apps.kubernetes.io/pod-index"]
 		}
-		next[normalizeUID(p.Metadata.UID)] = Identity{Namespace: p.Metadata.Namespace, Job: job, Pod: p.Metadata.Name, Node: r.node, Rank: rank}
+		id := Identity{Namespace: p.Metadata.Namespace, Job: job, Pod: p.Metadata.Name, Node: r.node, Rank: rank}
+		next[normalizeUID(p.Metadata.UID)] = id
+		if p.Status.Phase == "Running" {
+			k := key(id.Namespace, id.Job)
+			nextJobs[k] = append(nextJobs[k], PodInfo{Identity: id, UID: normalizeUID(p.Metadata.UID), QOS: p.Status.QOSClass})
+		}
 	}
 	r.mu.Lock()
 	r.byUID = next
+	r.byJob = nextJobs
 	r.updated = time.Now()
 	r.mu.Unlock()
 	return nil
+}
+
+// Pods returns the Running pods of the job on this node from the last snapshot
+// (nil when the snapshot is older than a minute: the list is then unknown, not empty).
+func (r *Resolver) Pods(ns, job string) []PodInfo {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if time.Since(r.updated) > time.Minute {
+		return nil
+	}
+	return append([]PodInfo(nil), r.byJob[key(ns, job)]...)
+}
+
+// Jobs lists the (namespace, job) pairs that have a Running pod on this node.
+func (r *Resolver) Jobs() [][2]string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if time.Since(r.updated) > time.Minute {
+		return nil
+	}
+	out := make([][2]string, 0, len(r.byJob))
+	for _, pods := range r.byJob {
+		if len(pods) > 0 {
+			out = append(out, [2]string{pods[0].Namespace, pods[0].Job})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i][0]+"/"+out[i][1] < out[j][0]+"/"+out[j][1] })
+	return out
 }
 
 func (r *Resolver) Resolve(pid uint32) (Identity, bool) {

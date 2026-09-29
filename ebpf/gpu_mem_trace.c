@@ -72,6 +72,8 @@ struct {
     __uint(max_entries, RINGBUF_SIZE);
 } cuda_events SEC(".maps");
 
+GRYVIA_DECLARE_DROPS();
+
 // Per-CPU memory direction byte counters (one per mem_direction).
 struct {
     __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
@@ -112,8 +114,10 @@ static __always_inline void emit_cuda_event(__u8 event_type, __u8 direction,
 {
     struct gpu_event *ev = bpf_ringbuf_reserve(&cuda_events,
                                                sizeof(struct gpu_event), 0);
-    if (!ev)
-        return;
+    if (!ev) {
+    	GRYVIA_COUNT_DROP(GRYVIA_DROP_RINGBUF);
+    	return;
+    }
 
     __builtin_memset(ev, 0, sizeof(*ev));
     ev->timestamp  = bpf_ktime_get_ns();

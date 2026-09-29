@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -152,6 +153,45 @@ func (r *Recorder) Report(ns, job string, limit int) (Report, bool) {
 		rep.Findings = append(rep.Findings, Finding{"pipeline_stalls_observed", "Observed " + itoa(n) + " gaps between CUDA API calls; verify GPU activity with DCGM or CUPTI."})
 	}
 	return rep, true
+}
+
+// Window returns the retained events of the job at or after since, oldest first.
+// truncated is true when the bounded ring is full and its oldest retained event is
+// still inside the window: older events in the window were evicted, so counts
+// derived from the result are lower bounds. ok is false when the node has no
+// attributed events for the job.
+func (r *Recorder) Window(ns, job string, since time.Time) (events []Event, truncated, ok bool) {
+	r.mu.RLock()
+	g, found := r.jobs[key(ns, job)]
+	var all []Event
+	if found {
+		all = g.tail(maxEvents)
+		truncated = len(g.buf) >= maxEvents
+	}
+	r.mu.RUnlock()
+	if !found {
+		return nil, false, false
+	}
+	sort.SliceStable(all, func(i, j int) bool { return all[i].Time.Before(all[j].Time) })
+	i := sort.Search(len(all), func(i int) bool { return !all[i].Time.Before(since) })
+	if truncated && i > 0 {
+		truncated = false // the oldest retained event predates the window
+	}
+	return all[i:], truncated, true
+}
+
+// Jobs lists the (namespace, job) pairs with retained events.
+func (r *Recorder) Jobs() [][2]string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make([][2]string, 0, len(r.jobs))
+	for k := range r.jobs {
+		if i := strings.IndexByte(k, '/'); i > 0 {
+			out = append(out, [2]string{k[:i], k[i+1:]})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i][0]+"/"+out[i][1] < out[j][0]+"/"+out[j][1] })
+	return out
 }
 
 func itoa(n int) string {

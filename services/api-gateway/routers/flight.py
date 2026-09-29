@@ -77,12 +77,15 @@ def signature_headers(path: str, token: str, when: int) -> Dict[str, str]:
             "X-Gryvia-Flight-Signature": hmac.new(token.encode(), message, hashlib.sha256).hexdigest()}
 
 
-async def _read_node(client: httpx.AsyncClient, url: str, path: str, token: str) -> Tuple[bool, Any]:
-    """(reachable, body). 404 means the node answered but attributed no events to the job."""
+async def _read_node(client: httpx.AsyncClient, url: str, path: str, token: str,
+                     soft: Tuple[int, ...] = (404,)) -> Tuple[bool, Any]:
+    """(reachable, body). 404 means the node answered but attributed no events to the job.
+    ``soft`` lists other statuses that also mean "answered, nothing to report" (compare uses 400: only
+    the node that holds the incident can resolve its id)."""
     try:
         headers = signature_headers(path, token, int(time.time()))
         async with client.stream("GET", url + path, headers=headers, **request_extensions()) as response:
-            if response.status_code == 404:
+            if response.status_code in soft:
                 return True, None
             response.raise_for_status()
             chunks, size = [], 0
@@ -99,7 +102,7 @@ async def _read_node(client: httpx.AsyncClient, url: str, path: str, token: str)
         return False, None
 
 
-async def _fan_out(urls: List[str], path: str, token: str) -> List[Tuple[bool, Any]]:
+async def _fan_out(urls: List[str], path: str, token: str, soft: Tuple[int, ...] = (404,)) -> List[Tuple[bool, Any]]:
     semaphore = asyncio.Semaphore(MAX_CONCURRENCY)
     limits = httpx.Limits(max_connections=MAX_CONCURRENCY)
     # No redirects and no proxy variables: the signed request goes to the discovered pod only.
@@ -112,7 +115,9 @@ async def _fan_out(urls: List[str], path: str, token: str) -> List[Tuple[bool, A
                                  limits=limits, **kwargs) as client:
         async def one(url: str) -> Tuple[bool, Any]:
             async with semaphore:
-                return await _read_node(client, url, path, token)
+                if soft == (404,):
+                    return await _read_node(client, url, path, token)
+                return await _read_node(client, url, path, token, soft)
 
         tasks = [asyncio.ensure_future(one(url)) for url in urls]
         _, pending = await asyncio.wait(tasks, timeout=TOTAL_DEADLINE)
@@ -129,8 +134,13 @@ def token_usable(token: Any) -> bool:
     return isinstance(token, str) and len(token) >= MIN_TOKEN_LENGTH
 
 
-async def gather(deps: Deps, namespace: str, job: str) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
-    path = "/api/v1/flight/diagnose?" + urlencode({"namespace": namespace, "job": job})
+async def gather(deps: Deps, namespace: str, job: str, path: str = "",
+                 soft: Tuple[int, ...] = (404,)) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
+    """Fan out one signed GET. With the default path this is the per-job flight report and bodies must
+    name this namespace and job; a custom ``path`` (diagnosis, incidents) keeps only dict bodies that name
+    a node, and the collector already scopes them by the query string."""
+    custom = bool(path)
+    path = path or "/api/v1/flight/diagnose?" + urlencode({"namespace": namespace, "job": job})
     if deps.collector_fetch is not None:
         result = await deps.collector_fetch(path)
         bodies, total = (list(result[0]), int(result[1])) if isinstance(result, tuple) else (list(result), len(result))
@@ -142,9 +152,13 @@ async def gather(deps: Deps, namespace: str, job: str) -> Tuple[List[Dict[str, A
         total = len(urls)
         if not token_usable(deps.flight_token):
             return [], {"total": total, "reachable": 0, "reporting": 0}
-        replies = await _fan_out(urls, path, deps.flight_token) if urls else []
-    valid = [body for ok, body in replies if ok and isinstance(body, dict)
-             and body.get("namespace") == namespace and body.get("job") == job]
+        replies = await _fan_out(urls, path, deps.flight_token, soft) if urls else []
+    if custom:
+        valid = [body for ok, body in replies if ok and isinstance(body, dict)
+                 and isinstance(body.get("node"), str) and body.get("node")]
+    else:
+        valid = [body for ok, body in replies if ok and isinstance(body, dict)
+                 and body.get("namespace") == namespace and body.get("job") == job]
     return valid, {"total": total, "reachable": sum(ok for ok, _ in replies), "reporting": len(valid)}
 
 
@@ -233,4 +247,6 @@ def build_router(deps: Deps) -> APIRouter:
             raise HTTPException(status_code=503, detail="No Flight Recorder collector is reachable")
         return merge(ns, job, bodies, coverage)
 
+    from . import flight_diagnosis  # noqa: E402  (imports this module's helpers)
+    flight_diagnosis.add_routes(router, deps)
     return router

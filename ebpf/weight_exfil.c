@@ -42,6 +42,8 @@ struct {
 	__uint(max_entries, FABRIC_RINGBUF_SIZE);
 } fabric_events SEC(".maps");
 
+GRYVIA_DECLARE_DROPS();
+
 // True when the last `elen` bytes of the `n`-byte tail equal the constant ext.
 #define TAIL_EQ(tail, n, ext, elen) ({					\
 	int __ok = ((n) >= (elen));					\
@@ -144,8 +146,10 @@ int BPF_KPROBE(exfil_connect, struct sock *sk, struct sockaddr *uaddr)
 	bpf_map_delete_elem(&big_read, &tgid);
 
 	ev = bpf_ringbuf_reserve(&fabric_events, sizeof(*ev), 0);
-	if (!ev)
+	if (!ev) {
+		GRYVIA_COUNT_DROP(GRYVIA_DROP_RINGBUF);
 		return 0;
+	}
 	__builtin_memset(ev, 0, sizeof(*ev));
 	ev->timestamp_ns = now;
 	ev->pid = tgid;

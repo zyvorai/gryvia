@@ -5,6 +5,7 @@ import { Link, useParams, useNavigate } from 'react-router-dom'
 import type { UseQueryResult } from '@tanstack/react-query'
 import { api, type JobEvent, type JobLogs, type JobPod } from '@/lib/api'
 import FlightRecorder from '@/components/FlightRecorder'
+import FlightDiagnosis from '@/components/FlightDiagnosis'
 import PageHero from '@/components/PageHero'
 import PagePulse from '@/components/kit/PagePulse'
 import ConfirmDialog from '@/components/ConfirmDialog'
@@ -159,6 +160,7 @@ export default function JobDetails() {
         )}
 
         {job.metadata.namespace && <FlightRecorder namespace={job.metadata.namespace} job={job.metadata.name} />}
+        {job.metadata.namespace && <FlightDiagnosis namespace={job.metadata.namespace} job={job.metadata.name} />}
 
         <section className="card span3">
           <p className="eyebrow">STATUS</p>

@@ -163,3 +163,5 @@ spec:
 
 GPU/RDMA validation and per-job rank identity in the underlying NCCL probe
 still precede general availability.
+
+See [flight-diagnosis.md](flight-diagnosis.md) for the unified bottleneck diagnosis, persistent incident history and measurement completeness.

@@ -412,4 +412,34 @@ static __always_inline int gryvia_uaddr_v4(const struct sockaddr *uaddr,
 }
 /* ---- end misc (connect/tuning) additions ---- */
 
+/* ---- silent-drop accounting -------------------------------------------
+ * bpf_ringbuf_reserve() fails when the ring is full and bpf_perf_event_output()
+ * fails when the per-CPU perf buffer is full; without a counter those events
+ * vanish and a report built from the survivors looks healthier than it was.
+ * A program that declares the map with GRYVIA_DECLARE_DROPS() and calls
+ * GRYVIA_COUNT_DROP(slot) on the failure path exposes a per-CPU counter map
+ * named `drops`; the collector sums it (loader.Manager.ReadCounter) and reports
+ * it as measurement incompleteness (docs/flight-diagnosis.md).
+ */
+#define GRYVIA_DROP_RINGBUF 0 /* bpf_ringbuf_reserve() returned NULL */
+#define GRYVIA_DROP_PERF    1 /* bpf_perf_event_output() returned an error */
+#define GRYVIA_DROP_SLOTS   2
+
+#define GRYVIA_DECLARE_DROPS()                              \
+struct {                                                    \
+	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);            \
+	__uint(max_entries, GRYVIA_DROP_SLOTS);             \
+	__type(key, __u32);                                 \
+	__type(value, __u64);                               \
+} drops SEC(".maps")
+
+#define GRYVIA_COUNT_DROP(slot_)                            \
+	do {                                                \
+		__u32 drop_slot_ = (slot_);                 \
+		__u64 *drop_v_ = bpf_map_lookup_elem(&drops, &drop_slot_); \
+		if (drop_v_)                                \
+			*drop_v_ += 1;                      \
+	} while (0)
+/* ---- end silent-drop accounting ---- */
+
 #endif /* __GRYVIA_CORE_H__ */

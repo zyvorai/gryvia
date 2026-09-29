@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestResolverMatchesPodUIDAndNeverGuesses(t *testing.T) {
@@ -86,5 +87,52 @@ func TestPodUIDRegexpExact(t *testing.T) {
 	m := podUID.FindSubmatch([]byte("0::/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod12345678_1234_1234_1234_123456789abc.slice/cri-containerd-abc.scope"))
 	if m == nil || normalizeUID(string(m[1])) != "12345678-1234-1234-1234-123456789abc" {
 		t.Fatalf("no exact match: %v", m)
+	}
+}
+
+func TestWindowAndJobs(t *testing.T) {
+	r := New("n1")
+	id := Identity{Namespace: "ml", Job: "train", Pod: "p", Node: "n1"}
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	for i := 0; i < 10; i++ {
+		r.Record(Event{Time: base.Add(time.Duration(i) * time.Minute), Identity: id, Kind: "k"})
+	}
+	ev, trunc, ok := r.Window("ml", "train", base.Add(5*time.Minute))
+	if !ok || len(ev) != 5 || trunc {
+		t.Fatalf("%d %v %v", len(ev), trunc, ok)
+	}
+	if _, _, ok := r.Window("ml", "none", base); ok {
+		t.Fatal("unknown job")
+	}
+	if j := r.Jobs(); len(j) != 1 || j[0] != [2]string{"ml", "train"} {
+		t.Fatalf("%v", j)
+	}
+	// A full ring whose oldest event is inside the window reports truncation.
+	for i := 0; i < maxEvents+5; i++ {
+		r.Record(Event{Time: base.Add(time.Hour + time.Duration(i)*time.Second), Identity: id, Kind: "k"})
+	}
+	if _, trunc, _ := r.Window("ml", "train", base.Add(time.Hour)); !trunc {
+		t.Fatal("full ring inside the window must be truncated")
+	}
+}
+
+func TestResolverPods(t *testing.T) {
+	r := NewResolver("n1", t.TempDir())
+	raw := `{"items":[
+	{"metadata":{"uid":"AAAAAAAA-1111-2222-3333-444444444444","name":"a","namespace":"ml","labels":{"gryvia.io/job":"j"}},"spec":{"nodeName":"n1"},"status":{"phase":"Running","qosClass":"Guaranteed"}},
+	{"metadata":{"uid":"bbbbbbbb-1111-2222-3333-444444444444","name":"b","namespace":"ml","labels":{"gryvia.io/job":"j"}},"spec":{"nodeName":"n1"},"status":{"phase":"Succeeded","qosClass":"Guaranteed"}},
+	{"metadata":{"uid":"cccccccc-1111-2222-3333-444444444444","name":"c","namespace":"ml","labels":{"gryvia.io/job":"j"}},"spec":{"nodeName":"other"},"status":{"phase":"Running"}}]}`
+	if r.Pods("ml", "j") != nil {
+		t.Fatal("no snapshot yet: unknown")
+	}
+	if err := r.SetPods([]byte(raw)); err != nil {
+		t.Fatal(err)
+	}
+	p := r.Pods("ml", "j")
+	if len(p) != 1 || p[0].Pod != "a" || p[0].UID != "aaaaaaaa-1111-2222-3333-444444444444" || p[0].QOS != "Guaranteed" {
+		t.Fatalf("%+v", p)
+	}
+	if j := r.Jobs(); len(j) != 1 {
+		t.Fatalf("%v", j)
 	}
 }

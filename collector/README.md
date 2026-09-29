@@ -57,6 +57,8 @@ been verified on real hardware. Most HTTP endpoints below are **unauthenticated*
 | `/api/v1/ai/training`, `/api/v1/ai/pipeline` | none | Training communication and pipeline analysis |
 | `/api/v1/tuning/tcp` | none | TCP tuning advice |
 | `/api/v1/flight/diagnose?namespace=&job=` | HMAC token | Flight Recorder timeline; answers 503 until `-flight-token-file` is set |
+| `/api/v1/flight/diagnosis?namespace=&job=` | HMAC token | Evidence-backed bottleneck diagnosis with unavailable telemetry and `measurementCompleteness` ([docs/flight-diagnosis.md](../docs/flight-diagnosis.md)) |
+| `/api/v1/flight/incidents`, `/incidents/export`, `/compare` | HMAC token | Persistent incident history, export and before/after comparison; `{"enabled":false}` unless `-flight-store-dir` is set |
 
 Metric families include `gryvia_network_*` (flow bytes, latency, active connections, drops, DNS latency, cost bytes),
 `gryvia_nccl_*`, `gryvia_gpu_memcpy_*`, `gryvia_rdma_*`, `gryvia_roce_*`, `gryvia_fabric_*`, `gryvia_training_*`,
@@ -76,6 +78,9 @@ Metric families include `gryvia_network_*` (flow bytes, latency, active connecti
 | `-uprobe-pid` | `0` | Find those libraries through `/proc/<pid>/maps` of this process |
 | `-infer-ports` | `8000,8001` | Local TCP ports of inference servers for `infer_latency` (at most 8; empty disables it) |
 | `-flight-token-file` | empty | File with the Flight Recorder token (at least 32 characters); empty disables the endpoint |
+| `-flight-diagnosis-cgroup` | empty | cgroup v2 root the diagnosis reads (read-only) for CPU throttling, memory events and PSI; empty reports those signals as unavailable |
+| `-flight-diagnosis-thresholds` | empty | JSON file overriding the diagnosis thresholds |
+| `-flight-store-dir` | empty | Persistent incident history directory; empty disables it. Also `-flight-retention` (24h), `-flight-store-max-bytes` (64 MiB), `-flight-store-fsync` (interval), `-flight-incident-min-duration` (60s) |
 | `-window` | `300` | Aggregation window in seconds |
 | `-nats-url` | empty | Accepted but not implemented: no NATS connection is made |
 

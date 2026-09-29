@@ -44,6 +44,8 @@ struct {
 	__uint(max_entries, FABRIC_RINGBUF_SIZE);
 } fabric_events SEC(".maps");
 
+GRYVIA_DECLARE_DROPS();
+
 static __always_inline int port_watched(__u16 port)
 {
 	__u32 i;
@@ -98,8 +100,10 @@ int BPF_KPROBE(infer_first_recv, struct sock *sk)
 		return 0;
 
 	ev = bpf_ringbuf_reserve(&fabric_events, sizeof(*ev), 0);
-	if (!ev)
+	if (!ev) {
+		GRYVIA_COUNT_DROP(GRYVIA_DROP_RINGBUF);
 		return 0;
+	}
 	__builtin_memset(ev, 0, sizeof(*ev));
 	ev->timestamp_ns = now;
 	ev->pid = bpf_get_current_pid_tgid() >> 32;
