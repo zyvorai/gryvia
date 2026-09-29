@@ -40,6 +40,21 @@ spec:
         - name: PROMETHEUS_URL
           value: {{ .Values.apiGateway.prometheusUrl | quote }}
         {{- end }}
+        {{- if .Values.apiGateway.netra.url }}
+        - name: GRYVIA_NETRA_URL
+          value: {{ .Values.apiGateway.netra.url | quote }}
+        {{- if .Values.apiGateway.netra.tokenSecret }}
+        - name: GRYVIA_NETRA_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.apiGateway.netra.tokenSecret | quote }}
+              key: {{ .Values.apiGateway.netra.tokenKey | quote }}
+        {{- end }}
+        {{- if .Values.apiGateway.netra.insecureTLS }}
+        - name: GRYVIA_NETRA_INSECURE
+          value: "1"
+        {{- end }}
+        {{- end }}
         - name: GRYVIA_API_KEY
           valueFrom:
             secretKeyRef:

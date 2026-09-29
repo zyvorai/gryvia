@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 
 from .common import Deps, create_item, get_item, list_items, patch_item
+from .netra import fetch_flows
 
 K8S_NAME = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
 DURATION = re.compile(r"^[1-9][0-9]{0,3}[smh]$")
@@ -209,7 +210,11 @@ def build_router(deps: Deps) -> APIRouter:
     @router.get("/api/network/flows")
     @deps.limiter.limit("30/minute")
     async def list_flows(request: Request, _=Depends(deps.verify_auth)):
-        """Observed flows, taken from GryviaServiceGraph edges (no separate flow CRD exists)."""
+        """Observed flows: real flows from Netra when GRYVIA_NETRA_URL is set and reachable, otherwise the
+        GryviaServiceGraph edges (no separate flow CRD exists)."""
+        netra = await fetch_flows(deps)
+        if netra is not None:
+            return {"items": netra, "source": "netra"}
         graphs = await list_items(deps, GRAPHS)
         items = []
         for g in graphs:

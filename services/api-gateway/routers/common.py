@@ -52,6 +52,10 @@ class Deps:
     limiter: Any                      # slowapi Limiter (or a no-op fake)
     job_namespace: str = "default"
     collector_urls: Optional[List[str]] = None                                 # GRYVIA_COLLECTOR_URLS
+    netra_url: Optional[str] = None                                            # GRYVIA_NETRA_URL
+    netra_token: Optional[str] = None                                          # GRYVIA_NETRA_TOKEN
+    netra_verify_tls: bool = True                                              # GRYVIA_NETRA_INSECURE=1 turns off
+    netra_fetch: Optional[Callable[[], Awaitable[Any]]] = None                 # tests: returns Netra records
     # tests inject this: returns a list of bodies, or (bodies, total_collectors)
     collector_fetch: Optional[Callable[[str], Awaitable[Any]]] = None
 

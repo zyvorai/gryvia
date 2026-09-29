@@ -26,6 +26,9 @@
 #                           ~/.gryvia/api-key on the host (mode 600).
 #   GRYVIA_REMOTE_SUBDIR    checkout dir relative to the remote $HOME
 #                           (default: .deployments/gryvia)
+#   GRYVIA_NETRA_URL        Netra controller for real network flows, e.g. https://<netra-public-ip>:30870
+#   GRYVIA_NETRA_TOKEN_SECRET  Secret (in gryvia-system, key `token`) with a Netra API token
+#   GRYVIA_NETRA_INSECURE   1 = accept Netra's self-signed certificate
 #   GRYVIA_UI_NODEPORT      NodePort for the web UI (default: 32443)
 #   GRYVIA_DEPLOY_*         see scripts/lib/deploy-guards.sh (disk guard, timeouts)
 #
@@ -307,6 +310,12 @@ done
 HOST_IP="\$(hostname -I | awk '{print \$1}')"
 helm repo add nvidia https://helm.ngc.nvidia.com/nvidia --force-update >/dev/null
 helm dependency build ./helm/gryvia >/dev/null
+NETRA_ARGS=()
+if [[ -n "${GRYVIA_NETRA_URL:-}" ]]; then
+  NETRA_ARGS+=(--set "apiGateway.netra.url=${GRYVIA_NETRA_URL}")
+  [[ -n "${GRYVIA_NETRA_TOKEN_SECRET:-}" ]] && NETRA_ARGS+=(--set "apiGateway.netra.tokenSecret=${GRYVIA_NETRA_TOKEN_SECRET}")
+  [[ "${GRYVIA_NETRA_INSECURE:-}" == "1" ]] && NETRA_ARGS+=(--set apiGateway.netra.insecureTLS=true)
+fi
 helm upgrade --install gryvia ./helm/gryvia \\
   --namespace gryvia-system --create-namespace \\
   --set namespace.create=false \\
@@ -318,6 +327,7 @@ helm upgrade --install gryvia ./helm/gryvia \\
   --set auth.apiKey="\$API_KEY" \\
   --set ui.service.type=NodePort --set ui.service.nodePort="\$UI_NODEPORT" \\
   --set "tls.extraSANs={\$HOST_IP,${TARGET_HOST}}" \\
+  \${NETRA_ARGS[@]+"\${NETRA_ARGS[@]}"} \\
   --wait --timeout 300s
 
 # A fixed tag never changes the pod template, so restart to pick up freshly imported images.
