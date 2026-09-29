@@ -5,8 +5,9 @@ SKUs with prices, tenants self-serve GPU workloads in their own isolated namespa
 tenant's GPU hours and cost.
 
 :::note What this is, and is not
-Costs are **metered estimates** from job run time (GPUs x hours x the SKU's hourly rate). Gryvia does not take
-payments, issue invoices or reserve capacity. Use the CSV/JSON export to feed your billing system.
+Costs are **metered estimates** from job run time (GPUs x hours x the SKU's hourly rate). Gryvia generates
+**estimate invoices** (a monthly statement per tenant, as JSON or CSV) but does not take payments, issue tax invoices
+or reserve capacity. Feed the invoice or usage export to your billing and payment system.
 :::
 
 ```
@@ -60,7 +61,8 @@ spec:
 
 The tenant controller creates the namespace `tenant-acme` with a ResourceQuota, LimitRange and (when isolated) a
 NetworkPolicy. Jobs whose GPU type is not allowed are rejected by the quota operator
-(`GpuTypeNotAllowed` / `NoEnabledSku`) wherever a `GryviaQuota` covers the namespace.
+(`GpuTypeNotAllowed` / `NoEnabledSku`) wherever a `GryviaQuota` covers the namespace, and the admission webhook denies
+such jobs up front with the reason in the error.
 
 ## 4. What a tenant sees
 
@@ -81,10 +83,30 @@ curl -H "Authorization: Bearer $TOKEN" "https://<gateway>/api/usage/export?forma
 
 The dashboard **Usage** page shows the same numbers with export buttons.
 
+## 6. Monthly invoices (estimates)
+
+An invoice is computed on demand from the month's usage records: one line per SKU with GPU hours, rate and amount, a
+subtotal, and an `estimate` status (with `open: true` while jobs are still running). Nothing is stored; the same
+records always give the same invoice. Tenants only ever see their own.
+
+```bash
+gryvia invoice --month 2026-09
+gryvia invoice --tenant acme --month 2026-09 -o csv
+curl -H "Authorization: Bearer $TOKEN" "https://<gateway>/api/invoices/acme/2026-09?format=csv"
+```
+
+The dashboard **Invoices** page shows the same statements with CSV and JSON download.
+
+## Payments
+
+Gryvia does not process payments. Take the CSV/JSON invoice into your billing system, or poll
+`/api/invoices?month=YYYY-MM` from it, and let that system charge the tenant.
+
 ## Limits
 
 - Estimates only; restarted, preempted or spot jobs are metered by wall-clock time.
 - Enforcement needs a `GryviaQuota` covering the tenant namespace; a namespace without one is not enforced.
-- The admission webhook path in the chart does not match the code, so admission-time quota checks are not active;
-  enforcement is reactive (jobs are rejected shortly after creation).
+- Admission checks (allowed GPU types, per-job GPU limit, the tenant's allowed SKUs) run when a job is created and
+  fail open: if the quotas cannot be read, the job is admitted and the quota operator's reactive enforcement rejects
+  it shortly after. Only new jobs are checked, never updates. Concurrent-job and budget limits are enforced reactively.
 - Verified with unit tests and fake clusters; it has not yet run against a real identity provider or GPUs.

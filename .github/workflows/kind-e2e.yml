@@ -4,6 +4,7 @@ name: Kind end-to-end
 # checks that the API answers with the demo objects. Proves the install path works without GPUs.
 
 on:
+  workflow_dispatch:
   pull_request:
     branches: [ main ]
     paths:
@@ -102,10 +103,14 @@ jobs:
           "$gryvia" usage --group-by sku -o json | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['totals']['jobs']==2 and abs(d['totals']['cost']-252)<0.01, d"
           "$gryvia" usage --tenant globex -o json | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['totals']['jobs']==1, d"
           "$gryvia" usage -o csv | head -1
+          "$gryvia" invoice --month 2026-09 --tenant acme -o json | python3 -c "import json,sys; d=json.load(sys.stdin); assert d[0]['number']=='INV-acme-202609' and abs(d[0]['subtotal']-192)<0.01, d"
+          "$gryvia" invoice --month 2026-09 -o csv | grep -q TOTAL
           key='Admin@321'
           curl -sfk -H "Authorization: Bearer $key" https://localhost:8443/api/skus | grep -q h100-80g
           curl -sfk -H "Authorization: Bearer $key" https://localhost:8443/api/tenants | grep -q acme
           curl -sfk -H "Authorization: Bearer $key" "https://localhost:8443/api/usage?groupBy=sku" | grep -q totals
+          curl -sfk -H "Authorization: Bearer $key" "https://localhost:8443/api/invoices?month=2026-09" | grep -q INV-acme-202609
+          curl -sfk -H "Authorization: Bearer $key" "https://localhost:8443/api/invoices/globex/2026-09?format=csv" | grep -q TOTAL
           curl -sfk -H "Authorization: Bearer $key" "https://localhost:8443/api/usage/export?format=csv" | head -1 | grep -q tenant
       - name: The CLI explains a missing API instead of dumping it
         run: |

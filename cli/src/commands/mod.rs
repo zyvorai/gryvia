@@ -10,6 +10,7 @@ pub mod get;
 pub mod gpu_trace;
 pub mod graph;
 pub mod health;
+pub mod invoice;
 pub mod list;
 pub mod logs;
 pub mod maintenance;
