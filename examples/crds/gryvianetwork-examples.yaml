@@ -1,6 +1,6 @@
 # Example: InfiniBand HDR200 Configuration
 apiVersion: gryvia.io/v1
-kind: FabricNetworkPolicy
+kind: GryviaNetworkPolicy
 metadata:
   name: infiniband-hdr200
 spec:
@@ -34,7 +34,7 @@ spec:
 ---
 # Example: RoCEv2 Configuration
 apiVersion: gryvia.io/v1
-kind: FabricNetworkPolicy
+kind: GryviaNetworkPolicy
 metadata:
   name: roce-v2
 spec:
@@ -64,7 +64,7 @@ spec:
 ---
 # Example: Multi-Rail Network
 apiVersion: gryvia.io/v1
-kind: FabricNetworkPolicy
+kind: GryviaNetworkPolicy
 metadata:
   name: multi-rail
 spec:
@@ -93,14 +93,14 @@ spec:
 ---
 # Example: Job with Network Requirements
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: distributed-training-ib
 spec:
   type: training
 
   # Network requirements
-  # RDMA fabric (InfiniBand HDR200 with GPUDirect, see FabricNetworkPolicy above)
+  # RDMA fabric (InfiniBand HDR200 with GPUDirect, see GryviaNetworkPolicy above)
   network: rdma
 
   # Enable NCCL optimizations

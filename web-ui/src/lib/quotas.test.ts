@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import type { FabricQuota } from '@/types'
+import type { GryviaQuota } from '@/types'
 import { alertThreshold, allowedTypes, budgetPercent, budgetedCount, limitLabel, overBudgetAlert } from './quotas'
 
-const base = (over: Partial<FabricQuota['spec']> = {}, status?: FabricQuota['status']): FabricQuota => ({
+const base = (over: Partial<GryviaQuota['spec']> = {}, status?: GryviaQuota['status']): GryviaQuota => ({
   apiVersion: 'v1',
-  kind: 'FabricQuota',
+  kind: 'GryviaQuota',
   metadata: { name: 'q' },
   spec: { team: 't', namespaces: [], gpuQuota: { maxGPUs: 8, maxGPUsPerJob: 4, allowedGPUTypes: [], maxRunningJobs: 2 }, priority: 1, ...over },
   status,

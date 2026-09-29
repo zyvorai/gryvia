@@ -66,11 +66,11 @@ To remove CRDs:
 
 ```bash
 kubectl delete crds \
-  fabricgpunodes.gryvia.io \
-  fabricaijobs.gryvia.io \
-  fabricstorages.gryvia.io \
-  fabricnetworks.gryvia.io \
-  fabricquotas.gryvia.io
+  gryviagpunodes.gryvia.io \
+  gryviaaijobs.gryvia.io \
+  gryviastorages.gryvia.io \
+  gryvianetworks.gryvia.io \
+  gryviaquotas.gryvia.io
 ```
 
 ## Configuration
@@ -130,8 +130,8 @@ The following table lists the configurable parameters and their default values.
 ### CRD and Security Defaults
 
 - All CRDs enforce `required: ["spec"]` at the top level for validation.
-- `FabricStorage` StorageClass `reclaimPolicy` defaults to `Retain` (not `Delete`).
-- `FabricQuota` `gpuQuota.maxGPUs` minimum is `1` (cannot be `0`).
+- `GryviaStorage` StorageClass `reclaimPolicy` defaults to `Retain` (not `Delete`).
+- `GryviaQuota` `gpuQuota.maxGPUs` minimum is `1` (cannot be `0`).
 - DCGM exporter security is hardened: drops ALL capabilities, adds only `SYS_ADMIN`, and sets `readOnlyRootFilesystem: true`.
 - nvidia-device-plugin liveness probe changed from `nvidia-smi` to an HTTP health check endpoint.
 - gpu-operator deployment includes `seccompProfile: RuntimeDefault`.

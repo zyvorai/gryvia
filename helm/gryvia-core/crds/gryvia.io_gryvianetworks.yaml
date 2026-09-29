@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabricnetworks.gryvia.io
+  name: gryvianetworks.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricNetwork
-    listKind: FabricNetworkList
-    plural: fabricnetworks
-    singular: fabricnetwork
+    kind: GryviaNetwork
+    listKind: GryviaNetworkList
+    plural: gryvianetworks
+    singular: gryvianetwork
   scope: Cluster
   versions:
   - name: v1
     schema:
       openAPIV3Schema:
-        description: FabricNetwork is the Schema for the fabricnetworks API
+        description: GryviaNetwork is the Schema for the gryvianetworks API
         properties:
           apiVersion:
             description: |-
@@ -37,7 +37,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricNetworkSpec defines the desired state of FabricNetwork
+            description: GryviaNetworkSpec defines the desired state of GryviaNetwork
             properties:
               mtu:
                 description: MTU for network interfaces
@@ -104,7 +104,7 @@ spec:
             - networkType
             type: object
           status:
-            description: FabricNetworkStatus defines the observed state of FabricNetwork
+            description: GryviaNetworkStatus defines the observed state of GryviaNetwork
             properties:
               conditions:
                 description: Conditions represent the latest available observations

@@ -20,14 +20,14 @@ func newMemoryOptimizerTestScheme() *runtime.Scheme {
 	return s
 }
 
-func newMemoryOptimizerReconciler(objs ...client.Object) (*FabricGpuMemoryOptimizerReconciler, client.Client) {
+func newMemoryOptimizerReconciler(objs ...client.Object) (*GryviaGpuMemoryOptimizerReconciler, client.Client) {
 	scheme := newMemoryOptimizerTestScheme()
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(objs...).
-		WithStatusSubresource(&gryviav1.FabricGpuMemoryOptimizer{}).
+		WithStatusSubresource(&gryviav1.GryviaGpuMemoryOptimizer{}).
 		Build()
-	r := &FabricGpuMemoryOptimizerReconciler{
+	r := &GryviaGpuMemoryOptimizerReconciler{
 		Client: fakeClient,
 		Scheme: scheme,
 		Log:    ctrl.Log.WithName("test"),
@@ -35,12 +35,12 @@ func newMemoryOptimizerReconciler(objs ...client.Object) (*FabricGpuMemoryOptimi
 	return r, fakeClient
 }
 
-func newTestOptimizer(name string) *gryviav1.FabricGpuMemoryOptimizer {
-	return &gryviav1.FabricGpuMemoryOptimizer{
+func newTestOptimizer(name string) *gryviav1.GryviaGpuMemoryOptimizer {
+	return &gryviav1.GryviaGpuMemoryOptimizer{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
-		Spec: gryviav1.FabricGpuMemoryOptimizerSpec{
+		Spec: gryviav1.GryviaGpuMemoryOptimizerSpec{
 			Scope: gryviav1.OptimizerScope{
 				Type: "cluster",
 			},
@@ -88,16 +88,16 @@ func TestMemoryOptimizer_Reconcile_DeletionTimestamp(t *testing.T) {
 func TestMemoryOptimizer_Reconcile_CollectsGpuNodes(t *testing.T) {
 	optimizer := newTestOptimizer("test-optimizer")
 
-	gpuNode1 := &gryviav1.FabricGpuNode{
+	gpuNode1 := &gryviav1.GryviaGpuNode{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "gpu-node-1",
 		},
-		Spec: gryviav1.FabricGpuNodeSpec{
+		Spec: gryviav1.GryviaGpuNodeSpec{
 			NodeName: "node-1",
 			GpuType:  "H100",
 			GpuCount: 8,
 		},
-		Status: gryviav1.FabricGpuNodeStatus{
+		Status: gryviav1.GryviaGpuNodeStatus{
 			Phase: "Ready",
 			GpuStatus: []gryviav1.GpuStatus{
 				{
@@ -112,16 +112,16 @@ func TestMemoryOptimizer_Reconcile_CollectsGpuNodes(t *testing.T) {
 		},
 	}
 
-	gpuNode2 := &gryviav1.FabricGpuNode{
+	gpuNode2 := &gryviav1.GryviaGpuNode{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "gpu-node-2",
 		},
-		Spec: gryviav1.FabricGpuNodeSpec{
+		Spec: gryviav1.GryviaGpuNodeSpec{
 			NodeName: "node-2",
 			GpuType:  "A100",
 			GpuCount: 4,
 		},
-		Status: gryviav1.FabricGpuNodeStatus{
+		Status: gryviav1.GryviaGpuNodeStatus{
 			Phase: "Ready",
 			GpuStatus: []gryviav1.GpuStatus{
 				{
@@ -150,12 +150,12 @@ func TestMemoryOptimizer_Reconcile_CollectsGpuNodes(t *testing.T) {
 func TestMemoryOptimizer_NodeMatchesScope(t *testing.T) {
 	r, _ := newMemoryOptimizerReconciler()
 
-	node := gryviav1.FabricGpuNode{
+	node := gryviav1.GryviaGpuNode{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "node-1",
 			Labels: map[string]string{"team": "ml"},
 		},
-		Spec: gryviav1.FabricGpuNodeSpec{
+		Spec: gryviav1.GryviaGpuNodeSpec{
 			NodeName: "node-1",
 			GpuType:  "H100",
 		},
@@ -216,13 +216,13 @@ func TestMemoryOptimizer_NodeMatchesScope(t *testing.T) {
 func TestMemoryOptimizer_ExtractMemorySamples(t *testing.T) {
 	r, _ := newMemoryOptimizerReconciler()
 
-	nodes := []gryviav1.FabricGpuNode{
+	nodes := []gryviav1.GryviaGpuNode{
 		{
-			Spec: gryviav1.FabricGpuNodeSpec{
+			Spec: gryviav1.GryviaGpuNodeSpec{
 				NodeName: "node-1",
 				GpuType:  "H100",
 			},
-			Status: gryviav1.FabricGpuNodeStatus{
+			Status: gryviav1.GryviaGpuNodeStatus{
 				GpuStatus: []gryviav1.GpuStatus{
 					{Index: 0, MemoryUsed: 30000, MemoryTotal: 80000, Utilization: 75},
 					{Index: 1, MemoryUsed: 0, MemoryTotal: 0, Utilization: 0}, // Should be skipped
@@ -230,11 +230,11 @@ func TestMemoryOptimizer_ExtractMemorySamples(t *testing.T) {
 			},
 		},
 		{
-			Spec: gryviav1.FabricGpuNodeSpec{
+			Spec: gryviav1.GryviaGpuNodeSpec{
 				NodeName: "node-2",
 				GpuType:  "A100",
 			},
-			Status: gryviav1.FabricGpuNodeStatus{
+			Status: gryviav1.GryviaGpuNodeStatus{
 				GpuStatus: []gryviav1.GpuStatus{
 					{Index: 0, MemoryUsed: 20000, MemoryTotal: 40000, Utilization: 50},
 				},

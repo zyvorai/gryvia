@@ -24,14 +24,14 @@ func newAIJobTestScheme() *runtime.Scheme {
 	return s
 }
 
-func newAIJobReconciler(objs ...client.Object) (*FabricAIJobReconciler, client.Client) {
+func newAIJobReconciler(objs ...client.Object) (*GryviaAIJobReconciler, client.Client) {
 	scheme := newAIJobTestScheme()
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(objs...).
-		WithStatusSubresource(&gryviav1.FabricAIJob{}, &appsv1.StatefulSet{}).
+		WithStatusSubresource(&gryviav1.GryviaAIJob{}, &appsv1.StatefulSet{}).
 		Build()
-	r := &FabricAIJobReconciler{
+	r := &GryviaAIJobReconciler{
 		Client: fakeClient,
 		Scheme: scheme,
 		Log:    ctrl.Log.WithName("test"),
@@ -39,13 +39,13 @@ func newAIJobReconciler(objs ...client.Object) (*FabricAIJobReconciler, client.C
 	return r, fakeClient
 }
 
-func newTestAIJob(name, namespace string) *gryviav1.FabricAIJob {
-	return &gryviav1.FabricAIJob{
+func newTestAIJob(name, namespace string) *gryviav1.GryviaAIJob {
+	return &gryviav1.GryviaAIJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
 		},
-		Spec: gryviav1.FabricAIJobSpec{
+		Spec: gryviav1.GryviaAIJobSpec{
 			Type:    "training",
 			Image:   "pytorch/pytorch:latest",
 			GPUs:    4,
@@ -80,7 +80,7 @@ func TestAIJob_Reconcile_InitializesStatus(t *testing.T) {
 		t.Error("expected requeue after status initialization")
 	}
 
-	updated := &gryviav1.FabricAIJob{}
+	updated := &gryviav1.GryviaAIJob{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-job", Namespace: "default"}, updated); err != nil {
 		t.Fatalf("failed to get updated job: %v", err)
 	}
@@ -112,7 +112,7 @@ func TestAIJob_GetReplicaCount(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		job      *gryviav1.FabricAIJob
+		job      *gryviav1.GryviaAIJob
 		expected int32
 	}{
 		{
@@ -122,8 +122,8 @@ func TestAIJob_GetReplicaCount(t *testing.T) {
 		},
 		{
 			name: "distributed with nodes",
-			job: &gryviav1.FabricAIJob{
-				Spec: gryviav1.FabricAIJobSpec{
+			job: &gryviav1.GryviaAIJob{
+				Spec: gryviav1.GryviaAIJobSpec{
 					Distributed: &gryviav1.DistributedConfig{
 						Enabled: true,
 						Nodes:   4,
@@ -134,8 +134,8 @@ func TestAIJob_GetReplicaCount(t *testing.T) {
 		},
 		{
 			name: "distributed without nodes defaults to 1",
-			job: &gryviav1.FabricAIJob{
-				Spec: gryviav1.FabricAIJobSpec{
+			job: &gryviav1.GryviaAIJob{
+				Spec: gryviav1.GryviaAIJobSpec{
 					Distributed: &gryviav1.DistributedConfig{
 						Enabled: true,
 					},
@@ -145,8 +145,8 @@ func TestAIJob_GetReplicaCount(t *testing.T) {
 		},
 		{
 			name: "distributed disabled returns 1",
-			job: &gryviav1.FabricAIJob{
-				Spec: gryviav1.FabricAIJobSpec{
+			job: &gryviav1.GryviaAIJob{
+				Spec: gryviav1.GryviaAIJobSpec{
 					Distributed: &gryviav1.DistributedConfig{
 						Enabled: false,
 						Nodes:   4,
@@ -172,23 +172,23 @@ func TestAIJob_GetGPUsPerPod(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		job      *gryviav1.FabricAIJob
+		job      *gryviav1.GryviaAIJob
 		expected int32
 	}{
 		{
 			name:     "non-distributed uses spec GPUs",
-			job:      &gryviav1.FabricAIJob{Spec: gryviav1.FabricAIJobSpec{GPUs: 4}},
+			job:      &gryviav1.GryviaAIJob{Spec: gryviav1.GryviaAIJobSpec{GPUs: 4}},
 			expected: 4,
 		},
 		{
 			name:     "non-distributed zero GPUs defaults to 1",
-			job:      &gryviav1.FabricAIJob{Spec: gryviav1.FabricAIJobSpec{GPUs: 0}},
+			job:      &gryviav1.GryviaAIJob{Spec: gryviav1.GryviaAIJobSpec{GPUs: 0}},
 			expected: 1,
 		},
 		{
 			name: "distributed uses GpusPerNode",
-			job: &gryviav1.FabricAIJob{
-				Spec: gryviav1.FabricAIJobSpec{
+			job: &gryviav1.GryviaAIJob{
+				Spec: gryviav1.GryviaAIJobSpec{
 					GPUs: 8,
 					Distributed: &gryviav1.DistributedConfig{
 						Enabled:     true,
@@ -200,8 +200,8 @@ func TestAIJob_GetGPUsPerPod(t *testing.T) {
 		},
 		{
 			name: "distributed without GpusPerNode defaults to 1",
-			job: &gryviav1.FabricAIJob{
-				Spec: gryviav1.FabricAIJobSpec{
+			job: &gryviav1.GryviaAIJob{
+				Spec: gryviav1.GryviaAIJobSpec{
 					GPUs: 8,
 					Distributed: &gryviav1.DistributedConfig{
 						Enabled: true,

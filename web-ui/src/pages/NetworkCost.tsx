@@ -61,7 +61,7 @@ export default function NetworkCost() {
         ) : allReports.length === 0 ? (
           <div className="span3">
             <EmptyState title="No network cost reports yet">
-              The network operator produces cost reports from FabricNetworkCost resources. Create a FabricNetworkCost for a namespace or team to start tracking; the first report appears after one reporting interval.
+              The network operator produces cost reports from GryviaNetworkCost resources. Create a GryviaNetworkCost for a namespace or team to start tracking; the first report appears after one reporting interval.
             </EmptyState>
           </div>
         ) : (
@@ -176,7 +176,7 @@ function CostBody({ summary, costPerGB, periodChoices, onSelect, updatedAt, onRe
           columns={teamColumns}
           state={table}
           rowKey={(t) => t.name}
-          empty={<EmptyState title="No team costs in this period">The network operator reports cost per team in each FabricNetworkCost report; none of this period's reports include a team breakdown.</EmptyState>}
+          empty={<EmptyState title="No team costs in this period">The network operator reports cost per team in each GryviaNetworkCost report; none of this period's reports include a team breakdown.</EmptyState>}
         />
       </section>
 

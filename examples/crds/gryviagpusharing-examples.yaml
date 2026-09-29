@@ -1,6 +1,6 @@
 # Example: Time-Slicing for V100 GPUs
 apiVersion: gryvia.io/v1
-kind: FabricGPUSharingPolicy
+kind: GryviaGPUSharingPolicy
 metadata:
   name: v100-time-slicing
 spec:
@@ -23,7 +23,7 @@ spec:
 ---
 # Example: Fractional T4 GPUs
 apiVersion: gryvia.io/v1
-kind: FabricGPUSharingPolicy
+kind: GryviaGPUSharingPolicy
 metadata:
   name: t4-fractional
 spec:
@@ -45,7 +45,7 @@ spec:
 ---
 # Example: MIG Profiles for A100
 apiVersion: gryvia.io/v1
-kind: FabricGPUSharingPolicy
+kind: GryviaGPUSharingPolicy
 metadata:
   name: a100-mig-mixed
 spec:
@@ -65,7 +65,7 @@ spec:
 ---
 # Example: Priority-Based Sharing
 apiVersion: gryvia.io/v1
-kind: FabricGPUSharingPolicy
+kind: GryviaGPUSharingPolicy
 metadata:
   name: priority-based-sharing
 spec:
@@ -85,7 +85,7 @@ spec:
 ---
 # Example: Job Requesting Fractional GPU
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: inference-fractional
 spec:
@@ -106,7 +106,7 @@ spec:
 ---
 # Example: Job with Time-Sliced GPU
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: dev-environment
 spec:
@@ -125,7 +125,7 @@ spec:
 ---
 # GPU Sharing Status Example
 apiVersion: gryvia.io/v1
-kind: FabricGPUSharingPolicy
+kind: GryviaGPUSharingPolicy
 metadata:
   name: t4-fractional
 status:
@@ -145,7 +145,7 @@ status:
 ---
 # Multi-Tenant Sharing Example
 apiVersion: gryvia.io/v1
-kind: FabricGPUSharingPolicy
+kind: GryviaGPUSharingPolicy
 metadata:
   name: multi-tenant-sharing
 spec:

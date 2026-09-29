@@ -4,8 +4,8 @@
 # The Go types under operators/*/api/v1 are the source of truth. Output goes to
 # crds/ (canonical) and is copied to helm/gryvia-core/crds/, which Helm installs.
 # Two kinds are defined in more than one operator; the owning operator wins:
-#   FabricAIJob   -> ai-operator   (quota-operator holds a read-only subset)
-#   FabricGpuNode -> gpu-operator  (ai-operator holds an identical copy)
+#   GryviaAIJob   -> ai-operator   (quota-operator holds a read-only subset)
+#   GryviaGpuNode -> gpu-operator  (ai-operator holds an identical copy)
 #
 # Usage: ./scripts/gen-crds.sh        (needs controller-gen on PATH or in ~/go/bin)
 set -euo pipefail
@@ -26,8 +26,8 @@ mkdir -p "$stage/all"
 for op in quota-operator storage-operator network-operator network-intelligence gpu-operator ai-operator; do
   cp "$stage/$op"/*.yaml "$stage/all/"
 done
-# FabricGpuNode: gpu-operator owns it (copied before ai-operator above), restore it.
-cp "$stage/gpu-operator/gryvia.io_fabricgpunodes.yaml" "$stage/all/"
+# GryviaGpuNode: gpu-operator owns it (copied before ai-operator above), restore it.
+cp "$stage/gpu-operator/gryvia.io_gryviagpunodes.yaml" "$stage/all/"
 
 rm -f crds/*.yaml helm/gryvia-core/crds/*.yaml
 mkdir -p crds helm/gryvia-core/crds

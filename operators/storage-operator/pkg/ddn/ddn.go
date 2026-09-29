@@ -27,7 +27,7 @@ const (
 )
 
 // InstallCSIDriver installs the DDN EXAScaler CSI driver
-func InstallCSIDriver(ctx context.Context, k8sClient client.Client, storage *gryviav1.FabricStorage) error {
+func InstallCSIDriver(ctx context.Context, k8sClient client.Client, storage *gryviav1.GryviaStorage) error {
 	if err := ensureServiceAccount(ctx, k8sClient); err != nil {
 		return fmt.Errorf("failed to create ServiceAccount: %w", err)
 	}
@@ -181,7 +181,7 @@ func ensureEndpointSecret(ctx context.Context, k8sClient client.Client, secretNa
 	return k8sClient.Update(ctx, existing)
 }
 
-func ensureController(ctx context.Context, k8sClient client.Client, storage *gryviav1.FabricStorage) error {
+func ensureController(ctx context.Context, k8sClient client.Client, storage *gryviav1.GryviaStorage) error {
 	secretName := fmt.Sprintf("%s-endpoint", storage.Name)
 	if err := ensureEndpointSecret(ctx, k8sClient, secretName, storage.Spec.Endpoint); err != nil {
 		return fmt.Errorf("failed to create endpoint secret: %w", err)
@@ -299,7 +299,7 @@ func ensureController(ctx context.Context, k8sClient client.Client, storage *gry
 	return err
 }
 
-func ensureNodeDaemonSet(ctx context.Context, k8sClient client.Client, storage *gryviav1.FabricStorage) error {
+func ensureNodeDaemonSet(ctx context.Context, k8sClient client.Client, storage *gryviav1.GryviaStorage) error {
 	secretName := fmt.Sprintf("%s-endpoint", storage.Name)
 
 	ds := &appsv1.DaemonSet{

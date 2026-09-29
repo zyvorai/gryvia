@@ -27,32 +27,32 @@ const (
 	maxCostReports = 720
 )
 
-// FabricNetworkCostReconciler reconciles a FabricNetworkCost object
-type FabricNetworkCostReconciler struct {
+// GryviaNetworkCostReconciler reconciles a GryviaNetworkCost object
+type GryviaNetworkCostReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricnetworkcosts,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricnetworkcosts/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricnetworkcosts/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryvianetworkcosts,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryvianetworkcosts/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryvianetworkcosts/finalizers,verbs=update
 //+kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch
 
-func (r *FabricNetworkCostReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *GryviaNetworkCostReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// Fetch the FabricNetworkCost instance
-	costTracker := &gryviav1.FabricNetworkCost{}
+	// Fetch the GryviaNetworkCost instance
+	costTracker := &gryviav1.GryviaNetworkCost{}
 	if err := r.Get(ctx, req.NamespacedName, costTracker); err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("FabricNetworkCost resource not found, ignoring since object must be deleted")
+			logger.Info("GryviaNetworkCost resource not found, ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		logger.Error(err, "Failed to get FabricNetworkCost")
+		logger.Error(err, "Failed to get GryviaNetworkCost")
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("Reconciling FabricNetworkCost",
+	logger.Info("Reconciling GryviaNetworkCost",
 		"name", costTracker.Name,
 		"namespaces", costTracker.Spec.TargetNamespaces,
 	)
@@ -111,7 +111,7 @@ func (r *FabricNetworkCostReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	// Update status
 	r.updateCostStatus(ctx, req.NamespacedName, "Active", allReports)
 
-	logger.Info("FabricNetworkCost report generated",
+	logger.Info("GryviaNetworkCost report generated",
 		"newReports", len(newReports),
 		"totalReports", len(allReports),
 	)
@@ -136,7 +136,7 @@ type collectorCostResponse struct {
 }
 
 // queryNetworkCosts fetches per-namespace byte counters from the collector API
-func (r *FabricNetworkCostReconciler) queryNetworkCosts(ctx context.Context, costTracker *gryviav1.FabricNetworkCost) map[string]namespaceByteCounts {
+func (r *GryviaNetworkCostReconciler) queryNetworkCosts(ctx context.Context, costTracker *gryviav1.GryviaNetworkCost) map[string]namespaceByteCounts {
 	logger := log.FromContext(ctx)
 	result := make(map[string]namespaceByteCounts)
 
@@ -179,10 +179,10 @@ func (r *FabricNetworkCostReconciler) queryNetworkCosts(ctx context.Context, cos
 	return result
 }
 
-// updateCostStatus updates the FabricNetworkCost status subresource
-func (r *FabricNetworkCostReconciler) updateCostStatus(ctx context.Context, namespacedName types.NamespacedName, phase string, reports []gryviav1.NetworkCostReport) {
+// updateCostStatus updates the GryviaNetworkCost status subresource
+func (r *GryviaNetworkCostReconciler) updateCostStatus(ctx context.Context, namespacedName types.NamespacedName, phase string, reports []gryviav1.NetworkCostReport) {
 	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		costTracker := &gryviav1.FabricNetworkCost{}
+		costTracker := &gryviav1.GryviaNetworkCost{}
 		if err := r.Get(ctx, namespacedName, costTracker); err != nil {
 			return err
 		}
@@ -191,13 +191,13 @@ func (r *FabricNetworkCostReconciler) updateCostStatus(ctx context.Context, name
 		costTracker.Status.LastReport = metav1.Now()
 		return r.Status().Update(ctx, costTracker)
 	}); err != nil {
-		log.FromContext(ctx).Error(err, "Failed to update FabricNetworkCost status")
+		log.FromContext(ctx).Error(err, "Failed to update GryviaNetworkCost status")
 	}
 }
 
 // SetupWithManager sets up the controller with the Manager
-func (r *FabricNetworkCostReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaNetworkCostReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricNetworkCost{}).
+		For(&gryviav1.GryviaNetworkCost{}).
 		Complete(r)
 }

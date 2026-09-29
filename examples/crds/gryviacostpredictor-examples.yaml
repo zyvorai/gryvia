@@ -1,6 +1,6 @@
 # Example: Cost Predictor
 apiVersion: gryvia.io/v1
-kind: FabricCostPredictor
+kind: GryviaCostPredictor
 metadata:
   name: default-predictor
 spec:

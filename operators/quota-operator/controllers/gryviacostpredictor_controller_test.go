@@ -21,26 +21,26 @@ func newCostPredictorTestScheme() *runtime.Scheme {
 	return s
 }
 
-func newCostPredictorReconciler(objs ...client.Object) (*FabricCostPredictorReconciler, client.Client) {
+func newCostPredictorReconciler(objs ...client.Object) (*GryviaCostPredictorReconciler, client.Client) {
 	scheme := newCostPredictorTestScheme()
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(objs...).
-		WithStatusSubresource(&gryviav1.FabricCostPredictor{}, &gryviav1.FabricAIJob{}).
+		WithStatusSubresource(&gryviav1.GryviaCostPredictor{}, &gryviav1.GryviaAIJob{}).
 		Build()
-	r := &FabricCostPredictorReconciler{
+	r := &GryviaCostPredictorReconciler{
 		Client: fakeClient,
 		Scheme: scheme,
 	}
 	return r, fakeClient
 }
 
-func newTestCostPredictor(name string) *gryviav1.FabricCostPredictor {
-	return &gryviav1.FabricCostPredictor{
+func newTestCostPredictor(name string) *gryviav1.GryviaCostPredictor {
+	return &gryviav1.GryviaCostPredictor{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
-		Spec: gryviav1.FabricCostPredictorSpec{
+		Spec: gryviav1.GryviaCostPredictorSpec{
 			HistoricalData: gryviav1.HistoricalDataSpec{
 				LookbackDays:      30,
 				MinimumSamples:    5,
@@ -87,7 +87,7 @@ func TestCostPredictor_Reconcile_Basic(t *testing.T) {
 		t.Errorf("expected requeue after 2m, got %v", result.RequeueAfter)
 	}
 
-	updated := &gryviav1.FabricCostPredictor{}
+	updated := &gryviav1.GryviaCostPredictor{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-predictor"}, updated); err != nil {
 		t.Fatalf("failed to get predictor: %v", err)
 	}
@@ -112,7 +112,7 @@ func TestCostPredictor_Reconcile_SkipsAnnotatedJobs(t *testing.T) {
 	predictor := newTestCostPredictor("test-predictor")
 
 	// Job already has estimate annotation - should be skipped
-	job := &gryviav1.FabricAIJob{
+	job := &gryviav1.GryviaAIJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "already-estimated",
 			Namespace: "default",
@@ -120,11 +120,11 @@ func TestCostPredictor_Reconcile_SkipsAnnotatedJobs(t *testing.T) {
 				annotationEstimatedCost: "100.00",
 			},
 		},
-		Spec: gryviav1.FabricAIJobSpec{
+		Spec: gryviav1.GryviaAIJobSpec{
 			GPUs:    4,
 			GpuType: "H100",
 		},
-		Status: gryviav1.FabricAIJobStatus{
+		Status: gryviav1.GryviaAIJobStatus{
 			Phase: "Pending",
 		},
 	}
@@ -137,7 +137,7 @@ func TestCostPredictor_Reconcile_SkipsAnnotatedJobs(t *testing.T) {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
-	updated := &gryviav1.FabricCostPredictor{}
+	updated := &gryviav1.GryviaCostPredictor{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-predictor"}, updated); err != nil {
 		t.Fatalf("failed to get predictor: %v", err)
 	}
@@ -199,9 +199,9 @@ func TestCostPredictor_UpdateAccuracyMetrics_NoCompletedJobs(t *testing.T) {
 	r, _ := newCostPredictorReconciler(predictor)
 
 	// No completed jobs - accuracy should stay zero
-	jobs := []gryviav1.FabricAIJob{
+	jobs := []gryviav1.GryviaAIJob{
 		{
-			Status: gryviav1.FabricAIJobStatus{Phase: "Running"},
+			Status: gryviav1.GryviaAIJobStatus{Phase: "Running"},
 		},
 	}
 
@@ -218,7 +218,7 @@ func TestCostPredictor_UpdateAccuracyMetrics_WithCompletedJobs(t *testing.T) {
 	startTime := metav1.NewTime(time.Now().Add(-2 * time.Hour))
 	completionTime := metav1.Now()
 
-	jobs := []gryviav1.FabricAIJob{
+	jobs := []gryviav1.GryviaAIJob{
 		{
 			ObjectMeta: metav1.ObjectMeta{
 				Annotations: map[string]string{
@@ -226,11 +226,11 @@ func TestCostPredictor_UpdateAccuracyMetrics_WithCompletedJobs(t *testing.T) {
 					annotationEstimatedDuration: "2h",
 				},
 			},
-			Spec: gryviav1.FabricAIJobSpec{
+			Spec: gryviav1.GryviaAIJobSpec{
 				GPUs:    4,
 				GpuType: "H100",
 			},
-			Status: gryviav1.FabricAIJobStatus{
+			Status: gryviav1.GryviaAIJobStatus{
 				Phase:          "Succeeded",
 				StartTime:      &startTime,
 				CompletionTime: &completionTime,
@@ -250,7 +250,7 @@ func TestCostPredictor_ProcessNewJobs_DryRunMode(t *testing.T) {
 	predictor := newTestCostPredictor("test")
 	predictor.Spec.Integration.DryRunMode = true
 
-	job := &gryviav1.FabricAIJob{
+	job := &gryviav1.GryviaAIJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "dry-run-job",
 			Namespace: "default",
@@ -258,25 +258,25 @@ func TestCostPredictor_ProcessNewJobs_DryRunMode(t *testing.T) {
 				annotationDryRun: "true",
 			},
 		},
-		Spec: gryviav1.FabricAIJobSpec{
+		Spec: gryviav1.GryviaAIJobSpec{
 			GPUs:    4,
 			GpuType: "H100",
 		},
-		Status: gryviav1.FabricAIJobStatus{
+		Status: gryviav1.GryviaAIJobStatus{
 			Phase: "Pending",
 		},
 	}
 
 	r, fakeClient := newCostPredictorReconciler(predictor, job)
 
-	allJobs := []gryviav1.FabricAIJob{*job}
+	allJobs := []gryviav1.GryviaAIJob{*job}
 	err := r.processNewJobs(context.Background(), predictor, allJobs)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
 	// In dry-run mode, job should NOT be updated with annotations
-	updated := &gryviav1.FabricAIJob{}
+	updated := &gryviav1.GryviaAIJob{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "dry-run-job", Namespace: "default"}, updated); err != nil {
 		t.Fatalf("failed to get job: %v", err)
 	}

@@ -35,33 +35,33 @@ const (
 	annotationGPUAffinity  = "gryvia.io/gpu-affinity"
 )
 
-// FabricAIJobMutator implements a MutatingWebhook for FabricAIJob.
+// GryviaAIJobMutator implements a MutatingWebhook for GryviaAIJob.
 // It injects NCCL environment variables, topology-aware scheduling
 // annotations, default resource limits, and SR-IOV annotations.
-type FabricAIJobMutator struct {
+type GryviaAIJobMutator struct {
 	Client  client.Client
 	decoder admission.Decoder
 	log     logr.Logger
 }
 
-// NewFabricAIJobMutator creates a new mutator.
-func NewFabricAIJobMutator(c client.Client) *FabricAIJobMutator {
-	return &FabricAIJobMutator{
+// NewGryviaAIJobMutator creates a new mutator.
+func NewGryviaAIJobMutator(c client.Client) *GryviaAIJobMutator {
+	return &GryviaAIJobMutator{
 		Client: c,
 		log:    ctrl.Log.WithName("webhook").WithName("mutator"),
 	}
 }
 
-// Handle processes an admission request for FabricAIJob mutation.
-func (m *FabricAIJobMutator) Handle(ctx context.Context, req admission.Request) admission.Response {
-	job := &gryviav1.FabricAIJob{}
+// Handle processes an admission request for GryviaAIJob mutation.
+func (m *GryviaAIJobMutator) Handle(ctx context.Context, req admission.Request) admission.Response {
+	job := &gryviav1.GryviaAIJob{}
 
 	if err := m.decoder.Decode(req, job); err != nil {
-		m.log.Error(err, "Failed to decode FabricAIJob")
+		m.log.Error(err, "Failed to decode GryviaAIJob")
 		return admission.Errored(http.StatusBadRequest, fmt.Errorf("failed to decode request: %w", err))
 	}
 
-	m.log.Info("Mutating FabricAIJob", "name", job.Name, "namespace", job.Namespace)
+	m.log.Info("Mutating GryviaAIJob", "name", job.Name, "namespace", job.Namespace)
 
 	// Apply mutations.
 	m.injectNCCLEnvVars(job)
@@ -73,7 +73,7 @@ func (m *FabricAIJobMutator) Handle(ctx context.Context, req admission.Request) 
 	// Marshal the mutated object.
 	marshaledJob, err := json.Marshal(job)
 	if err != nil {
-		m.log.Error(err, "Failed to marshal mutated FabricAIJob")
+		m.log.Error(err, "Failed to marshal mutated GryviaAIJob")
 		return admission.Errored(http.StatusInternalServerError, fmt.Errorf("failed to marshal response: %w", err))
 	}
 
@@ -82,7 +82,7 @@ func (m *FabricAIJobMutator) Handle(ctx context.Context, req admission.Request) 
 
 // injectNCCLEnvVars adds NCCL-related environment variables to the job spec.
 // These are critical for distributed GPU training performance.
-func (m *FabricAIJobMutator) injectNCCLEnvVars(job *gryviav1.FabricAIJob) {
+func (m *GryviaAIJobMutator) injectNCCLEnvVars(job *gryviav1.GryviaAIJob) {
 	// Only inject NCCL vars for distributed jobs or multi-GPU jobs.
 	if job.Spec.GPUs <= 1 && (job.Spec.Distributed == nil || !job.Spec.Distributed.Enabled) {
 		return
@@ -139,7 +139,7 @@ func (m *FabricAIJobMutator) injectNCCLEnvVars(job *gryviav1.FabricAIJob) {
 
 // injectTopologyAnnotations adds scheduling annotations that influence
 // topology-aware placement.
-func (m *FabricAIJobMutator) injectTopologyAnnotations(job *gryviav1.FabricAIJob) {
+func (m *GryviaAIJobMutator) injectTopologyAnnotations(job *gryviav1.GryviaAIJob) {
 	if job.Annotations == nil {
 		job.Annotations = make(map[string]string)
 	}
@@ -172,7 +172,7 @@ func (m *FabricAIJobMutator) injectTopologyAnnotations(job *gryviav1.FabricAIJob
 
 // setDefaultResourceLimits sets CPU and memory limits if the user has not
 // specified them. This prevents unbounded resource consumption.
-func (m *FabricAIJobMutator) setDefaultResourceLimits(job *gryviav1.FabricAIJob) {
+func (m *GryviaAIJobMutator) setDefaultResourceLimits(job *gryviav1.GryviaAIJob) {
 	// Set default requests.
 	if job.Spec.Resources.Requests == nil {
 		job.Spec.Resources.Requests = corev1.ResourceList{}
@@ -212,7 +212,7 @@ func (m *FabricAIJobMutator) setDefaultResourceLimits(job *gryviav1.FabricAIJob)
 
 // addNetworkAnnotations adds SR-IOV and RDMA annotations for jobs that
 // require specialized networking.
-func (m *FabricAIJobMutator) addNetworkAnnotations(job *gryviav1.FabricAIJob) {
+func (m *GryviaAIJobMutator) addNetworkAnnotations(job *gryviav1.GryviaAIJob) {
 	if job.Annotations == nil {
 		job.Annotations = make(map[string]string)
 	}
@@ -256,14 +256,14 @@ func (m *FabricAIJobMutator) addNetworkAnnotations(job *gryviav1.FabricAIJob) {
 }
 
 // setDefaultImagePullPolicy sets a default image pull policy if not specified.
-func (m *FabricAIJobMutator) setDefaultImagePullPolicy(job *gryviav1.FabricAIJob) {
+func (m *GryviaAIJobMutator) setDefaultImagePullPolicy(job *gryviav1.GryviaAIJob) {
 	if job.Spec.ImagePullPolicy == "" {
 		job.Spec.ImagePullPolicy = corev1.PullIfNotPresent
 	}
 }
 
 // InjectDecoder injects the admission decoder.
-func (m *FabricAIJobMutator) InjectDecoder(d admission.Decoder) error {
+func (m *GryviaAIJobMutator) InjectDecoder(d admission.Decoder) error {
 	m.decoder = d
 	return nil
 }

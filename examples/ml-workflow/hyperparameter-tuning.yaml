@@ -1,8 +1,8 @@
-# FabricAutoTuner - Bayesian hyperparameter optimization for ResNet training
+# GryviaAutoTuner - Bayesian hyperparameter optimization for ResNet training
 # Runs up to 50 trials (4 in parallel) using Bayesian search to find optimal
 # learning rate, batch size, and optimizer for maximizing validation accuracy.
 apiVersion: gryvia.io/v1
-kind: FabricAutoTuner
+kind: GryviaAutoTuner
 metadata:
   name: resnet-hpo
   namespace: ml-team
@@ -39,7 +39,7 @@ spec:
       type: categorical
       values: ["adam", "sgd", "adamw"]
 
-  # Each trial runs this FabricAIJob spec
+  # Each trial runs this GryviaAIJob spec
   jobTemplate:
     type: training
     model: resnet50

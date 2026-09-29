@@ -36,7 +36,7 @@ pub async fn execute(client: &GryviaClient, resource: &str, all_namespaces: bool
 }
 
 async fn list_jobs(client: &GryviaClient, all_namespaces: bool, output: &str) -> Result<()> {
-    let api: Api<FabricAIJob> = if all_namespaces {
+    let api: Api<GryviaAIJob> = if all_namespaces {
         Api::all(client.kube_client.clone())
     } else {
         Api::namespaced(client.kube_client.clone(), client.namespace())
@@ -61,7 +61,7 @@ async fn list_jobs(client: &GryviaClient, all_namespaces: bool, output: &str) ->
 }
 
 async fn list_quotas(client: &GryviaClient, output: &str) -> Result<()> {
-    let api: Api<FabricQuota> = Api::all(client.kube_client.clone());
+    let api: Api<GryviaQuota> = Api::all(client.kube_client.clone());
 
     let quotas = api.list(&ListParams::default()).await
         .context("Failed to list quotas")?;
@@ -82,7 +82,7 @@ async fn list_quotas(client: &GryviaClient, output: &str) -> Result<()> {
 }
 
 async fn list_nodes(client: &GryviaClient, output: &str) -> Result<()> {
-    let api: Api<FabricGpuNode> = Api::all(client.kube_client.clone());
+    let api: Api<GryviaGpuNode> = Api::all(client.kube_client.clone());
 
     let nodes = api.list(&ListParams::default()).await
         .context("Failed to list GPU nodes")?;

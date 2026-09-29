@@ -14,9 +14,9 @@ const (
 	BackendTorchServe  InferenceBackend = "torchserve"
 )
 
-// FabricInferenceServiceSpec defines the desired state of FabricInferenceService
-type FabricInferenceServiceSpec struct {
-	// ModelRef is the name of the FabricModelRegistry resource to serve
+// GryviaInferenceServiceSpec defines the desired state of GryviaInferenceService
+type GryviaInferenceServiceSpec struct {
+	// ModelRef is the name of the GryviaModelRegistry resource to serve
 	ModelRef string `json:"modelRef"`
 
 	// Backend is the inference backend (triton, vllm, tensorrt-llm, torchserve)
@@ -76,7 +76,7 @@ type CanaryConfig struct {
 	// Weight is the percentage of traffic routed to the canary (0-100)
 	Weight int32 `json:"weight"`
 
-	// ModelVersion is the model version (FabricModelRegistry name) to deploy as canary
+	// ModelVersion is the model version (GryviaModelRegistry name) to deploy as canary
 	ModelVersion string `json:"modelVersion"`
 
 	// AutoPromote automatically promotes canary to primary if health checks pass
@@ -101,8 +101,8 @@ type HealthCheckConfig struct {
 	AutoRollback bool `json:"autoRollback,omitempty"`
 }
 
-// FabricInferenceServiceStatus defines the observed state of FabricInferenceService
-type FabricInferenceServiceStatus struct {
+// GryviaInferenceServiceStatus defines the observed state of GryviaInferenceService
+type GryviaInferenceServiceStatus struct {
 	// Phase is the current phase (Pending, Deploying, Ready, Failed, RollingBack)
 	Phase string `json:"phase,omitempty"`
 
@@ -167,24 +167,24 @@ type CanaryStatus struct {
 //+kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 //+kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// FabricInferenceService is the Schema for the fabricinferenceservices API
-type FabricInferenceService struct {
+// GryviaInferenceService is the Schema for the gryviainferenceservices API
+type GryviaInferenceService struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricInferenceServiceSpec   `json:"spec,omitempty"`
-	Status FabricInferenceServiceStatus `json:"status,omitempty"`
+	Spec   GryviaInferenceServiceSpec   `json:"spec,omitempty"`
+	Status GryviaInferenceServiceStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricInferenceServiceList contains a list of FabricInferenceService
-type FabricInferenceServiceList struct {
+// GryviaInferenceServiceList contains a list of GryviaInferenceService
+type GryviaInferenceServiceList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricInferenceService `json:"items"`
+	Items           []GryviaInferenceService `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&FabricInferenceService{}, &FabricInferenceServiceList{})
+	SchemeBuilder.Register(&GryviaInferenceService{}, &GryviaInferenceServiceList{})
 }

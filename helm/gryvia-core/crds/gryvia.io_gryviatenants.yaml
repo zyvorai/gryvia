@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabrictenants.gryvia.io
+  name: gryviatenants.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricTenant
-    listKind: FabricTenantList
-    plural: fabrictenants
-    singular: fabrictenant
+    kind: GryviaTenant
+    listKind: GryviaTenantList
+    plural: gryviatenants
+    singular: gryviatenant
   scope: Cluster
   versions:
   - name: v1
     schema:
       openAPIV3Schema:
-        description: FabricTenant is the Schema for the fabrictenants API
+        description: GryviaTenant is the Schema for the gryviatenants API
         properties:
           apiVersion:
             description: |-
@@ -37,7 +37,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricTenantSpec defines the desired state of FabricTenant
+            description: GryviaTenantSpec defines the desired state of GryviaTenant
             properties:
               billing:
                 description: Billing defines billing configuration
@@ -222,7 +222,7 @@ spec:
                 type: object
             type: object
           status:
-            description: FabricTenantStatus defines the observed state of FabricTenant
+            description: GryviaTenantStatus defines the observed state of GryviaTenant
             properties:
               conditions:
                 description: Conditions represent the latest available observations

@@ -4,9 +4,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// FabricCheckpointGuardSpec defines the desired state of FabricCheckpointGuard
-type FabricCheckpointGuardSpec struct {
-	// JobSelector selects which FabricAIJob resources this guard applies to
+// GryviaCheckpointGuardSpec defines the desired state of GryviaCheckpointGuard
+type GryviaCheckpointGuardSpec struct {
+	// JobSelector selects which GryviaAIJob resources this guard applies to
 	JobSelector JobSelector `json:"jobSelector"`
 
 	// CheckpointPolicy defines when and how checkpoints are taken
@@ -22,7 +22,7 @@ type FabricCheckpointGuardSpec struct {
 	Monitoring *CheckpointMonitoring `json:"monitoring,omitempty"`
 }
 
-// JobSelector defines label-based selection of FabricAIJob resources
+// JobSelector defines label-based selection of GryviaAIJob resources
 type JobSelector struct {
 	// MatchLabels is a map of key-value pairs to match against job labels
 	MatchLabels map[string]string `json:"matchLabels,omitempty"`
@@ -98,8 +98,8 @@ type CheckpointMonitoring struct {
 	AlertOnFailure bool `json:"alertOnFailure,omitempty"`
 }
 
-// FabricCheckpointGuardStatus defines the observed state of FabricCheckpointGuard
-type FabricCheckpointGuardStatus struct {
+// GryviaCheckpointGuardStatus defines the observed state of GryviaCheckpointGuard
+type GryviaCheckpointGuardStatus struct {
 	// Phase is the current phase (Idle, Monitoring, Checkpointing, Restoring, Error)
 	Phase string `json:"phase,omitempty"`
 
@@ -127,7 +127,7 @@ type FabricCheckpointGuardStatus struct {
 	// AvgCheckpointDuration is the average time to complete a checkpoint (e.g., 2m30s)
 	AvgCheckpointDuration string `json:"avgCheckpointDuration,omitempty"`
 
-	// MatchedJobs is the number of FabricAIJob resources matched by jobSelector
+	// MatchedJobs is the number of GryviaAIJob resources matched by jobSelector
 	MatchedJobs int32 `json:"matchedJobs,omitempty"`
 }
 
@@ -139,24 +139,24 @@ type FabricCheckpointGuardStatus struct {
 //+kubebuilder:printcolumn:name="StorageUsed",type=string,JSONPath=`.status.storageUsed`
 //+kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// FabricCheckpointGuard is the Schema for the fabriccheckpointguards API
-type FabricCheckpointGuard struct {
+// GryviaCheckpointGuard is the Schema for the gryviacheckpointguards API
+type GryviaCheckpointGuard struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricCheckpointGuardSpec   `json:"spec,omitempty"`
-	Status FabricCheckpointGuardStatus `json:"status,omitempty"`
+	Spec   GryviaCheckpointGuardSpec   `json:"spec,omitempty"`
+	Status GryviaCheckpointGuardStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricCheckpointGuardList contains a list of FabricCheckpointGuard
-type FabricCheckpointGuardList struct {
+// GryviaCheckpointGuardList contains a list of GryviaCheckpointGuard
+type GryviaCheckpointGuardList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricCheckpointGuard `json:"items"`
+	Items           []GryviaCheckpointGuard `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&FabricCheckpointGuard{}, &FabricCheckpointGuardList{})
+	SchemeBuilder.Register(&GryviaCheckpointGuard{}, &GryviaCheckpointGuardList{})
 }

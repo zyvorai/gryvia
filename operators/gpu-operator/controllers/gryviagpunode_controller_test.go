@@ -25,14 +25,14 @@ func newGpuNodeTestScheme() *runtime.Scheme {
 	return s
 }
 
-func newGpuNodeReconciler(objs ...client.Object) (*FabricGpuNodeReconciler, client.Client) {
+func newGpuNodeReconciler(objs ...client.Object) (*GryviaGpuNodeReconciler, client.Client) {
 	scheme := newGpuNodeTestScheme()
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(objs...).
-		WithStatusSubresource(&gryviav1.FabricGpuNode{}).
+		WithStatusSubresource(&gryviav1.GryviaGpuNode{}).
 		Build()
-	r := &FabricGpuNodeReconciler{
+	r := &GryviaGpuNodeReconciler{
 		Client: fakeClient,
 		Scheme: scheme,
 		Log:    ctrl.Log.WithName("test"),
@@ -40,12 +40,12 @@ func newGpuNodeReconciler(objs ...client.Object) (*FabricGpuNodeReconciler, clie
 	return r, fakeClient
 }
 
-func newTestFabricGpuNode(name string) *gryviav1.FabricGpuNode {
-	return &gryviav1.FabricGpuNode{
+func newTestGryviaGpuNode(name string) *gryviav1.GryviaGpuNode {
+	return &gryviav1.GryviaGpuNode{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
-		Spec: gryviav1.FabricGpuNodeSpec{
+		Spec: gryviav1.GryviaGpuNodeSpec{
 			NodeName: "gpu-node-1",
 			GpuType:  "H100",
 			GpuCount: 8,
@@ -73,7 +73,7 @@ func TestGpuNode_Reconcile_NotFound(t *testing.T) {
 }
 
 func TestGpuNode_Reconcile_AddsFinalizer(t *testing.T) {
-	node := newTestFabricGpuNode("test-gpu-node")
+	node := newTestGryviaGpuNode("test-gpu-node")
 	k8sNode := &corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "gpu-node-1",
@@ -91,18 +91,18 @@ func TestGpuNode_Reconcile_AddsFinalizer(t *testing.T) {
 	}
 
 	// Verify finalizer was added
-	updated := &gryviav1.FabricGpuNode{}
+	updated := &gryviav1.GryviaGpuNode{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-gpu-node"}, updated); err != nil {
 		t.Fatalf("failed to get updated resource: %v", err)
 	}
-	if !controllerutil.ContainsFinalizer(updated, fabricGpuNodeFinalizer) {
+	if !controllerutil.ContainsFinalizer(updated, gryviaGpuNodeFinalizer) {
 		t.Error("expected finalizer to be added")
 	}
 }
 
 func TestGpuNode_Reconcile_InitializesStatus(t *testing.T) {
-	node := newTestFabricGpuNode("test-gpu-node")
-	controllerutil.AddFinalizer(node, fabricGpuNodeFinalizer)
+	node := newTestGryviaGpuNode("test-gpu-node")
+	controllerutil.AddFinalizer(node, gryviaGpuNodeFinalizer)
 	k8sNode := &corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "gpu-node-1",
@@ -119,7 +119,7 @@ func TestGpuNode_Reconcile_InitializesStatus(t *testing.T) {
 		t.Error("expected requeue after status initialization")
 	}
 
-	updated := &gryviav1.FabricGpuNode{}
+	updated := &gryviav1.GryviaGpuNode{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-gpu-node"}, updated); err != nil {
 		t.Fatalf("failed to get updated resource: %v", err)
 	}
@@ -130,9 +130,9 @@ func TestGpuNode_Reconcile_InitializesStatus(t *testing.T) {
 
 func TestGpuNode_Reconcile_DeletionRemovesLabels(t *testing.T) {
 	now := metav1.Now()
-	node := newTestFabricGpuNode("test-gpu-node")
+	node := newTestGryviaGpuNode("test-gpu-node")
 	node.DeletionTimestamp = &now
-	node.Finalizers = []string{fabricGpuNodeFinalizer}
+	node.Finalizers = []string{gryviaGpuNodeFinalizer}
 
 	k8sNode := &corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
@@ -173,23 +173,23 @@ func TestGpuNode_Reconcile_DeletionRemovesLabels(t *testing.T) {
 	}
 
 	// Verify finalizer was removed
-	updatedGpu := &gryviav1.FabricGpuNode{}
+	updatedGpu := &gryviav1.GryviaGpuNode{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-gpu-node"}, updatedGpu); err != nil {
 		if apierrors.IsNotFound(err) {
 			return // object is gone once its last finalizer is removed
 		}
 		t.Fatalf("failed to get updated gpu node: %v", err)
 	}
-	if controllerutil.ContainsFinalizer(updatedGpu, fabricGpuNodeFinalizer) {
+	if controllerutil.ContainsFinalizer(updatedGpu, gryviaGpuNodeFinalizer) {
 		t.Error("expected finalizer to be removed after deletion")
 	}
 }
 
 func TestGpuNode_Reconcile_DeletionNodeNotFound(t *testing.T) {
 	now := metav1.Now()
-	node := newTestFabricGpuNode("test-gpu-node")
+	node := newTestGryviaGpuNode("test-gpu-node")
 	node.DeletionTimestamp = &now
-	node.Finalizers = []string{fabricGpuNodeFinalizer}
+	node.Finalizers = []string{gryviaGpuNodeFinalizer}
 
 	// No Kubernetes node exists
 	r, _ := newGpuNodeReconciler(node)
@@ -205,7 +205,7 @@ func TestGpuNode_Reconcile_DeletionNodeNotFound(t *testing.T) {
 }
 
 func TestGpuNode_UpdateCondition(t *testing.T) {
-	node := newTestFabricGpuNode("test-gpu-node")
+	node := newTestGryviaGpuNode("test-gpu-node")
 	r, _ := newGpuNodeReconciler()
 
 	// Add a new condition
@@ -237,7 +237,7 @@ func TestGpuNode_UpdateCondition(t *testing.T) {
 }
 
 func TestGpuNode_AllConditionsTrue(t *testing.T) {
-	node := newTestFabricGpuNode("test-gpu-node")
+	node := newTestGryviaGpuNode("test-gpu-node")
 	r, _ := newGpuNodeReconciler()
 
 	// No conditions - should be false
@@ -261,7 +261,7 @@ func TestGpuNode_AllConditionsTrue(t *testing.T) {
 }
 
 func TestGpuNode_AnyConditionFalse(t *testing.T) {
-	node := newTestFabricGpuNode("test-gpu-node")
+	node := newTestGryviaGpuNode("test-gpu-node")
 	r, _ := newGpuNodeReconciler()
 
 	// No conditions - should be false
@@ -283,7 +283,7 @@ func TestGpuNode_AnyConditionFalse(t *testing.T) {
 }
 
 func TestGpuNode_CalculateBackoff(t *testing.T) {
-	node := newTestFabricGpuNode("test-gpu-node")
+	node := newTestGryviaGpuNode("test-gpu-node")
 	r, _ := newGpuNodeReconciler()
 
 	// No unhealthy condition - should return min backoff
@@ -304,7 +304,7 @@ func TestGpuNode_CalculateBackoff(t *testing.T) {
 }
 
 func TestGpuNode_LabelNode(t *testing.T) {
-	node := newTestFabricGpuNode("test-gpu-node")
+	node := newTestGryviaGpuNode("test-gpu-node")
 	node.Spec.Interconnect = "nvlink"
 	node.Spec.Labels = map[string]string{
 		"gryvia.io/custom": "value",

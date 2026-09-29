@@ -149,38 +149,38 @@ rules:
 # Read every kind the gateway serves.
 - apiGroups: ["gryvia.io"]
   resources:
-  - fabricaijobs
-  - fabricquotas
-  - fabricgpunodes
-  - fabricstorages
-  - fabricnetworks
-  - fabricworkspaces
-  - fabricmodelregistries
-  - fabricinferenceservices
-  - fabricworkflows
-  - fabricautotuners
-  - fabricflowpolicies
-  - fabrictrafficinsights
-  - fabricservicegraphs
-  - fabricnetworkanomalies
-  - fabricnetworkcosts
-  - fabrictracesessions
-  - fabricsecuritypolicies
-  - fabrictraininginsights
-  - fabricgpumemoryoptimizers
+  - gryviaaijobs
+  - gryviaquotas
+  - gryviagpunodes
+  - gryviastorages
+  - gryvianetworks
+  - gryviaworkspaces
+  - gryviamodelregistries
+  - gryviainferenceservices
+  - gryviaworkflows
+  - gryviaautotuners
+  - gryviaflowpolicies
+  - gryviatrafficinsights
+  - gryviaservicegraphs
+  - gryvianetworkanomalies
+  - gryvianetworkcosts
+  - gryviatracesessions
+  - gryviasecuritypolicies
+  - gryviatraininginsights
+  - gryviagpumemoryoptimizers
   verbs: ["get", "list", "watch"]
 # Write only the kinds the API creates, deletes or updates.
 - apiGroups: ["gryvia.io"]
   resources:
-  - fabricaijobs
-  - fabricworkspaces
-  - fabricinferenceservices
-  - fabricworkflows
-  - fabricautotuners
-  - fabricflowpolicies
-  - fabrictracesessions
-  - fabricsecuritypolicies
-  - fabricmodelregistries
+  - gryviaaijobs
+  - gryviaworkspaces
+  - gryviainferenceservices
+  - gryviaworkflows
+  - gryviaautotuners
+  - gryviaflowpolicies
+  - gryviatracesessions
+  - gryviasecuritypolicies
+  - gryviamodelregistries
   verbs: ["create", "delete", "patch"]
 - apiGroups: [""]
   resources: ["nodes", "pods", "namespaces"]

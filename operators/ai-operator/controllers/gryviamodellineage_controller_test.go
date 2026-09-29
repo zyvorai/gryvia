@@ -20,27 +20,27 @@ func newModelLineageTestScheme() *runtime.Scheme {
 	return s
 }
 
-func newModelLineageReconciler(objs ...client.Object) (*FabricModelLineageReconciler, client.Client) {
+func newModelLineageReconciler(objs ...client.Object) (*GryviaModelLineageReconciler, client.Client) {
 	scheme := newModelLineageTestScheme()
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(objs...).
-		WithStatusSubresource(&gryviav1.FabricModelLineage{}, &gryviav1.FabricAIJob{}).
+		WithStatusSubresource(&gryviav1.GryviaModelLineage{}, &gryviav1.GryviaAIJob{}).
 		Build()
-	r := &FabricModelLineageReconciler{
+	r := &GryviaModelLineageReconciler{
 		Client: fakeClient,
 		Scheme: scheme,
 	}
 	return r, fakeClient
 }
 
-func newTestModelLineage(name, namespace string) *gryviav1.FabricModelLineage {
-	return &gryviav1.FabricModelLineage{
+func newTestModelLineage(name, namespace string) *gryviav1.GryviaModelLineage {
+	return &gryviav1.GryviaModelLineage{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
 		},
-		Spec: gryviav1.FabricModelLineageSpec{
+		Spec: gryviav1.GryviaModelLineageSpec{
 			Model: gryviav1.ModelIdentity{
 				Name:     "llama-70b",
 				Version:  "1.0.0",
@@ -97,7 +97,7 @@ func TestModelLineage_Reconcile_SetsCreationTimestamp(t *testing.T) {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
-	updated := &gryviav1.FabricModelLineage{}
+	updated := &gryviav1.GryviaModelLineage{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-lineage", Namespace: "default"}, updated); err != nil {
 		t.Fatalf("failed to get updated lineage: %v", err)
 	}
@@ -116,7 +116,7 @@ func TestModelLineage_Reconcile_SetsReadyCondition(t *testing.T) {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
-	updated := &gryviav1.FabricModelLineage{}
+	updated := &gryviav1.GryviaModelLineage{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-lineage", Namespace: "default"}, updated); err != nil {
 		t.Fatalf("failed to get updated lineage: %v", err)
 	}
@@ -138,12 +138,12 @@ func TestModelLineage_Reconcile_WithAutoCapture(t *testing.T) {
 	ml.Spec.Provenance.AutoCapture = true
 
 	// Create a referenced job
-	job := &gryviav1.FabricAIJob{
+	job := &gryviav1.GryviaAIJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "training-job-1",
 			Namespace: "default",
 		},
-		Spec: gryviav1.FabricAIJobSpec{
+		Spec: gryviav1.GryviaAIJobSpec{
 			Type:    "training",
 			Image:   "pytorch:latest",
 			GPUs:    8,
@@ -151,7 +151,7 @@ func TestModelLineage_Reconcile_WithAutoCapture(t *testing.T) {
 			Network: "rdma",
 			Storage: "fast-storage",
 		},
-		Status: gryviav1.FabricAIJobStatus{
+		Status: gryviav1.GryviaAIJobStatus{
 			Phase:          "Succeeded",
 			NodesAllocated: []string{"node-1", "node-2"},
 		},
@@ -165,7 +165,7 @@ func TestModelLineage_Reconcile_WithAutoCapture(t *testing.T) {
 	// but the reconcile should still proceed
 	_ = err
 
-	updated := &gryviav1.FabricModelLineage{}
+	updated := &gryviav1.GryviaModelLineage{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-lineage", Namespace: "default"}, updated); err != nil {
 		t.Fatalf("failed to get updated lineage: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestModelLineage_Reconcile_ComplianceStatus(t *testing.T) {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
-	updated := &gryviav1.FabricModelLineage{}
+	updated := &gryviav1.GryviaModelLineage{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-lineage", Namespace: "default"}, updated); err != nil {
 		t.Fatalf("failed to get updated lineage: %v", err)
 	}

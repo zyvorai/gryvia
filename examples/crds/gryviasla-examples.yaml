@@ -1,6 +1,6 @@
 # Example: Platinum SLA (Production)
 apiVersion: gryvia.io/v1
-kind: FabricSLA
+kind: GryviaSLA
 metadata:
   name: production-platinum
 spec:
@@ -57,7 +57,7 @@ spec:
 ---
 # Example: Gold SLA (Research)
 apiVersion: gryvia.io/v1
-kind: FabricSLA
+kind: GryviaSLA
 metadata:
   name: research-gold
 spec:
@@ -103,7 +103,7 @@ spec:
 ---
 # Example: Silver SLA (Development)
 apiVersion: gryvia.io/v1
-kind: FabricSLA
+kind: GryviaSLA
 metadata:
   name: dev-silver
 spec:
@@ -147,12 +147,12 @@ spec:
 ---
 # Example: Job with SLA
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: production-inference
 spec:
   type: inference
-  # Covered by the production-platinum FabricSLA (see above)
+  # Covered by the production-platinum GryviaSLA (see above)
 
   gpus: 8
   gpuType: H100
@@ -168,7 +168,7 @@ spec:
 ---
 # SLA Status Example
 apiVersion: gryvia.io/v1
-kind: FabricSLA
+kind: GryviaSLA
 metadata:
   name: production-platinum
 status:

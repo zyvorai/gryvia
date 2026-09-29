@@ -4,14 +4,14 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabriccheckpointguards.gryvia.io
+  name: gryviacheckpointguards.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricCheckpointGuard
-    listKind: FabricCheckpointGuardList
-    plural: fabriccheckpointguards
-    singular: fabriccheckpointguard
+    kind: GryviaCheckpointGuard
+    listKind: GryviaCheckpointGuardList
+    plural: gryviacheckpointguards
+    singular: gryviacheckpointguard
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
@@ -30,7 +30,7 @@ spec:
     name: v1
     schema:
       openAPIV3Schema:
-        description: FabricCheckpointGuard is the Schema for the fabriccheckpointguards
+        description: GryviaCheckpointGuard is the Schema for the gryviacheckpointguards
           API
         properties:
           apiVersion:
@@ -51,7 +51,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricCheckpointGuardSpec defines the desired state of FabricCheckpointGuard
+            description: GryviaCheckpointGuardSpec defines the desired state of GryviaCheckpointGuard
             properties:
               checkpointPolicy:
                 description: CheckpointPolicy defines when and how checkpoints are
@@ -94,7 +94,7 @@ spec:
                     type: object
                 type: object
               jobSelector:
-                description: JobSelector selects which FabricAIJob resources this
+                description: JobSelector selects which GryviaAIJob resources this
                   guard applies to
                 properties:
                   matchLabels:
@@ -165,8 +165,8 @@ spec:
             - jobSelector
             type: object
           status:
-            description: FabricCheckpointGuardStatus defines the observed state of
-              FabricCheckpointGuard
+            description: GryviaCheckpointGuardStatus defines the observed state of
+              GryviaCheckpointGuard
             properties:
               avgCheckpointDuration:
                 description: AvgCheckpointDuration is the average time to complete
@@ -243,7 +243,7 @@ spec:
                   checkpoint
                 type: string
               matchedJobs:
-                description: MatchedJobs is the number of FabricAIJob resources matched
+                description: MatchedJobs is the number of GryviaAIJob resources matched
                   by jobSelector
                 format: int32
                 type: integer

@@ -145,7 +145,7 @@ kubectl create secret generic vast-credentials \
 # Deploy VAST storage
 kubectl apply -f - <<EOF
 apiVersion: gryvia.io/v1
-kind: FabricStorage
+kind: GryviaStorage
 metadata:
   name: vast-production
 spec:
@@ -160,7 +160,7 @@ spec:
 EOF
 
 # Wait for CSI driver deployment
-kubectl wait --for=condition=Ready fabricstorage/vast-production --timeout=300s
+kubectl wait --for=condition=Ready gryviastorage/vast-production --timeout=300s
 
 # Verify CSI driver
 kubectl get pods -n kube-system | grep vast-csi
@@ -176,7 +176,7 @@ kubectl label nodes gpu-worker-{01..04} gryvia.io/rdma=true
 # Deploy RDMA network
 kubectl apply -f - <<EOF
 apiVersion: gryvia.io/v1
-kind: FabricNetwork
+kind: GryviaNetwork
 metadata:
   name: rdma-training
 spec:
@@ -192,7 +192,7 @@ spec:
 EOF
 
 # Wait for RDMA device plugin
-kubectl wait --for=condition=Ready fabricnetwork/rdma-training --timeout=300s
+kubectl wait --for=condition=Ready gryvianetwork/rdma-training --timeout=300s
 
 # Verify RDMA resources
 kubectl get nodes -o json | jq '.items[].status.allocatable' | grep rdma
@@ -202,8 +202,8 @@ kubectl get nodes -o json | jq '.items[].status.allocatable' | grep rdma
 
 ```bash
 # GPU nodes are auto-discovered by the GPU operator
-# Verify FabricGpuNode resources were created
-kubectl get fabricgpunodes
+# Verify GryviaGpuNode resources were created
+kubectl get gryviagpunodes
 
 # Expected output:
 # NAME            GPU TYPE   COUNT   STATUS    RDMA      NVLINK
@@ -227,7 +227,7 @@ kubectl apply -f examples/quota/team-cv-quota.yaml
 kubectl apply -f examples/quota/team-nlp-quota.yaml
 
 # Verify quotas
-kubectl get fabricquotas
+kubectl get gryviaquotas
 ```
 
 ### 8. Deploy Monitoring Stack
@@ -258,7 +258,7 @@ kubectl port-forward -n monitoring svc/monitoring-grafana 3000:80
 # Submit distributed training job
 kubectl apply -f - <<EOF
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: test-training
   namespace: ml-training
@@ -297,7 +297,7 @@ spec:
 EOF
 
 # Monitor job
-kubectl get fabricaijob -n ml-training test-training -w
+kubectl get gryviaaijob -n ml-training test-training -w
 
 # Check pods
 kubectl get pods -n ml-training -l job-name=test-training
@@ -318,14 +318,14 @@ kubectl get pods -n gryvia-system
 ### ✅ GPUs Discovered
 
 ```bash
-kubectl get fabricgpunodes
+kubectl get gryviagpunodes
 # Should show all GPU nodes with correct count
 ```
 
 ### ✅ Storage Ready
 
 ```bash
-kubectl get fabricstorage
+kubectl get gryviastorage
 # STATUS should be Ready
 
 kubectl get storageclass
@@ -335,7 +335,7 @@ kubectl get storageclass
 ### ✅ RDMA Configured
 
 ```bash
-kubectl get fabricnetwork
+kubectl get gryvianetwork
 # STATUS should be Ready
 
 kubectl get pods -n kube-system | grep rdma-device-plugin
@@ -351,7 +351,7 @@ kubectl run -it --rm rdma-test \
 ### ✅ Quotas Active
 
 ```bash
-kubectl get fabricquotas
+kubectl get gryviaquotas
 # All quotas should show Phase: Active
 ```
 
@@ -457,10 +457,10 @@ kubectl get network-attachment-definitions
 
 ```bash
 # Check quota
-kubectl get fabricquota -o yaml
+kubectl get gryviaquota -o yaml
 
 # Check job status
-kubectl describe fabricaijob <job-name>
+kubectl describe gryviaaijob <job-name>
 
 # Check scheduler logs
 kubectl logs -n gryvia-system -l app=ai-operator
@@ -531,8 +531,8 @@ ansible-playbook -i ../terraform/bare-metal/inventory.ini \
 ### Increase Storage Capacity
 
 ```bash
-# Update FabricStorage
-kubectl edit fabricstorage vast-production
+# Update GryviaStorage
+kubectl edit gryviastorage vast-production
 # Change capacity: 1Pi
 
 # Expand existing PVCs

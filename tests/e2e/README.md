@@ -37,7 +37,7 @@ go test -v -parallel 4 ./...
 
 ### 1. AI Job Lifecycle Test
 Tests complete job lifecycle:
-- Create FabricAIJob
+- Create GryviaAIJob
 - Wait for job to be scheduled
 - Verify job transitions through phases
 - Clean up job

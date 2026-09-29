@@ -20,32 +20,32 @@ import (
 	"github.com/zyvorai/gryvia/operators/quota-operator/pkg/budget"
 )
 
-// FabricBudgetReconciler reconciles a FabricBudget object
-type FabricBudgetReconciler struct {
+// GryviaBudgetReconciler reconciles a GryviaBudget object
+type GryviaBudgetReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricbudgets,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricbudgets/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricbudgets/finalizers,verbs=update
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricquotas,verbs=get;list;watch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviabudgets,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviabudgets/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviabudgets/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs,verbs=get;list;watch;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaquotas,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 //+kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
 
-func (r *FabricBudgetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *GryviaBudgetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// Fetch the FabricBudget instance
-	fb := &gryviav1.FabricBudget{}
+	// Fetch the GryviaBudget instance
+	fb := &gryviav1.GryviaBudget{}
 	err := r.Get(ctx, req.NamespacedName, fb)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("FabricBudget resource not found. Ignoring since object must be deleted")
+			logger.Info("GryviaBudget resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		logger.Error(err, "Failed to get FabricBudget")
+		logger.Error(err, "Failed to get GryviaBudget")
 		return ctrl.Result{}, err
 	}
 
@@ -54,7 +54,7 @@ func (r *FabricBudgetReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, nil
 	}
 
-	logger.Info("Reconciling FabricBudget", "scope", fb.Spec.Scope.Name, "period", fb.Spec.Period.Type)
+	logger.Info("Reconciling GryviaBudget", "scope", fb.Spec.Scope.Name, "period", fb.Spec.Period.Type)
 
 	// Reconcile the budget
 	result, err := r.reconcileBudget(ctx, fb)
@@ -69,14 +69,14 @@ func (r *FabricBudgetReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	// Update status
 	if err := r.Status().Update(ctx, fb); err != nil {
-		logger.Error(err, "Failed to update FabricBudget status")
+		logger.Error(err, "Failed to update GryviaBudget status")
 		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 }
 
-func (r *FabricBudgetReconciler) reconcileBudget(ctx context.Context, fb *gryviav1.FabricBudget) (ctrl.Result, error) {
+func (r *GryviaBudgetReconciler) reconcileBudget(ctx context.Context, fb *gryviav1.GryviaBudget) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	// Calculate current period
@@ -141,7 +141,7 @@ func (r *FabricBudgetReconciler) reconcileBudget(ctx context.Context, fb *gryvia
 	return ctrl.Result{}, nil
 }
 
-func (r *FabricBudgetReconciler) calculateCurrentPeriod(fb *gryviav1.FabricBudget) {
+func (r *GryviaBudgetReconciler) calculateCurrentPeriod(fb *gryviav1.GryviaBudget) {
 	now := time.Now()
 	period := &gryviav1.BudgetCurrentPeriod{}
 
@@ -184,7 +184,7 @@ func (r *FabricBudgetReconciler) calculateCurrentPeriod(fb *gryviav1.FabricBudge
 	fb.Status.CurrentPeriod = period
 }
 
-func (r *FabricBudgetReconciler) calculateUsage(ctx context.Context, fb *gryviav1.FabricBudget) (*gryviav1.BudgetUsage, error) {
+func (r *GryviaBudgetReconciler) calculateUsage(ctx context.Context, fb *gryviav1.GryviaBudget) (*gryviav1.BudgetUsage, error) {
 	budgetUsage := &gryviav1.BudgetUsage{
 		GPUTypeHours: make(map[string]float64),
 	}
@@ -243,27 +243,27 @@ func (r *FabricBudgetReconciler) calculateUsage(ctx context.Context, fb *gryviav
 	return budgetUsage, nil
 }
 
-func (r *FabricBudgetReconciler) findScopeJobs(ctx context.Context, fb *gryviav1.FabricBudget) ([]gryviav1.FabricAIJob, error) {
-	var allJobs []gryviav1.FabricAIJob
+func (r *GryviaBudgetReconciler) findScopeJobs(ctx context.Context, fb *gryviav1.GryviaBudget) ([]gryviav1.GryviaAIJob, error) {
+	var allJobs []gryviav1.GryviaAIJob
 
 	switch fb.Spec.Scope.Type {
 	case "namespace":
-		jobList := &gryviav1.FabricAIJobList{}
+		jobList := &gryviav1.GryviaAIJobList{}
 		if err := r.List(ctx, jobList, client.InNamespace(fb.Spec.Scope.Name)); err != nil {
 			return nil, fmt.Errorf("failed to list jobs in namespace %s: %w", fb.Spec.Scope.Name, err)
 		}
 		allJobs = jobList.Items
 
 	case "team":
-		// Find namespaces belonging to the team via FabricQuota
-		quotaList := &gryviav1.FabricQuotaList{}
+		// Find namespaces belonging to the team via GryviaQuota
+		quotaList := &gryviav1.GryviaQuotaList{}
 		if err := r.List(ctx, quotaList); err != nil {
 			return nil, fmt.Errorf("failed to list quotas: %w", err)
 		}
 		for _, quota := range quotaList.Items {
 			if quota.Spec.Team == fb.Spec.Scope.Name {
 				for _, ns := range quota.Spec.Namespaces {
-					jobList := &gryviav1.FabricAIJobList{}
+					jobList := &gryviav1.GryviaAIJobList{}
 					if err := r.List(ctx, jobList, client.InNamespace(ns)); err != nil {
 						continue
 					}
@@ -274,7 +274,7 @@ func (r *FabricBudgetReconciler) findScopeJobs(ctx context.Context, fb *gryviav1
 
 	default:
 		// List all jobs
-		jobList := &gryviav1.FabricAIJobList{}
+		jobList := &gryviav1.GryviaAIJobList{}
 		if err := r.List(ctx, jobList); err != nil {
 			return nil, fmt.Errorf("failed to list all jobs: %w", err)
 		}
@@ -284,7 +284,7 @@ func (r *FabricBudgetReconciler) findScopeJobs(ctx context.Context, fb *gryviav1
 	return allJobs, nil
 }
 
-func (r *FabricBudgetReconciler) calculateUtilization(fb *gryviav1.FabricBudget) *gryviav1.BudgetUtilization {
+func (r *GryviaBudgetReconciler) calculateUtilization(fb *gryviav1.GryviaBudget) *gryviav1.BudgetUtilization {
 	util := &gryviav1.BudgetUtilization{}
 
 	if fb.Status.Usage == nil {
@@ -306,7 +306,7 @@ func (r *FabricBudgetReconciler) calculateUtilization(fb *gryviav1.FabricBudget)
 	return util
 }
 
-func (r *FabricBudgetReconciler) calculateForecast(fb *gryviav1.FabricBudget) *gryviav1.BudgetForecast {
+func (r *GryviaBudgetReconciler) calculateForecast(fb *gryviav1.GryviaBudget) *gryviav1.BudgetForecast {
 	forecast := &gryviav1.BudgetForecast{}
 
 	if fb.Status.Usage == nil || fb.Status.CurrentPeriod == nil {
@@ -352,7 +352,7 @@ func (r *FabricBudgetReconciler) calculateForecast(fb *gryviav1.FabricBudget) *g
 	return forecast
 }
 
-func (r *FabricBudgetReconciler) checkAndEmitAlert(ctx context.Context, fb *gryviav1.FabricBudget, alert gryviav1.BudgetAlert, currentPercent float64) {
+func (r *GryviaBudgetReconciler) checkAndEmitAlert(ctx context.Context, fb *gryviav1.GryviaBudget, alert gryviav1.BudgetAlert, currentPercent float64) {
 	logger := log.FromContext(ctx)
 
 	// Check if this threshold was already alerted
@@ -382,7 +382,7 @@ func (r *FabricBudgetReconciler) checkAndEmitAlert(ctx context.Context, fb *gryv
 	)
 }
 
-func (r *FabricBudgetReconciler) enforceBudget(ctx context.Context, fb *gryviav1.FabricBudget) error {
+func (r *GryviaBudgetReconciler) enforceBudget(ctx context.Context, fb *gryviav1.GryviaBudget) error {
 	logger := log.FromContext(ctx)
 
 	if fb.Spec.Enforcement == nil || fb.Spec.Enforcement.Action != "block" {
@@ -418,7 +418,7 @@ func (r *FabricBudgetReconciler) enforceBudget(ctx context.Context, fb *gryviav1
 	return nil
 }
 
-func (r *FabricBudgetReconciler) updateCondition(fb *gryviav1.FabricBudget, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *GryviaBudgetReconciler) updateCondition(fb *gryviav1.GryviaBudget, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -430,12 +430,12 @@ func (r *FabricBudgetReconciler) updateCondition(fb *gryviav1.FabricBudget, cond
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *FabricBudgetReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaBudgetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricBudget{}).
-		Watches(&gryviav1.FabricAIJob{}, handler.EnqueueRequestsFromMapFunc(
+		For(&gryviav1.GryviaBudget{}).
+		Watches(&gryviav1.GryviaAIJob{}, handler.EnqueueRequestsFromMapFunc(
 			func(ctx context.Context, obj client.Object) []reconcile.Request {
-				budgetList := &gryviav1.FabricBudgetList{}
+				budgetList := &gryviav1.GryviaBudgetList{}
 				if err := mgr.GetClient().List(ctx, budgetList); err != nil {
 					return nil
 				}

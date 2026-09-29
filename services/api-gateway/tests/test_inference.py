@@ -6,7 +6,7 @@ BODY = {"name": "svc1", "modelRef": "bert", "backend": "vLLM", "replicas": 2,
 
 
 def seed_model(fake_k8s, name="bert"):
-    fake_k8s.add("fabricmodelregistries", {"metadata": {"name": name}, "spec": {"version": "v1"}}, namespace=NS)
+    fake_k8s.add("gryviamodelregistries", {"metadata": {"name": name}, "spec": {"version": "v1"}}, namespace=NS)
 
 
 def seed(fake_k8s, name="svc1", canary=None):
@@ -14,7 +14,7 @@ def seed(fake_k8s, name="svc1", canary=None):
             "autoscaling": {"enabled": True, "minReplicas": 1, "maxReplicas": 4, "targetGPUUtilization": 70}}
     if canary:
         spec["canary"] = canary
-    fake_k8s.add("fabricinferenceservices", {
+    fake_k8s.add("gryviainferenceservices", {
         "metadata": {"name": name}, "spec": spec,
         "status": {"phase": "Running", "readyReplicas": 2, "endpoint": "http://e"}}, namespace=NS)
 
@@ -51,8 +51,8 @@ def test_create(make_client, fake_k8s):
     seed_model(fake_k8s)
     r = make_client("inference").post("/api/inference", json=BODY)
     assert r.status_code == 201
-    stored = fake_k8s.store[("fabricinferenceservices", NS, "svc1")]
-    assert stored["kind"] == "FabricInferenceService"
+    stored = fake_k8s.store[("gryviainferenceservices", NS, "svc1")]
+    assert stored["kind"] == "GryviaInferenceService"
     assert stored["spec"] == {"modelRef": "bert", "backend": "vllm", "replicas": 2,
                               "autoscaling": {"enabled": True, "minReplicas": 1, "maxReplicas": 4,
                                               "targetGPUUtilization": 80}}
@@ -63,7 +63,7 @@ def test_create(make_client, fake_k8s):
 def test_backend_mapping(make_client, fake_k8s, ui, crd):
     seed_model(fake_k8s)
     make_client("inference").post("/api/inference", json={**BODY, "backend": ui})
-    assert fake_k8s.store[("fabricinferenceservices", NS, "svc1")]["spec"]["backend"] == crd
+    assert fake_k8s.store[("gryviainferenceservices", NS, "svc1")]["spec"]["backend"] == crd
 
 
 def test_create_duplicate(make_client, fake_k8s):

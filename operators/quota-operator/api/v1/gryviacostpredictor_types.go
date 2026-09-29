@@ -4,8 +4,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// FabricCostPredictorSpec defines the desired state of FabricCostPredictor
-type FabricCostPredictorSpec struct {
+// GryviaCostPredictorSpec defines the desired state of GryviaCostPredictor
+type GryviaCostPredictorSpec struct {
 	// HistoricalData configures how historical job data is collected and used
 	HistoricalData HistoricalDataSpec `json:"historicalData,omitempty"`
 
@@ -114,15 +114,15 @@ type IntegrationSpec struct {
 
 // PricingSpec configures GPU pricing
 type PricingSpec struct {
-	// ChargebackRef references a FabricChargeback CR for pricing data
+	// ChargebackRef references a GryviaChargeback CR for pricing data
 	ChargebackRef string `json:"chargebackRef,omitempty"`
 
 	// PerGpuHour is an inline per-GPU-hour pricing map
 	PerGpuHour map[string]float64 `json:"perGpuHour,omitempty"`
 }
 
-// FabricCostPredictorStatus defines the observed state of FabricCostPredictor
-type FabricCostPredictorStatus struct {
+// GryviaCostPredictorStatus defines the observed state of GryviaCostPredictor
+type GryviaCostPredictorStatus struct {
 	// PredictionAccuracy tracks the accuracy of predictions
 	PredictionAccuracy PredictionAccuracyStatus `json:"predictionAccuracy,omitempty"`
 
@@ -161,24 +161,24 @@ type AccuracyMetrics struct {
 //+kubebuilder:subresource:status
 //+kubebuilder:resource:scope=Cluster
 
-// FabricCostPredictor is the Schema for the fabriccostpredictors API
-type FabricCostPredictor struct {
+// GryviaCostPredictor is the Schema for the gryviacostpredictors API
+type GryviaCostPredictor struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricCostPredictorSpec   `json:"spec,omitempty"`
-	Status FabricCostPredictorStatus `json:"status,omitempty"`
+	Spec   GryviaCostPredictorSpec   `json:"spec,omitempty"`
+	Status GryviaCostPredictorStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricCostPredictorList contains a list of FabricCostPredictor
-type FabricCostPredictorList struct {
+// GryviaCostPredictorList contains a list of GryviaCostPredictor
+type GryviaCostPredictorList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricCostPredictor `json:"items"`
+	Items           []GryviaCostPredictor `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&FabricCostPredictor{}, &FabricCostPredictorList{})
+	SchemeBuilder.Register(&GryviaCostPredictor{}, &GryviaCostPredictorList{})
 }

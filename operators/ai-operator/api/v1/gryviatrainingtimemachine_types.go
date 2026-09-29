@@ -4,9 +4,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// FabricTrainingTimeMachineSpec defines the desired state of FabricTrainingTimeMachine
-type FabricTrainingTimeMachineSpec struct {
-	// SourceJob is the name of the FabricAIJob to track checkpoints for
+// GryviaTrainingTimeMachineSpec defines the desired state of GryviaTrainingTimeMachine
+type GryviaTrainingTimeMachineSpec struct {
+	// SourceJob is the name of the GryviaAIJob to track checkpoints for
 	SourceJob string `json:"sourceJob"`
 
 	// Timeline configures checkpoint timeline indexing
@@ -72,7 +72,7 @@ type ForkSpec struct {
 	// Overrides are modifications to apply to the forked job
 	Overrides *ForkOverrides `json:"overrides,omitempty"`
 
-	// NewJobName is the name for the forked FabricAIJob (auto-generated if omitted)
+	// NewJobName is the name for the forked GryviaAIJob (auto-generated if omitted)
 	NewJobName string `json:"newJobName,omitempty"`
 }
 
@@ -115,8 +115,8 @@ type EnvOverride struct {
 	Value string `json:"value"`
 }
 
-// FabricTrainingTimeMachineStatus defines the observed state of FabricTrainingTimeMachine
-type FabricTrainingTimeMachineStatus struct {
+// GryviaTrainingTimeMachineStatus defines the observed state of GryviaTrainingTimeMachine
+type GryviaTrainingTimeMachineStatus struct {
 	// CheckpointTimeline is the status of indexed checkpoints
 	CheckpointTimeline *CheckpointTimelineStatus `json:"checkpointTimeline,omitempty"`
 
@@ -168,7 +168,7 @@ type ForkStatus struct {
 	// SourceStep is the training step from which the fork was created
 	SourceStep int `json:"sourceStep,omitempty"`
 
-	// ForkedJob is the name of the forked FabricAIJob
+	// ForkedJob is the name of the forked GryviaAIJob
 	ForkedJob string `json:"forkedJob,omitempty"`
 
 	// Status is the current status (Pending, Creating, Running, Succeeded, Failed)
@@ -186,24 +186,24 @@ type ForkStatus struct {
 //+kubebuilder:printcolumn:name="Storage",type=string,JSONPath=`.status.storageUsed`
 //+kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// FabricTrainingTimeMachine is the Schema for the fabrictrainingtimemachines API
-type FabricTrainingTimeMachine struct {
+// GryviaTrainingTimeMachine is the Schema for the gryviatrainingtimemachines API
+type GryviaTrainingTimeMachine struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricTrainingTimeMachineSpec   `json:"spec,omitempty"`
-	Status FabricTrainingTimeMachineStatus `json:"status,omitempty"`
+	Spec   GryviaTrainingTimeMachineSpec   `json:"spec,omitempty"`
+	Status GryviaTrainingTimeMachineStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricTrainingTimeMachineList contains a list of FabricTrainingTimeMachine
-type FabricTrainingTimeMachineList struct {
+// GryviaTrainingTimeMachineList contains a list of GryviaTrainingTimeMachine
+type GryviaTrainingTimeMachineList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricTrainingTimeMachine `json:"items"`
+	Items           []GryviaTrainingTimeMachine `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&FabricTrainingTimeMachine{}, &FabricTrainingTimeMachineList{})
+	SchemeBuilder.Register(&GryviaTrainingTimeMachine{}, &GryviaTrainingTimeMachineList{})
 }

@@ -18,36 +18,36 @@ import (
 	gryviav1 "github.com/zyvorai/gryvia/operators/network-intelligence/api/v1"
 )
 
-// FabricServiceGraphReconciler reconciles a FabricServiceGraph object
-type FabricServiceGraphReconciler struct {
+// GryviaServiceGraphReconciler reconciles a GryviaServiceGraph object
+type GryviaServiceGraphReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricservicegraphs,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricservicegraphs/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricservicegraphs/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaservicegraphs,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaservicegraphs/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaservicegraphs/finalizers,verbs=update
 //+kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=endpoints,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
-func (r *FabricServiceGraphReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *GryviaServiceGraphReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// Fetch the FabricServiceGraph instance
-	graph := &gryviav1.FabricServiceGraph{}
+	// Fetch the GryviaServiceGraph instance
+	graph := &gryviav1.GryviaServiceGraph{}
 	if err := r.Get(ctx, req.NamespacedName, graph); err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("FabricServiceGraph resource not found, ignoring since object must be deleted")
+			logger.Info("GryviaServiceGraph resource not found, ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		logger.Error(err, "Failed to get FabricServiceGraph")
+		logger.Error(err, "Failed to get GryviaServiceGraph")
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("Reconciling FabricServiceGraph",
+	logger.Info("Reconciling GryviaServiceGraph",
 		"name", graph.Name,
 		"namespaces", graph.Spec.Namespaces,
 		"includeExternal", graph.Spec.IncludeExternal,
@@ -73,7 +73,7 @@ func (r *FabricServiceGraphReconciler) Reconcile(ctx context.Context, req ctrl.R
 	// Update status with the graph
 	r.updateStatus(ctx, req.NamespacedName, nodes, edges)
 
-	logger.Info("FabricServiceGraph refreshed",
+	logger.Info("GryviaServiceGraph refreshed",
 		"nodes", len(nodes),
 		"edges", len(edges),
 	)
@@ -82,7 +82,7 @@ func (r *FabricServiceGraphReconciler) Reconcile(ctx context.Context, req ctrl.R
 }
 
 // discoverServiceNodes enumerates services across target namespaces to build graph nodes
-func (r *FabricServiceGraphReconciler) discoverServiceNodes(ctx context.Context, graph *gryviav1.FabricServiceGraph) []gryviav1.ServiceGraphNode {
+func (r *GryviaServiceGraphReconciler) discoverServiceNodes(ctx context.Context, graph *gryviav1.GryviaServiceGraph) []gryviav1.ServiceGraphNode {
 	logger := log.FromContext(ctx)
 	var nodes []gryviav1.ServiceGraphNode
 
@@ -128,7 +128,7 @@ func (r *FabricServiceGraphReconciler) discoverServiceNodes(ctx context.Context,
 }
 
 // buildServiceEdges queries Hubble flow data to discover connections between services
-func (r *FabricServiceGraphReconciler) buildServiceEdges(ctx context.Context, graph *gryviav1.FabricServiceGraph, nodes []gryviav1.ServiceGraphNode) []gryviav1.ServiceGraphEdge {
+func (r *GryviaServiceGraphReconciler) buildServiceEdges(ctx context.Context, graph *gryviav1.GryviaServiceGraph, nodes []gryviav1.ServiceGraphNode) []gryviav1.ServiceGraphEdge {
 	logger := log.FromContext(ctx)
 
 	// Check if Hubble is available
@@ -140,7 +140,7 @@ func (r *FabricServiceGraphReconciler) buildServiceEdges(ctx context.Context, gr
 	if err != nil {
 		logger.V(1).Info("Hubble relay not available, using existing edges from status")
 		// Preserve existing edges from status if Hubble is unavailable
-		existing := &gryviav1.FabricServiceGraph{}
+		existing := &gryviav1.GryviaServiceGraph{}
 		if getErr := r.Get(ctx, types.NamespacedName{
 			Name:      graph.Name,
 			Namespace: graph.Namespace,
@@ -168,7 +168,7 @@ func (r *FabricServiceGraphReconciler) buildServiceEdges(ctx context.Context, gr
 	}
 
 	// Preserve existing edges
-	existing := &gryviav1.FabricServiceGraph{}
+	existing := &gryviav1.GryviaServiceGraph{}
 	if getErr := r.Get(ctx, types.NamespacedName{
 		Name:      graph.Name,
 		Namespace: graph.Namespace,
@@ -181,7 +181,7 @@ func (r *FabricServiceGraphReconciler) buildServiceEdges(ctx context.Context, gr
 
 // evaluateNodeHealth determines the health status of each service node
 // based on error rates observed in the service edges
-func (r *FabricServiceGraphReconciler) evaluateNodeHealth(ctx context.Context, nodes []gryviav1.ServiceGraphNode, edges []gryviav1.ServiceGraphEdge) {
+func (r *GryviaServiceGraphReconciler) evaluateNodeHealth(ctx context.Context, nodes []gryviav1.ServiceGraphNode, edges []gryviav1.ServiceGraphEdge) {
 	// Build a map of error/drop counts per destination service
 	errorCounts := make(map[string]int)
 	totalCounts := make(map[string]int)
@@ -216,10 +216,10 @@ func (r *FabricServiceGraphReconciler) evaluateNodeHealth(ctx context.Context, n
 	}
 }
 
-// updateStatus updates the FabricServiceGraph status subresource
-func (r *FabricServiceGraphReconciler) updateStatus(ctx context.Context, namespacedName types.NamespacedName, nodes []gryviav1.ServiceGraphNode, edges []gryviav1.ServiceGraphEdge) {
+// updateStatus updates the GryviaServiceGraph status subresource
+func (r *GryviaServiceGraphReconciler) updateStatus(ctx context.Context, namespacedName types.NamespacedName, nodes []gryviav1.ServiceGraphNode, edges []gryviav1.ServiceGraphEdge) {
 	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		graph := &gryviav1.FabricServiceGraph{}
+		graph := &gryviav1.GryviaServiceGraph{}
 		if err := r.Get(ctx, namespacedName, graph); err != nil {
 			return err
 		}
@@ -228,13 +228,13 @@ func (r *FabricServiceGraphReconciler) updateStatus(ctx context.Context, namespa
 		graph.Status.LastUpdated = metav1.Now()
 		return r.Status().Update(ctx, graph)
 	}); err != nil {
-		log.FromContext(ctx).Error(err, "Failed to update FabricServiceGraph status")
+		log.FromContext(ctx).Error(err, "Failed to update GryviaServiceGraph status")
 	}
 }
 
 // SetupWithManager sets up the controller with the Manager
-func (r *FabricServiceGraphReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaServiceGraphReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricServiceGraph{}).
+		For(&gryviav1.GryviaServiceGraph{}).
 		Complete(r)
 }

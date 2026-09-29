@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabrictrafficinsights.gryvia.io
+  name: gryviatrafficinsights.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricTrafficInsight
-    listKind: FabricTrafficInsightList
-    plural: fabrictrafficinsights
-    singular: fabrictrafficinsight
+    kind: GryviaTrafficInsight
+    listKind: GryviaTrafficInsightList
+    plural: gryviatrafficinsights
+    singular: gryviatrafficinsight
   scope: Namespaced
   versions:
   - name: v1
     schema:
       openAPIV3Schema:
-        description: FabricTrafficInsight is the Schema for the fabrictrafficinsights
+        description: GryviaTrafficInsight is the Schema for the gryviatrafficinsights
           API
         properties:
           apiVersion:
@@ -38,7 +38,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricTrafficInsightSpec defines the desired state of FabricTrafficInsight
+            description: GryviaTrafficInsightSpec defines the desired state of GryviaTrafficInsight
             properties:
               metrics:
                 description: Metrics is the list of metrics to collect (latency, throughput,
@@ -58,8 +58,8 @@ spec:
                 type: string
             type: object
           status:
-            description: FabricTrafficInsightStatus defines the observed state of
-              FabricTrafficInsight
+            description: GryviaTrafficInsightStatus defines the observed state of
+              GryviaTrafficInsight
             properties:
               anomalies:
                 description: Anomalies lists detected traffic anomalies

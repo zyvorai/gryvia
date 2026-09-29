@@ -17,13 +17,13 @@ import (
 )
 
 // CreateNetworkAttachment creates a Multus NetworkAttachmentDefinition
-func CreateNetworkAttachment(ctx context.Context, k8sClient client.Client, network *gryviav1.FabricNetwork) error {
+func CreateNetworkAttachment(ctx context.Context, k8sClient client.Client, network *gryviav1.GryviaNetwork) error {
 	config, err := generateNetworkConfig(network)
 	if err != nil {
 		return fmt.Errorf("failed to generate network config: %w", err)
 	}
 
-	// Use the network's target namespace. FabricNetwork is cluster-scoped so it
+	// Use the network's target namespace. GryviaNetwork is cluster-scoped so it
 	// has no namespace of its own; the user should set spec.targetNamespace
 	// explicitly. We fall back to "default" but log a warning so operators
 	// notice the implicit behaviour.
@@ -31,7 +31,7 @@ func CreateNetworkAttachment(ctx context.Context, k8sClient client.Client, netwo
 	if namespace == "" {
 		namespace = "default"
 		logger := log.FromContext(ctx)
-		logger.Info("FabricNetwork has no targetNamespace set, defaulting NAD namespace to \"default\"",
+		logger.Info("GryviaNetwork has no targetNamespace set, defaulting NAD namespace to \"default\"",
 			"network", network.Name)
 	}
 
@@ -75,7 +75,7 @@ func CreateNetworkAttachment(ctx context.Context, k8sClient client.Client, netwo
 	return k8sClient.Update(ctx, nad)
 }
 
-func generateNetworkConfig(network *gryviav1.FabricNetwork) (string, error) {
+func generateNetworkConfig(network *gryviav1.GryviaNetwork) (string, error) {
 	switch network.Spec.NetworkType {
 	case "rdma":
 		return generateRDMAConfig(network)
@@ -88,7 +88,7 @@ func generateNetworkConfig(network *gryviav1.FabricNetwork) (string, error) {
 	}
 }
 
-func generateRDMAConfig(network *gryviav1.FabricNetwork) (string, error) {
+func generateRDMAConfig(network *gryviav1.GryviaNetwork) (string, error) {
 	if network.Spec.RDMA == nil {
 		return "", fmt.Errorf("RDMA configuration required")
 	}
@@ -124,7 +124,7 @@ func generateRDMAConfig(network *gryviav1.FabricNetwork) (string, error) {
 	return string(configBytes), nil
 }
 
-func generateSRIOVConfig(network *gryviav1.FabricNetwork) (string, error) {
+func generateSRIOVConfig(network *gryviav1.GryviaNetwork) (string, error) {
 	if network.Spec.SRIOV == nil {
 		return "", fmt.Errorf("SR-IOV configuration required")
 	}
@@ -172,7 +172,7 @@ func generateSRIOVConfig(network *gryviav1.FabricNetwork) (string, error) {
 	return string(configBytes), nil
 }
 
-func generateStandardConfig(network *gryviav1.FabricNetwork) (string, error) {
+func generateStandardConfig(network *gryviav1.GryviaNetwork) (string, error) {
 	// Default MTU for standard networks is 1500.
 	// Valid range: 1280 (IPv6 minimum) to 9216 (common jumbo frame max).
 	mtu := network.Spec.MTU

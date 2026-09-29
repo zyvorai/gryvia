@@ -1,6 +1,6 @@
 # Example: Time Machine for LLM fine-tuning job
 apiVersion: gryvia.io/v1
-kind: FabricTrainingTimeMachine
+kind: GryviaTrainingTimeMachine
 metadata:
   name: llama-finetune-timemachine
   namespace: ml-team
@@ -54,7 +54,7 @@ spec:
 ---
 # Example: Time Machine with step-based fork
 apiVersion: gryvia.io/v1
-kind: FabricTrainingTimeMachine
+kind: GryviaTrainingTimeMachine
 metadata:
   name: resnet-experiment-timemachine
   namespace: cv-team

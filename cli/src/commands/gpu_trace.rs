@@ -55,11 +55,11 @@ async fn execute_nccl(
     );
     println!();
 
-    // Query FabricTrainingInsight for this job
+    // Query GryviaTrainingInsight for this job
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
         "gryvia.io",
         "v1",
-        "FabricTrainingInsight",
+        "GryviaTrainingInsight",
     ));
     let api: Api<DynamicObject> = Api::namespaced_with(
         client.kube_client.clone(),
@@ -80,7 +80,7 @@ async fn execute_nccl(
             );
             println!(
                 "  {}",
-                "Ensure a FabricTrainingInsight CR exists for this job.".dimmed()
+                "Ensure a GryviaTrainingInsight CR exists for this job.".dimmed()
             );
             println!();
             return Ok(());
@@ -97,7 +97,7 @@ async fn execute_nccl(
                 println!("  {}", "No NCCL stats found for this job.".dimmed());
                 println!(
                     "  {}",
-                    "Create a FabricTrainingInsight CR targeting this job to collect stats.".dimmed()
+                    "Create a GryviaTrainingInsight CR targeting this job to collect stats.".dimmed()
                 );
             }
         }
@@ -200,7 +200,7 @@ async fn execute_memory(
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
         "gryvia.io",
         "v1",
-        "FabricGpuNode",
+        "GryviaGpuNode",
     ));
     let api: Api<DynamicObject> = Api::all_with(client.kube_client.clone(), &ar);
 
@@ -347,7 +347,7 @@ async fn execute_training(
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
         "gryvia.io",
         "v1",
-        "FabricTrainingInsight",
+        "GryviaTrainingInsight",
     ));
     let api: Api<DynamicObject> = Api::namespaced_with(
         client.kube_client.clone(),

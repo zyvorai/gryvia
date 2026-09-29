@@ -1,10 +1,10 @@
-# FabricCheckpointGuard
+# GryviaCheckpointGuard
 
 Intelligent checkpoint and restore system for AI training jobs running on Gryvia.
 
 ## Overview
 
-FabricCheckpointGuard provides automated, policy-driven checkpointing for long-running AI training jobs. It continuously monitors GPU health, node conditions, and training metrics to determine when checkpoints should be taken -- including emergency checkpoints triggered by hardware degradation or spot preemption signals.
+GryviaCheckpointGuard provides automated, policy-driven checkpointing for long-running AI training jobs. It continuously monitors GPU health, node conditions, and training metrics to determine when checkpoints should be taken -- including emergency checkpoints triggered by hardware degradation or spot preemption signals.
 
 Key capabilities:
 
@@ -22,7 +22,7 @@ Create a checkpoint guard that monitors all training jobs labeled `team: ml-rese
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricCheckpointGuard
+kind: GryviaCheckpointGuard
 metadata:
   name: training-guard
   namespace: default
@@ -68,7 +68,7 @@ kubectl apply -f checkpoint-guard.yaml
 
 ```
                                  +---------------------+
-                                 | FabricCheckpointGuard|
+                                 | GryviaCheckpointGuard|
                                  | Controller          |
                                  +----------+----------+
                                             |
@@ -77,7 +77,7 @@ kubectl apply -f checkpoint-guard.yaml
               Match Jobs   Check Pods  Check GPUs  Check Loss  Check Spot
                     |           |           |           |           |
               +-----+    +-----+     +-----+    +-----+     +-----+
-              |FabricAI|  |StatefulSet| |FabricGpu| |Metrics |  |Node   |
+              |GryviaAI|  |StatefulSet| |GryviaGpu| |Metrics |  |Node   |
               |Job     |  |Pods      | |Node     | |        |  |Taints |
               +--------+  +----------+ +---------+ +--------+  +-------+
                     |
@@ -98,10 +98,10 @@ kubectl apply -f checkpoint-guard.yaml
             Update Status
 ```
 
-1. The controller watches FabricCheckpointGuard resources.
-2. For each guard, it finds matching FabricAIJob resources using the jobSelector.
+1. The controller watches GryviaCheckpointGuard resources.
+2. For each guard, it finds matching GryviaAIJob resources using the jobSelector.
 3. It inspects each matched job's StatefulSet pods for health issues.
-4. It queries FabricGpuNode resources for GPU health and NVLink status.
+4. It queries GryviaGpuNode resources for GPU health and NVLink status.
 5. It checks for spot preemption signals on nodes running the job.
 6. It evaluates job metrics for loss divergence.
 7. If any emergency trigger fires, an immediate checkpoint is taken.
@@ -113,7 +113,7 @@ kubectl apply -f checkpoint-guard.yaml
 
 ### jobSelector
 
-Selects which FabricAIJob resources this guard applies to.
+Selects which GryviaAIJob resources this guard applies to.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -135,7 +135,7 @@ Controls when and how checkpoints are created.
 
 | Trigger | Fires when |
 |---------|------------|
-| `GpuHealthDegraded` | FabricGpuNode reports Degraded/Failed phase or unhealthy GPU |
+| `GpuHealthDegraded` | GryviaGpuNode reports Degraded/Failed phase or unhealthy GPU |
 | `SpotPreemptionSignal` | Node has spot termination taint or pod has preemption annotation |
 | `MemoryPressure` | Pod is OOMKilled or in CrashLoopBackOff |
 | `LossDivergence` | Training loss is NaN, Inf, or exceeds 1e6 |
@@ -190,7 +190,7 @@ Controls observability for checkpoint operations.
 
 ```bash
 # List checkpoint guards
-kubectl get fabriccheckpointguards
+kubectl get gryviacheckpointguards
 # or with short name
 kubectl get fcg
 
@@ -215,7 +215,7 @@ kubectl get fcg training-guard -o jsonpath='{.status.emergencyCheckpointsTaken}'
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricCheckpointGuard
+kind: GryviaCheckpointGuard
 metadata:
   name: simple-guard
 spec:
@@ -230,7 +230,7 @@ spec:
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricCheckpointGuard
+kind: GryviaCheckpointGuard
 metadata:
   name: llm-production-guard
   namespace: ml-production
@@ -278,7 +278,7 @@ spec:
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricCheckpointGuard
+kind: GryviaCheckpointGuard
 metadata:
   name: spot-training-guard
 spec:
@@ -324,8 +324,8 @@ When `monitoring.exportMetrics` is true, the following metrics are exported:
 ### No jobs matched
 
 ```bash
-# Verify labels on your FabricAIJob
-kubectl get fabricaijobs --show-labels
+# Verify labels on your GryviaAIJob
+kubectl get gryviaaijobs --show-labels
 
 # Ensure the jobSelector matches
 kubectl get fcg training-guard -o jsonpath='{.spec.jobSelector}'
@@ -351,7 +351,7 @@ kubectl describe fcg training-guard
 kubectl get fcg training-guard -o jsonpath='{.spec.checkpointPolicy.emergencyCheckpoint.triggers}'
 
 # Check GPU node health
-kubectl get fabricgpunodes
+kubectl get gryviagpunodes
 
 # Check for spot preemption annotations
 kubectl get pods -l gryvia.io/job=my-job -o jsonpath='{.items[*].metadata.annotations}'

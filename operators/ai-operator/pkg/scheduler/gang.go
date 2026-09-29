@@ -31,7 +31,7 @@ const (
 // PodGroup tracks all pods belonging to a single distributed job so they can
 // be scheduled atomically (all-or-nothing).
 type PodGroup struct {
-	// JobName is the FabricAIJob name that owns this group.
+	// JobName is the GryviaAIJob name that owns this group.
 	JobName string
 	// Namespace of the owning job.
 	Namespace string
@@ -75,7 +75,7 @@ func NewGangScheduler(c client.Client) *GangScheduler {
 }
 
 // GetOrCreatePodGroup returns an existing PodGroup or creates one for the job.
-func (gs *GangScheduler) GetOrCreatePodGroup(job *gryviav1.FabricAIJob) *PodGroup {
+func (gs *GangScheduler) GetOrCreatePodGroup(job *gryviav1.GryviaAIJob) *PodGroup {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
 
@@ -123,7 +123,7 @@ func (gs *GangScheduler) RemovePodGroup(namespace, jobName string) {
 
 // CanScheduleGang checks whether ALL pods in the gang can be placed on the
 // given set of nodes. It does not mutate any state.
-func (gs *GangScheduler) CanScheduleGang(ctx context.Context, job *gryviav1.FabricAIJob, nodes []corev1.Node) (bool, error) {
+func (gs *GangScheduler) CanScheduleGang(ctx context.Context, job *gryviav1.GryviaAIJob, nodes []corev1.Node) (bool, error) {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
 
@@ -179,7 +179,7 @@ func (gs *GangScheduler) CanScheduleGang(ctx context.Context, job *gryviav1.Fabr
 // ScheduleGang attempts to atomically assign all pods in the gang to nodes.
 // Returns a map of pod ordinal -> node name, or an error if the gang cannot
 // be placed. On failure, any tentatively held resources are released.
-func (gs *GangScheduler) ScheduleGang(ctx context.Context, job *gryviav1.FabricAIJob, nodes []corev1.Node) (map[int32]string, error) {
+func (gs *GangScheduler) ScheduleGang(ctx context.Context, job *gryviav1.GryviaAIJob, nodes []corev1.Node) (map[int32]string, error) {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
 

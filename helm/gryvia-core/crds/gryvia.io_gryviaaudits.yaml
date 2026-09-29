@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabricaudits.gryvia.io
+  name: gryviaaudits.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricAudit
-    listKind: FabricAuditList
-    plural: fabricaudits
-    singular: fabricaudit
+    kind: GryviaAudit
+    listKind: GryviaAuditList
+    plural: gryviaaudits
+    singular: gryviaaudit
   scope: Cluster
   versions:
   - name: v1
     schema:
       openAPIV3Schema:
-        description: FabricAudit is the Schema for the fabricaudits API
+        description: GryviaAudit is the Schema for the gryviaaudits API
         properties:
           apiVersion:
             description: |-
@@ -37,7 +37,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricAuditSpec defines the desired state of FabricAudit
+            description: GryviaAuditSpec defines the desired state of GryviaAudit
             properties:
               anomalyDetection:
                 description: AnomalyDetection defines anomaly detection rules
@@ -169,7 +169,7 @@ spec:
                 type: object
             type: object
           status:
-            description: FabricAuditStatus defines the observed state of FabricAudit
+            description: GryviaAuditStatus defines the observed state of GryviaAudit
             properties:
               auditEntries:
                 description: AuditEntries is a rolling buffer of recent audit entries

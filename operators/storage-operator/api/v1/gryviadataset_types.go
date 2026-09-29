@@ -4,8 +4,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// FabricDatasetSpec defines the desired state of FabricDataset
-type FabricDatasetSpec struct {
+// GryviaDatasetSpec defines the desired state of GryviaDataset
+type GryviaDatasetSpec struct {
 	// Description is a human-readable description
 	Description string `json:"description,omitempty"`
 
@@ -187,8 +187,8 @@ type DatasetUsageStatus struct {
 	TotalAccesses int64 `json:"totalAccesses,omitempty"`
 }
 
-// FabricDatasetStatus defines the observed state of FabricDataset
-type FabricDatasetStatus struct {
+// GryviaDatasetStatus defines the observed state of GryviaDataset
+type GryviaDatasetStatus struct {
 	// State is the current state (initializing, ready, error, syncing)
 	State string `json:"state,omitempty"`
 
@@ -214,24 +214,24 @@ type FabricDatasetStatus struct {
 //+kubebuilder:printcolumn:name="Jobs-Using",type=integer,JSONPath=`.status.usage.jobsUsing`
 //+kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// FabricDataset is the Schema for the fabricdatasets API
-type FabricDataset struct {
+// GryviaDataset is the Schema for the gryviadatasets API
+type GryviaDataset struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricDatasetSpec   `json:"spec,omitempty"`
-	Status FabricDatasetStatus `json:"status,omitempty"`
+	Spec   GryviaDatasetSpec   `json:"spec,omitempty"`
+	Status GryviaDatasetStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricDatasetList contains a list of FabricDataset
-type FabricDatasetList struct {
+// GryviaDatasetList contains a list of GryviaDataset
+type GryviaDatasetList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricDataset `json:"items"`
+	Items           []GryviaDataset `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&FabricDataset{}, &FabricDatasetList{})
+	SchemeBuilder.Register(&GryviaDataset{}, &GryviaDatasetList{})
 }

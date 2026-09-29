@@ -67,7 +67,7 @@ async with Gryvia(...) as tr:
     # Submit a job from a dict
     job = await tr.jobs.create({
         "apiVersion": "gryvia.io/v1",
-        "kind": "FabricAIJob",
+        "kind": "GryviaAIJob",
         "metadata": {"name": "my-training"},
         "spec": {
             "image": "nvcr.io/nvidia/pytorch:24.01-py3",

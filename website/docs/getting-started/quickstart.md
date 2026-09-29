@@ -50,11 +50,11 @@ kubectl apply -f crds/
 Verify:
 ```bash
 kubectl get crd | grep gryvia
-# fabricaijobs.gryvia.io
-# fabricgpunodes.gryvia.io
-# fabricnetworks.gryvia.io
-# fabricquotas.gryvia.io
-# fabricstorages.gryvia.io
+# gryviaaijobs.gryvia.io
+# gryviagpunodes.gryvia.io
+# gryvianetworks.gryvia.io
+# gryviaquotas.gryvia.io
+# gryviastorages.gryvia.io
 ```
 
 ### 2. Create Namespace and Deploy Operators
@@ -142,7 +142,7 @@ dark setting and includes:
 ```yaml
 # gpu-node.yaml
 apiVersion: gryvia.io/v1
-kind: FabricGpuNode
+kind: GryviaGpuNode
 metadata:
   name: gpu-node-01
 spec:
@@ -156,7 +156,7 @@ spec:
 
 ```bash
 kubectl apply -f gpu-node.yaml
-kubectl get fabricgpunodes
+kubectl get gryviagpunodes
 ```
 
 ## Submit Your First Job
@@ -164,7 +164,7 @@ kubectl get fabricgpunodes
 ```yaml
 # training-job.yaml
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: pytorch-test
 spec:
@@ -180,7 +180,7 @@ spec:
 
 ```bash
 kubectl apply -f training-job.yaml
-kubectl get fabricaijobs
+kubectl get gryviaaijobs
 ```
 
 ## Set Up Team Quota
@@ -188,7 +188,7 @@ kubectl get fabricaijobs
 ```yaml
 # team-quota.yaml
 apiVersion: gryvia.io/v1
-kind: FabricQuota
+kind: GryviaQuota
 metadata:
   name: ml-research
 spec:
@@ -209,7 +209,7 @@ spec:
 
 ```bash
 kubectl apply -f team-quota.yaml
-kubectl get fabricquotas
+kubectl get gryviaquotas
 ```
 
 ## Install CLI (Optional)
@@ -234,8 +234,8 @@ gryvia cost --period month
 
 # Or manually
 kubectl delete namespace gryvia-system
-kubectl delete crd fabricaijobs.gryvia.io fabricgpunodes.gryvia.io \
-  fabricnetworks.gryvia.io fabricquotas.gryvia.io fabricstorages.gryvia.io
+kubectl delete crd gryviaaijobs.gryvia.io gryviagpunodes.gryvia.io \
+  gryvianetworks.gryvia.io gryviaquotas.gryvia.io gryviastorages.gryvia.io
 ```
 
 ## Troubleshooting

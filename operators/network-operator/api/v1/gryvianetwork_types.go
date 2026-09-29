@@ -4,8 +4,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// FabricNetworkSpec defines the desired state of FabricNetwork
-type FabricNetworkSpec struct {
+// GryviaNetworkSpec defines the desired state of GryviaNetwork
+type GryviaNetworkSpec struct {
 	// NetworkType is the type of network (rdma, sriov, standard)
 	NetworkType string `json:"networkType"`
 
@@ -61,8 +61,8 @@ type SRIOVConfig struct {
 	Gateway string `json:"gateway,omitempty"`
 }
 
-// FabricNetworkStatus defines the observed state of FabricNetwork
-type FabricNetworkStatus struct {
+// GryviaNetworkStatus defines the observed state of GryviaNetwork
+type GryviaNetworkStatus struct {
 	// Phase is the current phase (Pending, Ready, Failed)
 	Phase string `json:"phase,omitempty"`
 
@@ -83,24 +83,24 @@ type FabricNetworkStatus struct {
 //+kubebuilder:subresource:status
 //+kubebuilder:resource:scope=Cluster
 
-// FabricNetwork is the Schema for the fabricnetworks API
-type FabricNetwork struct {
+// GryviaNetwork is the Schema for the gryvianetworks API
+type GryviaNetwork struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricNetworkSpec   `json:"spec,omitempty"`
-	Status FabricNetworkStatus `json:"status,omitempty"`
+	Spec   GryviaNetworkSpec   `json:"spec,omitempty"`
+	Status GryviaNetworkStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricNetworkList contains a list of FabricNetwork
-type FabricNetworkList struct {
+// GryviaNetworkList contains a list of GryviaNetwork
+type GryviaNetworkList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricNetwork `json:"items"`
+	Items           []GryviaNetwork `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&FabricNetwork{}, &FabricNetworkList{})
+	SchemeBuilder.Register(&GryviaNetwork{}, &GryviaNetworkList{})
 }

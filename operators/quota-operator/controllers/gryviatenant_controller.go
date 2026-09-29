@@ -23,37 +23,37 @@ import (
 )
 
 const (
-	fabricTenantFinalizer = "gryvia.io/tenant-finalizer"
+	gryviaTenantFinalizer = "gryvia.io/tenant-finalizer"
 )
 
-// FabricTenantReconciler reconciles a FabricTenant object
-type FabricTenantReconciler struct {
+// GryviaTenantReconciler reconciles a GryviaTenant object
+type GryviaTenantReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabrictenants,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabrictenants/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabrictenants/finalizers,verbs=update
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviatenants,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviatenants/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviatenants/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch;create;update;patch
 //+kubebuilder:rbac:groups="",resources=resourcequotas,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=limitranges,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
-func (r *FabricTenantReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *GryviaTenantReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// Fetch the FabricTenant instance
-	tenant := &gryviav1.FabricTenant{}
+	// Fetch the GryviaTenant instance
+	tenant := &gryviav1.GryviaTenant{}
 	err := r.Get(ctx, req.NamespacedName, tenant)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("FabricTenant resource not found. Ignoring since object must be deleted")
+			logger.Info("GryviaTenant resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		logger.Error(err, "Failed to get FabricTenant")
+		logger.Error(err, "Failed to get GryviaTenant")
 		return ctrl.Result{}, err
 	}
 
@@ -63,15 +63,15 @@ func (r *FabricTenantReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	// Add finalizer if it doesn't exist
-	if !controllerutil.ContainsFinalizer(tenant, fabricTenantFinalizer) {
-		controllerutil.AddFinalizer(tenant, fabricTenantFinalizer)
+	if !controllerutil.ContainsFinalizer(tenant, gryviaTenantFinalizer) {
+		controllerutil.AddFinalizer(tenant, gryviaTenantFinalizer)
 		if err := r.Update(ctx, tenant); err != nil {
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{Requeue: true}, nil
 	}
 
-	logger.Info("Reconciling FabricTenant", "tenant", tenant.Name, "members", len(tenant.Spec.Members))
+	logger.Info("Reconciling GryviaTenant", "tenant", tenant.Name, "members", len(tenant.Spec.Members))
 
 	// Reconcile the tenant
 	result, err := r.reconcileTenant(ctx, tenant)
@@ -86,14 +86,14 @@ func (r *FabricTenantReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	// Update status
 	if err := r.Status().Update(ctx, tenant); err != nil {
-		logger.Error(err, "Failed to update FabricTenant status")
+		logger.Error(err, "Failed to update GryviaTenant status")
 		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{RequeueAfter: 2 * time.Minute}, nil
 }
 
-func (r *FabricTenantReconciler) reconcileTenant(ctx context.Context, tenant *gryviav1.FabricTenant) (ctrl.Result, error) {
+func (r *GryviaTenantReconciler) reconcileTenant(ctx context.Context, tenant *gryviav1.GryviaTenant) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	// Ensure namespace exists for tenant
@@ -147,7 +147,7 @@ func (r *FabricTenantReconciler) reconcileTenant(ctx context.Context, tenant *gr
 	return ctrl.Result{}, nil
 }
 
-func (r *FabricTenantReconciler) ensureNamespace(ctx context.Context, tenant *gryviav1.FabricTenant, nsName string) error {
+func (r *GryviaTenantReconciler) ensureNamespace(ctx context.Context, tenant *gryviav1.GryviaTenant, nsName string) error {
 	ns := &corev1.Namespace{}
 	err := r.Get(ctx, types.NamespacedName{Name: nsName}, ns)
 	if err != nil {
@@ -158,7 +158,7 @@ func (r *FabricTenantReconciler) ensureNamespace(ctx context.Context, tenant *gr
 					Name: nsName,
 					Labels: map[string]string{
 						"gryvia.io/tenant":       tenant.Name,
-						"gryvia.io/managed-by":   "fabric-tenant-controller",
+						"gryvia.io/managed-by":   "gryvia-tenant-controller",
 						"gryvia.io/display-name": tenant.Spec.DisplayName,
 					},
 				},
@@ -176,11 +176,11 @@ func (r *FabricTenantReconciler) ensureNamespace(ctx context.Context, tenant *gr
 		ns.Labels = make(map[string]string)
 	}
 	ns.Labels["gryvia.io/tenant"] = tenant.Name
-	ns.Labels["gryvia.io/managed-by"] = "fabric-tenant-controller"
+	ns.Labels["gryvia.io/managed-by"] = "gryvia-tenant-controller"
 	return r.Update(ctx, ns)
 }
 
-func (r *FabricTenantReconciler) ensureResourceQuota(ctx context.Context, tenant *gryviav1.FabricTenant, nsName string) error {
+func (r *GryviaTenantReconciler) ensureResourceQuota(ctx context.Context, tenant *gryviav1.GryviaTenant, nsName string) error {
 	quotaName := fmt.Sprintf("%s-quota", tenant.Name)
 
 	rq := &corev1.ResourceQuota{}
@@ -204,7 +204,7 @@ func (r *FabricTenantReconciler) ensureResourceQuota(ctx context.Context, tenant
 				Namespace: nsName,
 				Labels: map[string]string{
 					"gryvia.io/tenant":     tenant.Name,
-					"gryvia.io/managed-by": "fabric-tenant-controller",
+					"gryvia.io/managed-by": "gryvia-tenant-controller",
 				},
 			},
 			Spec: corev1.ResourceQuotaSpec{
@@ -218,7 +218,7 @@ func (r *FabricTenantReconciler) ensureResourceQuota(ctx context.Context, tenant
 	return r.Update(ctx, rq)
 }
 
-func (r *FabricTenantReconciler) ensureLimitRange(ctx context.Context, tenant *gryviav1.FabricTenant, nsName string) error {
+func (r *GryviaTenantReconciler) ensureLimitRange(ctx context.Context, tenant *gryviav1.GryviaTenant, nsName string) error {
 	lrName := fmt.Sprintf("%s-limits", tenant.Name)
 
 	lr := &corev1.LimitRange{}
@@ -248,7 +248,7 @@ func (r *FabricTenantReconciler) ensureLimitRange(ctx context.Context, tenant *g
 				Namespace: nsName,
 				Labels: map[string]string{
 					"gryvia.io/tenant":     tenant.Name,
-					"gryvia.io/managed-by": "fabric-tenant-controller",
+					"gryvia.io/managed-by": "gryvia-tenant-controller",
 				},
 			},
 			Spec: corev1.LimitRangeSpec{
@@ -262,7 +262,7 @@ func (r *FabricTenantReconciler) ensureLimitRange(ctx context.Context, tenant *g
 	return r.Update(ctx, lr)
 }
 
-func (r *FabricTenantReconciler) ensureNetworkPolicy(ctx context.Context, tenant *gryviav1.FabricTenant, nsName string) error {
+func (r *GryviaTenantReconciler) ensureNetworkPolicy(ctx context.Context, tenant *gryviav1.GryviaTenant, nsName string) error {
 	npName := fmt.Sprintf("%s-isolation", tenant.Name)
 
 	np := &networkingv1.NetworkPolicy{}
@@ -312,7 +312,7 @@ func (r *FabricTenantReconciler) ensureNetworkPolicy(ctx context.Context, tenant
 				Namespace: nsName,
 				Labels: map[string]string{
 					"gryvia.io/tenant":     tenant.Name,
-					"gryvia.io/managed-by": "fabric-tenant-controller",
+					"gryvia.io/managed-by": "gryvia-tenant-controller",
 				},
 			},
 			Spec: spec,
@@ -324,10 +324,10 @@ func (r *FabricTenantReconciler) ensureNetworkPolicy(ctx context.Context, tenant
 	return r.Update(ctx, np)
 }
 
-func (r *FabricTenantReconciler) calculateUsage(ctx context.Context, tenant *gryviav1.FabricTenant, nsName string) (*gryviav1.TenantCurrentUsage, error) {
+func (r *GryviaTenantReconciler) calculateUsage(ctx context.Context, tenant *gryviav1.GryviaTenant, nsName string) (*gryviav1.TenantCurrentUsage, error) {
 	usage := &gryviav1.TenantCurrentUsage{}
 
-	jobList := &gryviav1.FabricAIJobList{}
+	jobList := &gryviav1.GryviaAIJobList{}
 	if err := r.List(ctx, jobList, client.InNamespace(nsName)); err != nil {
 		return nil, err
 	}
@@ -373,7 +373,7 @@ func (r *FabricTenantReconciler) calculateUsage(ctx context.Context, tenant *gry
 	return usage, nil
 }
 
-func (r *FabricTenantReconciler) calculateUtilization(tenant *gryviav1.FabricTenant) *gryviav1.TenantQuotaUtilization {
+func (r *GryviaTenantReconciler) calculateUtilization(tenant *gryviav1.GryviaTenant) *gryviav1.TenantQuotaUtilization {
 	util := &gryviav1.TenantQuotaUtilization{}
 
 	if tenant.Status.CurrentUsage == nil || tenant.Spec.Quotas == nil {
@@ -395,7 +395,7 @@ func (r *FabricTenantReconciler) calculateUtilization(tenant *gryviav1.FabricTen
 	return util
 }
 
-func (r *FabricTenantReconciler) determineHealth(tenant *gryviav1.FabricTenant) string {
+func (r *GryviaTenantReconciler) determineHealth(tenant *gryviav1.GryviaTenant) string {
 	if tenant.Status.QuotaUtilization == nil {
 		return "healthy"
 	}
@@ -417,11 +417,11 @@ func (r *FabricTenantReconciler) determineHealth(tenant *gryviav1.FabricTenant) 
 	return "healthy"
 }
 
-func (r *FabricTenantReconciler) handleDeletion(ctx context.Context, tenant *gryviav1.FabricTenant) (ctrl.Result, error) {
+func (r *GryviaTenantReconciler) handleDeletion(ctx context.Context, tenant *gryviav1.GryviaTenant) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	if controllerutil.ContainsFinalizer(tenant, fabricTenantFinalizer) {
-		logger.Info("Running cleanup for FabricTenant", "tenant", tenant.Name)
+	if controllerutil.ContainsFinalizer(tenant, gryviaTenantFinalizer) {
+		logger.Info("Running cleanup for GryviaTenant", "tenant", tenant.Name)
 
 		// Clean up managed namespace labels (do not delete the namespace itself)
 		nsName := fmt.Sprintf("tenant-%s", tenant.Name)
@@ -438,7 +438,7 @@ func (r *FabricTenantReconciler) handleDeletion(ctx context.Context, tenant *gry
 		}
 
 		// Remove finalizer
-		controllerutil.RemoveFinalizer(tenant, fabricTenantFinalizer)
+		controllerutil.RemoveFinalizer(tenant, gryviaTenantFinalizer)
 		if err := r.Update(ctx, tenant); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -447,7 +447,7 @@ func (r *FabricTenantReconciler) handleDeletion(ctx context.Context, tenant *gry
 	return ctrl.Result{}, nil
 }
 
-func (r *FabricTenantReconciler) updateCondition(tenant *gryviav1.FabricTenant, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *GryviaTenantReconciler) updateCondition(tenant *gryviav1.GryviaTenant, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -459,8 +459,8 @@ func (r *FabricTenantReconciler) updateCondition(tenant *gryviav1.FabricTenant, 
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *FabricTenantReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaTenantReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricTenant{}).
+		For(&gryviav1.GryviaTenant{}).
 		Complete(r)
 }

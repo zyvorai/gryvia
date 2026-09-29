@@ -31,8 +31,8 @@ pub async fn execute(client: &GryviaClient, detailed: bool, watch: Option<u64>) 
 }
 
 async fn show_cluster_overview(client: &GryviaClient, detailed: bool) -> Result<()> {
-    let nodes_api: Api<FabricGpuNode> = Api::all(client.kube_client.clone());
-    let jobs_api: Api<FabricAIJob> = Api::all(client.kube_client.clone());
+    let nodes_api: Api<GryviaGpuNode> = Api::all(client.kube_client.clone());
+    let jobs_api: Api<GryviaAIJob> = Api::all(client.kube_client.clone());
 
     let nodes = nodes_api.list(&ListParams::default()).await
         .context("Failed to list GPU nodes")?;
@@ -50,7 +50,7 @@ async fn show_cluster_overview(client: &GryviaClient, detailed: bool) -> Result<
     Ok(())
 }
 
-fn show_detailed_nodes(nodes: &[FabricGpuNode]) -> Result<()> {
+fn show_detailed_nodes(nodes: &[GryviaGpuNode]) -> Result<()> {
     println!("{}", "━━━ GPU Node Details ━━━".bold().cyan());
     println!();
 
@@ -150,7 +150,7 @@ fn show_detailed_nodes(nodes: &[FabricGpuNode]) -> Result<()> {
     Ok(())
 }
 
-fn show_detailed_jobs(jobs: &[FabricAIJob]) -> Result<()> {
+fn show_detailed_jobs(jobs: &[GryviaAIJob]) -> Result<()> {
     println!("{}", "━━━ Job Details ━━━".bold().cyan());
     println!();
 

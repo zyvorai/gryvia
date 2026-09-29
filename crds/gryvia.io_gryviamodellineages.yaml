@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabricmodellineages.gryvia.io
+  name: gryviamodellineages.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricModelLineage
-    listKind: FabricModelLineageList
-    plural: fabricmodellineages
-    singular: fabricmodellineage
+    kind: GryviaModelLineage
+    listKind: GryviaModelLineageList
+    plural: gryviamodellineages
+    singular: gryviamodellineage
   scope: Namespaced
   versions:
   - name: v1
     schema:
       openAPIV3Schema:
-        description: FabricModelLineage is the Schema for the fabricmodellineages
+        description: GryviaModelLineage is the Schema for the gryviamodellineages
           API
         properties:
           apiVersion:
@@ -38,7 +38,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricModelLineageSpec defines the desired state of FabricModelLineage
+            description: GryviaModelLineageSpec defines the desired state of GryviaModelLineage
             properties:
               compliance:
                 description: Compliance configures audit and regulatory compliance
@@ -147,7 +147,7 @@ spec:
                               type: string
                             datasetRef:
                               description: DatasetRef is the reference to the dataset
-                                (FabricDataset name or URI)
+                                (GryviaDataset name or URI)
                               type: string
                             version:
                               description: Version is the dataset version
@@ -181,7 +181,7 @@ spec:
                           type: object
                         type: array
                       evaluationJob:
-                        description: EvaluationJob references the evaluation FabricAIJob
+                        description: EvaluationJob references the evaluation GryviaAIJob
                         type: string
                       metrics:
                         additionalProperties:
@@ -297,7 +297,7 @@ spec:
                         description: Hyperparameters used during training
                         type: object
                       jobRef:
-                        description: JobRef references the FabricAIJob that produced
+                        description: JobRef references the GryviaAIJob that produced
                           this model
                         type: string
                     type: object
@@ -306,7 +306,7 @@ spec:
             - model
             type: object
           status:
-            description: FabricModelLineageStatus defines the observed state of FabricModelLineage
+            description: GryviaModelLineageStatus defines the observed state of GryviaModelLineage
             properties:
               attestationAttached:
                 description: AttestationAttached indicates whether attestation was

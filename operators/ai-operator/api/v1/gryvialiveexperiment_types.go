@@ -4,8 +4,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// FabricLiveExperimentSpec defines the desired state of FabricLiveExperiment
-type FabricLiveExperimentSpec struct {
+// GryviaLiveExperimentSpec defines the desired state of GryviaLiveExperiment
+type GryviaLiveExperimentSpec struct {
 	// Description is a human-readable description of the experiment
 	Description string `json:"description,omitempty"`
 
@@ -22,12 +22,12 @@ type FabricLiveExperimentSpec struct {
 	Notifications *NotificationConfig `json:"notifications,omitempty"`
 }
 
-// ExperimentJob references a FabricAIJob to include in the experiment
+// ExperimentJob references a GryviaAIJob to include in the experiment
 type ExperimentJob struct {
 	// Name is a friendly name for this job in the leaderboard
 	Name string `json:"name"`
 
-	// JobRef is the name of the FabricAIJob resource to track
+	// JobRef is the name of the GryviaAIJob resource to track
 	JobRef string `json:"jobRef"`
 }
 
@@ -142,8 +142,8 @@ type NotificationConfig struct {
 	Channel string `json:"channel,omitempty"`
 }
 
-// FabricLiveExperimentStatus defines the observed state of FabricLiveExperiment
-type FabricLiveExperimentStatus struct {
+// GryviaLiveExperimentStatus defines the observed state of GryviaLiveExperiment
+type GryviaLiveExperimentStatus struct {
 	// Phase is the current phase: Pending, Running, Completed, Failed
 	Phase string `json:"phase,omitempty"`
 
@@ -190,24 +190,24 @@ type LeaderboardEntry struct {
 //+kubebuilder:printcolumn:name="CostSaved",type=number,JSONPath=`.status.costSaved`
 //+kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// FabricLiveExperiment is the Schema for the fabricliveexperiments API
-type FabricLiveExperiment struct {
+// GryviaLiveExperiment is the Schema for the gryvialiveexperiments API
+type GryviaLiveExperiment struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricLiveExperimentSpec   `json:"spec,omitempty"`
-	Status FabricLiveExperimentStatus `json:"status,omitempty"`
+	Spec   GryviaLiveExperimentSpec   `json:"spec,omitempty"`
+	Status GryviaLiveExperimentStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricLiveExperimentList contains a list of FabricLiveExperiment
-type FabricLiveExperimentList struct {
+// GryviaLiveExperimentList contains a list of GryviaLiveExperiment
+type GryviaLiveExperimentList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricLiveExperiment `json:"items"`
+	Items           []GryviaLiveExperiment `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&FabricLiveExperiment{}, &FabricLiveExperimentList{})
+	SchemeBuilder.Register(&GryviaLiveExperiment{}, &GryviaLiveExperimentList{})
 }

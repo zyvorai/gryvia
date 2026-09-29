@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabricslas.gryvia.io
+  name: gryviaslas.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricSLA
-    listKind: FabricSLAList
-    plural: fabricslas
-    singular: fabricsla
+    kind: GryviaSLA
+    listKind: GryviaSLAList
+    plural: gryviaslas
+    singular: gryviasla
   scope: Cluster
   versions:
   - name: v1
     schema:
       openAPIV3Schema:
-        description: FabricSLA is the Schema for the fabricslas API
+        description: GryviaSLA is the Schema for the gryviaslas API
         properties:
           apiVersion:
             description: |-
@@ -37,7 +37,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricSLASpec defines the desired state of FabricSLA
+            description: GryviaSLASpec defines the desired state of GryviaSLA
             properties:
               availability:
                 description: Availability defines availability guarantees
@@ -190,7 +190,7 @@ spec:
             - tier
             type: object
           status:
-            description: FabricSLAStatus defines the observed state of FabricSLA
+            description: GryviaSLAStatus defines the observed state of GryviaSLA
             properties:
               breaches:
                 description: Breaches is the list of SLA breaches

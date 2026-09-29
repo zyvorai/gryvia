@@ -206,7 +206,7 @@ func submitAndTrackJob(ctx context.Context, namespace, jobName string) JobMetric
 	gvr := schema.GroupVersionResource{
 		Group:    "gryvia.io",
 		Version:  "v1",
-		Resource: "fabricaijobs",
+		Resource: "gryviaaijobs",
 	}
 
 	metric := JobMetrics{
@@ -218,7 +218,7 @@ func submitAndTrackJob(ctx context.Context, namespace, jobName string) JobMetric
 	job := &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"apiVersion": "gryvia.io/v1",
-			"kind":       "FabricAIJob",
+			"kind":       "GryviaAIJob",
 			"metadata": map[string]interface{}{
 				"name":      jobName,
 				"namespace": namespace,

@@ -18,12 +18,12 @@ K8S_NAME = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
 DURATION = re.compile(r"^[1-9][0-9]{0,3}[smh]$")
 INTENT = re.compile(r"^[\w .,:;/()+-]{1,200}$")
 
-FLOW_POLICIES = "fabricflowpolicies"
-INSIGHTS = "fabrictrafficinsights"
-GRAPHS = "fabricservicegraphs"
-ANOMALIES = "fabricnetworkanomalies"
-COSTS = "fabricnetworkcosts"
-TRACES = "fabrictracesessions"
+FLOW_POLICIES = "gryviaflowpolicies"
+INSIGHTS = "gryviatrafficinsights"
+GRAPHS = "gryviaservicegraphs"
+ANOMALIES = "gryvianetworkanomalies"
+COSTS = "gryvianetworkcosts"
+TRACES = "gryviatracesessions"
 
 
 # CRD verdicts (forwarded, dropped, error) -> the verdict vocabulary the UI understands.
@@ -209,7 +209,7 @@ def build_router(deps: Deps) -> APIRouter:
     @router.get("/api/network/flows")
     @deps.limiter.limit("30/minute")
     async def list_flows(request: Request, _=Depends(deps.verify_auth)):
-        """Observed flows, taken from FabricServiceGraph edges (no separate flow CRD exists)."""
+        """Observed flows, taken from GryviaServiceGraph edges (no separate flow CRD exists)."""
         graphs = await list_items(deps, GRAPHS)
         items = []
         for g in graphs:
@@ -250,7 +250,7 @@ def build_router(deps: Deps) -> APIRouter:
             "destination": {"service": body.destinationService, "port": body.port},
             "protocol": body.protocol, "action": body.action, "intent": body.intent,
         }
-        created = await create_item(deps, FLOW_POLICIES, "FabricFlowPolicy", name, spec)
+        created = await create_item(deps, FLOW_POLICIES, "GryviaFlowPolicy", name, spec)
         return _policy_view(created)
 
     @router.post("/api/network/policies/{name}/apply")
@@ -326,7 +326,7 @@ def build_router(deps: Deps) -> APIRouter:
         name = f"trace-{body.targetService[:40]}-{uuid.uuid4().hex[:8]}"
         spec = {"service": body.targetService, "namespace": body.namespace,
                 "duration": body.duration, "level": body.captureLevel}
-        created = await create_item(deps, TRACES, "FabricTraceSession", name, spec)
+        created = await create_item(deps, TRACES, "GryviaTraceSession", name, spec)
         return _trace_view(created)
 
     @router.get("/api/network/traces/{name}")

@@ -1,14 +1,14 @@
-import type { FabricQuota } from '@/types'
+import type { GryviaQuota } from '@/types'
 
 export const DEFAULT_ALERT_THRESHOLD = 80
 
 /** Alert threshold in percent; the CRD field is optional. */
-export function alertThreshold(q: FabricQuota): number {
+export function alertThreshold(q: GryviaQuota): number {
   return q.spec.budget?.alertThreshold ?? DEFAULT_ALERT_THRESHOLD
 }
 
 /** Percent of the monthly budget used, or undefined when the quota has no budget. */
-export function budgetPercent(q: FabricQuota): number | undefined {
+export function budgetPercent(q: GryviaQuota): number | undefined {
   const budget = q.spec.budget
   if (!budget) return undefined
   const spent = q.status?.budgetStatus?.spentThisMonth ?? 0
@@ -17,13 +17,13 @@ export function budgetPercent(q: FabricQuota): number | undefined {
 }
 
 /** True when a budgeted quota has crossed its alert threshold. */
-export function overBudgetAlert(q: FabricQuota): boolean {
+export function overBudgetAlert(q: GryviaQuota): boolean {
   const pct = budgetPercent(q)
   return pct !== undefined && pct > alertThreshold(q)
 }
 
 /** Allowed GPU types for display; an empty or missing list means every type is allowed. */
-export function allowedTypes(q: FabricQuota): string[] | 'All' {
+export function allowedTypes(q: GryviaQuota): string[] | 'All' {
   const t = q.spec.gpuQuota?.allowedGPUTypes
   return t && t.length > 0 ? t : 'All'
 }
@@ -34,6 +34,6 @@ export function limitLabel(n: number | undefined | null): string {
 }
 
 /** How many of the quotas have a budget configured. */
-export function budgetedCount(list: FabricQuota[]): number {
+export function budgetedCount(list: GryviaQuota[]): number {
   return list.filter((q) => q.spec.budget).length
 }

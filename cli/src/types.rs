@@ -3,9 +3,9 @@ use kube::CustomResource;
 use schemars::JsonSchema;
 use chrono::{DateTime, Utc};
 
-// FabricAIJob CRD
+// GryviaAIJob CRD
 #[derive(CustomResource, Clone, Debug, Serialize, Deserialize, JsonSchema)]
-#[kube(group = "gryvia.io", version = "v1", kind = "FabricAIJob", namespaced)]
+#[kube(group = "gryvia.io", version = "v1", kind = "GryviaAIJob", namespaced)]
 #[kube(status = "AIJobStatus")]
 pub struct AIJobSpec {
     pub framework: String,
@@ -58,9 +58,9 @@ pub struct AIJobStatus {
     pub completion_time: Option<DateTime<Utc>>,
 }
 
-// FabricQuota CRD
+// GryviaQuota CRD
 #[derive(CustomResource, Clone, Debug, Serialize, Deserialize, JsonSchema)]
-#[kube(group = "gryvia.io", version = "v1", kind = "FabricQuota")]
+#[kube(group = "gryvia.io", version = "v1", kind = "GryviaQuota")]
 #[kube(status = "QuotaStatus")]
 pub struct QuotaSpec {
     pub team: String,
@@ -129,9 +129,9 @@ pub struct BudgetStatus {
     pub projected_spend: f64,
 }
 
-// FabricGpuNode CRD
+// GryviaGpuNode CRD
 #[derive(CustomResource, Clone, Debug, Serialize, Deserialize, JsonSchema)]
-#[kube(group = "gryvia.io", version = "v1", kind = "FabricGpuNode")]
+#[kube(group = "gryvia.io", version = "v1", kind = "GryviaGpuNode")]
 #[kube(status = "GpuNodeStatus")]
 pub struct GpuNodeSpec {
     #[serde(rename = "nodeName")]

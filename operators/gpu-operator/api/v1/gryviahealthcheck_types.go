@@ -4,8 +4,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// FabricHealthCheckSpec defines the desired state of FabricHealthCheck
-type FabricHealthCheckSpec struct {
+// GryviaHealthCheckSpec defines the desired state of GryviaHealthCheck
+type GryviaHealthCheckSpec struct {
 	// Target defines what to health check
 	Target HealthCheckTarget `json:"target"`
 
@@ -139,8 +139,8 @@ type RemediationEvent struct {
 	Message string `json:"message,omitempty"`
 }
 
-// FabricHealthCheckStatus defines the observed state of FabricHealthCheck
-type FabricHealthCheckStatus struct {
+// GryviaHealthCheckStatus defines the observed state of GryviaHealthCheck
+type GryviaHealthCheckStatus struct {
 	// LastCheckTime is when the last health check ran
 	LastCheckTime *metav1.Time `json:"lastCheckTime,omitempty"`
 
@@ -168,24 +168,24 @@ type FabricHealthCheckStatus struct {
 //+kubebuilder:printcolumn:name="Last-Check",type=string,JSONPath=`.status.lastCheckTime`
 //+kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// FabricHealthCheck is the Schema for the fabrichealthchecks API
-type FabricHealthCheck struct {
+// GryviaHealthCheck is the Schema for the gryviahealthchecks API
+type GryviaHealthCheck struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricHealthCheckSpec   `json:"spec,omitempty"`
-	Status FabricHealthCheckStatus `json:"status,omitempty"`
+	Spec   GryviaHealthCheckSpec   `json:"spec,omitempty"`
+	Status GryviaHealthCheckStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricHealthCheckList contains a list of FabricHealthCheck
-type FabricHealthCheckList struct {
+// GryviaHealthCheckList contains a list of GryviaHealthCheck
+type GryviaHealthCheckList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricHealthCheck `json:"items"`
+	Items           []GryviaHealthCheck `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&FabricHealthCheck{}, &FabricHealthCheckList{})
+	SchemeBuilder.Register(&GryviaHealthCheck{}, &GryviaHealthCheckList{})
 }

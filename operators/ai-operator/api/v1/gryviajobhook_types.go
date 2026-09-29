@@ -4,8 +4,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// FabricJobHookSpec defines the desired state of FabricJobHook
-type FabricJobHookSpec struct {
+// GryviaJobHookSpec defines the desired state of GryviaJobHook
+type GryviaJobHookSpec struct {
 	// Trigger is the lifecycle phase that triggers this hook
 	Trigger string `json:"trigger"`
 
@@ -106,8 +106,8 @@ type HookRetry struct {
 	Backoff string `json:"backoff,omitempty"`
 }
 
-// FabricJobHookStatus defines the observed state of FabricJobHook
-type FabricJobHookStatus struct {
+// GryviaJobHookStatus defines the observed state of GryviaJobHook
+type GryviaJobHookStatus struct {
 	// LastExecutionTime is the time of the last hook execution
 	LastExecutionTime *metav1.Time `json:"lastExecutionTime,omitempty"`
 
@@ -126,24 +126,24 @@ type FabricJobHookStatus struct {
 //+kubebuilder:printcolumn:name="Last-Execution",type=string,JSONPath=`.status.lastExecutionTime`
 //+kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// FabricJobHook is the Schema for the fabricjobhooks API
-type FabricJobHook struct {
+// GryviaJobHook is the Schema for the gryviajobhooks API
+type GryviaJobHook struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricJobHookSpec   `json:"spec,omitempty"`
-	Status FabricJobHookStatus `json:"status,omitempty"`
+	Spec   GryviaJobHookSpec   `json:"spec,omitempty"`
+	Status GryviaJobHookStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricJobHookList contains a list of FabricJobHook
-type FabricJobHookList struct {
+// GryviaJobHookList contains a list of GryviaJobHook
+type GryviaJobHookList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricJobHook `json:"items"`
+	Items           []GryviaJobHook `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&FabricJobHook{}, &FabricJobHookList{})
+	SchemeBuilder.Register(&GryviaJobHook{}, &GryviaJobHookList{})
 }

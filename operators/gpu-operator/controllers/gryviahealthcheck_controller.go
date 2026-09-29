@@ -30,32 +30,32 @@ const (
 	checkStatusFail    = "fail"
 )
 
-// FabricHealthCheckReconciler reconciles a FabricHealthCheck object
-type FabricHealthCheckReconciler struct {
+// GryviaHealthCheckReconciler reconciles a GryviaHealthCheck object
+type GryviaHealthCheckReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Log    logr.Logger
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabrichealthchecks,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabrichealthchecks/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabrichealthchecks/finalizers,verbs=update
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricgpunodes,verbs=get;list;watch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviahealthchecks,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviahealthchecks/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviahealthchecks/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviagpunodes,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch;update;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop
-func (r *FabricHealthCheckReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := r.Log.WithValues("fabrichealthcheck", req.NamespacedName)
+func (r *GryviaHealthCheckReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := r.Log.WithValues("gryviahealthcheck", req.NamespacedName)
 
-	// Fetch the FabricHealthCheck instance
-	hc := &gryviav1.FabricHealthCheck{}
+	// Fetch the GryviaHealthCheck instance
+	hc := &gryviav1.GryviaHealthCheck{}
 	err := r.Get(ctx, req.NamespacedName, hc)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			log.Info("FabricHealthCheck resource not found. Ignoring since object must be deleted")
+			log.Info("GryviaHealthCheck resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		log.Error(err, "Failed to get FabricHealthCheck")
+		log.Error(err, "Failed to get GryviaHealthCheck")
 		return ctrl.Result{}, err
 	}
 
@@ -84,8 +84,8 @@ func (r *FabricHealthCheckReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	return result, nil
 }
 
-func (r *FabricHealthCheckReconciler) reconcileHealthCheck(ctx context.Context, hc *gryviav1.FabricHealthCheck) (ctrl.Result, error) {
-	log := r.Log.WithValues("fabrichealthcheck", hc.Name)
+func (r *GryviaHealthCheckReconciler) reconcileHealthCheck(ctx context.Context, hc *gryviav1.GryviaHealthCheck) (ctrl.Result, error) {
+	log := r.Log.WithValues("gryviahealthcheck", hc.Name)
 
 	// Get target nodes
 	nodes, err := r.getTargetNodes(ctx, hc)
@@ -95,9 +95,9 @@ func (r *FabricHealthCheckReconciler) reconcileHealthCheck(ctx context.Context, 
 	}
 
 	// Get GPU node info
-	gpuNodes := &gryviav1.FabricGpuNodeList{}
+	gpuNodes := &gryviav1.GryviaGpuNodeList{}
 	if err := r.List(ctx, gpuNodes); err != nil {
-		log.Error(err, "Failed to list FabricGpuNodes")
+		log.Error(err, "Failed to list GryviaGpuNodes")
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
 	}
 
@@ -109,7 +109,7 @@ func (r *FabricHealthCheckReconciler) reconcileHealthCheck(ctx context.Context, 
 
 	for _, node := range nodes {
 		// Find matching GPU node
-		var gpuNode *gryviav1.FabricGpuNode
+		var gpuNode *gryviav1.GryviaGpuNode
 		for i := range gpuNodes.Items {
 			if gpuNodes.Items[i].Spec.NodeName == node.Name {
 				gpuNode = &gpuNodes.Items[i]
@@ -176,7 +176,7 @@ func (r *FabricHealthCheckReconciler) reconcileHealthCheck(ctx context.Context, 
 	return ctrl.Result{RequeueAfter: r.getCheckInterval(hc)}, nil
 }
 
-func (r *FabricHealthCheckReconciler) getTargetNodes(ctx context.Context, hc *gryviav1.FabricHealthCheck) ([]corev1.Node, error) {
+func (r *GryviaHealthCheckReconciler) getTargetNodes(ctx context.Context, hc *gryviav1.GryviaHealthCheck) ([]corev1.Node, error) {
 	nodeList := &corev1.NodeList{}
 
 	switch hc.Spec.Target.Type {
@@ -208,7 +208,7 @@ func (r *FabricHealthCheckReconciler) getTargetNodes(ctx context.Context, hc *gr
 	return nodeList.Items, nil
 }
 
-func (r *FabricHealthCheckReconciler) runCheck(check gryviav1.HealthCheck, gpuNode *gryviav1.FabricGpuNode, node *corev1.Node) gryviav1.HealthCheckResult {
+func (r *GryviaHealthCheckReconciler) runCheck(check gryviav1.HealthCheck, gpuNode *gryviav1.GryviaGpuNode, node *corev1.Node) gryviav1.HealthCheckResult {
 	result := gryviav1.HealthCheckResult{
 		CheckName: check.Name,
 		Status:    checkStatusPass,
@@ -217,7 +217,7 @@ func (r *FabricHealthCheckReconciler) runCheck(check gryviav1.HealthCheck, gpuNo
 
 	if gpuNode == nil {
 		result.Status = checkStatusWarning
-		result.Message = "No FabricGpuNode found for node " + node.Name
+		result.Message = "No GryviaGpuNode found for node " + node.Name
 		return result
 	}
 
@@ -258,7 +258,7 @@ func (r *FabricHealthCheckReconciler) runCheck(check gryviav1.HealthCheck, gpuNo
 	return result
 }
 
-func (r *FabricHealthCheckReconciler) checkGpuTemperature(check gryviav1.HealthCheck, gpuNode *gryviav1.FabricGpuNode, result *gryviav1.HealthCheckResult) {
+func (r *GryviaHealthCheckReconciler) checkGpuTemperature(check gryviav1.HealthCheck, gpuNode *gryviav1.GryviaGpuNode, result *gryviav1.HealthCheckResult) {
 	var maxTemp int
 	for _, gpuStatus := range gpuNode.Status.GpuStatus {
 		if gpuStatus.Temperature > maxTemp {
@@ -298,7 +298,7 @@ func (r *FabricHealthCheckReconciler) checkGpuTemperature(check gryviav1.HealthC
 	result.Message = fmt.Sprintf("GPU temperature %d within normal range", maxTemp)
 }
 
-func (r *FabricHealthCheckReconciler) checkGpuUtilization(check gryviav1.HealthCheck, gpuNode *gryviav1.FabricGpuNode, result *gryviav1.HealthCheckResult) {
+func (r *GryviaHealthCheckReconciler) checkGpuUtilization(check gryviav1.HealthCheck, gpuNode *gryviav1.GryviaGpuNode, result *gryviav1.HealthCheckResult) {
 	var maxUtil int
 	for _, gpuStatus := range gpuNode.Status.GpuStatus {
 		if gpuStatus.Utilization > maxUtil {
@@ -329,7 +329,7 @@ func (r *FabricHealthCheckReconciler) checkGpuUtilization(check gryviav1.HealthC
 	result.Message = fmt.Sprintf("GPU utilization %d%% within normal range", maxUtil)
 }
 
-func (r *FabricHealthCheckReconciler) checkGpuMemory(check gryviav1.HealthCheck, gpuNode *gryviav1.FabricGpuNode, result *gryviav1.HealthCheckResult) {
+func (r *GryviaHealthCheckReconciler) checkGpuMemory(check gryviav1.HealthCheck, gpuNode *gryviav1.GryviaGpuNode, result *gryviav1.HealthCheckResult) {
 	var maxMemPct float64
 	for _, gpuStatus := range gpuNode.Status.GpuStatus {
 		if gpuStatus.MemoryTotal > 0 {
@@ -358,7 +358,7 @@ func (r *FabricHealthCheckReconciler) checkGpuMemory(check gryviav1.HealthCheck,
 	result.Message = fmt.Sprintf("GPU memory usage %.1f%% within normal range", maxMemPct)
 }
 
-func (r *FabricHealthCheckReconciler) checkECCErrors(check gryviav1.HealthCheck, gpuNode *gryviav1.FabricGpuNode, result *gryviav1.HealthCheckResult) {
+func (r *GryviaHealthCheckReconciler) checkECCErrors(check gryviav1.HealthCheck, gpuNode *gryviav1.GryviaGpuNode, result *gryviav1.HealthCheckResult) {
 	// In a real implementation, this would query DCGM for ECC error counts.
 	// For now, check health status from the GPU node.
 	var unhealthyGPUs int
@@ -384,7 +384,7 @@ func (r *FabricHealthCheckReconciler) checkECCErrors(check gryviav1.HealthCheck,
 	result.Message = "No ECC errors detected"
 }
 
-func (r *FabricHealthCheckReconciler) checkNVLink(check gryviav1.HealthCheck, gpuNode *gryviav1.FabricGpuNode, result *gryviav1.HealthCheckResult) {
+func (r *GryviaHealthCheckReconciler) checkNVLink(check gryviav1.HealthCheck, gpuNode *gryviav1.GryviaGpuNode, result *gryviav1.HealthCheckResult) {
 	// Check NVLink health via GPU node status
 	healthyGPUs := 0
 	totalGPUs := len(gpuNode.Status.GpuStatus)
@@ -404,7 +404,7 @@ func (r *FabricHealthCheckReconciler) checkNVLink(check gryviav1.HealthCheck, gp
 	}
 }
 
-func (r *FabricHealthCheckReconciler) checkGpuPower(check gryviav1.HealthCheck, gpuNode *gryviav1.FabricGpuNode, result *gryviav1.HealthCheckResult) {
+func (r *GryviaHealthCheckReconciler) checkGpuPower(check gryviav1.HealthCheck, gpuNode *gryviav1.GryviaGpuNode, result *gryviav1.HealthCheckResult) {
 	var maxPower int
 	for _, gpuStatus := range gpuNode.Status.GpuStatus {
 		if gpuStatus.PowerUsage > maxPower {
@@ -430,12 +430,12 @@ func (r *FabricHealthCheckReconciler) checkGpuPower(check gryviav1.HealthCheck, 
 	result.Message = fmt.Sprintf("GPU power %dW within normal range", maxPower)
 }
 
-func (r *FabricHealthCheckReconciler) handleFailure(ctx context.Context, hc *gryviav1.FabricHealthCheck, nodes []corev1.Node, affected []gryviav1.AffectedResource) error {
+func (r *GryviaHealthCheckReconciler) handleFailure(ctx context.Context, hc *gryviav1.GryviaHealthCheck, nodes []corev1.Node, affected []gryviav1.AffectedResource) error {
 	if hc.Spec.OnFailure == nil {
 		return nil
 	}
 
-	log := r.Log.WithValues("fabrichealthcheck", hc.Name)
+	log := r.Log.WithValues("gryviahealthcheck", hc.Name)
 
 	// Build set of affected node names
 	affectedNodes := make(map[string]bool)
@@ -500,7 +500,7 @@ func (r *FabricHealthCheckReconciler) handleFailure(ctx context.Context, hc *gry
 	return nil
 }
 
-func (r *FabricHealthCheckReconciler) updateNodeLabels(ctx context.Context, nodes []corev1.Node, results []gryviav1.HealthCheckResult, overallHealth string) error {
+func (r *GryviaHealthCheckReconciler) updateNodeLabels(ctx context.Context, nodes []corev1.Node, results []gryviav1.HealthCheckResult, overallHealth string) error {
 	// Build per-node health status
 	nodeHealth := make(map[string]string)
 	for _, result := range results {
@@ -543,7 +543,7 @@ func (r *FabricHealthCheckReconciler) updateNodeLabels(ctx context.Context, node
 	return nil
 }
 
-func (r *FabricHealthCheckReconciler) getCheckInterval(hc *gryviav1.FabricHealthCheck) time.Duration {
+func (r *GryviaHealthCheckReconciler) getCheckInterval(hc *gryviav1.GryviaHealthCheck) time.Duration {
 	// Default to 5 minutes
 	interval := 5 * time.Minute
 
@@ -567,8 +567,8 @@ func (r *FabricHealthCheckReconciler) getCheckInterval(hc *gryviav1.FabricHealth
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *FabricHealthCheckReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaHealthCheckReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricHealthCheck{}).
+		For(&gryviav1.GryviaHealthCheck{}).
 		Complete(r)
 }

@@ -1,6 +1,6 @@
 # Example: Cluster-Wide GPU Health Monitoring
 apiVersion: gryvia.io/v1
-kind: FabricHealthCheck
+kind: GryviaHealthCheck
 metadata:
   name: cluster-gpu-health
 spec:
@@ -86,7 +86,7 @@ spec:
 ---
 # Example: Per-Node Health Check
 apiVersion: gryvia.io/v1
-kind: FabricHealthCheck
+kind: GryviaHealthCheck
 metadata:
   name: dgx-node-health
 spec:
@@ -123,7 +123,7 @@ spec:
 ---
 # Example: Job-Level Health Monitoring
 apiVersion: gryvia.io/v1
-kind: FabricHealthCheck
+kind: GryviaHealthCheck
 metadata:
   name: job-gpu-health
 spec:
@@ -152,7 +152,7 @@ spec:
 ---
 # Health Check Status Example
 apiVersion: gryvia.io/v1
-kind: FabricHealthCheck
+kind: GryviaHealthCheck
 metadata:
   name: cluster-gpu-health
 status:

@@ -7,11 +7,11 @@ metadata:
   labels:
     {{- include "gryvia.labels" . | nindent 4 }}
 rules:
-  # Manage FabricGpuNode resources
+  # Manage GryviaGpuNode resources
   - apiGroups:
       - gryvia.io
     resources:
-      - fabricgpunodes
+      - gryviagpunodes
     verbs:
       - create
       - delete
@@ -23,7 +23,7 @@ rules:
   - apiGroups:
       - gryvia.io
     resources:
-      - fabricgpunodes/status
+      - gryviagpunodes/status
     verbs:
       - get
       - patch
@@ -31,15 +31,15 @@ rules:
   - apiGroups:
       - gryvia.io
     resources:
-      - fabricgpunodes/finalizers
+      - gryviagpunodes/finalizers
     verbs:
       - update
 
-  # Manage FabricAIJob resources
+  # Manage GryviaAIJob resources
   - apiGroups:
       - gryvia.io
     resources:
-      - fabricaijobs
+      - gryviaaijobs
     verbs:
       - create
       - delete
@@ -51,7 +51,7 @@ rules:
   - apiGroups:
       - gryvia.io
     resources:
-      - fabricaijobs/status
+      - gryviaaijobs/status
     verbs:
       - get
       - patch
@@ -59,7 +59,7 @@ rules:
   - apiGroups:
       - gryvia.io
     resources:
-      - fabricaijobs/finalizers
+      - gryviaaijobs/finalizers
     verbs:
       - update
 
@@ -75,11 +75,11 @@ rules:
       - update
       - patch
 
-  # Manage FabricQuota resources
+  # Manage GryviaQuota resources
   - apiGroups:
       - gryvia.io
     resources:
-      - fabricquotas
+      - gryviaquotas
     verbs:
       - create
       - delete
@@ -91,7 +91,7 @@ rules:
   - apiGroups:
       - gryvia.io
     resources:
-      - fabricquotas/status
+      - gryviaquotas/status
     verbs:
       - get
       - patch
@@ -99,15 +99,15 @@ rules:
   - apiGroups:
       - gryvia.io
     resources:
-      - fabricquotas/finalizers
+      - gryviaquotas/finalizers
     verbs:
       - update
 
-  # Manage FabricNetwork resources
+  # Manage GryviaNetwork resources
   - apiGroups:
       - gryvia.io
     resources:
-      - fabricnetworks
+      - gryvianetworks
     verbs:
       - create
       - delete
@@ -119,7 +119,7 @@ rules:
   - apiGroups:
       - gryvia.io
     resources:
-      - fabricnetworks/status
+      - gryvianetworks/status
     verbs:
       - get
       - patch
@@ -127,15 +127,15 @@ rules:
   - apiGroups:
       - gryvia.io
     resources:
-      - fabricnetworks/finalizers
+      - gryvianetworks/finalizers
     verbs:
       - update
 
-  # Manage FabricStorage resources
+  # Manage GryviaStorage resources
   - apiGroups:
       - gryvia.io
     resources:
-      - fabricstorages
+      - gryviastorages
     verbs:
       - create
       - delete
@@ -147,7 +147,7 @@ rules:
   - apiGroups:
       - gryvia.io
     resources:
-      - fabricstorages/status
+      - gryviastorages/status
     verbs:
       - get
       - patch
@@ -155,7 +155,7 @@ rules:
   - apiGroups:
       - gryvia.io
     resources:
-      - fabricstorages/finalizers
+      - gryviastorages/finalizers
     verbs:
       - update
 
@@ -210,13 +210,13 @@ rules:
       - update
       - delete
 
-  # Manage FabricCheckpointGuard resources
+  # Manage GryviaCheckpointGuard resources
   - apiGroups:
       - gryvia.io
     resources:
-      - fabriccheckpointguards
-      - fabriccheckpointguards/status
-      - fabriccheckpointguards/finalizers
+      - gryviacheckpointguards
+      - gryviacheckpointguards/status
+      - gryviacheckpointguards/finalizers
     verbs:
       - create
       - delete
@@ -226,13 +226,13 @@ rules:
       - update
       - watch
 
-  # Manage FabricCostPredictor resources
+  # Manage GryviaCostPredictor resources
   - apiGroups:
       - gryvia.io
     resources:
-      - fabriccostpredictors
-      - fabriccostpredictors/status
-      - fabriccostpredictors/finalizers
+      - gryviacostpredictors
+      - gryviacostpredictors/status
+      - gryviacostpredictors/finalizers
     verbs:
       - create
       - delete
@@ -242,13 +242,13 @@ rules:
       - update
       - watch
 
-  # Manage FabricLiveExperiment resources
+  # Manage GryviaLiveExperiment resources
   - apiGroups:
       - gryvia.io
     resources:
-      - fabricliveexperiments
-      - fabricliveexperiments/status
-      - fabricliveexperiments/finalizers
+      - gryvialiveexperiments
+      - gryvialiveexperiments/status
+      - gryvialiveexperiments/finalizers
     verbs:
       - create
       - delete
@@ -258,13 +258,13 @@ rules:
       - update
       - watch
 
-  # Manage FabricModelLineage resources
+  # Manage GryviaModelLineage resources
   - apiGroups:
       - gryvia.io
     resources:
-      - fabricmodellineages
-      - fabricmodellineages/status
-      - fabricmodellineages/finalizers
+      - gryviamodellineages
+      - gryviamodellineages/status
+      - gryviamodellineages/finalizers
     verbs:
       - create
       - delete
@@ -274,13 +274,13 @@ rules:
       - update
       - watch
 
-  # Manage FabricTrainingProfiler resources
+  # Manage GryviaTrainingProfiler resources
   - apiGroups:
       - gryvia.io
     resources:
-      - fabrictrainingprofilers
-      - fabrictrainingprofilers/status
-      - fabrictrainingprofilers/finalizers
+      - gryviatrainingprofilers
+      - gryviatrainingprofilers/status
+      - gryviatrainingprofilers/finalizers
     verbs:
       - create
       - delete
@@ -290,13 +290,13 @@ rules:
       - update
       - watch
 
-  # Manage FabricTrainingTimeMachine resources
+  # Manage GryviaTrainingTimeMachine resources
   - apiGroups:
       - gryvia.io
     resources:
-      - fabrictrainingtimemachines
-      - fabrictrainingtimemachines/status
-      - fabrictrainingtimemachines/finalizers
+      - gryviatrainingtimemachines
+      - gryviatrainingtimemachines/status
+      - gryviatrainingtimemachines/finalizers
     verbs:
       - create
       - delete
@@ -306,13 +306,13 @@ rules:
       - update
       - watch
 
-  # Manage FabricGpuMemoryOptimizer resources
+  # Manage GryviaGpuMemoryOptimizer resources
   - apiGroups:
       - gryvia.io
     resources:
-      - fabricgpumemoryoptimizers
-      - fabricgpumemoryoptimizers/status
-      - fabricgpumemoryoptimizers/finalizers
+      - gryviagpumemoryoptimizers
+      - gryviagpumemoryoptimizers/status
+      - gryviagpumemoryoptimizers/finalizers
     verbs:
       - create
       - delete
@@ -326,47 +326,47 @@ rules:
   - apiGroups:
       - gryvia.io
     resources:
-      - fabricbudgets
-      - fabricbudgets/status
-      - fabricbudgets/finalizers
-      - fabricchargebacks
-      - fabricchargebacks/status
-      - fabricchargebacks/finalizers
-      - fabricquotapolicies
-      - fabricquotapolicies/status
-      - fabricquotapolicies/finalizers
-      - fabricaudits
-      - fabricaudits/status
-      - fabricautoscalers
-      - fabricautoscalers/status
-      - fabricbenchmarks
-      - fabricbenchmarks/status
-      - fabricgpusharingpolicies
-      - fabricgpusharingpolicies/status
-      - fabricjobhooks
-      - fabricjobhooks/status
-      - fabricpriorities
-      - fabricpriorities/status
-      - fabricslas
-      - fabricslas/status
-      - fabrictemplates
-      - fabrictemplates/status
-      - fabricdatasets
-      - fabricdatasets/status
-      - fabricfederations
-      - fabricfederations/status
-      - fabricmetrics
-      - fabricmetrics/status
-      - fabricretrypolicies
-      - fabricretrypolicies/status
-      - fabricdrtests
-      - fabricdrtests/status
-      - fabricreservations
-      - fabricreservations/status
-      - fabrichealthchecks
-      - fabrichealthchecks/status
-      - fabrictenants
-      - fabrictenants/status
+      - gryviabudgets
+      - gryviabudgets/status
+      - gryviabudgets/finalizers
+      - gryviachargebacks
+      - gryviachargebacks/status
+      - gryviachargebacks/finalizers
+      - gryviaquotapolicies
+      - gryviaquotapolicies/status
+      - gryviaquotapolicies/finalizers
+      - gryviaaudits
+      - gryviaaudits/status
+      - gryviaautoscalers
+      - gryviaautoscalers/status
+      - gryviabenchmarks
+      - gryviabenchmarks/status
+      - gryviagpusharingpolicies
+      - gryviagpusharingpolicies/status
+      - gryviajobhooks
+      - gryviajobhooks/status
+      - gryviapriorities
+      - gryviapriorities/status
+      - gryviaslas
+      - gryviaslas/status
+      - gryviatemplates
+      - gryviatemplates/status
+      - gryviadatasets
+      - gryviadatasets/status
+      - gryviafederations
+      - gryviafederations/status
+      - gryviametrics
+      - gryviametrics/status
+      - gryviaretrypolicies
+      - gryviaretrypolicies/status
+      - gryviadrtests
+      - gryviadrtests/status
+      - gryviareservations
+      - gryviareservations/status
+      - gryviahealthchecks
+      - gryviahealthchecks/status
+      - gryviatenants
+      - gryviatenants/status
     verbs:
       - create
       - delete

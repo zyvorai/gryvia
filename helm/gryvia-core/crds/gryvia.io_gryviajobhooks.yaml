@@ -4,14 +4,14 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabricjobhooks.gryvia.io
+  name: gryviajobhooks.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricJobHook
-    listKind: FabricJobHookList
-    plural: fabricjobhooks
-    singular: fabricjobhook
+    kind: GryviaJobHook
+    listKind: GryviaJobHookList
+    plural: gryviajobhooks
+    singular: gryviajobhook
   scope: Cluster
   versions:
   - additionalPrinterColumns:
@@ -30,7 +30,7 @@ spec:
     name: v1
     schema:
       openAPIV3Schema:
-        description: FabricJobHook is the Schema for the fabricjobhooks API
+        description: GryviaJobHook is the Schema for the gryviajobhooks API
         properties:
           apiVersion:
             description: |-
@@ -50,7 +50,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricJobHookSpec defines the desired state of FabricJobHook
+            description: GryviaJobHookSpec defines the desired state of GryviaJobHook
             properties:
               action:
                 description: Action defines what to execute when triggered
@@ -166,7 +166,7 @@ spec:
             - trigger
             type: object
           status:
-            description: FabricJobHookStatus defines the observed state of FabricJobHook
+            description: GryviaJobHookStatus defines the observed state of GryviaJobHook
             properties:
               executionCount:
                 description: ExecutionCount is the total number of executions

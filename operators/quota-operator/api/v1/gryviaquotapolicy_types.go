@@ -4,8 +4,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// FabricQuotaPolicySpec defines the desired state of FabricQuotaPolicy
-type FabricQuotaPolicySpec struct {
+// GryviaQuotaPolicySpec defines the desired state of GryviaQuotaPolicy
+type GryviaQuotaPolicySpec struct {
 	// Scope defines what this quota policy applies to
 	Scope QuotaPolicyScope `json:"scope,omitempty"`
 
@@ -208,8 +208,8 @@ type QuotaPolicyAlerts struct {
 	Recipients []string `json:"recipients,omitempty"`
 }
 
-// FabricQuotaPolicyStatus defines the observed state of FabricQuotaPolicy
-type FabricQuotaPolicyStatus struct {
+// GryviaQuotaPolicyStatus defines the observed state of GryviaQuotaPolicy
+type GryviaQuotaPolicyStatus struct {
 	// Usage tracks current resource consumption
 	Usage *QuotaPolicyUsage `json:"usage,omitempty"`
 
@@ -308,24 +308,24 @@ type QuotaPolicyChildStatus struct {
 //+kubebuilder:subresource:status
 //+kubebuilder:resource:scope=Cluster
 
-// FabricQuotaPolicy is the Schema for the fabricquotapolicies API
-type FabricQuotaPolicy struct {
+// GryviaQuotaPolicy is the Schema for the gryviaquotapolicies API
+type GryviaQuotaPolicy struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricQuotaPolicySpec   `json:"spec,omitempty"`
-	Status FabricQuotaPolicyStatus `json:"status,omitempty"`
+	Spec   GryviaQuotaPolicySpec   `json:"spec,omitempty"`
+	Status GryviaQuotaPolicyStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricQuotaPolicyList contains a list of FabricQuotaPolicy
-type FabricQuotaPolicyList struct {
+// GryviaQuotaPolicyList contains a list of GryviaQuotaPolicy
+type GryviaQuotaPolicyList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricQuotaPolicy `json:"items"`
+	Items           []GryviaQuotaPolicy `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&FabricQuotaPolicy{}, &FabricQuotaPolicyList{})
+	SchemeBuilder.Register(&GryviaQuotaPolicy{}, &GryviaQuotaPolicyList{})
 }

@@ -17,31 +17,31 @@ import (
 	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 )
 
-// FabricRetryPolicyReconciler reconciles a FabricRetryPolicy object
-type FabricRetryPolicyReconciler struct {
+// GryviaRetryPolicyReconciler reconciles a GryviaRetryPolicy object
+type GryviaRetryPolicyReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Log    logr.Logger
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricretrypolicies,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricretrypolicies/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricretrypolicies/finalizers,verbs=update
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaretrypolicies,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaretrypolicies/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaretrypolicies/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs,verbs=get;list;watch;update;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop
-func (r *FabricRetryPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := r.Log.WithValues("fabricretrypolicy", req.NamespacedName)
+func (r *GryviaRetryPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := r.Log.WithValues("gryviaretrypolicy", req.NamespacedName)
 
-	// Fetch the FabricRetryPolicy instance
-	policy := &gryviav1.FabricRetryPolicy{}
+	// Fetch the GryviaRetryPolicy instance
+	policy := &gryviav1.GryviaRetryPolicy{}
 	err := r.Get(ctx, req.NamespacedName, policy)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			log.Info("FabricRetryPolicy resource not found. Ignoring since object must be deleted")
+			log.Info("GryviaRetryPolicy resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		log.Error(err, "Failed to get FabricRetryPolicy")
+		log.Error(err, "Failed to get GryviaRetryPolicy")
 		return ctrl.Result{}, err
 	}
 
@@ -70,8 +70,8 @@ func (r *FabricRetryPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	return result, nil
 }
 
-func (r *FabricRetryPolicyReconciler) reconcileRetryPolicy(ctx context.Context, policy *gryviav1.FabricRetryPolicy) (ctrl.Result, error) {
-	log := r.Log.WithValues("fabricretrypolicy", policy.Name)
+func (r *GryviaRetryPolicyReconciler) reconcileRetryPolicy(ctx context.Context, policy *gryviav1.GryviaRetryPolicy) (ctrl.Result, error) {
+	log := r.Log.WithValues("gryviaretrypolicy", policy.Name)
 
 	// Check circuit breaker state
 	if policy.Status.State == "circuit-open" {
@@ -97,9 +97,9 @@ func (r *FabricRetryPolicyReconciler) reconcileRetryPolicy(ctx context.Context, 
 	}
 
 	// List failed jobs that reference this retry policy
-	jobList := &gryviav1.FabricAIJobList{}
+	jobList := &gryviav1.GryviaAIJobList{}
 	if err := r.List(ctx, jobList); err != nil {
-		log.Error(err, "Failed to list FabricAIJobs")
+		log.Error(err, "Failed to list GryviaAIJobs")
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
 	}
 
@@ -195,7 +195,7 @@ func (r *FabricRetryPolicyReconciler) reconcileRetryPolicy(ctx context.Context, 
 	return ctrl.Result{RequeueAfter: requeueAfter}, nil
 }
 
-func (r *FabricRetryPolicyReconciler) shouldRetryJob(policy *gryviav1.FabricRetryPolicy, job *gryviav1.FabricAIJob) bool {
+func (r *GryviaRetryPolicyReconciler) shouldRetryJob(policy *gryviav1.GryviaRetryPolicy, job *gryviav1.GryviaAIJob) bool {
 	// Check if job has a label or annotation referencing this policy
 	labels := job.GetLabels()
 	if labels != nil {
@@ -214,7 +214,7 @@ func (r *FabricRetryPolicyReconciler) shouldRetryJob(policy *gryviav1.FabricRetr
 	return false
 }
 
-func (r *FabricRetryPolicyReconciler) matchesRetryConditions(policy *gryviav1.FabricRetryPolicy, job *gryviav1.FabricAIJob) bool {
+func (r *GryviaRetryPolicyReconciler) matchesRetryConditions(policy *gryviav1.GryviaRetryPolicy, job *gryviav1.GryviaAIJob) bool {
 	// Check noRetryOn conditions first
 	if policy.Spec.NoRetryOn != nil {
 		// Check exit codes to NOT retry on
@@ -285,7 +285,7 @@ func (r *FabricRetryPolicyReconciler) matchesRetryConditions(policy *gryviav1.Fa
 	return true
 }
 
-func (r *FabricRetryPolicyReconciler) calculateBackoff(policy *gryviav1.FabricRetryPolicy, retryCount int32) time.Duration {
+func (r *GryviaRetryPolicyReconciler) calculateBackoff(policy *gryviav1.GryviaRetryPolicy, retryCount int32) time.Duration {
 	if policy.Spec.Backoff == nil {
 		return 1 * time.Minute
 	}
@@ -347,7 +347,7 @@ func fibonacci(n int) int {
 	return b
 }
 
-func (r *FabricRetryPolicyReconciler) shouldOpenCircuitBreaker(policy *gryviav1.FabricRetryPolicy, jobList *gryviav1.FabricAIJobList) bool {
+func (r *GryviaRetryPolicyReconciler) shouldOpenCircuitBreaker(policy *gryviav1.GryviaRetryPolicy, jobList *gryviav1.GryviaAIJobList) bool {
 	if policy.Spec.CircuitBreaker == nil || !policy.Spec.CircuitBreaker.Enabled {
 		return false
 	}
@@ -368,7 +368,7 @@ func (r *FabricRetryPolicyReconciler) shouldOpenCircuitBreaker(policy *gryviav1.
 	return consecutiveFailures >= threshold
 }
 
-func (r *FabricRetryPolicyReconciler) shouldResetCircuitBreaker(policy *gryviav1.FabricRetryPolicy) bool {
+func (r *GryviaRetryPolicyReconciler) shouldResetCircuitBreaker(policy *gryviav1.GryviaRetryPolicy) bool {
 	if policy.Spec.CircuitBreaker == nil || policy.Status.LastAttemptTime == nil {
 		return true
 	}
@@ -384,8 +384,8 @@ func (r *FabricRetryPolicyReconciler) shouldResetCircuitBreaker(policy *gryviav1
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *FabricRetryPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaRetryPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricRetryPolicy{}).
+		For(&gryviav1.GryviaRetryPolicy{}).
 		Complete(r)
 }

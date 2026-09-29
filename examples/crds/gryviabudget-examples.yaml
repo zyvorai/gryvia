@@ -1,6 +1,6 @@
 # Example: Monthly Team Budget
 apiVersion: gryvia.io/v1
-kind: FabricBudget
+kind: GryviaBudget
 metadata:
   name: ml-research-monthly
 spec:
@@ -65,7 +65,7 @@ spec:
 ---
 # Example: Quarterly Project Budget
 apiVersion: gryvia.io/v1
-kind: FabricBudget
+kind: GryviaBudget
 metadata:
   name: llm-training-q1
 spec:
@@ -98,7 +98,7 @@ spec:
 ---
 # Example: User Daily Budget (Development)
 apiVersion: gryvia.io/v1
-kind: FabricBudget
+kind: GryviaBudget
 metadata:
   name: dev-user-alice-daily
 spec:
@@ -128,7 +128,7 @@ spec:
 ---
 # Example: Namespace Weekly Budget
 apiVersion: gryvia.io/v1
-kind: FabricBudget
+kind: GryviaBudget
 metadata:
   name: production-weekly
 spec:
@@ -162,7 +162,7 @@ spec:
 ---
 # Budget Status Example
 apiVersion: gryvia.io/v1
-kind: FabricBudget
+kind: GryviaBudget
 metadata:
   name: ml-research-monthly
 status:

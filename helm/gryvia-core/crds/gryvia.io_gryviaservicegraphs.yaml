@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabricservicegraphs.gryvia.io
+  name: gryviaservicegraphs.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricServiceGraph
-    listKind: FabricServiceGraphList
-    plural: fabricservicegraphs
-    singular: fabricservicegraph
+    kind: GryviaServiceGraph
+    listKind: GryviaServiceGraphList
+    plural: gryviaservicegraphs
+    singular: gryviaservicegraph
   scope: Namespaced
   versions:
   - name: v1
     schema:
       openAPIV3Schema:
-        description: FabricServiceGraph is the Schema for the fabricservicegraphs
+        description: GryviaServiceGraph is the Schema for the gryviaservicegraphs
           API
         properties:
           apiVersion:
@@ -38,7 +38,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricServiceGraphSpec defines the desired state of FabricServiceGraph
+            description: GryviaServiceGraphSpec defines the desired state of GryviaServiceGraph
             properties:
               depth:
                 description: Depth is the maximum graph traversal depth (1-10)
@@ -58,7 +58,7 @@ spec:
                 type: string
             type: object
           status:
-            description: FabricServiceGraphStatus defines the observed state of FabricServiceGraph
+            description: GryviaServiceGraphStatus defines the observed state of GryviaServiceGraph
             properties:
               edges:
                 description: Edges is the list of connections between services

@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabrictraininginsights.gryvia.io
+  name: gryviatraininginsights.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricTrainingInsight
-    listKind: FabricTrainingInsightList
-    plural: fabrictraininginsights
-    singular: fabrictraininginsight
+    kind: GryviaTrainingInsight
+    listKind: GryviaTrainingInsightList
+    plural: gryviatraininginsights
+    singular: gryviatraininginsight
   scope: Namespaced
   versions:
   - name: v1
     schema:
       openAPIV3Schema:
-        description: FabricTrainingInsight is the Schema for the fabrictraininginsights
+        description: GryviaTrainingInsight is the Schema for the gryviatraininginsights
           API
         properties:
           apiVersion:
@@ -38,7 +38,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricTrainingInsightSpec defines the desired state of FabricTrainingInsight
+            description: GryviaTrainingInsightSpec defines the desired state of GryviaTrainingInsight
             properties:
               analysisWindow:
                 description: AnalysisWindow is the time window for analysis (e.g.,
@@ -52,12 +52,12 @@ spec:
                   type: string
                 type: array
               targetJob:
-                description: TargetJob is the name of the FabricAIJob to analyze
+                description: TargetJob is the name of the GryviaAIJob to analyze
                 type: string
             type: object
           status:
-            description: FabricTrainingInsightStatus defines the observed state of
-              FabricTrainingInsight
+            description: GryviaTrainingInsightStatus defines the observed state of
+              GryviaTrainingInsight
             properties:
               bottleneck:
                 description: Bottleneck identifies the primary bottleneck (compute,

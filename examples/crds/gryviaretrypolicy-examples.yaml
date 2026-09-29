@@ -1,6 +1,6 @@
 # Example: Standard Retry Policy
 apiVersion: gryvia.io/v1
-kind: FabricRetryPolicy
+kind: GryviaRetryPolicy
 metadata:
   name: standard-retry
 spec:
@@ -31,7 +31,7 @@ spec:
 ---
 # Example: Aggressive Retry with Resource Adjustment
 apiVersion: gryvia.io/v1
-kind: FabricRetryPolicy
+kind: GryviaRetryPolicy
 metadata:
   name: adaptive-retry
 spec:
@@ -71,7 +71,7 @@ spec:
 ---
 # Example: Spot Instance Retry Policy
 apiVersion: gryvia.io/v1
-kind: FabricRetryPolicy
+kind: GryviaRetryPolicy
 metadata:
   name: spot-retry
 spec:
@@ -93,13 +93,13 @@ spec:
 ---
 # Example: Job Using Retry Policy
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: resilient-training
 spec:
   type: training
 
-  # Retries are governed by the FabricRetryPolicy "adaptive-retry" (see above);
+  # Retries are governed by the GryviaRetryPolicy "adaptive-retry" (see above);
   # retryLimit is the job-level cap.
   retryLimit: 3
 
@@ -154,7 +154,7 @@ message: |
 ---
 # Retry with Different Resources
 apiVersion: gryvia.io/v1
-kind: FabricRetryPolicy
+kind: GryviaRetryPolicy
 metadata:
   name: escalating-resources
 spec:
@@ -169,7 +169,7 @@ spec:
 ---
 # Fibonacci Backoff Example
 apiVersion: gryvia.io/v1
-kind: FabricRetryPolicy
+kind: GryviaRetryPolicy
 metadata:
   name: fibonacci-retry
 spec:

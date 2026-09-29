@@ -4,8 +4,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// FabricGpuMemoryOptimizerSpec defines the desired state of FabricGpuMemoryOptimizer
-type FabricGpuMemoryOptimizerSpec struct {
+// GryviaGpuMemoryOptimizerSpec defines the desired state of GryviaGpuMemoryOptimizer
+type GryviaGpuMemoryOptimizerSpec struct {
 	// Scope defines what this optimizer watches
 	Scope OptimizerScope `json:"scope"`
 
@@ -115,8 +115,8 @@ type InferencePackingConfig struct {
 	IsolationLevel string `json:"isolationLevel,omitempty"`
 }
 
-// FabricGpuMemoryOptimizerStatus defines the observed state of FabricGpuMemoryOptimizer
-type FabricGpuMemoryOptimizerStatus struct {
+// GryviaGpuMemoryOptimizerStatus defines the observed state of GryviaGpuMemoryOptimizer
+type GryviaGpuMemoryOptimizerStatus struct {
 	// JobsAnalyzed is the total number of jobs analyzed
 	JobsAnalyzed int `json:"jobsAnalyzed,omitempty"`
 
@@ -155,24 +155,24 @@ type MemoryEfficiencyStatus struct {
 //+kubebuilder:printcolumn:name="OOM-Prevented",type=integer,JSONPath=`.status.oomPrevented`
 //+kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// FabricGpuMemoryOptimizer is the Schema for the fabricgpumemoryoptimizers API
-type FabricGpuMemoryOptimizer struct {
+// GryviaGpuMemoryOptimizer is the Schema for the gryviagpumemoryoptimizers API
+type GryviaGpuMemoryOptimizer struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricGpuMemoryOptimizerSpec   `json:"spec,omitempty"`
-	Status FabricGpuMemoryOptimizerStatus `json:"status,omitempty"`
+	Spec   GryviaGpuMemoryOptimizerSpec   `json:"spec,omitempty"`
+	Status GryviaGpuMemoryOptimizerStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricGpuMemoryOptimizerList contains a list of FabricGpuMemoryOptimizer
-type FabricGpuMemoryOptimizerList struct {
+// GryviaGpuMemoryOptimizerList contains a list of GryviaGpuMemoryOptimizer
+type GryviaGpuMemoryOptimizerList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricGpuMemoryOptimizer `json:"items"`
+	Items           []GryviaGpuMemoryOptimizer `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&FabricGpuMemoryOptimizer{}, &FabricGpuMemoryOptimizerList{})
+	SchemeBuilder.Register(&GryviaGpuMemoryOptimizer{}, &GryviaGpuMemoryOptimizerList{})
 }

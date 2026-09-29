@@ -22,14 +22,14 @@ func newLiveExperimentTestScheme() *runtime.Scheme {
 	return s
 }
 
-func newLiveExperimentReconciler(objs ...client.Object) (*FabricLiveExperimentReconciler, client.Client) {
+func newLiveExperimentReconciler(objs ...client.Object) (*GryviaLiveExperimentReconciler, client.Client) {
 	scheme := newLiveExperimentTestScheme()
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(objs...).
-		WithStatusSubresource(&gryviav1.FabricLiveExperiment{}, &gryviav1.FabricAIJob{}).
+		WithStatusSubresource(&gryviav1.GryviaLiveExperiment{}, &gryviav1.GryviaAIJob{}).
 		Build()
-	r := &FabricLiveExperimentReconciler{
+	r := &GryviaLiveExperimentReconciler{
 		Client: fakeClient,
 		Scheme: scheme,
 		Log:    ctrl.Log.WithName("test"),
@@ -37,13 +37,13 @@ func newLiveExperimentReconciler(objs ...client.Object) (*FabricLiveExperimentRe
 	return r, fakeClient
 }
 
-func newTestLiveExperiment(name, namespace string) *gryviav1.FabricLiveExperiment {
-	return &gryviav1.FabricLiveExperiment{
+func newTestLiveExperiment(name, namespace string) *gryviav1.GryviaLiveExperiment {
+	return &gryviav1.GryviaLiveExperiment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
 		},
-		Spec: gryviav1.FabricLiveExperimentSpec{
+		Spec: gryviav1.GryviaLiveExperimentSpec{
 			Description: "Test experiment",
 			Jobs: []gryviav1.ExperimentJob{
 				{Name: "baseline", JobRef: "job-baseline"},
@@ -101,7 +101,7 @@ func TestLiveExperiment_Reconcile_InitializesPhase(t *testing.T) {
 		t.Error("expected requeue after phase initialization")
 	}
 
-	updated := &gryviav1.FabricLiveExperiment{}
+	updated := &gryviav1.GryviaLiveExperiment{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-exp", Namespace: "default"}, updated); err != nil {
 		t.Fatalf("failed to get updated experiment: %v", err)
 	}
@@ -192,17 +192,17 @@ func TestLiveExperiment_GetMetricPatterns_SecondaryMetrics(t *testing.T) {
 func TestLiveExperiment_TerminateJob(t *testing.T) {
 	exp := newTestLiveExperiment("test-exp", "default")
 
-	job := &gryviav1.FabricAIJob{
+	job := &gryviav1.GryviaAIJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "job-baseline",
 			Namespace: "default",
 		},
-		Spec: gryviav1.FabricAIJobSpec{
+		Spec: gryviav1.GryviaAIJobSpec{
 			Type:  "training",
 			Image: "pytorch:latest",
 			GPUs:  4,
 		},
-		Status: gryviav1.FabricAIJobStatus{
+		Status: gryviav1.GryviaAIJobStatus{
 			Phase: PhaseRunning,
 		},
 	}
@@ -214,7 +214,7 @@ func TestLiveExperiment_TerminateJob(t *testing.T) {
 		t.Fatalf("expected no error terminating job, got %v", err)
 	}
 
-	updated := &gryviav1.FabricAIJob{}
+	updated := &gryviav1.GryviaAIJob{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "job-baseline", Namespace: "default"}, updated); err != nil {
 		t.Fatalf("failed to get updated job: %v", err)
 	}

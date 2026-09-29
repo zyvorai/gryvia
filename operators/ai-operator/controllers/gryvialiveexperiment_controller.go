@@ -36,8 +36,8 @@ const (
 	defaultGPUHourCost = 3.50
 )
 
-// FabricLiveExperimentReconciler reconciles a FabricLiveExperiment object
-type FabricLiveExperimentReconciler struct {
+// GryviaLiveExperimentReconciler reconciles a GryviaLiveExperiment object
+type GryviaLiveExperimentReconciler struct {
 	client.Client
 	Scheme    *runtime.Scheme
 	Log       logr.Logger
@@ -61,27 +61,27 @@ func (r *k8sLogReader) ReadLogs(ctx context.Context, namespace, podName string, 
 	return io.ReadAll(stream)
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricliveexperiments,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricliveexperiments/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricliveexperiments/finalizers,verbs=update
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryvialiveexperiments,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryvialiveexperiments/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryvialiveexperiments/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs,verbs=get;list;watch;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=pods/log,verbs=get
 
 // Reconcile is part of the main kubernetes reconciliation loop
-func (r *FabricLiveExperimentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := r.Log.WithValues("fabricliveexperiment", req.NamespacedName)
+func (r *GryviaLiveExperimentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := r.Log.WithValues("gryvialiveexperiment", req.NamespacedName)
 
-	// Fetch the FabricLiveExperiment instance
-	exp := &gryviav1.FabricLiveExperiment{}
+	// Fetch the GryviaLiveExperiment instance
+	exp := &gryviav1.GryviaLiveExperiment{}
 	err := r.Get(ctx, req.NamespacedName, exp)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			log.Info("FabricLiveExperiment resource not found, ignoring")
+			log.Info("GryviaLiveExperiment resource not found, ignoring")
 			return ctrl.Result{}, nil
 		}
-		log.Error(err, "Failed to get FabricLiveExperiment")
+		log.Error(err, "Failed to get GryviaLiveExperiment")
 		return ctrl.Result{}, err
 	}
 
@@ -115,7 +115,7 @@ func (r *FabricLiveExperimentReconciler) Reconcile(ctx context.Context, req ctrl
 	return result, nil
 }
 
-func (r *FabricLiveExperimentReconciler) reconcileExperiment(ctx context.Context, exp *gryviav1.FabricLiveExperiment) (ctrl.Result, error) {
+func (r *GryviaLiveExperimentReconciler) reconcileExperiment(ctx context.Context, exp *gryviav1.GryviaLiveExperiment) (ctrl.Result, error) {
 	log := r.Log.WithValues("experiment", exp.Name)
 
 	// Track statuses and reasons for the leaderboard
@@ -130,7 +130,7 @@ func (r *FabricLiveExperimentReconciler) reconcileExperiment(ctx context.Context
 		}
 	}
 
-	// Fetch each referenced FabricAIJob and collect metrics
+	// Fetch each referenced GryviaAIJob and collect metrics
 	var scrapeResults []*experiment.ScrapeResult
 	allJobsTerminal := true
 	anyJobRunning := false
@@ -143,7 +143,7 @@ func (r *FabricLiveExperimentReconciler) reconcileExperiment(ctx context.Context
 	logReader := &k8sLogReader{clientset: r.Clientset}
 
 	for _, jobDef := range exp.Spec.Jobs {
-		jobRef := &gryviav1.FabricAIJob{}
+		jobRef := &gryviav1.GryviaAIJob{}
 		err := r.Get(ctx, types.NamespacedName{
 			Namespace: exp.Namespace,
 			Name:      jobDef.JobRef,
@@ -347,7 +347,7 @@ func (r *FabricLiveExperimentReconciler) reconcileExperiment(ctx context.Context
 
 // getMetricPatterns returns the metric regex patterns from the experiment spec.
 // If no patterns are configured, it returns sensible defaults for common metrics.
-func (r *FabricLiveExperimentReconciler) getMetricPatterns(exp *gryviav1.FabricLiveExperiment) map[string]string {
+func (r *GryviaLiveExperimentReconciler) getMetricPatterns(exp *gryviav1.GryviaLiveExperiment) map[string]string {
 	if exp.Spec.Comparison.MetricSource != nil && exp.Spec.Comparison.MetricSource.Type == "log-pattern" {
 		if len(exp.Spec.Comparison.MetricSource.Patterns) > 0 {
 			return exp.Spec.Comparison.MetricSource.Patterns
@@ -375,9 +375,9 @@ func (r *FabricLiveExperimentReconciler) getMetricPatterns(exp *gryviav1.FabricL
 	return patterns
 }
 
-// terminateJob patches the referenced FabricAIJob to Failed status with the
+// terminateJob patches the referenced GryviaAIJob to Failed status with the
 // given reason, causing the ai-operator to stop the workload.
-func (r *FabricLiveExperimentReconciler) terminateJob(ctx context.Context, exp *gryviav1.FabricLiveExperiment, jobName string, reason string) error {
+func (r *GryviaLiveExperimentReconciler) terminateJob(ctx context.Context, exp *gryviav1.GryviaLiveExperiment, jobName string, reason string) error {
 	// Find the jobRef for this friendly name
 	var jobRef string
 	for _, j := range exp.Spec.Jobs {
@@ -390,7 +390,7 @@ func (r *FabricLiveExperimentReconciler) terminateJob(ctx context.Context, exp *
 		return fmt.Errorf("no jobRef found for job name %q", jobName)
 	}
 
-	job := &gryviav1.FabricAIJob{}
+	job := &gryviav1.GryviaAIJob{}
 	err := r.Get(ctx, types.NamespacedName{
 		Namespace: exp.Namespace,
 		Name:      jobRef,
@@ -413,8 +413,8 @@ func (r *FabricLiveExperimentReconciler) terminateJob(ctx context.Context, exp *
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *FabricLiveExperimentReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaLiveExperimentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricLiveExperiment{}).
+		For(&gryviav1.GryviaLiveExperiment{}).
 		Complete(r)
 }

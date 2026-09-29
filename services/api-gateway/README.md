@@ -161,7 +161,7 @@ The API gateway collects data from multiple sources:
 
 1. **Kubernetes API**: CRD objects (jobs, quotas, nodes)
 2. **Prometheus**: GPU metrics from DCGM exporter (optional)
-3. **Node Status**: GPU health from FabricGpuNode CRDs
+3. **Node Status**: GPU health from GryviaGpuNode CRDs
 
 ## Performance
 

@@ -4,14 +4,14 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabricaijobs.gryvia.io
+  name: gryviaaijobs.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricAIJob
-    listKind: FabricAIJobList
-    plural: fabricaijobs
-    singular: fabricaijob
+    kind: GryviaAIJob
+    listKind: GryviaAIJobList
+    plural: gryviaaijobs
+    singular: gryviaaijob
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
@@ -30,7 +30,7 @@ spec:
     name: v1
     schema:
       openAPIV3Schema:
-        description: FabricAIJob is the Schema for the fabricaijobs API
+        description: GryviaAIJob is the Schema for the gryviaaijobs API
         properties:
           apiVersion:
             description: |-
@@ -50,7 +50,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricAIJobSpec defines the desired state of FabricAIJob
+            description: GryviaAIJobSpec defines the desired state of GryviaAIJob
             properties:
               affinity:
                 description: Affinity
@@ -3385,7 +3385,7 @@ spec:
             - type
             type: object
           status:
-            description: FabricAIJobStatus defines the observed state of FabricAIJob
+            description: GryviaAIJobStatus defines the observed state of GryviaAIJob
             properties:
               completionTime:
                 description: Completion time

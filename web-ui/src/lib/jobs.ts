@@ -1,15 +1,15 @@
-import type { FabricAIJob, FabricGpuNode, FabricQuota } from '@/types'
+import type { GryviaAIJob, GryviaGpuNode, GryviaQuota } from '@/types'
 import { phaseGroup } from './phase'
 
 export const FRAMEWORK_LABEL = 'gryvia.io/framework'
 
 /** ML framework of a job: distributed config, then the label the dashboard sets, then the job type. */
-export function jobFramework(job: FabricAIJob): string {
+export function jobFramework(job: GryviaAIJob): string {
   return job.spec?.distributed?.framework || job.metadata?.labels?.[FRAMEWORK_LABEL] || job.spec?.type || 'job'
 }
 
 /** "8 × H100", or "8 × GPU" when the type is unset. */
-export function jobGpus(job: FabricAIJob): string {
+export function jobGpus(job: GryviaAIJob): string {
   return `${job.spec?.gpus ?? 0} × ${job.spec?.gpuType || 'GPU'}`
 }
 
@@ -40,10 +40,10 @@ export function envSource(env: EnvEntry): string | undefined {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Fields the CRD has but the shared FabricAIJob type does not declare yet (see gryvia.io_fabricaijobs).
+// Fields the CRD has but the shared GryviaAIJob type does not declare yet (see gryvia.io_gryviaaijobs).
 export type JobCondition = { type: string; status: string; reason?: string; message?: string; lastTransitionTime?: string }
 export type JobSpecExtras = { priority?: number; timeout?: string; retryLimit?: number }
-type JobExtras = FabricAIJob & { spec: FabricAIJob['spec'] & JobSpecExtras; status?: { conditions?: JobCondition[] } }
+type JobExtras = GryviaAIJob & { spec: GryviaAIJob['spec'] & JobSpecExtras; status?: { conditions?: JobCondition[] } }
 
 export const TEAM_LABEL = 'gryvia.io/team'
 export const JOB_TYPES = ['training', 'inference', 'fine-tuning', 'evaluation'] as const
@@ -53,29 +53,29 @@ export const FALLBACK_GPU_TYPES = ['H100', 'A100-80G', 'A100-40G', 'L40', 'V100'
 export const JOB_LIST_LIMIT = 500
 
 /** Team label of a job, if any. */
-export function jobTeam(job: FabricAIJob): string | undefined {
+export function jobTeam(job: GryviaAIJob): string | undefined {
   return job.metadata?.labels?.[TEAM_LABEL] || undefined
 }
 
 /** Text the jobs search box matches: name, image, team and framework. */
-export function jobSearchText(job: FabricAIJob): string {
+export function jobSearchText(job: GryviaAIJob): string {
   return [job.metadata?.name, job.spec?.image, jobTeam(job), jobFramework(job)].filter(Boolean).join(' ')
 }
 
 /** Status filter value: the coarse group, so Succeeded and Completed count as one. */
-export function jobStatusGroup(job: FabricAIJob): string {
+export function jobStatusGroup(job: GryviaAIJob): string {
   const g = phaseGroup(job.status?.phase)
   return g.charAt(0).toUpperCase() + g.slice(1)
 }
 export const STATUS_FILTER_OPTIONS = ['Pending', 'Running', 'Completed', 'Failed', 'Other']
 
-export function jobCreatedMs(job: FabricAIJob): number | undefined {
+export function jobCreatedMs(job: GryviaAIJob): number | undefined {
   const t = job.metadata?.creationTimestamp ? new Date(job.metadata.creationTimestamp).getTime() : NaN
   return Number.isNaN(t) ? undefined : t
 }
 
 /** Conditions in the order they happened (oldest first); entries without a time keep their place at the end. */
-export function jobConditions(job: FabricAIJob): JobCondition[] {
+export function jobConditions(job: GryviaAIJob): JobCondition[] {
   const list = ((job as JobExtras).status?.conditions ?? []).filter((c) => c && c.type)
   const time = (c: JobCondition) => (c.lastTransitionTime ? new Date(c.lastTransitionTime).getTime() : Infinity)
   return list.map((c, i) => ({ c, i })).sort((a, b) => time(a.c) - time(b.c) || a.i - b.i).map((x) => x.c)
@@ -174,7 +174,7 @@ export function argvPreview(cmd: string): string {
 }
 
 /** Map an existing job onto the form. `skippedEnv` counts variables that reference a Secret/ConfigMap (not copied). */
-export function jobToForm(job: FabricAIJob): { values: JobFormValues; skippedEnv: number } {
+export function jobToForm(job: GryviaAIJob): { values: JobFormValues; skippedEnv: number } {
   const spec = job.spec as JobExtras['spec'] | undefined
   const dist = spec?.distributed
   const env = (spec?.env ?? []) as EnvEntry[]
@@ -214,7 +214,7 @@ export function formIsDirty(current: JobFormValues, initial: JobFormValues): boo
 }
 
 /** GPU type choices: types present on nodes, limited to the team's allowed types when it sets any. */
-export function gpuTypeOptions(nodes: FabricGpuNode[] | undefined, quota?: FabricQuota, current?: string): string[] {
+export function gpuTypeOptions(nodes: GryviaGpuNode[] | undefined, quota?: GryviaQuota, current?: string): string[] {
   const fromNodes = [...new Set((nodes ?? []).map((n) => n.spec?.gpuType).filter((t): t is string => Boolean(t)))].sort((a, b) => a.localeCompare(b))
   const allowed = quota?.spec?.gpuQuota?.allowedGPUTypes
   let opts = fromNodes.length > 0 ? fromNodes : FALLBACK_GPU_TYPES
@@ -245,7 +245,7 @@ export const retryLimitError = (v: string) => boundedInt(v, 0, 10, 'Retry limit'
 export type ClusterCapacity = { totalGPUs: number; availableGPUs: number }
 
 /** Non-blocking warnings about a GPU request; the server stays authoritative. */
-export function capacityHints(gpus: number, cluster?: ClusterCapacity, quota?: FabricQuota, gpuType?: string): string[] {
+export function capacityHints(gpus: number, cluster?: ClusterCapacity, quota?: GryviaQuota, gpuType?: string): string[] {
   const out: string[] = []
   if (cluster && cluster.totalGPUs > 0) {
     if (gpus > cluster.totalGPUs) out.push(`Requests ${gpus} GPUs but the cluster has ${cluster.totalGPUs} in total; the job cannot be scheduled.`)
@@ -263,7 +263,7 @@ export function capacityHints(gpus: number, cluster?: ClusterCapacity, quota?: F
 }
 
 /** True when a job with this name already exists (Kubernetes names are case-sensitive). */
-export function nameTaken(name: string, jobs: FabricAIJob[] | undefined): boolean {
+export function nameTaken(name: string, jobs: GryviaAIJob[] | undefined): boolean {
   return Boolean(name) && (jobs ?? []).some((j) => j.metadata?.name === name)
 }
 

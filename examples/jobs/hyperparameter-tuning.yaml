@@ -1,5 +1,5 @@
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: hyperparameter-tuning-sweep
   namespace: default
@@ -56,7 +56,7 @@ spec:
       configMap:
         name: hyperparameter-search-space
 ---
-# Search space read by hyperparameter_search.py (FabricAIJob has no searchSpace field)
+# Search space read by hyperparameter_search.py (GryviaAIJob has no searchSpace field)
 apiVersion: v1
 kind: ConfigMap
 metadata:

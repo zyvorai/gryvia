@@ -24,7 +24,7 @@ pub async fn execute(client: &GryviaClient, resource: &str, name: &str, output: 
 }
 
 async fn get_job(client: &GryviaClient, name: &str, output: &str) -> Result<()> {
-    let api: Api<FabricAIJob> = Api::namespaced(
+    let api: Api<GryviaAIJob> = Api::namespaced(
         client.kube_client.clone(),
         client.namespace(),
     );
@@ -48,7 +48,7 @@ async fn get_job(client: &GryviaClient, name: &str, output: &str) -> Result<()> 
 }
 
 async fn get_quota(client: &GryviaClient, name: &str, output: &str) -> Result<()> {
-    let api: Api<FabricQuota> = Api::all(client.kube_client.clone());
+    let api: Api<GryviaQuota> = Api::all(client.kube_client.clone());
 
     let quota = api.get(name).await
         .context("Failed to get quota")?;
@@ -69,7 +69,7 @@ async fn get_quota(client: &GryviaClient, name: &str, output: &str) -> Result<()
 }
 
 async fn get_node(client: &GryviaClient, name: &str, output: &str) -> Result<()> {
-    let api: Api<FabricGpuNode> = Api::all(client.kube_client.clone());
+    let api: Api<GryviaGpuNode> = Api::all(client.kube_client.clone());
 
     let node = api.get(name).await
         .context("Failed to get GPU node")?;

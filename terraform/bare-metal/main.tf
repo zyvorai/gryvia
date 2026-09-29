@@ -157,6 +157,6 @@ output "deployment_instructions" {
        kubectl get nodes
 
     6. Verify GPU nodes:
-       kubectl get fabricgpunodes
+       kubectl get gryviagpunodes
   EOT
 }

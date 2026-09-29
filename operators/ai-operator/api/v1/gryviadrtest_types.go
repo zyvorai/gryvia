@@ -4,8 +4,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// FabricDRTestSpec defines the desired state of FabricDRTest
-type FabricDRTestSpec struct {
+// GryviaDRTestSpec defines the desired state of GryviaDRTest
+type GryviaDRTestSpec struct {
 	// Type is the DR test type (backup-restore, failover, data-integrity, rpo-rto, full-drill, chaos-engineering)
 	Type string `json:"type"`
 
@@ -271,8 +271,8 @@ type DRTestNotifications struct {
 	Channels []string `json:"channels,omitempty"`
 }
 
-// FabricDRTestStatus defines the observed state of FabricDRTest
-type FabricDRTestStatus struct {
+// GryviaDRTestStatus defines the observed state of GryviaDRTest
+type GryviaDRTestStatus struct {
 	// State of the test (pending-approval, approved, running, completed, failed, cancelled)
 	State string `json:"state,omitempty"`
 
@@ -377,24 +377,24 @@ type DRTestReport struct {
 //+kubebuilder:subresource:status
 //+kubebuilder:resource:scope=Cluster
 
-// FabricDRTest is the Schema for the fabricdrtests API
-type FabricDRTest struct {
+// GryviaDRTest is the Schema for the gryviadrtests API
+type GryviaDRTest struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricDRTestSpec   `json:"spec,omitempty"`
-	Status FabricDRTestStatus `json:"status,omitempty"`
+	Spec   GryviaDRTestSpec   `json:"spec,omitempty"`
+	Status GryviaDRTestStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricDRTestList contains a list of FabricDRTest
-type FabricDRTestList struct {
+// GryviaDRTestList contains a list of GryviaDRTest
+type GryviaDRTestList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricDRTest `json:"items"`
+	Items           []GryviaDRTest `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&FabricDRTest{}, &FabricDRTestList{})
+	SchemeBuilder.Register(&GryviaDRTest{}, &GryviaDRTestList{})
 }

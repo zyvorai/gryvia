@@ -26,32 +26,32 @@ const (
 	ConditionRightSizingActive = "RightSizingActive"
 )
 
-// FabricGpuMemoryOptimizerReconciler reconciles a FabricGpuMemoryOptimizer object
-type FabricGpuMemoryOptimizerReconciler struct {
+// GryviaGpuMemoryOptimizerReconciler reconciles a GryviaGpuMemoryOptimizer object
+type GryviaGpuMemoryOptimizerReconciler struct {
 	client.Client
 	Scheme    *runtime.Scheme
 	Log       logr.Logger
 	Predictor *memory.Predictor
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricgpumemoryoptimizers,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricgpumemoryoptimizers/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricgpumemoryoptimizers/finalizers,verbs=update
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricgpunodes,verbs=get;list;watch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviagpumemoryoptimizers,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviagpumemoryoptimizers/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviagpumemoryoptimizers/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviagpunodes,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop
-func (r *FabricGpuMemoryOptimizerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := r.Log.WithValues("fabricgpumemoryoptimizer", req.NamespacedName)
+func (r *GryviaGpuMemoryOptimizerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := r.Log.WithValues("gryviagpumemoryoptimizer", req.NamespacedName)
 
-	// Fetch the FabricGpuMemoryOptimizer instance
-	optimizer := &gryviav1.FabricGpuMemoryOptimizer{}
+	// Fetch the GryviaGpuMemoryOptimizer instance
+	optimizer := &gryviav1.GryviaGpuMemoryOptimizer{}
 	err := r.Get(ctx, req.NamespacedName, optimizer)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			log.Info("FabricGpuMemoryOptimizer resource not found. Ignoring since object must be deleted")
+			log.Info("GryviaGpuMemoryOptimizer resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		log.Error(err, "Failed to get FabricGpuMemoryOptimizer")
+		log.Error(err, "Failed to get GryviaGpuMemoryOptimizer")
 		return ctrl.Result{}, err
 	}
 
@@ -70,10 +70,10 @@ func (r *FabricGpuMemoryOptimizerReconciler) Reconcile(ctx context.Context, req 
 	return result, nil
 }
 
-func (r *FabricGpuMemoryOptimizerReconciler) reconcileOptimizer(ctx context.Context, optimizer *gryviav1.FabricGpuMemoryOptimizer) (ctrl.Result, error) {
+func (r *GryviaGpuMemoryOptimizerReconciler) reconcileOptimizer(ctx context.Context, optimizer *gryviav1.GryviaGpuMemoryOptimizer) (ctrl.Result, error) {
 	log := r.Log.WithValues("optimizer", optimizer.Name)
 
-	// Collect GPU memory data from FabricGpuNode resources
+	// Collect GPU memory data from GryviaGpuNode resources
 	gpuNodes, err := r.collectGpuNodes(ctx, optimizer)
 	if err != nil {
 		log.Error(err, "Failed to collect GPU node data")
@@ -135,15 +135,15 @@ func (r *FabricGpuMemoryOptimizerReconciler) reconcileOptimizer(ctx context.Cont
 	return ctrl.Result{RequeueAfter: defaultAnalysisInterval}, nil
 }
 
-// collectGpuNodes fetches FabricGpuNode resources matching the optimizer scope
-func (r *FabricGpuMemoryOptimizerReconciler) collectGpuNodes(ctx context.Context, optimizer *gryviav1.FabricGpuMemoryOptimizer) ([]gryviav1.FabricGpuNode, error) {
-	nodeList := &gryviav1.FabricGpuNodeList{}
+// collectGpuNodes fetches GryviaGpuNode resources matching the optimizer scope
+func (r *GryviaGpuMemoryOptimizerReconciler) collectGpuNodes(ctx context.Context, optimizer *gryviav1.GryviaGpuMemoryOptimizer) ([]gryviav1.GryviaGpuNode, error) {
+	nodeList := &gryviav1.GryviaGpuNodeList{}
 	if err := r.List(ctx, nodeList); err != nil {
-		return nil, fmt.Errorf("failed to list FabricGpuNodes: %w", err)
+		return nil, fmt.Errorf("failed to list GryviaGpuNodes: %w", err)
 	}
 
 	// Filter by scope
-	var filtered []gryviav1.FabricGpuNode
+	var filtered []gryviav1.GryviaGpuNode
 	for _, node := range nodeList.Items {
 		if r.nodeMatchesScope(node, optimizer.Spec.Scope) {
 			filtered = append(filtered, node)
@@ -154,12 +154,12 @@ func (r *FabricGpuMemoryOptimizerReconciler) collectGpuNodes(ctx context.Context
 }
 
 // nodeMatchesScope checks if a GPU node matches the optimizer scope
-func (r *FabricGpuMemoryOptimizerReconciler) nodeMatchesScope(node gryviav1.FabricGpuNode, scope gryviav1.OptimizerScope) bool {
+func (r *GryviaGpuMemoryOptimizerReconciler) nodeMatchesScope(node gryviav1.GryviaGpuNode, scope gryviav1.OptimizerScope) bool {
 	switch scope.Type {
 	case "cluster":
 		return true
 	case "namespace":
-		// FabricGpuNode is cluster-scoped, so we check labels for namespace association
+		// GryviaGpuNode is cluster-scoped, so we check labels for namespace association
 		if ns, ok := node.Labels["gryvia.io/namespace"]; ok {
 			return ns == scope.Namespace
 		}
@@ -181,7 +181,7 @@ func (r *FabricGpuMemoryOptimizerReconciler) nodeMatchesScope(node gryviav1.Fabr
 }
 
 // extractMemorySamples converts GPU node status data into memory samples for analysis
-func (r *FabricGpuMemoryOptimizerReconciler) extractMemorySamples(nodes []gryviav1.FabricGpuNode) []memory.GpuMemorySample {
+func (r *GryviaGpuMemoryOptimizerReconciler) extractMemorySamples(nodes []gryviav1.GryviaGpuNode) []memory.GpuMemorySample {
 	var samples []memory.GpuMemorySample
 
 	for _, node := range nodes {
@@ -209,7 +209,7 @@ func (r *FabricGpuMemoryOptimizerReconciler) extractMemorySamples(nodes []gryvia
 }
 
 // runOomPrevention analyzes memory usage and predicts potential OOM events
-func (r *FabricGpuMemoryOptimizerReconciler) runOomPrevention(ctx context.Context, optimizer *gryviav1.FabricGpuMemoryOptimizer, samples []memory.GpuMemorySample) (int, error) {
+func (r *GryviaGpuMemoryOptimizerReconciler) runOomPrevention(ctx context.Context, optimizer *gryviav1.GryviaGpuMemoryOptimizer, samples []memory.GpuMemorySample) (int, error) {
 	if r.Predictor == nil {
 		return 0, fmt.Errorf("memory predictor not initialized")
 	}
@@ -302,7 +302,7 @@ func (r *FabricGpuMemoryOptimizerReconciler) runOomPrevention(ctx context.Contex
 }
 
 // applyMitigation applies automatic OOM mitigation strategies
-func (r *FabricGpuMemoryOptimizerReconciler) applyMitigation(ctx context.Context, optimizer *gryviav1.FabricGpuMemoryOptimizer, sample memory.GpuMemorySample) error {
+func (r *GryviaGpuMemoryOptimizerReconciler) applyMitigation(ctx context.Context, optimizer *gryviav1.GryviaGpuMemoryOptimizer, sample memory.GpuMemorySample) error {
 	if optimizer.Spec.OomPrevention == nil || optimizer.Spec.OomPrevention.PreemptiveAction == nil {
 		return fmt.Errorf("no preemptive action configured")
 	}
@@ -343,7 +343,7 @@ func (r *FabricGpuMemoryOptimizerReconciler) applyMitigation(ctx context.Context
 }
 
 // runRightSizing analyzes memory usage and generates right-sizing recommendations
-func (r *FabricGpuMemoryOptimizerReconciler) runRightSizing(ctx context.Context, optimizer *gryviav1.FabricGpuMemoryOptimizer, samples []memory.GpuMemorySample) (int, error) {
+func (r *GryviaGpuMemoryOptimizerReconciler) runRightSizing(ctx context.Context, optimizer *gryviav1.GryviaGpuMemoryOptimizer, samples []memory.GpuMemorySample) (int, error) {
 	if r.Predictor == nil {
 		return 0, fmt.Errorf("memory predictor not initialized")
 	}
@@ -401,7 +401,7 @@ func (r *FabricGpuMemoryOptimizerReconciler) runRightSizing(ctx context.Context,
 }
 
 // updateMemoryEfficiency updates the memory efficiency status metrics
-func (r *FabricGpuMemoryOptimizerReconciler) updateMemoryEfficiency(optimizer *gryviav1.FabricGpuMemoryOptimizer, samples []memory.GpuMemorySample) {
+func (r *GryviaGpuMemoryOptimizerReconciler) updateMemoryEfficiency(optimizer *gryviav1.GryviaGpuMemoryOptimizer, samples []memory.GpuMemorySample) {
 	if len(samples) == 0 {
 		return
 	}
@@ -432,7 +432,7 @@ func (r *FabricGpuMemoryOptimizerReconciler) updateMemoryEfficiency(optimizer *g
 }
 
 // updateCondition updates or appends a condition on the optimizer status
-func (r *FabricGpuMemoryOptimizerReconciler) updateCondition(optimizer *gryviav1.FabricGpuMemoryOptimizer, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *GryviaGpuMemoryOptimizerReconciler) updateCondition(optimizer *gryviav1.GryviaGpuMemoryOptimizer, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -464,8 +464,8 @@ func (r *FabricGpuMemoryOptimizerReconciler) updateCondition(optimizer *gryviav1
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *FabricGpuMemoryOptimizerReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaGpuMemoryOptimizerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricGpuMemoryOptimizer{}).
+		For(&gryviav1.GryviaGpuMemoryOptimizer{}).
 		Complete(r)
 }

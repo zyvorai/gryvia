@@ -13,8 +13,8 @@ const (
 	StepTypeWebhook StepType = "webhook"
 )
 
-// FabricWorkflowSpec defines the desired state of FabricWorkflow
-type FabricWorkflowSpec struct {
+// GryviaWorkflowSpec defines the desired state of GryviaWorkflow
+type GryviaWorkflowSpec struct {
 	// Steps is the list of workflow steps
 	Steps []WorkflowStep `json:"steps"`
 
@@ -38,8 +38,8 @@ type WorkflowStep struct {
 	// Example: "steps.train.status == 'Succeeded' && steps.train.metrics.accuracy > 0.95"
 	Condition string `json:"condition,omitempty"`
 
-	// JobTemplate is the FabricAIJob spec to run for job-type steps
-	JobTemplate *FabricAIJobSpec `json:"jobTemplate,omitempty"`
+	// JobTemplate is the GryviaAIJob spec to run for job-type steps
+	JobTemplate *GryviaAIJobSpec `json:"jobTemplate,omitempty"`
 
 	// Script is the shell script to execute for script-type steps
 	Script *ScriptStep `json:"script,omitempty"`
@@ -106,7 +106,7 @@ type StepStatus struct {
 	// Phase is the current phase of this step
 	Phase StepPhase `json:"phase"`
 
-	// JobName is the name of the FabricAIJob created for this step (if applicable)
+	// JobName is the name of the GryviaAIJob created for this step (if applicable)
 	JobName string `json:"jobName,omitempty"`
 
 	// StartTime is when the step started
@@ -122,8 +122,8 @@ type StepStatus struct {
 	Message string `json:"message,omitempty"`
 }
 
-// FabricWorkflowStatus defines the observed state of FabricWorkflow
-type FabricWorkflowStatus struct {
+// GryviaWorkflowStatus defines the observed state of GryviaWorkflow
+type GryviaWorkflowStatus struct {
 	// Phase is the overall workflow phase (Pending, Running, Succeeded, Failed)
 	Phase string `json:"phase,omitempty"`
 
@@ -150,24 +150,24 @@ type FabricWorkflowStatus struct {
 //+kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 //+kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// FabricWorkflow is the Schema for the fabricworkflows API
-type FabricWorkflow struct {
+// GryviaWorkflow is the Schema for the gryviaworkflows API
+type GryviaWorkflow struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricWorkflowSpec   `json:"spec,omitempty"`
-	Status FabricWorkflowStatus `json:"status,omitempty"`
+	Spec   GryviaWorkflowSpec   `json:"spec,omitempty"`
+	Status GryviaWorkflowStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricWorkflowList contains a list of FabricWorkflow
-type FabricWorkflowList struct {
+// GryviaWorkflowList contains a list of GryviaWorkflow
+type GryviaWorkflowList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricWorkflow `json:"items"`
+	Items           []GryviaWorkflow `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&FabricWorkflow{}, &FabricWorkflowList{})
+	SchemeBuilder.Register(&GryviaWorkflow{}, &GryviaWorkflowList{})
 }

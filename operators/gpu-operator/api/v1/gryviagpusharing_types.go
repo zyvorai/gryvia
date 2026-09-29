@@ -4,8 +4,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// FabricGPUSharingPolicySpec defines the desired state of FabricGPUSharingPolicy
-type FabricGPUSharingPolicySpec struct {
+// GryviaGPUSharingPolicySpec defines the desired state of GryviaGPUSharingPolicy
+type GryviaGPUSharingPolicySpec struct {
 	// NodeSelector defines which nodes this policy applies to
 	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
 
@@ -124,8 +124,8 @@ type GPUTenantQuota struct {
 	MaxMemoryGB int `json:"maxMemoryGB,omitempty"`
 }
 
-// FabricGPUSharingPolicyStatus defines the observed state of FabricGPUSharingPolicy
-type FabricGPUSharingPolicyStatus struct {
+// GryviaGPUSharingPolicyStatus defines the observed state of GryviaGPUSharingPolicy
+type GryviaGPUSharingPolicyStatus struct {
 	// AffectedNodes lists nodes where this policy is applied
 	AffectedNodes []string `json:"affectedNodes,omitempty"`
 
@@ -182,24 +182,24 @@ type GPUPodUtilization struct {
 //+kubebuilder:subresource:status
 //+kubebuilder:resource:scope=Cluster
 
-// FabricGPUSharingPolicy is the Schema for the fabricgpusharingpolicies API
-type FabricGPUSharingPolicy struct {
+// GryviaGPUSharingPolicy is the Schema for the gryviagpusharingpolicies API
+type GryviaGPUSharingPolicy struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricGPUSharingPolicySpec   `json:"spec,omitempty"`
-	Status FabricGPUSharingPolicyStatus `json:"status,omitempty"`
+	Spec   GryviaGPUSharingPolicySpec   `json:"spec,omitempty"`
+	Status GryviaGPUSharingPolicyStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricGPUSharingPolicyList contains a list of FabricGPUSharingPolicy
-type FabricGPUSharingPolicyList struct {
+// GryviaGPUSharingPolicyList contains a list of GryviaGPUSharingPolicy
+type GryviaGPUSharingPolicyList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricGPUSharingPolicy `json:"items"`
+	Items           []GryviaGPUSharingPolicy `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&FabricGPUSharingPolicy{}, &FabricGPUSharingPolicyList{})
+	SchemeBuilder.Register(&GryviaGPUSharingPolicy{}, &GryviaGPUSharingPolicyList{})
 }

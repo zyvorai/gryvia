@@ -1,6 +1,6 @@
 # Example: Model Accuracy Metric
 apiVersion: gryvia.io/v1
-kind: FabricMetric
+kind: GryviaMetric
 metadata:
   name: model-accuracy
 spec:
@@ -33,7 +33,7 @@ spec:
 ---
 # Example: Throughput Metric
 apiVersion: gryvia.io/v1
-kind: FabricMetric
+kind: GryviaMetric
 metadata:
   name: inference-throughput
 spec:
@@ -62,7 +62,7 @@ spec:
 ---
 # Example: GPU Memory Usage
 apiVersion: gryvia.io/v1
-kind: FabricMetric
+kind: GryviaMetric
 metadata:
   name: gpu-memory-utilization
 spec:
@@ -90,7 +90,7 @@ spec:
 ---
 # Example: Training Loss
 apiVersion: gryvia.io/v1
-kind: FabricMetric
+kind: GryviaMetric
 metadata:
   name: training-loss
 spec:
@@ -115,7 +115,7 @@ spec:
 ---
 # Example: Custom Script Metric
 apiVersion: gryvia.io/v1
-kind: FabricMetric
+kind: GryviaMetric
 metadata:
   name: data-freshness
 spec:
@@ -146,14 +146,14 @@ spec:
 ---
 # Example: Using Metrics in Job
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: training-with-metrics
 spec:
   type: training
 
   # Metrics (model-accuracy, training-loss, ...) and their thresholds are declared
-  # as FabricMetric objects above; the job itself only describes the workload.
+  # as GryviaMetric objects above; the job itself only describes the workload.
 
   gpus: 8
   gpuType: A100-80G

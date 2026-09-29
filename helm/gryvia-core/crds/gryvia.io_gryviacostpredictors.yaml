@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabriccostpredictors.gryvia.io
+  name: gryviacostpredictors.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricCostPredictor
-    listKind: FabricCostPredictorList
-    plural: fabriccostpredictors
-    singular: fabriccostpredictor
+    kind: GryviaCostPredictor
+    listKind: GryviaCostPredictorList
+    plural: gryviacostpredictors
+    singular: gryviacostpredictor
   scope: Cluster
   versions:
   - name: v1
     schema:
       openAPIV3Schema:
-        description: FabricCostPredictor is the Schema for the fabriccostpredictors
+        description: GryviaCostPredictor is the Schema for the gryviacostpredictors
           API
         properties:
           apiVersion:
@@ -38,7 +38,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricCostPredictorSpec defines the desired state of FabricCostPredictor
+            description: GryviaCostPredictorSpec defines the desired state of GryviaCostPredictor
             properties:
               alternatives:
                 description: Alternatives configures alternative configuration recommendations
@@ -158,7 +158,7 @@ spec:
                 description: Pricing configures GPU pricing data
                 properties:
                   chargebackRef:
-                    description: ChargebackRef references a FabricChargeback CR for
+                    description: ChargebackRef references a GryviaChargeback CR for
                       pricing data
                     type: string
                   perGpuHour:
@@ -169,7 +169,7 @@ spec:
                 type: object
             type: object
           status:
-            description: FabricCostPredictorStatus defines the observed state of FabricCostPredictor
+            description: GryviaCostPredictorStatus defines the observed state of GryviaCostPredictor
             properties:
               conditions:
                 description: Conditions represent the latest available observations

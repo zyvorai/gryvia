@@ -33,38 +33,38 @@ const (
 	annotationActualDuration = "gryvia.io/actual-duration"
 )
 
-// FabricCostPredictorReconciler reconciles a FabricCostPredictor object
-type FabricCostPredictorReconciler struct {
+// GryviaCostPredictorReconciler reconciles a GryviaCostPredictor object
+type GryviaCostPredictorReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabriccostpredictors,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabriccostpredictors/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabriccostpredictors/finalizers,verbs=update
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviacostpredictors,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviacostpredictors/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviacostpredictors/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs,verbs=get;list;watch;update;patch
 
-func (r *FabricCostPredictorReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *GryviaCostPredictorReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// Fetch the FabricCostPredictor instance
-	costPredictor := &gryviav1.FabricCostPredictor{}
+	// Fetch the GryviaCostPredictor instance
+	costPredictor := &gryviav1.GryviaCostPredictor{}
 	err := r.Get(ctx, req.NamespacedName, costPredictor)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("FabricCostPredictor resource not found, ignoring")
+			logger.Info("GryviaCostPredictor resource not found, ignoring")
 			return ctrl.Result{}, nil
 		}
-		logger.Error(err, "Failed to get FabricCostPredictor")
+		logger.Error(err, "Failed to get GryviaCostPredictor")
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("Reconciling FabricCostPredictor", "name", costPredictor.Name)
+	logger.Info("Reconciling GryviaCostPredictor", "name", costPredictor.Name)
 
-	// List all FabricAIJobs across all namespaces for historical data
-	allJobs := &gryviav1.FabricAIJobList{}
+	// List all GryviaAIJobs across all namespaces for historical data
+	allJobs := &gryviav1.GryviaAIJobList{}
 	if err := r.List(ctx, allJobs); err != nil {
-		logger.Error(err, "Failed to list FabricAIJobs")
+		logger.Error(err, "Failed to list GryviaAIJobs")
 		return ctrl.Result{}, err
 	}
 
@@ -83,7 +83,7 @@ func (r *FabricCostPredictorReconciler) Reconcile(ctx context.Context, req ctrl.
 	r.updateStatusCondition(ctx, costPredictor, "Ready", metav1.ConditionTrue, "Active", "Cost predictor is active")
 
 	if err := r.Status().Update(ctx, costPredictor); err != nil {
-		logger.Error(err, "Failed to update FabricCostPredictor status")
+		logger.Error(err, "Failed to update GryviaCostPredictor status")
 		return ctrl.Result{}, err
 	}
 
@@ -91,10 +91,10 @@ func (r *FabricCostPredictorReconciler) Reconcile(ctx context.Context, req ctrl.
 }
 
 // processNewJobs finds jobs that need cost/time estimates and annotates them
-func (r *FabricCostPredictorReconciler) processNewJobs(
+func (r *GryviaCostPredictorReconciler) processNewJobs(
 	ctx context.Context,
-	costPredictor *gryviav1.FabricCostPredictor,
-	allJobs []gryviav1.FabricAIJob,
+	costPredictor *gryviav1.GryviaCostPredictor,
+	allJobs []gryviav1.GryviaAIJob,
 ) error {
 	logger := log.FromContext(ctx)
 
@@ -183,10 +183,10 @@ func (r *FabricCostPredictorReconciler) processNewJobs(
 }
 
 // updateAccuracyMetrics compares estimates with actual results from completed jobs
-func (r *FabricCostPredictorReconciler) updateAccuracyMetrics(
+func (r *GryviaCostPredictorReconciler) updateAccuracyMetrics(
 	ctx context.Context,
-	costPredictor *gryviav1.FabricCostPredictor,
-	allJobs []gryviav1.FabricAIJob,
+	costPredictor *gryviav1.GryviaCostPredictor,
+	allJobs []gryviav1.GryviaAIJob,
 ) {
 	var timeErrors []float64
 	var costErrors []float64
@@ -288,7 +288,7 @@ func (r *FabricCostPredictorReconciler) updateAccuracyMetrics(
 }
 
 // getJobGPURate returns the GPU rate from predictor pricing for a given GPU type
-func getJobGPURate(p *gryviav1.FabricCostPredictor, gpuType string) float64 {
+func getJobGPURate(p *gryviav1.GryviaCostPredictor, gpuType string) float64 {
 	if len(p.Spec.Pricing.PerGpuHour) > 0 {
 		if rate, ok := p.Spec.Pricing.PerGpuHour[gpuType]; ok {
 			return rate
@@ -301,9 +301,9 @@ func getJobGPURate(p *gryviav1.FabricCostPredictor, gpuType string) float64 {
 	return 2.00
 }
 
-func (r *FabricCostPredictorReconciler) updateStatusCondition(
+func (r *GryviaCostPredictorReconciler) updateStatusCondition(
 	ctx context.Context,
-	costPredictor *gryviav1.FabricCostPredictor,
+	costPredictor *gryviav1.GryviaCostPredictor,
 	condType string,
 	status metav1.ConditionStatus,
 	reason, message string,
@@ -318,14 +318,14 @@ func (r *FabricCostPredictorReconciler) updateStatusCondition(
 }
 
 // SetupWithManager sets up the controller with the Manager
-func (r *FabricCostPredictorReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaCostPredictorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricCostPredictor{}).
-		Watches(&gryviav1.FabricAIJob{}, handler.EnqueueRequestsFromMapFunc(
+		For(&gryviav1.GryviaCostPredictor{}).
+		Watches(&gryviav1.GryviaAIJob{}, handler.EnqueueRequestsFromMapFunc(
 			func(ctx context.Context, obj client.Object) []reconcile.Request {
-				// When a FabricAIJob changes, re-reconcile all predictors
+				// When a GryviaAIJob changes, re-reconcile all predictors
 				// to process new jobs and update accuracy metrics.
-				job := obj.(*gryviav1.FabricAIJob)
+				job := obj.(*gryviav1.GryviaAIJob)
 
 				// Only trigger for relevant job state changes
 				isDryRun := job.Annotations != nil && job.Annotations[annotationDryRun] == "true"
@@ -337,7 +337,7 @@ func (r *FabricCostPredictorReconciler) SetupWithManager(mgr ctrl.Manager) error
 					return nil
 				}
 
-				predictorList := &gryviav1.FabricCostPredictorList{}
+				predictorList := &gryviav1.GryviaCostPredictorList{}
 				if err := mgr.GetClient().List(ctx, predictorList); err != nil {
 					return nil
 				}

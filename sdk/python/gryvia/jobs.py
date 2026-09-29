@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 
 class Jobs:
-    """Manage FabricAIJob resources.
+    """Manage GryviaAIJob resources.
 
     This class is not instantiated directly -- use ``client.jobs`` instead.
     """
@@ -62,7 +62,7 @@ class Jobs:
         """Submit a new job.
 
         Args:
-            job: Either a dict describing the full FabricAIJob manifest,
+            job: Either a dict describing the full GryviaAIJob manifest,
                  or a path (str or Path) to a YAML file containing one.
 
         Returns:
@@ -76,7 +76,7 @@ class Jobs:
             # From a dict
             await client.jobs.create({
                 "apiVersion": "gryvia.io/v1",
-                "kind": "FabricAIJob",
+                "kind": "GryviaAIJob",
                 "metadata": {"name": "my-training"},
                 "spec": {
                     "image": "nvcr.io/nvidia/pytorch:24.01-py3",

@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabricinferenceinsights.gryvia.io
+  name: gryviainferenceinsights.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricInferenceInsight
-    listKind: FabricInferenceInsightList
-    plural: fabricinferenceinsights
-    singular: fabricinferenceinsight
+    kind: GryviaInferenceInsight
+    listKind: GryviaInferenceInsightList
+    plural: gryviainferenceinsights
+    singular: gryviainferenceinsight
   scope: Namespaced
   versions:
   - name: v1
     schema:
       openAPIV3Schema:
-        description: FabricInferenceInsight is the Schema for the fabricinferenceinsights
+        description: GryviaInferenceInsight is the Schema for the gryviainferenceinsights
           API
         properties:
           apiVersion:
@@ -38,20 +38,20 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricInferenceInsightSpec defines the desired state of FabricInferenceInsight
+            description: GryviaInferenceInsightSpec defines the desired state of GryviaInferenceInsight
             properties:
               analysisWindow:
                 description: AnalysisWindow is the time window for analysis (e.g.,
                   "5m", "1h")
                 type: string
               targetService:
-                description: TargetService is the name of the FabricInferenceService
+                description: TargetService is the name of the GryviaInferenceService
                   to analyze
                 type: string
             type: object
           status:
-            description: FabricInferenceInsightStatus defines the observed state of
-              FabricInferenceInsight
+            description: GryviaInferenceInsightStatus defines the observed state of
+              GryviaInferenceInsight
             properties:
               bottleneck:
                 description: Bottleneck identifies the phase with the highest latency

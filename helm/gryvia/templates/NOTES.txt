@@ -112,7 +112,7 @@ Usage:
    kubectl logs -n {{ .Release.Namespace }} -l app=gryvia-gpu-operator
 
 3. View GPU nodes:
-   kubectl get fabricgpunodes
+   kubectl get gryviagpunodes
 
 4. Create a team quota:
    kubectl apply -f https://raw.githubusercontent.com/zyvorai/gryvia/main/examples/quota/team-ml-quota.yaml
@@ -121,8 +121,8 @@ Usage:
    kubectl apply -f https://raw.githubusercontent.com/zyvorai/gryvia/main/examples/jobs/pytorch-distributed.yaml
 
 6. Monitor job status:
-   kubectl get fabricaijobs
-   kubectl describe fabricaijob <job-name>
+   kubectl get gryviaaijobs
+   kubectl describe gryviaaijob <job-name>
 
 📚 DOCUMENTATION
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

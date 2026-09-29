@@ -26,14 +26,14 @@ func newStorageTestScheme() *runtime.Scheme {
 	return s
 }
 
-func newStorageReconciler(objs ...client.Object) (*FabricStorageReconciler, client.Client) {
+func newStorageReconciler(objs ...client.Object) (*GryviaStorageReconciler, client.Client) {
 	scheme := newStorageTestScheme()
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(objs...).
-		WithStatusSubresource(&gryviav1.FabricStorage{}).
+		WithStatusSubresource(&gryviav1.GryviaStorage{}).
 		Build()
-	r := &FabricStorageReconciler{
+	r := &GryviaStorageReconciler{
 		Client: fakeClient,
 		Scheme: scheme,
 		Log:    ctrl.Log.WithName("test"),
@@ -41,12 +41,12 @@ func newStorageReconciler(objs ...client.Object) (*FabricStorageReconciler, clie
 	return r, fakeClient
 }
 
-func newTestStorage(name string) *gryviav1.FabricStorage {
-	return &gryviav1.FabricStorage{
+func newTestStorage(name string) *gryviav1.GryviaStorage {
+	return &gryviav1.GryviaStorage{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
-		Spec: gryviav1.FabricStorageSpec{
+		Spec: gryviav1.GryviaStorageSpec{
 			Backend:  "vast",
 			Capacity: "100Ti",
 			IOPS:     "1000000",
@@ -98,7 +98,7 @@ func TestStorage_Reconcile_AddsFinalizer(t *testing.T) {
 		t.Error("expected requeue after adding finalizer")
 	}
 
-	updated := &gryviav1.FabricStorage{}
+	updated := &gryviav1.GryviaStorage{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-storage"}, updated); err != nil {
 		t.Fatalf("failed to get storage: %v", err)
 	}
@@ -122,7 +122,7 @@ func TestStorage_Reconcile_InitializesPhase(t *testing.T) {
 		t.Error("expected requeue after phase initialization")
 	}
 
-	updated := &gryviav1.FabricStorage{}
+	updated := &gryviav1.GryviaStorage{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-storage"}, updated); err != nil {
 		t.Fatalf("failed to get storage: %v", err)
 	}
@@ -163,7 +163,7 @@ func TestStorage_Reconcile_DeletionCleansUpStorageClass(t *testing.T) {
 	}
 
 	// Verify finalizer removed
-	updatedStorage := &gryviav1.FabricStorage{}
+	updatedStorage := &gryviav1.GryviaStorage{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-storage"}, updatedStorage); err != nil {
 		if apierrors.IsNotFound(err) {
 			return // object is gone once its last finalizer is removed

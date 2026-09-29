@@ -211,7 +211,7 @@ export default function NetworkPolicies() {
                     )
                   }
                 >
-                  Policies are FabricFlowPolicy resources that the network operator enforces. Create one, or wait for the network-intelligence operator to suggest policies from observed traffic.
+                  Policies are GryviaFlowPolicy resources that the network operator enforces. Create one, or wait for the network-intelligence operator to suggest policies from observed traffic.
                 </EmptyState>
               }
             />

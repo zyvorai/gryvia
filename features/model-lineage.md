@@ -4,7 +4,7 @@ Track complete model provenance, compliance, and reproducibility for AI/ML model
 
 ## Overview
 
-FabricModelLineage provides end-to-end tracking of how a model was produced:
+GryviaModelLineage provides end-to-end tracking of how a model was produced:
 
 - **Model Identity**: Name, version, registry, and format tracking
 - **Code Provenance**: Git repo, commit, branch, and container image
@@ -13,7 +13,7 @@ FabricModelLineage provides end-to-end tracking of how a model was produced:
 - **Infrastructure Provenance**: GPU nodes, network type, storage backend, cost
 - **Evaluation**: Metrics, benchmarks, evaluation job references
 - **Compliance**: Immutable records, cryptographic hash chains, regulatory frameworks
-- **Auto-Collection**: Automatically gather provenance from referenced FabricAIJob resources
+- **Auto-Collection**: Automatically gather provenance from referenced GryviaAIJob resources
 
 ## Quick Start
 
@@ -21,7 +21,7 @@ FabricModelLineage provides end-to-end tracking of how a model was produced:
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricModelLineage
+kind: GryviaModelLineage
 metadata:
   name: llama-70b-finetune-v1
   namespace: ml-training
@@ -66,7 +66,7 @@ kubectl apply -f model-lineage.yaml
 
 Check status:
 ```bash
-kubectl get fabricmodellineage -n ml-training
+kubectl get gryviamodellineage -n ml-training
 ```
 
 Output:
@@ -77,7 +77,7 @@ llama-70b-finetune-v1   llama-70b-domain-adapted 1.0.0   safetensors  true     C
 
 ## Auto-Collection
 
-When `autoCapture: true` is set, the controller automatically collects provenance from the referenced FabricAIJob:
+When `autoCapture: true` is set, the controller automatically collects provenance from the referenced GryviaAIJob:
 
 - **Infrastructure**: GPU nodes used, network type, storage backend, GPU hours consumed
 - **Training**: Distributed configuration summary (e.g., "8xH100, pytorch, NCCL over RDMA")
@@ -91,7 +91,7 @@ provenance:
     jobRef: "my-training-job"  # Controller will collect from this job
 ```
 
-The controller watches for FabricAIJob completions and automatically triggers re-collection when the referenced job finishes.
+The controller watches for GryviaAIJob completions and automatically triggers re-collection when the referenced job finishes.
 
 ## Model Identity
 
@@ -292,9 +292,9 @@ A model is considered reproducible when:
 
 ## Architecture
 
-1. User creates a FabricModelLineage CR with model identity and provenance
+1. User creates a GryviaModelLineage CR with model identity and provenance
 2. The controller watches for new lineage CRs
-3. If `autoCapture` is enabled, it fetches the referenced FabricAIJob and collects infrastructure, training, and event data
+3. If `autoCapture` is enabled, it fetches the referenced GryviaAIJob and collects infrastructure, training, and event data
 4. It computes a SHA256 hash chain for tamper detection
 5. It evaluates compliance status against declared regulatory frameworks
 6. It checks lineage completeness and reproducibility

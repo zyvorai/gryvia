@@ -4,14 +4,14 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabricmetrics.gryvia.io
+  name: gryviametrics.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricMetric
-    listKind: FabricMetricList
-    plural: fabricmetrics
-    singular: fabricmetric
+    kind: GryviaMetric
+    listKind: GryviaMetricList
+    plural: gryviametrics
+    singular: gryviametric
   scope: Cluster
   versions:
   - additionalPrinterColumns:
@@ -33,7 +33,7 @@ spec:
     name: v1
     schema:
       openAPIV3Schema:
-        description: FabricMetric is the Schema for the fabricmetrics API
+        description: GryviaMetric is the Schema for the gryviametrics API
         properties:
           apiVersion:
             description: |-
@@ -53,7 +53,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricMetricSpec defines the desired state of FabricMetric
+            description: GryviaMetricSpec defines the desired state of GryviaMetric
             properties:
               description:
                 description: Description is a human-readable description
@@ -183,7 +183,7 @@ spec:
             - source
             type: object
           status:
-            description: FabricMetricStatus defines the observed state of FabricMetric
+            description: GryviaMetricStatus defines the observed state of GryviaMetric
             properties:
               currentValue:
                 description: CurrentValue is the latest metric value

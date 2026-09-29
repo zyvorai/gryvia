@@ -20,24 +20,24 @@ const (
 	SRIOVDevicePluginNamespace = "kube-system"
 )
 
-// SRIOVDevicePluginDaemonSetName returns a DaemonSet name scoped to the owning FabricNetwork.
+// SRIOVDevicePluginDaemonSetName returns a DaemonSet name scoped to the owning GryviaNetwork.
 func SRIOVDevicePluginDaemonSetName(networkName string) string {
 	return fmt.Sprintf("sriov-device-plugin-%s", networkName)
 }
 
-// SRIOVCNIDaemonSetName returns the SR-IOV CNI DaemonSet name scoped to the owning FabricNetwork.
+// SRIOVCNIDaemonSetName returns the SR-IOV CNI DaemonSet name scoped to the owning GryviaNetwork.
 func SRIOVCNIDaemonSetName(networkName string) string {
 	return fmt.Sprintf("sriov-cni-%s", networkName)
 }
 
-// SRIOVConfigMapName returns a ConfigMap name scoped to the owning FabricNetwork.
+// SRIOVConfigMapName returns a ConfigMap name scoped to the owning GryviaNetwork.
 func SRIOVConfigMapName(networkName string) string {
 	return fmt.Sprintf("sriov-config-%s", networkName)
 }
 
 // InstallDevicePlugin installs the SR-IOV device plugin.
-// networkName is the owning FabricNetwork's name, used to scope resource names
-// so that multiple FabricNetworks don't conflict.
+// networkName is the owning GryviaNetwork's name, used to scope resource names
+// so that multiple GryviaNetworks don't conflict.
 func InstallDevicePlugin(ctx context.Context, k8sClient client.Client, networkName string, sriovConfig *gryviav1.SRIOVConfig) error {
 	// Install SR-IOV CNI first
 	if err := installSRIOVCNI(ctx, k8sClient, networkName); err != nil {

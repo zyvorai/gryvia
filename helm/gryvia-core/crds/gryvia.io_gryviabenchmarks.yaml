@@ -4,14 +4,14 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabricbenchmarks.gryvia.io
+  name: gryviabenchmarks.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricBenchmark
-    listKind: FabricBenchmarkList
-    plural: fabricbenchmarks
-    singular: fabricbenchmark
+    kind: GryviaBenchmark
+    listKind: GryviaBenchmarkList
+    plural: gryviabenchmarks
+    singular: gryviabenchmark
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
@@ -33,7 +33,7 @@ spec:
     name: v1
     schema:
       openAPIV3Schema:
-        description: FabricBenchmark is the Schema for the fabricbenchmarks API
+        description: GryviaBenchmark is the Schema for the gryviabenchmarks API
         properties:
           apiVersion:
             description: |-
@@ -53,7 +53,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricBenchmarkSpec defines the desired state of FabricBenchmark
+            description: GryviaBenchmarkSpec defines the desired state of GryviaBenchmark
             properties:
               baseline:
                 description: Baseline defines comparison baseline configuration
@@ -234,7 +234,7 @@ spec:
             - type
             type: object
           status:
-            description: FabricBenchmarkStatus defines the observed state of FabricBenchmark
+            description: GryviaBenchmarkStatus defines the observed state of GryviaBenchmark
             properties:
               comparison:
                 description: Comparison holds comparison with baseline

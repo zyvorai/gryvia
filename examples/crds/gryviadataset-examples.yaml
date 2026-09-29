@@ -1,6 +1,6 @@
 # Example: ImageNet Dataset
 apiVersion: gryvia.io/v1
-kind: FabricDataset
+kind: GryviaDataset
 metadata:
   name: imagenet-2012
 spec:
@@ -45,7 +45,7 @@ spec:
 ---
 # Example: LLM Training Corpus
 apiVersion: gryvia.io/v1
-kind: FabricDataset
+kind: GryviaDataset
 metadata:
   name: llm-training-corpus-v2
 spec:
@@ -88,7 +88,7 @@ spec:
 ---
 # Example: Audio Dataset with Augmentation
 apiVersion: gryvia.io/v1
-kind: FabricDataset
+kind: GryviaDataset
 metadata:
   name: speech-recognition-corpus
 spec:
@@ -115,7 +115,7 @@ spec:
 ---
 # Example: Using Dataset in Job
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: imagenet-training
 spec:
@@ -144,7 +144,7 @@ spec:
 ---
 # Dataset Version History
 apiVersion: gryvia.io/v1
-kind: FabricDataset
+kind: GryviaDataset
 metadata:
   name: imagenet-2012
 status:

@@ -4,7 +4,7 @@ Example YAML manifests for Gryvia security CRDs providing eBPF-based runtime pro
 
 ## Examples
 
-- **[security-policy.yaml](security-policy.yaml)** - `FabricSecurityPolicy` with container escape, crypto mining, exfiltration, privilege escalation, and driver integrity detection enabled with auto-block
+- **[security-policy.yaml](security-policy.yaml)** - `GryviaSecurityPolicy` with container escape, crypto mining, exfiltration, privilege escalation, and driver integrity detection enabled with auto-block
 
 ## Usage
 

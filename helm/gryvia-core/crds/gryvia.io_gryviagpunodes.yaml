@@ -4,14 +4,14 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabricgpunodes.gryvia.io
+  name: gryviagpunodes.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricGpuNode
-    listKind: FabricGpuNodeList
-    plural: fabricgpunodes
-    singular: fabricgpunode
+    kind: GryviaGpuNode
+    listKind: GryviaGpuNodeList
+    plural: gryviagpunodes
+    singular: gryviagpunode
   scope: Cluster
   versions:
   - additionalPrinterColumns:
@@ -36,7 +36,7 @@ spec:
     name: v1
     schema:
       openAPIV3Schema:
-        description: FabricGpuNode is the Schema for the fabricgpunodes API
+        description: GryviaGpuNode is the Schema for the gryviagpunodes API
         properties:
           apiVersion:
             description: |-
@@ -56,7 +56,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricGpuNodeSpec defines the desired state of FabricGpuNode
+            description: GryviaGpuNodeSpec defines the desired state of GryviaGpuNode
             properties:
               bandwidth:
                 description: Bandwidth is the network bandwidth (e.g., 200Gbps, 400Gbps)
@@ -116,7 +116,7 @@ spec:
             - nodeName
             type: object
           status:
-            description: FabricGpuNodeStatus defines the observed state of FabricGpuNode
+            description: GryviaGpuNodeStatus defines the observed state of GryviaGpuNode
             properties:
               conditions:
                 description: Conditions represent the latest available observations

@@ -26,35 +26,35 @@ import (
 )
 
 const (
-	fabricNetworkFinalizer = "gryvia.io/network-finalizer"
+	gryviaNetworkFinalizer = "gryvia.io/network-finalizer"
 )
 
-// FabricNetworkReconciler reconciles a FabricNetwork object
-type FabricNetworkReconciler struct {
+// GryviaNetworkReconciler reconciles a GryviaNetwork object
+type GryviaNetworkReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricnetworks,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricnetworks/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricnetworks/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryvianetworks,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryvianetworks/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryvianetworks/finalizers,verbs=update
 //+kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch;update;patch
 //+kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=apps,resources=daemonsets,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=k8s.cni.cncf.io,resources=network-attachment-definitions,verbs=get;list;watch;create;update;patch;delete
 
-func (r *FabricNetworkReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *GryviaNetworkReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// Fetch the FabricNetwork instance
-	network := &gryviav1.FabricNetwork{}
+	// Fetch the GryviaNetwork instance
+	network := &gryviav1.GryviaNetwork{}
 	err := r.Get(ctx, req.NamespacedName, network)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("FabricNetwork resource not found. Ignoring since object must be deleted")
+			logger.Info("GryviaNetwork resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		logger.Error(err, "Failed to get FabricNetwork")
+		logger.Error(err, "Failed to get GryviaNetwork")
 		return ctrl.Result{}, err
 	}
 
@@ -64,15 +64,15 @@ func (r *FabricNetworkReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	// Add finalizer if it doesn't exist
-	if !controllerutil.ContainsFinalizer(network, fabricNetworkFinalizer) {
+	if !controllerutil.ContainsFinalizer(network, gryviaNetworkFinalizer) {
 		if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 			if err := r.Get(ctx, req.NamespacedName, network); err != nil {
 				return err
 			}
-			if controllerutil.ContainsFinalizer(network, fabricNetworkFinalizer) {
+			if controllerutil.ContainsFinalizer(network, gryviaNetworkFinalizer) {
 				return nil
 			}
-			controllerutil.AddFinalizer(network, fabricNetworkFinalizer)
+			controllerutil.AddFinalizer(network, gryviaNetworkFinalizer)
 			return r.Update(ctx, network)
 		}); err != nil {
 			return ctrl.Result{}, err
@@ -80,7 +80,7 @@ func (r *FabricNetworkReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{Requeue: true}, nil
 	}
 
-	logger.Info("Reconciling FabricNetwork", "name", network.Name, "type", network.Spec.NetworkType)
+	logger.Info("Reconciling GryviaNetwork", "name", network.Name, "type", network.Spec.NetworkType)
 
 	// Reconcile the network configuration
 	result, err := r.reconcileNetwork(ctx, network)
@@ -96,7 +96,7 @@ func (r *FabricNetworkReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 }
 
-func (r *FabricNetworkReconciler) reconcileNetwork(ctx context.Context, network *gryviav1.FabricNetwork) (ctrl.Result, error) {
+func (r *GryviaNetworkReconciler) reconcileNetwork(ctx context.Context, network *gryviav1.GryviaNetwork) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	// Get matching nodes
@@ -141,7 +141,7 @@ func (r *FabricNetworkReconciler) reconcileNetwork(ctx context.Context, network 
 	return ctrl.Result{}, nil
 }
 
-func (r *FabricNetworkReconciler) getMatchingNodes(ctx context.Context, network *gryviav1.FabricNetwork) ([]corev1.Node, error) {
+func (r *GryviaNetworkReconciler) getMatchingNodes(ctx context.Context, network *gryviav1.GryviaNetwork) ([]corev1.Node, error) {
 	nodeList := &corev1.NodeList{}
 
 	listOpts := []client.ListOption{}
@@ -156,7 +156,7 @@ func (r *FabricNetworkReconciler) getMatchingNodes(ctx context.Context, network 
 	return nodeList.Items, nil
 }
 
-func (r *FabricNetworkReconciler) configureRDMA(ctx context.Context, network *gryviav1.FabricNetwork, nodes []corev1.Node) error {
+func (r *GryviaNetworkReconciler) configureRDMA(ctx context.Context, network *gryviav1.GryviaNetwork, nodes []corev1.Node) error {
 	logger := log.FromContext(ctx)
 
 	if network.Spec.RDMA == nil {
@@ -188,7 +188,7 @@ func (r *FabricNetworkReconciler) configureRDMA(ctx context.Context, network *gr
 	return nil
 }
 
-func (r *FabricNetworkReconciler) configureSRIOV(ctx context.Context, network *gryviav1.FabricNetwork, nodes []corev1.Node) error {
+func (r *GryviaNetworkReconciler) configureSRIOV(ctx context.Context, network *gryviav1.GryviaNetwork, nodes []corev1.Node) error {
 	logger := log.FromContext(ctx)
 
 	if network.Spec.SRIOV == nil {
@@ -220,7 +220,7 @@ func (r *FabricNetworkReconciler) configureSRIOV(ctx context.Context, network *g
 	return nil
 }
 
-func (r *FabricNetworkReconciler) ensureNetworkAttachment(ctx context.Context, network *gryviav1.FabricNetwork) error {
+func (r *GryviaNetworkReconciler) ensureNetworkAttachment(ctx context.Context, network *gryviav1.GryviaNetwork) error {
 	logger := log.FromContext(ctx)
 
 	logger.Info("Creating NetworkAttachmentDefinition", "name", network.Name)
@@ -232,16 +232,16 @@ func (r *FabricNetworkReconciler) ensureNetworkAttachment(ctx context.Context, n
 	return nil
 }
 
-func (r *FabricNetworkReconciler) handleDeletion(ctx context.Context, network *gryviav1.FabricNetwork) (ctrl.Result, error) {
+func (r *GryviaNetworkReconciler) handleDeletion(ctx context.Context, network *gryviav1.GryviaNetwork) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	if controllerutil.ContainsFinalizer(network, fabricNetworkFinalizer) {
-		logger.Info("Running cleanup for FabricNetwork", "name", network.Name)
+	if controllerutil.ContainsFinalizer(network, gryviaNetworkFinalizer) {
+		logger.Info("Running cleanup for GryviaNetwork", "name", network.Name)
 
 		// Explicitly clean up DaemonSets and ConfigMaps since cross-namespace owner
 		// references don't work (resources are in kube-system, owner is cluster-scoped).
-		// Resource names are scoped by the FabricNetwork name to avoid conflicts
-		// when multiple FabricNetworks exist.
+		// Resource names are scoped by the GryviaNetwork name to avoid conflicts
+		// when multiple GryviaNetworks exist.
 		daemonSetsToClean := []string{
 			rdma.RDMADevicePluginDaemonSetName(network.Name),
 			sriov.SRIOVDevicePluginDaemonSetName(network.Name),
@@ -305,10 +305,10 @@ func (r *FabricNetworkReconciler) handleDeletion(ctx context.Context, network *g
 			if err := r.Get(ctx, types.NamespacedName{Name: network.Name}, network); err != nil {
 				return err
 			}
-			if !controllerutil.ContainsFinalizer(network, fabricNetworkFinalizer) {
+			if !controllerutil.ContainsFinalizer(network, gryviaNetworkFinalizer) {
 				return nil
 			}
-			controllerutil.RemoveFinalizer(network, fabricNetworkFinalizer)
+			controllerutil.RemoveFinalizer(network, gryviaNetworkFinalizer)
 			return r.Update(ctx, network)
 		}); err != nil {
 			return ctrl.Result{}, err
@@ -317,7 +317,7 @@ func (r *FabricNetworkReconciler) handleDeletion(ctx context.Context, network *g
 	return ctrl.Result{}, nil
 }
 
-func (r *FabricNetworkReconciler) updateStatus(ctx context.Context, network *gryviav1.FabricNetwork, phase, message string) {
+func (r *GryviaNetworkReconciler) updateStatus(ctx context.Context, network *gryviav1.GryviaNetwork, phase, message string) {
 	network.Status.Phase = phase
 	network.Status.LastUpdated = metav1.Now()
 
@@ -336,17 +336,17 @@ func (r *FabricNetworkReconciler) updateStatus(ctx context.Context, network *gry
 	meta.SetStatusCondition(&network.Status.Conditions, condition)
 
 	if err := r.Status().Update(ctx, network); err != nil {
-		log.FromContext(ctx).Error(err, "Failed to update FabricNetwork status")
+		log.FromContext(ctx).Error(err, "Failed to update GryviaNetwork status")
 	}
 }
 
 // SetupWithManager sets up the controller with the Manager
-func (r *FabricNetworkReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaNetworkReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	// NOTE: Owns() for DaemonSet and ConfigMap is not used here because those
-	// resources live in kube-system while FabricNetwork is cluster-scoped.
+	// resources live in kube-system while GryviaNetwork is cluster-scoped.
 	// Cross-namespace owner references cannot be set, so cleanup is handled
 	// via the finalizer in handleDeletion instead.
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricNetwork{}).
+		For(&gryviav1.GryviaNetwork{}).
 		Complete(r)
 }

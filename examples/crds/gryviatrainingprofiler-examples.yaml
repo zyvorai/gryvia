@@ -1,6 +1,6 @@
 # Example: Automatic GPU Profiler for all training jobs
 apiVersion: gryvia.io/v1
-kind: FabricTrainingProfiler
+kind: GryviaTrainingProfiler
 metadata:
   name: cluster-gpu-profiler
   namespace: default

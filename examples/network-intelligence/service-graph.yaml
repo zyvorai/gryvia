@@ -1,8 +1,8 @@
-# FabricServiceGraph - Auto-discovered service dependency map
+# GryviaServiceGraph - Auto-discovered service dependency map
 # Builds a real-time service dependency graph for the production namespace,
 # refreshed every 30 seconds, including external traffic endpoints.
 apiVersion: gryvia.io/v1
-kind: FabricServiceGraph
+kind: GryviaServiceGraph
 metadata:
   name: production-graph
   namespace: production

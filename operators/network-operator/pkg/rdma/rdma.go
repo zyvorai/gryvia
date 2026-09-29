@@ -22,18 +22,18 @@ const (
 	RDMADevicePluginNamespace = "kube-system"
 )
 
-// RDMADevicePluginDaemonSetName returns a DaemonSet name scoped to the owning FabricNetwork.
+// RDMADevicePluginDaemonSetName returns a DaemonSet name scoped to the owning GryviaNetwork.
 func RDMADevicePluginDaemonSetName(networkName string) string {
 	return fmt.Sprintf("rdma-device-plugin-%s", networkName)
 }
 
-// RDMAConfigMapName returns a ConfigMap name scoped to the owning FabricNetwork.
+// RDMAConfigMapName returns a ConfigMap name scoped to the owning GryviaNetwork.
 func RDMAConfigMapName(networkName string) string {
 	return fmt.Sprintf("rdma-devices-%s", networkName)
 }
 
 // InstallDevicePlugin installs the RDMA device plugin DaemonSet
-func InstallDevicePlugin(ctx context.Context, k8sClient client.Client, owner *gryviav1.FabricNetwork, scheme *runtime.Scheme) error {
+func InstallDevicePlugin(ctx context.Context, k8sClient client.Client, owner *gryviav1.GryviaNetwork, scheme *runtime.Scheme) error {
 	// Create ConfigMap first
 	if err := CreateRDMAConfigMap(ctx, k8sClient, owner, scheme, owner.Spec.RDMA); err != nil {
 		return fmt.Errorf("failed to create RDMA ConfigMap: %w", err)
@@ -158,7 +158,7 @@ func ConfigureNode(ctx context.Context, k8sClient client.Client, node *corev1.No
 }
 
 // CreateRDMAConfigMap creates a ConfigMap for RDMA device configuration
-func CreateRDMAConfigMap(ctx context.Context, k8sClient client.Client, owner *gryviav1.FabricNetwork, scheme *runtime.Scheme, rdmaConfig *gryviav1.RDMAConfig) error {
+func CreateRDMAConfigMap(ctx context.Context, k8sClient client.Client, owner *gryviav1.GryviaNetwork, scheme *runtime.Scheme, rdmaConfig *gryviav1.RDMAConfig) error {
 	// RDMA device plugin configuration
 	config := `{
   "configList": [

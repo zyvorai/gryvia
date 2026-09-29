@@ -4,14 +4,14 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabricliveexperiments.gryvia.io
+  name: gryvialiveexperiments.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricLiveExperiment
-    listKind: FabricLiveExperimentList
-    plural: fabricliveexperiments
-    singular: fabricliveexperiment
+    kind: GryviaLiveExperiment
+    listKind: GryviaLiveExperimentList
+    plural: gryvialiveexperiments
+    singular: gryvialiveexperiment
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
@@ -33,7 +33,7 @@ spec:
     name: v1
     schema:
       openAPIV3Schema:
-        description: FabricLiveExperiment is the Schema for the fabricliveexperiments
+        description: GryviaLiveExperiment is the Schema for the gryvialiveexperiments
           API
         properties:
           apiVersion:
@@ -54,7 +54,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricLiveExperimentSpec defines the desired state of FabricLiveExperiment
+            description: GryviaLiveExperimentSpec defines the desired state of GryviaLiveExperiment
             properties:
               comparison:
                 description: Comparison defines how to compare the jobs
@@ -111,11 +111,11 @@ spec:
               jobs:
                 description: Jobs is the list of jobs to compare in this experiment
                 items:
-                  description: ExperimentJob references a FabricAIJob to include in
+                  description: ExperimentJob references a GryviaAIJob to include in
                     the experiment
                   properties:
                     jobRef:
-                      description: JobRef is the name of the FabricAIJob resource
+                      description: JobRef is the name of the GryviaAIJob resource
                         to track
                       type: string
                     name:
@@ -235,8 +235,8 @@ spec:
             - jobs
             type: object
           status:
-            description: FabricLiveExperimentStatus defines the observed state of
-              FabricLiveExperiment
+            description: GryviaLiveExperimentStatus defines the observed state of
+              GryviaLiveExperiment
             properties:
               anomaliesDetected:
                 description: AnomaliesDetected is the number of anomalies detected

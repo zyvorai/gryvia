@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabricnetworkanomalies.gryvia.io
+  name: gryvianetworkanomalies.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricNetworkAnomaly
-    listKind: FabricNetworkAnomalyList
-    plural: fabricnetworkanomalies
-    singular: fabricnetworkanomaly
+    kind: GryviaNetworkAnomaly
+    listKind: GryviaNetworkAnomalyList
+    plural: gryvianetworkanomalies
+    singular: gryvianetworkanomaly
   scope: Namespaced
   versions:
   - name: v1
     schema:
       openAPIV3Schema:
-        description: FabricNetworkAnomaly is the Schema for the fabricnetworkanomalies
+        description: GryviaNetworkAnomaly is the Schema for the gryvianetworkanomalies
           API
         properties:
           apiVersion:
@@ -38,7 +38,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricNetworkAnomalySpec defines the desired state of FabricNetworkAnomaly
+            description: GryviaNetworkAnomalySpec defines the desired state of GryviaNetworkAnomaly
             properties:
               alertWebhook:
                 description: AlertWebhook is the URL to send anomaly alerts to
@@ -75,8 +75,8 @@ spec:
                 type: string
             type: object
           status:
-            description: FabricNetworkAnomalyStatus defines the observed state of
-              FabricNetworkAnomaly
+            description: GryviaNetworkAnomalyStatus defines the observed state of
+              GryviaNetworkAnomaly
             properties:
               anomalies:
                 description: Anomalies is the list of detected anomalies

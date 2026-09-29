@@ -4,14 +4,14 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabricinferenceservices.gryvia.io
+  name: gryviainferenceservices.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricInferenceService
-    listKind: FabricInferenceServiceList
-    plural: fabricinferenceservices
-    singular: fabricinferenceservice
+    kind: GryviaInferenceService
+    listKind: GryviaInferenceServiceList
+    plural: gryviainferenceservices
+    singular: gryviainferenceservice
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
@@ -33,7 +33,7 @@ spec:
     name: v1
     schema:
       openAPIV3Schema:
-        description: FabricInferenceService is the Schema for the fabricinferenceservices
+        description: GryviaInferenceService is the Schema for the gryviainferenceservices
           API
         properties:
           apiVersion:
@@ -54,7 +54,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricInferenceServiceSpec defines the desired state of FabricInferenceService
+            description: GryviaInferenceServiceSpec defines the desired state of GryviaInferenceService
             properties:
               args:
                 description: Args are additional arguments passed to the serving container
@@ -104,7 +104,7 @@ spec:
                     description: Enabled turns on canary deployment
                     type: boolean
                   modelVersion:
-                    description: ModelVersion is the model version (FabricModelRegistry
+                    description: ModelVersion is the model version (GryviaModelRegistry
                       name) to deploy as canary
                     type: string
                   promoteAfterSeconds:
@@ -154,7 +154,7 @@ spec:
                 description: Image overrides the default container image for the backend
                 type: string
               modelRef:
-                description: ModelRef is the name of the FabricModelRegistry resource
+                description: ModelRef is the name of the GryviaModelRegistry resource
                   to serve
                 type: string
               replicas:
@@ -171,8 +171,8 @@ spec:
             - modelRef
             type: object
           status:
-            description: FabricInferenceServiceStatus defines the observed state of
-              FabricInferenceService
+            description: GryviaInferenceServiceStatus defines the observed state of
+              GryviaInferenceService
             properties:
               canaryStatus:
                 description: CanaryStatus holds the status of the canary deployment

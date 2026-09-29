@@ -130,7 +130,7 @@ authed() { curl -sfk -H "Authorization: Bearer \$KEY" "\$@"; }
 unauth_rejected() { local c; c="\$(curl -sk -o /dev/null -w '%{http_code}' "\$BASE/api/cluster/stats")"; [[ "\$c" == 401 || "\$c" == 403 ]]; }
 echo "Gryvia smoke test"
 check "namespace exists" kubectl get ns gryvia-system
-check "CRD fabricaijobs.gryvia.io established" kubectl wait --for=condition=Established crd/fabricaijobs.gryvia.io --timeout=30s
+check "CRD gryviaaijobs.gryvia.io established" kubectl wait --for=condition=Established crd/gryviaaijobs.gryvia.io --timeout=30s
 for d in gryvia-core-gpu-operator gryvia-core-ai-operator gryvia-api-gateway gryvia-ui; do
   check "deployment \$d available" kubectl -n gryvia-system wait --for=condition=Available deployment/\$d --timeout=60s
 done
@@ -150,12 +150,12 @@ for path in cluster/stats jobs quotas nodes metrics/gpu metrics/costs \\
   check "GET /api/\$path" bash -c "curl -sfk -H 'Authorization: Bearer \$KEY' '\$BASE/api/\$path' | python3 -c 'import sys,json; json.load(sys.stdin)'"
 done
 # Custom resource: accepted by the API server and visible through the Gryvia API.
-kubectl delete fabricquota gryvia-smoke --ignore-not-found >/dev/null 2>&1 || true
+kubectl delete gryviaquota gryvia-smoke --ignore-not-found >/dev/null 2>&1 || true
 if kubectl apply -f "\$HOME/${REMOTE_SUBDIR}/scripts/lib/smoke-quota.yaml" >/dev/null 2>&1; then
-  check "FabricQuota visible through the API" bash -c "curl -sfk -H 'Authorization: Bearer \$KEY' '\$BASE/api/quotas' | grep -q gryvia-smoke"
-  kubectl delete fabricquota gryvia-smoke --ignore-not-found >/dev/null 2>&1 || true
+  check "GryviaQuota visible through the API" bash -c "curl -sfk -H 'Authorization: Bearer \$KEY' '\$BASE/api/quotas' | grep -q gryvia-smoke"
+  kubectl delete gryviaquota gryvia-smoke --ignore-not-found >/dev/null 2>&1 || true
 else
-  echo "  FAIL  apply FabricQuota"; fail=1
+  echo "  FAIL  apply GryviaQuota"; fail=1
 fi
 echo
 kubectl -n gryvia-system get pods
@@ -243,6 +243,17 @@ for f in crds/*.yaml; do
     fi
     echo "Recreating \$crd (scope \$have -> \$want, no objects)"
     kubectl delete crd "\$crd"
+  fi
+done
+# The kinds were renamed Fabric* -> Gryvia*. Remove the legacy CRDs, but only when they hold
+# no objects (deleting a CRD deletes them); otherwise leave them and say how to migrate.
+for legacy in \$(kubectl get crd -o name 2>/dev/null | sed -n 's#^customresourcedefinition.apiextensions.k8s.io/\\(fabric.*\\.gryvia\\.io\\)\$#\\1#p'); do
+  n="\$(kubectl get "\$legacy" -A --no-headers 2>/dev/null | wc -l | tr -d ' ')"
+  if [[ "\$n" == "0" ]]; then
+    echo "Removing legacy CRD \$legacy (no objects)"
+    kubectl delete crd "\$legacy"
+  else
+    echo "WARNING: legacy CRD \$legacy still has \$n object(s); re-create them under the new Gryvia* kind and delete the CRD by hand" >&2
   fi
 done
 kubectl apply --server-side --force-conflicts -f crds/

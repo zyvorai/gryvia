@@ -31,8 +31,8 @@ const (
 	ParameterTypeCategorical ParameterType = "categorical"
 )
 
-// FabricAutoTunerSpec defines the desired state of FabricAutoTuner
-type FabricAutoTunerSpec struct {
+// GryviaAutoTunerSpec defines the desired state of GryviaAutoTuner
+type GryviaAutoTunerSpec struct {
 	// SearchAlgorithm is the hyperparameter search strategy (grid, random, bayesian, asha)
 	SearchAlgorithm SearchAlgorithm `json:"searchAlgorithm"`
 
@@ -51,8 +51,8 @@ type FabricAutoTunerSpec struct {
 	// EarlyStoppingRounds stops tuning if no improvement for this many rounds
 	EarlyStoppingRounds int32 `json:"earlyStoppingRounds,omitempty"`
 
-	// JobTemplate defines the FabricAIJob template used for each trial
-	JobTemplate FabricAIJobSpec `json:"jobTemplate"`
+	// JobTemplate defines the GryviaAIJob template used for each trial
+	JobTemplate GryviaAIJobSpec `json:"jobTemplate"`
 
 	// ASHAConfig configures the ASHA early-stopping scheduler (used when searchAlgorithm is asha)
 	ASHAConfig *ASHAConfig `json:"ashaConfig,omitempty"`
@@ -131,7 +131,7 @@ type TrialResult struct {
 	// Phase is the current phase of the trial
 	Phase TrialPhase `json:"phase"`
 
-	// JobName is the name of the FabricAIJob created for this trial
+	// JobName is the name of the GryviaAIJob created for this trial
 	JobName string `json:"jobName,omitempty"`
 
 	// StartTime is when the trial started
@@ -153,8 +153,8 @@ type IntermediateMetric struct {
 	Value float64 `json:"value"`
 }
 
-// FabricAutoTunerStatus defines the observed state of FabricAutoTuner
-type FabricAutoTunerStatus struct {
+// GryviaAutoTunerStatus defines the observed state of GryviaAutoTuner
+type GryviaAutoTunerStatus struct {
 	// Phase is the overall phase (Pending, Running, Succeeded, Failed)
 	Phase string `json:"phase,omitempty"`
 
@@ -195,24 +195,24 @@ type FabricAutoTunerStatus struct {
 //+kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 //+kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// FabricAutoTuner is the Schema for the fabricautotuners API
-type FabricAutoTuner struct {
+// GryviaAutoTuner is the Schema for the gryviaautotuners API
+type GryviaAutoTuner struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricAutoTunerSpec   `json:"spec,omitempty"`
-	Status FabricAutoTunerStatus `json:"status,omitempty"`
+	Spec   GryviaAutoTunerSpec   `json:"spec,omitempty"`
+	Status GryviaAutoTunerStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricAutoTunerList contains a list of FabricAutoTuner
-type FabricAutoTunerList struct {
+// GryviaAutoTunerList contains a list of GryviaAutoTuner
+type GryviaAutoTunerList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricAutoTuner `json:"items"`
+	Items           []GryviaAutoTuner `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&FabricAutoTuner{}, &FabricAutoTunerList{})
+	SchemeBuilder.Register(&GryviaAutoTuner{}, &GryviaAutoTunerList{})
 }

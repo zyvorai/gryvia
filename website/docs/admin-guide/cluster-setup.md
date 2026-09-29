@@ -249,7 +249,7 @@ kubectl label nodes gpu-node-1 gryvia.io/infiniband=true
 ```yaml
 # gpu-node-profile.yaml
 apiVersion: gryvia.io/v1
-kind: FabricGPUNode
+kind: GryviaGPUNode
 metadata:
   name: gpu-node-1
 spec:
@@ -504,11 +504,11 @@ kubectl get pods -n gryvia-system
 kubectl get crds | grep gryvia.io
 
 # Expected output:
-# fabricaijobs.gryvia.io
-# fabricgpunodes.gryvia.io
-# fabricquotas.gryvia.io
-# fabricstorages.gryvia.io
-# fabricnetworks.gryvia.io
+# gryviaaijobs.gryvia.io
+# gryviagpunodes.gryvia.io
+# gryviaquotas.gryvia.io
+# gryviastorages.gryvia.io
+# gryvianetworks.gryvia.io
 ```
 
 ### Test GPU Scheduling
@@ -517,7 +517,7 @@ kubectl get crds | grep gryvia.io
 # Submit test job
 kubectl apply -f - <<EOF
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: gpu-test
 spec:
@@ -530,7 +530,7 @@ spec:
 EOF
 
 # Check job status
-kubectl get fabricaijob gpu-test
+kubectl get gryviaaijob gpu-test
 gryvia logs gpu-test
 ```
 
@@ -615,7 +615,7 @@ EOF
 # Or manually check
 kubectl get nodes
 kubectl get pods -n gryvia-system
-kubectl get fabricgpunodes
+kubectl get gryviagpunodes
 gryvia cluster status
 ```
 
@@ -721,7 +721,7 @@ gryvia cluster nodes
 gryvia quota list
 
 # Check job events
-kubectl describe fabricaijob <job-name>
+kubectl describe gryviaaijob <job-name>
 ```
 
 ## Performance Tuning

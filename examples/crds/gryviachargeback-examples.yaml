@@ -1,6 +1,6 @@
 # Example: Monthly Chargeback Configuration
 apiVersion: gryvia.io/v1
-kind: FabricChargeback
+kind: GryviaChargeback
 metadata:
   name: monthly-chargeback
 spec:

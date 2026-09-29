@@ -23,31 +23,31 @@ const (
 	maxAuditEntries = 100
 )
 
-// FabricAuditReconciler reconciles a FabricAudit object
-type FabricAuditReconciler struct {
+// GryviaAuditReconciler reconciles a GryviaAudit object
+type GryviaAuditReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaudits,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaudits/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaudits/finalizers,verbs=update
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricquotas,verbs=get;list;watch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaudits,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaudits/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaudits/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs,verbs=get;list;watch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaquotas,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
-func (r *FabricAuditReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *GryviaAuditReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// Fetch the FabricAudit instance
-	audit := &gryviav1.FabricAudit{}
+	// Fetch the GryviaAudit instance
+	audit := &gryviav1.GryviaAudit{}
 	err := r.Get(ctx, req.NamespacedName, audit)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("FabricAudit resource not found. Ignoring since object must be deleted")
+			logger.Info("GryviaAudit resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		logger.Error(err, "Failed to get FabricAudit")
+		logger.Error(err, "Failed to get GryviaAudit")
 		return ctrl.Result{}, err
 	}
 
@@ -56,7 +56,7 @@ func (r *FabricAuditReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, nil
 	}
 
-	logger.Info("Reconciling FabricAudit", "scope", audit.Spec.Scope.Type, "name", audit.Spec.Scope.Name)
+	logger.Info("Reconciling GryviaAudit", "scope", audit.Spec.Scope.Type, "name", audit.Spec.Scope.Name)
 
 	// Reconcile the audit
 	result, err := r.reconcileAudit(ctx, audit)
@@ -71,17 +71,17 @@ func (r *FabricAuditReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	// Update status
 	if err := r.Status().Update(ctx, audit); err != nil {
-		logger.Error(err, "Failed to update FabricAudit status")
+		logger.Error(err, "Failed to update GryviaAudit status")
 		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{RequeueAfter: 2 * time.Minute}, nil
 }
 
-func (r *FabricAuditReconciler) reconcileAudit(ctx context.Context, audit *gryviav1.FabricAudit) (ctrl.Result, error) {
+func (r *GryviaAuditReconciler) reconcileAudit(ctx context.Context, audit *gryviav1.GryviaAudit) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// Capture GPU resource events by watching FabricAIJob resources
+	// Capture GPU resource events by watching GryviaAIJob resources
 	if audit.Spec.Events.JobCreated || audit.Spec.Events.JobModified || audit.Spec.Events.JobDeleted {
 		if err := r.captureJobEvents(ctx, audit); err != nil {
 			logger.Error(err, "Failed to capture job events")
@@ -109,11 +109,11 @@ func (r *FabricAuditReconciler) reconcileAudit(ctx context.Context, audit *gryvi
 	return ctrl.Result{}, nil
 }
 
-func (r *FabricAuditReconciler) captureJobEvents(ctx context.Context, audit *gryviav1.FabricAudit) error {
+func (r *GryviaAuditReconciler) captureJobEvents(ctx context.Context, audit *gryviav1.GryviaAudit) error {
 	logger := log.FromContext(ctx)
 
-	// List all FabricAIJob resources based on scope
-	jobList := &gryviav1.FabricAIJobList{}
+	// List all GryviaAIJob resources based on scope
+	jobList := &gryviav1.GryviaAIJobList{}
 	listOpts := []client.ListOption{}
 
 	if audit.Spec.Scope.Type == "namespace" && audit.Spec.Scope.Name != "" {
@@ -121,7 +121,7 @@ func (r *FabricAuditReconciler) captureJobEvents(ctx context.Context, audit *gry
 	}
 
 	if err := r.List(ctx, jobList, listOpts...); err != nil {
-		return fmt.Errorf("failed to list FabricAIJobs: %w", err)
+		return fmt.Errorf("failed to list GryviaAIJobs: %w", err)
 	}
 
 	for _, job := range jobList.Items {
@@ -135,7 +135,7 @@ func (r *FabricAuditReconciler) captureJobEvents(ctx context.Context, audit *gry
 			entry := gryviav1.AuditEntry{
 				Timestamp:    metav1.Now(),
 				Action:       "running",
-				ResourceType: "FabricAIJob",
+				ResourceType: "GryviaAIJob",
 				ResourceName: job.Name,
 				Namespace:    job.Namespace,
 				Result:       "success",
@@ -149,7 +149,7 @@ func (r *FabricAuditReconciler) captureJobEvents(ctx context.Context, audit *gry
 			entry := gryviav1.AuditEntry{
 				Timestamp:    metav1.Now(),
 				Action:       "rejected",
-				ResourceType: "FabricAIJob",
+				ResourceType: "GryviaAIJob",
 				ResourceName: job.Name,
 				Namespace:    job.Namespace,
 				Result:       "denied",
@@ -165,11 +165,11 @@ func (r *FabricAuditReconciler) captureJobEvents(ctx context.Context, audit *gry
 	return nil
 }
 
-func (r *FabricAuditReconciler) captureQuotaEvents(ctx context.Context, audit *gryviav1.FabricAudit) error {
-	// List all FabricQuota resources
-	quotaList := &gryviav1.FabricQuotaList{}
+func (r *GryviaAuditReconciler) captureQuotaEvents(ctx context.Context, audit *gryviav1.GryviaAudit) error {
+	// List all GryviaQuota resources
+	quotaList := &gryviav1.GryviaQuotaList{}
 	if err := r.List(ctx, quotaList); err != nil {
-		return fmt.Errorf("failed to list FabricQuotas: %w", err)
+		return fmt.Errorf("failed to list GryviaQuotas: %w", err)
 	}
 
 	for _, quota := range quotaList.Items {
@@ -178,7 +178,7 @@ func (r *FabricAuditReconciler) captureQuotaEvents(ctx context.Context, audit *g
 			entry := gryviav1.AuditEntry{
 				Timestamp:    metav1.Now(),
 				Action:       "quota-exceeded",
-				ResourceType: "FabricQuota",
+				ResourceType: "GryviaQuota",
 				ResourceName: quota.Name,
 				Result:       "warning",
 				Details:      fmt.Sprintf("Team %s exceeded GPU quota", quota.Spec.Team),
@@ -201,7 +201,7 @@ func (r *FabricAuditReconciler) captureQuotaEvents(ctx context.Context, audit *g
 			entry := gryviav1.AuditEntry{
 				Timestamp:    metav1.Now(),
 				Action:       "budget-exceeded",
-				ResourceType: "FabricQuota",
+				ResourceType: "GryviaQuota",
 				ResourceName: quota.Name,
 				Result:       "warning",
 				Details:      fmt.Sprintf("Team %s exceeded budget", quota.Spec.Team),
@@ -222,7 +222,7 @@ func (r *FabricAuditReconciler) captureQuotaEvents(ctx context.Context, audit *g
 	return nil
 }
 
-func (r *FabricAuditReconciler) matchesScope(audit *gryviav1.FabricAudit, job *gryviav1.FabricAIJob) bool {
+func (r *GryviaAuditReconciler) matchesScope(audit *gryviav1.GryviaAudit, job *gryviav1.GryviaAIJob) bool {
 	switch audit.Spec.Scope.Type {
 	case "cluster":
 		return true
@@ -239,7 +239,7 @@ func (r *FabricAuditReconciler) matchesScope(audit *gryviav1.FabricAudit, job *g
 	}
 }
 
-func (r *FabricAuditReconciler) addAuditEntry(audit *gryviav1.FabricAudit, entry gryviav1.AuditEntry) {
+func (r *GryviaAuditReconciler) addAuditEntry(audit *gryviav1.GryviaAudit, entry gryviav1.AuditEntry) {
 	audit.Status.AuditEntries = append(audit.Status.AuditEntries, entry)
 
 	// Maintain rolling buffer
@@ -248,7 +248,7 @@ func (r *FabricAuditReconciler) addAuditEntry(audit *gryviav1.FabricAudit, entry
 	}
 }
 
-func (r *FabricAuditReconciler) addViolation(audit *gryviav1.FabricAudit, violation gryviav1.AuditViolation) {
+func (r *GryviaAuditReconciler) addViolation(audit *gryviav1.GryviaAudit, violation gryviav1.AuditViolation) {
 	// Only add if not a duplicate of the most recent violation
 	if len(audit.Status.Violations) > 0 {
 		last := audit.Status.Violations[len(audit.Status.Violations)-1]
@@ -265,7 +265,7 @@ func (r *FabricAuditReconciler) addViolation(audit *gryviav1.FabricAudit, violat
 	}
 }
 
-func (r *FabricAuditReconciler) enforceRetention(audit *gryviav1.FabricAudit) {
+func (r *GryviaAuditReconciler) enforceRetention(audit *gryviav1.GryviaAudit) {
 	if audit.Spec.Retention.Duration == "" {
 		return
 	}
@@ -304,7 +304,7 @@ func (r *FabricAuditReconciler) enforceRetention(audit *gryviav1.FabricAudit) {
 	audit.Status.Violations = retainedViolations
 }
 
-func (r *FabricAuditReconciler) calculateComplianceScore(audit *gryviav1.FabricAudit) float64 {
+func (r *GryviaAuditReconciler) calculateComplianceScore(audit *gryviav1.GryviaAudit) float64 {
 	if len(audit.Spec.Compliance.Frameworks) == 0 {
 		return 0
 	}
@@ -338,7 +338,7 @@ func (r *FabricAuditReconciler) calculateComplianceScore(audit *gryviav1.FabricA
 	return score
 }
 
-func (r *FabricAuditReconciler) updateCondition(audit *gryviav1.FabricAudit, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *GryviaAuditReconciler) updateCondition(audit *gryviav1.GryviaAudit, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -350,13 +350,13 @@ func (r *FabricAuditReconciler) updateCondition(audit *gryviav1.FabricAudit, con
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *FabricAuditReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaAuditReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricAudit{}).
-		Watches(&gryviav1.FabricAIJob{}, handler.EnqueueRequestsFromMapFunc(
+		For(&gryviav1.GryviaAudit{}).
+		Watches(&gryviav1.GryviaAIJob{}, handler.EnqueueRequestsFromMapFunc(
 			func(ctx context.Context, obj client.Object) []reconcile.Request {
-				// When a FabricAIJob changes, enqueue all FabricAudit objects
-				auditList := &gryviav1.FabricAuditList{}
+				// When a GryviaAIJob changes, enqueue all GryviaAudit objects
+				auditList := &gryviav1.GryviaAuditList{}
 				if err := mgr.GetClient().List(ctx, auditList); err != nil {
 					return nil
 				}
@@ -371,9 +371,9 @@ func (r *FabricAuditReconciler) SetupWithManager(mgr ctrl.Manager) error {
 				return requests
 			},
 		)).
-		Watches(&gryviav1.FabricQuota{}, handler.EnqueueRequestsFromMapFunc(
+		Watches(&gryviav1.GryviaQuota{}, handler.EnqueueRequestsFromMapFunc(
 			func(ctx context.Context, obj client.Object) []reconcile.Request {
-				auditList := &gryviav1.FabricAuditList{}
+				auditList := &gryviav1.GryviaAuditList{}
 				if err := mgr.GetClient().List(ctx, auditList); err != nil {
 					return nil
 				}

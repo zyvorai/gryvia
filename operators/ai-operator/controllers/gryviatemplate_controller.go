@@ -20,31 +20,31 @@ import (
 	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 )
 
-// FabricTemplateReconciler reconciles a FabricTemplate object
-type FabricTemplateReconciler struct {
+// GryviaTemplateReconciler reconciles a GryviaTemplate object
+type GryviaTemplateReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Log    logr.Logger
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabrictemplates,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabrictemplates/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabrictemplates/finalizers,verbs=update
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviatemplates,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviatemplates/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviatemplates/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop
-func (r *FabricTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := r.Log.WithValues("fabrictemplate", req.NamespacedName)
+func (r *GryviaTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := r.Log.WithValues("gryviatemplate", req.NamespacedName)
 
-	// Fetch the FabricTemplate instance
-	template := &gryviav1.FabricTemplate{}
+	// Fetch the GryviaTemplate instance
+	template := &gryviav1.GryviaTemplate{}
 	err := r.Get(ctx, req.NamespacedName, template)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			log.Info("FabricTemplate resource not found. Ignoring since object must be deleted")
+			log.Info("GryviaTemplate resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		log.Error(err, "Failed to get FabricTemplate")
+		log.Error(err, "Failed to get GryviaTemplate")
 		return ctrl.Result{}, err
 	}
 
@@ -63,8 +63,8 @@ func (r *FabricTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	return result, nil
 }
 
-func (r *FabricTemplateReconciler) reconcileTemplate(ctx context.Context, template *gryviav1.FabricTemplate) (ctrl.Result, error) {
-	log := r.Log.WithValues("fabrictemplate", template.Name)
+func (r *GryviaTemplateReconciler) reconcileTemplate(ctx context.Context, template *gryviav1.GryviaTemplate) (ctrl.Result, error) {
+	log := r.Log.WithValues("gryviatemplate", template.Name)
 
 	// Validate template parameters
 	if err := r.validateTemplate(template); err != nil {
@@ -79,9 +79,9 @@ func (r *FabricTemplateReconciler) reconcileTemplate(ctx context.Context, templa
 	r.updateCondition(template, "Valid", metav1.ConditionTrue, "Valid", "Template is valid")
 
 	// Count jobs instantiated from this template
-	jobList := &gryviav1.FabricAIJobList{}
+	jobList := &gryviav1.GryviaAIJobList{}
 	if err := r.List(ctx, jobList); err != nil {
-		log.Error(err, "Failed to list FabricAIJobs")
+		log.Error(err, "Failed to list GryviaAIJobs")
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
 	}
 
@@ -113,7 +113,7 @@ func (r *FabricTemplateReconciler) reconcileTemplate(ctx context.Context, templa
 	return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 }
 
-func (r *FabricTemplateReconciler) validateTemplate(template *gryviav1.FabricTemplate) error {
+func (r *GryviaTemplateReconciler) validateTemplate(template *gryviav1.GryviaTemplate) error {
 	// Validate category
 	validCategories := map[string]bool{
 		"training": true, "inference": true, "development": true, "benchmark": true,
@@ -161,9 +161,9 @@ func (r *FabricTemplateReconciler) validateTemplate(template *gryviav1.FabricTem
 	return nil
 }
 
-// InstantiateJob creates a FabricAIJob from this template with the given parameters.
+// InstantiateJob creates a GryviaAIJob from this template with the given parameters.
 // This method is intended to be called by external controllers or webhooks.
-func (r *FabricTemplateReconciler) InstantiateJob(ctx context.Context, template *gryviav1.FabricTemplate, jobName, namespace string, params map[string]string) (*gryviav1.FabricAIJob, error) {
+func (r *GryviaTemplateReconciler) InstantiateJob(ctx context.Context, template *gryviav1.GryviaTemplate, jobName, namespace string, params map[string]string) (*gryviav1.GryviaAIJob, error) {
 	// Validate required parameters
 	for _, param := range template.Spec.Parameters {
 		if param.Required {
@@ -199,7 +199,7 @@ func (r *FabricTemplateReconciler) InstantiateJob(ctx context.Context, template 
 	}
 
 	// Create the job from template defaults
-	job := &gryviav1.FabricAIJob{
+	job := &gryviav1.GryviaAIJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      jobName,
 			Namespace: namespace,
@@ -208,7 +208,7 @@ func (r *FabricTemplateReconciler) InstantiateJob(ctx context.Context, template 
 				"gryvia.io/category": template.Spec.Category,
 			},
 		},
-		Spec: gryviav1.FabricAIJobSpec{
+		Spec: gryviav1.GryviaAIJobSpec{
 			Type:  template.Spec.Category,
 			Image: template.Spec.Defaults.Image,
 		},
@@ -256,7 +256,7 @@ func (r *FabricTemplateReconciler) InstantiateJob(ctx context.Context, template 
 	return job, nil
 }
 
-func (r *FabricTemplateReconciler) validateParameterValue(param gryviav1.TemplateParameter, value string) error {
+func (r *GryviaTemplateReconciler) validateParameterValue(param gryviav1.TemplateParameter, value string) error {
 	if param.Validation == nil {
 		return nil
 	}
@@ -293,7 +293,7 @@ func (r *FabricTemplateReconciler) validateParameterValue(param gryviav1.Templat
 	return nil
 }
 
-func (r *FabricTemplateReconciler) substituteParams(template string, params map[string]string) string {
+func (r *GryviaTemplateReconciler) substituteParams(template string, params map[string]string) string {
 	result := template
 	for key, value := range params {
 		result = strings.ReplaceAll(result, "{{ ."+key+" }}", value)
@@ -302,7 +302,7 @@ func (r *FabricTemplateReconciler) substituteParams(template string, params map[
 	return result
 }
 
-func (r *FabricTemplateReconciler) updateCondition(template *gryviav1.FabricTemplate, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *GryviaTemplateReconciler) updateCondition(template *gryviav1.GryviaTemplate, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -333,8 +333,8 @@ func (r *FabricTemplateReconciler) updateCondition(template *gryviav1.FabricTemp
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *FabricTemplateReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaTemplateReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricTemplate{}).
+		For(&gryviav1.GryviaTemplate{}).
 		Complete(r)
 }

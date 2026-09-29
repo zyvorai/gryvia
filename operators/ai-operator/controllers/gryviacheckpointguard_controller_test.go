@@ -25,14 +25,14 @@ func newCheckpointGuardTestScheme() *runtime.Scheme {
 	return s
 }
 
-func newCheckpointGuardReconciler(objs ...client.Object) (*FabricCheckpointGuardReconciler, client.Client) {
+func newCheckpointGuardReconciler(objs ...client.Object) (*GryviaCheckpointGuardReconciler, client.Client) {
 	scheme := newCheckpointGuardTestScheme()
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(objs...).
-		WithStatusSubresource(&gryviav1.FabricCheckpointGuard{}, &gryviav1.FabricAIJob{}).
+		WithStatusSubresource(&gryviav1.GryviaCheckpointGuard{}, &gryviav1.GryviaAIJob{}).
 		Build()
-	r := &FabricCheckpointGuardReconciler{
+	r := &GryviaCheckpointGuardReconciler{
 		Client: fakeClient,
 		Scheme: scheme,
 		Log:    ctrl.Log.WithName("test"),
@@ -40,13 +40,13 @@ func newCheckpointGuardReconciler(objs ...client.Object) (*FabricCheckpointGuard
 	return r, fakeClient
 }
 
-func newTestCheckpointGuard(name, namespace string) *gryviav1.FabricCheckpointGuard {
-	return &gryviav1.FabricCheckpointGuard{
+func newTestCheckpointGuard(name, namespace string) *gryviav1.GryviaCheckpointGuard {
+	return &gryviav1.GryviaCheckpointGuard{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
 		},
-		Spec: gryviav1.FabricCheckpointGuardSpec{
+		Spec: gryviav1.GryviaCheckpointGuardSpec{
 			JobSelector: gryviav1.JobSelector{
 				MatchLabels: map[string]string{"team": "ml"},
 			},
@@ -109,7 +109,7 @@ func TestCheckpointGuard_Reconcile_InitializesPhase(t *testing.T) {
 		t.Error("expected requeue after phase initialization")
 	}
 
-	updated := &gryviav1.FabricCheckpointGuard{}
+	updated := &gryviav1.GryviaCheckpointGuard{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-guard", Namespace: "default"}, updated); err != nil {
 		t.Fatalf("failed to get updated guard: %v", err)
 	}
@@ -132,7 +132,7 @@ func TestCheckpointGuard_Reconcile_NoMatchingJobs(t *testing.T) {
 		t.Error("expected requeue after for no matching jobs")
 	}
 
-	updated := &gryviav1.FabricCheckpointGuard{}
+	updated := &gryviav1.GryviaCheckpointGuard{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-guard", Namespace: "default"}, updated); err != nil {
 		t.Fatalf("failed to get updated guard: %v", err)
 	}
@@ -203,7 +203,7 @@ func TestCheckpointGuard_IsPeriodicCheckpointDue(t *testing.T) {
 func TestCheckpointGuard_DetectLossDivergence(t *testing.T) {
 	r, _ := newCheckpointGuardReconciler()
 
-	job := &gryviav1.FabricAIJob{
+	job := &gryviav1.GryviaAIJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-job",
 			Namespace: "default",

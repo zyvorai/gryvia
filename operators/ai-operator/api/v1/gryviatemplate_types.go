@@ -4,8 +4,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// FabricTemplateSpec defines the desired state of FabricTemplate
-type FabricTemplateSpec struct {
+// GryviaTemplateSpec defines the desired state of GryviaTemplate
+type GryviaTemplateSpec struct {
 	// Description is a human-readable description of the template
 	Description string `json:"description,omitempty"`
 
@@ -100,8 +100,8 @@ type ParameterValidation struct {
 	Enum []string `json:"enum,omitempty"`
 }
 
-// FabricTemplateStatus defines the observed state of FabricTemplate
-type FabricTemplateStatus struct {
+// GryviaTemplateStatus defines the observed state of GryviaTemplate
+type GryviaTemplateStatus struct {
 	// InstantiatedJobs tracks the number of jobs created from this template
 	InstantiatedJobs int32 `json:"instantiatedJobs,omitempty"`
 
@@ -119,24 +119,24 @@ type FabricTemplateStatus struct {
 //+kubebuilder:printcolumn:name="Description",type=string,JSONPath=`.spec.description`
 //+kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// FabricTemplate is the Schema for the fabrictemplates API
-type FabricTemplate struct {
+// GryviaTemplate is the Schema for the gryviatemplates API
+type GryviaTemplate struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricTemplateSpec   `json:"spec,omitempty"`
-	Status FabricTemplateStatus `json:"status,omitempty"`
+	Spec   GryviaTemplateSpec   `json:"spec,omitempty"`
+	Status GryviaTemplateStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricTemplateList contains a list of FabricTemplate
-type FabricTemplateList struct {
+// GryviaTemplateList contains a list of GryviaTemplate
+type GryviaTemplateList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricTemplate `json:"items"`
+	Items           []GryviaTemplate `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&FabricTemplate{}, &FabricTemplateList{})
+	SchemeBuilder.Register(&GryviaTemplate{}, &GryviaTemplateList{})
 }

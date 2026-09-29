@@ -4,8 +4,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// FabricReservationSpec defines the desired state of FabricReservation
-type FabricReservationSpec struct {
+// GryviaReservationSpec defines the desired state of GryviaReservation
+type GryviaReservationSpec struct {
 	// Owner defines who can use this reservation
 	Owner ReservationOwner `json:"owner"`
 
@@ -145,8 +145,8 @@ type ReservationCost struct {
 	WastedCost float64 `json:"wastedCost,omitempty"`
 }
 
-// FabricReservationStatus defines the observed state of FabricReservation
-type FabricReservationStatus struct {
+// GryviaReservationStatus defines the observed state of GryviaReservation
+type GryviaReservationStatus struct {
 	// State is the current state (pending, active, expired, cancelled)
 	State string `json:"state,omitempty"`
 
@@ -180,24 +180,24 @@ type FabricReservationStatus struct {
 //+kubebuilder:printcolumn:name="End",type=string,JSONPath=`.spec.schedule.endTime`
 //+kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// FabricReservation is the Schema for the fabricreservations API
-type FabricReservation struct {
+// GryviaReservation is the Schema for the gryviareservations API
+type GryviaReservation struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricReservationSpec   `json:"spec,omitempty"`
-	Status FabricReservationStatus `json:"status,omitempty"`
+	Spec   GryviaReservationSpec   `json:"spec,omitempty"`
+	Status GryviaReservationStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricReservationList contains a list of FabricReservation
-type FabricReservationList struct {
+// GryviaReservationList contains a list of GryviaReservation
+type GryviaReservationList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricReservation `json:"items"`
+	Items           []GryviaReservation `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&FabricReservation{}, &FabricReservationList{})
+	SchemeBuilder.Register(&GryviaReservation{}, &GryviaReservationList{})
 }

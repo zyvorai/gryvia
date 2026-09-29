@@ -20,32 +20,32 @@ import (
 	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 )
 
-// FabricJobHookReconciler reconciles a FabricJobHook object
-type FabricJobHookReconciler struct {
+// GryviaJobHookReconciler reconciles a GryviaJobHook object
+type GryviaJobHookReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Log    logr.Logger
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricjobhooks,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricjobhooks/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricjobhooks/finalizers,verbs=update
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviajobhooks,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviajobhooks/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviajobhooks/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs,verbs=get;list;watch
 //+kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop
-func (r *FabricJobHookReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := r.Log.WithValues("fabricjobhook", req.NamespacedName)
+func (r *GryviaJobHookReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := r.Log.WithValues("gryviajobhook", req.NamespacedName)
 
-	// Fetch the FabricJobHook instance
-	hook := &gryviav1.FabricJobHook{}
+	// Fetch the GryviaJobHook instance
+	hook := &gryviav1.GryviaJobHook{}
 	err := r.Get(ctx, req.NamespacedName, hook)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			log.Info("FabricJobHook resource not found. Ignoring since object must be deleted")
+			log.Info("GryviaJobHook resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		log.Error(err, "Failed to get FabricJobHook")
+		log.Error(err, "Failed to get GryviaJobHook")
 		return ctrl.Result{}, err
 	}
 
@@ -64,13 +64,13 @@ func (r *FabricJobHookReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	return result, nil
 }
 
-func (r *FabricJobHookReconciler) reconcileJobHook(ctx context.Context, hook *gryviav1.FabricJobHook) (ctrl.Result, error) {
-	log := r.Log.WithValues("fabricjobhook", hook.Name)
+func (r *GryviaJobHookReconciler) reconcileJobHook(ctx context.Context, hook *gryviav1.GryviaJobHook) (ctrl.Result, error) {
+	log := r.Log.WithValues("gryviajobhook", hook.Name)
 
 	// List AI jobs matching the hook's selector
-	jobList := &gryviav1.FabricAIJobList{}
+	jobList := &gryviav1.GryviaAIJobList{}
 	if err := r.List(ctx, jobList); err != nil {
-		log.Error(err, "Failed to list FabricAIJobs")
+		log.Error(err, "Failed to list GryviaAIJobs")
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
 	}
 
@@ -128,7 +128,7 @@ func (r *FabricJobHookReconciler) reconcileJobHook(ctx context.Context, hook *gr
 	return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 }
 
-func (r *FabricJobHookReconciler) matchesSelector(hook *gryviav1.FabricJobHook, job *gryviav1.FabricAIJob) bool {
+func (r *GryviaJobHookReconciler) matchesSelector(hook *gryviav1.GryviaJobHook, job *gryviav1.GryviaAIJob) bool {
 	if hook.Spec.Selector == nil || len(hook.Spec.Selector.MatchLabels) == 0 {
 		return true // no selector means match all jobs
 	}
@@ -147,7 +147,7 @@ func (r *FabricJobHookReconciler) matchesSelector(hook *gryviav1.FabricJobHook, 
 	return true
 }
 
-func (r *FabricJobHookReconciler) shouldTrigger(hook *gryviav1.FabricJobHook, job *gryviav1.FabricAIJob) bool {
+func (r *GryviaJobHookReconciler) shouldTrigger(hook *gryviav1.GryviaJobHook, job *gryviav1.GryviaAIJob) bool {
 	switch hook.Spec.Trigger {
 	case "pre-start":
 		return job.Status.Phase == PhasePending
@@ -166,7 +166,7 @@ func (r *FabricJobHookReconciler) shouldTrigger(hook *gryviav1.FabricJobHook, jo
 	}
 }
 
-func (r *FabricJobHookReconciler) executeAction(ctx context.Context, hook *gryviav1.FabricJobHook, job *gryviav1.FabricAIJob) error {
+func (r *GryviaJobHookReconciler) executeAction(ctx context.Context, hook *gryviav1.GryviaJobHook, job *gryviav1.GryviaAIJob) error {
 	switch hook.Spec.Action.Type {
 	case "webhook":
 		return r.executeWebhook(ctx, hook, job)
@@ -183,7 +183,7 @@ func (r *FabricJobHookReconciler) executeAction(ctx context.Context, hook *gryvi
 	}
 }
 
-func (r *FabricJobHookReconciler) executeWebhook(ctx context.Context, hook *gryviav1.FabricJobHook, job *gryviav1.FabricAIJob) error {
+func (r *GryviaJobHookReconciler) executeWebhook(ctx context.Context, hook *gryviav1.GryviaJobHook, job *gryviav1.GryviaAIJob) error {
 	if hook.Spec.Action.Webhook == nil {
 		return fmt.Errorf("webhook action configuration is missing")
 	}
@@ -234,7 +234,7 @@ func (r *FabricJobHookReconciler) executeWebhook(ctx context.Context, hook *gryv
 	return nil
 }
 
-func (r *FabricJobHookReconciler) executeK8sJob(ctx context.Context, hook *gryviav1.FabricJobHook, aiJob *gryviav1.FabricAIJob) error {
+func (r *GryviaJobHookReconciler) executeK8sJob(ctx context.Context, hook *gryviav1.GryviaJobHook, aiJob *gryviav1.GryviaAIJob) error {
 	if hook.Spec.Action.K8sJob == nil {
 		return fmt.Errorf("k8s-job action configuration is missing")
 	}
@@ -295,7 +295,7 @@ func (r *FabricJobHookReconciler) executeK8sJob(ctx context.Context, hook *gryvi
 	return nil
 }
 
-func (r *FabricJobHookReconciler) executeNotification(_ context.Context, hook *gryviav1.FabricJobHook, job *gryviav1.FabricAIJob) error {
+func (r *GryviaJobHookReconciler) executeNotification(_ context.Context, hook *gryviav1.GryviaJobHook, job *gryviav1.GryviaAIJob) error {
 	if hook.Spec.Action.Notification == nil {
 		return fmt.Errorf("notification action configuration is missing")
 	}
@@ -321,7 +321,7 @@ func (r *FabricJobHookReconciler) executeNotification(_ context.Context, hook *g
 	return nil
 }
 
-func (r *FabricJobHookReconciler) executeExec(_ context.Context, hook *gryviav1.FabricJobHook, job *gryviav1.FabricAIJob) error {
+func (r *GryviaJobHookReconciler) executeExec(_ context.Context, hook *gryviav1.GryviaJobHook, job *gryviav1.GryviaAIJob) error {
 	if hook.Spec.Action.Exec == nil {
 		return fmt.Errorf("exec action configuration is missing")
 	}
@@ -338,9 +338,9 @@ func (r *FabricJobHookReconciler) executeExec(_ context.Context, hook *gryviav1.
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *FabricJobHookReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaJobHookReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricJobHook{}).
+		For(&gryviav1.GryviaJobHook{}).
 		Owns(&batchv1.Job{}).
 		Complete(r)
 }

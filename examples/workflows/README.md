@@ -270,7 +270,7 @@ argo get -n default <workflow-name>
 
 ```bash
 argo logs -n default <workflow-name> <step-name>
-kubectl describe fabricaijob <job-name>
+kubectl describe gryviaaijob <job-name>
 ```
 
 ### Retry Failed Workflow

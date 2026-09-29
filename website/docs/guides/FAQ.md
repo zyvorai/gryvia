@@ -355,7 +355,7 @@ Yes, with audit trail enabled:
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricAudit
+kind: GryviaAudit
 spec:
   compliance:
     frameworks: [SOC2, ISO27001]
@@ -407,7 +407,7 @@ Hooks execute actions at job lifecycle events:
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricJobHook
+kind: GryviaJobHook
 spec:
   trigger: post-completion
   action:
@@ -471,7 +471,7 @@ job's conditions for a message like:
 
 ```bash
 # 1. Why is it pending? (look at conditions for scheduler error details)
-kubectl describe fabricaijob my-job
+kubectl describe gryviaaijob my-job
 
 # 2. Check capacity
 kfctl cluster status
@@ -493,7 +493,7 @@ kfctl queue status
 kfctl job logs my-job --tail 100
 
 # 2. Check events
-kubectl describe fabricaijob my-job
+kubectl describe gryviaaijob my-job
 
 # 3. Common issues:
 # - OOM: Increase memory or use larger GPU
@@ -579,7 +579,7 @@ kfctl submit job.yaml --gpu-count 8  # Gryvia
 kfctl import kubernetes job.yaml
 
 # Or use directly:
-kubectl apply -f fabricaijob.yaml
+kubectl apply -f gryviaaijob.yaml
 ```
 
 ---

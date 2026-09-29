@@ -28,33 +28,33 @@ const (
 	benchmarkStateRegressed = "regressed"
 )
 
-// FabricBenchmarkReconciler reconciles a FabricBenchmark object
-type FabricBenchmarkReconciler struct {
+// GryviaBenchmarkReconciler reconciles a GryviaBenchmark object
+type GryviaBenchmarkReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Log    logr.Logger
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricbenchmarks,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricbenchmarks/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricbenchmarks/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviabenchmarks,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviabenchmarks/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviabenchmarks/finalizers,verbs=update
 //+kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=pods/log,verbs=get
 
 // Reconcile is part of the main kubernetes reconciliation loop
-func (r *FabricBenchmarkReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := r.Log.WithValues("fabricbenchmark", req.NamespacedName)
+func (r *GryviaBenchmarkReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := r.Log.WithValues("gryviabenchmark", req.NamespacedName)
 
-	// Fetch the FabricBenchmark instance
-	benchmark := &gryviav1.FabricBenchmark{}
+	// Fetch the GryviaBenchmark instance
+	benchmark := &gryviav1.GryviaBenchmark{}
 	err := r.Get(ctx, req.NamespacedName, benchmark)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			log.Info("FabricBenchmark resource not found. Ignoring since object must be deleted")
+			log.Info("GryviaBenchmark resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		log.Error(err, "Failed to get FabricBenchmark")
+		log.Error(err, "Failed to get GryviaBenchmark")
 		return ctrl.Result{}, err
 	}
 
@@ -90,8 +90,8 @@ func (r *FabricBenchmarkReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	return result, nil
 }
 
-func (r *FabricBenchmarkReconciler) reconcileBenchmark(ctx context.Context, benchmark *gryviav1.FabricBenchmark) (ctrl.Result, error) {
-	log := r.Log.WithValues("fabricbenchmark", benchmark.Name)
+func (r *GryviaBenchmarkReconciler) reconcileBenchmark(ctx context.Context, benchmark *gryviav1.GryviaBenchmark) (ctrl.Result, error) {
+	log := r.Log.WithValues("gryviabenchmark", benchmark.Name)
 
 	// Phase 1: Create the benchmark job
 	if benchmark.Status.State == benchmarkStatePending {
@@ -195,7 +195,7 @@ func (r *FabricBenchmarkReconciler) reconcileBenchmark(ctx context.Context, benc
 	return ctrl.Result{}, nil
 }
 
-func (r *FabricBenchmarkReconciler) ensureBenchmarkJob(ctx context.Context, benchmark *gryviav1.FabricBenchmark) error {
+func (r *GryviaBenchmarkReconciler) ensureBenchmarkJob(ctx context.Context, benchmark *gryviav1.GryviaBenchmark) error {
 	jobName := r.getBenchmarkJobName(benchmark)
 
 	// Check if job already exists
@@ -221,7 +221,7 @@ func (r *FabricBenchmarkReconciler) ensureBenchmarkJob(ctx context.Context, benc
 	return r.Create(ctx, job)
 }
 
-func (r *FabricBenchmarkReconciler) buildBenchmarkJob(benchmark *gryviav1.FabricBenchmark, jobName string) *batchv1.Job {
+func (r *GryviaBenchmarkReconciler) buildBenchmarkJob(benchmark *gryviav1.GryviaBenchmark, jobName string) *batchv1.Job {
 	var backoffLimit int32
 	gpuCount := benchmark.Spec.Target.GpuCount
 	if gpuCount <= 0 {
@@ -267,7 +267,7 @@ func (r *FabricBenchmarkReconciler) buildBenchmarkJob(benchmark *gryviav1.Fabric
 	return job
 }
 
-func (r *FabricBenchmarkReconciler) buildBenchmarkContainer(benchmark *gryviav1.FabricBenchmark, gpuCount int32) corev1.Container {
+func (r *GryviaBenchmarkReconciler) buildBenchmarkContainer(benchmark *gryviav1.GryviaBenchmark, gpuCount int32) corev1.Container {
 	var image string
 	var command []string
 	var args []string
@@ -352,7 +352,7 @@ func (r *FabricBenchmarkReconciler) buildBenchmarkContainer(benchmark *gryviav1.
 	return container
 }
 
-func (r *FabricBenchmarkReconciler) collectResults(benchmark *gryviav1.FabricBenchmark) map[string]gryviav1.BenchmarkResultValue {
+func (r *GryviaBenchmarkReconciler) collectResults(benchmark *gryviav1.GryviaBenchmark) map[string]gryviav1.BenchmarkResultValue {
 	results := make(map[string]gryviav1.BenchmarkResultValue)
 
 	// In a real implementation, these would be parsed from job logs.
@@ -391,14 +391,14 @@ func (r *FabricBenchmarkReconciler) collectResults(benchmark *gryviav1.FabricBen
 	return results
 }
 
-func (r *FabricBenchmarkReconciler) collectHardwareInfo(benchmark *gryviav1.FabricBenchmark) *gryviav1.BenchmarkHardwareInfo {
+func (r *GryviaBenchmarkReconciler) collectHardwareInfo(benchmark *gryviav1.GryviaBenchmark) *gryviav1.BenchmarkHardwareInfo {
 	return &gryviav1.BenchmarkHardwareInfo{
 		GpuModel: benchmark.Spec.Target.GpuType,
 		GpuCount: benchmark.Spec.Target.GpuCount,
 	}
 }
 
-func (r *FabricBenchmarkReconciler) compareBaseline(benchmark *gryviav1.FabricBenchmark) *gryviav1.BenchmarkComparison {
+func (r *GryviaBenchmarkReconciler) compareBaseline(benchmark *gryviav1.GryviaBenchmark) *gryviav1.BenchmarkComparison {
 	comparison := &gryviav1.BenchmarkComparison{}
 
 	if benchmark.Spec.Baseline == nil || benchmark.Status.Results == nil {
@@ -435,7 +435,7 @@ func (r *FabricBenchmarkReconciler) compareBaseline(benchmark *gryviav1.FabricBe
 	return comparison
 }
 
-func (r *FabricBenchmarkReconciler) getBenchmarkJobName(benchmark *gryviav1.FabricBenchmark) string {
+func (r *GryviaBenchmarkReconciler) getBenchmarkJobName(benchmark *gryviav1.GryviaBenchmark) string {
 	return fmt.Sprintf("%s-bench", benchmark.Name)
 }
 
@@ -452,9 +452,9 @@ func formatDuration(d time.Duration) string {
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *FabricBenchmarkReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaBenchmarkReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricBenchmark{}).
+		For(&gryviav1.GryviaBenchmark{}).
 		Owns(&batchv1.Job{}).
 		Complete(r)
 }

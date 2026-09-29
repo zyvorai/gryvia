@@ -20,34 +20,34 @@ const (
 	defaultSharingReconcileInterval = 30 * time.Second
 )
 
-// FabricGPUSharingPolicyReconciler reconciles a FabricGPUSharingPolicy object
-type FabricGPUSharingPolicyReconciler struct {
+// GryviaGPUSharingPolicyReconciler reconciles a GryviaGPUSharingPolicy object
+type GryviaGPUSharingPolicyReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Log    logr.Logger
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricgpusharingpolicies,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricgpusharingpolicies/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricgpusharingpolicies/finalizers,verbs=update
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricgpunodes,verbs=get;list;watch;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviagpusharingpolicies,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviagpusharingpolicies/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviagpusharingpolicies/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviagpunodes,verbs=get;list;watch;update;patch
 //+kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch;update;patch
 //+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 //+kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 
-func (r *FabricGPUSharingPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := r.Log.WithValues("fabricgpusharingpolicy", req.NamespacedName)
+func (r *GryviaGPUSharingPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := r.Log.WithValues("gryviagpusharingpolicy", req.NamespacedName)
 
-	// Fetch the FabricGPUSharingPolicy instance
-	policy := &gryviav1.FabricGPUSharingPolicy{}
+	// Fetch the GryviaGPUSharingPolicy instance
+	policy := &gryviav1.GryviaGPUSharingPolicy{}
 	err := r.Get(ctx, req.NamespacedName, policy)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			log.Info("FabricGPUSharingPolicy resource not found. Ignoring since object must be deleted")
+			log.Info("GryviaGPUSharingPolicy resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		log.Error(err, "Failed to get FabricGPUSharingPolicy")
+		log.Error(err, "Failed to get GryviaGPUSharingPolicy")
 		return ctrl.Result{}, err
 	}
 
@@ -56,7 +56,7 @@ func (r *FabricGPUSharingPolicyReconciler) Reconcile(ctx context.Context, req ct
 		return ctrl.Result{}, nil
 	}
 
-	log.Info("Reconciling FabricGPUSharingPolicy", "strategy", policy.Spec.Strategy)
+	log.Info("Reconciling GryviaGPUSharingPolicy", "strategy", policy.Spec.Strategy)
 
 	// Reconcile the GPU sharing policy
 	result, err := r.reconcileGPUSharing(ctx, policy)
@@ -68,7 +68,7 @@ func (r *FabricGPUSharingPolicyReconciler) Reconcile(ctx context.Context, req ct
 	return result, nil
 }
 
-func (r *FabricGPUSharingPolicyReconciler) reconcileGPUSharing(ctx context.Context, policy *gryviav1.FabricGPUSharingPolicy) (ctrl.Result, error) {
+func (r *GryviaGPUSharingPolicyReconciler) reconcileGPUSharing(ctx context.Context, policy *gryviav1.GryviaGPUSharingPolicy) (ctrl.Result, error) {
 	log := r.Log.WithValues("policy", policy.Name)
 
 	// Find matching GPU nodes
@@ -133,13 +133,13 @@ func (r *FabricGPUSharingPolicyReconciler) reconcileGPUSharing(ctx context.Conte
 	return ctrl.Result{RequeueAfter: defaultSharingReconcileInterval}, nil
 }
 
-func (r *FabricGPUSharingPolicyReconciler) findMatchingNodes(ctx context.Context, policy *gryviav1.FabricGPUSharingPolicy) ([]gryviav1.FabricGpuNode, error) {
-	gpuNodeList := &gryviav1.FabricGpuNodeList{}
+func (r *GryviaGPUSharingPolicyReconciler) findMatchingNodes(ctx context.Context, policy *gryviav1.GryviaGPUSharingPolicy) ([]gryviav1.GryviaGpuNode, error) {
+	gpuNodeList := &gryviav1.GryviaGpuNodeList{}
 	if err := r.List(ctx, gpuNodeList); err != nil {
-		return nil, fmt.Errorf("failed to list FabricGpuNodes: %w", err)
+		return nil, fmt.Errorf("failed to list GryviaGpuNodes: %w", err)
 	}
 
-	var matching []gryviav1.FabricGpuNode
+	var matching []gryviav1.GryviaGpuNode
 	for _, node := range gpuNodeList.Items {
 		if r.nodeMatchesSelector(node, policy.Spec.NodeSelector) {
 			matching = append(matching, node)
@@ -149,7 +149,7 @@ func (r *FabricGPUSharingPolicyReconciler) findMatchingNodes(ctx context.Context
 	return matching, nil
 }
 
-func (r *FabricGPUSharingPolicyReconciler) nodeMatchesSelector(node gryviav1.FabricGpuNode, selector map[string]string) bool {
+func (r *GryviaGPUSharingPolicyReconciler) nodeMatchesSelector(node gryviav1.GryviaGpuNode, selector map[string]string) bool {
 	if len(selector) == 0 {
 		return true
 	}
@@ -175,7 +175,7 @@ func (r *FabricGPUSharingPolicyReconciler) nodeMatchesSelector(node gryviav1.Fab
 	return true
 }
 
-func (r *FabricGPUSharingPolicyReconciler) calculateEffectiveGPUs(policy *gryviav1.FabricGPUSharingPolicy, totalPhysical int) int {
+func (r *GryviaGPUSharingPolicyReconciler) calculateEffectiveGPUs(policy *gryviav1.GryviaGPUSharingPolicy, totalPhysical int) int {
 	switch policy.Spec.Strategy {
 	case "time-slicing":
 		if policy.Spec.TimeSlicing != nil && policy.Spec.TimeSlicing.MaxPodsPerGPU > 0 {
@@ -216,7 +216,7 @@ func (r *FabricGPUSharingPolicyReconciler) calculateEffectiveGPUs(policy *gryvia
 	}
 }
 
-func (r *FabricGPUSharingPolicyReconciler) configureTimeSlicing(ctx context.Context, policy *gryviav1.FabricGPUSharingPolicy, nodes []gryviav1.FabricGpuNode) error {
+func (r *GryviaGPUSharingPolicyReconciler) configureTimeSlicing(ctx context.Context, policy *gryviav1.GryviaGPUSharingPolicy, nodes []gryviav1.GryviaGpuNode) error {
 	log := r.Log.WithValues("policy", policy.Name, "strategy", "time-slicing")
 
 	if policy.Spec.TimeSlicing == nil || !policy.Spec.TimeSlicing.Enabled {
@@ -250,7 +250,7 @@ func (r *FabricGPUSharingPolicyReconciler) configureTimeSlicing(ctx context.Cont
 	return nil
 }
 
-func (r *FabricGPUSharingPolicyReconciler) configureMIG(ctx context.Context, policy *gryviav1.FabricGPUSharingPolicy, nodes []gryviav1.FabricGpuNode) error {
+func (r *GryviaGPUSharingPolicyReconciler) configureMIG(ctx context.Context, policy *gryviav1.GryviaGPUSharingPolicy, nodes []gryviav1.GryviaGpuNode) error {
 	log := r.Log.WithValues("policy", policy.Name, "strategy", "mig")
 
 	if policy.Spec.MIG == nil || !policy.Spec.MIG.Enabled {
@@ -289,7 +289,7 @@ func (r *FabricGPUSharingPolicyReconciler) configureMIG(ctx context.Context, pol
 	return nil
 }
 
-func (r *FabricGPUSharingPolicyReconciler) configureFractional(ctx context.Context, policy *gryviav1.FabricGPUSharingPolicy, nodes []gryviav1.FabricGpuNode) error {
+func (r *GryviaGPUSharingPolicyReconciler) configureFractional(ctx context.Context, policy *gryviav1.GryviaGPUSharingPolicy, nodes []gryviav1.GryviaGpuNode) error {
 	log := r.Log.WithValues("policy", policy.Name, "strategy", "fractional")
 
 	if policy.Spec.FractionalGPU == nil || !policy.Spec.FractionalGPU.Enabled {
@@ -327,7 +327,7 @@ func (r *FabricGPUSharingPolicyReconciler) configureFractional(ctx context.Conte
 	return nil
 }
 
-func (r *FabricGPUSharingPolicyReconciler) trackPerPodUtilization(ctx context.Context, policy *gryviav1.FabricGPUSharingPolicy, nodes []gryviav1.FabricGpuNode) {
+func (r *GryviaGPUSharingPolicyReconciler) trackPerPodUtilization(ctx context.Context, policy *gryviav1.GryviaGPUSharingPolicy, nodes []gryviav1.GryviaGpuNode) {
 	var podUtils []gryviav1.GPUPodUtilization
 
 	for _, node := range nodes {
@@ -385,7 +385,7 @@ func (r *FabricGPUSharingPolicyReconciler) trackPerPodUtilization(ctx context.Co
 	policy.Status.PerPodUtilization = podUtils
 }
 
-func (r *FabricGPUSharingPolicyReconciler) calculateAllocations(ctx context.Context, policy *gryviav1.FabricGPUSharingPolicy, nodes []gryviav1.FabricGpuNode) *gryviav1.GPUSharingAllocations {
+func (r *GryviaGPUSharingPolicyReconciler) calculateAllocations(ctx context.Context, policy *gryviav1.GryviaGPUSharingPolicy, nodes []gryviav1.GryviaGpuNode) *gryviav1.GPUSharingAllocations {
 	allocs := &gryviav1.GPUSharingAllocations{
 		Physical: policy.Status.TotalGPUs,
 	}
@@ -409,7 +409,7 @@ func (r *FabricGPUSharingPolicyReconciler) calculateAllocations(ctx context.Cont
 	return allocs
 }
 
-func (r *FabricGPUSharingPolicyReconciler) enforceFairSharing(ctx context.Context, policy *gryviav1.FabricGPUSharingPolicy, nodes []gryviav1.FabricGpuNode) {
+func (r *GryviaGPUSharingPolicyReconciler) enforceFairSharing(ctx context.Context, policy *gryviav1.GryviaGPUSharingPolicy, nodes []gryviav1.GryviaGpuNode) {
 	log := r.Log.WithValues("policy", policy.Name)
 
 	// Check tenant quotas
@@ -447,7 +447,7 @@ func (r *FabricGPUSharingPolicyReconciler) enforceFairSharing(ctx context.Contex
 	}
 }
 
-func (r *FabricGPUSharingPolicyReconciler) updateSharingCondition(policy *gryviav1.FabricGPUSharingPolicy, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *GryviaGPUSharingPolicyReconciler) updateSharingCondition(policy *gryviav1.GryviaGPUSharingPolicy, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -471,8 +471,8 @@ func (r *FabricGPUSharingPolicyReconciler) updateSharingCondition(policy *gryvia
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *FabricGPUSharingPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaGPUSharingPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricGPUSharingPolicy{}).
+		For(&gryviav1.GryviaGPUSharingPolicy{}).
 		Complete(r)
 }

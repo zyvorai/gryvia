@@ -4,14 +4,14 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabricmodelregistries.gryvia.io
+  name: gryviamodelregistries.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricModelRegistry
-    listKind: FabricModelRegistryList
-    plural: fabricmodelregistries
-    singular: fabricmodelregistry
+    kind: GryviaModelRegistry
+    listKind: GryviaModelRegistryList
+    plural: gryviamodelregistries
+    singular: gryviamodelregistry
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
@@ -33,7 +33,7 @@ spec:
     name: v1
     schema:
       openAPIV3Schema:
-        description: FabricModelRegistry is the Schema for the fabricmodelregistries
+        description: GryviaModelRegistry is the Schema for the gryviamodelregistries
           API
         properties:
           apiVersion:
@@ -54,7 +54,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricModelRegistrySpec defines the desired state of FabricModelRegistry
+            description: GryviaModelRegistrySpec defines the desired state of GryviaModelRegistry
             properties:
               artifacts:
                 description: Artifacts defines where the model files are stored
@@ -120,15 +120,15 @@ spec:
                 description: Source identifies where this model was produced
                 properties:
                   jobRef:
-                    description: JobRef is the name of the FabricAIJob that produced
+                    description: JobRef is the name of the GryviaAIJob that produced
                       this model
                     type: string
                   tunerRef:
-                    description: TunerRef is the name of the FabricAutoTuner that
+                    description: TunerRef is the name of the GryviaAutoTuner that
                       produced this model
                     type: string
                   workflowRef:
-                    description: WorkflowRef is the name of the FabricWorkflow that
+                    description: WorkflowRef is the name of the GryviaWorkflow that
                       produced this model
                     type: string
                 type: object
@@ -145,7 +145,7 @@ spec:
             - version
             type: object
           status:
-            description: FabricModelRegistryStatus defines the observed state of FabricModelRegistry
+            description: GryviaModelRegistryStatus defines the observed state of GryviaModelRegistry
             properties:
               conditions:
                 description: Conditions represent the latest available observations
@@ -213,7 +213,7 @@ spec:
                   (Healthy, Unhealthy, Unknown)
                 type: string
               inferenceServiceName:
-                description: InferenceServiceName is the name of the FabricInferenceService
+                description: InferenceServiceName is the name of the GryviaInferenceService
                   created for this model
                 type: string
               message:

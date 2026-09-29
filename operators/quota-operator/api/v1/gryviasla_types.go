@@ -4,8 +4,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// FabricSLASpec defines the desired state of FabricSLA
-type FabricSLASpec struct {
+// GryviaSLASpec defines the desired state of GryviaSLA
+type GryviaSLASpec struct {
 	// Tier is the SLA tier (platinum, gold, silver, bronze, best-effort)
 	Tier string `json:"tier"`
 
@@ -163,8 +163,8 @@ type SLAReports struct {
 	Recipients []string `json:"recipients,omitempty"`
 }
 
-// FabricSLAStatus defines the observed state of FabricSLA
-type FabricSLAStatus struct {
+// GryviaSLAStatus defines the observed state of GryviaSLA
+type GryviaSLAStatus struct {
 	// Compliance tracks SLA compliance
 	Compliance *SLAComplianceStatus `json:"compliance,omitempty"`
 
@@ -230,24 +230,24 @@ type SLABreach struct {
 //+kubebuilder:subresource:status
 //+kubebuilder:resource:scope=Cluster
 
-// FabricSLA is the Schema for the fabricslas API
-type FabricSLA struct {
+// GryviaSLA is the Schema for the gryviaslas API
+type GryviaSLA struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricSLASpec   `json:"spec,omitempty"`
-	Status FabricSLAStatus `json:"status,omitempty"`
+	Spec   GryviaSLASpec   `json:"spec,omitempty"`
+	Status GryviaSLAStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricSLAList contains a list of FabricSLA
-type FabricSLAList struct {
+// GryviaSLAList contains a list of GryviaSLA
+type GryviaSLAList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricSLA `json:"items"`
+	Items           []GryviaSLA `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&FabricSLA{}, &FabricSLAList{})
+	SchemeBuilder.Register(&GryviaSLA{}, &GryviaSLAList{})
 }

@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabricbudgets.gryvia.io
+  name: gryviabudgets.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricBudget
-    listKind: FabricBudgetList
-    plural: fabricbudgets
-    singular: fabricbudget
+    kind: GryviaBudget
+    listKind: GryviaBudgetList
+    plural: gryviabudgets
+    singular: gryviabudget
   scope: Cluster
   versions:
   - name: v1
     schema:
       openAPIV3Schema:
-        description: FabricBudget is the Schema for the fabricbudgets API
+        description: GryviaBudget is the Schema for the gryviabudgets API
         properties:
           apiVersion:
             description: |-
@@ -37,7 +37,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricBudgetSpec defines the desired state of FabricBudget
+            description: GryviaBudgetSpec defines the desired state of GryviaBudget
             properties:
               alerts:
                 description: Alerts defines alert thresholds
@@ -154,7 +154,7 @@ spec:
             - scope
             type: object
           status:
-            description: FabricBudgetStatus defines the observed state of FabricBudget
+            description: GryviaBudgetStatus defines the observed state of GryviaBudget
             properties:
               alerts:
                 description: Alerts is the history of triggered alerts

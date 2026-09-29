@@ -4,14 +4,14 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabricretrypolicies.gryvia.io
+  name: gryviaretrypolicies.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricRetryPolicy
-    listKind: FabricRetryPolicyList
-    plural: fabricretrypolicies
-    singular: fabricretrypolicy
+    kind: GryviaRetryPolicy
+    listKind: GryviaRetryPolicyList
+    plural: gryviaretrypolicies
+    singular: gryviaretrypolicy
   scope: Cluster
   versions:
   - additionalPrinterColumns:
@@ -27,7 +27,7 @@ spec:
     name: v1
     schema:
       openAPIV3Schema:
-        description: FabricRetryPolicy is the Schema for the fabricretrypolicies API
+        description: GryviaRetryPolicy is the Schema for the gryviaretrypolicies API
         properties:
           apiVersion:
             description: |-
@@ -47,7 +47,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricRetryPolicySpec defines the desired state of FabricRetryPolicy
+            description: GryviaRetryPolicySpec defines the desired state of GryviaRetryPolicy
             properties:
               backoff:
                 description: Backoff defines the backoff strategy
@@ -167,7 +167,7 @@ spec:
                 type: object
             type: object
           status:
-            description: FabricRetryPolicyStatus defines the observed state of FabricRetryPolicy
+            description: GryviaRetryPolicyStatus defines the observed state of GryviaRetryPolicy
             properties:
               attempts:
                 description: Attempts is the total number of retry attempts

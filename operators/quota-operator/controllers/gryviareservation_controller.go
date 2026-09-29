@@ -29,31 +29,31 @@ const (
 	reservationStateCancelled = "cancelled"
 )
 
-// FabricReservationReconciler reconciles a FabricReservation object
-type FabricReservationReconciler struct {
+// GryviaReservationReconciler reconciles a GryviaReservation object
+type GryviaReservationReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricreservations,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricreservations/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricreservations/finalizers,verbs=update
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviareservations,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviareservations/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviareservations/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch;update;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop
-func (r *FabricReservationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *GryviaReservationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// Fetch the FabricReservation instance
-	reservation := &gryviav1.FabricReservation{}
+	// Fetch the GryviaReservation instance
+	reservation := &gryviav1.GryviaReservation{}
 	err := r.Get(ctx, req.NamespacedName, reservation)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("FabricReservation resource not found. Ignoring since object must be deleted")
+			logger.Info("GryviaReservation resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		logger.Error(err, "Failed to get FabricReservation")
+		logger.Error(err, "Failed to get GryviaReservation")
 		return ctrl.Result{}, err
 	}
 
@@ -97,7 +97,7 @@ func (r *FabricReservationReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	return result, nil
 }
 
-func (r *FabricReservationReconciler) reconcileReservation(ctx context.Context, reservation *gryviav1.FabricReservation) (ctrl.Result, error) {
+func (r *GryviaReservationReconciler) reconcileReservation(ctx context.Context, reservation *gryviav1.GryviaReservation) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	now := time.Now()
 
@@ -180,7 +180,7 @@ func (r *FabricReservationReconciler) reconcileReservation(ctx context.Context, 
 	return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 }
 
-func (r *FabricReservationReconciler) allocateNodes(ctx context.Context, reservation *gryviav1.FabricReservation) error {
+func (r *GryviaReservationReconciler) allocateNodes(ctx context.Context, reservation *gryviav1.GryviaReservation) error {
 	// If specific nodes are requested
 	if len(reservation.Spec.Resources.Nodes) > 0 {
 		reservation.Status.AllocatedNodes = reservation.Spec.Resources.Nodes
@@ -247,7 +247,7 @@ func (r *FabricReservationReconciler) allocateNodes(ctx context.Context, reserva
 	return nil
 }
 
-func (r *FabricReservationReconciler) labelReservedNodes(ctx context.Context, reservation *gryviav1.FabricReservation) error {
+func (r *GryviaReservationReconciler) labelReservedNodes(ctx context.Context, reservation *gryviav1.GryviaReservation) error {
 	for _, nodeName := range reservation.Status.AllocatedNodes {
 		if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 			node := &corev1.Node{}
@@ -294,7 +294,7 @@ func (r *FabricReservationReconciler) labelReservedNodes(ctx context.Context, re
 	return nil
 }
 
-func (r *FabricReservationReconciler) removeReservationLabels(ctx context.Context, reservation *gryviav1.FabricReservation) error {
+func (r *GryviaReservationReconciler) removeReservationLabels(ctx context.Context, reservation *gryviav1.GryviaReservation) error {
 	for _, nodeName := range reservation.Status.AllocatedNodes {
 		if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 			node := &corev1.Node{}
@@ -330,7 +330,7 @@ func (r *FabricReservationReconciler) removeReservationLabels(ctx context.Contex
 	return nil
 }
 
-func (r *FabricReservationReconciler) updateUtilization(ctx context.Context, reservation *gryviav1.FabricReservation) {
+func (r *GryviaReservationReconciler) updateUtilization(ctx context.Context, reservation *gryviav1.GryviaReservation) {
 	if reservation.Status.UtilizationMetrics == nil {
 		reservation.Status.UtilizationMetrics = &gryviav1.ReservationUtilization{}
 	}
@@ -342,7 +342,7 @@ func (r *FabricReservationReconciler) updateUtilization(ctx context.Context, res
 	}
 
 	// Count running jobs using this reservation
-	jobList := &gryviav1.FabricAIJobList{}
+	jobList := &gryviav1.GryviaAIJobList{}
 	if err := r.List(ctx, jobList); err == nil {
 		var runningJobs int32
 		for _, job := range jobList.Items {
@@ -360,8 +360,8 @@ func (r *FabricReservationReconciler) updateUtilization(ctx context.Context, res
 	}
 }
 
-func (r *FabricReservationReconciler) hasRunningJobs(ctx context.Context, reservation *gryviav1.FabricReservation) (bool, error) {
-	jobList := &gryviav1.FabricAIJobList{}
+func (r *GryviaReservationReconciler) hasRunningJobs(ctx context.Context, reservation *gryviav1.GryviaReservation) (bool, error) {
+	jobList := &gryviav1.GryviaAIJobList{}
 	if err := r.List(ctx, jobList); err != nil {
 		return false, err
 	}
@@ -383,7 +383,7 @@ func (r *FabricReservationReconciler) hasRunningJobs(ctx context.Context, reserv
 	return false, nil
 }
 
-func (r *FabricReservationReconciler) expireReservation(ctx context.Context, reservation *gryviav1.FabricReservation) (ctrl.Result, error) {
+func (r *GryviaReservationReconciler) expireReservation(ctx context.Context, reservation *gryviav1.GryviaReservation) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Expiring reservation", "name", reservation.Name)
 
@@ -405,11 +405,11 @@ func (r *FabricReservationReconciler) expireReservation(ctx context.Context, res
 	return ctrl.Result{}, nil
 }
 
-func (r *FabricReservationReconciler) handleDeletion(ctx context.Context, reservation *gryviav1.FabricReservation) (ctrl.Result, error) {
+func (r *GryviaReservationReconciler) handleDeletion(ctx context.Context, reservation *gryviav1.GryviaReservation) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	if controllerutil.ContainsFinalizer(reservation, reservationFinalizer) {
-		logger.Info("Running cleanup for FabricReservation", "name", reservation.Name)
+		logger.Info("Running cleanup for GryviaReservation", "name", reservation.Name)
 
 		// Remove reservation labels from nodes
 		if err := r.removeReservationLabels(ctx, reservation); err != nil {
@@ -437,8 +437,8 @@ func formatReservationDuration(d time.Duration) string {
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *FabricReservationReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaReservationReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricReservation{}).
+		For(&gryviav1.GryviaReservation{}).
 		Complete(r)
 }

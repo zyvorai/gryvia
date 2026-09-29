@@ -138,7 +138,7 @@ class CapacityPlanner:
             jobs = self.api.list_cluster_custom_object(
                 group="gryvia.io",
                 version="v1",
-                plural="fabricaijobs"
+                plural="gryviaaijobs"
             )
 
             usage = {

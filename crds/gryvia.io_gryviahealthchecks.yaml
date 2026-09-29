@@ -4,14 +4,14 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabrichealthchecks.gryvia.io
+  name: gryviahealthchecks.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricHealthCheck
-    listKind: FabricHealthCheckList
-    plural: fabrichealthchecks
-    singular: fabrichealthcheck
+    kind: GryviaHealthCheck
+    listKind: GryviaHealthCheckList
+    plural: gryviahealthchecks
+    singular: gryviahealthcheck
   scope: Cluster
   versions:
   - additionalPrinterColumns:
@@ -30,7 +30,7 @@ spec:
     name: v1
     schema:
       openAPIV3Schema:
-        description: FabricHealthCheck is the Schema for the fabrichealthchecks API
+        description: GryviaHealthCheck is the Schema for the gryviahealthchecks API
         properties:
           apiVersion:
             description: |-
@@ -50,7 +50,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricHealthCheckSpec defines the desired state of FabricHealthCheck
+            description: GryviaHealthCheckSpec defines the desired state of GryviaHealthCheck
             properties:
               checks:
                 description: Checks defines the health checks to run
@@ -142,7 +142,7 @@ spec:
             - target
             type: object
           status:
-            description: FabricHealthCheckStatus defines the observed state of FabricHealthCheck
+            description: GryviaHealthCheckStatus defines the observed state of GryviaHealthCheck
             properties:
               affectedResources:
                 description: AffectedResources lists resources affected by health

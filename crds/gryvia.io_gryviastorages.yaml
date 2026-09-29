@@ -4,14 +4,14 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabricstorages.gryvia.io
+  name: gryviastorages.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricStorage
-    listKind: FabricStorageList
-    plural: fabricstorages
-    singular: fabricstorage
+    kind: GryviaStorage
+    listKind: GryviaStorageList
+    plural: gryviastorages
+    singular: gryviastorage
   scope: Cluster
   versions:
   - additionalPrinterColumns:

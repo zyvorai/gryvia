@@ -185,7 +185,7 @@ POST /api/v1/jobs/{namespace}
 ```json
 {
   "apiVersion": "gryvia.io/v1",
-  "kind": "FabricAIJob",
+  "kind": "GryviaAIJob",
   "metadata": {
     "name": "new-training-job",
     "labels": {
@@ -435,7 +435,7 @@ POST /api/v1/quotas
 ```json
 {
   "apiVersion": "gryvia.io/v1",
-  "kind": "FabricQuota",
+  "kind": "GryviaQuota",
   "metadata": {
     "name": "new-team"
   },

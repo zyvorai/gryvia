@@ -17,7 +17,7 @@ pub async fn execute(
         "day" | "week" | "month" => {}
         _ => anyhow::bail!("Invalid period: '{}'. Valid periods: day, week, month", period),
     }
-    let api: Api<FabricQuota> = Api::all(client.kube_client.clone());
+    let api: Api<GryviaQuota> = Api::all(client.kube_client.clone());
 
     let quotas = api.list(&ListParams::default()).await
         .context("Failed to list quotas")?;
@@ -98,7 +98,7 @@ pub async fn execute(
     Ok(())
 }
 
-async fn show_detailed_breakdown(quotas: &[&FabricQuota]) -> Result<()> {
+async fn show_detailed_breakdown(quotas: &[&GryviaQuota]) -> Result<()> {
     println!("{}", "━━━ Detailed Breakdown ━━━".bold().cyan());
     println!();
 

@@ -15,34 +15,34 @@ import (
 	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 )
 
-// FabricDRTestReconciler reconciles a FabricDRTest object
-type FabricDRTestReconciler struct {
+// GryviaDRTestReconciler reconciles a GryviaDRTest object
+type GryviaDRTestReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Log    logr.Logger
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricdrtests,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricdrtests/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricdrtests/finalizers,verbs=update
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch;create;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricgpunodes,verbs=get;list;watch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviadrtests,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviadrtests/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviadrtests/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs,verbs=get;list;watch;create;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviagpunodes,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
-func (r *FabricDRTestReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := r.Log.WithValues("fabricdrtest", req.NamespacedName)
+func (r *GryviaDRTestReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := r.Log.WithValues("gryviadrtest", req.NamespacedName)
 
-	// Fetch the FabricDRTest instance
-	drtest := &gryviav1.FabricDRTest{}
+	// Fetch the GryviaDRTest instance
+	drtest := &gryviav1.GryviaDRTest{}
 	err := r.Get(ctx, req.NamespacedName, drtest)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			log.Info("FabricDRTest resource not found. Ignoring since object must be deleted")
+			log.Info("GryviaDRTest resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		log.Error(err, "Failed to get FabricDRTest")
+		log.Error(err, "Failed to get GryviaDRTest")
 		return ctrl.Result{}, err
 	}
 
@@ -59,13 +59,13 @@ func (r *FabricDRTestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			drtest.Status.State = "approved"
 		}
 		if err := r.Status().Update(ctx, drtest); err != nil {
-			log.Error(err, "Failed to initialize FabricDRTest status")
+			log.Error(err, "Failed to initialize GryviaDRTest status")
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{Requeue: true}, nil
 	}
 
-	log.Info("Reconciling FabricDRTest", "type", drtest.Spec.Type, "state", drtest.Status.State)
+	log.Info("Reconciling GryviaDRTest", "type", drtest.Spec.Type, "state", drtest.Status.State)
 
 	// Reconcile the DR test
 	result, err := r.reconcileDRTest(ctx, drtest)
@@ -77,7 +77,7 @@ func (r *FabricDRTestReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	return result, nil
 }
 
-func (r *FabricDRTestReconciler) reconcileDRTest(ctx context.Context, drtest *gryviav1.FabricDRTest) (ctrl.Result, error) {
+func (r *GryviaDRTestReconciler) reconcileDRTest(ctx context.Context, drtest *gryviav1.GryviaDRTest) (ctrl.Result, error) {
 	log := r.Log.WithValues("drtest", drtest.Name)
 
 	switch drtest.Status.State {
@@ -118,7 +118,7 @@ func (r *FabricDRTestReconciler) reconcileDRTest(ctx context.Context, drtest *gr
 	return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 }
 
-func (r *FabricDRTestReconciler) executeDRTest(ctx context.Context, drtest *gryviav1.FabricDRTest) (ctrl.Result, error) {
+func (r *GryviaDRTestReconciler) executeDRTest(ctx context.Context, drtest *gryviav1.GryviaDRTest) (ctrl.Result, error) {
 	log := r.Log.WithValues("drtest", drtest.Name)
 
 	var results *gryviav1.DRTestResults
@@ -180,7 +180,7 @@ func (r *FabricDRTestReconciler) executeDRTest(ctx context.Context, drtest *gryv
 	return ctrl.Result{}, nil
 }
 
-func (r *FabricDRTestReconciler) executeBackupRestoreTest(ctx context.Context, drtest *gryviav1.FabricDRTest) (*gryviav1.DRTestResults, error) {
+func (r *GryviaDRTestReconciler) executeBackupRestoreTest(ctx context.Context, drtest *gryviav1.GryviaDRTest) (*gryviav1.DRTestResults, error) {
 	log := r.Log.WithValues("drtest", drtest.Name, "type", "backup-restore")
 	results := &gryviav1.DRTestResults{Passed: true}
 
@@ -198,7 +198,7 @@ func (r *FabricDRTestReconciler) executeBackupRestoreTest(ctx context.Context, d
 	results.Details = append(results.Details, stepResult)
 
 	// Step 2: Verify jobs can be listed
-	jobList := &gryviav1.FabricAIJobList{}
+	jobList := &gryviav1.GryviaAIJobList{}
 	if err := r.List(ctx, jobList); err != nil {
 		return nil, fmt.Errorf("failed to list jobs for backup verification: %w", err)
 	}
@@ -229,7 +229,7 @@ func (r *FabricDRTestReconciler) executeBackupRestoreTest(ctx context.Context, d
 	return results, nil
 }
 
-func (r *FabricDRTestReconciler) executeFailoverTest(ctx context.Context, drtest *gryviav1.FabricDRTest) (*gryviav1.DRTestResults, error) {
+func (r *GryviaDRTestReconciler) executeFailoverTest(ctx context.Context, drtest *gryviav1.GryviaDRTest) (*gryviav1.DRTestResults, error) {
 	log := r.Log.WithValues("drtest", drtest.Name, "type", "failover")
 	results := &gryviav1.DRTestResults{Passed: true}
 
@@ -250,7 +250,7 @@ func (r *FabricDRTestReconciler) executeFailoverTest(ctx context.Context, drtest
 	})
 
 	// Step 3: Count recoverable jobs
-	jobList := &gryviav1.FabricAIJobList{}
+	jobList := &gryviav1.GryviaAIJobList{}
 	if err := r.List(ctx, jobList); err != nil {
 		return nil, fmt.Errorf("failed to list jobs: %w", err)
 	}
@@ -281,7 +281,7 @@ func (r *FabricDRTestReconciler) executeFailoverTest(ctx context.Context, drtest
 	return results, nil
 }
 
-func (r *FabricDRTestReconciler) executeDataIntegrityTest(ctx context.Context, drtest *gryviav1.FabricDRTest) (*gryviav1.DRTestResults, error) {
+func (r *GryviaDRTestReconciler) executeDataIntegrityTest(ctx context.Context, drtest *gryviav1.GryviaDRTest) (*gryviav1.DRTestResults, error) {
 	results := &gryviav1.DRTestResults{Passed: true}
 
 	results.Details = append(results.Details, gryviav1.DRTestStepResult{
@@ -298,7 +298,7 @@ func (r *FabricDRTestReconciler) executeDataIntegrityTest(ctx context.Context, d
 	return results, nil
 }
 
-func (r *FabricDRTestReconciler) executeRpoRtoTest(ctx context.Context, drtest *gryviav1.FabricDRTest) (*gryviav1.DRTestResults, error) {
+func (r *GryviaDRTestReconciler) executeRpoRtoTest(ctx context.Context, drtest *gryviav1.GryviaDRTest) (*gryviav1.DRTestResults, error) {
 	results := &gryviav1.DRTestResults{Passed: true}
 
 	// Execute each scenario
@@ -324,7 +324,7 @@ func (r *FabricDRTestReconciler) executeRpoRtoTest(ctx context.Context, drtest *
 	return results, nil
 }
 
-func (r *FabricDRTestReconciler) executeFullDrillTest(ctx context.Context, drtest *gryviav1.FabricDRTest) (*gryviav1.DRTestResults, error) {
+func (r *GryviaDRTestReconciler) executeFullDrillTest(ctx context.Context, drtest *gryviav1.GryviaDRTest) (*gryviav1.DRTestResults, error) {
 	results := &gryviav1.DRTestResults{Passed: true}
 
 	if drtest.Spec.FullDrill != nil {
@@ -351,7 +351,7 @@ func (r *FabricDRTestReconciler) executeFullDrillTest(ctx context.Context, drtes
 	return results, nil
 }
 
-func (r *FabricDRTestReconciler) executeChaosTest(ctx context.Context, drtest *gryviav1.FabricDRTest) (*gryviav1.DRTestResults, error) {
+func (r *GryviaDRTestReconciler) executeChaosTest(ctx context.Context, drtest *gryviav1.GryviaDRTest) (*gryviav1.DRTestResults, error) {
 	results := &gryviav1.DRTestResults{Passed: true}
 
 	if drtest.Spec.ChaosEngineering != nil {
@@ -369,7 +369,7 @@ func (r *FabricDRTestReconciler) executeChaosTest(ctx context.Context, drtest *g
 	return results, nil
 }
 
-func (r *FabricDRTestReconciler) updateDRCondition(drtest *gryviav1.FabricDRTest, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *GryviaDRTestReconciler) updateDRCondition(drtest *gryviav1.GryviaDRTest, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -393,8 +393,8 @@ func (r *FabricDRTestReconciler) updateDRCondition(drtest *gryviav1.FabricDRTest
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *FabricDRTestReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaDRTestReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricDRTest{}).
+		For(&gryviav1.GryviaDRTest{}).
 		Complete(r)
 }

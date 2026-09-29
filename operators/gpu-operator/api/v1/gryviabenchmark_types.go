@@ -4,8 +4,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// FabricBenchmarkSpec defines the desired state of FabricBenchmark
-type FabricBenchmarkSpec struct {
+// GryviaBenchmarkSpec defines the desired state of GryviaBenchmark
+type GryviaBenchmarkSpec struct {
 	// Type is the benchmark type (mlperf, nccl, gpu-memory, io-throughput, custom)
 	Type string `json:"type"`
 
@@ -205,8 +205,8 @@ type BenchmarkHardwareInfo struct {
 	CudaVersion string `json:"cudaVersion,omitempty"`
 }
 
-// FabricBenchmarkStatus defines the observed state of FabricBenchmark
-type FabricBenchmarkStatus struct {
+// GryviaBenchmarkStatus defines the observed state of GryviaBenchmark
+type GryviaBenchmarkStatus struct {
 	// State is the current state (pending, running, completed, failed, regressed)
 	State string `json:"state,omitempty"`
 
@@ -238,24 +238,24 @@ type FabricBenchmarkStatus struct {
 //+kubebuilder:printcolumn:name="Duration",type=string,JSONPath=`.status.duration`
 //+kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// FabricBenchmark is the Schema for the fabricbenchmarks API
-type FabricBenchmark struct {
+// GryviaBenchmark is the Schema for the gryviabenchmarks API
+type GryviaBenchmark struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricBenchmarkSpec   `json:"spec,omitempty"`
-	Status FabricBenchmarkStatus `json:"status,omitempty"`
+	Spec   GryviaBenchmarkSpec   `json:"spec,omitempty"`
+	Status GryviaBenchmarkStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricBenchmarkList contains a list of FabricBenchmark
-type FabricBenchmarkList struct {
+// GryviaBenchmarkList contains a list of GryviaBenchmark
+type GryviaBenchmarkList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricBenchmark `json:"items"`
+	Items           []GryviaBenchmark `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&FabricBenchmark{}, &FabricBenchmarkList{})
+	SchemeBuilder.Register(&GryviaBenchmark{}, &GryviaBenchmarkList{})
 }

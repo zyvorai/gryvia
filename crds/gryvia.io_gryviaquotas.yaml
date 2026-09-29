@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabricquotas.gryvia.io
+  name: gryviaquotas.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricQuota
-    listKind: FabricQuotaList
-    plural: fabricquotas
-    singular: fabricquota
+    kind: GryviaQuota
+    listKind: GryviaQuotaList
+    plural: gryviaquotas
+    singular: gryviaquota
   scope: Cluster
   versions:
   - name: v1
     schema:
       openAPIV3Schema:
-        description: FabricQuota is the Schema for the fabricquotas API
+        description: GryviaQuota is the Schema for the gryviaquotas API
         properties:
           apiVersion:
             description: |-
@@ -37,7 +37,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricQuotaSpec defines the desired state of FabricQuota
+            description: GryviaQuotaSpec defines the desired state of GryviaQuota
             properties:
               budget:
                 description: Budget defines cost limits (optional)
@@ -97,7 +97,7 @@ spec:
             - team
             type: object
           status:
-            description: FabricQuotaStatus defines the observed state of FabricQuota
+            description: GryviaQuotaStatus defines the observed state of GryviaQuota
             properties:
               budgetStatus:
                 description: BudgetStatus tracks spending

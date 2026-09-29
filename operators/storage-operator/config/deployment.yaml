@@ -67,10 +67,10 @@ metadata:
   name: storage-operator-role
 rules:
 - apiGroups: ["gryvia.io"]
-  resources: ["fabricstorages"]
+  resources: ["gryviastorages"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 - apiGroups: ["gryvia.io"]
-  resources: ["fabricstorages/status"]
+  resources: ["gryviastorages/status"]
   verbs: ["get", "update", "patch"]
 - apiGroups: [""]
   resources: ["nodes", "persistentvolumes", "persistentvolumeclaims"]

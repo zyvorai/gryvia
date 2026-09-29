@@ -33,7 +33,7 @@ docker-push:
 
 .PHONY: deploy
 deploy:
-	kubectl apply -f ../../../crds/fabricnetwork.yaml
+	kubectl apply -f ../../../crds/gryvianetwork.yaml
 	kubectl apply -f config/
 
 .PHONY: undeploy

@@ -28,31 +28,31 @@ const (
 	ConditionBestFound     = "BestTrialFound"
 )
 
-// FabricAutoTunerReconciler reconciles a FabricAutoTuner object
-type FabricAutoTunerReconciler struct {
+// GryviaAutoTunerReconciler reconciles a GryviaAutoTuner object
+type GryviaAutoTunerReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Log    logr.Logger
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricautotuners,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricautotuners/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricautotuners/finalizers,verbs=update
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaautotuners,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaautotuners/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaautotuners/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop
-func (r *FabricAutoTunerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := r.Log.WithValues("fabricautotuner", req.NamespacedName)
+func (r *GryviaAutoTunerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := r.Log.WithValues("gryviaautotuner", req.NamespacedName)
 
-	// Fetch the FabricAutoTuner instance
-	at := &gryviav1.FabricAutoTuner{}
+	// Fetch the GryviaAutoTuner instance
+	at := &gryviav1.GryviaAutoTuner{}
 	err := r.Get(ctx, req.NamespacedName, at)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			log.Info("FabricAutoTuner resource not found. Ignoring since object must be deleted")
+			log.Info("GryviaAutoTuner resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		log.Error(err, "Failed to get FabricAutoTuner")
+		log.Error(err, "Failed to get GryviaAutoTuner")
 		return ctrl.Result{}, err
 	}
 
@@ -67,7 +67,7 @@ func (r *FabricAutoTunerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		now := metav1.Now()
 		at.Status.StartTime = &now
 		if err := r.Status().Update(ctx, at); err != nil {
-			log.Error(err, "Failed to initialize FabricAutoTuner status")
+			log.Error(err, "Failed to initialize GryviaAutoTuner status")
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{Requeue: true}, nil
@@ -88,10 +88,10 @@ func (r *FabricAutoTunerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	return result, nil
 }
 
-func (r *FabricAutoTunerReconciler) reconcileAutoTuner(ctx context.Context, at *gryviav1.FabricAutoTuner) (ctrl.Result, error) {
-	log := r.Log.WithValues("fabricautotuner", at.Name)
+func (r *GryviaAutoTunerReconciler) reconcileAutoTuner(ctx context.Context, at *gryviav1.GryviaAutoTuner) (ctrl.Result, error) {
+	log := r.Log.WithValues("gryviaautotuner", at.Name)
 
-	// Update trial statuses from their corresponding FabricAIJobs
+	// Update trial statuses from their corresponding GryviaAIJobs
 	if err := r.syncTrialStatuses(ctx, at); err != nil {
 		log.Error(err, "Failed to sync trial statuses")
 		return ctrl.Result{RequeueAfter: 15 * time.Second}, err
@@ -204,8 +204,8 @@ func (r *FabricAutoTunerReconciler) reconcileAutoTuner(ctx context.Context, at *
 	return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
 }
 
-// launchTrial creates a FabricAIJob for a single trial with the given hyperparameters.
-func (r *FabricAutoTunerReconciler) launchTrial(ctx context.Context, at *gryviav1.FabricAutoTuner, trialName string, params map[string]string) error {
+// launchTrial creates a GryviaAIJob for a single trial with the given hyperparameters.
+func (r *GryviaAutoTunerReconciler) launchTrial(ctx context.Context, at *gryviav1.GryviaAutoTuner, trialName string, params map[string]string) error {
 	// Build env vars from hyperparameters
 	envVars := make([]corev1.EnvVar, 0, len(params)+len(at.Spec.JobTemplate.Env))
 	// Copy template env vars
@@ -221,7 +221,7 @@ func (r *FabricAutoTunerReconciler) launchTrial(ctx context.Context, at *gryviav
 	envVars = append(envVars, corev1.EnvVar{Name: "TRIAL_NAME", Value: trialName})
 	envVars = append(envVars, corev1.EnvVar{Name: "TUNER_NAME", Value: at.Name})
 
-	job := &gryviav1.FabricAIJob{
+	job := &gryviav1.GryviaAIJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      trialName,
 			Namespace: at.Namespace,
@@ -230,10 +230,10 @@ func (r *FabricAutoTunerReconciler) launchTrial(ctx context.Context, at *gryviav
 				"gryvia.io/component": "trial",
 			},
 			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(at, gryviav1.GroupVersion.WithKind("FabricAutoTuner")),
+				*metav1.NewControllerRef(at, gryviav1.GroupVersion.WithKind("GryviaAutoTuner")),
 			},
 		},
-		Spec: gryviav1.FabricAIJobSpec{
+		Spec: gryviav1.GryviaAIJobSpec{
 			Type:            at.Spec.JobTemplate.Type,
 			Model:           at.Spec.JobTemplate.Model,
 			GPUs:            at.Spec.JobTemplate.GPUs,
@@ -261,8 +261,8 @@ func (r *FabricAutoTunerReconciler) launchTrial(ctx context.Context, at *gryviav
 	return r.Create(ctx, job)
 }
 
-// syncTrialStatuses updates trial results based on the status of their FabricAIJobs.
-func (r *FabricAutoTunerReconciler) syncTrialStatuses(ctx context.Context, at *gryviav1.FabricAutoTuner) error {
+// syncTrialStatuses updates trial results based on the status of their GryviaAIJobs.
+func (r *GryviaAutoTunerReconciler) syncTrialStatuses(ctx context.Context, at *gryviav1.GryviaAutoTuner) error {
 	for i, trial := range at.Status.Trials {
 		if trial.Phase == gryviav1.TrialPhaseSucceeded ||
 			trial.Phase == gryviav1.TrialPhaseFailed ||
@@ -270,7 +270,7 @@ func (r *FabricAutoTunerReconciler) syncTrialStatuses(ctx context.Context, at *g
 			continue
 		}
 
-		job := &gryviav1.FabricAIJob{}
+		job := &gryviav1.GryviaAIJob{}
 		err := r.Get(ctx, types.NamespacedName{
 			Namespace: at.Namespace,
 			Name:      trial.JobName,
@@ -333,7 +333,7 @@ func (r *FabricAutoTunerReconciler) syncTrialStatuses(ctx context.Context, at *g
 }
 
 // updateBestTrial selects the best trial based on the objective.
-func (r *FabricAutoTunerReconciler) updateBestTrial(at *gryviav1.FabricAutoTuner) {
+func (r *GryviaAutoTunerReconciler) updateBestTrial(at *gryviav1.GryviaAutoTuner) {
 	var best *gryviav1.TrialResult
 
 	for i := range at.Status.Trials {
@@ -364,7 +364,7 @@ func (r *FabricAutoTunerReconciler) updateBestTrial(at *gryviav1.FabricAutoTuner
 }
 
 // shouldStopEarly returns true if the last N completed trials showed no improvement.
-func (r *FabricAutoTunerReconciler) shouldStopEarly(at *gryviav1.FabricAutoTuner) bool {
+func (r *GryviaAutoTunerReconciler) shouldStopEarly(at *gryviav1.GryviaAutoTuner) bool {
 	if at.Status.BestTrial == nil || at.Status.BestTrial.MetricValue == nil {
 		return false
 	}
@@ -409,7 +409,7 @@ func (r *FabricAutoTunerReconciler) shouldStopEarly(at *gryviav1.FabricAutoTuner
 }
 
 // applyASHAEarlyStopping checks running trials and stops underperforming ones.
-func (r *FabricAutoTunerReconciler) applyASHAEarlyStopping(ctx context.Context, at *gryviav1.FabricAutoTuner) error {
+func (r *GryviaAutoTunerReconciler) applyASHAEarlyStopping(ctx context.Context, at *gryviav1.GryviaAutoTuner) error {
 	scheduler := &tuner.ASHAScheduler{
 		MaxEpochs:       at.Spec.ASHAConfig.MaxEpochs,
 		ReductionFactor: at.Spec.ASHAConfig.ReductionFactor,
@@ -423,7 +423,7 @@ func (r *FabricAutoTunerReconciler) applyASHAEarlyStopping(ctx context.Context, 
 
 		if scheduler.ShouldStop(trial, at.Status.Trials, at.Spec.Objective.Direction) {
 			// Delete the trial job to stop it
-			job := &gryviav1.FabricAIJob{}
+			job := &gryviav1.GryviaAIJob{}
 			err := r.Get(ctx, types.NamespacedName{
 				Namespace: at.Namespace,
 				Name:      trial.JobName,
@@ -443,7 +443,7 @@ func (r *FabricAutoTunerReconciler) applyASHAEarlyStopping(ctx context.Context, 
 	return nil
 }
 
-func (r *FabricAutoTunerReconciler) updateCondition2(at *gryviav1.FabricAutoTuner, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *GryviaAutoTunerReconciler) updateCondition2(at *gryviav1.GryviaAutoTuner, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -474,9 +474,9 @@ func (r *FabricAutoTunerReconciler) updateCondition2(at *gryviav1.FabricAutoTune
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *FabricAutoTunerReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaAutoTunerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricAutoTuner{}).
-		Owns(&gryviav1.FabricAIJob{}).
+		For(&gryviav1.GryviaAutoTuner{}).
+		Owns(&gryviav1.GryviaAIJob{}).
 		Complete(r)
 }

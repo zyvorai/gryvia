@@ -31,34 +31,34 @@ const (
 	webhookTimeout = 10 * time.Second
 )
 
-// FabricNetworkAnomalyReconciler reconciles a FabricNetworkAnomaly object
-type FabricNetworkAnomalyReconciler struct {
+// GryviaNetworkAnomalyReconciler reconciles a GryviaNetworkAnomaly object
+type GryviaNetworkAnomalyReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricnetworkanomalies,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricnetworkanomalies/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricnetworkanomalies/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryvianetworkanomalies,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryvianetworkanomalies/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryvianetworkanomalies/finalizers,verbs=update
 //+kubebuilder:rbac:groups=cilium.io,resources=ciliumnetworkpolicies,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
-func (r *FabricNetworkAnomalyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *GryviaNetworkAnomalyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// Fetch the FabricNetworkAnomaly instance
-	anomalyDetector := &gryviav1.FabricNetworkAnomaly{}
+	// Fetch the GryviaNetworkAnomaly instance
+	anomalyDetector := &gryviav1.GryviaNetworkAnomaly{}
 	if err := r.Get(ctx, req.NamespacedName, anomalyDetector); err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("FabricNetworkAnomaly resource not found, ignoring since object must be deleted")
+			logger.Info("GryviaNetworkAnomaly resource not found, ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		logger.Error(err, "Failed to get FabricNetworkAnomaly")
+		logger.Error(err, "Failed to get GryviaNetworkAnomaly")
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("Reconciling FabricNetworkAnomaly",
+	logger.Info("Reconciling GryviaNetworkAnomaly",
 		"name", anomalyDetector.Name,
 		"targetService", anomalyDetector.Spec.TargetService,
 		"rules", len(anomalyDetector.Spec.DetectionRules),
@@ -86,7 +86,7 @@ func (r *FabricNetworkAnomalyReconciler) Reconcile(ctx context.Context, req ctrl
 	// Update status
 	r.updateStatus(ctx, req.NamespacedName, allAnomalies)
 
-	logger.Info("FabricNetworkAnomaly check complete",
+	logger.Info("GryviaNetworkAnomaly check complete",
 		"newAnomalies", len(detectedAnomalies),
 		"totalAnomalies", len(allAnomalies),
 	)
@@ -95,7 +95,7 @@ func (r *FabricNetworkAnomalyReconciler) Reconcile(ctx context.Context, req ctrl
 }
 
 // getCheckInterval determines the reconciliation interval based on the shortest rule window
-func (r *FabricNetworkAnomalyReconciler) getCheckInterval(detector *gryviav1.FabricNetworkAnomaly) time.Duration {
+func (r *GryviaNetworkAnomalyReconciler) getCheckInterval(detector *gryviav1.GryviaNetworkAnomaly) time.Duration {
 	shortest := 1 * time.Minute
 
 	for _, rule := range detector.Spec.DetectionRules {
@@ -121,7 +121,7 @@ type currentMetrics struct {
 }
 
 // evaluateRules checks each detection rule against current metrics
-func (r *FabricNetworkAnomalyReconciler) evaluateRules(ctx context.Context, detector *gryviav1.FabricNetworkAnomaly) []gryviav1.NetworkAnomalyEvent {
+func (r *GryviaNetworkAnomalyReconciler) evaluateRules(ctx context.Context, detector *gryviav1.GryviaNetworkAnomaly) []gryviav1.NetworkAnomalyEvent {
 	logger := log.FromContext(ctx)
 	var anomalies []gryviav1.NetworkAnomalyEvent
 
@@ -195,7 +195,7 @@ func (r *FabricNetworkAnomalyReconciler) evaluateRules(ctx context.Context, dete
 
 // queryCurrentMetrics retrieves current network metrics for the target service.
 // In production, this queries Prometheus for Hubble and Cilium metrics.
-func (r *FabricNetworkAnomalyReconciler) queryCurrentMetrics(ctx context.Context, detector *gryviav1.FabricNetworkAnomaly) currentMetrics {
+func (r *GryviaNetworkAnomalyReconciler) queryCurrentMetrics(ctx context.Context, detector *gryviav1.GryviaNetworkAnomaly) currentMetrics {
 	logger := log.FromContext(ctx)
 
 	// Look for Prometheus service
@@ -220,7 +220,7 @@ func (r *FabricNetworkAnomalyReconciler) queryCurrentMetrics(ctx context.Context
 
 // classifySeverity determines the anomaly severity based on how far the metric
 // exceeds the threshold
-func (r *FabricNetworkAnomalyReconciler) classifySeverity(rule gryviav1.DetectionRule, value float64) string {
+func (r *GryviaNetworkAnomalyReconciler) classifySeverity(rule gryviav1.DetectionRule, value float64) string {
 	if rule.Threshold == 0 {
 		return "medium"
 	}
@@ -239,7 +239,7 @@ func (r *FabricNetworkAnomalyReconciler) classifySeverity(rule gryviav1.Detectio
 }
 
 // mergeAnomalies combines existing and new anomalies, keeping only recent entries
-func (r *FabricNetworkAnomalyReconciler) mergeAnomalies(existing, newAnomalies []gryviav1.NetworkAnomalyEvent) []gryviav1.NetworkAnomalyEvent {
+func (r *GryviaNetworkAnomalyReconciler) mergeAnomalies(existing, newAnomalies []gryviav1.NetworkAnomalyEvent) []gryviav1.NetworkAnomalyEvent {
 	// Filter existing anomalies to keep only those from the last 24 hours
 	var recent []gryviav1.NetworkAnomalyEvent
 	cutoff := time.Now().Add(-24 * time.Hour)
@@ -261,7 +261,7 @@ func (r *FabricNetworkAnomalyReconciler) mergeAnomalies(existing, newAnomalies [
 }
 
 // autoMitigate applies temporary deny policies for suspicious traffic
-func (r *FabricNetworkAnomalyReconciler) autoMitigate(ctx context.Context, detector *gryviav1.FabricNetworkAnomaly, anomalies []gryviav1.NetworkAnomalyEvent) {
+func (r *GryviaNetworkAnomalyReconciler) autoMitigate(ctx context.Context, detector *gryviav1.GryviaNetworkAnomaly, anomalies []gryviav1.NetworkAnomalyEvent) {
 	logger := log.FromContext(ctx)
 
 	for i, anomaly := range anomalies {
@@ -335,7 +335,7 @@ func (r *FabricNetworkAnomalyReconciler) autoMitigate(ctx context.Context, detec
 }
 
 // cleanupExpiredMitigations removes temporary mitigation policies that have expired
-func (r *FabricNetworkAnomalyReconciler) cleanupExpiredMitigations(ctx context.Context, detector *gryviav1.FabricNetworkAnomaly) {
+func (r *GryviaNetworkAnomalyReconciler) cleanupExpiredMitigations(ctx context.Context, detector *gryviav1.GryviaNetworkAnomaly) {
 	logger := log.FromContext(ctx)
 
 	// List CiliumNetworkPolicies with mitigation label in the detector's namespace
@@ -388,7 +388,7 @@ type webhookPayload struct {
 }
 
 // sendWebhookAlert sends anomaly alerts to the configured webhook URL
-func (r *FabricNetworkAnomalyReconciler) sendWebhookAlert(ctx context.Context, detector *gryviav1.FabricNetworkAnomaly, anomalies []gryviav1.NetworkAnomalyEvent) {
+func (r *GryviaNetworkAnomalyReconciler) sendWebhookAlert(ctx context.Context, detector *gryviav1.GryviaNetworkAnomaly, anomalies []gryviav1.NetworkAnomalyEvent) {
 	logger := log.FromContext(ctx)
 
 	payload := webhookPayload{
@@ -424,10 +424,10 @@ func (r *FabricNetworkAnomalyReconciler) sendWebhookAlert(ctx context.Context, d
 	}
 }
 
-// updateStatus updates the FabricNetworkAnomaly status subresource
-func (r *FabricNetworkAnomalyReconciler) updateStatus(ctx context.Context, namespacedName types.NamespacedName, anomalies []gryviav1.NetworkAnomalyEvent) {
+// updateStatus updates the GryviaNetworkAnomaly status subresource
+func (r *GryviaNetworkAnomalyReconciler) updateStatus(ctx context.Context, namespacedName types.NamespacedName, anomalies []gryviav1.NetworkAnomalyEvent) {
 	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		detector := &gryviav1.FabricNetworkAnomaly{}
+		detector := &gryviav1.GryviaNetworkAnomaly{}
 		if err := r.Get(ctx, namespacedName, detector); err != nil {
 			return err
 		}
@@ -435,13 +435,13 @@ func (r *FabricNetworkAnomalyReconciler) updateStatus(ctx context.Context, names
 		detector.Status.LastCheck = metav1.Now()
 		return r.Status().Update(ctx, detector)
 	}); err != nil {
-		log.FromContext(ctx).Error(err, "Failed to update FabricNetworkAnomaly status")
+		log.FromContext(ctx).Error(err, "Failed to update GryviaNetworkAnomaly status")
 	}
 }
 
 // SetupWithManager sets up the controller with the Manager
-func (r *FabricNetworkAnomalyReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaNetworkAnomalyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricNetworkAnomaly{}).
+		For(&gryviav1.GryviaNetworkAnomaly{}).
 		Complete(r)
 }

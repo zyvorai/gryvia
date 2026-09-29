@@ -17,31 +17,31 @@ import (
 	"github.com/zyvorai/gryvia/operators/quota-operator/pkg/budget"
 )
 
-// FabricQuotaPolicyReconciler reconciles a FabricQuotaPolicy object
-type FabricQuotaPolicyReconciler struct {
+// GryviaQuotaPolicyReconciler reconciles a GryviaQuotaPolicy object
+type GryviaQuotaPolicyReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricquotapolicies,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricquotapolicies/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricquotapolicies/finalizers,verbs=update
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricquotas,verbs=get;list;watch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaquotapolicies,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaquotapolicies/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaquotapolicies/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs,verbs=get;list;watch;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaquotas,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
-func (r *FabricQuotaPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *GryviaQuotaPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// Fetch the FabricQuotaPolicy instance
-	policy := &gryviav1.FabricQuotaPolicy{}
+	// Fetch the GryviaQuotaPolicy instance
+	policy := &gryviav1.GryviaQuotaPolicy{}
 	err := r.Get(ctx, req.NamespacedName, policy)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("FabricQuotaPolicy resource not found. Ignoring since object must be deleted")
+			logger.Info("GryviaQuotaPolicy resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		logger.Error(err, "Failed to get FabricQuotaPolicy")
+		logger.Error(err, "Failed to get GryviaQuotaPolicy")
 		return ctrl.Result{}, err
 	}
 
@@ -50,7 +50,7 @@ func (r *FabricQuotaPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, nil
 	}
 
-	logger.Info("Reconciling FabricQuotaPolicy", "scope", policy.Spec.Scope.Name)
+	logger.Info("Reconciling GryviaQuotaPolicy", "scope", policy.Spec.Scope.Name)
 
 	// Reconcile the quota policy
 	result, err := r.reconcileQuotaPolicy(ctx, policy)
@@ -65,14 +65,14 @@ func (r *FabricQuotaPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	// Update status
 	if err := r.Status().Update(ctx, policy); err != nil {
-		logger.Error(err, "Failed to update FabricQuotaPolicy status")
+		logger.Error(err, "Failed to update GryviaQuotaPolicy status")
 		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 }
 
-func (r *FabricQuotaPolicyReconciler) reconcileQuotaPolicy(ctx context.Context, policy *gryviav1.FabricQuotaPolicy) (ctrl.Result, error) {
+func (r *GryviaQuotaPolicyReconciler) reconcileQuotaPolicy(ctx context.Context, policy *gryviav1.GryviaQuotaPolicy) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	// Calculate current usage
@@ -117,21 +117,21 @@ func (r *FabricQuotaPolicyReconciler) reconcileQuotaPolicy(ctx context.Context, 
 	return ctrl.Result{}, nil
 }
 
-func (r *FabricQuotaPolicyReconciler) calculatePolicyUsage(ctx context.Context, policy *gryviav1.FabricQuotaPolicy) (*gryviav1.QuotaPolicyUsage, error) {
+func (r *GryviaQuotaPolicyReconciler) calculatePolicyUsage(ctx context.Context, policy *gryviav1.GryviaQuotaPolicy) (*gryviav1.QuotaPolicyUsage, error) {
 	policyUsage := &gryviav1.QuotaPolicyUsage{
 		GPU:  &gryviav1.QuotaPolicyGPUUsage{ByType: make(map[string]float64)},
 		Cost: &gryviav1.QuotaPolicyCostUsage{},
 		Jobs: &gryviav1.QuotaPolicyJobUsage{},
 	}
 
-	// Find namespaces matching the scope via FabricQuota
+	// Find namespaces matching the scope via GryviaQuota
 	namespaces := r.findPolicyNamespaces(ctx, policy)
 
 	now := time.Now()
 	startOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
 
 	for _, ns := range namespaces {
-		jobList := &gryviav1.FabricAIJobList{}
+		jobList := &gryviav1.GryviaAIJobList{}
 		if err := r.List(ctx, jobList, client.InNamespace(ns)); err != nil {
 			continue
 		}
@@ -183,15 +183,15 @@ func (r *FabricQuotaPolicyReconciler) calculatePolicyUsage(ctx context.Context, 
 	return policyUsage, nil
 }
 
-func (r *FabricQuotaPolicyReconciler) findPolicyNamespaces(ctx context.Context, policy *gryviav1.FabricQuotaPolicy) []string {
+func (r *GryviaQuotaPolicyReconciler) findPolicyNamespaces(ctx context.Context, policy *gryviav1.GryviaQuotaPolicy) []string {
 	var namespaces []string
 
 	switch policy.Spec.Scope.Type {
 	case "namespace":
 		namespaces = append(namespaces, policy.Spec.Scope.Name)
 	case "team", "division", "organization":
-		// Find namespaces via FabricQuota team mappings
-		quotaList := &gryviav1.FabricQuotaList{}
+		// Find namespaces via GryviaQuota team mappings
+		quotaList := &gryviav1.GryviaQuotaList{}
 		if err := r.List(ctx, quotaList); err != nil {
 			return namespaces
 		}
@@ -202,7 +202,7 @@ func (r *FabricQuotaPolicyReconciler) findPolicyNamespaces(ctx context.Context, 
 		}
 	default:
 		// List all namespaces
-		quotaList := &gryviav1.FabricQuotaList{}
+		quotaList := &gryviav1.GryviaQuotaList{}
 		if err := r.List(ctx, quotaList); err != nil {
 			return namespaces
 		}
@@ -214,7 +214,7 @@ func (r *FabricQuotaPolicyReconciler) findPolicyNamespaces(ctx context.Context, 
 	return namespaces
 }
 
-func (r *FabricQuotaPolicyReconciler) calculatePolicyUtilization(policy *gryviav1.FabricQuotaPolicy) *gryviav1.QuotaPolicyUtilization {
+func (r *GryviaQuotaPolicyReconciler) calculatePolicyUtilization(policy *gryviav1.GryviaQuotaPolicy) *gryviav1.QuotaPolicyUtilization {
 	util := &gryviav1.QuotaPolicyUtilization{}
 
 	if policy.Status.Usage == nil {
@@ -241,7 +241,7 @@ func (r *FabricQuotaPolicyReconciler) calculatePolicyUtilization(policy *gryviav
 	return util
 }
 
-func (r *FabricQuotaPolicyReconciler) applyTimeBasedPolicy(policy *gryviav1.FabricQuotaPolicy) {
+func (r *GryviaQuotaPolicyReconciler) applyTimeBasedPolicy(policy *gryviav1.GryviaQuotaPolicy) {
 	if policy.Spec.TimeBased == nil || !policy.Spec.TimeBased.Enabled {
 		policy.Status.EffectiveMultiplier = 1.0
 		return
@@ -281,7 +281,7 @@ func (r *FabricQuotaPolicyReconciler) applyTimeBasedPolicy(policy *gryviav1.Fabr
 	policy.Status.EffectiveMultiplier = 1.0
 }
 
-func (r *FabricQuotaPolicyReconciler) determineState(policy *gryviav1.FabricQuotaPolicy) string {
+func (r *GryviaQuotaPolicyReconciler) determineState(policy *gryviav1.GryviaQuotaPolicy) string {
 	if policy.Status.Utilization == nil {
 		return "under-quota"
 	}
@@ -311,9 +311,9 @@ func (r *FabricQuotaPolicyReconciler) determineState(policy *gryviav1.FabricQuot
 	return "under-quota"
 }
 
-func (r *FabricQuotaPolicyReconciler) reconcileChildren(ctx context.Context, policy *gryviav1.FabricQuotaPolicy) error {
+func (r *GryviaQuotaPolicyReconciler) reconcileChildren(ctx context.Context, policy *gryviav1.GryviaQuotaPolicy) error {
 	// Find child policies
-	policyList := &gryviav1.FabricQuotaPolicyList{}
+	policyList := &gryviav1.GryviaQuotaPolicyList{}
 	if err := r.List(ctx, policyList); err != nil {
 		return err
 	}
@@ -342,7 +342,7 @@ func (r *FabricQuotaPolicyReconciler) reconcileChildren(ctx context.Context, pol
 	return nil
 }
 
-func (r *FabricQuotaPolicyReconciler) enforcePolicy(ctx context.Context, policy *gryviav1.FabricQuotaPolicy) error {
+func (r *GryviaQuotaPolicyReconciler) enforcePolicy(ctx context.Context, policy *gryviav1.GryviaQuotaPolicy) error {
 	logger := log.FromContext(ctx)
 
 	if policy.Spec.Enforcement == nil {
@@ -352,7 +352,7 @@ func (r *FabricQuotaPolicyReconciler) enforcePolicy(ctx context.Context, policy 
 	namespaces := r.findPolicyNamespaces(ctx, policy)
 
 	for _, ns := range namespaces {
-		jobList := &gryviav1.FabricAIJobList{}
+		jobList := &gryviav1.GryviaAIJobList{}
 		if err := r.List(ctx, jobList, client.InNamespace(ns)); err != nil {
 			continue
 		}
@@ -393,7 +393,7 @@ func (r *FabricQuotaPolicyReconciler) enforcePolicy(ctx context.Context, policy 
 	return nil
 }
 
-func (r *FabricQuotaPolicyReconciler) updateCondition(policy *gryviav1.FabricQuotaPolicy, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *GryviaQuotaPolicyReconciler) updateCondition(policy *gryviav1.GryviaQuotaPolicy, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -405,8 +405,8 @@ func (r *FabricQuotaPolicyReconciler) updateCondition(policy *gryviav1.FabricQuo
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *FabricQuotaPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaQuotaPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricQuotaPolicy{}).
+		For(&gryviav1.GryviaQuotaPolicy{}).
 		Complete(r)
 }

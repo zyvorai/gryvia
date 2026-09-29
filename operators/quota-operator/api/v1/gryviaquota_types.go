@@ -4,8 +4,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// FabricQuotaSpec defines the desired state of FabricQuota
-type FabricQuotaSpec struct {
+// GryviaQuotaSpec defines the desired state of GryviaQuota
+type GryviaQuotaSpec struct {
 	// Team is the name of the team this quota applies to
 	Team string `json:"team"`
 
@@ -52,8 +52,8 @@ type BudgetSpec struct {
 	HardLimit bool `json:"hardLimit,omitempty"`
 }
 
-// FabricQuotaStatus defines the observed state of FabricQuota
-type FabricQuotaStatus struct {
+// GryviaQuotaStatus defines the observed state of GryviaQuota
+type GryviaQuotaStatus struct {
 	// Phase is the current phase (Active, BudgetExceeded, Suspended)
 	Phase string `json:"phase,omitempty"`
 
@@ -104,28 +104,28 @@ type BudgetStatus struct {
 //+kubebuilder:subresource:status
 //+kubebuilder:resource:scope=Cluster
 
-// FabricQuota is the Schema for the fabricquotas API
-type FabricQuota struct {
+// GryviaQuota is the Schema for the gryviaquotas API
+type GryviaQuota struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricQuotaSpec   `json:"spec,omitempty"`
-	Status FabricQuotaStatus `json:"status,omitempty"`
+	Spec   GryviaQuotaSpec   `json:"spec,omitempty"`
+	Status GryviaQuotaStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricQuotaList contains a list of FabricQuota
-type FabricQuotaList struct {
+// GryviaQuotaList contains a list of GryviaQuota
+type GryviaQuotaList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricQuota `json:"items"`
+	Items           []GryviaQuota `json:"items"`
 }
 
-// FabricAIJobSpec is a minimal struct for quota tracking and cost prediction.
+// GryviaAIJobSpec is a minimal struct for quota tracking and cost prediction.
 // Go JSON unmarshaling ignores unknown fields by default, so the full
-// FabricAIJob spec from the API server deserializes correctly into this type.
-type FabricAIJobSpec struct {
+// GryviaAIJob spec from the API server deserializes correctly into this type.
+type GryviaAIJobSpec struct {
 	GPUs    int32  `json:"gpus"`
 	GpuType string `json:"gpuType,omitempty"`
 
@@ -134,11 +134,11 @@ type FabricAIJobSpec struct {
 	StorageRequest string                      `json:"storageRequest,omitempty"`
 	Network        string                      `json:"network,omitempty"`
 	Priority       int32                       `json:"priority,omitempty"`
-	Distributed    *FabricAIJobDistributedSpec `json:"distributed,omitempty"`
+	Distributed    *GryviaAIJobDistributedSpec `json:"distributed,omitempty"`
 }
 
-// FabricAIJobDistributedSpec is a minimal distributed config used by the predictor
-type FabricAIJobDistributedSpec struct {
+// GryviaAIJobDistributedSpec is a minimal distributed config used by the predictor
+type GryviaAIJobDistributedSpec struct {
 	Enabled     bool   `json:"enabled,omitempty"`
 	Framework   string `json:"framework,omitempty"`
 	Nodes       int32  `json:"nodes,omitempty"`
@@ -146,9 +146,9 @@ type FabricAIJobDistributedSpec struct {
 	Backend     string `json:"backend,omitempty"`
 }
 
-// FabricAIJobStatus is a minimal struct for quota tracking and cost prediction.
+// GryviaAIJobStatus is a minimal struct for quota tracking and cost prediction.
 // Go JSON unmarshaling ignores unknown fields by default.
-type FabricAIJobStatus struct {
+type GryviaAIJobStatus struct {
 	Phase          string             `json:"phase,omitempty"`
 	StartTime      *metav1.Time       `json:"startTime,omitempty"`
 	CompletionTime *metav1.Time       `json:"completionTime,omitempty"`
@@ -160,27 +160,27 @@ type FabricAIJobStatus struct {
 //+kubebuilder:object:root=true
 //+kubebuilder:resource:scope=Namespaced
 
-// FabricAIJob is a minimal duplicate of the AI operator's FabricAIJob type,
+// GryviaAIJob is a minimal duplicate of the AI operator's GryviaAIJob type,
 // used by the quota operator to track AI job resources. It intentionally omits
 // fields not needed for quota enforcement. Go JSON unmarshaling ignores
 // unknown fields by default, so the full resource deserializes correctly.
-type FabricAIJob struct {
+type GryviaAIJob struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricAIJobSpec   `json:"spec,omitempty"`
-	Status FabricAIJobStatus `json:"status,omitempty"`
+	Spec   GryviaAIJobSpec   `json:"spec,omitempty"`
+	Status GryviaAIJobStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricAIJobList contains a list of FabricAIJob
-type FabricAIJobList struct {
+// GryviaAIJobList contains a list of GryviaAIJob
+type GryviaAIJobList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricAIJob `json:"items"`
+	Items           []GryviaAIJob `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&FabricQuota{}, &FabricQuotaList{}, &FabricAIJob{}, &FabricAIJobList{})
+	SchemeBuilder.Register(&GryviaQuota{}, &GryviaQuotaList{}, &GryviaAIJob{}, &GryviaAIJobList{})
 }

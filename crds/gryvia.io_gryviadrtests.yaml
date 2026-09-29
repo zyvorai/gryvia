@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabricdrtests.gryvia.io
+  name: gryviadrtests.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricDRTest
-    listKind: FabricDRTestList
-    plural: fabricdrtests
-    singular: fabricdrtest
+    kind: GryviaDRTest
+    listKind: GryviaDRTestList
+    plural: gryviadrtests
+    singular: gryviadrtest
   scope: Cluster
   versions:
   - name: v1
     schema:
       openAPIV3Schema:
-        description: FabricDRTest is the Schema for the fabricdrtests API
+        description: GryviaDRTest is the Schema for the gryviadrtests API
         properties:
           apiVersion:
             description: |-
@@ -37,7 +37,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricDRTestSpec defines the desired state of FabricDRTest
+            description: GryviaDRTestSpec defines the desired state of GryviaDRTest
             properties:
               approvalRequired:
                 description: ApprovalRequired requires approval before running
@@ -318,7 +318,7 @@ spec:
             - type
             type: object
           status:
-            description: FabricDRTestStatus defines the observed state of FabricDRTest
+            description: GryviaDRTestStatus defines the observed state of GryviaDRTest
             properties:
               conditions:
                 description: Conditions represent the latest available observations

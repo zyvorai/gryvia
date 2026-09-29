@@ -1,6 +1,6 @@
 # Example: ML Research Team
 apiVersion: gryvia.io/v1
-kind: FabricTenant
+kind: GryviaTenant
 metadata:
   name: ml-research
 spec:
@@ -78,7 +78,7 @@ spec:
 ---
 # Example: Production Inference Team
 apiVersion: gryvia.io/v1
-kind: FabricTenant
+kind: GryviaTenant
 metadata:
   name: production-inference
 spec:
@@ -123,7 +123,7 @@ spec:
 ---
 # Example: Sub-Team (Hierarchical)
 apiVersion: gryvia.io/v1
-kind: FabricTenant
+kind: GryviaTenant
 metadata:
   name: ml-research-cv
 spec:
@@ -150,7 +150,7 @@ spec:
 ---
 # Example: External Collaborator Tenant
 apiVersion: gryvia.io/v1
-kind: FabricTenant
+kind: GryviaTenant
 metadata:
   name: university-collab
 spec:
@@ -196,7 +196,7 @@ spec:
 ---
 # Tenant Status Example
 apiVersion: gryvia.io/v1
-kind: FabricTenant
+kind: GryviaTenant
 metadata:
   name: ml-research
 status:

@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabricnetworkcosts.gryvia.io
+  name: gryvianetworkcosts.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricNetworkCost
-    listKind: FabricNetworkCostList
-    plural: fabricnetworkcosts
-    singular: fabricnetworkcost
+    kind: GryviaNetworkCost
+    listKind: GryviaNetworkCostList
+    plural: gryvianetworkcosts
+    singular: gryvianetworkcost
   scope: Namespaced
   versions:
   - name: v1
     schema:
       openAPIV3Schema:
-        description: FabricNetworkCost is the Schema for the fabricnetworkcosts API
+        description: GryviaNetworkCost is the Schema for the gryvianetworkcosts API
         properties:
           apiVersion:
             description: |-
@@ -37,7 +37,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricNetworkCostSpec defines the desired state of FabricNetworkCost
+            description: GryviaNetworkCostSpec defines the desired state of GryviaNetworkCost
             properties:
               costCenters:
                 description: CostCenters maps namespaces to teams and cost centers
@@ -83,7 +83,7 @@ spec:
                 type: array
             type: object
           status:
-            description: FabricNetworkCostStatus defines the observed state of FabricNetworkCost
+            description: GryviaNetworkCostStatus defines the observed state of GryviaNetworkCost
             properties:
               lastReport:
                 description: LastReport is the timestamp of the last cost report

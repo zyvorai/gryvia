@@ -36,7 +36,7 @@ gryvia --help
 # Create job YAML
 cat > llm-training.yaml <<EOF
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: llm-training
 spec:
@@ -392,7 +392,7 @@ gryvia delete job my-job --yes
 
 #### Validate YAML
 
-Validates the YAML file structure and checks that `apiVersion` and `kind` match known Gryvia types (e.g., `gryvia.io/v1` / `FabricAIJob`, `FabricQuota`, `FabricGpuNode`, etc.).
+Validates the YAML file structure and checks that `apiVersion` and `kind` match known Gryvia types (e.g., `gryvia.io/v1` / `GryviaAIJob`, `GryviaQuota`, `GryviaGpuNode`, etc.).
 
 ```bash
 # Validate job YAML before submission
@@ -692,8 +692,8 @@ gryvia --context my-cluster list jobs
 
 ```bash
 # Check if you can access CRDs
-kubectl auth can-i list fabricaijobs
-kubectl auth can-i get fabricquotas
+kubectl auth can-i list gryviaaijobs
+kubectl auth can-i get gryviaquotas
 
 # View your permissions
 kubectl auth can-i --list
@@ -706,11 +706,11 @@ kubectl auth can-i --list
 kubectl get crds | grep gryvia
 
 # Expected output:
-# fabricaijobs.gryvia.io
-# fabricgpunodes.gryvia.io
-# fabricnetworks.gryvia.io
-# fabricquotas.gryvia.io
-# fabricstorages.gryvia.io
+# gryviaaijobs.gryvia.io
+# gryviagpunodes.gryvia.io
+# gryvianetworks.gryvia.io
+# gryviaquotas.gryvia.io
+# gryviastorages.gryvia.io
 ```
 
 ### Debug Mode

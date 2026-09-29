@@ -291,7 +291,7 @@ register_routers(app, Deps(
 
 
 def _node_gpu_status(status: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Per-GPU status of a FabricGpuNode: ``status.gpuStatus`` (older objects used ``gpus``)."""
+    """Per-GPU status of a GryviaGpuNode: ``status.gpuStatus`` (older objects used ``gpus``)."""
     return status.get("gpuStatus") or status.get("gpus") or []
 
 
@@ -319,7 +319,7 @@ async def get_cluster_stats(request: Request, _=Depends(verify_auth)):
                 lambda: k8s_custom.list_cluster_custom_object(
                     group="gryvia.io",
                     version="v1",
-                    plural="fabricgpunodes"
+                    plural="gryviagpunodes"
                 )
             ),
             loop.run_in_executor(
@@ -328,7 +328,7 @@ async def get_cluster_stats(request: Request, _=Depends(verify_auth)):
                     group="gryvia.io",
                     version="v1",
                     namespace=JOB_NAMESPACE,
-                    plural="fabricaijobs"
+                    plural="gryviaaijobs"
                 )
             ),
         )
@@ -399,7 +399,7 @@ async def get_gpu_metrics(
             lambda: k8s_custom.list_cluster_custom_object(
                 group="gryvia.io",
                 version="v1",
-                plural="fabricgpunodes"
+                plural="gryviagpunodes"
             )
         )
 
@@ -440,7 +440,7 @@ async def get_cost_metrics(request: Request, _=Depends(verify_auth)):
             lambda: k8s_custom.list_cluster_custom_object(
                 group="gryvia.io",
                 version="v1",
-                plural="fabricquotas"
+                plural="gryviaquotas"
             )
         )
 
@@ -451,11 +451,11 @@ async def get_cost_metrics(request: Request, _=Depends(verify_auth)):
                 group="gryvia.io",
                 version="v1",
                 namespace=JOB_NAMESPACE,
-                plural="fabricaijobs"
+                plural="gryviaaijobs"
             )
         )
 
-        # namespace -> team from FabricQuota (spec.namespaces), used to group costs
+        # namespace -> team from GryviaQuota (spec.namespaces), used to group costs
         ns_team: Dict[str, str] = {}
         for q in quotas.get("items", []):
             qspec = q.get("spec") or {}
@@ -553,7 +553,7 @@ async def get_job_metrics(
                 group="gryvia.io",
                 version="v1",
                 namespace=JOB_NAMESPACE,
-                plural="fabricaijobs"
+                plural="gryviaaijobs"
             )
         )
 
@@ -626,7 +626,7 @@ async def list_jobs(
                     group="gryvia.io",
                     version="v1",
                     namespace=ns,
-                    plural="fabricaijobs"
+                    plural="gryviaaijobs"
                 )
             )
             all_items.extend(jobs.get("items", []))
@@ -658,7 +658,7 @@ async def get_job(request: Request, name: str, _=Depends(verify_auth)):
                 group="gryvia.io",
                 version="v1",
                 namespace=JOB_NAMESPACE,
-                plural="fabricaijobs",
+                plural="gryviaaijobs",
                 name=name,
             )
         )
@@ -685,8 +685,8 @@ async def create_job(request: Request, _=Depends(verify_auth)):
             raise HTTPException(status_code=400, detail="Request body must be a JSON object")
         if body.get("apiVersion") != "gryvia.io/v1":
             raise HTTPException(status_code=400, detail="apiVersion must be gryvia.io/v1")
-        if body.get("kind") != "FabricAIJob":
-            raise HTTPException(status_code=400, detail="kind must be FabricAIJob")
+        if body.get("kind") != "GryviaAIJob":
+            raise HTTPException(status_code=400, detail="kind must be GryviaAIJob")
 
         # Validate spec contains required fields
         spec = body.get("spec", {})
@@ -709,7 +709,7 @@ async def create_job(request: Request, _=Depends(verify_auth)):
                 group="gryvia.io",
                 version="v1",
                 namespace=target_ns,
-                plural="fabricaijobs",
+                plural="gryviaaijobs",
                 body=body,
             )
         )
@@ -736,7 +736,7 @@ async def delete_job(request: Request, name: str, _=Depends(verify_auth)):
                 group="gryvia.io",
                 version="v1",
                 namespace=JOB_NAMESPACE,
-                plural="fabricaijobs",
+                plural="gryviaaijobs",
                 name=name,
             )
         )
@@ -767,7 +767,7 @@ async def list_quotas(
             lambda: k8s_custom.list_cluster_custom_object(
                 group="gryvia.io",
                 version="v1",
-                plural="fabricquotas"
+                plural="gryviaquotas"
             )
         )
 
@@ -798,7 +798,7 @@ async def get_quota(request: Request, name: str, _=Depends(verify_auth)):
             lambda: k8s_custom.get_cluster_custom_object(
                 group="gryvia.io",
                 version="v1",
-                plural="fabricquotas",
+                plural="gryviaquotas",
                 name=name,
             )
         )
@@ -829,7 +829,7 @@ async def list_nodes(
             lambda: k8s_custom.list_cluster_custom_object(
                 group="gryvia.io",
                 version="v1",
-                plural="fabricgpunodes"
+                plural="gryviagpunodes"
             )
         )
 
@@ -860,7 +860,7 @@ async def get_node(request: Request, name: str, _=Depends(verify_auth)):
             lambda: k8s_custom.get_cluster_custom_object(
                 group="gryvia.io",
                 version="v1",
-                plural="fabricgpunodes",
+                plural="gryviagpunodes",
                 name=name,
             )
         )
@@ -891,7 +891,7 @@ async def get_quota_usage(
             lambda: k8s_custom.list_cluster_custom_object(
                 group="gryvia.io",
                 version="v1",
-                plural="fabricquotas"
+                plural="gryviaquotas"
             )
         )
 
@@ -950,7 +950,7 @@ async def get_node_health(
             lambda: k8s_custom.list_cluster_custom_object(
                 group="gryvia.io",
                 version="v1",
-                plural="fabricgpunodes"
+                plural="gryviagpunodes"
             )
         )
 

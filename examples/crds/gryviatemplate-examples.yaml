@@ -1,6 +1,6 @@
 # Example: PyTorch DDP Training Template
 apiVersion: gryvia.io/v1
-kind: FabricTemplate
+kind: GryviaTemplate
 metadata:
   name: pytorch-ddp-training
 spec:
@@ -70,7 +70,7 @@ spec:
 ---
 # Example: LLM Inference Template
 apiVersion: gryvia.io/v1
-kind: FabricTemplate
+kind: GryviaTemplate
 metadata:
   name: llm-inference-vllm
 spec:
@@ -119,7 +119,7 @@ spec:
 ---
 # Example: Development Environment Template
 apiVersion: gryvia.io/v1
-kind: FabricTemplate
+kind: GryviaTemplate
 metadata:
   name: jupyter-dev-env
 spec:
@@ -157,7 +157,7 @@ spec:
 ---
 # Example: Benchmark Template
 apiVersion: gryvia.io/v1
-kind: FabricTemplate
+kind: GryviaTemplate
 metadata:
   name: mlperf-training-benchmark
 spec:
@@ -202,10 +202,10 @@ spec:
       default: "0.75"
 ---
 # A job that follows the pytorch-ddp-training template
-# (FabricAIJob has no templateRef/parameters fields, so the template defaults
+# (GryviaAIJob has no templateRef/parameters fields, so the template defaults
 # and parameter values are written out inline).
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: my-training-job
 spec:

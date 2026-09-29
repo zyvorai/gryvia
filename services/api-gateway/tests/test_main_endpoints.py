@@ -44,7 +44,7 @@ def test_cluster_stats_phases_case_insensitive(gw):
     c, k, _ = gw
     for i, ph in enumerate(["Running", "running", "Succeeded", "Completed", "Scheduling", "Queued",
                             "Pending", "failed", "Weird"]):
-        k.add("fabricaijobs", job(f"j{i}", ph), "default")
+        k.add("gryviaaijobs", job(f"j{i}", ph), "default")
     s = c.get("/api/cluster/stats").json()
     assert (s["runningJobs"], s["completedJobs"], s["pendingJobs"], s["failedJobs"]) == (2, 2, 3, 1)
     assert s["totalJobs"] == 9
@@ -54,8 +54,8 @@ def test_cluster_stats_phases_case_insensitive(gw):
 
 def test_costs_scope_and_team_grouping(gw):
     c, k, _ = gw
-    k.add("fabricquotas", {"metadata": {"name": "q"}, "spec": {"team": "research", "namespaces": ["ml", "default"]}})
-    k.add("fabricaijobs", job("a", "Succeeded", labels={"gryvia.io/team": "ignored"}), "default")
+    k.add("gryviaquotas", {"metadata": {"name": "q"}, "spec": {"team": "research", "namespaces": ["ml", "default"]}})
+    k.add("gryviaaijobs", job("a", "Succeeded", labels={"gryvia.io/team": "ignored"}), "default")
     r = c.get("/api/metrics/costs").json()
     assert r["scope"] == "all-time"
     assert [t["team"] for t in r["byTeam"]] == ["research"]
@@ -65,16 +65,16 @@ def test_costs_scope_and_team_grouping(gw):
 
 def test_costs_label_fallback_then_unassigned(gw):
     c, k, _ = gw
-    k.add("fabricaijobs", job("a", "Running", labels={"gryvia.io/team": "vision"}), "default")
-    k.add("fabricaijobs", job("b", "completed"), "default")
-    k.add("fabricaijobs", job("c", "Pending"), "default")  # not billable
+    k.add("gryviaaijobs", job("a", "Running", labels={"gryvia.io/team": "vision"}), "default")
+    k.add("gryviaaijobs", job("b", "completed"), "default")
+    k.add("gryviaaijobs", job("c", "Pending"), "default")  # not billable
     teams = {t["team"] for t in c.get("/api/metrics/costs").json()["byTeam"]}
     assert teams == {"vision", "unassigned"}
 
 
 @pytest.mark.parametrize("path,plural,cluster", [
-    ("/api/jobs", "fabricaijobs", False), ("/api/quotas", "fabricquotas", True),
-    ("/api/nodes", "fabricgpunodes", True)])
+    ("/api/jobs", "gryviaaijobs", False), ("/api/quotas", "gryviaquotas", True),
+    ("/api/nodes", "gryviagpunodes", True)])
 def test_list_defaults_and_pagination(gw, path, plural, cluster):
     c, k, _ = gw
     for i in range(150):

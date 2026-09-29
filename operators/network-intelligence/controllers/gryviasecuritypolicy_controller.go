@@ -33,33 +33,33 @@ const (
 	collectorBaseURL = "http://gryvia-collector.gryvia-system.svc.cluster.local:9090"
 )
 
-// FabricSecurityPolicyReconciler reconciles a FabricSecurityPolicy object
-type FabricSecurityPolicyReconciler struct {
+// GryviaSecurityPolicyReconciler reconciles a GryviaSecurityPolicy object
+type GryviaSecurityPolicyReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricsecuritypolicies,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricsecuritypolicies/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricsecuritypolicies/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviasecuritypolicies,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviasecuritypolicies/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviasecuritypolicies/finalizers,verbs=update
 //+kubebuilder:rbac:groups=cilium.io,resources=ciliumnetworkpolicies,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
-func (r *FabricSecurityPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *GryviaSecurityPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// Fetch the FabricSecurityPolicy instance
-	policy := &gryviav1.FabricSecurityPolicy{}
+	// Fetch the GryviaSecurityPolicy instance
+	policy := &gryviav1.GryviaSecurityPolicy{}
 	if err := r.Get(ctx, req.NamespacedName, policy); err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("FabricSecurityPolicy resource not found, ignoring since object must be deleted")
+			logger.Info("GryviaSecurityPolicy resource not found, ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		logger.Error(err, "Failed to get FabricSecurityPolicy")
+		logger.Error(err, "Failed to get GryviaSecurityPolicy")
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("Reconciling FabricSecurityPolicy",
+	logger.Info("Reconciling GryviaSecurityPolicy",
 		"name", policy.Name,
 		"namespaces", policy.Spec.TargetNamespaces,
 		"rules", len(policy.Spec.DetectionRules),
@@ -107,7 +107,7 @@ func (r *FabricSecurityPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 
 	r.updateSecurityStatus(ctx, req.NamespacedName, "Active", activeDetections, totalAlerts, lastAlert, detectionCounts)
 
-	logger.Info("FabricSecurityPolicy check complete",
+	logger.Info("GryviaSecurityPolicy check complete",
 		"activeDetections", activeDetections,
 		"newAlerts", len(alerts),
 	)
@@ -126,7 +126,7 @@ type securityAlert struct {
 }
 
 // verifyEBPFPrograms checks that the eBPF collector is healthy and programs are loaded
-func (r *FabricSecurityPolicyReconciler) verifyEBPFPrograms(ctx context.Context, policy *gryviav1.FabricSecurityPolicy) {
+func (r *GryviaSecurityPolicyReconciler) verifyEBPFPrograms(ctx context.Context, policy *gryviav1.GryviaSecurityPolicy) {
 	logger := log.FromContext(ctx)
 
 	httpClient := &http.Client{Timeout: 5 * time.Second}
@@ -143,7 +143,7 @@ func (r *FabricSecurityPolicyReconciler) verifyEBPFPrograms(ctx context.Context,
 }
 
 // querySecurityAlerts fetches security alerts from the collector API
-func (r *FabricSecurityPolicyReconciler) querySecurityAlerts(ctx context.Context, policy *gryviav1.FabricSecurityPolicy) []securityAlert {
+func (r *GryviaSecurityPolicyReconciler) querySecurityAlerts(ctx context.Context, policy *gryviav1.GryviaSecurityPolicy) []securityAlert {
 	logger := log.FromContext(ctx)
 
 	httpClient := &http.Client{Timeout: 10 * time.Second}
@@ -184,7 +184,7 @@ func (r *FabricSecurityPolicyReconciler) querySecurityAlerts(ctx context.Context
 }
 
 // autoBlockThreats creates temporary CiliumNetworkPolicy to block detected threats
-func (r *FabricSecurityPolicyReconciler) autoBlockThreats(ctx context.Context, policy *gryviav1.FabricSecurityPolicy, alerts []securityAlert) {
+func (r *GryviaSecurityPolicyReconciler) autoBlockThreats(ctx context.Context, policy *gryviav1.GryviaSecurityPolicy, alerts []securityAlert) {
 	logger := log.FromContext(ctx)
 
 	for _, alert := range alerts {
@@ -260,7 +260,7 @@ func (r *FabricSecurityPolicyReconciler) autoBlockThreats(ctx context.Context, p
 }
 
 // cleanupExpiredBlockPolicies removes temporary block policies that have expired
-func (r *FabricSecurityPolicyReconciler) cleanupExpiredBlockPolicies(ctx context.Context, policy *gryviav1.FabricSecurityPolicy) {
+func (r *GryviaSecurityPolicyReconciler) cleanupExpiredBlockPolicies(ctx context.Context, policy *gryviav1.GryviaSecurityPolicy) {
 	logger := log.FromContext(ctx)
 
 	policyList := &unstructured.UnstructuredList{}
@@ -313,7 +313,7 @@ type securityWebhookPayload struct {
 }
 
 // sendSecurityWebhook sends security alerts to the configured webhook URL
-func (r *FabricSecurityPolicyReconciler) sendSecurityWebhook(ctx context.Context, policy *gryviav1.FabricSecurityPolicy, alerts []securityAlert) {
+func (r *GryviaSecurityPolicyReconciler) sendSecurityWebhook(ctx context.Context, policy *gryviav1.GryviaSecurityPolicy, alerts []securityAlert) {
 	logger := log.FromContext(ctx)
 
 	payload := securityWebhookPayload{
@@ -350,10 +350,10 @@ func (r *FabricSecurityPolicyReconciler) sendSecurityWebhook(ctx context.Context
 	}
 }
 
-// updateSecurityStatus updates the FabricSecurityPolicy status subresource
-func (r *FabricSecurityPolicyReconciler) updateSecurityStatus(ctx context.Context, namespacedName types.NamespacedName, phase string, activeDetections, alertsTriggered int, lastAlert metav1.Time, detectionCounts map[string]int) {
+// updateSecurityStatus updates the GryviaSecurityPolicy status subresource
+func (r *GryviaSecurityPolicyReconciler) updateSecurityStatus(ctx context.Context, namespacedName types.NamespacedName, phase string, activeDetections, alertsTriggered int, lastAlert metav1.Time, detectionCounts map[string]int) {
 	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		policy := &gryviav1.FabricSecurityPolicy{}
+		policy := &gryviav1.GryviaSecurityPolicy{}
 		if err := r.Get(ctx, namespacedName, policy); err != nil {
 			return err
 		}
@@ -364,13 +364,13 @@ func (r *FabricSecurityPolicyReconciler) updateSecurityStatus(ctx context.Contex
 		policy.Status.DetectionCounts = detectionCounts
 		return r.Status().Update(ctx, policy)
 	}); err != nil {
-		log.FromContext(ctx).Error(err, "Failed to update FabricSecurityPolicy status")
+		log.FromContext(ctx).Error(err, "Failed to update GryviaSecurityPolicy status")
 	}
 }
 
 // SetupWithManager sets up the controller with the Manager
-func (r *FabricSecurityPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaSecurityPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricSecurityPolicy{}).
+		For(&gryviav1.GryviaSecurityPolicy{}).
 		Complete(r)
 }

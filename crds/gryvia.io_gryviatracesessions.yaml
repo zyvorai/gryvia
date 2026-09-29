@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabrictracesessions.gryvia.io
+  name: gryviatracesessions.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricTraceSession
-    listKind: FabricTraceSessionList
-    plural: fabrictracesessions
-    singular: fabrictracesession
+    kind: GryviaTraceSession
+    listKind: GryviaTraceSessionList
+    plural: gryviatracesessions
+    singular: gryviatracesession
   scope: Namespaced
   versions:
   - name: v1
     schema:
       openAPIV3Schema:
-        description: FabricTraceSession is the Schema for the fabrictracesessions
+        description: GryviaTraceSession is the Schema for the gryviatracesessions
           API
         properties:
           apiVersion:
@@ -38,7 +38,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricTraceSessionSpec defines the desired state of FabricTraceSession
+            description: GryviaTraceSessionSpec defines the desired state of GryviaTraceSession
             properties:
               captureHeaders:
                 description: CaptureHeaders enables HTTP header capture (L7 only)
@@ -74,7 +74,7 @@ spec:
                 type: string
             type: object
           status:
-            description: FabricTraceSessionStatus defines the observed state of FabricTraceSession
+            description: GryviaTraceSessionStatus defines the observed state of GryviaTraceSession
             properties:
               endTime:
                 description: EndTime is when the trace session ended

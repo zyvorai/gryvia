@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabricgpusharingpolicies.gryvia.io
+  name: gryviagpusharingpolicies.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricGPUSharingPolicy
-    listKind: FabricGPUSharingPolicyList
-    plural: fabricgpusharingpolicies
-    singular: fabricgpusharingpolicy
+    kind: GryviaGPUSharingPolicy
+    listKind: GryviaGPUSharingPolicyList
+    plural: gryviagpusharingpolicies
+    singular: gryviagpusharingpolicy
   scope: Cluster
   versions:
   - name: v1
     schema:
       openAPIV3Schema:
-        description: FabricGPUSharingPolicy is the Schema for the fabricgpusharingpolicies
+        description: GryviaGPUSharingPolicy is the Schema for the gryviagpusharingpolicies
           API
         properties:
           apiVersion:
@@ -38,7 +38,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricGPUSharingPolicySpec defines the desired state of FabricGPUSharingPolicy
+            description: GryviaGPUSharingPolicySpec defines the desired state of GryviaGPUSharingPolicy
             properties:
               fractionalGPU:
                 description: FractionalGPU defines fractional GPU configuration
@@ -160,8 +160,8 @@ spec:
             - strategy
             type: object
           status:
-            description: FabricGPUSharingPolicyStatus defines the observed state of
-              FabricGPUSharingPolicy
+            description: GryviaGPUSharingPolicyStatus defines the observed state of
+              GryviaGPUSharingPolicy
             properties:
               affectedNodes:
                 description: AffectedNodes lists nodes where this policy is applied

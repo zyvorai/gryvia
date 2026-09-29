@@ -21,31 +21,31 @@ const (
 	maxSLABreaches = 50
 )
 
-// FabricSLAReconciler reconciles a FabricSLA object
-type FabricSLAReconciler struct {
+// GryviaSLAReconciler reconciles a GryviaSLA object
+type GryviaSLAReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricslas,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricslas/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricslas/finalizers,verbs=update
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricquotas,verbs=get;list;watch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaslas,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaslas/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaslas/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs,verbs=get;list;watch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaquotas,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
-func (r *FabricSLAReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *GryviaSLAReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// Fetch the FabricSLA instance
-	sla := &gryviav1.FabricSLA{}
+	// Fetch the GryviaSLA instance
+	sla := &gryviav1.GryviaSLA{}
 	err := r.Get(ctx, req.NamespacedName, sla)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("FabricSLA resource not found. Ignoring since object must be deleted")
+			logger.Info("GryviaSLA resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		logger.Error(err, "Failed to get FabricSLA")
+		logger.Error(err, "Failed to get GryviaSLA")
 		return ctrl.Result{}, err
 	}
 
@@ -54,7 +54,7 @@ func (r *FabricSLAReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, nil
 	}
 
-	logger.Info("Reconciling FabricSLA", "tier", sla.Spec.Tier, "scope", sla.Spec.Scope.Name)
+	logger.Info("Reconciling GryviaSLA", "tier", sla.Spec.Tier, "scope", sla.Spec.Scope.Name)
 
 	// Reconcile the SLA
 	result, err := r.reconcileSLA(ctx, sla)
@@ -69,14 +69,14 @@ func (r *FabricSLAReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	// Update status
 	if err := r.Status().Update(ctx, sla); err != nil {
-		logger.Error(err, "Failed to update FabricSLA status")
+		logger.Error(err, "Failed to update GryviaSLA status")
 		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 }
 
-func (r *FabricSLAReconciler) reconcileSLA(ctx context.Context, sla *gryviav1.FabricSLA) (ctrl.Result, error) {
+func (r *GryviaSLAReconciler) reconcileSLA(ctx context.Context, sla *gryviav1.GryviaSLA) (ctrl.Result, error) {
 	// Get jobs matching the SLA scope
 	jobs, err := r.getScopeJobs(ctx, sla)
 	if err != nil {
@@ -99,26 +99,26 @@ func (r *FabricSLAReconciler) reconcileSLA(ctx context.Context, sla *gryviav1.Fa
 	return ctrl.Result{}, nil
 }
 
-func (r *FabricSLAReconciler) getScopeJobs(ctx context.Context, sla *gryviav1.FabricSLA) ([]gryviav1.FabricAIJob, error) {
-	var allJobs []gryviav1.FabricAIJob
+func (r *GryviaSLAReconciler) getScopeJobs(ctx context.Context, sla *gryviav1.GryviaSLA) ([]gryviav1.GryviaAIJob, error) {
+	var allJobs []gryviav1.GryviaAIJob
 
 	switch sla.Spec.Scope.Type {
 	case "namespace":
-		jobList := &gryviav1.FabricAIJobList{}
+		jobList := &gryviav1.GryviaAIJobList{}
 		if err := r.List(ctx, jobList, client.InNamespace(sla.Spec.Scope.Name)); err != nil {
 			return nil, err
 		}
 		allJobs = jobList.Items
 
 	case "team":
-		quotaList := &gryviav1.FabricQuotaList{}
+		quotaList := &gryviav1.GryviaQuotaList{}
 		if err := r.List(ctx, quotaList); err != nil {
 			return nil, err
 		}
 		for _, quota := range quotaList.Items {
 			if quota.Spec.Team == sla.Spec.Scope.Name {
 				for _, ns := range quota.Spec.Namespaces {
-					jobList := &gryviav1.FabricAIJobList{}
+					jobList := &gryviav1.GryviaAIJobList{}
 					if err := r.List(ctx, jobList, client.InNamespace(ns)); err != nil {
 						continue
 					}
@@ -128,7 +128,7 @@ func (r *FabricSLAReconciler) getScopeJobs(ctx context.Context, sla *gryviav1.Fa
 		}
 
 	default:
-		jobList := &gryviav1.FabricAIJobList{}
+		jobList := &gryviav1.GryviaAIJobList{}
 		if err := r.List(ctx, jobList); err != nil {
 			return nil, err
 		}
@@ -138,7 +138,7 @@ func (r *FabricSLAReconciler) getScopeJobs(ctx context.Context, sla *gryviav1.Fa
 	return allJobs, nil
 }
 
-func (r *FabricSLAReconciler) calculateMetrics(sla *gryviav1.FabricSLA, jobs []gryviav1.FabricAIJob) *gryviav1.SLAMetricsStatus {
+func (r *GryviaSLAReconciler) calculateMetrics(sla *gryviav1.GryviaSLA, jobs []gryviav1.GryviaAIJob) *gryviav1.SLAMetricsStatus {
 	metrics := &gryviav1.SLAMetricsStatus{}
 
 	// Calculate queue times
@@ -212,7 +212,7 @@ func (r *FabricSLAReconciler) calculateMetrics(sla *gryviav1.FabricSLA, jobs []g
 	return metrics
 }
 
-func (r *FabricSLAReconciler) checkBreaches(sla *gryviav1.FabricSLA, jobs []gryviav1.FabricAIJob) {
+func (r *GryviaSLAReconciler) checkBreaches(sla *gryviav1.GryviaSLA, jobs []gryviav1.GryviaAIJob) {
 	// Check queue time SLA
 	if sla.Spec.Performance != nil && sla.Spec.Performance.MaxQueueTime != "" {
 		maxQueueTime, err := time.ParseDuration(sla.Spec.Performance.MaxQueueTime)
@@ -254,7 +254,7 @@ func (r *FabricSLAReconciler) checkBreaches(sla *gryviav1.FabricSLA, jobs []gryv
 	}
 }
 
-func (r *FabricSLAReconciler) addBreach(sla *gryviav1.FabricSLA, breach gryviav1.SLABreach) {
+func (r *GryviaSLAReconciler) addBreach(sla *gryviav1.GryviaSLA, breach gryviav1.SLABreach) {
 	// Avoid duplicate breaches of the same type within 5 minutes
 	for _, existing := range sla.Status.Breaches {
 		if existing.Type == breach.Type {
@@ -273,7 +273,7 @@ func (r *FabricSLAReconciler) addBreach(sla *gryviav1.FabricSLA, breach gryviav1
 	}
 }
 
-func (r *FabricSLAReconciler) breachSeverity(sla *gryviav1.FabricSLA) string {
+func (r *GryviaSLAReconciler) breachSeverity(sla *gryviav1.GryviaSLA) string {
 	switch sla.Spec.Tier {
 	case "platinum":
 		return "critical"
@@ -286,7 +286,7 @@ func (r *FabricSLAReconciler) breachSeverity(sla *gryviav1.FabricSLA) string {
 	}
 }
 
-func (r *FabricSLAReconciler) calculateCompliance(sla *gryviav1.FabricSLA) *gryviav1.SLAComplianceStatus {
+func (r *GryviaSLAReconciler) calculateCompliance(sla *gryviav1.GryviaSLA) *gryviav1.SLAComplianceStatus {
 	compliance := &gryviav1.SLAComplianceStatus{}
 
 	// Calculate compliance based on breaches in the current month
@@ -325,7 +325,7 @@ func (r *FabricSLAReconciler) calculateCompliance(sla *gryviav1.FabricSLA) *gryv
 	return compliance
 }
 
-func (r *FabricSLAReconciler) updateCondition(sla *gryviav1.FabricSLA, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *GryviaSLAReconciler) updateCondition(sla *gryviav1.GryviaSLA, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -337,8 +337,8 @@ func (r *FabricSLAReconciler) updateCondition(sla *gryviav1.FabricSLA, condType 
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *FabricSLAReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaSLAReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricSLA{}).
+		For(&gryviav1.GryviaSLA{}).
 		Complete(r)
 }

@@ -24,33 +24,33 @@ const (
 	trainingInsightInterval = 60 * time.Second
 )
 
-// FabricTrainingInsightReconciler reconciles a FabricTrainingInsight object
-type FabricTrainingInsightReconciler struct {
+// GryviaTrainingInsightReconciler reconciles a GryviaTrainingInsight object
+type GryviaTrainingInsightReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabrictraininginsights,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabrictraininginsights/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabrictraininginsights/finalizers,verbs=update
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviatraininginsights,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviatraininginsights/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviatraininginsights/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 
-func (r *FabricTrainingInsightReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *GryviaTrainingInsightReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// Fetch the FabricTrainingInsight instance
-	insight := &gryviav1.FabricTrainingInsight{}
+	// Fetch the GryviaTrainingInsight instance
+	insight := &gryviav1.GryviaTrainingInsight{}
 	if err := r.Get(ctx, req.NamespacedName, insight); err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("FabricTrainingInsight resource not found, ignoring since object must be deleted")
+			logger.Info("GryviaTrainingInsight resource not found, ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		logger.Error(err, "Failed to get FabricTrainingInsight")
+		logger.Error(err, "Failed to get GryviaTrainingInsight")
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("Reconciling FabricTrainingInsight",
+	logger.Info("Reconciling GryviaTrainingInsight",
 		"name", insight.Name,
 		"targetJob", insight.Spec.TargetJob,
 		"metrics", insight.Spec.Metrics,
@@ -88,7 +88,7 @@ func (r *FabricTrainingInsightReconciler) Reconcile(ctx context.Context, req ctr
 	// Update status
 	r.updateTrainingInsightStatus(ctx, req.NamespacedName, "Active", rankStats, commPattern, commComputeRatio, stragglers, bottleneck)
 
-	logger.Info("FabricTrainingInsight analysis complete",
+	logger.Info("GryviaTrainingInsight analysis complete",
 		"ranks", len(rankStats),
 		"stragglers", len(stragglers),
 		"bottleneck", bottleneck,
@@ -111,7 +111,7 @@ type collectorTrainingResponse struct {
 }
 
 // queryTrainingStats fetches NCCL training stats from the collector API
-func (r *FabricTrainingInsightReconciler) queryTrainingStats(ctx context.Context, insight *gryviav1.FabricTrainingInsight) collectorTrainingResponse {
+func (r *GryviaTrainingInsightReconciler) queryTrainingStats(ctx context.Context, insight *gryviav1.GryviaTrainingInsight) collectorTrainingResponse {
 	logger := log.FromContext(ctx)
 
 	httpClient := &http.Client{Timeout: 10 * time.Second}
@@ -142,7 +142,7 @@ func (r *FabricTrainingInsightReconciler) queryTrainingStats(ctx context.Context
 }
 
 // detectStragglers analyzes rank stats to identify straggler ranks
-func (r *FabricTrainingInsightReconciler) detectStragglers(rankStats []gryviav1.RankStat) []gryviav1.StragglerInfo {
+func (r *GryviaTrainingInsightReconciler) detectStragglers(rankStats []gryviav1.RankStat) []gryviav1.StragglerInfo {
 	if len(rankStats) < 2 {
 		return nil
 	}
@@ -182,7 +182,7 @@ func (r *FabricTrainingInsightReconciler) detectStragglers(rankStats []gryviav1.
 }
 
 // identifyBottleneck determines the primary bottleneck based on the comm-compute ratio
-func (r *FabricTrainingInsightReconciler) identifyBottleneck(commComputeRatio float64) string {
+func (r *GryviaTrainingInsightReconciler) identifyBottleneck(commComputeRatio float64) string {
 	switch {
 	case commComputeRatio > 0.5:
 		return "communication"
@@ -193,10 +193,10 @@ func (r *FabricTrainingInsightReconciler) identifyBottleneck(commComputeRatio fl
 	}
 }
 
-// updateTrainingInsightStatus updates the FabricTrainingInsight status subresource
-func (r *FabricTrainingInsightReconciler) updateTrainingInsightStatus(ctx context.Context, namespacedName types.NamespacedName, phase string, rankStats []gryviav1.RankStat, commPattern string, commComputeRatio float64, stragglers []gryviav1.StragglerInfo, bottleneck string) {
+// updateTrainingInsightStatus updates the GryviaTrainingInsight status subresource
+func (r *GryviaTrainingInsightReconciler) updateTrainingInsightStatus(ctx context.Context, namespacedName types.NamespacedName, phase string, rankStats []gryviav1.RankStat, commPattern string, commComputeRatio float64, stragglers []gryviav1.StragglerInfo, bottleneck string) {
 	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		insight := &gryviav1.FabricTrainingInsight{}
+		insight := &gryviav1.GryviaTrainingInsight{}
 		if err := r.Get(ctx, namespacedName, insight); err != nil {
 			return err
 		}
@@ -209,13 +209,13 @@ func (r *FabricTrainingInsightReconciler) updateTrainingInsightStatus(ctx contex
 		insight.Status.LastAnalysis = metav1.Now()
 		return r.Status().Update(ctx, insight)
 	}); err != nil {
-		log.FromContext(ctx).Error(err, "Failed to update FabricTrainingInsight status")
+		log.FromContext(ctx).Error(err, "Failed to update GryviaTrainingInsight status")
 	}
 }
 
 // SetupWithManager sets up the controller with the Manager
-func (r *FabricTrainingInsightReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaTrainingInsightReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricTrainingInsight{}).
+		For(&gryviav1.GryviaTrainingInsight{}).
 		Complete(r)
 }

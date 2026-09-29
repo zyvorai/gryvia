@@ -1,6 +1,6 @@
 # Example: Backup and Restore Test
 apiVersion: gryvia.io/v1
-kind: FabricDRTest
+kind: GryviaDRTest
 metadata:
   name: monthly-backup-restore
 spec:
@@ -41,7 +41,7 @@ spec:
 ---
 # Example: Regional Failover Test
 apiVersion: gryvia.io/v1
-kind: FabricDRTest
+kind: GryviaDRTest
 metadata:
   name: quarterly-failover-drill
 spec:
@@ -84,7 +84,7 @@ spec:
 ---
 # Example: RPO/RTO Validation
 apiVersion: gryvia.io/v1
-kind: FabricDRTest
+kind: GryviaDRTest
 metadata:
   name: rpo-rto-validation
 spec:
@@ -125,7 +125,7 @@ spec:
 ---
 # Example: Full DR Drill
 apiVersion: gryvia.io/v1
-kind: FabricDRTest
+kind: GryviaDRTest
 metadata:
   name: annual-dr-drill
 spec:
@@ -201,7 +201,7 @@ spec:
 ---
 # Example: Chaos Engineering Test
 apiVersion: gryvia.io/v1
-kind: FabricDRTest
+kind: GryviaDRTest
 metadata:
   name: weekly-chaos-test
 spec:
@@ -257,7 +257,7 @@ spec:
 ---
 # DR Test Report
 apiVersion: gryvia.io/v1
-kind: FabricDRTest
+kind: GryviaDRTest
 metadata:
   name: q1-2024-failover-drill
 status:

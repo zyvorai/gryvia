@@ -1,5 +1,5 @@
 apiVersion: gryvia.io/v1
-kind: FabricStorage
+kind: GryviaStorage
 metadata:
   name: weka-cluster
 spec:

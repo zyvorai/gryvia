@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabricquotapolicies.gryvia.io
+  name: gryviaquotapolicies.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricQuotaPolicy
-    listKind: FabricQuotaPolicyList
-    plural: fabricquotapolicies
-    singular: fabricquotapolicy
+    kind: GryviaQuotaPolicy
+    listKind: GryviaQuotaPolicyList
+    plural: gryviaquotapolicies
+    singular: gryviaquotapolicy
   scope: Cluster
   versions:
   - name: v1
     schema:
       openAPIV3Schema:
-        description: FabricQuotaPolicy is the Schema for the fabricquotapolicies API
+        description: GryviaQuotaPolicy is the Schema for the gryviaquotapolicies API
         properties:
           apiVersion:
             description: |-
@@ -37,7 +37,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricQuotaPolicySpec defines the desired state of FabricQuotaPolicy
+            description: GryviaQuotaPolicySpec defines the desired state of GryviaQuotaPolicy
             properties:
               alerts:
                 description: Alerts defines alert configuration
@@ -244,7 +244,7 @@ spec:
                 type: object
             type: object
           status:
-            description: FabricQuotaPolicyStatus defines the observed state of FabricQuotaPolicy
+            description: GryviaQuotaPolicyStatus defines the observed state of GryviaQuotaPolicy
             properties:
               activeSchedule:
                 description: ActiveSchedule is the currently active time-based schedule

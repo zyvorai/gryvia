@@ -38,7 +38,7 @@ NetPredator is the network intelligence layer for the Gryvia GPU platform. It pr
 
 ## Custom Resources
 
-### FabricFlowPolicy (ffp)
+### GryviaFlowPolicy (ffp)
 
 Intent-based network policy that translates high-level traffic intents into CiliumNetworkPolicies.
 
@@ -50,7 +50,7 @@ Intent-based network policy that translates high-level traffic intents into Cili
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricFlowPolicy
+kind: GryviaFlowPolicy
 metadata:
   name: gpu-training-data
   namespace: ml-training
@@ -72,13 +72,13 @@ spec:
   priority: 100
 ```
 
-### FabricTrafficInsight (fti)
+### GryviaTrafficInsight (fti)
 
 Real-time traffic analysis with percentile latencies, throughput measurements, drop rate tracking, top talker identification, and anomaly detection.
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricTrafficInsight
+kind: GryviaTrafficInsight
 metadata:
   name: model-server-insight
   namespace: ml-training
@@ -93,7 +93,7 @@ spec:
     - retransmits
 ```
 
-### FabricAutoPolicy (fap)
+### GryviaAutoPolicy (fap)
 
 Self-healing firewall that learns traffic patterns and automatically generates network policies.
 
@@ -104,7 +104,7 @@ Self-healing firewall that learns traffic patterns and automatically generates n
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricAutoPolicy
+kind: GryviaAutoPolicy
 metadata:
   name: ml-namespace-autopolicy
   namespace: ml-training
@@ -120,7 +120,7 @@ spec:
   approvalRequired: true
 ```
 
-### FabricTraceSession (fts)
+### GryviaTraceSession (fts)
 
 Time-limited network trace/debug sessions with flow capture stored in ConfigMaps.
 
@@ -131,7 +131,7 @@ Time-limited network trace/debug sessions with flow capture stored in ConfigMaps
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricTraceSession
+kind: GryviaTraceSession
 metadata:
   name: debug-model-server
   namespace: ml-training
@@ -146,13 +146,13 @@ spec:
   captureHeaders: false
 ```
 
-### FabricServiceGraph (fsg)
+### GryviaServiceGraph (fsg)
 
 Service dependency graph built from Hubble flow data with health status, latency, and throughput per edge.
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricServiceGraph
+kind: GryviaServiceGraph
 metadata:
   name: ml-platform-graph
   namespace: ml-training
@@ -166,7 +166,7 @@ spec:
   depth: 3
 ```
 
-### FabricNetworkAnomaly (fna)
+### GryviaNetworkAnomaly (fna)
 
 Network anomaly detection with threshold-based rules, webhook alerting, and automatic mitigation.
 
@@ -181,7 +181,7 @@ Network anomaly detection with threshold-based rules, webhook alerting, and auto
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricNetworkAnomaly
+kind: GryviaNetworkAnomaly
 metadata:
   name: model-server-anomaly-detector
   namespace: ml-training

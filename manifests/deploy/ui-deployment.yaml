@@ -138,7 +138,7 @@ metadata:
   name: gryvia-ui
 rules:
 - apiGroups: ["gryvia.io"]
-  resources: ["fabricaijobs", "fabricquotas", "fabricgpunodes", "fabricstorages", "fabricnetworks"]
+  resources: ["gryviaaijobs", "gryviaquotas", "gryviagpunodes", "gryviastorages", "gryvianetworks"]
   verbs: ["get", "list", "watch"]
 - apiGroups: [""]
   resources: ["nodes", "pods"]

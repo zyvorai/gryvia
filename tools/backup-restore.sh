@@ -95,25 +95,25 @@ backup() {
         echo "# No Gryvia CRDs found during backup" > "${backup_path}/crds.yaml"
     fi
 
-    # Backup FabricGpuNodes
+    # Backup GryviaGpuNodes
     log_info "Backing up GPU Nodes..."
-    kubectl get fabricgpunodes -o yaml > "${backup_path}/gpu-nodes.yaml" 2>/dev/null || true
+    kubectl get gryviagpunodes -o yaml > "${backup_path}/gpu-nodes.yaml" 2>/dev/null || true
 
-    # Backup FabricAIJobs
+    # Backup GryviaAIJobs
     log_info "Backing up AI Jobs..."
-    kubectl get fabricaijobs -n "${NAMESPACE}" -o yaml > "${backup_path}/ai-jobs.yaml" 2>/dev/null || true
+    kubectl get gryviaaijobs -n "${NAMESPACE}" -o yaml > "${backup_path}/ai-jobs.yaml" 2>/dev/null || true
 
-    # Backup FabricQuotas
+    # Backup GryviaQuotas
     log_info "Backing up Quotas..."
-    kubectl get fabricquotas -o yaml > "${backup_path}/quotas.yaml" 2>/dev/null || true
+    kubectl get gryviaquotas -o yaml > "${backup_path}/quotas.yaml" 2>/dev/null || true
 
-    # Backup FabricStorages
+    # Backup GryviaStorages
     log_info "Backing up Storage configs..."
-    kubectl get fabricstorages -o yaml > "${backup_path}/storages.yaml" 2>/dev/null || true
+    kubectl get gryviastorages -o yaml > "${backup_path}/storages.yaml" 2>/dev/null || true
 
-    # Backup FabricNetworks
+    # Backup GryviaNetworks
     log_info "Backing up Network configs..."
-    kubectl get fabricnetworks -o yaml > "${backup_path}/networks.yaml" 2>/dev/null || true
+    kubectl get gryvianetworks -o yaml > "${backup_path}/networks.yaml" 2>/dev/null || true
 
     # Backup ConfigMaps
     log_info "Backing up ConfigMaps..."

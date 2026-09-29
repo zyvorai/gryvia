@@ -33,7 +33,7 @@ Gang scheduling is enabled per-job via the `scheduling` section:
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: distributed-llm-training
 spec:
@@ -104,7 +104,7 @@ Features:
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricQueue
+kind: GryviaQueue
 metadata:
   name: ml-research-queue
 spec:
@@ -222,7 +222,7 @@ Elastic training allows distributed training jobs to scale their worker count up
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: elastic-training
 spec:
@@ -310,7 +310,7 @@ Validating and mutating admission webhooks for job submission with automatic NCC
 
 ### Overview
 
-Gryvia registers two admission webhooks that intercept FabricAIJob creation:
+Gryvia registers two admission webhooks that intercept GryviaAIJob creation:
 
 1. **Validating Webhook**: Rejects invalid job specifications before they enter the system.
 2. **Mutating Webhook**: Automatically injects optimal NCCL environment variables and other runtime configuration.
@@ -450,7 +450,7 @@ Gryvia extends the [Priority & Preemption](ADVANCED_FEATURES.md#priority--preemp
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: critical-inference
 spec:

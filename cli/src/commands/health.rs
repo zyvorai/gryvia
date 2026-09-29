@@ -31,7 +31,7 @@ pub async fn execute(client: &GryviaClient, component: &str) -> Result<()> {
 async fn check_gpu_health(client: &GryviaClient) -> Result<()> {
     println!("{}", "GPU Nodes:".bold().underline());
 
-    let api: Api<FabricGpuNode> = Api::all(client.kube_client.clone());
+    let api: Api<GryviaGpuNode> = Api::all(client.kube_client.clone());
     let nodes = api.list(&ListParams::default()).await
         .context("Failed to list GPU nodes")?;
 
@@ -76,7 +76,7 @@ async fn check_gpu_health(client: &GryviaClient) -> Result<()> {
 async fn check_storage_health(client: &GryviaClient) -> Result<()> {
     println!("{}", "Storage:".bold().underline());
 
-    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("gryvia.io", "v1", "FabricStorage"));
+    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("gryvia.io", "v1", "GryviaStorage"));
     let api: Api<DynamicObject> = Api::all_with(
         client.kube_client.clone(),
         &ar,
@@ -150,7 +150,7 @@ async fn check_storage_health(client: &GryviaClient) -> Result<()> {
 async fn check_network_health(client: &GryviaClient) -> Result<()> {
     println!("{}", "Network:".bold().underline());
 
-    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("gryvia.io", "v1", "FabricNetwork"));
+    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("gryvia.io", "v1", "GryviaNetwork"));
     let api: Api<DynamicObject> = Api::all_with(
         client.kube_client.clone(),
         &ar,

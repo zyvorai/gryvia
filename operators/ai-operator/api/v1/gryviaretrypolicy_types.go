@@ -4,8 +4,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// FabricRetryPolicySpec defines the desired state of FabricRetryPolicy
-type FabricRetryPolicySpec struct {
+// GryviaRetryPolicySpec defines the desired state of GryviaRetryPolicy
+type GryviaRetryPolicySpec struct {
 	// MaxRetries is the maximum number of retries
 	MaxRetries int32 `json:"maxRetries,omitempty"`
 
@@ -112,8 +112,8 @@ type CircuitBreaker struct {
 	ResetTimeout string `json:"resetTimeout,omitempty"`
 }
 
-// FabricRetryPolicyStatus defines the observed state of FabricRetryPolicy
-type FabricRetryPolicyStatus struct {
+// GryviaRetryPolicyStatus defines the observed state of GryviaRetryPolicy
+type GryviaRetryPolicyStatus struct {
 	// Attempts is the total number of retry attempts
 	Attempts int32 `json:"attempts,omitempty"`
 
@@ -137,24 +137,24 @@ type FabricRetryPolicyStatus struct {
 //+kubebuilder:printcolumn:name="Backoff",type=string,JSONPath=`.spec.backoff.type`
 //+kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// FabricRetryPolicy is the Schema for the fabricretrypolicies API
-type FabricRetryPolicy struct {
+// GryviaRetryPolicy is the Schema for the gryviaretrypolicies API
+type GryviaRetryPolicy struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricRetryPolicySpec   `json:"spec,omitempty"`
-	Status FabricRetryPolicyStatus `json:"status,omitempty"`
+	Spec   GryviaRetryPolicySpec   `json:"spec,omitempty"`
+	Status GryviaRetryPolicyStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricRetryPolicyList contains a list of FabricRetryPolicy
-type FabricRetryPolicyList struct {
+// GryviaRetryPolicyList contains a list of GryviaRetryPolicy
+type GryviaRetryPolicyList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricRetryPolicy `json:"items"`
+	Items           []GryviaRetryPolicy `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&FabricRetryPolicy{}, &FabricRetryPolicyList{})
+	SchemeBuilder.Register(&GryviaRetryPolicy{}, &GryviaRetryPolicyList{})
 }

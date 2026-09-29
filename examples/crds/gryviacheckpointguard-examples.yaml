@@ -1,6 +1,6 @@
 # Example: Checkpoint guard for LLM training
 apiVersion: gryvia.io/v1
-kind: FabricCheckpointGuard
+kind: GryviaCheckpointGuard
 metadata:
   name: llm-training-guard
   namespace: default

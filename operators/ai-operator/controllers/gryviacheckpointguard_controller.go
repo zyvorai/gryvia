@@ -40,35 +40,35 @@ const (
 	TriggerNvlinkDegraded       = "NvlinkDegraded"
 )
 
-// FabricCheckpointGuardReconciler reconciles a FabricCheckpointGuard object
-type FabricCheckpointGuardReconciler struct {
+// GryviaCheckpointGuardReconciler reconciles a GryviaCheckpointGuard object
+type GryviaCheckpointGuardReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Log    logr.Logger
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabriccheckpointguards,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabriccheckpointguards/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabriccheckpointguards/finalizers,verbs=update
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricgpunodes,verbs=get;list;watch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviacheckpointguards,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviacheckpointguards/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviacheckpointguards/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs,verbs=get;list;watch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviagpunodes,verbs=get;list;watch
 //+kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop
-func (r *FabricCheckpointGuardReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := r.Log.WithValues("fabriccheckpointguard", req.NamespacedName)
+func (r *GryviaCheckpointGuardReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := r.Log.WithValues("gryviacheckpointguard", req.NamespacedName)
 
-	// Fetch the FabricCheckpointGuard instance
-	guard := &gryviav1.FabricCheckpointGuard{}
+	// Fetch the GryviaCheckpointGuard instance
+	guard := &gryviav1.GryviaCheckpointGuard{}
 	err := r.Get(ctx, req.NamespacedName, guard)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			log.Info("FabricCheckpointGuard resource not found. Ignoring since object must be deleted")
+			log.Info("GryviaCheckpointGuard resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		log.Error(err, "Failed to get FabricCheckpointGuard")
+		log.Error(err, "Failed to get GryviaCheckpointGuard")
 		return ctrl.Result{}, err
 	}
 
@@ -81,7 +81,7 @@ func (r *FabricCheckpointGuardReconciler) Reconcile(ctx context.Context, req ctr
 	if guard.Status.Phase == "" {
 		guard.Status.Phase = PhaseIdle
 		if err := r.Status().Update(ctx, guard); err != nil {
-			log.Error(err, "Failed to initialize FabricCheckpointGuard status")
+			log.Error(err, "Failed to initialize GryviaCheckpointGuard status")
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{Requeue: true}, nil
@@ -97,10 +97,10 @@ func (r *FabricCheckpointGuardReconciler) Reconcile(ctx context.Context, req ctr
 	return result, nil
 }
 
-func (r *FabricCheckpointGuardReconciler) reconcileCheckpointGuard(ctx context.Context, guard *gryviav1.FabricCheckpointGuard) (ctrl.Result, error) {
-	log := r.Log.WithValues("fabriccheckpointguard", guard.Name)
+func (r *GryviaCheckpointGuardReconciler) reconcileCheckpointGuard(ctx context.Context, guard *gryviav1.GryviaCheckpointGuard) (ctrl.Result, error) {
+	log := r.Log.WithValues("gryviacheckpointguard", guard.Name)
 
-	// Step 1: Find matching FabricAIJob resources using the jobSelector
+	// Step 1: Find matching GryviaAIJob resources using the jobSelector
 	matchedJobs, err := r.findMatchingJobs(ctx, guard)
 	if err != nil {
 		log.Error(err, "Failed to find matching jobs")
@@ -117,7 +117,7 @@ func (r *FabricCheckpointGuardReconciler) reconcileCheckpointGuard(ctx context.C
 	// If no jobs matched, set to Idle
 	if len(matchedJobs) == 0 {
 		guard.Status.Phase = PhaseIdle
-		r.updateGuardCondition(guard, ConditionGuardActive, metav1.ConditionFalse, "NoMatchingJobs", "No FabricAIJob resources match the jobSelector")
+		r.updateGuardCondition(guard, ConditionGuardActive, metav1.ConditionFalse, "NoMatchingJobs", "No GryviaAIJob resources match the jobSelector")
 		if err := r.Status().Update(ctx, guard); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -147,7 +147,7 @@ func (r *FabricCheckpointGuardReconciler) reconcileCheckpointGuard(ctx context.C
 			}
 		}
 
-		// Step 4: Check GPU health from FabricGpuNode resources
+		// Step 4: Check GPU health from GryviaGpuNode resources
 		gpuHealthy, gpuReason := r.checkGpuHealth(ctx, &job)
 		if !gpuHealthy {
 			log.Info("GPU health issue detected", "job", job.Name, "reason", gpuReason)
@@ -227,9 +227,9 @@ func (r *FabricCheckpointGuardReconciler) reconcileCheckpointGuard(ctx context.C
 	return ctrl.Result{RequeueAfter: requeueAfter}, nil
 }
 
-// findMatchingJobs finds FabricAIJob resources that match the guard's jobSelector
-func (r *FabricCheckpointGuardReconciler) findMatchingJobs(ctx context.Context, guard *gryviav1.FabricCheckpointGuard) ([]gryviav1.FabricAIJob, error) {
-	jobList := &gryviav1.FabricAIJobList{}
+// findMatchingJobs finds GryviaAIJob resources that match the guard's jobSelector
+func (r *GryviaCheckpointGuardReconciler) findMatchingJobs(ctx context.Context, guard *gryviav1.GryviaCheckpointGuard) ([]gryviav1.GryviaAIJob, error) {
+	jobList := &gryviav1.GryviaAIJobList{}
 
 	listOpts := []client.ListOption{
 		client.InNamespace(guard.Namespace),
@@ -240,14 +240,14 @@ func (r *FabricCheckpointGuardReconciler) findMatchingJobs(ctx context.Context, 
 	}
 
 	if err := r.List(ctx, jobList, listOpts...); err != nil {
-		return nil, fmt.Errorf("failed to list FabricAIJobs: %w", err)
+		return nil, fmt.Errorf("failed to list GryviaAIJobs: %w", err)
 	}
 
 	return jobList.Items, nil
 }
 
 // checkJobPodHealth checks the health of pods belonging to a job's StatefulSet
-func (r *FabricCheckpointGuardReconciler) checkJobPodHealth(ctx context.Context, job *gryviav1.FabricAIJob) (bool, string) {
+func (r *GryviaCheckpointGuardReconciler) checkJobPodHealth(ctx context.Context, job *gryviav1.GryviaAIJob) (bool, string) {
 	// Look up the StatefulSet for this job
 	stsName := fmt.Sprintf("%s-training", job.Name)
 	sts := &appsv1.StatefulSet{}
@@ -292,21 +292,21 @@ func (r *FabricCheckpointGuardReconciler) checkJobPodHealth(ctx context.Context,
 	return true, ""
 }
 
-// checkGpuHealth checks GPU health status from FabricGpuNode resources for nodes running the job
-func (r *FabricCheckpointGuardReconciler) checkGpuHealth(ctx context.Context, job *gryviav1.FabricAIJob) (bool, string) {
+// checkGpuHealth checks GPU health status from GryviaGpuNode resources for nodes running the job
+func (r *GryviaCheckpointGuardReconciler) checkGpuHealth(ctx context.Context, job *gryviav1.GryviaAIJob) (bool, string) {
 	if len(job.Status.NodesAllocated) == 0 {
 		return true, ""
 	}
 
-	// List all FabricGpuNode resources (they are cluster-scoped)
-	gpuNodeList := &gryviav1.FabricGpuNodeList{}
+	// List all GryviaGpuNode resources (they are cluster-scoped)
+	gpuNodeList := &gryviav1.GryviaGpuNodeList{}
 	if err := r.List(ctx, gpuNodeList); err != nil {
 		// If the CRD is not installed, skip the check gracefully
 		return true, ""
 	}
 
 	// Build a map of node names to GPU nodes for quick lookup
-	gpuNodesByNodeName := make(map[string]*gryviav1.FabricGpuNode)
+	gpuNodesByNodeName := make(map[string]*gryviav1.GryviaGpuNode)
 	for i := range gpuNodeList.Items {
 		gpuNode := &gpuNodeList.Items[i]
 		gpuNodesByNodeName[gpuNode.Spec.NodeName] = gpuNode
@@ -315,7 +315,7 @@ func (r *FabricCheckpointGuardReconciler) checkGpuHealth(ctx context.Context, jo
 	for _, nodeName := range job.Status.NodesAllocated {
 		gpuNode, exists := gpuNodesByNodeName[nodeName]
 		if !exists {
-			continue // No FabricGpuNode for this node, skip
+			continue // No GryviaGpuNode for this node, skip
 		}
 
 		// Check GPU node phase
@@ -339,13 +339,13 @@ func (r *FabricCheckpointGuardReconciler) checkGpuHealth(ctx context.Context, jo
 	return true, ""
 }
 
-// checkNvlinkHealth checks NVLink interconnect health from FabricGpuNode resources
-func (r *FabricCheckpointGuardReconciler) checkNvlinkHealth(ctx context.Context, job *gryviav1.FabricAIJob) bool {
+// checkNvlinkHealth checks NVLink interconnect health from GryviaGpuNode resources
+func (r *GryviaCheckpointGuardReconciler) checkNvlinkHealth(ctx context.Context, job *gryviav1.GryviaAIJob) bool {
 	if len(job.Status.NodesAllocated) == 0 {
 		return true
 	}
 
-	gpuNodeList := &gryviav1.FabricGpuNodeList{}
+	gpuNodeList := &gryviav1.GryviaGpuNodeList{}
 	if err := r.List(ctx, gpuNodeList); err != nil {
 		return true // Cannot check, assume healthy
 	}
@@ -375,7 +375,7 @@ func (r *FabricCheckpointGuardReconciler) checkNvlinkHealth(ctx context.Context,
 }
 
 // detectSpotPreemption checks if any pods have received spot preemption signals
-func (r *FabricCheckpointGuardReconciler) detectSpotPreemption(ctx context.Context, job *gryviav1.FabricAIJob) bool {
+func (r *GryviaCheckpointGuardReconciler) detectSpotPreemption(ctx context.Context, job *gryviav1.GryviaAIJob) bool {
 	pods := &corev1.PodList{}
 	if err := r.List(ctx, pods, client.InNamespace(job.Namespace), client.MatchingLabels{
 		"gryvia.io/job": job.Name,
@@ -413,7 +413,7 @@ func (r *FabricCheckpointGuardReconciler) detectSpotPreemption(ctx context.Conte
 }
 
 // detectLossDivergence checks if the job's training loss is diverging
-func (r *FabricCheckpointGuardReconciler) detectLossDivergence(job *gryviav1.FabricAIJob) bool {
+func (r *GryviaCheckpointGuardReconciler) detectLossDivergence(job *gryviav1.GryviaAIJob) bool {
 	if job.Status.Metrics == nil {
 		return false
 	}
@@ -432,7 +432,7 @@ func (r *FabricCheckpointGuardReconciler) detectLossDivergence(job *gryviav1.Fab
 }
 
 // isEmergencyTrigger checks if a given trigger is configured in the guard's emergency checkpoint policy
-func (r *FabricCheckpointGuardReconciler) isEmergencyTrigger(guard *gryviav1.FabricCheckpointGuard, trigger string) bool {
+func (r *GryviaCheckpointGuardReconciler) isEmergencyTrigger(guard *gryviav1.GryviaCheckpointGuard, trigger string) bool {
 	if guard.Spec.CheckpointPolicy.EmergencyCheckpoint == nil {
 		return false
 	}
@@ -447,7 +447,7 @@ func (r *FabricCheckpointGuardReconciler) isEmergencyTrigger(guard *gryviav1.Fab
 }
 
 // isPeriodicCheckpointDue checks if enough time has elapsed since the last checkpoint
-func (r *FabricCheckpointGuardReconciler) isPeriodicCheckpointDue(guard *gryviav1.FabricCheckpointGuard) bool {
+func (r *GryviaCheckpointGuardReconciler) isPeriodicCheckpointDue(guard *gryviav1.GryviaCheckpointGuard) bool {
 	interval := guard.Spec.CheckpointPolicy.IntervalMinutes
 	if interval <= 0 {
 		interval = 30 // Default 30 minutes
@@ -462,8 +462,8 @@ func (r *FabricCheckpointGuardReconciler) isPeriodicCheckpointDue(guard *gryviav
 }
 
 // performCheckpoint executes a checkpoint operation for the matched jobs
-func (r *FabricCheckpointGuardReconciler) performCheckpoint(ctx context.Context, guard *gryviav1.FabricCheckpointGuard, jobs []gryviav1.FabricAIJob, isEmergency bool) error {
-	log := r.Log.WithValues("fabriccheckpointguard", guard.Name, "emergency", isEmergency)
+func (r *GryviaCheckpointGuardReconciler) performCheckpoint(ctx context.Context, guard *gryviav1.GryviaCheckpointGuard, jobs []gryviav1.GryviaAIJob, isEmergency bool) error {
+	log := r.Log.WithValues("gryviacheckpointguard", guard.Name, "emergency", isEmergency)
 
 	checkpointStart := time.Now()
 	checkpointName := fmt.Sprintf("ckpt-%s-%d", guard.Name, time.Now().Unix())
@@ -545,7 +545,7 @@ func (r *FabricCheckpointGuardReconciler) performCheckpoint(ctx context.Context,
 }
 
 // updateAvgDuration computes a running average of checkpoint duration
-func (r *FabricCheckpointGuardReconciler) updateAvgDuration(currentAvg string, newDuration time.Duration, totalCount int32) string {
+func (r *GryviaCheckpointGuardReconciler) updateAvgDuration(currentAvg string, newDuration time.Duration, totalCount int32) string {
 	if totalCount <= 1 {
 		return newDuration.Round(time.Second).String()
 	}
@@ -562,7 +562,7 @@ func (r *FabricCheckpointGuardReconciler) updateAvgDuration(currentAvg string, n
 }
 
 // getRequeueInterval returns the requeue interval based on checkpoint policy
-func (r *FabricCheckpointGuardReconciler) getRequeueInterval(guard *gryviav1.FabricCheckpointGuard) time.Duration {
+func (r *GryviaCheckpointGuardReconciler) getRequeueInterval(guard *gryviav1.GryviaCheckpointGuard) time.Duration {
 	interval := guard.Spec.CheckpointPolicy.IntervalMinutes
 	if interval <= 0 {
 		interval = 30
@@ -579,7 +579,7 @@ func (r *FabricCheckpointGuardReconciler) getRequeueInterval(guard *gryviav1.Fab
 }
 
 // updateGuardCondition updates a condition on the checkpoint guard status
-func (r *FabricCheckpointGuardReconciler) updateGuardCondition(guard *gryviav1.FabricCheckpointGuard, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *GryviaCheckpointGuardReconciler) updateGuardCondition(guard *gryviav1.GryviaCheckpointGuard, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -612,8 +612,8 @@ func (r *FabricCheckpointGuardReconciler) updateGuardCondition(guard *gryviav1.F
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *FabricCheckpointGuardReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaCheckpointGuardReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricCheckpointGuard{}).
+		For(&gryviav1.GryviaCheckpointGuard{}).
 		Complete(r)
 }

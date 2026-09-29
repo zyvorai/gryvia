@@ -16,31 +16,31 @@ import (
 	gryviav1 "github.com/zyvorai/gryvia/operators/quota-operator/api/v1"
 )
 
-// FabricChargebackReconciler reconciles a FabricChargeback object
-type FabricChargebackReconciler struct {
+// GryviaChargebackReconciler reconciles a GryviaChargeback object
+type GryviaChargebackReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricchargebacks,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricchargebacks/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricchargebacks/finalizers,verbs=update
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricquotas,verbs=get;list;watch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviachargebacks,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviachargebacks/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviachargebacks/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs,verbs=get;list;watch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaquotas,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
-func (r *FabricChargebackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *GryviaChargebackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// Fetch the FabricChargeback instance
-	chargeback := &gryviav1.FabricChargeback{}
+	// Fetch the GryviaChargeback instance
+	chargeback := &gryviav1.GryviaChargeback{}
 	err := r.Get(ctx, req.NamespacedName, chargeback)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("FabricChargeback resource not found. Ignoring since object must be deleted")
+			logger.Info("GryviaChargeback resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		logger.Error(err, "Failed to get FabricChargeback")
+		logger.Error(err, "Failed to get GryviaChargeback")
 		return ctrl.Result{}, err
 	}
 
@@ -49,7 +49,7 @@ func (r *FabricChargebackReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, nil
 	}
 
-	logger.Info("Reconciling FabricChargeback", "mode", chargeback.Spec.Mode, "period", chargeback.Spec.Period.Type)
+	logger.Info("Reconciling GryviaChargeback", "mode", chargeback.Spec.Mode, "period", chargeback.Spec.Period.Type)
 
 	// Reconcile the chargeback
 	result, err := r.reconcileChargeback(ctx, chargeback)
@@ -64,14 +64,14 @@ func (r *FabricChargebackReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	// Update status
 	if err := r.Status().Update(ctx, chargeback); err != nil {
-		logger.Error(err, "Failed to update FabricChargeback status")
+		logger.Error(err, "Failed to update GryviaChargeback status")
 		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 }
 
-func (r *FabricChargebackReconciler) reconcileChargeback(ctx context.Context, cb *gryviav1.FabricChargeback) (ctrl.Result, error) {
+func (r *GryviaChargebackReconciler) reconcileChargeback(ctx context.Context, cb *gryviav1.GryviaChargeback) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	// Initialize current period
@@ -114,7 +114,7 @@ func (r *FabricChargebackReconciler) reconcileChargeback(ctx context.Context, cb
 	return ctrl.Result{}, nil
 }
 
-func (r *FabricChargebackReconciler) initializeCurrentPeriod(cb *gryviav1.FabricChargeback) *gryviav1.ChargebackCurrentPeriod {
+func (r *GryviaChargebackReconciler) initializeCurrentPeriod(cb *gryviav1.GryviaChargeback) *gryviav1.ChargebackCurrentPeriod {
 	now := time.Now()
 	period := &gryviav1.ChargebackCurrentPeriod{}
 
@@ -148,11 +148,11 @@ func (r *FabricChargebackReconciler) initializeCurrentPeriod(cb *gryviav1.Fabric
 	return period
 }
 
-func (r *FabricChargebackReconciler) calculateCostCenterCosts(ctx context.Context, cb *gryviav1.FabricChargeback, period *gryviav1.ChargebackCurrentPeriod) error {
+func (r *GryviaChargebackReconciler) calculateCostCenterCosts(ctx context.Context, cb *gryviav1.GryviaChargeback, period *gryviav1.ChargebackCurrentPeriod) error {
 	// Get all jobs to calculate costs
-	jobList := &gryviav1.FabricAIJobList{}
+	jobList := &gryviav1.GryviaAIJobList{}
 	if err := r.List(ctx, jobList); err != nil {
-		return fmt.Errorf("failed to list FabricAIJobs: %w", err)
+		return fmt.Errorf("failed to list GryviaAIJobs: %w", err)
 	}
 
 	// Find team-to-cost-center mapping
@@ -164,10 +164,10 @@ func (r *FabricChargebackReconciler) calculateCostCenterCosts(ctx context.Contex
 		}
 	}
 
-	// Find team-to-namespace mapping via FabricQuota
-	quotaList := &gryviav1.FabricQuotaList{}
+	// Find team-to-namespace mapping via GryviaQuota
+	quotaList := &gryviav1.GryviaQuotaList{}
 	if err := r.List(ctx, quotaList); err != nil {
-		return fmt.Errorf("failed to list FabricQuotas: %w", err)
+		return fmt.Errorf("failed to list GryviaQuotas: %w", err)
 	}
 	nsToTeam := make(map[string]string)
 	for _, quota := range quotaList.Items {
@@ -273,7 +273,7 @@ func (r *FabricChargebackReconciler) calculateCostCenterCosts(ctx context.Contex
 	return nil
 }
 
-func (r *FabricChargebackReconciler) getGPURate(cb *gryviav1.FabricChargeback, gpuType string) float64 {
+func (r *GryviaChargebackReconciler) getGPURate(cb *gryviav1.GryviaChargeback, gpuType string) float64 {
 	if cb.Spec.Pricing.GPURates != nil {
 		if rate, ok := cb.Spec.Pricing.GPURates[gpuType]; ok {
 			return rate.HourlyRate
@@ -293,7 +293,7 @@ func (r *FabricChargebackReconciler) getGPURate(cb *gryviav1.FabricChargeback, g
 	return 10.00
 }
 
-func (r *FabricChargebackReconciler) checkReportGeneration(cb *gryviav1.FabricChargeback) {
+func (r *GryviaChargebackReconciler) checkReportGeneration(cb *gryviav1.GryviaChargeback) {
 	if cb.Spec.Reports == nil || !cb.Spec.Reports.Enabled {
 		return
 	}
@@ -328,7 +328,7 @@ func (r *FabricChargebackReconciler) checkReportGeneration(cb *gryviav1.FabricCh
 	}
 }
 
-func (r *FabricChargebackReconciler) updateCondition(cb *gryviav1.FabricChargeback, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *GryviaChargebackReconciler) updateCondition(cb *gryviav1.GryviaChargeback, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -340,8 +340,8 @@ func (r *FabricChargebackReconciler) updateCondition(cb *gryviav1.FabricChargeba
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *FabricChargebackReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaChargebackReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricChargeback{}).
+		For(&gryviav1.GryviaChargeback{}).
 		Complete(r)
 }

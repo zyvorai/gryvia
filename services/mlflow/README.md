@@ -110,7 +110,7 @@ with mlflow.start_run(run_name="run-001"):
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: mlflow-training
 spec:

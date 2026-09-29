@@ -4,9 +4,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// FabricAutoScalerSpec defines the desired state of FabricAutoScaler
-type FabricAutoScalerSpec struct {
-	// QueueRef is the name of FabricQueue to autoscale
+// GryviaAutoScalerSpec defines the desired state of GryviaAutoScaler
+type GryviaAutoScalerSpec struct {
+	// QueueRef is the name of GryviaQueue to autoscale
 	QueueRef string `json:"queueRef"`
 
 	// GpuType is the GPU type to add/remove
@@ -127,8 +127,8 @@ type AutoScalerMetrics struct {
 	UtilizationPercent float64 `json:"utilizationPercent,omitempty"`
 }
 
-// FabricAutoScalerStatus defines the observed state of FabricAutoScaler
-type FabricAutoScalerStatus struct {
+// GryviaAutoScalerStatus defines the observed state of GryviaAutoScaler
+type GryviaAutoScalerStatus struct {
 	// CurrentNodes is the current number of nodes
 	CurrentNodes int32 `json:"currentNodes,omitempty"`
 
@@ -162,24 +162,24 @@ type FabricAutoScalerStatus struct {
 //+kubebuilder:printcolumn:name="Max",type=integer,JSONPath=`.spec.maxNodes`
 //+kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// FabricAutoScaler is the Schema for the fabricautoscalers API
-type FabricAutoScaler struct {
+// GryviaAutoScaler is the Schema for the gryviaautoscalers API
+type GryviaAutoScaler struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricAutoScalerSpec   `json:"spec,omitempty"`
-	Status FabricAutoScalerStatus `json:"status,omitempty"`
+	Spec   GryviaAutoScalerSpec   `json:"spec,omitempty"`
+	Status GryviaAutoScalerStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricAutoScalerList contains a list of FabricAutoScaler
-type FabricAutoScalerList struct {
+// GryviaAutoScalerList contains a list of GryviaAutoScaler
+type GryviaAutoScalerList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricAutoScaler `json:"items"`
+	Items           []GryviaAutoScaler `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&FabricAutoScaler{}, &FabricAutoScalerList{})
+	SchemeBuilder.Register(&GryviaAutoScaler{}, &GryviaAutoScalerList{})
 }

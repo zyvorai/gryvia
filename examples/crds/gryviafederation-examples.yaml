@@ -1,6 +1,6 @@
 # Example: Multi-Region Federation
 apiVersion: gryvia.io/v1
-kind: FabricFederation
+kind: GryviaFederation
 metadata:
   name: global-federation
 spec:
@@ -112,13 +112,13 @@ spec:
 ---
 # Example: Federated Job
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: federated-training
 spec:
   type: training
 
-  # Placement across clusters is decided by the FabricFederation named "global-federation"
+  # Placement across clusters is decided by the GryviaFederation named "global-federation"
   # (see above); the job itself only states what it needs (gpus/gpuType).
 
   gpus: 16

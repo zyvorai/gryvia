@@ -27,31 +27,31 @@ const (
 	ConditionModelServing    = "ModelServing"
 )
 
-// FabricModelRegistryReconciler reconciles a FabricModelRegistry object
-type FabricModelRegistryReconciler struct {
+// GryviaModelRegistryReconciler reconciles a GryviaModelRegistry object
+type GryviaModelRegistryReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Log    logr.Logger
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricmodelregistries,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricmodelregistries/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricmodelregistries/finalizers,verbs=update
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricinferenceservices,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviamodelregistries,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviamodelregistries/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviamodelregistries/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviainferenceservices,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop
-func (r *FabricModelRegistryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := r.Log.WithValues("fabricmodelregistry", req.NamespacedName)
+func (r *GryviaModelRegistryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := r.Log.WithValues("gryviamodelregistry", req.NamespacedName)
 
-	// Fetch the FabricModelRegistry instance
-	model := &gryviav1.FabricModelRegistry{}
+	// Fetch the GryviaModelRegistry instance
+	model := &gryviav1.GryviaModelRegistry{}
 	err := r.Get(ctx, req.NamespacedName, model)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			log.Info("FabricModelRegistry resource not found. Ignoring since object must be deleted")
+			log.Info("GryviaModelRegistry resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		log.Error(err, "Failed to get FabricModelRegistry")
+		log.Error(err, "Failed to get GryviaModelRegistry")
 		return ctrl.Result{}, err
 	}
 
@@ -84,8 +84,8 @@ func (r *FabricModelRegistryReconciler) Reconcile(ctx context.Context, req ctrl.
 	return result, nil
 }
 
-func (r *FabricModelRegistryReconciler) reconcileModelRegistry(ctx context.Context, model *gryviav1.FabricModelRegistry) (ctrl.Result, error) {
-	log := r.Log.WithValues("fabricmodelregistry", model.Name)
+func (r *GryviaModelRegistryReconciler) reconcileModelRegistry(ctx context.Context, model *gryviav1.GryviaModelRegistry) (ctrl.Result, error) {
+	log := r.Log.WithValues("gryviamodelregistry", model.Name)
 
 	// Check if model should be auto-served when it reaches production stage
 	if model.Spec.Stage == gryviav1.ModelStageProduction && model.Spec.AutoServe {
@@ -125,12 +125,12 @@ func (r *FabricModelRegistryReconciler) reconcileModelRegistry(ctx context.Conte
 	return ctrl.Result{}, nil
 }
 
-// ensureInferenceService creates a FabricInferenceService for a production model.
-func (r *FabricModelRegistryReconciler) ensureInferenceService(ctx context.Context, model *gryviav1.FabricModelRegistry) error {
+// ensureInferenceService creates a GryviaInferenceService for a production model.
+func (r *GryviaModelRegistryReconciler) ensureInferenceService(ctx context.Context, model *gryviav1.GryviaModelRegistry) error {
 	inferName := fmt.Sprintf("%s-%s-serving", model.Spec.ModelName, model.Spec.Version)
 
 	// Check if it already exists
-	existing := &gryviav1.FabricInferenceService{}
+	existing := &gryviav1.GryviaInferenceService{}
 	err := r.Get(ctx, types.NamespacedName{
 		Namespace: model.Namespace,
 		Name:      inferName,
@@ -164,7 +164,7 @@ func (r *FabricModelRegistryReconciler) ensureInferenceService(ctx context.Conte
 		gpuType = model.Spec.ServingConfig.GPUType
 	}
 
-	inferSvc := &gryviav1.FabricInferenceService{
+	inferSvc := &gryviav1.GryviaInferenceService{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      inferName,
 			Namespace: model.Namespace,
@@ -174,10 +174,10 @@ func (r *FabricModelRegistryReconciler) ensureInferenceService(ctx context.Conte
 				"gryvia.io/component": "inference",
 			},
 			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(model, gryviav1.GroupVersion.WithKind("FabricModelRegistry")),
+				*metav1.NewControllerRef(model, gryviav1.GroupVersion.WithKind("GryviaModelRegistry")),
 			},
 		},
-		Spec: gryviav1.FabricInferenceServiceSpec{
+		Spec: gryviav1.GryviaInferenceServiceSpec{
 			ModelRef: model.Name,
 			Backend:  backend,
 			Replicas: replicas,
@@ -199,8 +199,8 @@ func (r *FabricModelRegistryReconciler) ensureInferenceService(ctx context.Conte
 }
 
 // syncInferenceHealth checks the health of the inference service and updates model status.
-func (r *FabricModelRegistryReconciler) syncInferenceHealth(ctx context.Context, model *gryviav1.FabricModelRegistry) {
-	inferSvc := &gryviav1.FabricInferenceService{}
+func (r *GryviaModelRegistryReconciler) syncInferenceHealth(ctx context.Context, model *gryviav1.GryviaModelRegistry) {
+	inferSvc := &gryviav1.GryviaInferenceService{}
 	err := r.Get(ctx, types.NamespacedName{
 		Namespace: model.Namespace,
 		Name:      model.Status.InferenceServiceName,
@@ -234,13 +234,13 @@ func (r *FabricModelRegistryReconciler) syncInferenceHealth(ctx context.Context,
 }
 
 // trackPreviousVersion records the currently serving version for rollback support.
-func (r *FabricModelRegistryReconciler) trackPreviousVersion(ctx context.Context, model *gryviav1.FabricModelRegistry) {
+func (r *GryviaModelRegistryReconciler) trackPreviousVersion(ctx context.Context, model *gryviav1.GryviaModelRegistry) {
 	if model.Status.PreviousVersion != "" {
 		return // Already tracked
 	}
 
 	// Find any other model with the same modelName in production stage
-	models := &gryviav1.FabricModelRegistryList{}
+	models := &gryviav1.GryviaModelRegistryList{}
 	if err := r.List(ctx, models,
 		client.InNamespace(model.Namespace),
 		client.MatchingLabels{"gryvia.io/model": model.Spec.ModelName},
@@ -259,7 +259,7 @@ func (r *FabricModelRegistryReconciler) trackPreviousVersion(ctx context.Context
 	}
 }
 
-func (r *FabricModelRegistryReconciler) updateModelCondition(model *gryviav1.FabricModelRegistry, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *GryviaModelRegistryReconciler) updateModelCondition(model *gryviav1.GryviaModelRegistry, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -290,9 +290,9 @@ func (r *FabricModelRegistryReconciler) updateModelCondition(model *gryviav1.Fab
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *FabricModelRegistryReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaModelRegistryReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricModelRegistry{}).
-		Owns(&gryviav1.FabricInferenceService{}).
+		For(&gryviav1.GryviaModelRegistry{}).
+		Owns(&gryviav1.GryviaInferenceService{}).
 		Complete(r)
 }

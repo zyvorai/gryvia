@@ -19,7 +19,7 @@ type NodeScore struct {
 }
 
 // FindOptimalNodes finds the best nodes for running an AI job
-func FindOptimalNodes(ctx context.Context, k8sClient client.Client, job *gryviav1.FabricAIJob) ([]string, error) {
+func FindOptimalNodes(ctx context.Context, k8sClient client.Client, job *gryviav1.GryviaAIJob) ([]string, error) {
 	// Get all nodes
 	nodes := &corev1.NodeList{}
 	if err := k8sClient.List(ctx, nodes); err != nil {
@@ -104,7 +104,7 @@ func calculateGPUUsagePerNode(pods []corev1.Pod) map[string]int64 {
 }
 
 // filterNodes filters nodes based on job requirements and GPU availability
-func filterNodes(nodes []corev1.Node, job *gryviav1.FabricAIJob, gpuUsage map[string]int64, gpusNeeded int32) []corev1.Node {
+func filterNodes(nodes []corev1.Node, job *gryviav1.GryviaAIJob, gpuUsage map[string]int64, gpusNeeded int32) []corev1.Node {
 	var eligible []corev1.Node
 
 	for _, node := range nodes {
@@ -179,7 +179,7 @@ func getAvailableGPUs(node corev1.Node, gpuUsage map[string]int64) int64 {
 }
 
 // scoreNodes assigns a score to each node based on various factors
-func scoreNodes(nodes []corev1.Node, job *gryviav1.FabricAIJob, gpuUsage map[string]int64) []NodeScore {
+func scoreNodes(nodes []corev1.Node, job *gryviav1.GryviaAIJob, gpuUsage map[string]int64) []NodeScore {
 	scored := make([]NodeScore, len(nodes))
 
 	for i, node := range nodes {

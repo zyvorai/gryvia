@@ -12,8 +12,8 @@ const (
 	WorkspaceTypeVSCode  WorkspaceType = "vscode"
 )
 
-// FabricWorkspaceSpec defines the desired state of FabricWorkspace
-type FabricWorkspaceSpec struct {
+// GryviaWorkspaceSpec defines the desired state of GryviaWorkspace
+type GryviaWorkspaceSpec struct {
 	// Type is the workspace environment type (jupyter, vscode)
 	Type WorkspaceType `json:"type"`
 
@@ -63,8 +63,8 @@ const (
 	WorkspacePhaseFailed      WorkspacePhase = "Failed"
 )
 
-// FabricWorkspaceStatus defines the observed state of FabricWorkspace
-type FabricWorkspaceStatus struct {
+// GryviaWorkspaceStatus defines the observed state of GryviaWorkspace
+type GryviaWorkspaceStatus struct {
 	// Phase is the current workspace phase
 	Phase string `json:"phase,omitempty"`
 
@@ -102,24 +102,24 @@ type FabricWorkspaceStatus struct {
 //+kubebuilder:printcolumn:name="URL",type=string,JSONPath=`.status.url`
 //+kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// FabricWorkspace is the Schema for the fabricworkspaces API
-type FabricWorkspace struct {
+// GryviaWorkspace is the Schema for the gryviaworkspaces API
+type GryviaWorkspace struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricWorkspaceSpec   `json:"spec,omitempty"`
-	Status FabricWorkspaceStatus `json:"status,omitempty"`
+	Spec   GryviaWorkspaceSpec   `json:"spec,omitempty"`
+	Status GryviaWorkspaceStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricWorkspaceList contains a list of FabricWorkspace
-type FabricWorkspaceList struct {
+// GryviaWorkspaceList contains a list of GryviaWorkspace
+type GryviaWorkspaceList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricWorkspace `json:"items"`
+	Items           []GryviaWorkspace `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&FabricWorkspace{}, &FabricWorkspaceList{})
+	SchemeBuilder.Register(&GryviaWorkspace{}, &GryviaWorkspaceList{})
 }

@@ -4,8 +4,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// FabricGpuNodeSpec defines the desired state of FabricGpuNode
-type FabricGpuNodeSpec struct {
+// GryviaGpuNodeSpec defines the desired state of GryviaGpuNode
+type GryviaGpuNodeSpec struct {
 	// NodeName is the Kubernetes node name
 	NodeName string `json:"nodeName"`
 
@@ -61,8 +61,8 @@ type HealthCheckConfig struct {
 	IntervalSeconds int `json:"intervalSeconds,omitempty"`
 }
 
-// FabricGpuNodeStatus defines the observed state of FabricGpuNode
-type FabricGpuNodeStatus struct {
+// GryviaGpuNodeStatus defines the observed state of GryviaGpuNode
+type GryviaGpuNodeStatus struct {
 	// Phase is the current phase (Initializing, Ready, Degraded, Failed)
 	Phase string `json:"phase,omitempty"`
 
@@ -119,24 +119,24 @@ type GpuStatus struct {
 //+kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 //+kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// FabricGpuNode is the Schema for the fabricgpunodes API
-type FabricGpuNode struct {
+// GryviaGpuNode is the Schema for the gryviagpunodes API
+type GryviaGpuNode struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricGpuNodeSpec   `json:"spec,omitempty"`
-	Status FabricGpuNodeStatus `json:"status,omitempty"`
+	Spec   GryviaGpuNodeSpec   `json:"spec,omitempty"`
+	Status GryviaGpuNodeStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricGpuNodeList contains a list of FabricGpuNode
-type FabricGpuNodeList struct {
+// GryviaGpuNodeList contains a list of GryviaGpuNode
+type GryviaGpuNodeList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricGpuNode `json:"items"`
+	Items           []GryviaGpuNode `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&FabricGpuNode{}, &FabricGpuNodeList{})
+	SchemeBuilder.Register(&GryviaGpuNode{}, &GryviaGpuNodeList{})
 }

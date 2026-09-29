@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabricautopolicies.gryvia.io
+  name: gryviaautopolicies.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricAutoPolicy
-    listKind: FabricAutoPolicyList
-    plural: fabricautopolicies
-    singular: fabricautopolicy
+    kind: GryviaAutoPolicy
+    listKind: GryviaAutoPolicyList
+    plural: gryviaautopolicies
+    singular: gryviaautopolicy
   scope: Namespaced
   versions:
   - name: v1
     schema:
       openAPIV3Schema:
-        description: FabricAutoPolicy is the Schema for the fabricautopolicies API
+        description: GryviaAutoPolicy is the Schema for the gryviaautopolicies API
         properties:
           apiVersion:
             description: |-
@@ -37,7 +37,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricAutoPolicySpec defines the desired state of FabricAutoPolicy
+            description: GryviaAutoPolicySpec defines the desired state of GryviaAutoPolicy
             properties:
               approvalRequired:
                 description: ApprovalRequired indicates whether human approval is
@@ -64,7 +64,7 @@ spec:
                 type: array
             type: object
           status:
-            description: FabricAutoPolicyStatus defines the observed state of FabricAutoPolicy
+            description: GryviaAutoPolicyStatus defines the observed state of GryviaAutoPolicy
             properties:
               appliedPolicies:
                 description: AppliedPolicies is the number of policies that have been

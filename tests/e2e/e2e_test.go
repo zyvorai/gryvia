@@ -72,17 +72,17 @@ func TestE2E_AIJobLifecycle(t *testing.T) {
 	ctx := context.Background()
 	jobName := "test-pytorch-job"
 
-	// Define FabricAIJob resource
+	// Define GryviaAIJob resource
 	gvr := schema.GroupVersionResource{
 		Group:    "gryvia.io",
 		Version:  "v1",
-		Resource: "fabricaijobs",
+		Resource: "gryviaaijobs",
 	}
 
 	job := &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"apiVersion": "gryvia.io/v1",
-			"kind":       "FabricAIJob",
+			"kind":       "GryviaAIJob",
 			"metadata": map[string]interface{}{
 				"name":      jobName,
 				"namespace": tc.namespace,
@@ -104,7 +104,7 @@ func TestE2E_AIJobLifecycle(t *testing.T) {
 	// Create job
 	t.Run("CreateJob", func(t *testing.T) {
 		_, err := tc.dynamicClient.Resource(gvr).Namespace(tc.namespace).Create(ctx, job, metav1.CreateOptions{})
-		require.NoError(t, err, "Failed to create FabricAIJob")
+		require.NoError(t, err, "Failed to create GryviaAIJob")
 	})
 
 	// Wait for job to be processed
@@ -170,13 +170,13 @@ func TestE2E_QuotaEnforcement(t *testing.T) {
 	quotaGVR := schema.GroupVersionResource{
 		Group:    "gryvia.io",
 		Version:  "v1",
-		Resource: "fabricquotas",
+		Resource: "gryviaquotas",
 	}
 
 	quota := &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"apiVersion": "gryvia.io/v1",
-			"kind":       "FabricQuota",
+			"kind":       "GryviaQuota",
 			"metadata": map[string]interface{}{
 				"name": quotaName,
 			},
@@ -196,7 +196,7 @@ func TestE2E_QuotaEnforcement(t *testing.T) {
 
 	t.Run("CreateQuota", func(t *testing.T) {
 		_, err := tc.dynamicClient.Resource(quotaGVR).Create(ctx, quota, metav1.CreateOptions{})
-		require.NoError(t, err, "Failed to create FabricQuota")
+		require.NoError(t, err, "Failed to create GryviaQuota")
 	})
 
 	t.Run("WaitForQuotaStatus", func(t *testing.T) {
@@ -257,7 +257,7 @@ func TestE2E_NodeRegistration(t *testing.T) {
 	nodeGVR := schema.GroupVersionResource{
 		Group:    "gryvia.io",
 		Version:  "v1",
-		Resource: "fabricgpunodes",
+		Resource: "gryviagpunodes",
 	}
 
 	t.Run("ListGPUNodes", func(t *testing.T) {
@@ -290,13 +290,13 @@ func TestE2E_StorageProvisioning(t *testing.T) {
 	storageGVR := schema.GroupVersionResource{
 		Group:    "gryvia.io",
 		Version:  "v1",
-		Resource: "fabricstorages",
+		Resource: "gryviastorages",
 	}
 
 	storage := &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"apiVersion": "gryvia.io/v1",
-			"kind":       "FabricStorage",
+			"kind":       "GryviaStorage",
 			"metadata": map[string]interface{}{
 				"name": storageName,
 			},
@@ -314,7 +314,7 @@ func TestE2E_StorageProvisioning(t *testing.T) {
 
 	t.Run("CreateStorage", func(t *testing.T) {
 		_, err := tc.dynamicClient.Resource(storageGVR).Create(ctx, storage, metav1.CreateOptions{})
-		require.NoError(t, err, "Failed to create FabricStorage")
+		require.NoError(t, err, "Failed to create GryviaStorage")
 	})
 
 	t.Run("WaitForStorageReady", func(t *testing.T) {

@@ -20,40 +20,40 @@ import (
 	gryviav1 "github.com/zyvorai/gryvia/operators/network-intelligence/api/v1"
 )
 
-// FabricFlowPolicyReconciler reconciles a FabricFlowPolicy object
-type FabricFlowPolicyReconciler struct {
+// GryviaFlowPolicyReconciler reconciles a GryviaFlowPolicy object
+type GryviaFlowPolicyReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricflowpolicies,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricflowpolicies/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricflowpolicies/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaflowpolicies,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaflowpolicies/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaflowpolicies/finalizers,verbs=update
 //+kubebuilder:rbac:groups=cilium.io,resources=ciliumnetworkpolicies,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
-func (r *FabricFlowPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *GryviaFlowPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// Fetch the FabricFlowPolicy instance
-	policy := &gryviav1.FabricFlowPolicy{}
+	// Fetch the GryviaFlowPolicy instance
+	policy := &gryviav1.GryviaFlowPolicy{}
 	if err := r.Get(ctx, req.NamespacedName, policy); err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("FabricFlowPolicy resource not found, ignoring since object must be deleted")
+			logger.Info("GryviaFlowPolicy resource not found, ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		logger.Error(err, "Failed to get FabricFlowPolicy")
+		logger.Error(err, "Failed to get GryviaFlowPolicy")
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("Reconciling FabricFlowPolicy",
+	logger.Info("Reconciling GryviaFlowPolicy",
 		"name", policy.Name,
 		"action", policy.Spec.Action,
 		"intent", policy.Spec.Intent,
 	)
 
-	// Translate FabricFlowPolicy to CiliumNetworkPolicy
+	// Translate GryviaFlowPolicy to CiliumNetworkPolicy
 	ciliumPolicy, err := r.buildCiliumNetworkPolicy(policy)
 	if err != nil {
 		r.updateStatus(ctx, req.NamespacedName, "Failed", "", false, 0)
@@ -99,7 +99,7 @@ func (r *FabricFlowPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	// Update status to enforced
 	r.updateStatus(ctx, req.NamespacedName, "Enforced", ciliumPolicyName, true, matchedFlows)
 
-	logger.Info("FabricFlowPolicy reconciled successfully",
+	logger.Info("GryviaFlowPolicy reconciled successfully",
 		"ciliumPolicy", ciliumPolicyName,
 		"matchedFlows", matchedFlows,
 	)
@@ -107,8 +107,8 @@ func (r *FabricFlowPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 }
 
-// buildCiliumNetworkPolicy translates a FabricFlowPolicy into an unstructured CiliumNetworkPolicy
-func (r *FabricFlowPolicyReconciler) buildCiliumNetworkPolicy(policy *gryviav1.FabricFlowPolicy) (*unstructured.Unstructured, error) {
+// buildCiliumNetworkPolicy translates a GryviaFlowPolicy into an unstructured CiliumNetworkPolicy
+func (r *GryviaFlowPolicyReconciler) buildCiliumNetworkPolicy(policy *gryviav1.GryviaFlowPolicy) (*unstructured.Unstructured, error) {
 	ciliumPolicyName := fmt.Sprintf("ffp-%s", policy.Name)
 
 	// Build endpoint selector from source labels
@@ -207,7 +207,7 @@ func (r *FabricFlowPolicyReconciler) buildCiliumNetworkPolicy(policy *gryviav1.F
 }
 
 // applyIntentAnnotations maps intent types to Cilium-specific annotations
-func (r *FabricFlowPolicyReconciler) applyIntentAnnotations(annotations map[string]interface{}, intent string) map[string]interface{} {
+func (r *GryviaFlowPolicyReconciler) applyIntentAnnotations(annotations map[string]interface{}, intent string) map[string]interface{} {
 	switch intent {
 	case "low-latency":
 		annotations["cilium.io/priority"] = "high"
@@ -243,7 +243,7 @@ func mapProtocol(protocol string) string {
 
 // queryMatchedFlows queries Hubble for the number of flows matching this policy.
 // This is a best-effort operation; if Hubble is unavailable, returns 0.
-func (r *FabricFlowPolicyReconciler) queryMatchedFlows(ctx context.Context, policy *gryviav1.FabricFlowPolicy) int64 {
+func (r *GryviaFlowPolicyReconciler) queryMatchedFlows(ctx context.Context, policy *gryviav1.GryviaFlowPolicy) int64 {
 	logger := log.FromContext(ctx)
 
 	// Look for the Hubble relay service to query flow counts
@@ -263,10 +263,10 @@ func (r *FabricFlowPolicyReconciler) queryMatchedFlows(ctx context.Context, poli
 	return policy.Status.MatchedFlows
 }
 
-// updateStatus updates the FabricFlowPolicy status subresource
-func (r *FabricFlowPolicyReconciler) updateStatus(ctx context.Context, namespacedName types.NamespacedName, phase, ciliumPolicyRef string, enforced bool, matchedFlows int64) {
+// updateStatus updates the GryviaFlowPolicy status subresource
+func (r *GryviaFlowPolicyReconciler) updateStatus(ctx context.Context, namespacedName types.NamespacedName, phase, ciliumPolicyRef string, enforced bool, matchedFlows int64) {
 	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		policy := &gryviav1.FabricFlowPolicy{}
+		policy := &gryviav1.GryviaFlowPolicy{}
 		if err := r.Get(ctx, namespacedName, policy); err != nil {
 			return err
 		}
@@ -277,13 +277,13 @@ func (r *FabricFlowPolicyReconciler) updateStatus(ctx context.Context, namespace
 		policy.Status.MatchedFlows = matchedFlows
 		return r.Status().Update(ctx, policy)
 	}); err != nil {
-		log.FromContext(ctx).Error(err, "Failed to update FabricFlowPolicy status")
+		log.FromContext(ctx).Error(err, "Failed to update GryviaFlowPolicy status")
 	}
 }
 
 // SetupWithManager sets up the controller with the Manager
-func (r *FabricFlowPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaFlowPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricFlowPolicy{}).
+		For(&gryviav1.GryviaFlowPolicy{}).
 		Complete(r)
 }

@@ -15,32 +15,32 @@ import (
 	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 )
 
-// FabricFederationReconciler reconciles a FabricFederation object
-type FabricFederationReconciler struct {
+// GryviaFederationReconciler reconciles a GryviaFederation object
+type GryviaFederationReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Log    logr.Logger
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricfederations,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricfederations/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricfederations/finalizers,verbs=update
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviafederations,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviafederations/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviafederations/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs,verbs=get;list;watch;update;patch
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
-func (r *FabricFederationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := r.Log.WithValues("fabricfederation", req.NamespacedName)
+func (r *GryviaFederationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := r.Log.WithValues("gryviafederation", req.NamespacedName)
 
-	// Fetch the FabricFederation instance
-	federation := &gryviav1.FabricFederation{}
+	// Fetch the GryviaFederation instance
+	federation := &gryviav1.GryviaFederation{}
 	err := r.Get(ctx, req.NamespacedName, federation)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			log.Info("FabricFederation resource not found. Ignoring since object must be deleted")
+			log.Info("GryviaFederation resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		log.Error(err, "Failed to get FabricFederation")
+		log.Error(err, "Failed to get GryviaFederation")
 		return ctrl.Result{}, err
 	}
 
@@ -49,7 +49,7 @@ func (r *FabricFederationReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, nil
 	}
 
-	log.Info("Reconciling FabricFederation", "clusters", len(federation.Spec.Clusters))
+	log.Info("Reconciling GryviaFederation", "clusters", len(federation.Spec.Clusters))
 
 	// Reconcile the federation
 	result, err := r.reconcileFederation(ctx, federation)
@@ -61,7 +61,7 @@ func (r *FabricFederationReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	return result, nil
 }
 
-func (r *FabricFederationReconciler) reconcileFederation(ctx context.Context, federation *gryviav1.FabricFederation) (ctrl.Result, error) {
+func (r *GryviaFederationReconciler) reconcileFederation(ctx context.Context, federation *gryviav1.GryviaFederation) (ctrl.Result, error) {
 	log := r.Log.WithValues("federation", federation.Name)
 
 	// Health check all member clusters
@@ -101,7 +101,7 @@ func (r *FabricFederationReconciler) reconcileFederation(ctx context.Context, fe
 	return ctrl.Result{RequeueAfter: requeueAfter}, nil
 }
 
-func (r *FabricFederationReconciler) healthCheckClusters(ctx context.Context, federation *gryviav1.FabricFederation) []gryviav1.FederationClusterStatus {
+func (r *GryviaFederationReconciler) healthCheckClusters(ctx context.Context, federation *gryviav1.GryviaFederation) []gryviav1.FederationClusterStatus {
 	var statuses []gryviav1.FederationClusterStatus
 
 	for _, cluster := range federation.Spec.Clusters {
@@ -136,7 +136,7 @@ func (r *FabricFederationReconciler) healthCheckClusters(ctx context.Context, fe
 	return statuses
 }
 
-func (r *FabricFederationReconciler) checkClusterHealth(ctx context.Context, cluster gryviav1.FederationCluster) bool {
+func (r *GryviaFederationReconciler) checkClusterHealth(ctx context.Context, cluster gryviav1.FederationCluster) bool {
 	// In a production implementation, this would:
 	// 1. Load kubeconfig from the referenced secret
 	// 2. Create a client for the remote cluster
@@ -152,7 +152,7 @@ func (r *FabricFederationReconciler) checkClusterHealth(ctx context.Context, clu
 	return true
 }
 
-func (r *FabricFederationReconciler) calculateClusterUtilization(cluster gryviav1.FederationCluster) *gryviav1.FederationUtilization {
+func (r *GryviaFederationReconciler) calculateClusterUtilization(cluster gryviav1.FederationCluster) *gryviav1.FederationUtilization {
 	if cluster.Capacity == nil {
 		return nil
 	}
@@ -176,7 +176,7 @@ func (r *FabricFederationReconciler) calculateClusterUtilization(cluster gryviav
 	}
 }
 
-func (r *FabricFederationReconciler) calculateAggregateStats(federation *gryviav1.FabricFederation) *gryviav1.FederationAggregateStats {
+func (r *GryviaFederationReconciler) calculateAggregateStats(federation *gryviav1.GryviaFederation) *gryviav1.FederationAggregateStats {
 	stats := &gryviav1.FederationAggregateStats{}
 
 	for _, cluster := range federation.Spec.Clusters {
@@ -203,11 +203,11 @@ func (r *FabricFederationReconciler) calculateAggregateStats(federation *gryviav
 	return stats
 }
 
-func (r *FabricFederationReconciler) calculateJobDistribution(ctx context.Context, federation *gryviav1.FabricFederation) map[string]int {
+func (r *GryviaFederationReconciler) calculateJobDistribution(ctx context.Context, federation *gryviav1.GryviaFederation) map[string]int {
 	distribution := make(map[string]int)
 
 	// List all jobs in the local cluster
-	jobList := &gryviav1.FabricAIJobList{}
+	jobList := &gryviav1.GryviaAIJobList{}
 	if err := r.List(ctx, jobList); err != nil {
 		return distribution
 	}
@@ -230,7 +230,7 @@ func (r *FabricFederationReconciler) calculateJobDistribution(ctx context.Contex
 	return distribution
 }
 
-func (r *FabricFederationReconciler) determineFederationState(statuses []gryviav1.FederationClusterStatus) string {
+func (r *GryviaFederationReconciler) determineFederationState(statuses []gryviav1.FederationClusterStatus) string {
 	if len(statuses) == 0 {
 		return "unavailable"
 	}
@@ -251,7 +251,7 @@ func (r *FabricFederationReconciler) determineFederationState(statuses []gryviav
 	return "degraded"
 }
 
-func (r *FabricFederationReconciler) updateFederationCondition(federation *gryviav1.FabricFederation, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *GryviaFederationReconciler) updateFederationCondition(federation *gryviav1.GryviaFederation, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -275,8 +275,8 @@ func (r *FabricFederationReconciler) updateFederationCondition(federation *gryvi
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *FabricFederationReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaFederationReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricFederation{}).
+		For(&gryviav1.GryviaFederation{}).
 		Complete(r)
 }

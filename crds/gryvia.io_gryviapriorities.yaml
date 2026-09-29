@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabricpriorities.gryvia.io
+  name: gryviapriorities.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricPriority
-    listKind: FabricPriorityList
-    plural: fabricpriorities
-    singular: fabricpriority
+    kind: GryviaPriority
+    listKind: GryviaPriorityList
+    plural: gryviapriorities
+    singular: gryviapriority
   scope: Cluster
   versions:
   - name: v1
     schema:
       openAPIV3Schema:
-        description: FabricPriority is the Schema for the fabricpriorities API
+        description: GryviaPriority is the Schema for the gryviapriorities API
         properties:
           apiVersion:
             description: |-
@@ -37,7 +37,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricPrioritySpec defines the desired state of FabricPriority
+            description: GryviaPrioritySpec defines the desired state of GryviaPriority
             properties:
               description:
                 description: Description of this priority class
@@ -77,7 +77,7 @@ spec:
             - value
             type: object
           status:
-            description: FabricPriorityStatus defines the observed state of FabricPriority
+            description: GryviaPriorityStatus defines the observed state of GryviaPriority
             properties:
               activeJobs:
                 description: ActiveJobs is the number of jobs using this priority

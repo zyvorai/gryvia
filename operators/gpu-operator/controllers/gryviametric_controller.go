@@ -26,30 +26,30 @@ const (
 	maxHistoryEntries = 100
 )
 
-// FabricMetricReconciler reconciles a FabricMetric object
-type FabricMetricReconciler struct {
+// GryviaMetricReconciler reconciles a GryviaMetric object
+type GryviaMetricReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Log    logr.Logger
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricmetrics,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricmetrics/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricmetrics/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviametrics,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviametrics/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviametrics/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop
-func (r *FabricMetricReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := r.Log.WithValues("fabricmetric", req.NamespacedName)
+func (r *GryviaMetricReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := r.Log.WithValues("gryviametric", req.NamespacedName)
 
-	// Fetch the FabricMetric instance
-	metric := &gryviav1.FabricMetric{}
+	// Fetch the GryviaMetric instance
+	metric := &gryviav1.GryviaMetric{}
 	err := r.Get(ctx, req.NamespacedName, metric)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			log.Info("FabricMetric resource not found. Ignoring since object must be deleted")
+			log.Info("GryviaMetric resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		log.Error(err, "Failed to get FabricMetric")
+		log.Error(err, "Failed to get GryviaMetric")
 		return ctrl.Result{}, err
 	}
 
@@ -78,8 +78,8 @@ func (r *FabricMetricReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	return result, nil
 }
 
-func (r *FabricMetricReconciler) reconcileMetric(ctx context.Context, metric *gryviav1.FabricMetric) (ctrl.Result, error) {
-	log := r.Log.WithValues("fabricmetric", metric.Name)
+func (r *GryviaMetricReconciler) reconcileMetric(ctx context.Context, metric *gryviav1.GryviaMetric) (ctrl.Result, error) {
+	log := r.Log.WithValues("gryviametric", metric.Name)
 
 	// Collect metric value based on source type
 	value, err := r.collectMetricValue(ctx, metric)
@@ -126,7 +126,7 @@ func (r *FabricMetricReconciler) reconcileMetric(ctx context.Context, metric *gr
 	return ctrl.Result{RequeueAfter: r.getCollectionInterval(metric)}, nil
 }
 
-func (r *FabricMetricReconciler) collectMetricValue(ctx context.Context, metric *gryviav1.FabricMetric) (float64, error) {
+func (r *GryviaMetricReconciler) collectMetricValue(ctx context.Context, metric *gryviav1.GryviaMetric) (float64, error) {
 	switch metric.Spec.Source.Type {
 	case "prometheus":
 		return r.collectFromPrometheus(ctx, metric)
@@ -141,7 +141,7 @@ func (r *FabricMetricReconciler) collectMetricValue(ctx context.Context, metric 
 	}
 }
 
-func (r *FabricMetricReconciler) collectFromPrometheus(ctx context.Context, metric *gryviav1.FabricMetric) (float64, error) {
+func (r *GryviaMetricReconciler) collectFromPrometheus(ctx context.Context, metric *gryviav1.GryviaMetric) (float64, error) {
 	if metric.Spec.Source.Prometheus == nil {
 		return 0, fmt.Errorf("prometheus source configuration is missing")
 	}
@@ -220,7 +220,7 @@ func (r *FabricMetricReconciler) collectFromPrometheus(ctx context.Context, metr
 	return value, nil
 }
 
-func (r *FabricMetricReconciler) collectFromWebhook(ctx context.Context, metric *gryviav1.FabricMetric) (float64, error) {
+func (r *GryviaMetricReconciler) collectFromWebhook(ctx context.Context, metric *gryviav1.GryviaMetric) (float64, error) {
 	if metric.Spec.Source.Webhook == nil {
 		return 0, fmt.Errorf("webhook source configuration is missing")
 	}
@@ -252,7 +252,7 @@ func (r *FabricMetricReconciler) collectFromWebhook(ctx context.Context, metric 
 	return result.Value, nil
 }
 
-func (r *FabricMetricReconciler) collectFromJobOutput(_ context.Context, metric *gryviav1.FabricMetric) (float64, error) {
+func (r *GryviaMetricReconciler) collectFromJobOutput(_ context.Context, metric *gryviav1.GryviaMetric) (float64, error) {
 	if metric.Spec.Source.JobOutput == nil {
 		return 0, fmt.Errorf("job-output source configuration is missing")
 	}
@@ -270,7 +270,7 @@ func (r *FabricMetricReconciler) collectFromJobOutput(_ context.Context, metric 
 	return 0, nil
 }
 
-func (r *FabricMetricReconciler) collectFromScript(_ context.Context, metric *gryviav1.FabricMetric) (float64, error) {
+func (r *GryviaMetricReconciler) collectFromScript(_ context.Context, metric *gryviav1.GryviaMetric) (float64, error) {
 	if metric.Spec.Source.Script == nil {
 		return 0, fmt.Errorf("script source configuration is missing")
 	}
@@ -285,7 +285,7 @@ func (r *FabricMetricReconciler) collectFromScript(_ context.Context, metric *gr
 	return 0, nil
 }
 
-func (r *FabricMetricReconciler) evaluateThresholds(metric *gryviav1.FabricMetric, value float64) string {
+func (r *GryviaMetricReconciler) evaluateThresholds(metric *gryviav1.GryviaMetric, value float64) string {
 	if metric.Spec.Thresholds == nil {
 		return metricStateNormal
 	}
@@ -313,7 +313,7 @@ func (r *FabricMetricReconciler) evaluateThresholds(metric *gryviav1.FabricMetri
 	return metricStateNormal
 }
 
-func (r *FabricMetricReconciler) getCollectionInterval(metric *gryviav1.FabricMetric) time.Duration {
+func (r *GryviaMetricReconciler) getCollectionInterval(metric *gryviav1.GryviaMetric) time.Duration {
 	// Default interval is 1 minute
 	interval := 1 * time.Minute
 
@@ -343,8 +343,8 @@ func (r *FabricMetricReconciler) getCollectionInterval(metric *gryviav1.FabricMe
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *FabricMetricReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaMetricReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricMetric{}).
+		For(&gryviav1.GryviaMetric{}).
 		Complete(r)
 }

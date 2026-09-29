@@ -1,8 +1,8 @@
-# FabricWorkflow - End-to-end ML training pipeline
+# GryviaWorkflow - End-to-end ML training pipeline
 # Defines a 4-step DAG: preprocess -> train -> evaluate -> deploy
 # Steps execute in dependency order; conditional deployment only on high accuracy.
 apiVersion: gryvia.io/v1
-kind: FabricWorkflow
+kind: GryviaWorkflow
 metadata:
   name: image-classifier-pipeline
   namespace: ml-team

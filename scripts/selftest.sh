@@ -39,7 +39,7 @@ cleanup() {
     if ! $KEEP && ! $DRY_RUN; then
         echo ""
         echo "  🧹 Cleaning up..."
-        kubectl delete fabricaijob "$TEST_JOB" -n "$TEST_NS" --ignore-not-found 2>/dev/null || true
+        kubectl delete gryviaaijob "$TEST_JOB" -n "$TEST_NS" --ignore-not-found 2>/dev/null || true
         kubectl delete namespace "$TEST_NS" --ignore-not-found 2>/dev/null || true
     fi
 }
@@ -70,7 +70,7 @@ fi
 step "Test 2: CRDs installed"
 
 ALL_CRDS=true
-for crd in fabricaijobs fabricgpunodes fabricquotas fabricstorages fabricnetworks; do
+for crd in gryviaaijobs gryviagpunodes gryviaquotas gryviastorages gryvianetworks; do
     if kubectl get crd "${crd}.gryvia.io" &>/dev/null 2>&1; then
         ok "${crd}.gryvia.io exists"
     else
@@ -94,11 +94,11 @@ else
 fi
 
 # ── Test 4: Submit test job ──
-step "Test 4: Submit test FabricAIJob"
+step "Test 4: Submit test GryviaAIJob"
 
 JOB_YAML=$(cat <<EOF
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: $TEST_JOB
   namespace: $TEST_NS
@@ -116,9 +116,9 @@ EOF
 
 if ! $DRY_RUN; then
     echo "$JOB_YAML" | kubectl apply -f - 2>/dev/null
-    ok "FabricAIJob $TEST_JOB submitted"
+    ok "GryviaAIJob $TEST_JOB submitted"
 else
-    ok "Would submit FabricAIJob $TEST_JOB"
+    ok "Would submit GryviaAIJob $TEST_JOB"
 fi
 
 # ── Test 5: Verify job is accepted ──
@@ -126,12 +126,12 @@ step "Test 5: Verify job accepted"
 
 if ! $DRY_RUN; then
     sleep 2
-    PHASE=$(kubectl get fabricaijob "$TEST_JOB" -n "$TEST_NS" -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+    PHASE=$(kubectl get gryviaaijob "$TEST_JOB" -n "$TEST_NS" -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
     if [ -n "$PHASE" ]; then
         ok "Job phase: $PHASE"
     else
         # Job exists but no status yet — that's ok, controller may not be running
-        if kubectl get fabricaijob "$TEST_JOB" -n "$TEST_NS" &>/dev/null 2>&1; then
+        if kubectl get gryviaaijob "$TEST_JOB" -n "$TEST_NS" &>/dev/null 2>&1; then
             ok "Job created (no status yet — controller may not be running)"
         else
             fail "Job not found after submission"
@@ -159,9 +159,9 @@ fi
 # ── Test 7: List resources via kubectl ──
 step "Test 7: Resource listing"
 
-kubectl get fabricgpunodes &>/dev/null 2>&1 && ok "Can list FabricGpuNodes" || fail "Cannot list FabricGpuNodes"
-kubectl get fabricquotas &>/dev/null 2>&1 && ok "Can list FabricQuotas" || fail "Cannot list FabricQuotas"
-kubectl get fabricaijobs --all-namespaces &>/dev/null 2>&1 && ok "Can list FabricAIJobs" || fail "Cannot list FabricAIJobs"
+kubectl get gryviagpunodes &>/dev/null 2>&1 && ok "Can list GryviaGpuNodes" || fail "Cannot list GryviaGpuNodes"
+kubectl get gryviaquotas &>/dev/null 2>&1 && ok "Can list GryviaQuotas" || fail "Cannot list GryviaQuotas"
+kubectl get gryviaaijobs --all-namespaces &>/dev/null 2>&1 && ok "Can list GryviaAIJobs" || fail "Cannot list GryviaAIJobs"
 
 # ── Results ──
 echo ""
@@ -172,7 +172,7 @@ echo ""
 
 if $KEEP; then
     echo "  📁 Test resources kept (--keep):"
-    echo "    kubectl get fabricaijob $TEST_JOB -n $TEST_NS"
+    echo "    kubectl get gryviaaijob $TEST_JOB -n $TEST_NS"
     echo "    kubectl delete ns $TEST_NS"
     echo ""
 fi

@@ -1,6 +1,6 @@
 # Example: Pre-Start Data Validation Hook
 apiVersion: gryvia.io/v1
-kind: FabricJobHook
+kind: GryviaJobHook
 metadata:
   name: validate-data-pre-start
 spec:
@@ -23,7 +23,7 @@ spec:
 ---
 # Example: Post-Completion Model Upload
 apiVersion: gryvia.io/v1
-kind: FabricJobHook
+kind: GryviaJobHook
 metadata:
   name: upload-model-post-completion
 spec:
@@ -53,7 +53,7 @@ spec:
 ---
 # Example: On-Failure Notification
 apiVersion: gryvia.io/v1
-kind: FabricJobHook
+kind: GryviaJobHook
 metadata:
   name: notify-on-failure
 spec:
@@ -87,7 +87,7 @@ spec:
 ---
 # Example: Pre-Checkpoint Hook
 apiVersion: gryvia.io/v1
-kind: FabricJobHook
+kind: GryviaJobHook
 metadata:
   name: optimize-checkpoint
 spec:
@@ -106,7 +106,7 @@ spec:
 ---
 # Example: Webhook Integration (Weights & Biases)
 apiVersion: gryvia.io/v1
-kind: FabricJobHook
+kind: GryviaJobHook
 metadata:
   name: wandb-integration
 spec:
@@ -136,7 +136,7 @@ spec:
 ---
 # Example: Pre-Retry Resource Adjustment
 apiVersion: gryvia.io/v1
-kind: FabricJobHook
+kind: GryviaJobHook
 metadata:
   name: adjust-resources-pre-retry
 spec:
@@ -150,7 +150,7 @@ spec:
       command:
         - kubectl
         - patch
-        - fabricaijob
+        - gryviaaijob
         - "{{ .job.name }}"
         - -n
         - "{{ .job.namespace }}"
@@ -162,7 +162,7 @@ spec:
 ---
 # Example: Cost Tracking Hook
 apiVersion: gryvia.io/v1
-kind: FabricJobHook
+kind: GryviaJobHook
 metadata:
   name: track-job-cost
 spec:
@@ -184,7 +184,7 @@ spec:
 ---
 # Example: Model Registry Hook
 apiVersion: gryvia.io/v1
-kind: FabricJobHook
+kind: GryviaJobHook
 metadata:
   name: register-model
 spec:
@@ -213,7 +213,7 @@ spec:
 ---
 # Example: Slack Notification with Rich Format
 apiVersion: gryvia.io/v1
-kind: FabricJobHook
+kind: GryviaJobHook
 metadata:
   name: slack-job-completion
 spec:
@@ -251,7 +251,7 @@ spec:
 ---
 # Example: Auto-Cleanup Hook
 apiVersion: gryvia.io/v1
-kind: FabricJobHook
+kind: GryviaJobHook
 metadata:
   name: cleanup-scratch
 spec:

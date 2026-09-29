@@ -18,35 +18,35 @@ import (
 	gryviav1 "github.com/zyvorai/gryvia/operators/network-intelligence/api/v1"
 )
 
-// FabricTrafficInsightReconciler reconciles a FabricTrafficInsight object
-type FabricTrafficInsightReconciler struct {
+// GryviaTrafficInsightReconciler reconciles a GryviaTrafficInsight object
+type GryviaTrafficInsightReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabrictrafficinsights,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabrictrafficinsights/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabrictrafficinsights/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviatrafficinsights,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviatrafficinsights/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviatrafficinsights/finalizers,verbs=update
 //+kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=endpoints,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
-func (r *FabricTrafficInsightReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *GryviaTrafficInsightReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// Fetch the FabricTrafficInsight instance
-	insight := &gryviav1.FabricTrafficInsight{}
+	// Fetch the GryviaTrafficInsight instance
+	insight := &gryviav1.GryviaTrafficInsight{}
 	if err := r.Get(ctx, req.NamespacedName, insight); err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("FabricTrafficInsight resource not found, ignoring since object must be deleted")
+			logger.Info("GryviaTrafficInsight resource not found, ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		logger.Error(err, "Failed to get FabricTrafficInsight")
+		logger.Error(err, "Failed to get GryviaTrafficInsight")
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("Reconciling FabricTrafficInsight",
+	logger.Info("Reconciling GryviaTrafficInsight",
 		"name", insight.Name,
 		"service", insight.Spec.Service,
 		"window", insight.Spec.Window,
@@ -87,7 +87,7 @@ func (r *FabricTrafficInsightReconciler) Reconcile(ctx context.Context, req ctrl
 	// Update status with collected metrics
 	r.updateStatus(ctx, req.NamespacedName, metrics, topTalkers, anomalies)
 
-	logger.Info("FabricTrafficInsight metrics updated",
+	logger.Info("GryviaTrafficInsight metrics updated",
 		"p50Latency", metrics.p50Latency,
 		"p99Latency", metrics.p99Latency,
 		"throughputBps", metrics.throughputBps,
@@ -109,7 +109,7 @@ type trafficMetrics struct {
 
 // collectTrafficMetrics queries Prometheus and Hubble for traffic metrics.
 // In production this would issue PromQL queries to the Prometheus service.
-func (r *FabricTrafficInsightReconciler) collectTrafficMetrics(ctx context.Context, insight *gryviav1.FabricTrafficInsight) trafficMetrics {
+func (r *GryviaTrafficInsightReconciler) collectTrafficMetrics(ctx context.Context, insight *gryviav1.GryviaTrafficInsight) trafficMetrics {
 	logger := log.FromContext(ctx)
 
 	metrics := trafficMetrics{}
@@ -147,7 +147,7 @@ func (r *FabricTrafficInsightReconciler) collectTrafficMetrics(ctx context.Conte
 
 // identifyTopTalkers finds services with the highest traffic volume to the target service.
 // In production this would query Hubble flow logs aggregated by source service.
-func (r *FabricTrafficInsightReconciler) identifyTopTalkers(ctx context.Context, insight *gryviav1.FabricTrafficInsight) []gryviav1.TopTalker {
+func (r *GryviaTrafficInsightReconciler) identifyTopTalkers(ctx context.Context, insight *gryviav1.GryviaTrafficInsight) []gryviav1.TopTalker {
 	// In a production implementation, this would query Hubble for flow data
 	// grouped by source service, sorted by total bytes transferred.
 	// Example PromQL: topk(10, sum by (source) (rate(hubble_flows_processed_bytes_total{destination=<svc>}[<window>])))
@@ -157,7 +157,7 @@ func (r *FabricTrafficInsightReconciler) identifyTopTalkers(ctx context.Context,
 }
 
 // detectAnomalies identifies unusual traffic patterns for the target service.
-func (r *FabricTrafficInsightReconciler) detectAnomalies(ctx context.Context, insight *gryviav1.FabricTrafficInsight, metrics trafficMetrics) []gryviav1.TrafficAnomaly {
+func (r *GryviaTrafficInsightReconciler) detectAnomalies(ctx context.Context, insight *gryviav1.GryviaTrafficInsight, metrics trafficMetrics) []gryviav1.TrafficAnomaly {
 	var anomalies []gryviav1.TrafficAnomaly
 
 	// In a production implementation, anomaly detection would compare current
@@ -179,10 +179,10 @@ func (r *FabricTrafficInsightReconciler) detectAnomalies(ctx context.Context, in
 	return anomalies
 }
 
-// updateStatus updates the FabricTrafficInsight status subresource
-func (r *FabricTrafficInsightReconciler) updateStatus(ctx context.Context, namespacedName types.NamespacedName, metrics trafficMetrics, topTalkers []gryviav1.TopTalker, anomalies []gryviav1.TrafficAnomaly) {
+// updateStatus updates the GryviaTrafficInsight status subresource
+func (r *GryviaTrafficInsightReconciler) updateStatus(ctx context.Context, namespacedName types.NamespacedName, metrics trafficMetrics, topTalkers []gryviav1.TopTalker, anomalies []gryviav1.TrafficAnomaly) {
 	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		insight := &gryviav1.FabricTrafficInsight{}
+		insight := &gryviav1.GryviaTrafficInsight{}
 		if err := r.Get(ctx, namespacedName, insight); err != nil {
 			return err
 		}
@@ -195,13 +195,13 @@ func (r *FabricTrafficInsightReconciler) updateStatus(ctx context.Context, names
 		insight.Status.LastUpdated = metav1.Now()
 		return r.Status().Update(ctx, insight)
 	}); err != nil {
-		log.FromContext(ctx).Error(err, "Failed to update FabricTrafficInsight status")
+		log.FromContext(ctx).Error(err, "Failed to update GryviaTrafficInsight status")
 	}
 }
 
 // SetupWithManager sets up the controller with the Manager
-func (r *FabricTrafficInsightReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaTrafficInsightReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricTrafficInsight{}).
+		For(&gryviav1.GryviaTrafficInsight{}).
 		Complete(r)
 }

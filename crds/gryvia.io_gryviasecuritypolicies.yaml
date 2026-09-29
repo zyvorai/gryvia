@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabricsecuritypolicies.gryvia.io
+  name: gryviasecuritypolicies.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricSecurityPolicy
-    listKind: FabricSecurityPolicyList
-    plural: fabricsecuritypolicies
-    singular: fabricsecuritypolicy
+    kind: GryviaSecurityPolicy
+    listKind: GryviaSecurityPolicyList
+    plural: gryviasecuritypolicies
+    singular: gryviasecuritypolicy
   scope: Namespaced
   versions:
   - name: v1
     schema:
       openAPIV3Schema:
-        description: FabricSecurityPolicy is the Schema for the fabricsecuritypolicies
+        description: GryviaSecurityPolicy is the Schema for the gryviasecuritypolicies
           API
         properties:
           apiVersion:
@@ -38,7 +38,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricSecurityPolicySpec defines the desired state of FabricSecurityPolicy
+            description: GryviaSecurityPolicySpec defines the desired state of GryviaSecurityPolicy
             properties:
               alertWebhook:
                 description: AlertWebhook is the URL to send security alerts to
@@ -74,8 +74,8 @@ spec:
                 type: array
             type: object
           status:
-            description: FabricSecurityPolicyStatus defines the observed state of
-              FabricSecurityPolicy
+            description: GryviaSecurityPolicyStatus defines the observed state of
+              GryviaSecurityPolicy
             properties:
               activeDetections:
                 description: ActiveDetections is the number of active detection rules

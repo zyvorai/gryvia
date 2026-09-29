@@ -22,14 +22,14 @@ func newProfilerTestScheme() *runtime.Scheme {
 	return s
 }
 
-func newProfilerReconciler(objs ...client.Object) (*FabricTrainingProfilerReconciler, client.Client) {
+func newProfilerReconciler(objs ...client.Object) (*GryviaTrainingProfilerReconciler, client.Client) {
 	scheme := newProfilerTestScheme()
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(objs...).
-		WithStatusSubresource(&gryviav1.FabricTrainingProfiler{}, &gryviav1.FabricAIJob{}).
+		WithStatusSubresource(&gryviav1.GryviaTrainingProfiler{}, &gryviav1.GryviaAIJob{}).
 		Build()
-	r := &FabricTrainingProfilerReconciler{
+	r := &GryviaTrainingProfilerReconciler{
 		Client: fakeClient,
 		Scheme: scheme,
 		Log:    ctrl.Log.WithName("test"),
@@ -37,13 +37,13 @@ func newProfilerReconciler(objs ...client.Object) (*FabricTrainingProfilerReconc
 	return r, fakeClient
 }
 
-func newTestProfiler(name, namespace string) *gryviav1.FabricTrainingProfiler {
-	return &gryviav1.FabricTrainingProfiler{
+func newTestProfiler(name, namespace string) *gryviav1.GryviaTrainingProfiler {
+	return &gryviav1.GryviaTrainingProfiler{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
 		},
-		Spec: gryviav1.FabricTrainingProfilerSpec{
+		Spec: gryviav1.GryviaTrainingProfilerSpec{
 			Target: gryviav1.ProfilerTarget{
 				Type:        "auto",
 				JobSelector: map[string]string{"team": "ml"},
@@ -101,7 +101,7 @@ func TestProfiler_Reconcile_NoMatchingJobs(t *testing.T) {
 		t.Errorf("expected requeue after %v, got %v", profilerRequeueInterval, result.RequeueAfter)
 	}
 
-	updated := &gryviav1.FabricTrainingProfiler{}
+	updated := &gryviav1.GryviaTrainingProfiler{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-profiler", Namespace: "default"}, updated); err != nil {
 		t.Fatalf("failed to get updated profiler: %v", err)
 	}
@@ -118,24 +118,24 @@ func TestProfiler_Reconcile_NoMatchingJobs(t *testing.T) {
 }
 
 func TestProfiler_FindMatchingJobs_JobRef(t *testing.T) {
-	job := &gryviav1.FabricAIJob{
+	job := &gryviav1.GryviaAIJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "target-job",
 			Namespace: "default",
 		},
-		Spec: gryviav1.FabricAIJobSpec{
+		Spec: gryviav1.GryviaAIJobSpec{
 			Type:  "training",
 			Image: "pytorch:latest",
 			GPUs:  4,
 		},
 	}
 
-	fp := &gryviav1.FabricTrainingProfiler{
+	fp := &gryviav1.GryviaTrainingProfiler{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-profiler",
 			Namespace: "default",
 		},
-		Spec: gryviav1.FabricTrainingProfilerSpec{
+		Spec: gryviav1.GryviaTrainingProfilerSpec{
 			Target: gryviav1.ProfilerTarget{
 				Type:   "job-ref",
 				JobRef: "target-job",
@@ -158,12 +158,12 @@ func TestProfiler_FindMatchingJobs_JobRef(t *testing.T) {
 }
 
 func TestProfiler_FindMatchingJobs_JobRefNotFound(t *testing.T) {
-	fp := &gryviav1.FabricTrainingProfiler{
+	fp := &gryviav1.GryviaTrainingProfiler{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-profiler",
 			Namespace: "default",
 		},
-		Spec: gryviav1.FabricTrainingProfilerSpec{
+		Spec: gryviav1.GryviaTrainingProfilerSpec{
 			Target: gryviav1.ProfilerTarget{
 				Type:   "job-ref",
 				JobRef: "nonexistent",
@@ -183,12 +183,12 @@ func TestProfiler_FindMatchingJobs_JobRefNotFound(t *testing.T) {
 }
 
 func TestProfiler_FindMatchingJobs_EmptyJobRef(t *testing.T) {
-	fp := &gryviav1.FabricTrainingProfiler{
+	fp := &gryviav1.GryviaTrainingProfiler{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-profiler",
 			Namespace: "default",
 		},
-		Spec: gryviav1.FabricTrainingProfilerSpec{
+		Spec: gryviav1.GryviaTrainingProfilerSpec{
 			Target: gryviav1.ProfilerTarget{
 				Type:   "job-ref",
 				JobRef: "",
@@ -211,12 +211,12 @@ func TestProfiler_ShouldProfileJob_WarmupNotReached(t *testing.T) {
 		CooldownMinutes: 30,
 	}
 
-	job := &gryviav1.FabricAIJob{
+	job := &gryviav1.GryviaAIJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-job",
 			Namespace: "default",
 		},
-		Status: gryviav1.FabricAIJobStatus{
+		Status: gryviav1.GryviaAIJobStatus{
 			Metrics: &gryviav1.JobMetrics{
 				Step: 50, // Below warmup threshold
 			},

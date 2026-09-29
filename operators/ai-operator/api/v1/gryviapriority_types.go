@@ -4,8 +4,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// FabricPrioritySpec defines the desired state of FabricPriority
-type FabricPrioritySpec struct {
+// GryviaPrioritySpec defines the desired state of GryviaPriority
+type GryviaPrioritySpec struct {
 	// Value is the priority value (higher = more important, 0-1000000)
 	Value int `json:"value"`
 
@@ -40,8 +40,8 @@ type PrioritySLA struct {
 	GuaranteedResources bool `json:"guaranteedResources,omitempty"`
 }
 
-// FabricPriorityStatus defines the observed state of FabricPriority
-type FabricPriorityStatus struct {
+// GryviaPriorityStatus defines the observed state of GryviaPriority
+type GryviaPriorityStatus struct {
 	// ActiveJobs is the number of jobs using this priority
 	ActiveJobs int `json:"activeJobs,omitempty"`
 
@@ -86,24 +86,24 @@ type PreemptionEvent struct {
 //+kubebuilder:subresource:status
 //+kubebuilder:resource:scope=Cluster
 
-// FabricPriority is the Schema for the fabricpriorities API
-type FabricPriority struct {
+// GryviaPriority is the Schema for the gryviapriorities API
+type GryviaPriority struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricPrioritySpec   `json:"spec,omitempty"`
-	Status FabricPriorityStatus `json:"status,omitempty"`
+	Spec   GryviaPrioritySpec   `json:"spec,omitempty"`
+	Status GryviaPriorityStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricPriorityList contains a list of FabricPriority
-type FabricPriorityList struct {
+// GryviaPriorityList contains a list of GryviaPriority
+type GryviaPriorityList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricPriority `json:"items"`
+	Items           []GryviaPriority `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&FabricPriority{}, &FabricPriorityList{})
+	SchemeBuilder.Register(&GryviaPriority{}, &GryviaPriorityList{})
 }

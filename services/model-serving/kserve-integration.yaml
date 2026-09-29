@@ -238,7 +238,7 @@ spec:
 ---
 # Cost tracking for inference
 apiVersion: gryvia.io/v1
-kind: FabricQuota
+kind: GryviaQuota
 metadata:
   name: inference-quota
 spec:

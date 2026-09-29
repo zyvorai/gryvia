@@ -1,7 +1,7 @@
 ---
 # Cost Predictor: Predicts costs, training time, and queue wait for AI jobs
 apiVersion: gryvia.io/v1
-kind: FabricCostPredictor
+kind: GryviaCostPredictor
 metadata:
   name: default-predictor
 spec:
@@ -69,7 +69,7 @@ spec:
 ---
 # Example: Submit a dry-run job to get a cost estimate without running it
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: llm-training-cost-check
   namespace: ml-training
@@ -93,7 +93,7 @@ spec:
 
 # After the predictor processes this job, check annotations:
 #
-#   kubectl get fabricaijob llm-training-cost-check -n ml-training \
+#   kubectl get gryviaaijob llm-training-cost-check -n ml-training \
 #     -o jsonpath='{.metadata.annotations}' | jq
 #
 # Expected annotations:

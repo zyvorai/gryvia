@@ -34,33 +34,33 @@ const (
 	ConditionHealthy        = "Healthy"
 )
 
-// FabricInferenceServiceReconciler reconciles a FabricInferenceService object
-type FabricInferenceServiceReconciler struct {
+// GryviaInferenceServiceReconciler reconciles a GryviaInferenceService object
+type GryviaInferenceServiceReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Log    logr.Logger
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricinferenceservices,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricinferenceservices/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricinferenceservices/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviainferenceservices,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviainferenceservices/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviainferenceservices/finalizers,verbs=update
 //+kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=autoscaling,resources=horizontalpodautoscalers,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop
-func (r *FabricInferenceServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := r.Log.WithValues("fabricinferenceservice", req.NamespacedName)
+func (r *GryviaInferenceServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := r.Log.WithValues("gryviainferenceservice", req.NamespacedName)
 
-	// Fetch the FabricInferenceService instance
-	svc := &gryviav1.FabricInferenceService{}
+	// Fetch the GryviaInferenceService instance
+	svc := &gryviav1.GryviaInferenceService{}
 	err := r.Get(ctx, req.NamespacedName, svc)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			log.Info("FabricInferenceService resource not found. Ignoring since object must be deleted")
+			log.Info("GryviaInferenceService resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		log.Error(err, "Failed to get FabricInferenceService")
+		log.Error(err, "Failed to get GryviaInferenceService")
 		return ctrl.Result{}, err
 	}
 
@@ -89,8 +89,8 @@ func (r *FabricInferenceServiceReconciler) Reconcile(ctx context.Context, req ct
 	return result, nil
 }
 
-func (r *FabricInferenceServiceReconciler) reconcileInferenceService(ctx context.Context, svc *gryviav1.FabricInferenceService) (ctrl.Result, error) {
-	log := r.Log.WithValues("fabricinferenceservice", svc.Name)
+func (r *GryviaInferenceServiceReconciler) reconcileInferenceService(ctx context.Context, svc *gryviav1.GryviaInferenceService) (ctrl.Result, error) {
+	log := r.Log.WithValues("gryviainferenceservice", svc.Name)
 
 	// Phase 1: Ensure primary Deployment
 	if err := r.ensureDeployment(ctx, svc); err != nil {
@@ -138,7 +138,7 @@ func (r *FabricInferenceServiceReconciler) reconcileInferenceService(ctx context
 }
 
 // ensureDeployment creates or updates the inference Deployment.
-func (r *FabricInferenceServiceReconciler) ensureDeployment(ctx context.Context, svc *gryviav1.FabricInferenceService) error {
+func (r *GryviaInferenceServiceReconciler) ensureDeployment(ctx context.Context, svc *gryviav1.GryviaInferenceService) error {
 	deployName := fmt.Sprintf("%s-inference", svc.Name)
 	deploy := &appsv1.Deployment{}
 	err := r.Get(ctx, types.NamespacedName{Namespace: svc.Namespace, Name: deployName}, deploy)
@@ -177,7 +177,7 @@ func (r *FabricInferenceServiceReconciler) ensureDeployment(ctx context.Context,
 }
 
 // buildDeployment constructs the Deployment spec for the inference service.
-func (r *FabricInferenceServiceReconciler) buildDeployment(svc *gryviav1.FabricInferenceService, name string, isCanary bool) *appsv1.Deployment {
+func (r *GryviaInferenceServiceReconciler) buildDeployment(svc *gryviav1.GryviaInferenceService, name string, isCanary bool) *appsv1.Deployment {
 	labels := map[string]string{
 		"gryvia.io/inference": svc.Name,
 		"gryvia.io/component": "inference-server",
@@ -281,7 +281,7 @@ func (r *FabricInferenceServiceReconciler) buildDeployment(svc *gryviav1.FabricI
 }
 
 // getBackendImage returns the default container image for the given backend.
-func (r *FabricInferenceServiceReconciler) getBackendImage(svc *gryviav1.FabricInferenceService) string {
+func (r *GryviaInferenceServiceReconciler) getBackendImage(svc *gryviav1.GryviaInferenceService) string {
 	if svc.Spec.Image != "" {
 		return svc.Spec.Image
 	}
@@ -301,7 +301,7 @@ func (r *FabricInferenceServiceReconciler) getBackendImage(svc *gryviav1.FabricI
 }
 
 // getHealthPath returns the health check path.
-func (r *FabricInferenceServiceReconciler) getHealthPath(svc *gryviav1.FabricInferenceService) string {
+func (r *GryviaInferenceServiceReconciler) getHealthPath(svc *gryviav1.GryviaInferenceService) string {
 	if svc.Spec.HealthCheck != nil && svc.Spec.HealthCheck.Path != "" {
 		return svc.Spec.HealthCheck.Path
 	}
@@ -309,7 +309,7 @@ func (r *FabricInferenceServiceReconciler) getHealthPath(svc *gryviav1.FabricInf
 }
 
 // ensureService creates or updates the Kubernetes Service for inference.
-func (r *FabricInferenceServiceReconciler) ensureService(ctx context.Context, svc *gryviav1.FabricInferenceService) error {
+func (r *GryviaInferenceServiceReconciler) ensureService(ctx context.Context, svc *gryviav1.GryviaInferenceService) error {
 	svcName := fmt.Sprintf("%s-inference", svc.Name)
 	k8sSvc := &corev1.Service{}
 	err := r.Get(ctx, types.NamespacedName{Namespace: svc.Namespace, Name: svcName}, k8sSvc)
@@ -365,7 +365,7 @@ func (r *FabricInferenceServiceReconciler) ensureService(ctx context.Context, sv
 }
 
 // ensureHPA creates or updates the HorizontalPodAutoscaler.
-func (r *FabricInferenceServiceReconciler) ensureHPA(ctx context.Context, svc *gryviav1.FabricInferenceService) error {
+func (r *GryviaInferenceServiceReconciler) ensureHPA(ctx context.Context, svc *gryviav1.GryviaInferenceService) error {
 	hpaName := fmt.Sprintf("%s-inference-hpa", svc.Name)
 	hpa := &autoscalingv2.HorizontalPodAutoscaler{}
 	err := r.Get(ctx, types.NamespacedName{Namespace: svc.Namespace, Name: hpaName}, hpa)
@@ -422,7 +422,7 @@ func (r *FabricInferenceServiceReconciler) ensureHPA(ctx context.Context, svc *g
 }
 
 // reconcileCanary manages the canary deployment.
-func (r *FabricInferenceServiceReconciler) reconcileCanary(ctx context.Context, svc *gryviav1.FabricInferenceService) error {
+func (r *GryviaInferenceServiceReconciler) reconcileCanary(ctx context.Context, svc *gryviav1.GryviaInferenceService) error {
 	canaryName := fmt.Sprintf("%s-canary", svc.Name)
 
 	// Ensure canary deployment exists
@@ -499,7 +499,7 @@ func (r *FabricInferenceServiceReconciler) reconcileCanary(ctx context.Context, 
 }
 
 // syncDeploymentStatus updates the inference service status based on the Deployment.
-func (r *FabricInferenceServiceReconciler) syncDeploymentStatus(ctx context.Context, svc *gryviav1.FabricInferenceService) error {
+func (r *GryviaInferenceServiceReconciler) syncDeploymentStatus(ctx context.Context, svc *gryviav1.GryviaInferenceService) error {
 	deployName := fmt.Sprintf("%s-inference", svc.Name)
 	deploy := &appsv1.Deployment{}
 	err := r.Get(ctx, types.NamespacedName{Namespace: svc.Namespace, Name: deployName}, deploy)
@@ -526,7 +526,7 @@ func (r *FabricInferenceServiceReconciler) syncDeploymentStatus(ctx context.Cont
 }
 
 // checkHealthAndRollback implements automatic rollback on consecutive health check failures.
-func (r *FabricInferenceServiceReconciler) checkHealthAndRollback(ctx context.Context, svc *gryviav1.FabricInferenceService) {
+func (r *GryviaInferenceServiceReconciler) checkHealthAndRollback(ctx context.Context, svc *gryviav1.GryviaInferenceService) {
 	threshold := svc.Spec.HealthCheck.FailureThreshold
 	if threshold <= 0 {
 		threshold = 3
@@ -549,7 +549,7 @@ func (r *FabricInferenceServiceReconciler) checkHealthAndRollback(ctx context.Co
 	svc.Status.LastHealthCheck = &now
 }
 
-func (r *FabricInferenceServiceReconciler) updateInferCondition(svc *gryviav1.FabricInferenceService, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *GryviaInferenceServiceReconciler) updateInferCondition(svc *gryviav1.GryviaInferenceService, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -580,9 +580,9 @@ func (r *FabricInferenceServiceReconciler) updateInferCondition(svc *gryviav1.Fa
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *FabricInferenceServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaInferenceServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricInferenceService{}).
+		For(&gryviav1.GryviaInferenceService{}).
 		Owns(&appsv1.Deployment{}).
 		Owns(&corev1.Service{}).
 		Owns(&autoscalingv2.HorizontalPodAutoscaler{}).

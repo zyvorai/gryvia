@@ -14,7 +14,7 @@ pub async fn execute_status(client: &GryviaClient, namespace: &str) -> Result<()
     let flow_ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
         "gryvia.io",
         "v1",
-        "FabricFlow",
+        "GryviaFlow",
     ));
     let flow_api: Api<DynamicObject> = Api::namespaced_with(
         client.kube_client.clone(),
@@ -31,7 +31,7 @@ pub async fn execute_status(client: &GryviaClient, namespace: &str) -> Result<()
     let policy_ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
         "gryvia.io",
         "v1",
-        "FabricFlowPolicy",
+        "GryviaFlowPolicy",
     ));
     let policy_api: Api<DynamicObject> = Api::namespaced_with(
         client.kube_client.clone(),
@@ -62,7 +62,7 @@ pub async fn execute_status(client: &GryviaClient, namespace: &str) -> Result<()
     let anomaly_ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
         "gryvia.io",
         "v1",
-        "FabricNetworkAnomaly",
+        "GryviaNetworkAnomaly",
     ));
     let anomaly_api: Api<DynamicObject> = Api::namespaced_with(
         client.kube_client.clone(),
@@ -94,7 +94,7 @@ pub async fn execute_status(client: &GryviaClient, namespace: &str) -> Result<()
     let trace_ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
         "gryvia.io",
         "v1",
-        "FabricTraceSession",
+        "GryviaTraceSession",
     ));
     let trace_api: Api<DynamicObject> = Api::namespaced_with(
         client.kube_client.clone(),
@@ -175,7 +175,7 @@ pub async fn execute_anomalies(
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
         "gryvia.io",
         "v1",
-        "FabricNetworkAnomaly",
+        "GryviaNetworkAnomaly",
     ));
     let api: Api<DynamicObject> = Api::namespaced_with(
         client.kube_client.clone(),

@@ -18,33 +18,33 @@ import (
 	"github.com/zyvorai/gryvia/operators/ai-operator/pkg/lineage"
 )
 
-// FabricModelLineageReconciler reconciles a FabricModelLineage object
-type FabricModelLineageReconciler struct {
+// GryviaModelLineageReconciler reconciles a GryviaModelLineage object
+type GryviaModelLineageReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricmodellineages,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricmodellineages/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricmodellineages/finalizers,verbs=update
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviamodellineages,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviamodellineages/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviamodellineages/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs,verbs=get;list;watch
 
-func (r *FabricModelLineageReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *GryviaModelLineageReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// Fetch the FabricModelLineage instance
-	ml := &gryviav1.FabricModelLineage{}
+	// Fetch the GryviaModelLineage instance
+	ml := &gryviav1.GryviaModelLineage{}
 	err := r.Get(ctx, req.NamespacedName, ml)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("FabricModelLineage resource not found, ignoring")
+			logger.Info("GryviaModelLineage resource not found, ignoring")
 			return ctrl.Result{}, nil
 		}
-		logger.Error(err, "Failed to get FabricModelLineage")
+		logger.Error(err, "Failed to get GryviaModelLineage")
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("Reconciling FabricModelLineage",
+	logger.Info("Reconciling GryviaModelLineage",
 		"name", ml.Name,
 		"model", ml.Spec.Model.Name,
 		"version", ml.Spec.Model.Version,
@@ -108,7 +108,7 @@ func (r *FabricModelLineageReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 	// Update status
 	if err := r.Status().Update(ctx, ml); err != nil {
-		logger.Error(err, "Failed to update FabricModelLineage status")
+		logger.Error(err, "Failed to update GryviaModelLineage status")
 		return ctrl.Result{}, err
 	}
 
@@ -121,8 +121,8 @@ func (r *FabricModelLineageReconciler) Reconcile(ctx context.Context, req ctrl.R
 }
 
 // autoCollectProvenance uses the lineage collector to gather provenance data
-// from referenced FabricAIJob and related resources.
-func (r *FabricModelLineageReconciler) autoCollectProvenance(ctx context.Context, ml *gryviav1.FabricModelLineage) error {
+// from referenced GryviaAIJob and related resources.
+func (r *GryviaModelLineageReconciler) autoCollectProvenance(ctx context.Context, ml *gryviav1.GryviaModelLineage) error {
 	logger := log.FromContext(ctx)
 	collector := lineage.NewCollector(r.Client)
 
@@ -199,7 +199,7 @@ func (r *FabricModelLineageReconciler) autoCollectProvenance(ctx context.Context
 	return nil
 }
 
-func (r *FabricModelLineageReconciler) setCondition(ml *gryviav1.FabricModelLineage, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *GryviaModelLineageReconciler) setCondition(ml *gryviav1.GryviaModelLineage, condType string, status metav1.ConditionStatus, reason, message string) {
 	meta.SetStatusCondition(&ml.Status.Conditions, metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -210,14 +210,14 @@ func (r *FabricModelLineageReconciler) setCondition(ml *gryviav1.FabricModelLine
 }
 
 // SetupWithManager sets up the controller with the Manager
-func (r *FabricModelLineageReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaModelLineageReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricModelLineage{}).
-		Watches(&gryviav1.FabricAIJob{}, handler.EnqueueRequestsFromMapFunc(
+		For(&gryviav1.GryviaModelLineage{}).
+		Watches(&gryviav1.GryviaAIJob{}, handler.EnqueueRequestsFromMapFunc(
 			func(ctx context.Context, obj client.Object) []reconcile.Request {
-				// When a FabricAIJob completes, re-reconcile lineages that
+				// When a GryviaAIJob completes, re-reconcile lineages that
 				// reference it so provenance can be auto-collected.
-				job, ok := obj.(*gryviav1.FabricAIJob)
+				job, ok := obj.(*gryviav1.GryviaAIJob)
 				if !ok {
 					return nil
 				}
@@ -228,7 +228,7 @@ func (r *FabricModelLineageReconciler) SetupWithManager(mgr ctrl.Manager) error 
 				}
 
 				// Find lineages that reference this job
-				lineageList := &gryviav1.FabricModelLineageList{}
+				lineageList := &gryviav1.GryviaModelLineageList{}
 				if err := mgr.GetClient().List(ctx, lineageList,
 					client.InNamespace(job.Namespace)); err != nil {
 					return nil

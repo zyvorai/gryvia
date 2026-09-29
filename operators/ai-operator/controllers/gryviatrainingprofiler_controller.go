@@ -32,8 +32,8 @@ const (
 	annotationLastProfileTime = "gryvia.io/last-profile-time"
 )
 
-// FabricTrainingProfilerReconciler reconciles a FabricTrainingProfiler object
-type FabricTrainingProfilerReconciler struct {
+// GryviaTrainingProfilerReconciler reconciles a GryviaTrainingProfiler object
+type GryviaTrainingProfilerReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
 	Log      logr.Logger
@@ -46,27 +46,27 @@ type EventRecorder interface {
 	Eventf(object runtime.Object, eventtype, reason, messageFmt string, args ...interface{})
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabrictrainingprofilers,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabrictrainingprofilers/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabrictrainingprofilers/finalizers,verbs=update
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviatrainingprofilers,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviatrainingprofilers/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviatrainingprofilers/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs,verbs=get;list;watch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop
-func (r *FabricTrainingProfilerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := r.Log.WithValues("fabrictrainingprofiler", req.NamespacedName)
+func (r *GryviaTrainingProfilerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := r.Log.WithValues("gryviatrainingprofiler", req.NamespacedName)
 
-	// Fetch the FabricTrainingProfiler instance
-	fp := &gryviav1.FabricTrainingProfiler{}
+	// Fetch the GryviaTrainingProfiler instance
+	fp := &gryviav1.GryviaTrainingProfiler{}
 	err := r.Get(ctx, req.NamespacedName, fp)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			log.Info("FabricTrainingProfiler resource not found. Ignoring since object must be deleted")
+			log.Info("GryviaTrainingProfiler resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		log.Error(err, "Failed to get FabricTrainingProfiler")
+		log.Error(err, "Failed to get GryviaTrainingProfiler")
 		return ctrl.Result{}, err
 	}
 
@@ -75,7 +75,7 @@ func (r *FabricTrainingProfilerReconciler) Reconcile(ctx context.Context, req ct
 		return ctrl.Result{}, nil
 	}
 
-	// Find matching FabricAIJob resources
+	// Find matching GryviaAIJob resources
 	jobs, err := r.findMatchingJobs(ctx, fp)
 	if err != nil {
 		log.Error(err, "Failed to find matching jobs")
@@ -145,7 +145,7 @@ func (r *FabricTrainingProfilerReconciler) Reconcile(ctx context.Context, req ct
 		r.markJobProfiled(ctx, log, job)
 	}
 
-	// Update FabricTrainingProfiler status
+	// Update GryviaTrainingProfiler status
 	if len(analysisResults) > 0 {
 		fp.Status.JobsProfiled += jobsProfiledCount
 		fp.Status.AvgMFU = profiler.AverageMFU(analysisResults)
@@ -167,22 +167,22 @@ func (r *FabricTrainingProfilerReconciler) Reconcile(ctx context.Context, req ct
 	}
 
 	if err := r.Status().Update(ctx, fp); err != nil {
-		log.Error(err, "Failed to update FabricTrainingProfiler status")
+		log.Error(err, "Failed to update GryviaTrainingProfiler status")
 		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{RequeueAfter: profilerRequeueInterval}, nil
 }
 
-// findMatchingJobs discovers FabricAIJob resources matching the profiler target configuration
-func (r *FabricTrainingProfilerReconciler) findMatchingJobs(ctx context.Context, fp *gryviav1.FabricTrainingProfiler) ([]gryviav1.FabricAIJob, error) {
+// findMatchingJobs discovers GryviaAIJob resources matching the profiler target configuration
+func (r *GryviaTrainingProfilerReconciler) findMatchingJobs(ctx context.Context, fp *gryviav1.GryviaTrainingProfiler) ([]gryviav1.GryviaAIJob, error) {
 	switch fp.Spec.Target.Type {
 	case "job-ref":
 		// Target a specific job by name
 		if fp.Spec.Target.JobRef == "" {
 			return nil, fmt.Errorf("target type is job-ref but jobRef is empty")
 		}
-		job := &gryviav1.FabricAIJob{}
+		job := &gryviav1.GryviaAIJob{}
 		err := r.Get(ctx, types.NamespacedName{
 			Namespace: fp.Namespace,
 			Name:      fp.Spec.Target.JobRef,
@@ -193,7 +193,7 @@ func (r *FabricTrainingProfilerReconciler) findMatchingJobs(ctx context.Context,
 			}
 			return nil, err
 		}
-		return []gryviav1.FabricAIJob{*job}, nil
+		return []gryviav1.GryviaAIJob{*job}, nil
 
 	case "on-demand":
 		// On-demand mode still uses the job selector, but only runs when triggered
@@ -205,9 +205,9 @@ func (r *FabricTrainingProfilerReconciler) findMatchingJobs(ctx context.Context,
 	}
 }
 
-// listJobsBySelector lists FabricAIJob resources matching the label selector
-func (r *FabricTrainingProfilerReconciler) listJobsBySelector(ctx context.Context, fp *gryviav1.FabricTrainingProfiler) ([]gryviav1.FabricAIJob, error) {
-	jobList := &gryviav1.FabricAIJobList{}
+// listJobsBySelector lists GryviaAIJob resources matching the label selector
+func (r *GryviaTrainingProfilerReconciler) listJobsBySelector(ctx context.Context, fp *gryviav1.GryviaTrainingProfiler) ([]gryviav1.GryviaAIJob, error) {
+	jobList := &gryviav1.GryviaAIJobList{}
 
 	listOpts := []client.ListOption{
 		client.InNamespace(fp.Namespace),
@@ -218,14 +218,14 @@ func (r *FabricTrainingProfilerReconciler) listJobsBySelector(ctx context.Contex
 	}
 
 	if err := r.List(ctx, jobList, listOpts...); err != nil {
-		return nil, fmt.Errorf("failed to list FabricAIJobs: %w", err)
+		return nil, fmt.Errorf("failed to list GryviaAIJobs: %w", err)
 	}
 
 	return jobList.Items, nil
 }
 
 // shouldProfileJob checks if a specific job should be profiled based on warmup steps and cooldown
-func (r *FabricTrainingProfilerReconciler) shouldProfileJob(fp *gryviav1.FabricTrainingProfiler, job *gryviav1.FabricAIJob) bool {
+func (r *GryviaTrainingProfilerReconciler) shouldProfileJob(fp *gryviav1.GryviaTrainingProfiler, job *gryviav1.GryviaAIJob) bool {
 	warmupSteps := int32(100)
 	cooldownMinutes := int32(30)
 
@@ -260,7 +260,7 @@ func (r *FabricTrainingProfilerReconciler) shouldProfileJob(fp *gryviav1.FabricT
 }
 
 // collectJobMetrics gathers GPU metrics from pod annotations for a job
-func (r *FabricTrainingProfilerReconciler) collectJobMetrics(ctx context.Context, fp *gryviav1.FabricTrainingProfiler, job *gryviav1.FabricAIJob) (*profiler.GpuMetrics, error) {
+func (r *GryviaTrainingProfilerReconciler) collectJobMetrics(ctx context.Context, fp *gryviav1.GryviaTrainingProfiler, job *gryviav1.GryviaAIJob) (*profiler.GpuMetrics, error) {
 	// Find pods belonging to this job
 	pods := &corev1.PodList{}
 	if err := r.List(ctx, pods,
@@ -367,7 +367,7 @@ func (r *FabricTrainingProfilerReconciler) collectJobMetrics(ctx context.Context
 }
 
 // emitRecommendationEvents emits Kubernetes events for profiling recommendations
-func (r *FabricTrainingProfilerReconciler) emitRecommendationEvents(fp *gryviav1.FabricTrainingProfiler, job *gryviav1.FabricAIJob, result *profiler.AnalysisResult) {
+func (r *GryviaTrainingProfilerReconciler) emitRecommendationEvents(fp *gryviav1.GryviaTrainingProfiler, job *gryviav1.GryviaAIJob, result *profiler.AnalysisResult) {
 	for _, rec := range result.Recommendations {
 		eventType := corev1.EventTypeNormal
 		if rec.Severity == profiler.SeverityCritical {
@@ -386,8 +386,8 @@ func (r *FabricTrainingProfilerReconciler) emitRecommendationEvents(fp *gryviav1
 		job.Name, result.MFU, result.EfficiencyScore, len(result.Recommendations))
 }
 
-// updateJobWithProfilingResults updates the FabricAIJob status with profiling data
-func (r *FabricTrainingProfilerReconciler) updateJobWithProfilingResults(ctx context.Context, log logr.Logger, job *gryviav1.FabricAIJob, result *profiler.AnalysisResult) {
+// updateJobWithProfilingResults updates the GryviaAIJob status with profiling data
+func (r *GryviaTrainingProfilerReconciler) updateJobWithProfilingResults(ctx context.Context, log logr.Logger, job *gryviav1.GryviaAIJob, result *profiler.AnalysisResult) {
 	// Update GPU utilization in job metrics
 	if job.Status.Metrics == nil {
 		job.Status.Metrics = &gryviav1.JobMetrics{}
@@ -400,7 +400,7 @@ func (r *FabricTrainingProfilerReconciler) updateJobWithProfilingResults(ctx con
 }
 
 // markJobProfiled sets the last profile timestamp annotation on the job
-func (r *FabricTrainingProfilerReconciler) markJobProfiled(ctx context.Context, log logr.Logger, job *gryviav1.FabricAIJob) {
+func (r *GryviaTrainingProfilerReconciler) markJobProfiled(ctx context.Context, log logr.Logger, job *gryviav1.GryviaAIJob) {
 	if job.Annotations == nil {
 		job.Annotations = make(map[string]string)
 	}
@@ -412,7 +412,7 @@ func (r *FabricTrainingProfilerReconciler) markJobProfiled(ctx context.Context, 
 }
 
 // updateCondition updates or appends a condition on the profiler status
-func (r *FabricTrainingProfilerReconciler) updateCondition(fp *gryviav1.FabricTrainingProfiler, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *GryviaTrainingProfilerReconciler) updateCondition(fp *gryviav1.GryviaTrainingProfiler, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -462,16 +462,16 @@ func capitalize(s string) string {
 	return strings.ToUpper(s[:1]) + s[1:]
 }
 
-// mapJobToProfilers maps a FabricAIJob to its matching FabricTrainingProfiler CRs
+// mapJobToProfilers maps a GryviaAIJob to its matching GryviaTrainingProfiler CRs
 // so that changes to jobs trigger profiler reconciliation
-func (r *FabricTrainingProfilerReconciler) mapJobToProfilers(ctx context.Context, obj client.Object) []reconcile.Request {
-	job, ok := obj.(*gryviav1.FabricAIJob)
+func (r *GryviaTrainingProfilerReconciler) mapJobToProfilers(ctx context.Context, obj client.Object) []reconcile.Request {
+	job, ok := obj.(*gryviav1.GryviaAIJob)
 	if !ok {
 		return nil
 	}
 
 	// List all profilers in the same namespace
-	profilerList := &gryviav1.FabricTrainingProfilerList{}
+	profilerList := &gryviav1.GryviaTrainingProfilerList{}
 	if err := r.List(ctx, profilerList, client.InNamespace(job.Namespace)); err != nil {
 		return nil
 	}
@@ -515,11 +515,11 @@ func labelsMatch(objectLabels, selector map[string]string) bool {
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *FabricTrainingProfilerReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaTrainingProfilerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricTrainingProfiler{}).
+		For(&gryviav1.GryviaTrainingProfiler{}).
 		Watches(
-			&gryviav1.FabricAIJob{},
+			&gryviav1.GryviaAIJob{},
 			handler.EnqueueRequestsFromMapFunc(r.mapJobToProfilers),
 		).
 		Complete(r)

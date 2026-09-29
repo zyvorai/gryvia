@@ -4,7 +4,7 @@ import { api } from '@/lib/api'
 import DataTable, { type Column } from '@/components/DataTable'
 import { useTableState } from '@/hooks/useTableState'
 import type { FilterDef, SortAccessor } from '@/lib/tableState'
-import type { FabricGpuNode } from '@/types'
+import type { GryviaGpuNode } from '@/types'
 import PageHero from '@/components/PageHero'
 import PagePulse from '@/components/kit/PagePulse'
 import { countTone } from '@/components/kit/tone'
@@ -16,18 +16,18 @@ import { errorMessage } from '@/lib/errors'
 import { notify } from '@/lib/notify'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 
-const nodeName = (n: FabricGpuNode) => n.spec?.nodeName || n.metadata?.name
-const FILTERS: FilterDef<FabricGpuNode>[] = [
+const nodeName = (n: GryviaGpuNode) => n.spec?.nodeName || n.metadata?.name
+const FILTERS: FilterDef<GryviaGpuNode>[] = [
   { name: 'phase', label: 'Phase', get: (n) => n.status?.phase || 'Unknown' },
   { name: 'gpu', label: 'GPU type', get: (n) => n.spec?.gpuType },
 ]
-const SORTS: Record<string, SortAccessor<FabricGpuNode>> = {
+const SORTS: Record<string, SortAccessor<GryviaGpuNode>> = {
   name: nodeName,
   phase: (n) => n.status?.phase || 'Unknown',
   gpus: (n) => n.spec?.gpuCount ?? 0,
 }
-const searchText = (n: FabricGpuNode) => [nodeName(n), n.spec?.gpuType, n.status?.phase, n.spec?.rdma ? 'rdma' : ''].filter(Boolean).join(' ')
-const jobsLink = (n: FabricGpuNode) => `/jobs?q=${encodeURIComponent(nodeName(n) ?? '')}`
+const searchText = (n: GryviaGpuNode) => [nodeName(n), n.spec?.gpuType, n.status?.phase, n.spec?.rdma ? 'rdma' : ''].filter(Boolean).join(' ')
+const jobsLink = (n: GryviaGpuNode) => `/jobs?q=${encodeURIComponent(nodeName(n) ?? '')}`
 
 const isNum = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n)
 
@@ -69,7 +69,7 @@ export default function Nodes() {
   }
 
   const list = nodes || []
-  const columns: Column<FabricGpuNode>[] = [
+  const columns: Column<GryviaGpuNode>[] = [
     { key: 'name', header: 'Node', sortable: true, render: (n) => <span className="mono">{nodeName(n)}</span> },
     { key: 'phase', header: 'Phase', sortable: true, render: (n) => <span className={`pill ${phaseTone(n.status?.phase)}`}>{n.status?.phase || 'Unknown'}</span> },
     { key: 'gpu', header: 'GPU type', render: (n) => n.spec?.gpuType || '—' },
@@ -129,7 +129,7 @@ export default function Nodes() {
             searchLabel="Search nodes"
             empty={
               <EmptyState title="No GPU nodes registered">
-                FabricGpuNode resources are created by the Gryvia GPU operator when it discovers GPUs on a node, and live metrics come from its GPU collector. Check that the operator is installed and its pods are running.
+                GryviaGpuNode resources are created by the Gryvia GPU operator when it discovers GPUs on a node, and live metrics come from its GPU collector. Check that the operator is installed and its pods are running.
               </EmptyState>
             }
           />

@@ -458,7 +458,7 @@ function ServiceGraphView({ nodes, edges }: { nodes: ServiceGraphNode[]; edges: 
           </Link>
         }
       >
-        Requires the network-intelligence operator to populate FabricServiceGraph.
+        Requires the network-intelligence operator to populate GryviaServiceGraph.
       </EmptyState>
     )
   }

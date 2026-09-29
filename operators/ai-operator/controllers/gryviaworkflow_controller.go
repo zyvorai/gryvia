@@ -23,32 +23,32 @@ const (
 	ConditionWorkflowDone = "WorkflowComplete"
 )
 
-// FabricWorkflowReconciler reconciles a FabricWorkflow object
-type FabricWorkflowReconciler struct {
+// GryviaWorkflowReconciler reconciles a GryviaWorkflow object
+type GryviaWorkflowReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Log    logr.Logger
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricworkflows,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricworkflows/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricworkflows/finalizers,verbs=update
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaworkflows,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaworkflows/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaworkflows/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop
-func (r *FabricWorkflowReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := r.Log.WithValues("fabricworkflow", req.NamespacedName)
+func (r *GryviaWorkflowReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := r.Log.WithValues("gryviaworkflow", req.NamespacedName)
 
-	// Fetch the FabricWorkflow instance
-	wf := &gryviav1.FabricWorkflow{}
+	// Fetch the GryviaWorkflow instance
+	wf := &gryviav1.GryviaWorkflow{}
 	err := r.Get(ctx, req.NamespacedName, wf)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			log.Info("FabricWorkflow resource not found. Ignoring since object must be deleted")
+			log.Info("GryviaWorkflow resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		log.Error(err, "Failed to get FabricWorkflow")
+		log.Error(err, "Failed to get GryviaWorkflow")
 		return ctrl.Result{}, err
 	}
 
@@ -81,7 +81,7 @@ func (r *FabricWorkflowReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 }
 
 // initializeWorkflow sets up the initial status with all steps in Pending state.
-func (r *FabricWorkflowReconciler) initializeWorkflow(ctx context.Context, wf *gryviav1.FabricWorkflow) error {
+func (r *GryviaWorkflowReconciler) initializeWorkflow(ctx context.Context, wf *gryviav1.GryviaWorkflow) error {
 	// Validate DAG (no cycles)
 	if err := r.validateDAG(wf); err != nil {
 		wf.Status.Phase = PhaseFailed
@@ -104,7 +104,7 @@ func (r *FabricWorkflowReconciler) initializeWorkflow(ctx context.Context, wf *g
 }
 
 // validateDAG checks for cycles in the dependency graph using DFS.
-func (r *FabricWorkflowReconciler) validateDAG(wf *gryviav1.FabricWorkflow) error {
+func (r *GryviaWorkflowReconciler) validateDAG(wf *gryviav1.GryviaWorkflow) error {
 	// Build adjacency list
 	stepNames := make(map[string]bool, len(wf.Spec.Steps))
 	for _, step := range wf.Spec.Steps {
@@ -166,8 +166,8 @@ func (r *FabricWorkflowReconciler) validateDAG(wf *gryviav1.FabricWorkflow) erro
 	return nil
 }
 
-func (r *FabricWorkflowReconciler) reconcileWorkflow(ctx context.Context, wf *gryviav1.FabricWorkflow) (ctrl.Result, error) {
-	log := r.Log.WithValues("fabricworkflow", wf.Name)
+func (r *GryviaWorkflowReconciler) reconcileWorkflow(ctx context.Context, wf *gryviav1.GryviaWorkflow) (ctrl.Result, error) {
+	log := r.Log.WithValues("gryviaworkflow", wf.Name)
 
 	// Build step status lookup
 	stepStatusMap := make(map[string]*gryviav1.StepStatus, len(wf.Status.StepStatuses))
@@ -188,7 +188,7 @@ func (r *FabricWorkflowReconciler) reconcileWorkflow(ctx context.Context, wf *gr
 			continue
 		}
 
-		job := &gryviav1.FabricAIJob{}
+		job := &gryviav1.GryviaAIJob{}
 		err := r.Get(ctx, types.NamespacedName{
 			Namespace: wf.Namespace,
 			Name:      ss.JobName,
@@ -342,7 +342,7 @@ func (r *FabricWorkflowReconciler) reconcileWorkflow(ctx context.Context, wf *gr
 // evaluateCondition does a simple string-matching condition evaluation.
 // For production use this would use a proper CEL evaluator. Currently supports
 // checking step phase: "steps.<name>.status == 'Succeeded'" style patterns.
-func (r *FabricWorkflowReconciler) evaluateCondition(condition string, stepStatuses map[string]*gryviav1.StepStatus) bool {
+func (r *GryviaWorkflowReconciler) evaluateCondition(condition string, stepStatuses map[string]*gryviav1.StepStatus) bool {
 	// Simple heuristic: if condition references a step status, check it.
 	// In production this would use a full expression evaluator.
 	// For now, if we can't parse it, default to true (run the step).
@@ -351,8 +351,8 @@ func (r *FabricWorkflowReconciler) evaluateCondition(condition string, stepStatu
 	return true
 }
 
-// launchStep creates a FabricAIJob for a job-type step, or a pod for a script-type step.
-func (r *FabricWorkflowReconciler) launchStep(ctx context.Context, wf *gryviav1.FabricWorkflow, step *gryviav1.WorkflowStep, ss *gryviav1.StepStatus) error {
+// launchStep creates a GryviaAIJob for a job-type step, or a pod for a script-type step.
+func (r *GryviaWorkflowReconciler) launchStep(ctx context.Context, wf *gryviav1.GryviaWorkflow, step *gryviav1.WorkflowStep, ss *gryviav1.StepStatus) error {
 	jobName := fmt.Sprintf("%s-%s", wf.Name, step.Name)
 
 	stepType := step.Type
@@ -395,8 +395,8 @@ func (r *FabricWorkflowReconciler) launchStep(ctx context.Context, wf *gryviav1.
 	}
 }
 
-func (r *FabricWorkflowReconciler) launchJobStep(ctx context.Context, wf *gryviav1.FabricWorkflow, step *gryviav1.WorkflowStep, ss *gryviav1.StepStatus, jobName string) error {
-	job := &gryviav1.FabricAIJob{
+func (r *GryviaWorkflowReconciler) launchJobStep(ctx context.Context, wf *gryviav1.GryviaWorkflow, step *gryviav1.WorkflowStep, ss *gryviav1.StepStatus, jobName string) error {
+	job := &gryviav1.GryviaAIJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      jobName,
 			Namespace: wf.Namespace,
@@ -406,7 +406,7 @@ func (r *FabricWorkflowReconciler) launchJobStep(ctx context.Context, wf *gryvia
 				"gryvia.io/component": "workflow-step",
 			},
 			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(wf, gryviav1.GroupVersion.WithKind("FabricWorkflow")),
+				*metav1.NewControllerRef(wf, gryviav1.GroupVersion.WithKind("GryviaWorkflow")),
 			},
 		},
 		Spec: *step.JobTemplate.DeepCopy(),
@@ -432,9 +432,9 @@ func (r *FabricWorkflowReconciler) launchJobStep(ctx context.Context, wf *gryvia
 	return nil
 }
 
-func (r *FabricWorkflowReconciler) launchScriptStep(ctx context.Context, wf *gryviav1.FabricWorkflow, step *gryviav1.WorkflowStep, ss *gryviav1.StepStatus, jobName string) error {
-	// For script steps, create a simple FabricAIJob with the script's image and command
-	job := &gryviav1.FabricAIJob{
+func (r *GryviaWorkflowReconciler) launchScriptStep(ctx context.Context, wf *gryviav1.GryviaWorkflow, step *gryviav1.WorkflowStep, ss *gryviav1.StepStatus, jobName string) error {
+	// For script steps, create a simple GryviaAIJob with the script's image and command
+	job := &gryviav1.GryviaAIJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      jobName,
 			Namespace: wf.Namespace,
@@ -444,10 +444,10 @@ func (r *FabricWorkflowReconciler) launchScriptStep(ctx context.Context, wf *gry
 				"gryvia.io/component": "workflow-script",
 			},
 			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(wf, gryviav1.GroupVersion.WithKind("FabricWorkflow")),
+				*metav1.NewControllerRef(wf, gryviav1.GroupVersion.WithKind("GryviaWorkflow")),
 			},
 		},
-		Spec: gryviav1.FabricAIJobSpec{
+		Spec: gryviav1.GryviaAIJobSpec{
 			Type:    "script",
 			Image:   step.Script.Image,
 			Command: step.Script.Command,
@@ -472,9 +472,9 @@ func (r *FabricWorkflowReconciler) launchScriptStep(ctx context.Context, wf *gry
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *FabricWorkflowReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaWorkflowReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricWorkflow{}).
-		Owns(&gryviav1.FabricAIJob{}).
+		For(&gryviav1.GryviaWorkflow{}).
+		Owns(&gryviav1.GryviaAIJob{}).
 		Complete(r)
 }

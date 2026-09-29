@@ -5,11 +5,11 @@ import (
 )
 
 // =============================================================================
-// FabricFlowPolicy - Intent-based network policy
+// GryviaFlowPolicy - Intent-based network policy
 // =============================================================================
 
-// FabricFlowPolicySpec defines the desired state of FabricFlowPolicy
-type FabricFlowPolicySpec struct {
+// GryviaFlowPolicySpec defines the desired state of GryviaFlowPolicy
+type GryviaFlowPolicySpec struct {
 	// Source defines the traffic source selector
 	Source *FlowEndpoint `json:"source,omitempty"`
 
@@ -44,8 +44,8 @@ type FlowEndpoint struct {
 	Labels map[string]string `json:"labels,omitempty"`
 }
 
-// FabricFlowPolicyStatus defines the observed state of FabricFlowPolicy
-type FabricFlowPolicyStatus struct {
+// GryviaFlowPolicyStatus defines the observed state of GryviaFlowPolicy
+type GryviaFlowPolicyStatus struct {
 	// Phase is the current reconciliation phase
 	Phase string `json:"phase,omitempty"`
 
@@ -65,30 +65,30 @@ type FabricFlowPolicyStatus struct {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// FabricFlowPolicy is the Schema for the fabricflowpolicies API
-type FabricFlowPolicy struct {
+// GryviaFlowPolicy is the Schema for the gryviaflowpolicies API
+type GryviaFlowPolicy struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricFlowPolicySpec   `json:"spec,omitempty"`
-	Status FabricFlowPolicyStatus `json:"status,omitempty"`
+	Spec   GryviaFlowPolicySpec   `json:"spec,omitempty"`
+	Status GryviaFlowPolicyStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricFlowPolicyList contains a list of FabricFlowPolicy
-type FabricFlowPolicyList struct {
+// GryviaFlowPolicyList contains a list of GryviaFlowPolicy
+type GryviaFlowPolicyList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricFlowPolicy `json:"items"`
+	Items           []GryviaFlowPolicy `json:"items"`
 }
 
 // =============================================================================
-// FabricTrafficInsight - Real-time traffic analysis
+// GryviaTrafficInsight - Real-time traffic analysis
 // =============================================================================
 
-// FabricTrafficInsightSpec defines the desired state of FabricTrafficInsight
-type FabricTrafficInsightSpec struct {
+// GryviaTrafficInsightSpec defines the desired state of GryviaTrafficInsight
+type GryviaTrafficInsightSpec struct {
 	// Service is the target service to analyze
 	Service string `json:"service,omitempty"`
 
@@ -129,8 +129,8 @@ type TrafficAnomaly struct {
 	Detected metav1.Time `json:"detected,omitempty"`
 }
 
-// FabricTrafficInsightStatus defines the observed state of FabricTrafficInsight
-type FabricTrafficInsightStatus struct {
+// GryviaTrafficInsightStatus defines the observed state of GryviaTrafficInsight
+type GryviaTrafficInsightStatus struct {
 	// P50Latency is the 50th percentile latency
 	P50Latency string `json:"p50Latency,omitempty"`
 
@@ -156,30 +156,30 @@ type FabricTrafficInsightStatus struct {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// FabricTrafficInsight is the Schema for the fabrictrafficinsights API
-type FabricTrafficInsight struct {
+// GryviaTrafficInsight is the Schema for the gryviatrafficinsights API
+type GryviaTrafficInsight struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricTrafficInsightSpec   `json:"spec,omitempty"`
-	Status FabricTrafficInsightStatus `json:"status,omitempty"`
+	Spec   GryviaTrafficInsightSpec   `json:"spec,omitempty"`
+	Status GryviaTrafficInsightStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricTrafficInsightList contains a list of FabricTrafficInsight
-type FabricTrafficInsightList struct {
+// GryviaTrafficInsightList contains a list of GryviaTrafficInsight
+type GryviaTrafficInsightList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricTrafficInsight `json:"items"`
+	Items           []GryviaTrafficInsight `json:"items"`
 }
 
 // =============================================================================
-// FabricAutoPolicy - Self-healing firewall / auto-policy generation
+// GryviaAutoPolicy - Self-healing firewall / auto-policy generation
 // =============================================================================
 
-// FabricAutoPolicySpec defines the desired state of FabricAutoPolicy
-type FabricAutoPolicySpec struct {
+// GryviaAutoPolicySpec defines the desired state of GryviaAutoPolicy
+type GryviaAutoPolicySpec struct {
 	// Mode determines the operational mode (learn, suggest, enforce)
 	Mode string `json:"mode,omitempty"`
 
@@ -211,8 +211,8 @@ type SuggestedPolicy struct {
 	Confidence float64 `json:"confidence,omitempty"`
 }
 
-// FabricAutoPolicyStatus defines the observed state of FabricAutoPolicy
-type FabricAutoPolicyStatus struct {
+// GryviaAutoPolicyStatus defines the observed state of GryviaAutoPolicy
+type GryviaAutoPolicyStatus struct {
 	// Phase is the current operational phase (learning, suggesting, enforcing)
 	Phase string `json:"phase,omitempty"`
 
@@ -232,30 +232,30 @@ type FabricAutoPolicyStatus struct {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// FabricAutoPolicy is the Schema for the fabricautopolicies API
-type FabricAutoPolicy struct {
+// GryviaAutoPolicy is the Schema for the gryviaautopolicies API
+type GryviaAutoPolicy struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricAutoPolicySpec   `json:"spec,omitempty"`
-	Status FabricAutoPolicyStatus `json:"status,omitempty"`
+	Spec   GryviaAutoPolicySpec   `json:"spec,omitempty"`
+	Status GryviaAutoPolicyStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricAutoPolicyList contains a list of FabricAutoPolicy
-type FabricAutoPolicyList struct {
+// GryviaAutoPolicyList contains a list of GryviaAutoPolicy
+type GryviaAutoPolicyList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricAutoPolicy `json:"items"`
+	Items           []GryviaAutoPolicy `json:"items"`
 }
 
 // =============================================================================
-// FabricTraceSession - Network trace/debug session
+// GryviaTraceSession - Network trace/debug session
 // =============================================================================
 
-// FabricTraceSessionSpec defines the desired state of FabricTraceSession
-type FabricTraceSessionSpec struct {
+// GryviaTraceSessionSpec defines the desired state of GryviaTraceSession
+type GryviaTraceSessionSpec struct {
 	// Service is the target service to trace
 	Service string `json:"service,omitempty"`
 
@@ -302,8 +302,8 @@ type TraceResultRef struct {
 	Namespace string `json:"namespace,omitempty"`
 }
 
-// FabricTraceSessionStatus defines the observed state of FabricTraceSession
-type FabricTraceSessionStatus struct {
+// GryviaTraceSessionStatus defines the observed state of GryviaTraceSession
+type GryviaTraceSessionStatus struct {
 	// Phase is the current session phase (active, completed, expired)
 	Phase string `json:"phase,omitempty"`
 
@@ -323,30 +323,30 @@ type FabricTraceSessionStatus struct {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// FabricTraceSession is the Schema for the fabrictracesessions API
-type FabricTraceSession struct {
+// GryviaTraceSession is the Schema for the gryviatracesessions API
+type GryviaTraceSession struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricTraceSessionSpec   `json:"spec,omitempty"`
-	Status FabricTraceSessionStatus `json:"status,omitempty"`
+	Spec   GryviaTraceSessionSpec   `json:"spec,omitempty"`
+	Status GryviaTraceSessionStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricTraceSessionList contains a list of FabricTraceSession
-type FabricTraceSessionList struct {
+// GryviaTraceSessionList contains a list of GryviaTraceSession
+type GryviaTraceSessionList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricTraceSession `json:"items"`
+	Items           []GryviaTraceSession `json:"items"`
 }
 
 // =============================================================================
-// FabricServiceGraph - Service dependency graph
+// GryviaServiceGraph - Service dependency graph
 // =============================================================================
 
-// FabricServiceGraphSpec defines the desired state of FabricServiceGraph
-type FabricServiceGraphSpec struct {
+// GryviaServiceGraphSpec defines the desired state of GryviaServiceGraph
+type GryviaServiceGraphSpec struct {
 	// Namespaces is the list of namespaces to include in the graph
 	Namespaces []string `json:"namespaces,omitempty"`
 
@@ -399,8 +399,8 @@ type ServiceGraphEdge struct {
 	Verdict string `json:"verdict,omitempty"`
 }
 
-// FabricServiceGraphStatus defines the observed state of FabricServiceGraph
-type FabricServiceGraphStatus struct {
+// GryviaServiceGraphStatus defines the observed state of GryviaServiceGraph
+type GryviaServiceGraphStatus struct {
 	// Nodes is the list of services in the graph
 	Nodes []ServiceGraphNode `json:"nodes,omitempty"`
 
@@ -414,30 +414,30 @@ type FabricServiceGraphStatus struct {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// FabricServiceGraph is the Schema for the fabricservicegraphs API
-type FabricServiceGraph struct {
+// GryviaServiceGraph is the Schema for the gryviaservicegraphs API
+type GryviaServiceGraph struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricServiceGraphSpec   `json:"spec,omitempty"`
-	Status FabricServiceGraphStatus `json:"status,omitempty"`
+	Spec   GryviaServiceGraphSpec   `json:"spec,omitempty"`
+	Status GryviaServiceGraphStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricServiceGraphList contains a list of FabricServiceGraph
-type FabricServiceGraphList struct {
+// GryviaServiceGraphList contains a list of GryviaServiceGraph
+type GryviaServiceGraphList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricServiceGraph `json:"items"`
+	Items           []GryviaServiceGraph `json:"items"`
 }
 
 // =============================================================================
-// FabricNetworkAnomaly - Network anomaly detection
+// GryviaNetworkAnomaly - Network anomaly detection
 // =============================================================================
 
-// FabricNetworkAnomalySpec defines the desired state of FabricNetworkAnomaly
-type FabricNetworkAnomalySpec struct {
+// GryviaNetworkAnomalySpec defines the desired state of GryviaNetworkAnomaly
+type GryviaNetworkAnomalySpec struct {
 	// TargetService is the service to monitor for anomalies
 	TargetService string `json:"targetService,omitempty"`
 
@@ -484,8 +484,8 @@ type NetworkAnomalyEvent struct {
 	Mitigated bool `json:"mitigated,omitempty"`
 }
 
-// FabricNetworkAnomalyStatus defines the observed state of FabricNetworkAnomaly
-type FabricNetworkAnomalyStatus struct {
+// GryviaNetworkAnomalyStatus defines the observed state of GryviaNetworkAnomaly
+type GryviaNetworkAnomalyStatus struct {
 	// Anomalies is the list of detected anomalies
 	Anomalies []NetworkAnomalyEvent `json:"anomalies,omitempty"`
 
@@ -496,26 +496,26 @@ type FabricNetworkAnomalyStatus struct {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// FabricNetworkAnomaly is the Schema for the fabricnetworkanomalies API
-type FabricNetworkAnomaly struct {
+// GryviaNetworkAnomaly is the Schema for the gryvianetworkanomalies API
+type GryviaNetworkAnomaly struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricNetworkAnomalySpec   `json:"spec,omitempty"`
-	Status FabricNetworkAnomalyStatus `json:"status,omitempty"`
+	Spec   GryviaNetworkAnomalySpec   `json:"spec,omitempty"`
+	Status GryviaNetworkAnomalyStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricNetworkAnomalyList contains a list of FabricNetworkAnomaly
-type FabricNetworkAnomalyList struct {
+// GryviaNetworkAnomalyList contains a list of GryviaNetworkAnomaly
+type GryviaNetworkAnomalyList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricNetworkAnomaly `json:"items"`
+	Items           []GryviaNetworkAnomaly `json:"items"`
 }
 
 // =============================================================================
-// FabricSecurityPolicy - eBPF-based security detection and enforcement
+// GryviaSecurityPolicy - eBPF-based security detection and enforcement
 // =============================================================================
 
 // SecurityDetectionRule defines a single security detection rule
@@ -530,8 +530,8 @@ type SecurityDetectionRule struct {
 	Sensitivity string `json:"sensitivity,omitempty"`
 }
 
-// FabricSecurityPolicySpec defines the desired state of FabricSecurityPolicy
-type FabricSecurityPolicySpec struct {
+// GryviaSecurityPolicySpec defines the desired state of GryviaSecurityPolicy
+type GryviaSecurityPolicySpec struct {
 	// TargetNamespaces is the list of namespaces to monitor
 	TargetNamespaces []string `json:"targetNamespaces,omitempty"`
 
@@ -545,8 +545,8 @@ type FabricSecurityPolicySpec struct {
 	AutoBlock bool `json:"autoBlock,omitempty"`
 }
 
-// FabricSecurityPolicyStatus defines the observed state of FabricSecurityPolicy
-type FabricSecurityPolicyStatus struct {
+// GryviaSecurityPolicyStatus defines the observed state of GryviaSecurityPolicy
+type GryviaSecurityPolicyStatus struct {
 	// Phase is the current reconciliation phase
 	Phase string `json:"phase,omitempty"`
 
@@ -566,26 +566,26 @@ type FabricSecurityPolicyStatus struct {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// FabricSecurityPolicy is the Schema for the fabricsecuritypolicies API
-type FabricSecurityPolicy struct {
+// GryviaSecurityPolicy is the Schema for the gryviasecuritypolicies API
+type GryviaSecurityPolicy struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricSecurityPolicySpec   `json:"spec,omitempty"`
-	Status FabricSecurityPolicyStatus `json:"status,omitempty"`
+	Spec   GryviaSecurityPolicySpec   `json:"spec,omitempty"`
+	Status GryviaSecurityPolicyStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricSecurityPolicyList contains a list of FabricSecurityPolicy
-type FabricSecurityPolicyList struct {
+// GryviaSecurityPolicyList contains a list of GryviaSecurityPolicy
+type GryviaSecurityPolicyList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricSecurityPolicy `json:"items"`
+	Items           []GryviaSecurityPolicy `json:"items"`
 }
 
 // =============================================================================
-// FabricNetworkCost - Network cost tracking and reporting
+// GryviaNetworkCost - Network cost tracking and reporting
 // =============================================================================
 
 // CostPerGB defines the cost rates for different traffic zones
@@ -636,8 +636,8 @@ type NetworkCostReport struct {
 	TotalCostUSD float64 `json:"totalCostUSD,omitempty"`
 }
 
-// FabricNetworkCostSpec defines the desired state of FabricNetworkCost
-type FabricNetworkCostSpec struct {
+// GryviaNetworkCostSpec defines the desired state of GryviaNetworkCost
+type GryviaNetworkCostSpec struct {
 	// TargetNamespaces is the list of namespaces to track costs for
 	TargetNamespaces []string `json:"targetNamespaces,omitempty"`
 
@@ -651,8 +651,8 @@ type FabricNetworkCostSpec struct {
 	CostCenters []CostCenterMapping `json:"costCenters,omitempty"`
 }
 
-// FabricNetworkCostStatus defines the observed state of FabricNetworkCost
-type FabricNetworkCostStatus struct {
+// GryviaNetworkCostStatus defines the observed state of GryviaNetworkCost
+type GryviaNetworkCostStatus struct {
 	// Phase is the current reconciliation phase
 	Phase string `json:"phase,omitempty"`
 
@@ -666,26 +666,26 @@ type FabricNetworkCostStatus struct {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// FabricNetworkCost is the Schema for the fabricnetworkcosts API
-type FabricNetworkCost struct {
+// GryviaNetworkCost is the Schema for the gryvianetworkcosts API
+type GryviaNetworkCost struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricNetworkCostSpec   `json:"spec,omitempty"`
-	Status FabricNetworkCostStatus `json:"status,omitempty"`
+	Spec   GryviaNetworkCostSpec   `json:"spec,omitempty"`
+	Status GryviaNetworkCostStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricNetworkCostList contains a list of FabricNetworkCost
-type FabricNetworkCostList struct {
+// GryviaNetworkCostList contains a list of GryviaNetworkCost
+type GryviaNetworkCostList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricNetworkCost `json:"items"`
+	Items           []GryviaNetworkCost `json:"items"`
 }
 
 // =============================================================================
-// FabricTrainingInsight - NCCL/training communication analysis
+// GryviaTrainingInsight - NCCL/training communication analysis
 // =============================================================================
 
 // RankStat contains per-rank communication statistics
@@ -715,9 +715,9 @@ type StragglerInfo struct {
 	Reason string `json:"reason,omitempty"`
 }
 
-// FabricTrainingInsightSpec defines the desired state of FabricTrainingInsight
-type FabricTrainingInsightSpec struct {
-	// TargetJob is the name of the FabricAIJob to analyze
+// GryviaTrainingInsightSpec defines the desired state of GryviaTrainingInsight
+type GryviaTrainingInsightSpec struct {
+	// TargetJob is the name of the GryviaAIJob to analyze
 	TargetJob string `json:"targetJob,omitempty"`
 
 	// AnalysisWindow is the time window for analysis (e.g., "5m", "1h")
@@ -728,8 +728,8 @@ type FabricTrainingInsightSpec struct {
 	Metrics []string `json:"metrics,omitempty"`
 }
 
-// FabricTrainingInsightStatus defines the observed state of FabricTrainingInsight
-type FabricTrainingInsightStatus struct {
+// GryviaTrainingInsightStatus defines the observed state of GryviaTrainingInsight
+type GryviaTrainingInsightStatus struct {
 	// Phase is the current analysis phase
 	Phase string `json:"phase,omitempty"`
 
@@ -755,26 +755,26 @@ type FabricTrainingInsightStatus struct {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// FabricTrainingInsight is the Schema for the fabrictraininginsights API
-type FabricTrainingInsight struct {
+// GryviaTrainingInsight is the Schema for the gryviatraininginsights API
+type GryviaTrainingInsight struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricTrainingInsightSpec   `json:"spec,omitempty"`
-	Status FabricTrainingInsightStatus `json:"status,omitempty"`
+	Spec   GryviaTrainingInsightSpec   `json:"spec,omitempty"`
+	Status GryviaTrainingInsightStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricTrainingInsightList contains a list of FabricTrainingInsight
-type FabricTrainingInsightList struct {
+// GryviaTrainingInsightList contains a list of GryviaTrainingInsight
+type GryviaTrainingInsightList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricTrainingInsight `json:"items"`
+	Items           []GryviaTrainingInsight `json:"items"`
 }
 
 // =============================================================================
-// FabricInferenceInsight - Inference latency breakdown analysis
+// GryviaInferenceInsight - Inference latency breakdown analysis
 // =============================================================================
 
 // LatencyBreakdown provides per-phase latency measurements
@@ -801,17 +801,17 @@ type LatencyBreakdown struct {
 	TotalNs int64 `json:"totalNs,omitempty"`
 }
 
-// FabricInferenceInsightSpec defines the desired state of FabricInferenceInsight
-type FabricInferenceInsightSpec struct {
-	// TargetService is the name of the FabricInferenceService to analyze
+// GryviaInferenceInsightSpec defines the desired state of GryviaInferenceInsight
+type GryviaInferenceInsightSpec struct {
+	// TargetService is the name of the GryviaInferenceService to analyze
 	TargetService string `json:"targetService,omitempty"`
 
 	// AnalysisWindow is the time window for analysis (e.g., "5m", "1h")
 	AnalysisWindow string `json:"analysisWindow,omitempty"`
 }
 
-// FabricInferenceInsightStatus defines the observed state of FabricInferenceInsight
-type FabricInferenceInsightStatus struct {
+// GryviaInferenceInsightStatus defines the observed state of GryviaInferenceInsight
+type GryviaInferenceInsightStatus struct {
 	// Phase is the current analysis phase
 	Phase string `json:"phase,omitempty"`
 
@@ -837,35 +837,35 @@ type FabricInferenceInsightStatus struct {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// FabricInferenceInsight is the Schema for the fabricinferenceinsights API
-type FabricInferenceInsight struct {
+// GryviaInferenceInsight is the Schema for the gryviainferenceinsights API
+type GryviaInferenceInsight struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricInferenceInsightSpec   `json:"spec,omitempty"`
-	Status FabricInferenceInsightStatus `json:"status,omitempty"`
+	Spec   GryviaInferenceInsightSpec   `json:"spec,omitempty"`
+	Status GryviaInferenceInsightStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricInferenceInsightList contains a list of FabricInferenceInsight
-type FabricInferenceInsightList struct {
+// GryviaInferenceInsightList contains a list of GryviaInferenceInsight
+type GryviaInferenceInsightList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricInferenceInsight `json:"items"`
+	Items           []GryviaInferenceInsight `json:"items"`
 }
 
 func init() {
 	SchemeBuilder.Register(
-		&FabricFlowPolicy{}, &FabricFlowPolicyList{},
-		&FabricTrafficInsight{}, &FabricTrafficInsightList{},
-		&FabricAutoPolicy{}, &FabricAutoPolicyList{},
-		&FabricTraceSession{}, &FabricTraceSessionList{},
-		&FabricServiceGraph{}, &FabricServiceGraphList{},
-		&FabricNetworkAnomaly{}, &FabricNetworkAnomalyList{},
-		&FabricSecurityPolicy{}, &FabricSecurityPolicyList{},
-		&FabricNetworkCost{}, &FabricNetworkCostList{},
-		&FabricTrainingInsight{}, &FabricTrainingInsightList{},
-		&FabricInferenceInsight{}, &FabricInferenceInsightList{},
+		&GryviaFlowPolicy{}, &GryviaFlowPolicyList{},
+		&GryviaTrafficInsight{}, &GryviaTrafficInsightList{},
+		&GryviaAutoPolicy{}, &GryviaAutoPolicyList{},
+		&GryviaTraceSession{}, &GryviaTraceSessionList{},
+		&GryviaServiceGraph{}, &GryviaServiceGraphList{},
+		&GryviaNetworkAnomaly{}, &GryviaNetworkAnomalyList{},
+		&GryviaSecurityPolicy{}, &GryviaSecurityPolicyList{},
+		&GryviaNetworkCost{}, &GryviaNetworkCostList{},
+		&GryviaTrainingInsight{}, &GryviaTrainingInsightList{},
+		&GryviaInferenceInsight{}, &GryviaInferenceInsightList{},
 	)
 }

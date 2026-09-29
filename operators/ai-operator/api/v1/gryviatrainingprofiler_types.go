@@ -4,8 +4,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// FabricTrainingProfilerSpec defines the desired state of FabricTrainingProfiler
-type FabricTrainingProfilerSpec struct {
+// GryviaTrainingProfilerSpec defines the desired state of GryviaTrainingProfiler
+type GryviaTrainingProfilerSpec struct {
 	// Target configuration for which jobs to profile
 	Target ProfilerTarget `json:"target"`
 
@@ -24,10 +24,10 @@ type ProfilerTarget struct {
 	// Type of profiling: auto, on-demand, or job-ref
 	Type string `json:"type,omitempty"`
 
-	// JobSelector is a label selector to match FabricAIJob resources
+	// JobSelector is a label selector to match GryviaAIJob resources
 	JobSelector map[string]string `json:"jobSelector,omitempty"`
 
-	// JobRef is the name of a specific FabricAIJob to profile (used with type: job-ref)
+	// JobRef is the name of a specific GryviaAIJob to profile (used with type: job-ref)
 	JobRef string `json:"jobRef,omitempty"`
 
 	// AutoProfile defines automatic profiling parameters
@@ -141,7 +141,7 @@ type RecommendationConfig struct {
 
 // ProfilerOutput defines output configuration
 type ProfilerOutput struct {
-	// StoreInJobStatus stores profiling results in FabricAIJob status
+	// StoreInJobStatus stores profiling results in GryviaAIJob status
 	StoreInJobStatus bool `json:"storeInJobStatus,omitempty"`
 
 	// EmitEvents emits Kubernetes events for recommendations
@@ -151,8 +151,8 @@ type ProfilerOutput struct {
 	PrometheusMetrics bool `json:"prometheusMetrics,omitempty"`
 }
 
-// FabricTrainingProfilerStatus defines the observed state of FabricTrainingProfiler
-type FabricTrainingProfilerStatus struct {
+// GryviaTrainingProfilerStatus defines the observed state of GryviaTrainingProfiler
+type GryviaTrainingProfilerStatus struct {
 	// JobsProfiled is the total number of jobs profiled
 	JobsProfiled int32 `json:"jobsProfiled,omitempty"`
 
@@ -201,24 +201,24 @@ type ProfilerRecommendation struct {
 //+kubebuilder:printcolumn:name="EfficiencyScore",type=number,JSONPath=`.status.clusterEfficiencyScore`
 //+kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// FabricTrainingProfiler is the Schema for the fabrictrainingprofilers API
-type FabricTrainingProfiler struct {
+// GryviaTrainingProfiler is the Schema for the gryviatrainingprofilers API
+type GryviaTrainingProfiler struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricTrainingProfilerSpec   `json:"spec,omitempty"`
-	Status FabricTrainingProfilerStatus `json:"status,omitempty"`
+	Spec   GryviaTrainingProfilerSpec   `json:"spec,omitempty"`
+	Status GryviaTrainingProfilerStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricTrainingProfilerList contains a list of FabricTrainingProfiler
-type FabricTrainingProfilerList struct {
+// GryviaTrainingProfilerList contains a list of GryviaTrainingProfiler
+type GryviaTrainingProfilerList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricTrainingProfiler `json:"items"`
+	Items           []GryviaTrainingProfiler `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&FabricTrainingProfiler{}, &FabricTrainingProfilerList{})
+	SchemeBuilder.Register(&GryviaTrainingProfiler{}, &GryviaTrainingProfilerList{})
 }

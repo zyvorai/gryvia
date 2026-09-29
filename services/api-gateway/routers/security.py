@@ -1,4 +1,4 @@
-"""Security routes backed by FabricSecurityPolicy CRs."""
+"""Security routes backed by GryviaSecurityPolicy CRs."""
 import re
 from typing import Any, Dict, List, Literal, Optional
 from urllib.parse import urlparse
@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 from .common import Deps, create_item, list_items
 
 K8S_NAME = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
-POLICIES = "fabricsecuritypolicies"
+POLICIES = "gryviasecuritypolicies"
 
 
 def _valid_name(v: str) -> str:
@@ -81,7 +81,7 @@ def build_router(deps: Deps) -> APIRouter:
     @router.get("/api/security/alerts")
     @deps.limiter.limit("30/minute")
     async def alerts(request: Request, _=Depends(deps.verify_auth)):
-        # FabricSecurityPolicy status only carries counters (alertsTriggered, detectionCounts),
+        # GryviaSecurityPolicy status only carries counters (alertsTriggered, detectionCounts),
         # not per-event records (process/path/sourceIP), so there is no source for individual
         # alerts. Verify the backing kind is readable, then return no items rather than invent any.
         # A missing/unreadable CRD must not turn into a 500: the answer is the same either way.
@@ -107,7 +107,7 @@ def build_router(deps: Deps) -> APIRouter:
         }
         if body.alertWebhook:
             spec["alertWebhook"] = body.alertWebhook
-        created = await create_item(deps, POLICIES, "FabricSecurityPolicy", body.name, spec)
+        created = await create_item(deps, POLICIES, "GryviaSecurityPolicy", body.name, spec)
         return _policy_view(created)
 
     return router

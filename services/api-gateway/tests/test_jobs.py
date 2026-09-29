@@ -18,7 +18,7 @@ def core():
 
 @pytest.fixture
 def client(fake_k8s, core):
-    fake_k8s.add("fabricaijobs", JOB, namespace="default")
+    fake_k8s.add("gryviaaijobs", JOB, namespace="default")
     deps = Deps(verify_auth=_allow, k8s_custom=fake_k8s, k8s_core=core, limiter=NoopLimiter(),
                 job_namespace="default")
     app = FastAPI()
@@ -130,7 +130,7 @@ def test_control_chars_and_line_cap(client, core):
 
 def test_events_sorted_and_limited(client, core):
     core.add_pod("train-0", job="train")
-    core.add_event("FabricAIJob", "train", reason="Created", last="2026-01-01T00:00:00Z")
+    core.add_event("GryviaAIJob", "train", reason="Created", last="2026-01-01T00:00:00Z")
     core.add_event("Pod", "train-0", reason="Started", last="2026-01-03T00:00:00Z", count=2,
                    first="2026-01-02T00:00:00Z")
     core.add_event("Pod", "other-0", reason="Nope", last="2026-01-09T00:00:00Z")
@@ -139,7 +139,7 @@ def test_events_sorted_and_limited(client, core):
     assert items[0] == {"type": "Normal", "reason": "Started", "message": "m", "count": 2,
                         "firstSeen": "2026-01-02T00:00:00Z", "lastSeen": "2026-01-03T00:00:00Z",
                         "object": "Pod/train-0"}
-    assert items[1]["object"] == "FabricAIJob/train"
+    assert items[1]["object"] == "GryviaAIJob/train"
 
 
 def client_get(client):
@@ -150,7 +150,7 @@ def client_get(client):
 
 def test_events_limit_100(client, core):
     for i in range(150):
-        core.add_event("FabricAIJob", "train", reason=f"r{i}", last=f"2026-01-01T00:{i // 60:02d}:{i % 60:02d}Z")
+        core.add_event("GryviaAIJob", "train", reason=f"r{i}", last=f"2026-01-01T00:{i // 60:02d}:{i % 60:02d}Z")
     items = client_get(client)
     assert len(items) == 100 and items[0]["reason"] == "r149"
 
@@ -161,7 +161,7 @@ def test_auth_required(fake_k8s, core):
     async def deny():
         raise HTTPException(status_code=401, detail="no")
 
-    fake_k8s.add("fabricaijobs", JOB, namespace="default")
+    fake_k8s.add("gryviaaijobs", JOB, namespace="default")
     deps = Deps(verify_auth=deny, k8s_custom=fake_k8s, k8s_core=core, limiter=NoopLimiter())
     app = FastAPI()
     app.include_router(importlib.import_module("routers.jobs").build_router(deps))

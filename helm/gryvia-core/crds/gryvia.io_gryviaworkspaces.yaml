@@ -4,14 +4,14 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabricworkspaces.gryvia.io
+  name: gryviaworkspaces.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricWorkspace
-    listKind: FabricWorkspaceList
-    plural: fabricworkspaces
-    singular: fabricworkspace
+    kind: GryviaWorkspace
+    listKind: GryviaWorkspaceList
+    plural: gryviaworkspaces
+    singular: gryviaworkspace
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
@@ -33,7 +33,7 @@ spec:
     name: v1
     schema:
       openAPIV3Schema:
-        description: FabricWorkspace is the Schema for the fabricworkspaces API
+        description: GryviaWorkspace is the Schema for the gryviaworkspaces API
         properties:
           apiVersion:
             description: |-
@@ -53,7 +53,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricWorkspaceSpec defines the desired state of FabricWorkspace
+            description: GryviaWorkspaceSpec defines the desired state of GryviaWorkspace
             properties:
               cpuLimit:
                 type: string
@@ -110,7 +110,7 @@ spec:
             - type
             type: object
           status:
-            description: FabricWorkspaceStatus defines the observed state of FabricWorkspace
+            description: GryviaWorkspaceStatus defines the observed state of GryviaWorkspace
             properties:
               conditions:
                 description: Conditions represent the latest available observations

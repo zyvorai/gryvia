@@ -26,26 +26,26 @@ func newNetworkTestScheme() *runtime.Scheme {
 	return s
 }
 
-func newNetworkReconciler(objs ...client.Object) (*FabricNetworkReconciler, client.Client) {
+func newNetworkReconciler(objs ...client.Object) (*GryviaNetworkReconciler, client.Client) {
 	scheme := newNetworkTestScheme()
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(objs...).
-		WithStatusSubresource(&gryviav1.FabricNetwork{}).
+		WithStatusSubresource(&gryviav1.GryviaNetwork{}).
 		Build()
-	r := &FabricNetworkReconciler{
+	r := &GryviaNetworkReconciler{
 		Client: fakeClient,
 		Scheme: scheme,
 	}
 	return r, fakeClient
 }
 
-func newTestNetwork(name string) *gryviav1.FabricNetwork {
-	return &gryviav1.FabricNetwork{
+func newTestNetwork(name string) *gryviav1.GryviaNetwork {
+	return &gryviav1.GryviaNetwork{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
-		Spec: gryviav1.FabricNetworkSpec{
+		Spec: gryviav1.GryviaNetworkSpec{
 			NetworkType: "rdma",
 			RDMA: &gryviav1.RDMAConfig{
 				Mode:    "infiniband",
@@ -88,11 +88,11 @@ func TestNetwork_Reconcile_AddsFinalizer(t *testing.T) {
 		t.Error("expected requeue after adding finalizer")
 	}
 
-	updated := &gryviav1.FabricNetwork{}
+	updated := &gryviav1.GryviaNetwork{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-network"}, updated); err != nil {
 		t.Fatalf("failed to get network: %v", err)
 	}
-	if !controllerutil.ContainsFinalizer(updated, fabricNetworkFinalizer) {
+	if !controllerutil.ContainsFinalizer(updated, gryviaNetworkFinalizer) {
 		t.Error("expected finalizer to be added")
 	}
 }
@@ -101,7 +101,7 @@ func TestNetwork_Reconcile_DeletionCleanup(t *testing.T) {
 	now := metav1.Now()
 	network := newTestNetwork("test-network")
 	network.DeletionTimestamp = &now
-	network.Finalizers = []string{fabricNetworkFinalizer}
+	network.Finalizers = []string{gryviaNetworkFinalizer}
 
 	node := &corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
@@ -153,14 +153,14 @@ func TestNetwork_Reconcile_DeletionCleanup(t *testing.T) {
 	}
 
 	// Verify finalizer removed
-	updatedNetwork := &gryviav1.FabricNetwork{}
+	updatedNetwork := &gryviav1.GryviaNetwork{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-network"}, updatedNetwork); err != nil {
 		if apierrors.IsNotFound(err) {
 			return // object is gone once its last finalizer is removed
 		}
 		t.Fatalf("failed to get network: %v", err)
 	}
-	if controllerutil.ContainsFinalizer(updatedNetwork, fabricNetworkFinalizer) {
+	if controllerutil.ContainsFinalizer(updatedNetwork, gryviaNetworkFinalizer) {
 		t.Error("expected finalizer to be removed")
 	}
 }
@@ -227,7 +227,7 @@ func TestNetwork_UpdateStatus(t *testing.T) {
 
 	r.updateStatus(context.Background(), network, "Ready", "OK")
 
-	updated := &gryviav1.FabricNetwork{}
+	updated := &gryviav1.GryviaNetwork{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-network"}, updated); err != nil {
 		t.Fatalf("failed to get network: %v", err)
 	}

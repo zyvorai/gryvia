@@ -24,31 +24,31 @@ const (
 	inferenceInsightInterval = 60 * time.Second
 )
 
-// FabricInferenceInsightReconciler reconciles a FabricInferenceInsight object
-type FabricInferenceInsightReconciler struct {
+// GryviaInferenceInsightReconciler reconciles a GryviaInferenceInsight object
+type GryviaInferenceInsightReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricinferenceinsights,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricinferenceinsights/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricinferenceinsights/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviainferenceinsights,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviainferenceinsights/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviainferenceinsights/finalizers,verbs=update
 
-func (r *FabricInferenceInsightReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *GryviaInferenceInsightReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// Fetch the FabricInferenceInsight instance
-	insight := &gryviav1.FabricInferenceInsight{}
+	// Fetch the GryviaInferenceInsight instance
+	insight := &gryviav1.GryviaInferenceInsight{}
 	if err := r.Get(ctx, req.NamespacedName, insight); err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("FabricInferenceInsight resource not found, ignoring since object must be deleted")
+			logger.Info("GryviaInferenceInsight resource not found, ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		logger.Error(err, "Failed to get FabricInferenceInsight")
+		logger.Error(err, "Failed to get GryviaInferenceInsight")
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("Reconciling FabricInferenceInsight",
+	logger.Info("Reconciling GryviaInferenceInsight",
 		"name", insight.Name,
 		"targetService", insight.Spec.TargetService,
 	)
@@ -74,7 +74,7 @@ func (r *FabricInferenceInsightReconciler) Reconcile(ctx context.Context, req ct
 	r.updateInferenceInsightStatus(ctx, req.NamespacedName, "Active", breakdown,
 		latencyData.P50TotalNs, latencyData.P95TotalNs, latencyData.P99TotalNs, bottleneck)
 
-	logger.Info("FabricInferenceInsight analysis complete",
+	logger.Info("GryviaInferenceInsight analysis complete",
 		"bottleneck", bottleneck,
 		"p50Ns", latencyData.P50TotalNs,
 		"p99Ns", latencyData.P99TotalNs,
@@ -98,7 +98,7 @@ type collectorLatencyResponse struct {
 }
 
 // queryLatencyBreakdown fetches latency breakdown data from the collector API
-func (r *FabricInferenceInsightReconciler) queryLatencyBreakdown(ctx context.Context, insight *gryviav1.FabricInferenceInsight) collectorLatencyResponse {
+func (r *GryviaInferenceInsightReconciler) queryLatencyBreakdown(ctx context.Context, insight *gryviav1.GryviaInferenceInsight) collectorLatencyResponse {
 	logger := log.FromContext(ctx)
 
 	httpClient := &http.Client{Timeout: 10 * time.Second}
@@ -129,7 +129,7 @@ func (r *FabricInferenceInsightReconciler) queryLatencyBreakdown(ctx context.Con
 }
 
 // identifyLatencyBottleneck determines which phase contributes the most latency
-func (r *FabricInferenceInsightReconciler) identifyLatencyBottleneck(breakdown gryviav1.LatencyBreakdown) string {
+func (r *GryviaInferenceInsightReconciler) identifyLatencyBottleneck(breakdown gryviav1.LatencyBreakdown) string {
 	phases := map[string]int64{
 		"dns":           breakdown.DNSNs,
 		"tcp_connect":   breakdown.TCPConnectNs,
@@ -151,10 +151,10 @@ func (r *FabricInferenceInsightReconciler) identifyLatencyBottleneck(breakdown g
 	return maxPhase
 }
 
-// updateInferenceInsightStatus updates the FabricInferenceInsight status subresource
-func (r *FabricInferenceInsightReconciler) updateInferenceInsightStatus(ctx context.Context, namespacedName types.NamespacedName, phase string, breakdown gryviav1.LatencyBreakdown, p50, p95, p99 int64, bottleneck string) {
+// updateInferenceInsightStatus updates the GryviaInferenceInsight status subresource
+func (r *GryviaInferenceInsightReconciler) updateInferenceInsightStatus(ctx context.Context, namespacedName types.NamespacedName, phase string, breakdown gryviav1.LatencyBreakdown, p50, p95, p99 int64, bottleneck string) {
 	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		insight := &gryviav1.FabricInferenceInsight{}
+		insight := &gryviav1.GryviaInferenceInsight{}
 		if err := r.Get(ctx, namespacedName, insight); err != nil {
 			return err
 		}
@@ -167,13 +167,13 @@ func (r *FabricInferenceInsightReconciler) updateInferenceInsightStatus(ctx cont
 		insight.Status.LastAnalysis = metav1.Now()
 		return r.Status().Update(ctx, insight)
 	}); err != nil {
-		log.FromContext(ctx).Error(err, "Failed to update FabricInferenceInsight status")
+		log.FromContext(ctx).Error(err, "Failed to update GryviaInferenceInsight status")
 	}
 }
 
 // SetupWithManager sets up the controller with the Manager
-func (r *FabricInferenceInsightReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaInferenceInsightReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricInferenceInsight{}).
+		For(&gryviav1.GryviaInferenceInsight{}).
 		Complete(r)
 }

@@ -4,14 +4,14 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabrictrainingprofilers.gryvia.io
+  name: gryviatrainingprofilers.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricTrainingProfiler
-    listKind: FabricTrainingProfilerList
-    plural: fabrictrainingprofilers
-    singular: fabrictrainingprofiler
+    kind: GryviaTrainingProfiler
+    listKind: GryviaTrainingProfilerList
+    plural: gryviatrainingprofilers
+    singular: gryviatrainingprofiler
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
@@ -30,7 +30,7 @@ spec:
     name: v1
     schema:
       openAPIV3Schema:
-        description: FabricTrainingProfiler is the Schema for the fabrictrainingprofilers
+        description: GryviaTrainingProfiler is the Schema for the gryviatrainingprofilers
           API
         properties:
           apiVersion:
@@ -51,7 +51,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricTrainingProfilerSpec defines the desired state of FabricTrainingProfiler
+            description: GryviaTrainingProfilerSpec defines the desired state of GryviaTrainingProfiler
             properties:
               analysis:
                 description: Analysis configuration
@@ -168,7 +168,7 @@ spec:
                       metrics
                     type: boolean
                   storeInJobStatus:
-                    description: StoreInJobStatus stores profiling results in FabricAIJob
+                    description: StoreInJobStatus stores profiling results in GryviaAIJob
                       status
                     type: boolean
                 type: object
@@ -194,13 +194,13 @@ spec:
                         type: integer
                     type: object
                   jobRef:
-                    description: 'JobRef is the name of a specific FabricAIJob to
+                    description: 'JobRef is the name of a specific GryviaAIJob to
                       profile (used with type: job-ref)'
                     type: string
                   jobSelector:
                     additionalProperties:
                       type: string
-                    description: JobSelector is a label selector to match FabricAIJob
+                    description: JobSelector is a label selector to match GryviaAIJob
                       resources
                     type: object
                   type:
@@ -211,8 +211,8 @@ spec:
             - target
             type: object
           status:
-            description: FabricTrainingProfilerStatus defines the observed state of
-              FabricTrainingProfiler
+            description: GryviaTrainingProfilerStatus defines the observed state of
+              GryviaTrainingProfiler
             properties:
               avgMFU:
                 description: AvgMFU is the average Model FLOPS Utilization across

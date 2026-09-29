@@ -1,5 +1,5 @@
 apiVersion: gryvia.io/v1
-kind: FabricGpuNode
+kind: GryviaGpuNode
 metadata:
   name: ${node_name}
 spec:

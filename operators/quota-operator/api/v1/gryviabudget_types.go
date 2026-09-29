@@ -4,8 +4,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// FabricBudgetSpec defines the desired state of FabricBudget
-type FabricBudgetSpec struct {
+// GryviaBudgetSpec defines the desired state of GryviaBudget
+type GryviaBudgetSpec struct {
 	// Scope defines who this budget applies to
 	Scope BudgetScope `json:"scope"`
 
@@ -109,8 +109,8 @@ type BudgetPriority struct {
 	OverrideLimitPercent int `json:"overrideLimitPercent,omitempty"`
 }
 
-// FabricBudgetStatus defines the observed state of FabricBudget
-type FabricBudgetStatus struct {
+// GryviaBudgetStatus defines the observed state of GryviaBudget
+type GryviaBudgetStatus struct {
 	// CurrentPeriod tracks the current budget period
 	CurrentPeriod *BudgetCurrentPeriod `json:"currentPeriod,omitempty"`
 
@@ -209,24 +209,24 @@ type BudgetForecast struct {
 //+kubebuilder:subresource:status
 //+kubebuilder:resource:scope=Cluster
 
-// FabricBudget is the Schema for the fabricbudgets API
-type FabricBudget struct {
+// GryviaBudget is the Schema for the gryviabudgets API
+type GryviaBudget struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricBudgetSpec   `json:"spec,omitempty"`
-	Status FabricBudgetStatus `json:"status,omitempty"`
+	Spec   GryviaBudgetSpec   `json:"spec,omitempty"`
+	Status GryviaBudgetStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricBudgetList contains a list of FabricBudget
-type FabricBudgetList struct {
+// GryviaBudgetList contains a list of GryviaBudget
+type GryviaBudgetList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricBudget `json:"items"`
+	Items           []GryviaBudget `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&FabricBudget{}, &FabricBudgetList{})
+	SchemeBuilder.Register(&GryviaBudget{}, &GryviaBudgetList{})
 }

@@ -48,7 +48,7 @@ Gryvia ships 24 eBPF programs organized into six categories. All programs are lo
 |---------|-----------|-------------|
 | `nccl_trace` | uprobe | Traces NCCL collective operations (AllReduce, AllGather, Broadcast) with timing, message size, and ring/tree algorithm details. Identifies communication bottlenecks in distributed training. |
 | `gpu_mem_trace` | kprobe | Monitors GPU memory allocations and deallocations via the NVIDIA kernel driver. Detects memory leaks, fragmentation, and OOM patterns before they cause job failures. |
-| `rdma_trace` | tracepoint | Traces RDMA/InfiniBand verbs (post_send, post_recv, poll_cq) for RoCE and IB fabrics. Measures RDMA latency, throughput, and error rates per queue pair. |
+| `rdma_trace` | tracepoint | Traces RDMA/InfiniBand verbs (post_send, post_recv, poll_cq) for RoCE and IB gryvias. Measures RDMA latency, throughput, and error rates per queue pair. |
 
 ### Security Programs
 
@@ -91,7 +91,7 @@ Gryvia ships 24 eBPF programs organized into six categories. All programs are lo
 | Program | Hook Type | Description |
 |---------|-----------|-------------|
 | `tcp_trace` | kprobe | Core TCP flow tracing with connection state tracking, retransmit monitoring, and per-flow byte/packet counters. |
-| `packet_filter` | XDP | High-performance packet filtering at the XDP layer for early-drop of unauthorized traffic. Used by FabricFlowPolicy enforcement. |
+| `packet_filter` | XDP | High-performance packet filtering at the XDP layer for early-drop of unauthorized traffic. Used by GryviaFlowPolicy enforcement. |
 | `latency_probe` | TC | Measures per-packet network latency using kernel timestamps. Provides P50/P90/P99 latency distributions per flow. |
 | `syscall_monitor` | tracepoint | Monitors network-related syscalls (connect, accept, sendmsg, recvmsg) with per-container attribution. |
 | `dns_tracker` | TC | Tracks DNS queries and responses with latency. Detects DNS-based service discovery issues and resolution failures. |
@@ -100,13 +100,13 @@ Gryvia ships 24 eBPF programs organized into six categories. All programs are lo
 
 ## CRDs
 
-### FabricFlowPolicy
+### GryviaFlowPolicy
 
 Intent-based network policies that describe allowed traffic using high-level semantics rather than raw IP/port rules.
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricFlowPolicy
+kind: GryviaFlowPolicy
 metadata:
   name: training-data-access
   namespace: ml-research
@@ -147,13 +147,13 @@ spec:
   enforcement: enforce   # audit | enforce
 ```
 
-### FabricTrafficInsight
+### GryviaTrafficInsight
 
 Per-service traffic metrics aggregated from eBPF flow data.
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricTrafficInsight
+kind: GryviaTrafficInsight
 metadata:
   name: training-cluster-insight
   namespace: ml-research
@@ -201,13 +201,13 @@ status:
       bytesIn: 1.1Ti
 ```
 
-### FabricAutoPolicy
+### GryviaAutoPolicy
 
 Self-healing firewall that learns traffic patterns and generates or enforces network policies automatically.
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricAutoPolicy
+kind: GryviaAutoPolicy
 metadata:
   name: ml-namespace-autopolicy
   namespace: ml-research
@@ -251,13 +251,13 @@ status:
       description: "Training pods regularly access datastore on port 6379"
 ```
 
-### FabricTraceSession
+### GryviaTraceSession
 
 On-demand network debugging sessions for troubleshooting connectivity and performance issues.
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricTraceSession
+kind: GryviaTraceSession
 metadata:
   name: debug-training-latency
   namespace: ml-research
@@ -304,13 +304,13 @@ status:
         recommendation: "Check NFS server disk I/O and network MTU settings"
 ```
 
-### FabricServiceGraph
+### GryviaServiceGraph
 
 Service dependency visualization generated from observed network traffic.
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricServiceGraph
+kind: GryviaServiceGraph
 metadata:
   name: ml-platform-graph
 spec:
@@ -351,13 +351,13 @@ status:
         requestsPerSecond: 450
 ```
 
-### FabricNetworkAnomaly
+### GryviaNetworkAnomaly
 
 Anomaly detection rules and alerts for network traffic patterns.
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricNetworkAnomaly
+kind: GryviaNetworkAnomaly
 metadata:
   name: training-anomaly-detector
   namespace: ml-research
@@ -409,13 +409,13 @@ status:
       affectedPods: [training-worker-0, training-worker-3]
 ```
 
-### FabricSecurityPolicy
+### GryviaSecurityPolicy
 
 Security detection rules for identifying threats and policy violations.
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricSecurityPolicy
+kind: GryviaSecurityPolicy
 metadata:
   name: gpu-cluster-security
   namespace: gryvia-system
@@ -469,13 +469,13 @@ spec:
       severity: critical
 ```
 
-### FabricNetworkCost
+### GryviaNetworkCost
 
 Network cost attribution per team, job, and service.
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricNetworkCost
+kind: GryviaNetworkCost
 metadata:
   name: monthly-network-costs
 spec:
@@ -513,13 +513,13 @@ status:
       rdma: 424.40
 ```
 
-### FabricTrainingInsight
+### GryviaTrainingInsight
 
 AI training-specific network analysis for distributed training jobs.
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricTrainingInsight
+kind: GryviaTrainingInsight
 metadata:
   name: llm-training-insight
   namespace: ml-research
@@ -561,13 +561,13 @@ status:
     recommendation: "Switch to hierarchical allreduce for 8+ node jobs"
 ```
 
-### FabricInferenceInsight
+### GryviaInferenceInsight
 
 Serving latency breakdown and optimization analysis for inference services.
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricInferenceInsight
+kind: GryviaInferenceInsight
 metadata:
   name: llm-serving-insight
   namespace: ml-production
@@ -794,20 +794,20 @@ gryvia network status --errors
 ### Performance
 
 - Start with core programs (`tcp_trace`, `latency_probe`, `dns_tracker`) and add specialized programs as needed.
-- Use `sampleRate` in FabricFlowPolicy logging to reduce overhead on high-throughput flows.
-- Set appropriate `retention` periods on FabricTrafficInsight to control storage usage.
+- Use `sampleRate` in GryviaFlowPolicy logging to reduce overhead on high-throughput flows.
+- Set appropriate `retention` periods on GryviaTrafficInsight to control storage usage.
 
 ### Security
 
-- Begin with FabricAutoPolicy in `learn` mode for at least 7 days before switching to `suggest` or `enforce`.
+- Begin with GryviaAutoPolicy in `learn` mode for at least 7 days before switching to `suggest` or `enforce`.
 - Enable `container_escape` and `privesc_monitor` on all GPU nodes.
 - Review auto-policy suggestions before accepting, especially in multi-tenant clusters.
 
 ### Troubleshooting
 
-- Use FabricTraceSession for targeted debugging rather than enabling cluster-wide capture.
-- Check FabricTrainingInsight for straggler detection when distributed training performance degrades.
-- Review FabricInferenceInsight latency breakdown to identify which layer (network, queue, compute) is causing tail latency.
+- Use GryviaTraceSession for targeted debugging rather than enabling cluster-wide capture.
+- Check GryviaTrainingInsight for straggler detection when distributed training performance degrades.
+- Review GryviaInferenceInsight latency breakdown to identify which layer (network, queue, compute) is causing tail latency.
 
 ---
 

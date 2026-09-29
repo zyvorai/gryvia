@@ -1,6 +1,6 @@
 # Example: MLPerf ResNet50 Benchmark
 apiVersion: gryvia.io/v1
-kind: FabricBenchmark
+kind: GryviaBenchmark
 metadata:
   name: mlperf-resnet50
   namespace: benchmarks
@@ -30,7 +30,7 @@ spec:
 ---
 # Example: NCCL All-Reduce Benchmark
 apiVersion: gryvia.io/v1
-kind: FabricBenchmark
+kind: GryviaBenchmark
 metadata:
   name: nccl-allreduce
   namespace: benchmarks
@@ -55,7 +55,7 @@ spec:
 ---
 # Example: GPU Memory Bandwidth Benchmark
 apiVersion: gryvia.io/v1
-kind: FabricBenchmark
+kind: GryviaBenchmark
 metadata:
   name: gpu-memory-bw
   namespace: benchmarks
@@ -80,7 +80,7 @@ spec:
 ---
 # Example: Storage I/O Benchmark
 apiVersion: gryvia.io/v1
-kind: FabricBenchmark
+kind: GryviaBenchmark
 metadata:
   name: storage-io
   namespace: benchmarks
@@ -106,7 +106,7 @@ spec:
 ---
 # Example: Custom PyTorch Benchmark
 apiVersion: gryvia.io/v1
-kind: FabricBenchmark
+kind: GryviaBenchmark
 metadata:
   name: custom-pytorch
   namespace: benchmarks

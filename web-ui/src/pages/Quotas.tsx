@@ -4,7 +4,7 @@ import { api } from '@/lib/api'
 import DataTable, { type Column } from '@/components/DataTable'
 import { useTableState } from '@/hooks/useTableState'
 import type { FilterDef, SortAccessor } from '@/lib/tableState'
-import type { FabricQuota } from '@/types'
+import type { GryviaQuota } from '@/types'
 import PageHero from '@/components/PageHero'
 import PagePulse from '@/components/kit/PagePulse'
 import { countTone } from '@/components/kit/tone'
@@ -15,18 +15,18 @@ import { formatDuration, formatMoney, formatPercent } from '@/lib/format'
 import { alertThreshold, allowedTypes, budgetPercent, budgetedCount, limitLabel, overBudgetAlert } from '@/lib/quotas'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 
-const FILTERS: FilterDef<FabricQuota>[] = [
+const FILTERS: FilterDef<GryviaQuota>[] = [
   { name: 'budget', label: 'Budget', get: (q) => (q.spec.budget ? 'Has budget' : 'No budget'), options: ['Has budget', 'No budget'] },
   { name: 'alert', label: 'Alert threshold', get: (q) => (q.spec.budget ? (overBudgetAlert(q) ? 'Over threshold' : 'Within threshold') : undefined), options: ['Over threshold', 'Within threshold'] },
 ]
-const SORTS: Record<string, SortAccessor<FabricQuota>> = {
+const SORTS: Record<string, SortAccessor<GryviaQuota>> = {
   team: (q) => q.spec.team,
   gpus: (q) => q.status?.currentUsage?.allocatedGPUs ?? 0,
   budget: budgetPercent,
 }
-const searchText = (q: FabricQuota) => [q.spec.team, q.metadata.name, ...(q.spec.namespaces ?? [])].join(' ')
+const searchText = (q: GryviaQuota) => [q.spec.team, q.metadata.name, ...(q.spec.namespaces ?? [])].join(' ')
 
-const jobsLink = (q: FabricQuota) => `/jobs?f_team=${encodeURIComponent(q.spec.team)}`
+const jobsLink = (q: GryviaQuota) => `/jobs?f_team=${encodeURIComponent(q.spec.team)}`
 
 function tone(pct: number) {
   return pct > 90 ? 'bad' : pct > 70 ? 'warn' : undefined
@@ -60,7 +60,7 @@ export default function Quotas() {
   }
 
   const list = quotas || []
-  const columns: Column<FabricQuota>[] = [
+  const columns: Column<GryviaQuota>[] = [
     { key: 'team', header: 'Team', sortable: true, render: (q) => <span className="mono">{q.spec.team}</span> },
     { key: 'gpus', header: 'GPUs allocated', sortable: true, numeric: true, render: (q) => `${q.status?.currentUsage?.allocatedGPUs ?? 0} / ${q.spec.gpuQuota?.maxGPUs ?? 0}` },
     { key: 'budget', header: 'Budget used', sortable: true, numeric: true, render: (q) => (q.spec.budget ? formatPercent(Math.round(budgetPercent(q) ?? 0)) : '—') },
@@ -134,7 +134,7 @@ export default function Quotas() {
                   </a>
                 }
               >
-                Quotas are FabricQuota resources, one per team, enforced by the Gryvia operator. Create one with <code className="mono">kubectl apply -f fabricquota.yaml</code> and it appears here.
+                Quotas are GryviaQuota resources, one per team, enforced by the Gryvia operator. Create one with <code className="mono">kubectl apply -f gryviaquota.yaml</code> and it appears here.
               </EmptyState>
             }
           />

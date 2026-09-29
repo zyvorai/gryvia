@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabricflowpolicies.gryvia.io
+  name: gryviaflowpolicies.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricFlowPolicy
-    listKind: FabricFlowPolicyList
-    plural: fabricflowpolicies
-    singular: fabricflowpolicy
+    kind: GryviaFlowPolicy
+    listKind: GryviaFlowPolicyList
+    plural: gryviaflowpolicies
+    singular: gryviaflowpolicy
   scope: Namespaced
   versions:
   - name: v1
     schema:
       openAPIV3Schema:
-        description: FabricFlowPolicy is the Schema for the fabricflowpolicies API
+        description: GryviaFlowPolicy is the Schema for the gryviaflowpolicies API
         properties:
           apiVersion:
             description: |-
@@ -37,7 +37,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricFlowPolicySpec defines the desired state of FabricFlowPolicy
+            description: GryviaFlowPolicySpec defines the desired state of GryviaFlowPolicy
             properties:
               action:
                 description: Action specifies what to do with matching traffic (allow,
@@ -92,7 +92,7 @@ spec:
                 type: object
             type: object
           status:
-            description: FabricFlowPolicyStatus defines the observed state of FabricFlowPolicy
+            description: GryviaFlowPolicyStatus defines the observed state of GryviaFlowPolicy
             properties:
               ciliumPolicyRef:
                 description: CiliumPolicyRef is the name of the generated CiliumNetworkPolicy

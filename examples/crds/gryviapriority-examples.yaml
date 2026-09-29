@@ -1,6 +1,6 @@
 # System-Critical Priority (highest)
 apiVersion: gryvia.io/v1
-kind: FabricPriority
+kind: GryviaPriority
 metadata:
   name: system-critical
 spec:
@@ -16,7 +16,7 @@ spec:
 ---
 # Production Priority (very high)
 apiVersion: gryvia.io/v1
-kind: FabricPriority
+kind: GryviaPriority
 metadata:
   name: production
 spec:
@@ -32,7 +32,7 @@ spec:
 ---
 # High Priority
 apiVersion: gryvia.io/v1
-kind: FabricPriority
+kind: GryviaPriority
 metadata:
   name: high
 spec:
@@ -48,7 +48,7 @@ spec:
 ---
 # Normal Priority (default)
 apiVersion: gryvia.io/v1
-kind: FabricPriority
+kind: GryviaPriority
 metadata:
   name: normal
 spec:
@@ -63,7 +63,7 @@ spec:
 ---
 # Low Priority
 apiVersion: gryvia.io/v1
-kind: FabricPriority
+kind: GryviaPriority
 metadata:
   name: low
 spec:
@@ -78,7 +78,7 @@ spec:
 ---
 # Best-Effort Priority (lowest)
 apiVersion: gryvia.io/v1
-kind: FabricPriority
+kind: GryviaPriority
 metadata:
   name: best-effort
 spec:
@@ -93,7 +93,7 @@ spec:
 ---
 # Spot Priority (for spot instance jobs)
 apiVersion: gryvia.io/v1
-kind: FabricPriority
+kind: GryviaPriority
 metadata:
   name: spot
 spec:
@@ -108,12 +108,12 @@ spec:
 ---
 # Example Job with Priority
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: critical-training
 spec:
   type: training
-  # High priority (job priority is 0-100; the "high" FabricPriority class maps to ~80)
+  # High priority (job priority is 0-100; the "high" GryviaPriority class maps to ~80)
   priority: 80
 
   gpus: 32
@@ -124,7 +124,7 @@ spec:
 ---
 # Example: Preemptible Job
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: batch-job
 spec:
@@ -142,12 +142,12 @@ spec:
 ---
 # Example: Production Serving (highest priority)
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: llm-serving
 spec:
   type: inference
-  # Highest priority (the "production" FabricPriority class)
+  # Highest priority (the "production" GryviaPriority class)
   priority: 95
 
   gpus: 8

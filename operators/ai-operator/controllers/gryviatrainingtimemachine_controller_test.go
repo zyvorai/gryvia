@@ -23,14 +23,14 @@ func newTimeMachineTestScheme() *runtime.Scheme {
 	return s
 }
 
-func newTimeMachineReconciler(objs ...client.Object) (*FabricTrainingTimeMachineReconciler, client.Client) {
+func newTimeMachineReconciler(objs ...client.Object) (*GryviaTrainingTimeMachineReconciler, client.Client) {
 	scheme := newTimeMachineTestScheme()
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(objs...).
-		WithStatusSubresource(&gryviav1.FabricTrainingTimeMachine{}, &gryviav1.FabricAIJob{}).
+		WithStatusSubresource(&gryviav1.GryviaTrainingTimeMachine{}, &gryviav1.GryviaAIJob{}).
 		Build()
-	r := &FabricTrainingTimeMachineReconciler{
+	r := &GryviaTrainingTimeMachineReconciler{
 		Client: fakeClient,
 		Scheme: scheme,
 		Log:    ctrl.Log.WithName("test"),
@@ -38,13 +38,13 @@ func newTimeMachineReconciler(objs ...client.Object) (*FabricTrainingTimeMachine
 	return r, fakeClient
 }
 
-func newTestTimeMachine(name, namespace string) *gryviav1.FabricTrainingTimeMachine {
-	return &gryviav1.FabricTrainingTimeMachine{
+func newTestTimeMachine(name, namespace string) *gryviav1.GryviaTrainingTimeMachine {
+	return &gryviav1.GryviaTrainingTimeMachine{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
 		},
-		Spec: gryviav1.FabricTrainingTimeMachineSpec{
+		Spec: gryviav1.GryviaTrainingTimeMachineSpec{
 			SourceJob: "source-job",
 			Timeline: &gryviav1.TimelineConfig{
 				Enabled:          true,
@@ -103,7 +103,7 @@ func TestTimeMachine_Reconcile_SourceJobNotFound(t *testing.T) {
 		t.Errorf("expected requeue after %v, got %v", timeMachineReconcileInterval, result.RequeueAfter)
 	}
 
-	updated := &gryviav1.FabricTrainingTimeMachine{}
+	updated := &gryviav1.GryviaTrainingTimeMachine{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-tm", Namespace: "default"}, updated); err != nil {
 		t.Fatalf("failed to get updated tm: %v", err)
 	}
@@ -120,12 +120,12 @@ func TestTimeMachine_Reconcile_SourceJobNotFound(t *testing.T) {
 }
 
 func TestTimeMachine_GetSourceJob(t *testing.T) {
-	sourceJob := &gryviav1.FabricAIJob{
+	sourceJob := &gryviav1.GryviaAIJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "source-job",
 			Namespace: "default",
 		},
-		Spec: gryviav1.FabricAIJobSpec{
+		Spec: gryviav1.GryviaAIJobSpec{
 			Type:  "training",
 			Image: "pytorch:latest",
 			GPUs:  4,
@@ -251,12 +251,12 @@ func TestTimeMachine_SetForkStatus(t *testing.T) {
 }
 
 func TestTimeMachine_TrackForkedJobs(t *testing.T) {
-	forkedJob := &gryviav1.FabricAIJob{
+	forkedJob := &gryviav1.GryviaAIJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "forked-job-1",
 			Namespace: "default",
 		},
-		Status: gryviav1.FabricAIJobStatus{
+		Status: gryviav1.GryviaAIJobStatus{
 			Phase: PhaseSucceeded,
 			Metrics: &gryviav1.JobMetrics{
 				Loss: 0.05,

@@ -22,7 +22,7 @@ kubectl get pods -n gryvia-system
 kubectl apply -f example-job.yaml
 
 # 4. Check job status
-kubectl get fabricaijobs -n default
+kubectl get gryviaaijobs -n default
 ```
 
 ## What's Included
@@ -60,7 +60,7 @@ kubectl apply -f ../../operators/quota-operator/config/deployment.yaml
 kubectl apply -f gpu-nodes/
 ```
 
-This creates FabricGpuNode resources for:
+This creates GryviaGpuNode resources for:
 - 2x H100 nodes (8 GPUs each)
 - 2x A100-80G nodes (8 GPUs each)
 - 1x L40 node (4 GPUs each)
@@ -176,7 +176,7 @@ kubectl get secret -n gryvia-system prometheus-grafana -o jsonpath="{.data.admin
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: llama-training
   namespace: default
@@ -217,10 +217,10 @@ gryvia logs llama-training
 
 ```bash
 # Real-time GPU metrics
-watch kubectl get fabricgpunodes -o custom-columns=NAME:.metadata.name,TYPE:.spec.gpuType,GPUS:.spec.gpuCount,PHASE:.status.phase
+watch kubectl get gryviagpunodes -o custom-columns=NAME:.metadata.name,TYPE:.spec.gpuType,GPUS:.spec.gpuCount,PHASE:.status.phase
 
 # Detailed node metrics
-kubectl describe fabricgpunode gpu-worker-01
+kubectl describe gryviagpunode gpu-worker-01
 ```
 
 ### Check Team Quota Usage
@@ -230,10 +230,10 @@ kubectl describe fabricgpunode gpu-worker-01
 gryvia quota
 
 # Via kubectl
-kubectl get fabricquotas
+kubectl get gryviaquotas
 
 # Detailed quota info
-kubectl describe fabricquota ml-research-quota
+kubectl describe gryviaquota ml-research-quota
 ```
 
 ## Troubleshooting
@@ -252,13 +252,13 @@ kubectl auth can-i --list --as=system:serviceaccount:gryvia:gryvia-gpu-operator
 
 ```bash
 # Check quota limits
-kubectl get fabricquotas
+kubectl get gryviaquotas
 
 # Check GPU availability
-kubectl get fabricgpunodes
+kubectl get gryviagpunodes
 
 # Check job events
-kubectl describe fabricaijob <job-name>
+kubectl describe gryviaaijob <job-name>
 ```
 
 ### Storage not mounting
@@ -271,14 +271,14 @@ kubectl logs -n gryvia-system -l app=gryvia-storage-operator
 kubectl get pods -n gryvia-system | grep vast-csi
 
 # Verify storage backend
-kubectl get fabricstorage
+kubectl get gryviastorage
 ```
 
 ## Cleanup
 
 ```bash
 # Delete all jobs
-kubectl delete fabricaijobs --all
+kubectl delete gryviaaijobs --all
 
 # Delete example resources
 kubectl delete -f .

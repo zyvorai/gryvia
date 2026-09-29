@@ -1,8 +1,8 @@
-# FabricTraceSession - Live network debugging session for payment service
+# GryviaTraceSession - Live network debugging session for payment service
 # Captures L7 (HTTP) traffic for 2 minutes with header capture enabled,
 # filtered to TCP traffic on port 8080. Results are stored in a ConfigMap.
 apiVersion: gryvia.io/v1
-kind: FabricTraceSession
+kind: GryviaTraceSession
 metadata:
   name: debug-payment-latency
   namespace: production

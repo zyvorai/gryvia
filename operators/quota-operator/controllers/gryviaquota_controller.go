@@ -24,34 +24,34 @@ import (
 )
 
 const (
-	fabricQuotaFinalizer = "gryvia.io/quota-finalizer"
+	gryviaQuotaFinalizer = "gryvia.io/quota-finalizer"
 )
 
-// FabricQuotaReconciler reconciles a FabricQuota object
-type FabricQuotaReconciler struct {
+// GryviaQuotaReconciler reconciles a GryviaQuota object
+type GryviaQuotaReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricquotas,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricquotas/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricquotas/finalizers,verbs=update
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaquotas,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaquotas/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaquotas/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs,verbs=get;list;watch;update;patch
 //+kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch;update;patch
 //+kubebuilder:rbac:groups="",resources=resourcequotas,verbs=get;list;watch;create;update;patch;delete
 
-func (r *FabricQuotaReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *GryviaQuotaReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// Fetch the FabricQuota instance
-	quota := &gryviav1.FabricQuota{}
+	// Fetch the GryviaQuota instance
+	quota := &gryviav1.GryviaQuota{}
 	err := r.Get(ctx, req.NamespacedName, quota)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("FabricQuota resource not found. Ignoring since object must be deleted")
+			logger.Info("GryviaQuota resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		logger.Error(err, "Failed to get FabricQuota")
+		logger.Error(err, "Failed to get GryviaQuota")
 		return ctrl.Result{}, err
 	}
 
@@ -61,15 +61,15 @@ func (r *FabricQuotaReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	// Add finalizer if it doesn't exist
-	if !controllerutil.ContainsFinalizer(quota, fabricQuotaFinalizer) {
-		controllerutil.AddFinalizer(quota, fabricQuotaFinalizer)
+	if !controllerutil.ContainsFinalizer(quota, gryviaQuotaFinalizer) {
+		controllerutil.AddFinalizer(quota, gryviaQuotaFinalizer)
 		if err := r.Update(ctx, quota); err != nil {
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{Requeue: true}, nil
 	}
 
-	logger.Info("Reconciling FabricQuota", "team", quota.Spec.Team, "maxGPUs", quota.Spec.GPUQuota.MaxGPUs)
+	logger.Info("Reconciling GryviaQuota", "team", quota.Spec.Team, "maxGPUs", quota.Spec.GPUQuota.MaxGPUs)
 
 	// Reconcile the quota
 	result, err := r.reconcileQuota(ctx, quota)
@@ -89,7 +89,7 @@ func (r *FabricQuotaReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 }
 
-func (r *FabricQuotaReconciler) reconcileQuota(ctx context.Context, quota *gryviav1.FabricQuota) (ctrl.Result, error) {
+func (r *GryviaQuotaReconciler) reconcileQuota(ctx context.Context, quota *gryviav1.GryviaQuota) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	// Ensure namespaces have correct labels
@@ -147,7 +147,7 @@ func (r *FabricQuotaReconciler) reconcileQuota(ctx context.Context, quota *gryvi
 	return ctrl.Result{}, nil
 }
 
-func (r *FabricQuotaReconciler) labelNamespaces(ctx context.Context, quota *gryviav1.FabricQuota) error {
+func (r *GryviaQuotaReconciler) labelNamespaces(ctx context.Context, quota *gryviav1.GryviaQuota) error {
 	logger := log.FromContext(ctx)
 
 	for _, nsName := range quota.Spec.Namespaces {
@@ -180,13 +180,13 @@ func (r *FabricQuotaReconciler) labelNamespaces(ctx context.Context, quota *gryv
 	return nil
 }
 
-func (r *FabricQuotaReconciler) enforceQuota(ctx context.Context, quota *gryviav1.FabricQuota) error {
+func (r *GryviaQuotaReconciler) enforceQuota(ctx context.Context, quota *gryviav1.GryviaQuota) error {
 	logger := log.FromContext(ctx)
 
 	// Get all AI jobs in quota namespaces
-	jobList := &gryviav1.FabricAIJobList{}
+	jobList := &gryviav1.GryviaAIJobList{}
 	for _, nsName := range quota.Spec.Namespaces {
-		jobs := &gryviav1.FabricAIJobList{}
+		jobs := &gryviav1.GryviaAIJobList{}
 		if err := r.List(ctx, jobs, client.InNamespace(nsName)); err != nil {
 			return fmt.Errorf("failed to list jobs in namespace %s: %w", nsName, err)
 		}
@@ -194,7 +194,7 @@ func (r *FabricQuotaReconciler) enforceQuota(ctx context.Context, quota *gryviav
 	}
 
 	// Sort jobs by priority and creation time
-	pendingJobs := []gryviav1.FabricAIJob{}
+	pendingJobs := []gryviav1.GryviaAIJob{}
 	for _, job := range jobList.Items {
 		if job.Status.Phase == "Pending" || job.Status.Phase == "Queued" {
 			pendingJobs = append(pendingJobs, job)
@@ -256,7 +256,7 @@ func (r *FabricQuotaReconciler) enforceQuota(ctx context.Context, quota *gryviav
 	return nil
 }
 
-func (r *FabricQuotaReconciler) updateStatus(ctx context.Context, quota *gryviav1.FabricQuota, phase, message string) error {
+func (r *GryviaQuotaReconciler) updateStatus(ctx context.Context, quota *gryviav1.GryviaQuota, phase, message string) error {
 	quota.Status.Phase = phase
 	quota.Status.LastUpdated = metav1.Now()
 
@@ -275,17 +275,17 @@ func (r *FabricQuotaReconciler) updateStatus(ctx context.Context, quota *gryviav
 	meta.SetStatusCondition(&quota.Status.Conditions, condition)
 
 	if err := r.Status().Update(ctx, quota); err != nil {
-		log.FromContext(ctx).Error(err, "Failed to update FabricQuota status")
+		log.FromContext(ctx).Error(err, "Failed to update GryviaQuota status")
 		return err
 	}
 	return nil
 }
 
-func (r *FabricQuotaReconciler) handleDeletion(ctx context.Context, quota *gryviav1.FabricQuota) (ctrl.Result, error) {
+func (r *GryviaQuotaReconciler) handleDeletion(ctx context.Context, quota *gryviav1.GryviaQuota) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	if controllerutil.ContainsFinalizer(quota, fabricQuotaFinalizer) {
-		logger.Info("Running cleanup for FabricQuota", "team", quota.Spec.Team)
+	if controllerutil.ContainsFinalizer(quota, gryviaQuotaFinalizer) {
+		logger.Info("Running cleanup for GryviaQuota", "team", quota.Spec.Team)
 
 		// Remove gryvia labels from namespaces
 		for _, nsName := range quota.Spec.Namespaces {
@@ -308,7 +308,7 @@ func (r *FabricQuotaReconciler) handleDeletion(ctx context.Context, quota *gryvi
 		}
 
 		// Remove finalizer
-		controllerutil.RemoveFinalizer(quota, fabricQuotaFinalizer)
+		controllerutil.RemoveFinalizer(quota, gryviaQuotaFinalizer)
 		if err := r.Update(ctx, quota); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -317,14 +317,14 @@ func (r *FabricQuotaReconciler) handleDeletion(ctx context.Context, quota *gryvi
 }
 
 // SetupWithManager sets up the controller with the Manager
-func (r *FabricQuotaReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaQuotaReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricQuota{}).
-		Watches(&gryviav1.FabricAIJob{}, handler.EnqueueRequestsFromMapFunc(
+		For(&gryviav1.GryviaQuota{}).
+		Watches(&gryviav1.GryviaAIJob{}, handler.EnqueueRequestsFromMapFunc(
 			func(ctx context.Context, obj client.Object) []reconcile.Request {
-				// When a FabricAIJob changes, enqueue all FabricQuota objects
+				// When a GryviaAIJob changes, enqueue all GryviaQuota objects
 				// in the same namespace so quota usage is recalculated.
-				quotaList := &gryviav1.FabricQuotaList{}
+				quotaList := &gryviav1.GryviaQuotaList{}
 				if err := mgr.GetClient().List(ctx, quotaList); err != nil {
 					return nil
 				}

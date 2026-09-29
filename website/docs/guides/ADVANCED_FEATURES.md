@@ -36,7 +36,7 @@ Proactive health monitoring and diagnostics for GPU infrastructure.
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricHealthCheck
+kind: GryviaHealthCheck
 metadata:
   name: cluster-gpu-health
 spec:
@@ -129,7 +129,7 @@ backoff:
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricRetryPolicy
+kind: GryviaRetryPolicy
 metadata:
   name: adaptive-retry
 spec:
@@ -175,7 +175,7 @@ Reserve GPU resources in advance with guaranteed availability.
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricReservation
+kind: GryviaReservation
 metadata:
   name: ml-team-reservation
 spec:
@@ -256,7 +256,7 @@ Hierarchical team organization with quotas, isolation, and governance.
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricTenant
+kind: GryviaTenant
 metadata:
   name: ml-research
 spec:
@@ -349,7 +349,7 @@ gryvia job create --template pytorch-ddp-training \
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricTemplate
+kind: GryviaTemplate
 metadata:
   name: my-training-template
 spec:
@@ -397,7 +397,7 @@ Queue-based auto-scaling with predictive capabilities.
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricAutoScaler
+kind: GryviaAutoScaler
 metadata:
   name: a100-autoscaler
 spec:
@@ -454,7 +454,7 @@ Multi-tiered budget system with forecasting.
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricBudget
+kind: GryviaBudget
 metadata:
   name: ml-team-budget
 spec:
@@ -534,11 +534,11 @@ spec:
 
 Gryvia provides a complete ML workflow toolkit for managing the full lifecycle of machine learning projects.
 
-- **FabricAutoTuner**: Hyperparameter optimization with Grid, Random, Bayesian (TPE), and ASHA early stopping strategies.
-- **FabricWorkflow**: DAG-based multi-step ML pipelines with dependency management, conditional execution, and fan-out/fan-in patterns.
-- **FabricModelRegistry**: Model versioning with dev, staging, and production stage promotion. Supports auto-deploy on production promotion.
-- **FabricInferenceService**: Production model serving with Triton, vLLM, TensorRT-LLM, and TorchServe backends. Includes canary deployments and auto-rollback.
-- **FabricWorkspace**: Managed interactive Jupyter and VS Code environments with GPU access, persistent storage, and idle pause/resume.
+- **GryviaAutoTuner**: Hyperparameter optimization with Grid, Random, Bayesian (TPE), and ASHA early stopping strategies.
+- **GryviaWorkflow**: DAG-based multi-step ML pipelines with dependency management, conditional execution, and fan-out/fan-in patterns.
+- **GryviaModelRegistry**: Model versioning with dev, staging, and production stage promotion. Supports auto-deploy on production promotion.
+- **GryviaInferenceService**: Production model serving with Triton, vLLM, TensorRT-LLM, and TorchServe backends. Includes canary deployments and auto-rollback.
+- **GryviaWorkspace**: Managed interactive Jupyter and VS Code environments with GPU access, persistent storage, and idle pause/resume.
 
 For full documentation, examples, and CLI usage, see the **[ML Workflows Guide](ML_WORKFLOWS.md)**.
 
@@ -549,12 +549,12 @@ For full documentation, examples, and CLI usage, see the **[ML Workflows Guide](
 eBPF-powered network observability, security, and performance optimization for GPU clusters.
 
 - **24 eBPF programs** covering GPU communication (NCCL, RDMA), security (container escape, crypto mining, exfiltration), performance (TCP tuning, NUMA path optimization), and AI-specific analysis (training patterns, data pipeline bottlenecks, gradient compression).
-- **Intent-based network policies** (FabricFlowPolicy) for high-level traffic control.
-- **Self-healing firewall** (FabricAutoPolicy) that learns traffic patterns and generates policies automatically.
-- **Anomaly detection** (FabricNetworkAnomaly) with baseline-driven alerting.
-- **Service dependency graphs** (FabricServiceGraph) generated from observed traffic.
-- **Cost attribution** (FabricNetworkCost) per team, job, and service.
-- **Training insights** (FabricTrainingInsight) with straggler detection and communication analysis.
+- **Intent-based network policies** (GryviaFlowPolicy) for high-level traffic control.
+- **Self-healing firewall** (GryviaAutoPolicy) that learns traffic patterns and generates policies automatically.
+- **Anomaly detection** (GryviaNetworkAnomaly) with baseline-driven alerting.
+- **Service dependency graphs** (GryviaServiceGraph) generated from observed traffic.
+- **Cost attribution** (GryviaNetworkCost) per team, job, and service.
+- **Training insights** (GryviaTrainingInsight) with straggler detection and communication analysis.
 
 For full documentation, CRD examples, and CLI commands, see the **[Network Intelligence Guide](NETWORK_INTELLIGENCE.md)**.
 

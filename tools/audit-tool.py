@@ -100,7 +100,7 @@ class AuditTool:
                 group="gryvia.io",
                 version="v1",
                 namespace=self.namespace,
-                plural="fabricaijobs"
+                plural="gryviaaijobs"
             )
 
             images = [job["spec"]["image"] for job in jobs["items"]]
@@ -169,7 +169,7 @@ class AuditTool:
                 group="gryvia.io",
                 version="v1",
                 namespace=self.namespace,
-                plural="fabricquotas"
+                plural="gryviaquotas"
             )
 
             total_quotas = len(quotas["items"])
@@ -193,7 +193,7 @@ class AuditTool:
                 group="gryvia.io",
                 version="v1",
                 namespace=self.namespace,
-                plural="fabricaijobs"
+                plural="gryviaaijobs"
             )
 
             jobs_with_limits = 0
@@ -229,7 +229,7 @@ class AuditTool:
                 group="gryvia.io",
                 version="v1",
                 namespace=self.namespace,
-                plural="fabricquotas"
+                plural="gryviaquotas"
             )
 
             total_budget = 0

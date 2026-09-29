@@ -35,7 +35,7 @@ Automatically optimize hyperparameters, resource allocation, and training config
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricAutoTuner
+kind: GryviaAutoTuner
 metadata:
   name: llama-tuning
   namespace: default
@@ -546,7 +546,7 @@ kfctl tune analyze llama-tuning
 
 ```bash
 # Enable cost-aware tuning
-kubectl patch fabricautotuner llama-tuning -p '{
+kubectl patch gryviaautotuner llama-tuning -p '{
   "spec": {
     "budget": {
       "maxTotalCost": 1000,

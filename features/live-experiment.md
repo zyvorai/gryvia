@@ -4,7 +4,7 @@ Real-time multi-experiment comparison system with automatic early stopping for G
 
 ## Overview
 
-FabricLiveExperiment enables running multiple training jobs simultaneously and comparing them in real time. The system:
+GryviaLiveExperiment enables running multiple training jobs simultaneously and comparing them in real time. The system:
 
 - **Live Leaderboard**: Continuously ranks jobs by configurable metrics
 - **Early Stopping**: Automatically terminates underperforming jobs to save GPU hours
@@ -13,7 +13,7 @@ FabricLiveExperiment enables running multiple training jobs simultaneously and c
 
 ## How It Works
 
-1. Define a `FabricLiveExperiment` CR referencing two or more `FabricAIJob` resources
+1. Define a `GryviaLiveExperiment` CR referencing two or more `GryviaAIJob` resources
 2. Configure the primary metric (e.g., `loss`) and optimization direction (`minimize`/`maximize`)
 3. The controller scrapes pod logs at 30-second intervals, extracting metric values via regex
 4. Jobs are ranked by a composite score (primary metric + weighted secondary metrics)
@@ -26,7 +26,7 @@ FabricLiveExperiment enables running multiple training jobs simultaneously and c
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricLiveExperiment
+kind: GryviaLiveExperiment
 metadata:
   name: lr-sweep
 spec:
@@ -52,7 +52,7 @@ spec:
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricLiveExperiment
+kind: GryviaLiveExperiment
 metadata:
   name: architecture-search
 spec:
@@ -150,7 +150,7 @@ Detected anomalies increment the `anomaliesDetected` counter in the experiment s
 View the live leaderboard:
 
 ```bash
-kubectl get fabricliveexperiment lr-sweep
+kubectl get gryvialiveexperiment lr-sweep
 
 # Output:
 # NAME       PHASE     LEADER    GPUHOURSSAVED   COSTSAVED   AGE
@@ -160,7 +160,7 @@ kubectl get fabricliveexperiment lr-sweep
 Detailed status:
 
 ```bash
-kubectl get fabricliveexperiment lr-sweep -o yaml
+kubectl get gryvialiveexperiment lr-sweep -o yaml
 ```
 
 ```yaml

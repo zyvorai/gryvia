@@ -8,7 +8,7 @@ Gryvia integrates seamlessly with popular ML platforms and tools.
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: training-with-wandb
 spec:
@@ -82,7 +82,7 @@ Access: `http://<external-ip>:6006`
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricJobHook
+kind: GryviaJobHook
 metadata:
   name: push-to-huggingface
 spec:
@@ -135,7 +135,7 @@ spec:
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricDataset
+kind: GryviaDataset
 metadata:
   name: my-dataset
 spec:
@@ -309,7 +309,7 @@ pipeline {
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricJobHook
+kind: GryviaJobHook
 metadata:
   name: slack-notifications
 spec:
@@ -417,9 +417,9 @@ spec:
     includedNamespaces:
       - gryvia
     includedResources:
-      - fabricaijobs
-      - fabricqueues
-      - fabricusers
+      - gryviaaijobs
+      - gryviaqueues
+      - gryviausers
       - persistentvolumeclaims
 ```
 
@@ -427,7 +427,7 @@ spec:
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricJobHook
+kind: GryviaJobHook
 metadata:
   name: backup-checkpoints
 spec:
@@ -503,8 +503,8 @@ import sdk "github.com/zyvorai/gryvia/sdk/go"
 client := sdk.NewGryviaClient(mgr.GetClient())
 
 // Create a job
-job, err := client.CreateJob(ctx, &v1.FabricAIJob{
-    Spec: v1.FabricAIJobSpec{
+job, err := client.CreateJob(ctx, &v1.GryviaAIJob{
+    Spec: v1.GryviaAIJobSpec{
         Model: "llama-70b",
         Resources: v1.ResourceSpec{GPUCount: 8, GPUType: "H100"},
     },

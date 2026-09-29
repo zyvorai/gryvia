@@ -4,8 +4,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// FabricTenantSpec defines the desired state of FabricTenant
-type FabricTenantSpec struct {
+// GryviaTenantSpec defines the desired state of GryviaTenant
+type GryviaTenantSpec struct {
 	// DisplayName is the human-readable name
 	DisplayName string `json:"displayName,omitempty"`
 
@@ -196,8 +196,8 @@ type TenantGovernance struct {
 	AuditRetention string `json:"auditRetention,omitempty"`
 }
 
-// FabricTenantStatus defines the observed state of FabricTenant
-type FabricTenantStatus struct {
+// GryviaTenantStatus defines the observed state of GryviaTenant
+type GryviaTenantStatus struct {
 	// MemberCount is the number of members
 	MemberCount int `json:"memberCount,omitempty"`
 
@@ -248,24 +248,24 @@ type TenantQuotaUtilization struct {
 //+kubebuilder:subresource:status
 //+kubebuilder:resource:scope=Cluster
 
-// FabricTenant is the Schema for the fabrictenants API
-type FabricTenant struct {
+// GryviaTenant is the Schema for the gryviatenants API
+type GryviaTenant struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricTenantSpec   `json:"spec,omitempty"`
-	Status FabricTenantStatus `json:"status,omitempty"`
+	Spec   GryviaTenantSpec   `json:"spec,omitempty"`
+	Status GryviaTenantStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricTenantList contains a list of FabricTenant
-type FabricTenantList struct {
+// GryviaTenantList contains a list of GryviaTenant
+type GryviaTenantList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricTenant `json:"items"`
+	Items           []GryviaTenant `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&FabricTenant{}, &FabricTenantList{})
+	SchemeBuilder.Register(&GryviaTenant{}, &GryviaTenantList{})
 }

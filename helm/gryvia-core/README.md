@@ -47,8 +47,8 @@ The following table lists the configurable parameters and their default values.
 ## CRD and Security Defaults
 
 - All CRDs enforce `required: ["spec"]` at the top level for validation.
-- `FabricStorage` StorageClass `reclaimPolicy` defaults to `Retain` (not `Delete`).
-- `FabricQuota` `gpuQuota.maxGPUs` has a minimum value of `1` (cannot be set to `0`).
+- `GryviaStorage` StorageClass `reclaimPolicy` defaults to `Retain` (not `Delete`).
+- `GryviaQuota` `gpuQuota.maxGPUs` has a minimum value of `1` (cannot be set to `0`).
 - DCGM exporter runs with hardened security: drops ALL capabilities, adds only `SYS_ADMIN`, and uses `readOnlyRootFilesystem: true`.
 - nvidia-device-plugin liveness probe uses an HTTP health check endpoint instead of `nvidia-smi`.
 - gpu-operator deployment includes `seccompProfile: RuntimeDefault`.

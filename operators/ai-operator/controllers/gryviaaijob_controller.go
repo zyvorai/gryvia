@@ -35,34 +35,34 @@ const (
 	ConditionReady     = "Ready"
 )
 
-// FabricAIJobReconciler reconciles a FabricAIJob object
-type FabricAIJobReconciler struct {
+// GryviaAIJobReconciler reconciles a GryviaAIJob object
+type GryviaAIJobReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Log    logr.Logger
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs/finalizers,verbs=update
 //+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop
-func (r *FabricAIJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := r.Log.WithValues("fabricaijob", req.NamespacedName)
+func (r *GryviaAIJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := r.Log.WithValues("gryviaaijob", req.NamespacedName)
 
-	// Fetch the FabricAIJob instance
-	job := &gryviav1.FabricAIJob{}
+	// Fetch the GryviaAIJob instance
+	job := &gryviav1.GryviaAIJob{}
 	err := r.Get(ctx, req.NamespacedName, job)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			log.Info("FabricAIJob resource not found. Ignoring since object must be deleted")
+			log.Info("GryviaAIJob resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		log.Error(err, "Failed to get FabricAIJob")
+		log.Error(err, "Failed to get GryviaAIJob")
 		return ctrl.Result{}, err
 	}
 
@@ -76,7 +76,7 @@ func (r *FabricAIJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if job.Status.Phase == "" {
 		job.Status.Phase = PhasePending
 		if err := r.Status().Update(ctx, job); err != nil {
-			log.Error(err, "Failed to update FabricAIJob status")
+			log.Error(err, "Failed to update GryviaAIJob status")
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{Requeue: true}, nil
@@ -92,8 +92,8 @@ func (r *FabricAIJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	return result, nil
 }
 
-func (r *FabricAIJobReconciler) reconcileAIJob(ctx context.Context, job *gryviav1.FabricAIJob) (ctrl.Result, error) {
-	log := r.Log.WithValues("fabricaijob", job.Name)
+func (r *GryviaAIJobReconciler) reconcileAIJob(ctx context.Context, job *gryviav1.GryviaAIJob) (ctrl.Result, error) {
+	log := r.Log.WithValues("gryviaaijob", job.Name)
 
 	// Phase 1: Scheduling - Find suitable GPU nodes
 	if job.Status.Phase == PhasePending || (job.Status.Phase == PhaseScheduling && len(job.Status.NodesAllocated) == 0) {
@@ -214,7 +214,7 @@ func (r *FabricAIJobReconciler) reconcileAIJob(ctx context.Context, job *gryviav
 	return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 }
 
-func (r *FabricAIJobReconciler) ensurePVC(ctx context.Context, job *gryviav1.FabricAIJob) error {
+func (r *GryviaAIJobReconciler) ensurePVC(ctx context.Context, job *gryviav1.GryviaAIJob) error {
 	pvcName := fmt.Sprintf("%s-data", job.Name)
 
 	pvc := &corev1.PersistentVolumeClaim{}
@@ -262,7 +262,7 @@ func (r *FabricAIJobReconciler) ensurePVC(ctx context.Context, job *gryviav1.Fab
 	return err
 }
 
-func (r *FabricAIJobReconciler) ensureHeadlessService(ctx context.Context, job *gryviav1.FabricAIJob) error {
+func (r *GryviaAIJobReconciler) ensureHeadlessService(ctx context.Context, job *gryviav1.GryviaAIJob) error {
 	svcName := fmt.Sprintf("%s-headless", job.Name)
 
 	svc := &corev1.Service{}
@@ -305,7 +305,7 @@ func (r *FabricAIJobReconciler) ensureHeadlessService(ctx context.Context, job *
 	return err
 }
 
-func (r *FabricAIJobReconciler) ensureStatefulSet(ctx context.Context, job *gryviav1.FabricAIJob) error {
+func (r *GryviaAIJobReconciler) ensureStatefulSet(ctx context.Context, job *gryviav1.GryviaAIJob) error {
 	stsName := r.getStatefulSetName(job)
 
 	sts := &appsv1.StatefulSet{}
@@ -394,7 +394,7 @@ func (r *FabricAIJobReconciler) ensureStatefulSet(ctx context.Context, job *gryv
 	return nil
 }
 
-func (r *FabricAIJobReconciler) buildStatefulSet(job *gryviav1.FabricAIJob) *appsv1.StatefulSet {
+func (r *GryviaAIJobReconciler) buildStatefulSet(job *gryviav1.GryviaAIJob) *appsv1.StatefulSet {
 	labels := map[string]string{
 		"gryvia.io/job":  job.Name,
 		"gryvia.io/type": job.Spec.Type,
@@ -425,7 +425,7 @@ func (r *FabricAIJobReconciler) buildStatefulSet(job *gryviav1.FabricAIJob) *app
 	return sts
 }
 
-func (r *FabricAIJobReconciler) buildPodTemplate(job *gryviav1.FabricAIJob, labels map[string]string, gpusPerPod int32) corev1.PodTemplateSpec {
+func (r *GryviaAIJobReconciler) buildPodTemplate(job *gryviav1.GryviaAIJob, labels map[string]string, gpusPerPod int32) corev1.PodTemplateSpec {
 	annotations := make(map[string]string)
 
 	// Add RDMA annotation if network mode is RDMA
@@ -474,7 +474,7 @@ func (r *FabricAIJobReconciler) buildPodTemplate(job *gryviav1.FabricAIJob, labe
 	}
 }
 
-func (r *FabricAIJobReconciler) buildEnvVars(job *gryviav1.FabricAIJob) []corev1.EnvVar {
+func (r *GryviaAIJobReconciler) buildEnvVars(job *gryviav1.GryviaAIJob) []corev1.EnvVar {
 	// Copy to avoid mutating the spec
 	envVars := make([]corev1.EnvVar, len(job.Spec.Env))
 	copy(envVars, job.Spec.Env)
@@ -500,7 +500,7 @@ func (r *FabricAIJobReconciler) buildEnvVars(job *gryviav1.FabricAIJob) []corev1
 	return envVars
 }
 
-func (r *FabricAIJobReconciler) buildVolumeMounts(job *gryviav1.FabricAIJob) []corev1.VolumeMount {
+func (r *GryviaAIJobReconciler) buildVolumeMounts(job *gryviav1.GryviaAIJob) []corev1.VolumeMount {
 	// Copy to avoid mutating the spec
 	volumeMounts := make([]corev1.VolumeMount, len(job.Spec.VolumeMounts))
 	copy(volumeMounts, job.Spec.VolumeMounts)
@@ -524,7 +524,7 @@ func (r *FabricAIJobReconciler) buildVolumeMounts(job *gryviav1.FabricAIJob) []c
 	return volumeMounts
 }
 
-func (r *FabricAIJobReconciler) buildVolumes(job *gryviav1.FabricAIJob) []corev1.Volume {
+func (r *GryviaAIJobReconciler) buildVolumes(job *gryviav1.GryviaAIJob) []corev1.Volume {
 	// Copy to avoid mutating the spec
 	volumes := make([]corev1.Volume, len(job.Spec.Volumes))
 	copy(volumes, job.Spec.Volumes)
@@ -556,7 +556,7 @@ func (r *FabricAIJobReconciler) buildVolumes(job *gryviav1.FabricAIJob) []corev1
 	return volumes
 }
 
-func (r *FabricAIJobReconciler) buildResources(job *gryviav1.FabricAIJob, gpusPerPod int32) corev1.ResourceRequirements {
+func (r *GryviaAIJobReconciler) buildResources(job *gryviav1.GryviaAIJob, gpusPerPod int32) corev1.ResourceRequirements {
 	resources := job.Spec.Resources
 
 	// Add GPU resource limits
@@ -568,7 +568,7 @@ func (r *FabricAIJobReconciler) buildResources(job *gryviav1.FabricAIJob, gpusPe
 	return resources
 }
 
-func (r *FabricAIJobReconciler) buildNodeSelector(job *gryviav1.FabricAIJob) map[string]string {
+func (r *GryviaAIJobReconciler) buildNodeSelector(job *gryviav1.GryviaAIJob) map[string]string {
 	// Copy to avoid mutating the spec
 	nodeSelector := make(map[string]string)
 	for k, v := range job.Spec.NodeSelector {
@@ -588,11 +588,11 @@ func (r *FabricAIJobReconciler) buildNodeSelector(job *gryviav1.FabricAIJob) map
 	return nodeSelector
 }
 
-func (r *FabricAIJobReconciler) getStatefulSetName(job *gryviav1.FabricAIJob) string {
+func (r *GryviaAIJobReconciler) getStatefulSetName(job *gryviav1.GryviaAIJob) string {
 	return fmt.Sprintf("%s-training", job.Name)
 }
 
-func (r *FabricAIJobReconciler) getReplicaCount(job *gryviav1.FabricAIJob) int32 {
+func (r *GryviaAIJobReconciler) getReplicaCount(job *gryviav1.GryviaAIJob) int32 {
 	if job.Spec.Distributed != nil && job.Spec.Distributed.Enabled {
 		if job.Spec.Distributed.Nodes > 0 {
 			return job.Spec.Distributed.Nodes
@@ -602,7 +602,7 @@ func (r *FabricAIJobReconciler) getReplicaCount(job *gryviav1.FabricAIJob) int32
 	return 1
 }
 
-func (r *FabricAIJobReconciler) getGPUsPerPod(job *gryviav1.FabricAIJob) int32 {
+func (r *GryviaAIJobReconciler) getGPUsPerPod(job *gryviav1.GryviaAIJob) int32 {
 	if job.Spec.Distributed != nil && job.Spec.Distributed.Enabled {
 		if job.Spec.Distributed.GpusPerNode > 0 {
 			return job.Spec.Distributed.GpusPerNode
@@ -615,7 +615,7 @@ func (r *FabricAIJobReconciler) getGPUsPerPod(job *gryviav1.FabricAIJob) int32 {
 	return 1
 }
 
-func (r *FabricAIJobReconciler) updateCondition(job *gryviav1.FabricAIJob, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *GryviaAIJobReconciler) updateCondition(job *gryviav1.GryviaAIJob, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -688,9 +688,9 @@ func mapsEqual(a, b map[string]string) bool {
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *FabricAIJobReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaAIJobReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricAIJob{}).
+		For(&gryviav1.GryviaAIJob{}).
 		Owns(&appsv1.StatefulSet{}).
 		Owns(&corev1.Service{}).
 		Owns(&corev1.PersistentVolumeClaim{}).

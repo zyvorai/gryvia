@@ -36,34 +36,34 @@ const (
 	timeMachineReconcileInterval = 30 * time.Second
 )
 
-// FabricTrainingTimeMachineReconciler reconciles a FabricTrainingTimeMachine object
-type FabricTrainingTimeMachineReconciler struct {
+// GryviaTrainingTimeMachineReconciler reconciles a GryviaTrainingTimeMachine object
+type GryviaTrainingTimeMachineReconciler struct {
 	client.Client
 	Scheme      *runtime.Scheme
 	Log         logr.Logger
 	ForkHandler *timemachine.ForkHandler
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabrictrainingtimemachines,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabrictrainingtimemachines/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabrictrainingtimemachines/finalizers,verbs=update
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch;create;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviatrainingtimemachines,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviatrainingtimemachines/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviatrainingtimemachines/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs,verbs=get;list;watch;create;update;patch
 //+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop
-func (r *FabricTrainingTimeMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := r.Log.WithValues("fabrictrainingtimemachine", req.NamespacedName)
+func (r *GryviaTrainingTimeMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := r.Log.WithValues("gryviatrainingtimemachine", req.NamespacedName)
 
-	// Fetch the FabricTrainingTimeMachine instance
-	tm := &gryviav1.FabricTrainingTimeMachine{}
+	// Fetch the GryviaTrainingTimeMachine instance
+	tm := &gryviav1.GryviaTrainingTimeMachine{}
 	err := r.Get(ctx, req.NamespacedName, tm)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			log.Info("FabricTrainingTimeMachine resource not found. Ignoring since object must be deleted")
+			log.Info("GryviaTrainingTimeMachine resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		log.Error(err, "Failed to get FabricTrainingTimeMachine")
+		log.Error(err, "Failed to get GryviaTrainingTimeMachine")
 		return ctrl.Result{}, err
 	}
 
@@ -82,10 +82,10 @@ func (r *FabricTrainingTimeMachineReconciler) Reconcile(ctx context.Context, req
 	return result, nil
 }
 
-func (r *FabricTrainingTimeMachineReconciler) reconcileTimeMachine(ctx context.Context, tm *gryviav1.FabricTrainingTimeMachine) (ctrl.Result, error) {
+func (r *GryviaTrainingTimeMachineReconciler) reconcileTimeMachine(ctx context.Context, tm *gryviav1.GryviaTrainingTimeMachine) (ctrl.Result, error) {
 	log := r.Log.WithValues("timemachine", tm.Name, "namespace", tm.Namespace)
 
-	// Step 1: Watch the source FabricAIJob
+	// Step 1: Watch the source GryviaAIJob
 	sourceJob, err := r.getSourceJob(ctx, tm)
 	if err != nil {
 		log.Error(err, "Failed to find source job", "sourceJob", tm.Spec.SourceJob)
@@ -156,9 +156,9 @@ func (r *FabricTrainingTimeMachineReconciler) reconcileTimeMachine(ctx context.C
 	return ctrl.Result{RequeueAfter: timeMachineReconcileInterval}, nil
 }
 
-// getSourceJob fetches the source FabricAIJob
-func (r *FabricTrainingTimeMachineReconciler) getSourceJob(ctx context.Context, tm *gryviav1.FabricTrainingTimeMachine) (*gryviav1.FabricAIJob, error) {
-	job := &gryviav1.FabricAIJob{}
+// getSourceJob fetches the source GryviaAIJob
+func (r *GryviaTrainingTimeMachineReconciler) getSourceJob(ctx context.Context, tm *gryviav1.GryviaTrainingTimeMachine) (*gryviav1.GryviaAIJob, error) {
+	job := &gryviav1.GryviaAIJob{}
 	err := r.Get(ctx, types.NamespacedName{
 		Namespace: tm.Namespace,
 		Name:      tm.Spec.SourceJob,
@@ -170,7 +170,7 @@ func (r *FabricTrainingTimeMachineReconciler) getSourceJob(ctx context.Context, 
 }
 
 // indexCheckpoints discovers and indexes checkpoints from the source job
-func (r *FabricTrainingTimeMachineReconciler) indexCheckpoints(ctx context.Context, tm *gryviav1.FabricTrainingTimeMachine, sourceJob *gryviav1.FabricAIJob) error {
+func (r *GryviaTrainingTimeMachineReconciler) indexCheckpoints(ctx context.Context, tm *gryviav1.GryviaTrainingTimeMachine, sourceJob *gryviav1.GryviaAIJob) error {
 	log := r.Log.WithValues("timemachine", tm.Name)
 
 	// Initialize timeline status if needed
@@ -243,7 +243,7 @@ func (r *FabricTrainingTimeMachineReconciler) indexCheckpoints(ctx context.Conte
 }
 
 // enforceRetention applies the retention policy to checkpoints
-func (r *FabricTrainingTimeMachineReconciler) enforceRetention(ctx context.Context, tm *gryviav1.FabricTrainingTimeMachine) error {
+func (r *GryviaTrainingTimeMachineReconciler) enforceRetention(ctx context.Context, tm *gryviav1.GryviaTrainingTimeMachine) error {
 	retention := tm.Spec.Retention
 
 	if retention.KeepAll {
@@ -293,8 +293,8 @@ func (r *FabricTrainingTimeMachineReconciler) enforceRetention(ctx context.Conte
 	return nil
 }
 
-// processForks creates new FabricAIJob CRs from checkpoint state for each fork request
-func (r *FabricTrainingTimeMachineReconciler) processForks(ctx context.Context, tm *gryviav1.FabricTrainingTimeMachine, sourceJob *gryviav1.FabricAIJob) error {
+// processForks creates new GryviaAIJob CRs from checkpoint state for each fork request
+func (r *GryviaTrainingTimeMachineReconciler) processForks(ctx context.Context, tm *gryviav1.GryviaTrainingTimeMachine, sourceJob *gryviav1.GryviaAIJob) error {
 	log := r.Log.WithValues("timemachine", tm.Name)
 
 	// Initialize fork status slice if needed
@@ -344,7 +344,7 @@ func (r *FabricTrainingTimeMachineReconciler) processForks(ctx context.Context, 
 }
 
 // resolveCheckpoint resolves a CheckpointSelector to a specific training step
-func (r *FabricTrainingTimeMachineReconciler) resolveCheckpoint(tm *gryviav1.FabricTrainingTimeMachine, selector gryviav1.CheckpointSelector) (int, error) {
+func (r *GryviaTrainingTimeMachineReconciler) resolveCheckpoint(tm *gryviav1.GryviaTrainingTimeMachine, selector gryviav1.CheckpointSelector) (int, error) {
 	// Step-based selection
 	if selector.Step != nil {
 		return *selector.Step, nil
@@ -377,7 +377,7 @@ func (r *FabricTrainingTimeMachineReconciler) resolveCheckpoint(tm *gryviav1.Fab
 }
 
 // setForkStatus updates the status for a specific fork
-func (r *FabricTrainingTimeMachineReconciler) setForkStatus(tm *gryviav1.FabricTrainingTimeMachine, name string, sourceStep int, forkedJob string, status string, currentMetric float64) {
+func (r *GryviaTrainingTimeMachineReconciler) setForkStatus(tm *gryviav1.GryviaTrainingTimeMachine, name string, sourceStep int, forkedJob string, status string, currentMetric float64) {
 	for i, fs := range tm.Status.Forks {
 		if fs.Name == name {
 			tm.Status.Forks[i].SourceStep = sourceStep
@@ -401,7 +401,7 @@ func (r *FabricTrainingTimeMachineReconciler) setForkStatus(tm *gryviav1.FabricT
 }
 
 // trackForkedJobs updates the status of forked jobs
-func (r *FabricTrainingTimeMachineReconciler) trackForkedJobs(ctx context.Context, tm *gryviav1.FabricTrainingTimeMachine) {
+func (r *GryviaTrainingTimeMachineReconciler) trackForkedJobs(ctx context.Context, tm *gryviav1.GryviaTrainingTimeMachine) {
 	for i, forkStatus := range tm.Status.Forks {
 		if forkStatus.ForkedJob == "" {
 			continue
@@ -411,7 +411,7 @@ func (r *FabricTrainingTimeMachineReconciler) trackForkedJobs(ctx context.Contex
 		}
 
 		// Fetch the forked job
-		forkedJob := &gryviav1.FabricAIJob{}
+		forkedJob := &gryviav1.GryviaAIJob{}
 		err := r.Get(ctx, types.NamespacedName{
 			Namespace: tm.Namespace,
 			Name:      forkStatus.ForkedJob,
@@ -441,7 +441,7 @@ func (r *FabricTrainingTimeMachineReconciler) trackForkedJobs(ctx context.Contex
 }
 
 // updateStorageUsage updates the storage usage status
-func (r *FabricTrainingTimeMachineReconciler) updateStorageUsage(ctx context.Context, tm *gryviav1.FabricTrainingTimeMachine) {
+func (r *GryviaTrainingTimeMachineReconciler) updateStorageUsage(ctx context.Context, tm *gryviav1.GryviaTrainingTimeMachine) {
 	// List PVCs associated with the source job
 	pvcList := &corev1.PersistentVolumeClaimList{}
 	if err := r.List(ctx, pvcList,
@@ -465,7 +465,7 @@ func (r *FabricTrainingTimeMachineReconciler) updateStorageUsage(ctx context.Con
 }
 
 // updateCondition updates or appends a condition on the time machine status
-func (r *FabricTrainingTimeMachineReconciler) updateCondition(tm *gryviav1.FabricTrainingTimeMachine, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *GryviaTrainingTimeMachineReconciler) updateCondition(tm *gryviav1.GryviaTrainingTimeMachine, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -498,8 +498,8 @@ func (r *FabricTrainingTimeMachineReconciler) updateCondition(tm *gryviav1.Fabri
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *FabricTrainingTimeMachineReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaTrainingTimeMachineReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricTrainingTimeMachine{}).
+		For(&gryviav1.GryviaTrainingTimeMachine{}).
 		Complete(r)
 }

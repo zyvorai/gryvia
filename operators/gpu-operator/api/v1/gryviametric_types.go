@@ -4,8 +4,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// FabricMetricSpec defines the desired state of FabricMetric
-type FabricMetricSpec struct {
+// GryviaMetricSpec defines the desired state of GryviaMetric
+type GryviaMetricSpec struct {
 	// Name is the metric name
 	Name string `json:"name"`
 
@@ -136,8 +136,8 @@ type MetricHistoryEntry struct {
 	Job string `json:"job,omitempty"`
 }
 
-// FabricMetricStatus defines the observed state of FabricMetric
-type FabricMetricStatus struct {
+// GryviaMetricStatus defines the observed state of GryviaMetric
+type GryviaMetricStatus struct {
 	// CurrentValue is the latest metric value
 	CurrentValue float64 `json:"currentValue,omitempty"`
 
@@ -160,24 +160,24 @@ type FabricMetricStatus struct {
 //+kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.state`
 //+kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// FabricMetric is the Schema for the fabricmetrics API
-type FabricMetric struct {
+// GryviaMetric is the Schema for the gryviametrics API
+type GryviaMetric struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricMetricSpec   `json:"spec,omitempty"`
-	Status FabricMetricStatus `json:"status,omitempty"`
+	Spec   GryviaMetricSpec   `json:"spec,omitempty"`
+	Status GryviaMetricStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricMetricList contains a list of FabricMetric
-type FabricMetricList struct {
+// GryviaMetricList contains a list of GryviaMetric
+type GryviaMetricList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricMetric `json:"items"`
+	Items           []GryviaMetric `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&FabricMetric{}, &FabricMetricList{})
+	SchemeBuilder.Register(&GryviaMetric{}, &GryviaMetricList{})
 }

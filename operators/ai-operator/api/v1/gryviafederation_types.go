@@ -4,8 +4,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// FabricFederationSpec defines the desired state of FabricFederation
-type FabricFederationSpec struct {
+// GryviaFederationSpec defines the desired state of GryviaFederation
+type GryviaFederationSpec struct {
 	// Clusters defines member clusters
 	Clusters []FederationCluster `json:"clusters,omitempty"`
 
@@ -196,8 +196,8 @@ type FederationCostManagement struct {
 	PreferCheaper bool `json:"preferCheaper,omitempty"`
 }
 
-// FabricFederationStatus defines the observed state of FabricFederation
-type FabricFederationStatus struct {
+// GryviaFederationStatus defines the observed state of GryviaFederation
+type GryviaFederationStatus struct {
 	// State is the overall federation state (healthy, degraded, unavailable)
 	State string `json:"state,omitempty"`
 
@@ -257,24 +257,24 @@ type FederationAggregateStats struct {
 //+kubebuilder:subresource:status
 //+kubebuilder:resource:scope=Cluster
 
-// FabricFederation is the Schema for the fabricfederations API
-type FabricFederation struct {
+// GryviaFederation is the Schema for the gryviafederations API
+type GryviaFederation struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricFederationSpec   `json:"spec,omitempty"`
-	Status FabricFederationStatus `json:"status,omitempty"`
+	Spec   GryviaFederationSpec   `json:"spec,omitempty"`
+	Status GryviaFederationStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricFederationList contains a list of FabricFederation
-type FabricFederationList struct {
+// GryviaFederationList contains a list of GryviaFederation
+type GryviaFederationList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricFederation `json:"items"`
+	Items           []GryviaFederation `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&FabricFederation{}, &FabricFederationList{})
+	SchemeBuilder.Register(&GryviaFederation{}, &GryviaFederationList{})
 }

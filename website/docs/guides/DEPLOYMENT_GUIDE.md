@@ -192,7 +192,7 @@ gpu-h100-02    Ready    <none>          8m    v1.30.5
 ### 4.2 Verify GPU Nodes
 
 ```bash
-kubectl get fabricgpunodes
+kubectl get gryviagpunodes
 ```
 
 Expected output:
@@ -261,7 +261,7 @@ Pre-configured dashboards available:
 
 ```bash
 kubectl apply -f ../../examples/training/simple-pytorch-training.yaml
-kubectl get fabricaijob
+kubectl get gryviaaijob
 kubectl logs -f $(kubectl get pod -l gryvia.io/job=pytorch-simple-training -o name)
 ```
 
@@ -292,7 +292,7 @@ ib_write_bw
 ### Pods Not Scheduling
 
 ```bash
-kubectl describe fabricaijob <job-name>
+kubectl describe gryviaaijob <job-name>
 kubectl get events --sort-by='.lastTimestamp'
 ```
 

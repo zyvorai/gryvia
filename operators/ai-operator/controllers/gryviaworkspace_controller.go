@@ -30,33 +30,33 @@ const (
 	defaultVSCodeImage  = "codercom/code-server:latest"
 )
 
-// FabricWorkspaceReconciler reconciles a FabricWorkspace object
-type FabricWorkspaceReconciler struct {
+// GryviaWorkspaceReconciler reconciles a GryviaWorkspace object
+type GryviaWorkspaceReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Log    logr.Logger
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricworkspaces,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricworkspaces/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricworkspaces/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaworkspaces,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaworkspaces/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaworkspaces/finalizers,verbs=update
 //+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop
-func (r *FabricWorkspaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := r.Log.WithValues("fabricworkspace", req.NamespacedName)
+func (r *GryviaWorkspaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := r.Log.WithValues("gryviaworkspace", req.NamespacedName)
 
-	// Fetch the FabricWorkspace instance
-	ws := &gryviav1.FabricWorkspace{}
+	// Fetch the GryviaWorkspace instance
+	ws := &gryviav1.GryviaWorkspace{}
 	err := r.Get(ctx, req.NamespacedName, ws)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			log.Info("FabricWorkspace resource not found. Ignoring since object must be deleted")
+			log.Info("GryviaWorkspace resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		log.Error(err, "Failed to get FabricWorkspace")
+		log.Error(err, "Failed to get GryviaWorkspace")
 		return ctrl.Result{}, err
 	}
 
@@ -90,8 +90,8 @@ func (r *FabricWorkspaceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	return result, nil
 }
 
-func (r *FabricWorkspaceReconciler) reconcileWorkspace(ctx context.Context, ws *gryviav1.FabricWorkspace) (ctrl.Result, error) {
-	log := r.Log.WithValues("fabricworkspace", ws.Name)
+func (r *GryviaWorkspaceReconciler) reconcileWorkspace(ctx context.Context, ws *gryviav1.GryviaWorkspace) (ctrl.Result, error) {
+	log := r.Log.WithValues("gryviaworkspace", ws.Name)
 
 	// Phase 1: Ensure PVC for persistent workspace data
 	if ws.Spec.Storage != "" {
@@ -140,7 +140,7 @@ func (r *FabricWorkspaceReconciler) reconcileWorkspace(ctx context.Context, ws *
 }
 
 // ensureWorkspacePVC creates a PVC for persistent workspace storage.
-func (r *FabricWorkspaceReconciler) ensureWorkspacePVC(ctx context.Context, ws *gryviav1.FabricWorkspace) error {
+func (r *GryviaWorkspaceReconciler) ensureWorkspacePVC(ctx context.Context, ws *gryviav1.GryviaWorkspace) error {
 	pvcName := fmt.Sprintf("%s-workspace", ws.Name)
 
 	pvc := &corev1.PersistentVolumeClaim{}
@@ -196,7 +196,7 @@ func (r *FabricWorkspaceReconciler) ensureWorkspacePVC(ctx context.Context, ws *
 }
 
 // ensureWorkspacePod creates or manages the workspace pod.
-func (r *FabricWorkspaceReconciler) ensureWorkspacePod(ctx context.Context, ws *gryviav1.FabricWorkspace) error {
+func (r *GryviaWorkspaceReconciler) ensureWorkspacePod(ctx context.Context, ws *gryviav1.GryviaWorkspace) error {
 	podName := fmt.Sprintf("%s-workspace", ws.Name)
 
 	pod := &corev1.Pod{}
@@ -337,7 +337,7 @@ func (r *FabricWorkspaceReconciler) ensureWorkspacePod(ctx context.Context, ws *
 }
 
 // ensureWorkspaceService creates a Service to expose the workspace.
-func (r *FabricWorkspaceReconciler) ensureWorkspaceService(ctx context.Context, ws *gryviav1.FabricWorkspace) error {
+func (r *GryviaWorkspaceReconciler) ensureWorkspaceService(ctx context.Context, ws *gryviav1.GryviaWorkspace) error {
 	svcName := fmt.Sprintf("%s-workspace", ws.Name)
 
 	svc := &corev1.Service{}
@@ -391,7 +391,7 @@ func (r *FabricWorkspaceReconciler) ensureWorkspaceService(ctx context.Context, 
 }
 
 // syncPodStatus updates workspace status based on the pod state.
-func (r *FabricWorkspaceReconciler) syncPodStatus(ctx context.Context, ws *gryviav1.FabricWorkspace) {
+func (r *GryviaWorkspaceReconciler) syncPodStatus(ctx context.Context, ws *gryviav1.GryviaWorkspace) {
 	if ws.Status.PodName == "" {
 		return
 	}
@@ -429,7 +429,7 @@ func (r *FabricWorkspaceReconciler) syncPodStatus(ctx context.Context, ws *gryvi
 }
 
 // checkIdleTimeout checks if the workspace has been idle for too long.
-func (r *FabricWorkspaceReconciler) checkIdleTimeout(ws *gryviav1.FabricWorkspace) {
+func (r *GryviaWorkspaceReconciler) checkIdleTimeout(ws *gryviav1.GryviaWorkspace) {
 	if ws.Status.LastActivity == nil || ws.Status.Phase != string(gryviav1.WorkspacePhaseRunning) {
 		return
 	}
@@ -446,7 +446,7 @@ func (r *FabricWorkspaceReconciler) checkIdleTimeout(ws *gryviav1.FabricWorkspac
 }
 
 // checkMaxLifetime checks if the workspace has exceeded its maximum lifetime.
-func (r *FabricWorkspaceReconciler) checkMaxLifetime(ctx context.Context, ws *gryviav1.FabricWorkspace) (bool, error) {
+func (r *GryviaWorkspaceReconciler) checkMaxLifetime(ctx context.Context, ws *gryviav1.GryviaWorkspace) (bool, error) {
 	if ws.Status.StartTime == nil {
 		return false, nil
 	}
@@ -482,7 +482,7 @@ func (r *FabricWorkspaceReconciler) checkMaxLifetime(ctx context.Context, ws *gr
 }
 
 // reconcilePaused handles pausing a workspace by deleting its pod (PVC persists for resume).
-func (r *FabricWorkspaceReconciler) reconcilePaused(ctx context.Context, ws *gryviav1.FabricWorkspace) (ctrl.Result, error) {
+func (r *GryviaWorkspaceReconciler) reconcilePaused(ctx context.Context, ws *gryviav1.GryviaWorkspace) (ctrl.Result, error) {
 	if ws.Status.Phase == string(gryviav1.WorkspacePhasePaused) {
 		return ctrl.Result{}, nil
 	}
@@ -513,7 +513,7 @@ func (r *FabricWorkspaceReconciler) reconcilePaused(ctx context.Context, ws *gry
 }
 
 // getWorkspaceImage returns the container image for the workspace type.
-func (r *FabricWorkspaceReconciler) getWorkspaceImage(ws *gryviav1.FabricWorkspace) string {
+func (r *GryviaWorkspaceReconciler) getWorkspaceImage(ws *gryviav1.GryviaWorkspace) string {
 	if ws.Spec.Image != "" {
 		return ws.Spec.Image
 	}
@@ -528,7 +528,7 @@ func (r *FabricWorkspaceReconciler) getWorkspaceImage(ws *gryviav1.FabricWorkspa
 	}
 }
 
-func (r *FabricWorkspaceReconciler) updateWSCondition(ws *gryviav1.FabricWorkspace, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *GryviaWorkspaceReconciler) updateWSCondition(ws *gryviav1.GryviaWorkspace, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -559,9 +559,9 @@ func (r *FabricWorkspaceReconciler) updateWSCondition(ws *gryviav1.FabricWorkspa
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *FabricWorkspaceReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaWorkspaceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricWorkspace{}).
+		For(&gryviav1.GryviaWorkspace{}).
 		Owns(&corev1.Pod{}).
 		Owns(&corev1.Service{}).
 		Owns(&corev1.PersistentVolumeClaim{}).

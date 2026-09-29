@@ -17,7 +17,7 @@ def seed(fake_k8s, name="t1", status=None):
                     "jobTemplate": {"type": "training", "image": "i", "gpus": 1}}}
     if status is not None:
         obj["status"] = status
-    fake_k8s.add("fabricautotuners", obj, namespace=NS)
+    fake_k8s.add("gryviaautotuners", obj, namespace=NS)
 
 
 STATUS = {"phase": "Running", "trialsCompleted": 2, "trialsRunning": 1,
@@ -46,7 +46,7 @@ def test_list_get_shape(make_client, fake_k8s):
                               "bestMetricValue": 0.9, "bestTrialId": "t1-2"}
 
 
-def test_no_status_no_fabricated_values(make_client, fake_k8s):
+def test_no_status_no_gryviaated_values(make_client, fake_k8s):
     seed(fake_k8s)
     assert make_client("tuners").get("/api/tuners/t1").json()["status"] == {}
 
@@ -73,8 +73,8 @@ def test_trials_empty(make_client, fake_k8s):
 def test_create(make_client, fake_k8s):
     r = make_client("tuners").post("/api/tuners", json=BODY)
     assert r.status_code == 201
-    stored = fake_k8s.store[("fabricautotuners", NS, "t1")]
-    assert stored["kind"] == "FabricAutoTuner"
+    stored = fake_k8s.store[("gryviaautotuners", NS, "t1")]
+    assert stored["kind"] == "GryviaAutoTuner"
     s = stored["spec"]
     assert s["searchAlgorithm"] == "bayesian" and s["maxTrials"] == 20
     assert s["objective"] == {"metricName": "accuracy", "direction": "maximize"}
@@ -88,7 +88,7 @@ def test_create_asha_and_dict_space(make_client, fake_k8s):
     b = {**BODY, "algorithm": "ASHA", "parameterSpace": PSPACE, "direction": "minimize",
          "ashaConfig": {"maxEpochs": 9, "reductionFactor": 3}}
     assert make_client("tuners").post("/api/tuners", json=b).status_code == 201
-    s = fake_k8s.store[("fabricautotuners", NS, "t1")]["spec"]
+    s = fake_k8s.store[("gryviaautotuners", NS, "t1")]["spec"]
     assert s["ashaConfig"] == {"maxEpochs": 9, "reductionFactor": 3}
     assert s["objective"]["direction"] == "minimize"
 
@@ -123,12 +123,12 @@ def test_create_missing_jobtemplate_key(make_client):
 
 def test_direction_and_metric_name(make_client, fake_k8s):
     seed(fake_k8s)
-    fake_k8s.store[("fabricautotuners", NS, "t1")]["spec"]["objective"]["direction"] = "minimize"
+    fake_k8s.store[("gryviaautotuners", NS, "t1")]["spec"]["objective"]["direction"] = "minimize"
     spec = make_client("tuners").get("/api/tuners/t1").json()["spec"]
     assert spec["direction"] == "minimize" and spec["metricName"] == "acc"
 
 
 def test_direction_defaults_to_maximize(make_client, fake_k8s):
     seed(fake_k8s)
-    del fake_k8s.store[("fabricautotuners", NS, "t1")]["spec"]["objective"]["direction"]
+    del fake_k8s.store[("gryviaautotuners", NS, "t1")]["spec"]["objective"]["direction"]
     assert make_client("tuners").get("/api/tuners/t1").json()["spec"]["direction"] == "maximize"

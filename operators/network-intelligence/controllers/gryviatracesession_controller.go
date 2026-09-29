@@ -19,34 +19,34 @@ import (
 	gryviav1 "github.com/zyvorai/gryvia/operators/network-intelligence/api/v1"
 )
 
-// FabricTraceSessionReconciler reconciles a FabricTraceSession object
-type FabricTraceSessionReconciler struct {
+// GryviaTraceSessionReconciler reconciles a GryviaTraceSession object
+type GryviaTraceSessionReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabrictracesessions,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabrictracesessions/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabrictracesessions/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviatracesessions,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviatracesessions/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviatracesessions/finalizers,verbs=update
 //+kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
-func (r *FabricTraceSessionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *GryviaTraceSessionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// Fetch the FabricTraceSession instance
-	session := &gryviav1.FabricTraceSession{}
+	// Fetch the GryviaTraceSession instance
+	session := &gryviav1.GryviaTraceSession{}
 	if err := r.Get(ctx, req.NamespacedName, session); err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("FabricTraceSession resource not found, ignoring since object must be deleted")
+			logger.Info("GryviaTraceSession resource not found, ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		logger.Error(err, "Failed to get FabricTraceSession")
+		logger.Error(err, "Failed to get GryviaTraceSession")
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("Reconciling FabricTraceSession",
+	logger.Info("Reconciling GryviaTraceSession",
 		"name", session.Name,
 		"service", session.Spec.Service,
 		"level", session.Spec.Level,
@@ -65,7 +65,7 @@ func (r *FabricTraceSessionReconciler) Reconcile(ctx context.Context, req ctrl.R
 }
 
 // startSession initializes a new trace session
-func (r *FabricTraceSessionReconciler) startSession(ctx context.Context, namespacedName types.NamespacedName, session *gryviav1.FabricTraceSession) (ctrl.Result, error) {
+func (r *GryviaTraceSessionReconciler) startSession(ctx context.Context, namespacedName types.NamespacedName, session *gryviav1.GryviaTraceSession) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Starting new trace session")
 
@@ -117,7 +117,7 @@ func (r *FabricTraceSessionReconciler) startSession(ctx context.Context, namespa
 	endTime := metav1.NewTime(now.Add(sessionDuration))
 
 	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		current := &gryviav1.FabricTraceSession{}
+		current := &gryviav1.GryviaTraceSession{}
 		if err := r.Get(ctx, namespacedName, current); err != nil {
 			return err
 		}
@@ -145,7 +145,7 @@ func (r *FabricTraceSessionReconciler) startSession(ctx context.Context, namespa
 }
 
 // reconcileActiveSession checks if the session has expired and captures flow data
-func (r *FabricTraceSessionReconciler) reconcileActiveSession(ctx context.Context, namespacedName types.NamespacedName, session *gryviav1.FabricTraceSession) (ctrl.Result, error) {
+func (r *GryviaTraceSessionReconciler) reconcileActiveSession(ctx context.Context, namespacedName types.NamespacedName, session *gryviav1.GryviaTraceSession) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	// Check if session has expired
@@ -164,7 +164,7 @@ func (r *FabricTraceSessionReconciler) reconcileActiveSession(ctx context.Contex
 
 	// Update flow count in status
 	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		current := &gryviav1.FabricTraceSession{}
+		current := &gryviav1.GryviaTraceSession{}
 		if err := r.Get(ctx, namespacedName, current); err != nil {
 			return err
 		}
@@ -187,7 +187,7 @@ func (r *FabricTraceSessionReconciler) reconcileActiveSession(ctx context.Contex
 }
 
 // completeSession finalizes the trace session
-func (r *FabricTraceSessionReconciler) completeSession(ctx context.Context, namespacedName types.NamespacedName, session *gryviav1.FabricTraceSession) (ctrl.Result, error) {
+func (r *GryviaTraceSessionReconciler) completeSession(ctx context.Context, namespacedName types.NamespacedName, session *gryviav1.GryviaTraceSession) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	// Update the results ConfigMap to mark as completed
@@ -221,7 +221,7 @@ func (r *FabricTraceSessionReconciler) completeSession(ctx context.Context, name
 
 	// Update status to completed/expired
 	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		current := &gryviav1.FabricTraceSession{}
+		current := &gryviav1.GryviaTraceSession{}
 		if err := r.Get(ctx, namespacedName, current); err != nil {
 			return err
 		}
@@ -242,7 +242,7 @@ func (r *FabricTraceSessionReconciler) completeSession(ctx context.Context, name
 
 // configureHubbleCapture configures Hubble to capture flows for this session.
 // In production, this connects to Hubble's gRPC API to set up flow observation.
-func (r *FabricTraceSessionReconciler) configureHubbleCapture(ctx context.Context, session *gryviav1.FabricTraceSession) {
+func (r *GryviaTraceSessionReconciler) configureHubbleCapture(ctx context.Context, session *gryviav1.GryviaTraceSession) {
 	logger := log.FromContext(ctx)
 
 	// Verify Hubble relay is available
@@ -276,7 +276,7 @@ type capturedFlow struct {
 
 // captureFlows queries Hubble for flows matching session filters.
 // In production, this streams flows from the Hubble observer API.
-func (r *FabricTraceSessionReconciler) captureFlows(ctx context.Context, session *gryviav1.FabricTraceSession) []capturedFlow {
+func (r *GryviaTraceSessionReconciler) captureFlows(ctx context.Context, session *gryviav1.GryviaTraceSession) []capturedFlow {
 	// In production, this would:
 	// 1. Connect to Hubble relay gRPC at hubble-relay.kube-system:4245
 	// 2. Create a GetFlows request with the session's filters
@@ -288,7 +288,7 @@ func (r *FabricTraceSessionReconciler) captureFlows(ctx context.Context, session
 }
 
 // updateTraceResults appends captured flows to the results ConfigMap
-func (r *FabricTraceSessionReconciler) updateTraceResults(ctx context.Context, session *gryviav1.FabricTraceSession, flows []capturedFlow) {
+func (r *GryviaTraceSessionReconciler) updateTraceResults(ctx context.Context, session *gryviav1.GryviaTraceSession, flows []capturedFlow) {
 	if session.Status.ResultRef == nil || len(flows) == 0 {
 		return
 	}
@@ -332,8 +332,8 @@ func (r *FabricTraceSessionReconciler) updateTraceResults(ctx context.Context, s
 }
 
 // SetupWithManager sets up the controller with the Manager
-func (r *FabricTraceSessionReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaTraceSessionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricTraceSession{}).
+		For(&gryviav1.GryviaTraceSession{}).
 		Complete(r)
 }

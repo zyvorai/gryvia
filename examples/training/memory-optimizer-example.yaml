@@ -8,7 +8,7 @@
 #
 ---
 apiVersion: gryvia.io/v1
-kind: FabricGpuMemoryOptimizer
+kind: GryviaGpuMemoryOptimizer
 metadata:
   name: training-memory-optimizer
 spec:
@@ -44,7 +44,7 @@ spec:
 ---
 # Example training job that the optimizer will monitor
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: llm-finetune-with-optimizer
   namespace: default

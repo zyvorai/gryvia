@@ -4,7 +4,7 @@ Predict costs, training time, and queue wait for AI/ML jobs before submission.
 
 ## Overview
 
-FabricCostPredictor analyzes historical job data to provide accurate estimates for new jobs:
+GryviaCostPredictor analyzes historical job data to provide accurate estimates for new jobs:
 
 - **Cost Estimation**: Predict total GPU, storage, and network costs before a job starts
 - **Training Time Estimation**: Estimate how long a job will take based on similar historical jobs
@@ -18,7 +18,7 @@ FabricCostPredictor analyzes historical job data to provide accurate estimates f
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricCostPredictor
+kind: GryviaCostPredictor
 metadata:
   name: default-predictor
 spec:
@@ -76,7 +76,7 @@ Submit a job with the dry-run annotation to get an estimate without running it:
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: llm-training-estimate
   annotations:
@@ -92,7 +92,7 @@ spec:
 After the predictor processes it, check the annotations:
 
 ```bash
-kubectl get fabricaijob llm-training-estimate -o jsonpath='{.metadata.annotations}'
+kubectl get gryviaaijob llm-training-estimate -o jsonpath='{.metadata.annotations}'
 ```
 
 Output:
@@ -270,7 +270,7 @@ pricing:
 
 ### Chargeback Reference
 
-Reference an existing FabricChargeback CR:
+Reference an existing GryviaChargeback CR:
 
 ```yaml
 pricing:
@@ -282,7 +282,7 @@ pricing:
 Check predictor status:
 
 ```bash
-kubectl get fabriccostpredictor default-predictor
+kubectl get gryviacostpredictor default-predictor
 ```
 
 Output:
@@ -294,7 +294,7 @@ default-predictor   342             1.2       45.50     12500    30d
 Detailed status:
 
 ```bash
-kubectl get fabriccostpredictor default-predictor -o yaml
+kubectl get gryviacostpredictor default-predictor -o yaml
 ```
 
 Status fields:
@@ -307,7 +307,7 @@ Status fields:
 
 ## Architecture
 
-1. The controller watches for new/pending FabricAIJob resources
+1. The controller watches for new/pending GryviaAIJob resources
 2. For each job, it finds similar historical jobs using configured similarity factors
 3. It estimates training time using the configured method (weighted-average, regression, percentile)
 4. It calculates cost from estimated time, GPU count, and pricing data

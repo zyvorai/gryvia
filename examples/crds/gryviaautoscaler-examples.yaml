@@ -1,6 +1,6 @@
 # Example: A100 Queue Auto-Scaler
 apiVersion: gryvia.io/v1
-kind: FabricAutoScaler
+kind: GryviaAutoScaler
 metadata:
   name: a100-autoscaler
 spec:
@@ -40,7 +40,7 @@ spec:
 ---
 # Example: Cloud-Based Auto-Scaler with Spot Instances
 apiVersion: gryvia.io/v1
-kind: FabricAutoScaler
+kind: GryviaAutoScaler
 metadata:
   name: t4-spot-autoscaler
 spec:
@@ -81,7 +81,7 @@ spec:
 ---
 # Example: Predictive Auto-Scaler
 apiVersion: gryvia.io/v1
-kind: FabricAutoScaler
+kind: GryviaAutoScaler
 metadata:
   name: h100-predictive-autoscaler
 spec:
@@ -112,7 +112,7 @@ spec:
 ---
 # Auto-Scaler Status Example
 apiVersion: gryvia.io/v1
-kind: FabricAutoScaler
+kind: GryviaAutoScaler
 metadata:
   name: a100-autoscaler
 status:
@@ -152,7 +152,7 @@ metadata:
 type: Normal
 reason: ScaledUp
 message: |
-  FabricAutoScaler 'a100-autoscaler' scaled up
+  GryviaAutoScaler 'a100-autoscaler' scaled up
 
   Trigger: Queue time exceeded threshold
   Queue Time: 35 minutes (threshold: 30 minutes)

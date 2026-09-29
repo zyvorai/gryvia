@@ -4,8 +4,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// FabricChargebackSpec defines the desired state of FabricChargeback
-type FabricChargebackSpec struct {
+// GryviaChargebackSpec defines the desired state of GryviaChargeback
+type GryviaChargebackSpec struct {
 	// Period defines the billing period
 	Period ChargebackPeriod `json:"period,omitempty"`
 
@@ -142,8 +142,8 @@ type ChargebackReports struct {
 	IncludeDetails bool `json:"includeDetails,omitempty"`
 }
 
-// FabricChargebackStatus defines the observed state of FabricChargeback
-type FabricChargebackStatus struct {
+// GryviaChargebackStatus defines the observed state of GryviaChargeback
+type GryviaChargebackStatus struct {
 	// CurrentPeriod tracks the current period
 	CurrentPeriod *ChargebackCurrentPeriod `json:"currentPeriod,omitempty"`
 
@@ -218,24 +218,24 @@ type ChargebackReportRef struct {
 //+kubebuilder:subresource:status
 //+kubebuilder:resource:scope=Cluster
 
-// FabricChargeback is the Schema for the fabricchargebacks API
-type FabricChargeback struct {
+// GryviaChargeback is the Schema for the gryviachargebacks API
+type GryviaChargeback struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricChargebackSpec   `json:"spec,omitempty"`
-	Status FabricChargebackStatus `json:"status,omitempty"`
+	Spec   GryviaChargebackSpec   `json:"spec,omitempty"`
+	Status GryviaChargebackStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricChargebackList contains a list of FabricChargeback
-type FabricChargebackList struct {
+// GryviaChargebackList contains a list of GryviaChargeback
+type GryviaChargebackList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricChargeback `json:"items"`
+	Items           []GryviaChargeback `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&FabricChargeback{}, &FabricChargebackList{})
+	SchemeBuilder.Register(&GryviaChargeback{}, &GryviaChargebackList{})
 }

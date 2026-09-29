@@ -19,8 +19,8 @@ def test_empty(client):
     assert client.get("/api/security/policies").json() == {"items": []}
 
 
-def test_alerts_never_fabricated(client, fake_k8s):
-    fake_k8s.add("fabricsecuritypolicies", {"metadata": {"name": "p"}, "spec": {},
+def test_alerts_never_gryviaated(client, fake_k8s):
+    fake_k8s.add("gryviasecuritypolicies", {"metadata": {"name": "p"}, "spec": {},
                                             "status": {"alertsTriggered": 5, "detectionCounts": {"mining": 5}}}, NS)
     assert client.get("/api/security/alerts").json() == {"items": [], "eventSource": False}
 
@@ -38,7 +38,7 @@ def test_alerts_survive_unreadable_policies_crd(make_client, fake_k8s):
 
 
 def test_list_shape(client, fake_k8s):
-    fake_k8s.add("fabricsecuritypolicies", {"metadata": {"name": "p"}, "spec": {
+    fake_k8s.add("gryviasecuritypolicies", {"metadata": {"name": "p"}, "spec": {
         "targetNamespaces": ["ml"], "detectionRules": [{"type": "escape", "enabled": True, "sensitivity": "low"}],
         "autoBlock": False}, "status": {"phase": "Active", "activeDetections": 1, "alertsTriggered": 2,
                                         "detectionCounts": {"escape": 2}}}, NS)
@@ -51,7 +51,7 @@ def test_create(client, fake_k8s):
     r = client.post("/api/security/policies", json=valid(alertWebhook="https://hooks.example.com/x"))
     assert r.status_code == 201
     assert r.json()["metadata"]["name"] == "gpu-guard"
-    stored = fake_k8s.store[("fabricsecuritypolicies", NS, "gpu-guard")]
+    stored = fake_k8s.store[("gryviasecuritypolicies", NS, "gpu-guard")]
     assert stored["spec"]["alertWebhook"] == "https://hooks.example.com/x"
     assert stored["spec"]["detectionRules"][0]["sensitivity"] == "high"
     assert client.post("/api/security/policies", json=valid()).status_code == 409

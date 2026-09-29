@@ -38,7 +38,7 @@ class CostCalculator:
                 group="gryvia.io",
                 version="v1",
                 namespace=namespace,
-                plural="fabricaijobs"
+                plural="gryviaaijobs"
             )
             return jobs.get("items", [])
         except ApiException as e:

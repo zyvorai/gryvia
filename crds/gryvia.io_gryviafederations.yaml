@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabricfederations.gryvia.io
+  name: gryviafederations.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricFederation
-    listKind: FabricFederationList
-    plural: fabricfederations
-    singular: fabricfederation
+    kind: GryviaFederation
+    listKind: GryviaFederationList
+    plural: gryviafederations
+    singular: gryviafederation
   scope: Cluster
   versions:
   - name: v1
     schema:
       openAPIV3Schema:
-        description: FabricFederation is the Schema for the fabricfederations API
+        description: GryviaFederation is the Schema for the gryviafederations API
         properties:
           apiVersion:
             description: |-
@@ -37,7 +37,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricFederationSpec defines the desired state of FabricFederation
+            description: GryviaFederationSpec defines the desired state of GryviaFederation
             properties:
               clusters:
                 description: Clusters defines member clusters
@@ -220,7 +220,7 @@ spec:
                 type: object
             type: object
           status:
-            description: FabricFederationStatus defines the observed state of FabricFederation
+            description: GryviaFederationStatus defines the observed state of GryviaFederation
             properties:
               aggregateStats:
                 description: AggregateStats are aggregate statistics

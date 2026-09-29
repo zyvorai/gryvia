@@ -53,7 +53,7 @@ docker-push: ## Push docker image.
 
 .PHONY: deploy
 deploy: ## Deploy controller to the K8s cluster.
-	kubectl apply -f ../../../crds/fabricgpunode.yaml
+	kubectl apply -f ../../../crds/gryviagpunode.yaml
 	kubectl apply -f config/
 
 .PHONY: undeploy

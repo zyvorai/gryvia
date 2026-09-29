@@ -4,7 +4,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-type FabricStorageSpec struct {
+type GryviaStorageSpec struct {
 	Backend      string            `json:"backend"`
 	Capacity     string            `json:"capacity"`
 	IOPS         string            `json:"iops,omitempty"`
@@ -40,7 +40,7 @@ type PerformanceSpec struct {
 	Encryption    bool   `json:"encryption,omitempty"`
 }
 
-type FabricStorageStatus struct {
+type GryviaStorageStatus struct {
 	Phase               string             `json:"phase,omitempty"`
 	Conditions          []metav1.Condition `json:"conditions,omitempty"`
 	TotalCapacity       string             `json:"totalCapacity,omitempty"`
@@ -69,22 +69,22 @@ type StorageMetrics struct {
 //+kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 //+kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-type FabricStorage struct {
+type GryviaStorage struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricStorageSpec   `json:"spec,omitempty"`
-	Status FabricStorageStatus `json:"status,omitempty"`
+	Spec   GryviaStorageSpec   `json:"spec,omitempty"`
+	Status GryviaStorageStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-type FabricStorageList struct {
+type GryviaStorageList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricStorage `json:"items"`
+	Items           []GryviaStorage `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&FabricStorage{}, &FabricStorageList{})
+	SchemeBuilder.Register(&GryviaStorage{}, &GryviaStorageList{})
 }

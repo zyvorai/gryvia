@@ -15,7 +15,7 @@ def seed(fake_k8s, name="wf1", status=None):
            "spec": {"steps": [{"name": "a", "type": "job"}, {"name": "b", "type": "job", "dependsOn": ["a"]}]}}
     if status is not None:
         obj["status"] = status
-    fake_k8s.add("fabricworkflows", obj, namespace=NS)
+    fake_k8s.add("gryviaworkflows", obj, namespace=NS)
 
 
 def test_list_empty(make_client):
@@ -55,8 +55,8 @@ def test_get_404(make_client):
 def test_create(make_client, fake_k8s):
     r = make_client("workflows").post("/api/workflows", json=body(parameters={"lr": "0.1"}))
     assert r.status_code == 201
-    stored = fake_k8s.store[("fabricworkflows", NS, "wf1")]
-    assert stored["kind"] == "FabricWorkflow" and stored["spec"]["parameters"] == {"lr": "0.1"}
+    stored = fake_k8s.store[("gryviaworkflows", NS, "wf1")]
+    assert stored["kind"] == "GryviaWorkflow" and stored["spec"]["parameters"] == {"lr": "0.1"}
     assert stored["spec"]["steps"][0] == {"name": "a", "type": "job",
                                           "jobTemplate": {"type": "training", "image": "img:1", "gpus": 1}}
     assert stored["spec"]["steps"][1]["dependsOn"] == ["a"]
@@ -67,7 +67,7 @@ def test_create_script_and_webhook(make_client, fake_k8s):
              {"name": "w", "type": "webhook", "dependsOn": ["s"], "webhook": {"url": "https://h/x"}}]
     r = make_client("workflows").post("/api/workflows", json=body(steps))
     assert r.status_code == 201
-    st = fake_k8s.store[("fabricworkflows", NS, "wf1")]["spec"]["steps"]
+    st = fake_k8s.store[("gryviaworkflows", NS, "wf1")]["spec"]["steps"]
     assert st[0]["script"] == {"image": "i", "command": ["sh"], "args": []}
     assert st[1]["webhook"] == {"url": "https://h/x", "method": "POST", "body": ""}
 

@@ -4,14 +4,14 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabrictrainingtimemachines.gryvia.io
+  name: gryviatrainingtimemachines.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricTrainingTimeMachine
-    listKind: FabricTrainingTimeMachineList
-    plural: fabrictrainingtimemachines
-    singular: fabrictrainingtimemachine
+    kind: GryviaTrainingTimeMachine
+    listKind: GryviaTrainingTimeMachineList
+    plural: gryviatrainingtimemachines
+    singular: gryviatrainingtimemachine
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
@@ -30,7 +30,7 @@ spec:
     name: v1
     schema:
       openAPIV3Schema:
-        description: FabricTrainingTimeMachine is the Schema for the fabrictrainingtimemachines
+        description: GryviaTrainingTimeMachine is the Schema for the gryviatrainingtimemachines
           API
         properties:
           apiVersion:
@@ -51,8 +51,8 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricTrainingTimeMachineSpec defines the desired state of
-              FabricTrainingTimeMachine
+            description: GryviaTrainingTimeMachineSpec defines the desired state of
+              GryviaTrainingTimeMachine
             properties:
               forks:
                 description: Forks defines fork requests to create new training jobs
@@ -92,7 +92,7 @@ spec:
                       description: Name is a unique name for this fork
                       type: string
                     newJobName:
-                      description: NewJobName is the name for the forked FabricAIJob
+                      description: NewJobName is the name for the forked GryviaAIJob
                         (auto-generated if omitted)
                       type: string
                     overrides:
@@ -153,7 +153,7 @@ spec:
                     type: integer
                 type: object
               sourceJob:
-                description: SourceJob is the name of the FabricAIJob to track checkpoints
+                description: SourceJob is the name of the GryviaAIJob to track checkpoints
                   for
                 type: string
               timeline:
@@ -195,8 +195,8 @@ spec:
             - sourceJob
             type: object
           status:
-            description: FabricTrainingTimeMachineStatus defines the observed state
-              of FabricTrainingTimeMachine
+            description: GryviaTrainingTimeMachineStatus defines the observed state
+              of GryviaTrainingTimeMachine
             properties:
               checkpointTimeline:
                 description: CheckpointTimeline is the status of indexed checkpoints
@@ -315,7 +315,7 @@ spec:
                         of the forked job
                       type: number
                     forkedJob:
-                      description: ForkedJob is the name of the forked FabricAIJob
+                      description: ForkedJob is the name of the forked GryviaAIJob
                       type: string
                     name:
                       description: Name is the fork name

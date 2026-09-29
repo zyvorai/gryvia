@@ -20,36 +20,36 @@ import (
 	gryviav1 "github.com/zyvorai/gryvia/operators/network-intelligence/api/v1"
 )
 
-// FabricAutoPolicyReconciler reconciles a FabricAutoPolicy object
-type FabricAutoPolicyReconciler struct {
+// GryviaAutoPolicyReconciler reconciles a GryviaAutoPolicy object
+type GryviaAutoPolicyReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricautopolicies,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricautopolicies/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricautopolicies/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaautopolicies,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaautopolicies/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaautopolicies/finalizers,verbs=update
 //+kubebuilder:rbac:groups=cilium.io,resources=ciliumnetworkpolicies,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
-func (r *FabricAutoPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *GryviaAutoPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// Fetch the FabricAutoPolicy instance
-	autoPolicy := &gryviav1.FabricAutoPolicy{}
+	// Fetch the GryviaAutoPolicy instance
+	autoPolicy := &gryviav1.GryviaAutoPolicy{}
 	if err := r.Get(ctx, req.NamespacedName, autoPolicy); err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("FabricAutoPolicy resource not found, ignoring since object must be deleted")
+			logger.Info("GryviaAutoPolicy resource not found, ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		logger.Error(err, "Failed to get FabricAutoPolicy")
+		logger.Error(err, "Failed to get GryviaAutoPolicy")
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("Reconciling FabricAutoPolicy",
+	logger.Info("Reconciling GryviaAutoPolicy",
 		"name", autoPolicy.Name,
 		"mode", autoPolicy.Spec.Mode,
 	)
@@ -69,7 +69,7 @@ func (r *FabricAutoPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 // reconcileLearnMode observes traffic patterns via Hubble flow logs and builds
 // an allowed-traffic matrix (source -> destination -> port).
-func (r *FabricAutoPolicyReconciler) reconcileLearnMode(ctx context.Context, namespacedName types.NamespacedName, autoPolicy *gryviav1.FabricAutoPolicy) (ctrl.Result, error) {
+func (r *GryviaAutoPolicyReconciler) reconcileLearnMode(ctx context.Context, namespacedName types.NamespacedName, autoPolicy *gryviav1.GryviaAutoPolicy) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Running in learn mode", "targetNamespaces", autoPolicy.Spec.TargetNamespaces)
 
@@ -124,7 +124,7 @@ func (r *FabricAutoPolicyReconciler) reconcileLearnMode(ctx context.Context, nam
 
 // reconcileSuggestMode generates CiliumNetworkPolicy suggestions based on
 // observed traffic patterns from the learning phase.
-func (r *FabricAutoPolicyReconciler) reconcileSuggestMode(ctx context.Context, namespacedName types.NamespacedName, autoPolicy *gryviav1.FabricAutoPolicy) (ctrl.Result, error) {
+func (r *GryviaAutoPolicyReconciler) reconcileSuggestMode(ctx context.Context, namespacedName types.NamespacedName, autoPolicy *gryviav1.GryviaAutoPolicy) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Running in suggest mode")
 
@@ -168,7 +168,7 @@ func (r *FabricAutoPolicyReconciler) reconcileSuggestMode(ctx context.Context, n
 
 // reconcileEnforceMode applies suggested policies as CiliumNetworkPolicies
 // after approval (if required).
-func (r *FabricAutoPolicyReconciler) reconcileEnforceMode(ctx context.Context, namespacedName types.NamespacedName, autoPolicy *gryviav1.FabricAutoPolicy) (ctrl.Result, error) {
+func (r *GryviaAutoPolicyReconciler) reconcileEnforceMode(ctx context.Context, namespacedName types.NamespacedName, autoPolicy *gryviav1.GryviaAutoPolicy) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Running in enforce mode")
 
@@ -229,7 +229,7 @@ func (r *FabricAutoPolicyReconciler) reconcileEnforceMode(ctx context.Context, n
 }
 
 // buildCiliumPolicyFromSuggestion creates an unstructured CiliumNetworkPolicy from a suggestion
-func (r *FabricAutoPolicyReconciler) buildCiliumPolicyFromSuggestion(name, namespace string, suggestion gryviav1.SuggestedPolicy) *unstructured.Unstructured {
+func (r *GryviaAutoPolicyReconciler) buildCiliumPolicyFromSuggestion(name, namespace string, suggestion gryviav1.SuggestedPolicy) *unstructured.Unstructured {
 	spec := map[string]interface{}{
 		"endpointSelector": map[string]interface{}{},
 		"egress": []interface{}{
@@ -277,10 +277,10 @@ func isExcludedService(name string, excludeList []string) bool {
 	return false
 }
 
-// updateStatus updates the FabricAutoPolicy status subresource
-func (r *FabricAutoPolicyReconciler) updateStatus(ctx context.Context, namespacedName types.NamespacedName, phase string, learnedPolicies int, suggestedPolicies []gryviav1.SuggestedPolicy, appliedPolicies int) {
+// updateStatus updates the GryviaAutoPolicy status subresource
+func (r *GryviaAutoPolicyReconciler) updateStatus(ctx context.Context, namespacedName types.NamespacedName, phase string, learnedPolicies int, suggestedPolicies []gryviav1.SuggestedPolicy, appliedPolicies int) {
 	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		autoPolicy := &gryviav1.FabricAutoPolicy{}
+		autoPolicy := &gryviav1.GryviaAutoPolicy{}
 		if err := r.Get(ctx, namespacedName, autoPolicy); err != nil {
 			return err
 		}
@@ -291,13 +291,13 @@ func (r *FabricAutoPolicyReconciler) updateStatus(ctx context.Context, namespace
 		autoPolicy.Status.LastLearned = metav1.Now()
 		return r.Status().Update(ctx, autoPolicy)
 	}); err != nil {
-		log.FromContext(ctx).Error(err, "Failed to update FabricAutoPolicy status")
+		log.FromContext(ctx).Error(err, "Failed to update GryviaAutoPolicy status")
 	}
 }
 
 // SetupWithManager sets up the controller with the Manager
-func (r *FabricAutoPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaAutoPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricAutoPolicy{}).
+		For(&gryviav1.GryviaAutoPolicy{}).
 		Complete(r)
 }

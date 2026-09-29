@@ -12,7 +12,7 @@ def seed(fake_k8s, name="ws1", **extra):
            "status": {"phase": "Running", "url": "https://x/ws", "startTime": "2026-01-01T00:00:00Z",
                       "lastActivity": "2026-01-01T01:00:00Z"}}
     obj.update(extra)
-    fake_k8s.add("fabricworkspaces", obj, namespace=NS)
+    fake_k8s.add("gryviaworkspaces", obj, namespace=NS)
 
 
 def test_list_empty(make_client):
@@ -42,7 +42,7 @@ def test_get_404(make_client):
 
 
 def test_other_namespace_not_visible(make_client, fake_k8s):
-    fake_k8s.add("fabricworkspaces", {"metadata": {"name": "x"}, "spec": {"type": "jupyter"}}, namespace="other")
+    fake_k8s.add("gryviaworkspaces", {"metadata": {"name": "x"}, "spec": {"type": "jupyter"}}, namespace="other")
     c = make_client("workspaces")
     assert c.get("/api/workspaces").json()["items"] == []
     assert c.get("/api/workspaces/x").status_code == 404
@@ -51,8 +51,8 @@ def test_other_namespace_not_visible(make_client, fake_k8s):
 def test_create(make_client, fake_k8s):
     r = make_client("workspaces").post("/api/workspaces", json=BODY)
     assert r.status_code == 201
-    stored = fake_k8s.store[("fabricworkspaces", NS, "ws1")]
-    assert stored["kind"] == "FabricWorkspace"
+    stored = fake_k8s.store[("gryviaworkspaces", NS, "ws1")]
+    assert stored["kind"] == "GryviaWorkspace"
     assert stored["spec"] == {"type": "jupyter", "gpuCount": 2, "gpuType": "A100-80G",
                               "storage": "50Gi", "idleTimeoutMinutes": 30}
     assert r.json()["spec"]["idleTimeout"] == "30m"
@@ -60,7 +60,7 @@ def test_create(make_client, fake_k8s):
 
 def test_create_hours_timeout(make_client, fake_k8s):
     make_client("workspaces").post("/api/workspaces", json={**BODY, "idleTimeout": "2h"})
-    assert fake_k8s.store[("fabricworkspaces", NS, "ws1")]["spec"]["idleTimeoutMinutes"] == 120
+    assert fake_k8s.store[("gryviaworkspaces", NS, "ws1")]["spec"]["idleTimeoutMinutes"] == 120
 
 
 def test_create_duplicate(make_client, fake_k8s):
@@ -95,9 +95,9 @@ def test_pause_resume(make_client, fake_k8s):
     seed(fake_k8s)
     c = make_client("workspaces")
     assert c.post("/api/workspaces/ws1/pause").status_code == 200
-    assert fake_k8s.store[("fabricworkspaces", NS, "ws1")]["spec"]["paused"] is True
+    assert fake_k8s.store[("gryviaworkspaces", NS, "ws1")]["spec"]["paused"] is True
     assert c.post("/api/workspaces/ws1/resume").status_code == 200
-    assert fake_k8s.store[("fabricworkspaces", NS, "ws1")]["spec"]["paused"] is False
+    assert fake_k8s.store[("gryviaworkspaces", NS, "ws1")]["spec"]["paused"] is False
 
 
 def test_actions_404(make_client):

@@ -4,14 +4,14 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabricautotuners.gryvia.io
+  name: gryviaautotuners.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricAutoTuner
-    listKind: FabricAutoTunerList
-    plural: fabricautotuners
-    singular: fabricautotuner
+    kind: GryviaAutoTuner
+    listKind: GryviaAutoTunerList
+    plural: gryviaautotuners
+    singular: gryviaautotuner
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
@@ -33,7 +33,7 @@ spec:
     name: v1
     schema:
       openAPIV3Schema:
-        description: FabricAutoTuner is the Schema for the fabricautotuners API
+        description: GryviaAutoTuner is the Schema for the gryviaautotuners API
         properties:
           apiVersion:
             description: |-
@@ -53,7 +53,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricAutoTunerSpec defines the desired state of FabricAutoTuner
+            description: GryviaAutoTunerSpec defines the desired state of GryviaAutoTuner
             properties:
               ashaConfig:
                 description: ASHAConfig configures the ASHA early-stopping scheduler
@@ -83,7 +83,7 @@ spec:
                 format: int32
                 type: integer
               jobTemplate:
-                description: JobTemplate defines the FabricAIJob template used for
+                description: JobTemplate defines the GryviaAIJob template used for
                   each trial
                 properties:
                   affinity:
@@ -3506,7 +3506,7 @@ spec:
             - searchAlgorithm
             type: object
           status:
-            description: FabricAutoTunerStatus defines the observed state of FabricAutoTuner
+            description: GryviaAutoTunerStatus defines the observed state of GryviaAutoTuner
             properties:
               bestTrial:
                 description: BestTrial is the trial with the best objective metric
@@ -3536,7 +3536,7 @@ spec:
                       type: object
                     type: array
                   jobName:
-                    description: JobName is the name of the FabricAIJob created for
+                    description: JobName is the name of the GryviaAIJob created for
                       this trial
                     type: string
                   message:
@@ -3669,7 +3669,7 @@ spec:
                         type: object
                       type: array
                     jobName:
-                      description: JobName is the name of the FabricAIJob created
+                      description: JobName is the name of the GryviaAIJob created
                         for this trial
                       type: string
                     message:

@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabricchargebacks.gryvia.io
+  name: gryviachargebacks.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricChargeback
-    listKind: FabricChargebackList
-    plural: fabricchargebacks
-    singular: fabricchargeback
+    kind: GryviaChargeback
+    listKind: GryviaChargebackList
+    plural: gryviachargebacks
+    singular: gryviachargeback
   scope: Cluster
   versions:
   - name: v1
     schema:
       openAPIV3Schema:
-        description: FabricChargeback is the Schema for the fabricchargebacks API
+        description: GryviaChargeback is the Schema for the gryviachargebacks API
         properties:
           apiVersion:
             description: |-
@@ -37,7 +37,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricChargebackSpec defines the desired state of FabricChargeback
+            description: GryviaChargebackSpec defines the desired state of GryviaChargeback
             properties:
               allocationModel:
                 description: AllocationModel defines how costs are allocated
@@ -175,7 +175,7 @@ spec:
                 type: object
             type: object
           status:
-            description: FabricChargebackStatus defines the observed state of FabricChargeback
+            description: GryviaChargebackStatus defines the observed state of GryviaChargeback
             properties:
               conditions:
                 description: Conditions represent the latest available observations

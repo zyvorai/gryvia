@@ -5,8 +5,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// FabricAIJobSpec defines the desired state of FabricAIJob
-type FabricAIJobSpec struct {
+// GryviaAIJobSpec defines the desired state of GryviaAIJob
+type GryviaAIJobSpec struct {
 	// Type of workload (training, inference, fine-tuning, evaluation)
 	Type string `json:"type"`
 
@@ -95,8 +95,8 @@ type DistributedConfig struct {
 	Backend string `json:"backend,omitempty"`
 }
 
-// FabricAIJobStatus defines the observed state of FabricAIJob
-type FabricAIJobStatus struct {
+// GryviaAIJobStatus defines the observed state of GryviaAIJob
+type GryviaAIJobStatus struct {
 	// Current phase (Pending, Scheduling, Running, Succeeded, Failed, Unknown)
 	Phase string `json:"phase,omitempty"`
 
@@ -154,26 +154,26 @@ type JobMetrics struct {
 //+kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 //+kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// FabricAIJob is the Schema for the fabricaijobs API
-type FabricAIJob struct {
+// GryviaAIJob is the Schema for the gryviaaijobs API
+type GryviaAIJob struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricAIJobSpec   `json:"spec,omitempty"`
-	Status FabricAIJobStatus `json:"status,omitempty"`
+	Spec   GryviaAIJobSpec   `json:"spec,omitempty"`
+	Status GryviaAIJobStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricAIJobList contains a list of FabricAIJob
-type FabricAIJobList struct {
+// GryviaAIJobList contains a list of GryviaAIJob
+type GryviaAIJobList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricAIJob `json:"items"`
+	Items           []GryviaAIJob `json:"items"`
 }
 
 // StorageSize returns the storage request size, defaulting to 100Gi
-func (s *FabricAIJobSpec) StorageSize() string {
+func (s *GryviaAIJobSpec) StorageSize() string {
 	if s.StorageRequest != "" {
 		return s.StorageRequest
 	}
@@ -186,5 +186,5 @@ func EnvVarFromCoreV1(name, value string) corev1.EnvVar {
 }
 
 func init() {
-	SchemeBuilder.Register(&FabricAIJob{}, &FabricAIJobList{})
+	SchemeBuilder.Register(&GryviaAIJob{}, &GryviaAIJobList{})
 }

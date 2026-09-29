@@ -4,8 +4,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// FabricAuditSpec defines the desired state of FabricAudit
-type FabricAuditSpec struct {
+// GryviaAuditSpec defines the desired state of GryviaAudit
+type GryviaAuditSpec struct {
 	// Scope defines what this audit covers
 	Scope AuditScope `json:"scope,omitempty"`
 
@@ -130,8 +130,8 @@ type AnomalyRule struct {
 	Action string `json:"action,omitempty"`
 }
 
-// FabricAuditStatus defines the observed state of FabricAudit
-type FabricAuditStatus struct {
+// GryviaAuditStatus defines the observed state of GryviaAudit
+type GryviaAuditStatus struct {
 	// TotalEvents is the total number of audit events captured
 	TotalEvents int `json:"totalEvents,omitempty"`
 
@@ -212,24 +212,24 @@ type AuditEntry struct {
 //+kubebuilder:subresource:status
 //+kubebuilder:resource:scope=Cluster
 
-// FabricAudit is the Schema for the fabricaudits API
-type FabricAudit struct {
+// GryviaAudit is the Schema for the gryviaaudits API
+type GryviaAudit struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricAuditSpec   `json:"spec,omitempty"`
-	Status FabricAuditStatus `json:"status,omitempty"`
+	Spec   GryviaAuditSpec   `json:"spec,omitempty"`
+	Status GryviaAuditStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricAuditList contains a list of FabricAudit
-type FabricAuditList struct {
+// GryviaAuditList contains a list of GryviaAudit
+type GryviaAuditList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricAudit `json:"items"`
+	Items           []GryviaAudit `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&FabricAudit{}, &FabricAuditList{})
+	SchemeBuilder.Register(&GryviaAudit{}, &GryviaAuditList{})
 }

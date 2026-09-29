@@ -24,26 +24,26 @@ func newQuotaTestScheme() *runtime.Scheme {
 	return s
 }
 
-func newQuotaReconciler(objs ...client.Object) (*FabricQuotaReconciler, client.Client) {
+func newQuotaReconciler(objs ...client.Object) (*GryviaQuotaReconciler, client.Client) {
 	scheme := newQuotaTestScheme()
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(objs...).
-		WithStatusSubresource(&gryviav1.FabricQuota{}, &gryviav1.FabricAIJob{}).
+		WithStatusSubresource(&gryviav1.GryviaQuota{}, &gryviav1.GryviaAIJob{}).
 		Build()
-	r := &FabricQuotaReconciler{
+	r := &GryviaQuotaReconciler{
 		Client: fakeClient,
 		Scheme: scheme,
 	}
 	return r, fakeClient
 }
 
-func newTestQuota(name string) *gryviav1.FabricQuota {
-	return &gryviav1.FabricQuota{
+func newTestQuota(name string) *gryviav1.GryviaQuota {
+	return &gryviav1.GryviaQuota{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
-		Spec: gryviav1.FabricQuotaSpec{
+		Spec: gryviav1.GryviaQuotaSpec{
 			Team:       "ml-team",
 			Namespaces: []string{"ml-prod", "ml-staging"},
 			GPUQuota: gryviav1.GPUQuotaSpec{
@@ -91,11 +91,11 @@ func TestQuota_Reconcile_AddsFinalizer(t *testing.T) {
 		t.Error("expected requeue after adding finalizer")
 	}
 
-	updated := &gryviav1.FabricQuota{}
+	updated := &gryviav1.GryviaQuota{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-quota"}, updated); err != nil {
 		t.Fatalf("failed to get updated quota: %v", err)
 	}
-	if !controllerutil.ContainsFinalizer(updated, fabricQuotaFinalizer) {
+	if !controllerutil.ContainsFinalizer(updated, gryviaQuotaFinalizer) {
 		t.Error("expected finalizer to be added")
 	}
 }
@@ -104,7 +104,7 @@ func TestQuota_Reconcile_DeletionRemovesLabels(t *testing.T) {
 	now := metav1.Now()
 	quota := newTestQuota("test-quota")
 	quota.DeletionTimestamp = &now
-	quota.Finalizers = []string{fabricQuotaFinalizer}
+	quota.Finalizers = []string{gryviaQuotaFinalizer}
 
 	ns1 := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
@@ -150,14 +150,14 @@ func TestQuota_Reconcile_DeletionRemovesLabels(t *testing.T) {
 	}
 
 	// Verify finalizer removed
-	updatedQuota := &gryviav1.FabricQuota{}
+	updatedQuota := &gryviav1.GryviaQuota{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-quota"}, updatedQuota); err != nil {
 		if apierrors.IsNotFound(err) {
 			return // object is gone once its last finalizer is removed
 		}
 		t.Fatalf("failed to get quota: %v", err)
 	}
-	if controllerutil.ContainsFinalizer(updatedQuota, fabricQuotaFinalizer) {
+	if controllerutil.ContainsFinalizer(updatedQuota, gryviaQuotaFinalizer) {
 		t.Error("expected finalizer to be removed")
 	}
 }
@@ -202,7 +202,7 @@ func TestQuota_LabelNamespaces_NotFound(t *testing.T) {
 
 func TestQuota_UpdateStatus(t *testing.T) {
 	quota := newTestQuota("test-quota")
-	controllerutil.AddFinalizer(quota, fabricQuotaFinalizer)
+	controllerutil.AddFinalizer(quota, gryviaQuotaFinalizer)
 
 	r, fakeClient := newQuotaReconciler(quota)
 
@@ -211,7 +211,7 @@ func TestQuota_UpdateStatus(t *testing.T) {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
-	updated := &gryviav1.FabricQuota{}
+	updated := &gryviav1.GryviaQuota{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "test-quota"}, updated); err != nil {
 		t.Fatalf("failed to get quota: %v", err)
 	}
@@ -251,18 +251,18 @@ func TestQuota_UpdateStatus(t *testing.T) {
 func TestQuota_EnforceQuota_RejectsExceedingJobs(t *testing.T) {
 	quota := newTestQuota("test-quota")
 	quota.Status.Phase = "BudgetExceeded"
-	controllerutil.AddFinalizer(quota, fabricQuotaFinalizer)
+	controllerutil.AddFinalizer(quota, gryviaQuotaFinalizer)
 
-	job := &gryviav1.FabricAIJob{
+	job := &gryviav1.GryviaAIJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "big-job",
 			Namespace: "ml-prod",
 		},
-		Spec: gryviav1.FabricAIJobSpec{
+		Spec: gryviav1.GryviaAIJobSpec{
 			GPUs:    16,
 			GpuType: "H100",
 		},
-		Status: gryviav1.FabricAIJobStatus{
+		Status: gryviav1.GryviaAIJobStatus{
 			Phase: "Pending",
 		},
 	}
@@ -274,7 +274,7 @@ func TestQuota_EnforceQuota_RejectsExceedingJobs(t *testing.T) {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
-	updated := &gryviav1.FabricAIJob{}
+	updated := &gryviav1.GryviaAIJob{}
 	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: "big-job", Namespace: "ml-prod"}, updated); err != nil {
 		t.Fatalf("failed to get job: %v", err)
 	}

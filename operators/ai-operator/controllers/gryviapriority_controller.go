@@ -22,31 +22,31 @@ const (
 	defaultGracePeriodSeconds = 60
 )
 
-// FabricPriorityReconciler reconciles a FabricPriority object
-type FabricPriorityReconciler struct {
+// GryviaPriorityReconciler reconciles a GryviaPriority object
+type GryviaPriorityReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Log    logr.Logger
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricpriorities,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricpriorities/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricpriorities/finalizers,verbs=update
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviapriorities,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviapriorities/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviapriorities/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs,verbs=get;list;watch;update;patch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
-func (r *FabricPriorityReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := r.Log.WithValues("fabricpriority", req.NamespacedName)
+func (r *GryviaPriorityReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := r.Log.WithValues("gryviapriority", req.NamespacedName)
 
-	// Fetch the FabricPriority instance
-	priority := &gryviav1.FabricPriority{}
+	// Fetch the GryviaPriority instance
+	priority := &gryviav1.GryviaPriority{}
 	err := r.Get(ctx, req.NamespacedName, priority)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			log.Info("FabricPriority resource not found. Ignoring since object must be deleted")
+			log.Info("GryviaPriority resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		log.Error(err, "Failed to get FabricPriority")
+		log.Error(err, "Failed to get GryviaPriority")
 		return ctrl.Result{}, err
 	}
 
@@ -55,7 +55,7 @@ func (r *FabricPriorityReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, nil
 	}
 
-	log.Info("Reconciling FabricPriority", "name", priority.Name, "value", priority.Spec.Value)
+	log.Info("Reconciling GryviaPriority", "name", priority.Name, "value", priority.Spec.Value)
 
 	// Reconcile the priority
 	result, err := r.reconcilePriority(ctx, priority)
@@ -67,13 +67,13 @@ func (r *FabricPriorityReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	return result, nil
 }
 
-func (r *FabricPriorityReconciler) reconcilePriority(ctx context.Context, priority *gryviav1.FabricPriority) (ctrl.Result, error) {
+func (r *GryviaPriorityReconciler) reconcilePriority(ctx context.Context, priority *gryviav1.GryviaPriority) (ctrl.Result, error) {
 	log := r.Log.WithValues("priority", priority.Name)
 
 	// List all jobs
-	jobList := &gryviav1.FabricAIJobList{}
+	jobList := &gryviav1.GryviaAIJobList{}
 	if err := r.List(ctx, jobList); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to list FabricAIJobs: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to list GryviaAIJobs: %w", err)
 	}
 
 	// Count active and queued jobs with this priority
@@ -131,7 +131,7 @@ func (r *FabricPriorityReconciler) reconcilePriority(ctx context.Context, priori
 	return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 }
 
-func (r *FabricPriorityReconciler) getJobPriorityClass(job gryviav1.FabricAIJob) string {
+func (r *GryviaPriorityReconciler) getJobPriorityClass(job gryviav1.GryviaAIJob) string {
 	// Check for priority class label or annotation
 	if pc, ok := job.Labels["gryvia.io/priority-class"]; ok {
 		return pc
@@ -143,11 +143,11 @@ func (r *FabricPriorityReconciler) getJobPriorityClass(job gryviav1.FabricAIJob)
 	return "normal"
 }
 
-func (r *FabricPriorityReconciler) evaluatePreemption(ctx context.Context, priority *gryviav1.FabricPriority, jobList *gryviav1.FabricAIJobList) {
+func (r *GryviaPriorityReconciler) evaluatePreemption(ctx context.Context, priority *gryviav1.GryviaPriority, jobList *gryviav1.GryviaAIJobList) {
 	log := r.Log.WithValues("priority", priority.Name)
 
 	// Get all priority classes to build priority value map
-	priorityList := &gryviav1.FabricPriorityList{}
+	priorityList := &gryviav1.GryviaPriorityList{}
 	if err := r.List(ctx, priorityList); err != nil {
 		log.Error(err, "Failed to list priority classes")
 		return
@@ -159,7 +159,7 @@ func (r *FabricPriorityReconciler) evaluatePreemption(ctx context.Context, prior
 	}
 
 	// Find pending jobs with this priority that need resources
-	var pendingHighPriJobs []gryviav1.FabricAIJob
+	var pendingHighPriJobs []gryviav1.GryviaAIJob
 	for _, job := range jobList.Items {
 		jobPriority := r.getJobPriorityClass(job)
 		if jobPriority == priority.Name && (job.Status.Phase == "Pending" || job.Status.Phase == "Queued") {
@@ -179,7 +179,7 @@ func (r *FabricPriorityReconciler) evaluatePreemption(ctx context.Context, prior
 	}
 
 	// Find running lower-priority jobs that can be preempted
-	var preemptCandidates []gryviav1.FabricAIJob
+	var preemptCandidates []gryviav1.GryviaAIJob
 	for _, job := range jobList.Items {
 		if job.Status.Phase != "Running" {
 			continue
@@ -252,7 +252,7 @@ func (r *FabricPriorityReconciler) evaluatePreemption(ctx context.Context, prior
 	}
 }
 
-func (r *FabricPriorityReconciler) addPreemptionEvent(priority *gryviav1.FabricPriority, event gryviav1.PreemptionEvent) {
+func (r *GryviaPriorityReconciler) addPreemptionEvent(priority *gryviav1.GryviaPriority, event gryviav1.PreemptionEvent) {
 	priority.Status.PreemptionHistory = append(priority.Status.PreemptionHistory, event)
 
 	// Maintain rolling buffer
@@ -261,7 +261,7 @@ func (r *FabricPriorityReconciler) addPreemptionEvent(priority *gryviav1.FabricP
 	}
 }
 
-func (r *FabricPriorityReconciler) updatePriorityCondition(priority *gryviav1.FabricPriority, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *GryviaPriorityReconciler) updatePriorityCondition(priority *gryviav1.GryviaPriority, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -285,8 +285,8 @@ func (r *FabricPriorityReconciler) updatePriorityCondition(priority *gryviav1.Fa
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *FabricPriorityReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaPriorityReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricPriority{}).
+		For(&gryviav1.GryviaPriority{}).
 		Complete(r)
 }

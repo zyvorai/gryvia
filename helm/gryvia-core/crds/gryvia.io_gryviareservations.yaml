@@ -4,14 +4,14 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabricreservations.gryvia.io
+  name: gryviareservations.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricReservation
-    listKind: FabricReservationList
-    plural: fabricreservations
-    singular: fabricreservation
+    kind: GryviaReservation
+    listKind: GryviaReservationList
+    plural: gryviareservations
+    singular: gryviareservation
   scope: Cluster
   versions:
   - additionalPrinterColumns:
@@ -39,7 +39,7 @@ spec:
     name: v1
     schema:
       openAPIV3Schema:
-        description: FabricReservation is the Schema for the fabricreservations API
+        description: GryviaReservation is the Schema for the gryviareservations API
         properties:
           apiVersion:
             description: |-
@@ -59,7 +59,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricReservationSpec defines the desired state of FabricReservation
+            description: GryviaReservationSpec defines the desired state of GryviaReservation
             properties:
               billing:
                 description: Billing defines cost and billing options
@@ -177,7 +177,7 @@ spec:
             - schedule
             type: object
           status:
-            description: FabricReservationStatus defines the observed state of FabricReservation
+            description: GryviaReservationStatus defines the observed state of GryviaReservation
             properties:
               actualEndTime:
                 description: ActualEndTime is the actual end time

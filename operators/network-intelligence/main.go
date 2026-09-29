@@ -58,93 +58,93 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Register FabricFlowPolicy controller
-	if err = (&controllers.FabricFlowPolicyReconciler{
+	// Register GryviaFlowPolicy controller
+	if err = (&controllers.GryviaFlowPolicyReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "FabricFlowPolicy")
+		setupLog.Error(err, "unable to create controller", "controller", "GryviaFlowPolicy")
 		os.Exit(1)
 	}
 
-	// Register FabricTrafficInsight controller
-	if err = (&controllers.FabricTrafficInsightReconciler{
+	// Register GryviaTrafficInsight controller
+	if err = (&controllers.GryviaTrafficInsightReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "FabricTrafficInsight")
+		setupLog.Error(err, "unable to create controller", "controller", "GryviaTrafficInsight")
 		os.Exit(1)
 	}
 
-	// Register FabricAutoPolicy controller
-	if err = (&controllers.FabricAutoPolicyReconciler{
+	// Register GryviaAutoPolicy controller
+	if err = (&controllers.GryviaAutoPolicyReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "FabricAutoPolicy")
+		setupLog.Error(err, "unable to create controller", "controller", "GryviaAutoPolicy")
 		os.Exit(1)
 	}
 
-	// Register FabricTraceSession controller
-	if err = (&controllers.FabricTraceSessionReconciler{
+	// Register GryviaTraceSession controller
+	if err = (&controllers.GryviaTraceSessionReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "FabricTraceSession")
+		setupLog.Error(err, "unable to create controller", "controller", "GryviaTraceSession")
 		os.Exit(1)
 	}
 
-	// Register FabricServiceGraph controller
-	if err = (&controllers.FabricServiceGraphReconciler{
+	// Register GryviaServiceGraph controller
+	if err = (&controllers.GryviaServiceGraphReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "FabricServiceGraph")
+		setupLog.Error(err, "unable to create controller", "controller", "GryviaServiceGraph")
 		os.Exit(1)
 	}
 
-	// Register FabricNetworkAnomaly controller
-	if err = (&controllers.FabricNetworkAnomalyReconciler{
+	// Register GryviaNetworkAnomaly controller
+	if err = (&controllers.GryviaNetworkAnomalyReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "FabricNetworkAnomaly")
+		setupLog.Error(err, "unable to create controller", "controller", "GryviaNetworkAnomaly")
 		os.Exit(1)
 	}
 
-	// Register FabricSecurityPolicy controller
-	if err = (&controllers.FabricSecurityPolicyReconciler{
+	// Register GryviaSecurityPolicy controller
+	if err = (&controllers.GryviaSecurityPolicyReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "FabricSecurityPolicy")
+		setupLog.Error(err, "unable to create controller", "controller", "GryviaSecurityPolicy")
 		os.Exit(1)
 	}
 
-	// Register FabricNetworkCost controller
-	if err = (&controllers.FabricNetworkCostReconciler{
+	// Register GryviaNetworkCost controller
+	if err = (&controllers.GryviaNetworkCostReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "FabricNetworkCost")
+		setupLog.Error(err, "unable to create controller", "controller", "GryviaNetworkCost")
 		os.Exit(1)
 	}
 
-	// Register FabricTrainingInsight controller
-	if err = (&controllers.FabricTrainingInsightReconciler{
+	// Register GryviaTrainingInsight controller
+	if err = (&controllers.GryviaTrainingInsightReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "FabricTrainingInsight")
+		setupLog.Error(err, "unable to create controller", "controller", "GryviaTrainingInsight")
 		os.Exit(1)
 	}
 
-	// Register FabricInferenceInsight controller
-	if err = (&controllers.FabricInferenceInsightReconciler{
+	// Register GryviaInferenceInsight controller
+	if err = (&controllers.GryviaInferenceInsightReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "FabricInferenceInsight")
+		setupLog.Error(err, "unable to create controller", "controller", "GryviaInferenceInsight")
 		os.Exit(1)
 	}
 

@@ -14,8 +14,8 @@ const (
 	ModelStageArchived   ModelStage = "archived"
 )
 
-// FabricModelRegistrySpec defines the desired state of FabricModelRegistry
-type FabricModelRegistrySpec struct {
+// GryviaModelRegistrySpec defines the desired state of GryviaModelRegistry
+type GryviaModelRegistrySpec struct {
 	// ModelName is the name of the model
 	ModelName string `json:"modelName"`
 
@@ -46,13 +46,13 @@ type FabricModelRegistrySpec struct {
 
 // ModelSource identifies the training job or pipeline that produced the model
 type ModelSource struct {
-	// JobRef is the name of the FabricAIJob that produced this model
+	// JobRef is the name of the GryviaAIJob that produced this model
 	JobRef string `json:"jobRef,omitempty"`
 
-	// TunerRef is the name of the FabricAutoTuner that produced this model
+	// TunerRef is the name of the GryviaAutoTuner that produced this model
 	TunerRef string `json:"tunerRef,omitempty"`
 
-	// WorkflowRef is the name of the FabricWorkflow that produced this model
+	// WorkflowRef is the name of the GryviaWorkflow that produced this model
 	WorkflowRef string `json:"workflowRef,omitempty"`
 }
 
@@ -89,8 +89,8 @@ type ServingConfig struct {
 	GPUType string `json:"gpuType,omitempty"`
 }
 
-// FabricModelRegistryStatus defines the observed state of FabricModelRegistry
-type FabricModelRegistryStatus struct {
+// GryviaModelRegistryStatus defines the observed state of GryviaModelRegistry
+type GryviaModelRegistryStatus struct {
 	// Phase is the current phase (Registered, Deploying, Serving, Failed)
 	Phase string `json:"phase,omitempty"`
 
@@ -106,7 +106,7 @@ type FabricModelRegistryStatus struct {
 	// Health is the health status of the serving deployment (Healthy, Unhealthy, Unknown)
 	Health string `json:"health,omitempty"`
 
-	// InferenceServiceName is the name of the FabricInferenceService created for this model
+	// InferenceServiceName is the name of the GryviaInferenceService created for this model
 	InferenceServiceName string `json:"inferenceServiceName,omitempty"`
 
 	// PreviousVersion is the version that was previously in production (for rollback)
@@ -128,24 +128,24 @@ type FabricModelRegistryStatus struct {
 //+kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 //+kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// FabricModelRegistry is the Schema for the fabricmodelregistries API
-type FabricModelRegistry struct {
+// GryviaModelRegistry is the Schema for the gryviamodelregistries API
+type GryviaModelRegistry struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricModelRegistrySpec   `json:"spec,omitempty"`
-	Status FabricModelRegistryStatus `json:"status,omitempty"`
+	Spec   GryviaModelRegistrySpec   `json:"spec,omitempty"`
+	Status GryviaModelRegistryStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricModelRegistryList contains a list of FabricModelRegistry
-type FabricModelRegistryList struct {
+// GryviaModelRegistryList contains a list of GryviaModelRegistry
+type GryviaModelRegistryList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricModelRegistry `json:"items"`
+	Items           []GryviaModelRegistry `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&FabricModelRegistry{}, &FabricModelRegistryList{})
+	SchemeBuilder.Register(&GryviaModelRegistry{}, &GryviaModelRegistryList{})
 }

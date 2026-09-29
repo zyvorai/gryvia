@@ -4,14 +4,14 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabricdatasets.gryvia.io
+  name: gryviadatasets.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricDataset
-    listKind: FabricDatasetList
-    plural: fabricdatasets
-    singular: fabricdataset
+    kind: GryviaDataset
+    listKind: GryviaDatasetList
+    plural: gryviadatasets
+    singular: gryviadataset
   scope: Cluster
   versions:
   - additionalPrinterColumns:
@@ -33,7 +33,7 @@ spec:
     name: v1
     schema:
       openAPIV3Schema:
-        description: FabricDataset is the Schema for the fabricdatasets API
+        description: GryviaDataset is the Schema for the gryviadatasets API
         properties:
           apiVersion:
             description: |-
@@ -53,7 +53,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricDatasetSpec defines the desired state of FabricDataset
+            description: GryviaDatasetSpec defines the desired state of GryviaDataset
             properties:
               access:
                 description: Access defines access control
@@ -204,7 +204,7 @@ spec:
             - source
             type: object
           status:
-            description: FabricDatasetStatus defines the observed state of FabricDataset
+            description: GryviaDatasetStatus defines the observed state of GryviaDataset
             properties:
               cacheStatus:
                 description: CacheStatus holds cache information

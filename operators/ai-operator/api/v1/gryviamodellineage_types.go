@@ -4,8 +4,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// FabricModelLineageSpec defines the desired state of FabricModelLineage
-type FabricModelLineageSpec struct {
+// GryviaModelLineageSpec defines the desired state of GryviaModelLineage
+type GryviaModelLineageSpec struct {
 	// Model identifies the model being tracked
 	Model ModelIdentity `json:"model"`
 
@@ -78,7 +78,7 @@ type DataProvenance struct {
 
 // DatasetReference references a dataset
 type DatasetReference struct {
-	// DatasetRef is the reference to the dataset (FabricDataset name or URI)
+	// DatasetRef is the reference to the dataset (GryviaDataset name or URI)
 	DatasetRef string `json:"datasetRef"`
 
 	// Version is the dataset version
@@ -90,7 +90,7 @@ type DatasetReference struct {
 
 // TrainingProvenance captures training configuration
 type TrainingProvenance struct {
-	// JobRef references the FabricAIJob that produced this model
+	// JobRef references the GryviaAIJob that produced this model
 	JobRef string `json:"jobRef,omitempty"`
 
 	// Hyperparameters used during training
@@ -174,7 +174,7 @@ type EvaluationProvenance struct {
 	// Metrics are evaluation metrics (e.g., accuracy, f1, bleu)
 	Metrics map[string]float64 `json:"metrics,omitempty"`
 
-	// EvaluationJob references the evaluation FabricAIJob
+	// EvaluationJob references the evaluation GryviaAIJob
 	EvaluationJob string `json:"evaluationJob,omitempty"`
 
 	// Benchmarks are standardized benchmark results
@@ -235,8 +235,8 @@ type DataPrivacySpec struct {
 	DPIACompleted bool `json:"dpiaCompleted,omitempty"`
 }
 
-// FabricModelLineageStatus defines the observed state of FabricModelLineage
-type FabricModelLineageStatus struct {
+// GryviaModelLineageStatus defines the observed state of GryviaModelLineage
+type GryviaModelLineageStatus struct {
 	// LineageComplete indicates whether all provenance data has been collected
 	LineageComplete bool `json:"lineageComplete,omitempty"`
 
@@ -263,24 +263,24 @@ type FabricModelLineageStatus struct {
 //+kubebuilder:subresource:status
 //+kubebuilder:resource:scope=Namespaced
 
-// FabricModelLineage is the Schema for the fabricmodellineages API
-type FabricModelLineage struct {
+// GryviaModelLineage is the Schema for the gryviamodellineages API
+type GryviaModelLineage struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FabricModelLineageSpec   `json:"spec,omitempty"`
-	Status FabricModelLineageStatus `json:"status,omitempty"`
+	Spec   GryviaModelLineageSpec   `json:"spec,omitempty"`
+	Status GryviaModelLineageStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// FabricModelLineageList contains a list of FabricModelLineage
-type FabricModelLineageList struct {
+// GryviaModelLineageList contains a list of GryviaModelLineage
+type GryviaModelLineageList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []FabricModelLineage `json:"items"`
+	Items           []GryviaModelLineage `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&FabricModelLineage{}, &FabricModelLineageList{})
+	SchemeBuilder.Register(&GryviaModelLineage{}, &GryviaModelLineageList{})
 }

@@ -166,7 +166,7 @@ export default function SecurityOverview() {
             <ErrorState title="Could not load security policies." error={policiesQ.error} onRetry={() => policiesQ.refetch()} retrying={policiesQ.isFetching} />
           ) : !policies || policies.length === 0 ? (
             <EmptyState title="No security policies configured" action={<button type="button" className="primary" onClick={() => setCreating(true)}>Create security policy</button>}>
-              Security policies are FabricSecurityPolicy resources evaluated by the security operator. Without one, no detection rules run and no alerts are produced.
+              Security policies are GryviaSecurityPolicy resources evaluated by the security operator. Without one, no detection rules run and no alerts are produced.
             </EmptyState>
           ) : (
             <PolicyList policies={policies} />

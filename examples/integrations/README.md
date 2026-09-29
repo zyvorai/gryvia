@@ -103,7 +103,7 @@ Browser-based VS Code with GPU access.
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: vscode-server
 spec:
@@ -139,7 +139,7 @@ spec:
 
 ```bash
 # Port-forward
-kubectl port-forward fabricaijob/vscode-server 8080:8080
+kubectl port-forward gryviaaijob/vscode-server 8080:8080
 
 # Open browser
 open http://localhost:8080
@@ -240,7 +240,7 @@ def gryvia_training_op(
 
     job_yaml = f"""
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: kfp-training
 spec:
@@ -326,7 +326,7 @@ R development environment with GPU support.
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: rstudio-server
 spec:

@@ -32,10 +32,10 @@ gryvia health status cluster-gpu-health
 kubectl cordon gpu-node-05
 
 # 3. List affected jobs
-kubectl get fabricaijobs -o wide | grep gpu-node-05
+kubectl get gryviaaijobs -o wide | grep gpu-node-05
 
 # 4. Migrate running jobs
-for job in $(kubectl get fabricaijobs -o name | grep running); do
+for job in $(kubectl get gryviaaijobs -o name | grep running); do
   gryvia job migrate $job --target-node gpu-node-06
 done
 
@@ -609,7 +609,7 @@ gryvia incident post-mortem schedule \
 ```bash
 ☐ Check job status: gryvia job status <name>
 ☐ View logs: gryvia job logs <name>
-☐ Check events: kubectl describe fabricaijob <name>
+☐ Check events: kubectl describe gryviaaijob <name>
 ☐ Verify resources available
 ☐ Check quota/budget
 ☐ Review node health

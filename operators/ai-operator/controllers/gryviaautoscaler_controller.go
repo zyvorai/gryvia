@@ -28,32 +28,32 @@ type CloudScaler interface {
 	GetNodeStatus(ctx context.Context, nodeNames []string) (map[string]string, error)
 }
 
-// FabricAutoScalerReconciler reconciles a FabricAutoScaler object
-type FabricAutoScalerReconciler struct {
+// GryviaAutoScalerReconciler reconciles a GryviaAutoScaler object
+type GryviaAutoScalerReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Log    logr.Logger
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricautoscalers,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricautoscalers/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricautoscalers/finalizers,verbs=update
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricaijobs,verbs=get;list;watch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaautoscalers,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaautoscalers/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaautoscalers/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop
-func (r *FabricAutoScalerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := r.Log.WithValues("fabricautoscaler", req.NamespacedName)
+func (r *GryviaAutoScalerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := r.Log.WithValues("gryviaautoscaler", req.NamespacedName)
 
-	// Fetch the FabricAutoScaler instance
-	scaler := &gryviav1.FabricAutoScaler{}
+	// Fetch the GryviaAutoScaler instance
+	scaler := &gryviav1.GryviaAutoScaler{}
 	err := r.Get(ctx, req.NamespacedName, scaler)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			log.Info("FabricAutoScaler resource not found. Ignoring since object must be deleted")
+			log.Info("GryviaAutoScaler resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		log.Error(err, "Failed to get FabricAutoScaler")
+		log.Error(err, "Failed to get GryviaAutoScaler")
 		return ctrl.Result{}, err
 	}
 
@@ -72,8 +72,8 @@ func (r *FabricAutoScalerReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	return result, nil
 }
 
-func (r *FabricAutoScalerReconciler) reconcileAutoScaler(ctx context.Context, scaler *gryviav1.FabricAutoScaler) (ctrl.Result, error) {
-	log := r.Log.WithValues("fabricautoscaler", scaler.Name)
+func (r *GryviaAutoScalerReconciler) reconcileAutoScaler(ctx context.Context, scaler *gryviav1.GryviaAutoScaler) (ctrl.Result, error) {
+	log := r.Log.WithValues("gryviaautoscaler", scaler.Name)
 
 	// Collect current metrics
 	metrics, err := r.collectMetrics(ctx, scaler)
@@ -187,13 +187,13 @@ func (r *FabricAutoScalerReconciler) reconcileAutoScaler(ctx context.Context, sc
 	return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 }
 
-func (r *FabricAutoScalerReconciler) collectMetrics(ctx context.Context, scaler *gryviav1.FabricAutoScaler) (*gryviav1.AutoScalerMetrics, error) {
+func (r *GryviaAutoScalerReconciler) collectMetrics(ctx context.Context, scaler *gryviav1.GryviaAutoScaler) (*gryviav1.AutoScalerMetrics, error) {
 	metrics := &gryviav1.AutoScalerMetrics{}
 
 	// Count pending jobs for the referenced queue
-	jobList := &gryviav1.FabricAIJobList{}
+	jobList := &gryviav1.GryviaAIJobList{}
 	if err := r.List(ctx, jobList); err != nil {
-		return nil, fmt.Errorf("failed to list FabricAIJobs: %w", err)
+		return nil, fmt.Errorf("failed to list GryviaAIJobs: %w", err)
 	}
 
 	var pendingCount int32
@@ -235,7 +235,7 @@ func (r *FabricAutoScalerReconciler) collectMetrics(ctx context.Context, scaler 
 	return metrics, nil
 }
 
-func (r *FabricAutoScalerReconciler) countGPUNodes(ctx context.Context, gpuType string) (int32, error) {
+func (r *GryviaAutoScalerReconciler) countGPUNodes(ctx context.Context, gpuType string) (int32, error) {
 	nodeList := &corev1.NodeList{}
 	labels := map[string]string{}
 	if gpuType != "" {
@@ -249,7 +249,7 @@ func (r *FabricAutoScalerReconciler) countGPUNodes(ctx context.Context, gpuType 
 	return int32(len(nodeList.Items)), nil
 }
 
-func (r *FabricAutoScalerReconciler) shouldScaleUp(scaler *gryviav1.FabricAutoScaler, metrics *gryviav1.AutoScalerMetrics) bool {
+func (r *GryviaAutoScalerReconciler) shouldScaleUp(scaler *gryviav1.GryviaAutoScaler, metrics *gryviav1.AutoScalerMetrics) bool {
 	if scaler.Spec.ScaleUpPolicy == nil || metrics == nil {
 		return false
 	}
@@ -274,7 +274,7 @@ func (r *FabricAutoScalerReconciler) shouldScaleUp(scaler *gryviav1.FabricAutoSc
 	return false
 }
 
-func (r *FabricAutoScalerReconciler) shouldScaleDown(scaler *gryviav1.FabricAutoScaler, metrics *gryviav1.AutoScalerMetrics) bool {
+func (r *GryviaAutoScalerReconciler) shouldScaleDown(scaler *gryviav1.GryviaAutoScaler, metrics *gryviav1.AutoScalerMetrics) bool {
 	if scaler.Spec.ScaleDownPolicy == nil || metrics == nil {
 		return false
 	}
@@ -289,7 +289,7 @@ func (r *FabricAutoScalerReconciler) shouldScaleDown(scaler *gryviav1.FabricAuto
 	return false
 }
 
-func (r *FabricAutoScalerReconciler) isCooldownExpired(scaler *gryviav1.FabricAutoScaler, isScaleUp bool) bool {
+func (r *GryviaAutoScalerReconciler) isCooldownExpired(scaler *gryviav1.GryviaAutoScaler, isScaleUp bool) bool {
 	if scaler.Status.LastScaleTime == nil {
 		return true
 	}
@@ -310,7 +310,7 @@ func (r *FabricAutoScalerReconciler) isCooldownExpired(scaler *gryviav1.FabricAu
 	return time.Since(scaler.Status.LastScaleTime.Time) >= cooldown
 }
 
-func (r *FabricAutoScalerReconciler) updateCondition(scaler *gryviav1.FabricAutoScaler, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *GryviaAutoScalerReconciler) updateCondition(scaler *gryviav1.GryviaAutoScaler, condType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,
@@ -341,8 +341,8 @@ func (r *FabricAutoScalerReconciler) updateCondition(scaler *gryviav1.FabricAuto
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *FabricAutoScalerReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaAutoScalerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricAutoScaler{}).
+		For(&gryviav1.GryviaAutoScaler{}).
 		Complete(r)
 }

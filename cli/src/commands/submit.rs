@@ -24,7 +24,7 @@ pub async fn execute(client: &GryviaClient, file: &str, wait: bool, follow_logs:
     display::print_info(&format!("Submitting job: {}", job_name));
 
     // Submit job
-    let ar = ApiResource::from_gvk(&kube::api::GroupVersionKind::gvk("gryvia.io", "v1", "FabricAIJob"));
+    let ar = ApiResource::from_gvk(&kube::api::GroupVersionKind::gvk("gryvia.io", "v1", "GryviaAIJob"));
     let api: Api<DynamicObject> = Api::namespaced_with(
         client.kube_client.clone(),
         client.namespace(),
@@ -57,7 +57,7 @@ async fn wait_for_completion(client: &GryviaClient, job_name: &str) -> Result<()
             .expect("valid spinner template")
     );
 
-    let ar = ApiResource::from_gvk(&kube::api::GroupVersionKind::gvk("gryvia.io", "v1", "FabricAIJob"));
+    let ar = ApiResource::from_gvk(&kube::api::GroupVersionKind::gvk("gryvia.io", "v1", "GryviaAIJob"));
     let api: Api<DynamicObject> = Api::namespaced_with(
         client.kube_client.clone(),
         client.namespace(),

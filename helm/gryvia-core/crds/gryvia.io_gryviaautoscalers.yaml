@@ -4,14 +4,14 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabricautoscalers.gryvia.io
+  name: gryviaautoscalers.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricAutoScaler
-    listKind: FabricAutoScalerList
-    plural: fabricautoscalers
-    singular: fabricautoscaler
+    kind: GryviaAutoScaler
+    listKind: GryviaAutoScalerList
+    plural: gryviaautoscalers
+    singular: gryviaautoscaler
   scope: Cluster
   versions:
   - additionalPrinterColumns:
@@ -39,7 +39,7 @@ spec:
     name: v1
     schema:
       openAPIV3Schema:
-        description: FabricAutoScaler is the Schema for the fabricautoscalers API
+        description: GryviaAutoScaler is the Schema for the gryviaautoscalers API
         properties:
           apiVersion:
             description: |-
@@ -59,7 +59,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricAutoScalerSpec defines the desired state of FabricAutoScaler
+            description: GryviaAutoScalerSpec defines the desired state of GryviaAutoScaler
             properties:
               advanced:
                 description: Advanced defines advanced scaling options
@@ -127,7 +127,7 @@ spec:
                 - type
                 type: object
               queueRef:
-                description: QueueRef is the name of FabricQueue to autoscale
+                description: QueueRef is the name of GryviaQueue to autoscale
                 type: string
               scaleDownPolicy:
                 description: ScaleDownPolicy defines when and how to scale down
@@ -186,7 +186,7 @@ spec:
             - queueRef
             type: object
           status:
-            description: FabricAutoScalerStatus defines the observed state of FabricAutoScaler
+            description: GryviaAutoScalerStatus defines the observed state of GryviaAutoScaler
             properties:
               conditions:
                 description: Conditions represent the latest available observations

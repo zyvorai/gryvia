@@ -3,7 +3,7 @@
 # Define complex job workflows with dependencies
 
 apiVersion: gryvia.io/v1
-kind: FabricWorkflow
+kind: GryviaWorkflow
 metadata:
   name: ml-training-workflow
   namespace: default
@@ -159,7 +159,7 @@ spec:
 ---
 # Fan-out/Fan-in Pattern
 apiVersion: gryvia.io/v1
-kind: FabricWorkflow
+kind: GryviaWorkflow
 metadata:
   name: hyperparameter-sweep-workflow
 spec:
@@ -208,7 +208,7 @@ spec:
 ---
 # Conditional Workflows
 apiVersion: gryvia.io/v1
-kind: FabricWorkflow
+kind: GryviaWorkflow
 metadata:
   name: conditional-workflow
 spec:
@@ -242,7 +242,7 @@ spec:
 ---
 # Retry with Different Resources
 apiVersion: gryvia.io/v1
-kind: FabricWorkflow
+kind: GryviaWorkflow
 metadata:
   name: adaptive-retry-workflow
 spec:
@@ -272,7 +272,7 @@ spec:
 ---
 # Scheduled Workflow
 apiVersion: gryvia.io/v1
-kind: FabricWorkflow
+kind: GryviaWorkflow
 metadata:
   name: daily-retraining
 spec:
@@ -309,7 +309,7 @@ spec:
 ---
 # Dynamic DAG Generation
 apiVersion: gryvia.io/v1
-kind: FabricWorkflow
+kind: GryviaWorkflow
 metadata:
   name: dynamic-dag
 spec:
@@ -338,7 +338,7 @@ spec:
 ---
 # Cross-Workflow Dependencies
 apiVersion: gryvia.io/v1
-kind: FabricWorkflow
+kind: GryviaWorkflow
 metadata:
   name: workflow-b
 spec:
@@ -354,7 +354,7 @@ spec:
 ---
 # Workflow Status CRD
 apiVersion: gryvia.io/v1
-kind: FabricWorkflow
+kind: GryviaWorkflow
 metadata:
   name: example-workflow
 status:

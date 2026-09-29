@@ -4,14 +4,14 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: fabricworkflows.gryvia.io
+  name: gryviaworkflows.gryvia.io
 spec:
   group: gryvia.io
   names:
-    kind: FabricWorkflow
-    listKind: FabricWorkflowList
-    plural: fabricworkflows
-    singular: fabricworkflow
+    kind: GryviaWorkflow
+    listKind: GryviaWorkflowList
+    plural: gryviaworkflows
+    singular: gryviaworkflow
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
@@ -27,7 +27,7 @@ spec:
     name: v1
     schema:
       openAPIV3Schema:
-        description: FabricWorkflow is the Schema for the fabricworkflows API
+        description: GryviaWorkflow is the Schema for the gryviaworkflows API
         properties:
           apiVersion:
             description: |-
@@ -47,7 +47,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: FabricWorkflowSpec defines the desired state of FabricWorkflow
+            description: GryviaWorkflowSpec defines the desired state of GryviaWorkflow
             properties:
               parameters:
                 additionalProperties:
@@ -73,7 +73,7 @@ spec:
                         type: string
                       type: array
                     jobTemplate:
-                      description: JobTemplate is the FabricAIJob spec to run for
+                      description: JobTemplate is the GryviaAIJob spec to run for
                         job-type steps
                       properties:
                         affinity:
@@ -3532,7 +3532,7 @@ spec:
             - steps
             type: object
           status:
-            description: FabricWorkflowStatus defines the observed state of FabricWorkflow
+            description: GryviaWorkflowStatus defines the observed state of GryviaWorkflow
             properties:
               completionTime:
                 description: CompletionTime is when the workflow finished
@@ -3617,7 +3617,7 @@ spec:
                       format: date-time
                       type: string
                     jobName:
-                      description: JobName is the name of the FabricAIJob created
+                      description: JobName is the name of the GryviaAIJob created
                         for this step (if applicable)
                       type: string
                     message:

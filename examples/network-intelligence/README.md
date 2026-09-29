@@ -4,12 +4,12 @@ Example YAML manifests for Gryvia network intelligence CRDs powered by eBPF and 
 
 ## Examples
 
-- **[flow-policy.yaml](flow-policy.yaml)** - `FabricFlowPolicy` allowing payment-to-database traffic with low-latency intent
-- **[auto-policy.yaml](auto-policy.yaml)** - `FabricAutoPolicy` in learn mode for 10 minutes, then suggesting policies
-- **[trace-session.yaml](trace-session.yaml)** - `FabricTraceSession` debugging the payment service at L7 for 2 minutes
-- **[service-graph.yaml](service-graph.yaml)** - `FabricServiceGraph` mapping service dependencies in production
-- **[network-anomaly.yaml](network-anomaly.yaml)** - `FabricNetworkAnomaly` detecting latency spikes > 100ms with auto-mitigation
-- **[traffic-insight.yaml](traffic-insight.yaml)** - `FabricTrafficInsight` analyzing payment service traffic patterns
+- **[flow-policy.yaml](flow-policy.yaml)** - `GryviaFlowPolicy` allowing payment-to-database traffic with low-latency intent
+- **[auto-policy.yaml](auto-policy.yaml)** - `GryviaAutoPolicy` in learn mode for 10 minutes, then suggesting policies
+- **[trace-session.yaml](trace-session.yaml)** - `GryviaTraceSession` debugging the payment service at L7 for 2 minutes
+- **[service-graph.yaml](service-graph.yaml)** - `GryviaServiceGraph` mapping service dependencies in production
+- **[network-anomaly.yaml](network-anomaly.yaml)** - `GryviaNetworkAnomaly` detecting latency spikes > 100ms with auto-mitigation
+- **[traffic-insight.yaml](traffic-insight.yaml)** - `GryviaTrafficInsight` analyzing payment service traffic patterns
 
 ## Usage
 

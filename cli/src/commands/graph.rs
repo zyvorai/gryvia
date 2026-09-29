@@ -14,7 +14,7 @@ pub async fn execute(
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
         "gryvia.io",
         "v1",
-        "FabricFlow",
+        "GryviaFlow",
     ));
     let api: Api<DynamicObject> = Api::namespaced_with(
         client.kube_client.clone(),

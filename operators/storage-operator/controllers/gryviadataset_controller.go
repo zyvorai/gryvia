@@ -37,32 +37,32 @@ const (
 	defaultCacheIdleTTL = 7 * 24 * time.Hour
 )
 
-// FabricDatasetReconciler reconciles a FabricDataset object
-type FabricDatasetReconciler struct {
+// GryviaDatasetReconciler reconciles a GryviaDataset object
+type GryviaDatasetReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Log    logr.Logger
 }
 
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricdatasets,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricdatasets/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=fabricdatasets/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviadatasets,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviadatasets/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviadatasets/finalizers,verbs=update
 //+kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=persistentvolumes,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop
-func (r *FabricDatasetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := r.Log.WithValues("fabricdataset", req.NamespacedName)
+func (r *GryviaDatasetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := r.Log.WithValues("gryviadataset", req.NamespacedName)
 
-	// Fetch the FabricDataset instance
-	dataset := &gryviav1.FabricDataset{}
+	// Fetch the GryviaDataset instance
+	dataset := &gryviav1.GryviaDataset{}
 	err := r.Get(ctx, req.NamespacedName, dataset)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			log.Info("FabricDataset resource not found. Ignoring since object must be deleted")
+			log.Info("GryviaDataset resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		log.Error(err, "Failed to get FabricDataset")
+		log.Error(err, "Failed to get GryviaDataset")
 		return ctrl.Result{}, err
 	}
 
@@ -100,8 +100,8 @@ func (r *FabricDatasetReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	return result, nil
 }
 
-func (r *FabricDatasetReconciler) reconcileDataset(ctx context.Context, dataset *gryviav1.FabricDataset) (ctrl.Result, error) {
-	log := r.Log.WithValues("fabricdataset", dataset.Name)
+func (r *GryviaDatasetReconciler) reconcileDataset(ctx context.Context, dataset *gryviav1.GryviaDataset) (ctrl.Result, error) {
+	log := r.Log.WithValues("gryviadataset", dataset.Name)
 
 	// Step 1: Provision cache PVC if caching is enabled
 	if dataset.Spec.Cache != nil && dataset.Spec.Cache.Enabled {
@@ -142,7 +142,7 @@ func (r *FabricDatasetReconciler) reconcileDataset(ctx context.Context, dataset 
 	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 }
 
-func (r *FabricDatasetReconciler) ensureCachePVC(ctx context.Context, dataset *gryviav1.FabricDataset) error {
+func (r *GryviaDatasetReconciler) ensureCachePVC(ctx context.Context, dataset *gryviav1.GryviaDataset) error {
 	pvcName := r.getCachePVCName(dataset)
 
 	pvc := &corev1.PersistentVolumeClaim{}
@@ -206,7 +206,7 @@ func (r *FabricDatasetReconciler) ensureCachePVC(ctx context.Context, dataset *g
 	return err
 }
 
-func (r *FabricDatasetReconciler) updateVersionInfo(dataset *gryviav1.FabricDataset) {
+func (r *GryviaDatasetReconciler) updateVersionInfo(dataset *gryviav1.GryviaDataset) {
 	// Set current version
 	if dataset.Spec.Version != "" {
 		dataset.Status.CurrentVersion = dataset.Spec.Version
@@ -242,7 +242,7 @@ func (r *FabricDatasetReconciler) updateVersionInfo(dataset *gryviav1.FabricData
 	}
 }
 
-func (r *FabricDatasetReconciler) enforceRetentionPolicy(dataset *gryviav1.FabricDataset) {
+func (r *GryviaDatasetReconciler) enforceRetentionPolicy(dataset *gryviav1.GryviaDataset) {
 	if dataset.Spec.Versioning == nil || dataset.Spec.Versioning.RetentionPolicy == nil {
 		return
 	}
@@ -271,7 +271,7 @@ func (r *FabricDatasetReconciler) enforceRetentionPolicy(dataset *gryviav1.Fabri
 	}
 }
 
-func (r *FabricDatasetReconciler) updateCacheStatus(ctx context.Context, dataset *gryviav1.FabricDataset) {
+func (r *GryviaDatasetReconciler) updateCacheStatus(ctx context.Context, dataset *gryviav1.GryviaDataset) {
 	pvcName := r.getCachePVCName(dataset)
 
 	pvc := &corev1.PersistentVolumeClaim{}
@@ -292,7 +292,7 @@ func (r *FabricDatasetReconciler) updateCacheStatus(ctx context.Context, dataset
 	}
 }
 
-func (r *FabricDatasetReconciler) garbageCollectCache(ctx context.Context, dataset *gryviav1.FabricDataset) error {
+func (r *GryviaDatasetReconciler) garbageCollectCache(ctx context.Context, dataset *gryviav1.GryviaDataset) error {
 	if dataset.Spec.Cache == nil || !dataset.Spec.Cache.Enabled {
 		return nil
 	}
@@ -317,9 +317,9 @@ func (r *FabricDatasetReconciler) garbageCollectCache(ctx context.Context, datas
 	return nil
 }
 
-func (r *FabricDatasetReconciler) handleDeletion(ctx context.Context, dataset *gryviav1.FabricDataset) (ctrl.Result, error) {
+func (r *GryviaDatasetReconciler) handleDeletion(ctx context.Context, dataset *gryviav1.GryviaDataset) (ctrl.Result, error) {
 	if controllerutil.ContainsFinalizer(dataset, datasetFinalizer) {
-		r.Log.Info("Running cleanup for FabricDataset", "name", dataset.Name)
+		r.Log.Info("Running cleanup for GryviaDataset", "name", dataset.Name)
 
 		// Delete cache PVC
 		if dataset.Spec.Cache != nil && dataset.Spec.Cache.Enabled {
@@ -349,14 +349,14 @@ func (r *FabricDatasetReconciler) handleDeletion(ctx context.Context, dataset *g
 	return ctrl.Result{}, nil
 }
 
-func (r *FabricDatasetReconciler) getCachePVCName(dataset *gryviav1.FabricDataset) string {
+func (r *GryviaDatasetReconciler) getCachePVCName(dataset *gryviav1.GryviaDataset) string {
 	return fmt.Sprintf("dataset-cache-%s", dataset.Name)
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *FabricDatasetReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GryviaDatasetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.FabricDataset{}).
+		For(&gryviav1.GryviaDataset{}).
 		Owns(&corev1.PersistentVolumeClaim{}).
 		Complete(r)
 }

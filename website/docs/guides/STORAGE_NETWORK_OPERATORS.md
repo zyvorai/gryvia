@@ -37,7 +37,7 @@ Both operators are Kubernetes controllers built with Go and the controller-runti
 
 ### Components
 
-**Main Controller** (`operators/storage-operator/controllers/fabricstorage_controller.go`)
+**Main Controller** (`operators/storage-operator/controllers/gryviastorage_controller.go`)
 - Full reconciliation loop with 5-minute requeue
 - CSI driver lifecycle management
 - StorageClass auto-creation
@@ -95,7 +95,7 @@ Both operators are Kubernetes controllers built with Go and the controller-runti
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricStorage
+kind: GryviaStorage
 metadata:
   name: vast-production
 spec:
@@ -116,7 +116,7 @@ Result: Automatic deployment of:
 
 ### Components
 
-**Main Controller** (`operators/network-operator/controllers/fabricnetwork_controller.go`)
+**Main Controller** (`operators/network-operator/controllers/gryvianetwork_controller.go`)
 - Network type detection and routing
 - Node discovery via label selectors
 - RDMA/SR-IOV configuration orchestration
@@ -157,7 +157,7 @@ Result: Automatic deployment of:
 **RDMA Network:**
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricNetwork
+kind: GryviaNetwork
 metadata:
   name: rdma-ib
 spec:
@@ -178,7 +178,7 @@ Result:
 **SR-IOV Network:**
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricNetwork
+kind: GryviaNetwork
 metadata:
   name: sriov-net
 spec:
@@ -201,8 +201,8 @@ Result:
 operators/
 ├── storage-operator/
 │   ├── main.go                                 # Controller manager
-│   ├── api/v1/fabricstorage_types.go          # CRD types
-│   ├── controllers/fabricstorage_controller.go # Reconciler
+│   ├── api/v1/gryviastorage_types.go          # CRD types
+│   ├── controllers/gryviastorage_controller.go # Reconciler
 │   ├── pkg/
 │   │   ├── vast/vast.go                       # VAST CSI (~330 LOC)
 │   │   ├── weka/weka.go                       # Weka CSI (~400 LOC)
@@ -218,8 +218,8 @@ operators/
 │
 └── network-operator/
     ├── main.go                                # Controller manager
-    ├── api/v1/fabricnetwork_types.go         # CRD types
-    ├── controllers/fabricnetwork_controller.go # Reconciler
+    ├── api/v1/gryvianetwork_types.go         # CRD types
+    ├── controllers/gryvianetwork_controller.go # Reconciler
     ├── pkg/
     │   ├── rdma/rdma.go                      # RDMA plugin (~200 LOC)
     │   ├── sriov/sriov.go                    # SR-IOV plugin (~250 LOC)
@@ -260,8 +260,8 @@ examples/
 kubectl create namespace gryvia-system
 
 # Apply CRDs
-kubectl apply -f crds/fabricstorage.yaml
-kubectl apply -f crds/fabricnetwork.yaml
+kubectl apply -f crds/gryviastorage.yaml
+kubectl apply -f crds/gryvianetwork.yaml
 
 # Deploy operators
 kubectl apply -f operators/storage-operator/config/
@@ -278,7 +278,7 @@ kubectl get pods -n gryvia-system
 kubectl apply -f examples/storage/vast-storage-example.yaml
 
 # Wait for CSI driver
-kubectl wait --for=condition=Ready fabricstorage/vast-production --timeout=300s
+kubectl wait --for=condition=Ready gryviastorage/vast-production --timeout=300s
 
 # Create PVC
 kubectl apply -f - <<EOF
@@ -302,7 +302,7 @@ EOF
 kubectl apply -f examples/network/rdma-network-example.yaml
 
 # Wait for device plugin
-kubectl wait --for=condition=Ready fabricnetwork/rdma-infiniband --timeout=300s
+kubectl wait --for=condition=Ready gryvianetwork/rdma-infiniband --timeout=300s
 
 # Verify RDMA resources
 kubectl get nodes -o json | jq '.items[].status.allocatable | select(.["rdma/rdma_shared_device_a"])'
@@ -343,7 +343,7 @@ spec:
 
 ### Storage Operator
 
-- `fabricstorages`: Full CRUD
+- `gryviastorages`: Full CRUD
 - `storageclasses`, `csidrivers`: Full CRUD
 - `deployments`, `daemonsets`: Full CRUD
 - `persistentvolumes`, `persistentvolumeclaims`: Full CRUD
@@ -351,7 +351,7 @@ spec:
 
 ### Network Operator
 
-- `fabricnetworks`: Full CRUD
+- `gryvianetworks`: Full CRUD
 - `network-attachment-definitions`: Full CRUD
 - `daemonsets`: Full CRUD
 - `nodes`: Get, List, Watch, Update, Patch
@@ -371,7 +371,7 @@ make run
 
 # Integration test
 kubectl apply -f examples/storage/vast-storage-example.yaml
-kubectl wait --for=condition=Ready fabricstorage/vast-production
+kubectl wait --for=condition=Ready gryviastorage/vast-production
 ```
 
 ### Network Operator
