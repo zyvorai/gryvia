@@ -207,9 +207,9 @@ pub async fn execute_anomalies(
     }
 
     match output {
-        "json" => {
+        "json" | "yaml" => {
             let items: Vec<&serde_json::Value> = filtered.iter().map(|a| &a.data).collect();
-            println!("{}", serde_json::to_string_pretty(&items)?);
+            crate::output::print_serialized(output, &items)?;
         }
         _ => {
             print_anomalies_table(&filtered);

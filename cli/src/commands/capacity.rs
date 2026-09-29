@@ -214,7 +214,7 @@ pub fn compute_capacity(
     }
 }
 
-fn gvk_api(client: &GryviaClient, kind: &str, plural: &str) -> Api<DynamicObject> {
+pub(crate) fn gvk_api(client: &GryviaClient, kind: &str, plural: &str) -> Api<DynamicObject> {
     let gvk = GroupVersionKind::gvk("gryvia.io", "v1alpha1", kind);
     let ar = ApiResource::from_gvk_with_plural(&gvk, plural);
     Api::all_with(client.kube_client.clone(), &ar)
@@ -258,12 +258,6 @@ pub fn job_from_json(v: &serde_json::Value) -> JobInfo {
 }
 
 pub async fn execute(client: &GryviaClient, output: &str, gpu_type: Option<&str>) -> Result<()> {
-    if output != "table" && output != "json" {
-        anyhow::bail!(
-            "Unknown output format '{}'. Valid formats: table, json",
-            output
-        );
-    }
     let nodes_api = gvk_api(client, "GryviaGpuNode", "gryviagpunodes");
     let jobs_api = gvk_api(client, "GryviaAIJob", "gryviaaijobs");
     let nodes = nodes_api
@@ -287,8 +281,8 @@ pub async fn execute(client: &GryviaClient, output: &str, gpu_type: Option<&str>
         .collect();
 
     let report = compute_capacity(&node_infos, &job_infos, gpu_type);
-    if output == "json" {
-        println!("{}", serde_json::to_string_pretty(&report)?);
+    if output == "json" || output == "yaml" {
+        crate::output::print_serialized(output, &report)?;
     } else {
         print_report(&report, gpu_type);
     }

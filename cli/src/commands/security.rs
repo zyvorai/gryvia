@@ -317,9 +317,9 @@ async fn execute_policy_list(client: &GryviaClient, namespace: &str, output: &st
     }
 
     match output {
-        "json" => {
+        "json" | "yaml" => {
             let items: Vec<&serde_json::Value> = policies.items.iter().map(|p| &p.data).collect();
-            println!("{}", serde_json::to_string_pretty(&items)?);
+            crate::output::print_serialized(output, &items)?;
         }
         _ => {
             let mut table = Table::new();

@@ -57,8 +57,8 @@ pub async fn execute(
     }
 
     match output {
-        "json" => {
-            println!("{}", serde_json::to_string_pretty(&flows)?);
+        "json" | "yaml" => {
+            crate::output::print_serialized(output, &flows)?;
         }
         _ => {
             print_flows_table(&flows.items);

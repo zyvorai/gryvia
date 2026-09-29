@@ -156,7 +156,7 @@ pub struct BudgetStatus {
     pub projected_spend: f64,
 }
 
-// GryviaGpuNode CRD
+// GryviaGpuNode CRD (mirrors crds/gryvia.io_gryviagpunodes.yaml; only the three required fields are mandatory)
 #[derive(CustomResource, Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[kube(group = "gryvia.io", version = "v1alpha1", kind = "GryviaGpuNode")]
 #[kube(status = "GpuNodeStatus")]
@@ -167,28 +167,44 @@ pub struct GpuNodeSpec {
     pub gpu_type: String,
     #[serde(rename = "gpuCount")]
     pub gpu_count: u32,
-    pub memory: String,
-    #[serde(rename = "rdmaEnabled", default)]
-    pub rdma_enabled: bool,
+    /// Memory per GPU in GB.
+    #[serde(rename = "memoryGB", default)]
+    pub memory_gb: u32,
+    #[serde(default)]
+    pub rdma: bool,
+    #[serde(default)]
+    pub sriov: bool,
+    #[serde(default)]
+    pub interconnect: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default, JsonSchema)]
 pub struct GpuNodeStatus {
     #[serde(default)]
     pub phase: String,
-    #[serde(default)]
-    pub gpus: Vec<GPUInfo>,
+    #[serde(rename = "gpuStatus", default)]
+    pub gpu_status: Vec<GPUInfo>,
+    #[serde(rename = "driverVersion", default)]
+    pub driver_version: String,
+    #[serde(rename = "cudaVersion", default)]
+    pub cuda_version: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default, JsonSchema)]
 pub struct GPUInfo {
+    #[serde(default)]
     pub index: i32,
+    #[serde(default)]
     pub uuid: String,
-    pub temperature: f64,
-    pub utilization: f64,
-    #[serde(rename = "memoryUsed")]
+    #[serde(default)]
+    pub health: String,
+    #[serde(default)]
+    pub temperature: i64,
+    #[serde(default)]
+    pub utilization: i64,
+    #[serde(rename = "memoryUsed", default)]
     pub memory_used: i64,
-    #[serde(rename = "memoryTotal")]
+    #[serde(rename = "memoryTotal", default)]
     pub memory_total: i64,
 }
 
@@ -216,6 +232,39 @@ mod tests {
         assert_eq!(job.spec.resources.request("memory"), "16Gi");
         assert_eq!(job.spec.resources.request("cpu"), "4");
         assert_eq!(job.spec.resources.request("ephemeral-storage"), "-");
+    }
+
+    /// A GryviaGpuNode as the GPU operator writes it (memoryGB, rdma, status.gpuStatus, driverVersion).
+    #[test]
+    fn parses_a_real_gpu_node() {
+        let node: GryviaGpuNode = serde_json::from_value(serde_json::json!({
+            "apiVersion": "gryvia.io/v1alpha1", "kind": "GryviaGpuNode",
+            "metadata": {"name": "demo"},
+            "spec": {"nodeName": "gpu-1", "gpuType": "H100", "gpuCount": 8, "memoryGB": 80, "rdma": true,
+                     "interconnect": "nvlink"},
+            "status": {"phase": "Ready", "driverVersion": "550.54", "cudaVersion": "12.4",
+                       "gpuStatus": [{"index": 0, "uuid": "GPU-0", "health": "Healthy", "temperature": 62,
+                                      "utilization": 71, "memoryUsed": 41000, "memoryTotal": 81920}]}
+        }))
+        .unwrap();
+        assert_eq!(node.spec.memory_gb, 80);
+        assert!(node.spec.rdma);
+        let status = node.status.unwrap();
+        assert_eq!(status.gpu_status.len(), 1);
+        assert_eq!(status.gpu_status[0].health, "Healthy");
+        assert_eq!(status.driver_version, "550.54");
+    }
+
+    #[test]
+    fn a_gpu_node_with_only_required_fields_parses() {
+        let node: GryviaGpuNode = serde_json::from_value(serde_json::json!({
+            "apiVersion": "gryvia.io/v1alpha1", "kind": "GryviaGpuNode",
+            "metadata": {"name": "n"},
+            "spec": {"nodeName": "n", "gpuType": "T4", "gpuCount": 1}
+        }))
+        .unwrap();
+        assert_eq!(node.spec.memory_gb, 0);
+        assert!(!node.spec.rdma);
     }
 
     #[test]
