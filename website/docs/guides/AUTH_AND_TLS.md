@@ -57,8 +57,9 @@ user as an administrator.
 
 A bearer token with three dot-separated parts is checked as a JWT: RS256/384/512 or ES256/384 signature
 against the provider's JWKS (matched by `kid`), the issuer, the audience, and the presence of `exp`,
-`iss`, `aud` and `sub`. Signing keys are cached for one hour and refreshed once when an unknown `kid`
-appears. A token that fails is then tried as the API key, so it is rejected with 403 unless it equals
+`iss`, `aud` and `sub`. Signing keys are cached for one hour and refreshed when an unknown `kid`
+appears, at most once every 30 seconds so unauthenticated requests cannot make the gateway hammer the
+provider (after a key rotation, a token with the new key is accepted once that interval has passed). A token that fails is then tried as the API key, so it is rejected with 403 unless it equals
 that key; if the provider cannot be reached the gateway does not accept the token. Signed browser
 sessions (`gs1.` tokens) and the API key keep working while OIDC is on. `/api/auth/config` reports
 `oidcEnabled: false` with an error when discovery fails.

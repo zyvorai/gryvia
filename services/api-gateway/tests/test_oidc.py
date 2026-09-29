@@ -222,18 +222,38 @@ def test_token_without_required_claims_is_rejected(env, keys, missing):
     assert me(c, tok).status_code == 403
 
 
-def test_unknown_kid_refreshes_jwks_once_then_rejects(env, keys):
-    c, _, idp = env
-    r = me(c, keys[1].sign(claims()))  # key-2 is not published
-    assert r.status_code == 403
-    # one initial JWKS fetch + exactly one refresh
-    assert idp.count(JWKS_URI) == 2
+def age_jwks(main, seconds):
+    """Pretend the cached JWKS was fetched `seconds` ago."""
+    main._jwks_cache_time -= seconds
 
 
-def test_key_rotation_is_picked_up_by_the_refresh(env, keys):
-    c, _, idp = env
+def test_unknown_kid_does_not_force_a_fetch_per_request(env, keys):
+    c, main, idp = env
+    # key-2 is not published. The first request fetches the keys (count 1); a refresh would be pointless
+    # moments later, so repeated unknown-kid tokens must not hammer the identity provider.
+    for _ in range(5):
+        assert me(c, keys[1].sign(claims())).status_code == 403
+    assert idp.count(JWKS_URI) == 1
+
+
+def test_unknown_kid_refreshes_once_after_the_cooldown_then_rejects(env, keys):
+    c, main, idp = env
+    assert me(c, keys[1].sign(claims())).status_code == 403
+    assert idp.count(JWKS_URI) == 1
+    age_jwks(main, main._JWKS_MIN_REFRESH_SECONDS + 1)
+    assert me(c, keys[1].sign(claims())).status_code == 403
+    assert idp.count(JWKS_URI) == 2  # exactly one refresh
+
+
+def test_key_rotation_is_picked_up_once_the_cooldown_has_passed(env, keys):
+    c, main, idp = env
     assert me(c, keys[0].sign(claims())).status_code == 200
     idp.jwks = {"keys": [keys[0].jwk(), keys[1].jwk()]}
+    # Keys were fetched moments ago, so the new key is not fetched yet ...
+    assert me(c, keys[1].sign(claims())).status_code == 403
+    assert idp.count(JWKS_URI) == 1
+    # ... and is picked up by the first unknown-kid token after the cooldown.
+    age_jwks(main, main._JWKS_MIN_REFRESH_SECONDS + 1)
     assert me(c, keys[1].sign(claims())).status_code == 200
     assert idp.count(JWKS_URI) == 2
 

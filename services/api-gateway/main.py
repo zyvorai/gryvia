@@ -155,6 +155,9 @@ OIDC_AUDIENCE = os.environ.get("OIDC_AUDIENCE", "").strip() or OIDC_CLIENT_ID
 _jwks_cache: Dict[str, Any] = {}
 _jwks_cache_time: float = 0
 _JWKS_CACHE_TTL = 3600  # 1 hour
+# A token naming an unknown key forces a refresh (the provider may have rotated keys). Unauthenticated
+# callers can send such tokens, so refresh at most once per interval to avoid hammering the provider.
+_JWKS_MIN_REFRESH_SECONDS = 30
 _oidc_discovery: Optional[Dict[str, Any]] = None
 
 
@@ -222,14 +225,16 @@ async def _validate_jwt_token(token: str) -> Dict[str, Any]:
             break
 
     if not rsa_key:
-        # Key not found - maybe keys rotated, refresh cache and retry once
+        # Key not found - maybe keys rotated, refresh the cache and retry once. Skipped when the keys
+        # were fetched moments ago, so unknown-kid tokens cannot force a fetch per request.
         global _jwks_cache_time
-        _jwks_cache_time = 0
-        jwks_data = await _fetch_jwks_or_503()
-        for key in jwks_data.get("keys", []):
-            if key.get("kid") == kid:
-                rsa_key = key
-                break
+        if time.monotonic() - _jwks_cache_time >= _JWKS_MIN_REFRESH_SECONDS:
+            _jwks_cache_time = 0
+            jwks_data = await _fetch_jwks_or_503()
+            for key in jwks_data.get("keys", []):
+                if key.get("kid") == kid:
+                    rsa_key = key
+                    break
 
     if not rsa_key:
         raise HTTPException(
