@@ -7,7 +7,7 @@ import {
 } from '@/lib/jobs'
 import { api } from '@/lib/api'
 import { errorMessage } from '@/lib/errors'
-import type { FabricAIJob } from '@/types'
+import type { GryviaAIJob } from '@/types'
 import { Trash2 } from 'lucide-react'
 import PageHero from '@/components/PageHero'
 import ConfirmDialog from '@/components/ConfirmDialog'
@@ -72,7 +72,7 @@ export default function SubmitJob() {
   }, [dirty])
 
   const createJobMutation = useMutation({
-    mutationFn: (job: Partial<FabricAIJob>) => api.createJob(job),
+    mutationFn: (job: Partial<GryviaAIJob>) => api.createJob(job),
     onSuccess: (_created, job) => {
       const jobName = job.metadata?.name ?? formData.name
       notify.success(`Submitted job ${jobName}`)
@@ -132,9 +132,9 @@ export default function SubmitJob() {
       return
     }
 
-    const job: Partial<FabricAIJob> = {
+    const job: Partial<GryviaAIJob> = {
       apiVersion: 'gryvia.io/v1',
-      kind: 'FabricAIJob',
+      kind: 'GryviaAIJob',
       metadata: {
         name: formData.name,
         labels: { [FRAMEWORK_LABEL]: formData.framework, ...(formData.team ? { [TEAM_LABEL]: formData.team } : {}) },
@@ -158,7 +158,7 @@ export default function SubmitJob() {
         ...(formData.priority.trim() !== '' ? { priority: Number(formData.priority) } : {}),
         ...(formData.timeout.trim() !== '' ? { timeout: formData.timeout.trim() } : {}),
         ...(formData.retryLimit.trim() !== '' ? { retryLimit: Number(formData.retryLimit) } : {}),
-      } as FabricAIJob['spec'],
+      } as GryviaAIJob['spec'],
     }
 
     createJobMutation.mutate(job)
@@ -412,8 +412,9 @@ export default function SubmitJob() {
 
         <section className="card">
           <p className="eyebrow">ENTRYPOINT</p>
-          <h2 className="card-title">Command</h2>
+          <h2 className="card-title" id="command-heading">Command</h2>
           <textarea
+            aria-labelledby="command-heading"
             required
             rows={3}
             className="codeedit compact"

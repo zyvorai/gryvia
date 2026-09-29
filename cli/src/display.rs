@@ -2,7 +2,7 @@ use colored::*;
 use prettytable::{Table, Row, Cell, format};
 use crate::types::*;
 
-pub fn print_jobs_table(jobs: &[FabricAIJob]) {
+pub fn print_jobs_table(jobs: &[GryviaAIJob]) {
     let mut table = Table::new();
     table.set_format(*format::consts::FORMAT_BOX_CHARS);
 
@@ -38,7 +38,7 @@ pub fn print_jobs_table(jobs: &[FabricAIJob]) {
     table.printstd();
 }
 
-pub fn print_quotas_table(quotas: &[FabricQuota]) {
+pub fn print_quotas_table(quotas: &[GryviaQuota]) {
     let mut table = Table::new();
     table.set_format(*format::consts::FORMAT_BOX_CHARS);
 
@@ -83,7 +83,7 @@ pub fn print_quotas_table(quotas: &[FabricQuota]) {
     table.printstd();
 }
 
-pub fn print_nodes_table(nodes: &[FabricGpuNode]) {
+pub fn print_nodes_table(nodes: &[GryviaGpuNode]) {
     let mut table = Table::new();
     table.set_format(*format::consts::FORMAT_BOX_CHARS);
 
@@ -118,7 +118,7 @@ pub fn print_nodes_table(nodes: &[FabricGpuNode]) {
     table.printstd();
 }
 
-pub fn print_cluster_overview(nodes: &[FabricGpuNode], jobs: &[FabricAIJob]) {
+pub fn print_cluster_overview(nodes: &[GryviaGpuNode], jobs: &[GryviaAIJob]) {
     println!("{}", "━━━ GPU CLUSTER OVERVIEW ━━━".bold().cyan());
     println!();
 
@@ -216,4 +216,21 @@ pub fn print_warning(message: &str) {
 
 pub fn print_info(message: &str) {
     println!("{} {}", "ℹ".cyan().bold(), message);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn colorize_status_keeps_the_text() {
+        for s in ["Running", "Pending", "Failed", "Completed", "Whatever"] {
+            assert!(colorize_status(s).contains(s));
+        }
+    }
+
+    #[test]
+    fn format_age_without_timestamp_is_a_dash() {
+        assert_eq!(format_age(None), "-");
+    }
 }
