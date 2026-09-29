@@ -25,6 +25,9 @@ GET  /api/jobs              # List all jobs (supports ?limit=100&offset=0)
 POST /api/jobs              # Create a new job
 GET  /api/jobs/{name}       # Get job details
 DELETE /api/jobs/{name}     # Delete a job
+GET  /api/jobs/{name}/pods   # Pods of the job
+GET  /api/jobs/{name}/logs   # Pod log (?pod=&tail=200, max 2000)
+GET  /api/jobs/{name}/events # Events for the job and its pods
 ```
 
 - `create_job` (POST) validates `apiVersion` and `kind` against known Gryvia types and enforces the namespace server-side.
