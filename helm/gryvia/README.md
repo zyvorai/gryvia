@@ -46,6 +46,28 @@ The certificate is self-signed by default; your browser shows a warning once.
 CRDs are installed from `crds/` on first install. Helm does not upgrade CRDs; apply new versions with
 `kubectl apply --server-side -f crds/` before `helm upgrade`.
 
+## Admission webhook
+
+The ai-operator serves a validating admission webhook for `GryviaAIJob` (CREATE and UPDATE, all namespaces except
+`kube-system`). It rejects a job with a clear message when: `spec.type` is not one of `training`, `inference`,
+`fine-tuning`, `evaluation`; `spec.gpus` is not greater than 0; `spec.image` is empty; `metadata.name` is not a valid
+DNS name; `spec.network` is not `standard`, `rdma` or `sriov`; `spec.priority` is outside 0-100; the `distributed`
+block is inconsistent (nodes, framework, backend, more than 1024 GPUs); or CPU/memory requests are non-positive or
+exceed their limits. Checks against live node capacity or GPU labels are only returned as warnings, never denials.
+
+The chart creates the `<release>-webhook` Service (443 to 9443), a `<release>-webhook-tls` Secret (own CA plus a
+serving certificate, generated once and reused on upgrades; independent of `tls.mode`), and a
+`ValidatingWebhookConfiguration` with the CA injected as `caBundle`.
+
+| Value | Purpose |
+|-------|---------|
+| `webhook.enabled` | `true` by default; `false` removes the webhook objects and the operator's extra port, volume and flag |
+| `webhook.failurePolicy` | `Ignore` (default): if the operator is down, jobs are still admitted. `Fail`: jobs are rejected while the webhook is unreachable (hardening) |
+| `webhook.timeoutSeconds` | Admission call timeout (default 5) |
+
+To rotate the certificate, delete the `<release>-webhook-tls` Secret and run `helm upgrade`, then restart the
+ai-operator.
+
 ## Common settings
 
 | Value | Purpose |

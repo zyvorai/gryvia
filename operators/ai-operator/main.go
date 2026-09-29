@@ -13,10 +13,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 	"github.com/zyvorai/gryvia/operators/ai-operator/controllers"
 	"github.com/zyvorai/gryvia/operators/ai-operator/pkg/timemachine"
+	jobwebhook "github.com/zyvorai/gryvia/operators/ai-operator/pkg/webhook"
 )
 
 var (
@@ -33,11 +36,17 @@ func main() {
 	var metricsAddr string
 	var enableLeaderElection bool
 	var probeAddr string
+	var enableWebhooks bool
+	var webhookCertDir string
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", true,
 		"Enable leader election for controller manager.")
+	flag.BoolVar(&enableWebhooks, "enable-webhooks", false,
+		"Serve the GryviaAIJob validating admission webhook (needs TLS certs in --webhook-cert-dir).")
+	flag.StringVar(&webhookCertDir, "webhook-cert-dir", "/tmp/k8s-webhook-server/serving-certs",
+		"Directory holding tls.crt and tls.key for the webhook server.")
 
 	opts := zap.Options{
 		Development: false,
@@ -47,7 +56,7 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	mgrOpts := ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
 			BindAddress: metricsAddr,
@@ -55,7 +64,14 @@ func main() {
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "ai-operator.gryvia.io",
-	})
+	}
+	if enableWebhooks {
+		mgrOpts.WebhookServer = webhook.NewServer(webhook.Options{
+			Port:    9443,
+			CertDir: webhookCertDir,
+		})
+	}
+	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), mgrOpts)
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
@@ -122,6 +138,12 @@ func main() {
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "GryviaTrainingTimeMachine")
 		os.Exit(1)
+	}
+
+	if enableWebhooks {
+		mgr.GetWebhookServer().Register(jobwebhook.ValidatePath,
+			&admission.Webhook{Handler: jobwebhook.NewGryviaAIJobValidator(mgr.GetClient())})
+		setupLog.Info("registered validating webhook", "path", jobwebhook.ValidatePath, "certDir", webhookCertDir)
 	}
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

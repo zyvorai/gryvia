@@ -77,3 +77,14 @@ Usage: {{ include "gryvia.image" (dict "root" . "image" .Values.gpuOperator.imag
 {{- define "gryvia.apiKeySecret" -}}
 {{- default "gryvia-api-key" .Values.auth.existingSecret -}}
 {{- end }}
+
+{{/*
+Names for the GryviaAIJob admission webhook (Service and serving-cert Secret).
+*/}}
+{{- define "gryvia.webhookServiceName" -}}
+{{- printf "%s-webhook" (include "gryvia.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end }}
+
+{{- define "gryvia.webhookSecretName" -}}
+{{- printf "%s-webhook-tls" (include "gryvia.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end }}

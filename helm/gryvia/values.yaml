@@ -33,6 +33,15 @@ aiOperator:
   nodeSelector: {}
   tolerations: []
 
+# Admission webhook served by the ai-operator: validates GryviaAIJob on CREATE/UPDATE.
+# It uses its own self-signed certificate (independent of tls.mode), reused on upgrades.
+webhook:
+  enabled: true
+  # Ignore: if the webhook is unreachable, job creation still succeeds (recommended default).
+  # Fail: reject job creation while the webhook is down (hardening; requires a healthy ai-operator).
+  failurePolicy: Ignore
+  timeoutSeconds: 5
+
 quotaOperator:
   enabled: true
   image: {name: gryvia-quota-operator, tag: ""}
