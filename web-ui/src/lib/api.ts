@@ -429,6 +429,34 @@ export interface CreateTunerRequest {
   ashaConfig?: { maxEpochs: number }
 }
 
+// Flight Recorder: the gateway's merged cluster view of the per-node collectors.
+export interface FlightEvent {
+  time: string
+  node: string
+  kind: string
+  source?: string
+  operation?: string
+  bytes?: number
+  retransmits?: number
+  duration_ns?: number
+  identity: { namespace?: string; job?: string; pod?: string; node?: string; rank?: string }
+}
+
+export interface FlightReport {
+  namespace: string
+  job: string
+  scope?: string
+  /** complete: every DISCOVERED collector answered (collectors that are not Running are not counted). */
+  coverage: { total: number; reachable: number; reporting: number; complete: boolean }
+  /** True when events were dropped by a per-node or overall limit. */
+  truncated: boolean
+  nodes: string[]
+  counts: Record<string, number>
+  findings: Array<{ node: string; code: string; evidence: string }>
+  rankObservations?: Array<{ operation: string; rank: string; samples: number; medianDurationNs: number }>
+  events: FlightEvent[]
+}
+
 const apiClient = axios.create({
   baseURL: '/api',
   timeout: 30000,
@@ -682,6 +710,11 @@ export const api = {
   exportUsage: async (format: 'csv' | 'json', params: Record<string, string>): Promise<Blob> => {
     const { data } = await apiClient.get('/usage/export', { params: { ...params, format }, responseType: 'blob' })
     return data as Blob
+  },
+
+  getFlightReport: async (job: string, namespace: string): Promise<FlightReport> => {
+    const { data } = await apiClient.get(`/flight/jobs/${encodeURIComponent(job)}`, { params: { namespace } })
+    return data
   },
 
   getInvoices: async (params: Record<string, string>): Promise<InvoiceReport> => {

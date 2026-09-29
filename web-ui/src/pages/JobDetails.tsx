@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import type { UseQueryResult } from '@tanstack/react-query'
 import { api, type JobEvent, type JobLogs, type JobPod } from '@/lib/api'
+import FlightRecorder from '@/components/FlightRecorder'
 import PageHero from '@/components/PageHero'
 import PagePulse from '@/components/kit/PagePulse'
 import ConfirmDialog from '@/components/ConfirmDialog'
@@ -156,6 +157,8 @@ export default function JobDetails() {
             <ErrorState title="Could not refresh this job; showing the last data." error={error} onRetry={() => refetch()} retrying={isRefetching} />
           </div>
         )}
+
+        {job.metadata.namespace && <FlightRecorder namespace={job.metadata.namespace} job={job.metadata.name} />}
 
         <section className="card span3">
           <p className="eyebrow">STATUS</p>
