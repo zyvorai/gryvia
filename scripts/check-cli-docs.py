@@ -20,6 +20,31 @@ SKIP_DIRS = ("node_modules", "website/build", "cli/target", ".git/")
 USAGE_ERR = re.compile(r"unexpected argument|unrecognized subcommand|required arguments were not provided|invalid value")
 
 
+SHELL_LANGS = {"", "bash", "sh", "shell", "console", "zsh"}
+
+
+def shell_blocks(text: str):
+    """Bodies of fenced code blocks whose language is a shell (or unlabeled), found by scanning fence lines.
+
+    Blocks in other languages (text, yaml, json, ...) are skipped, and they cannot throw off the pairing of
+    fences the way a regex over the whole file would.
+    """
+    lang = None
+    body: list = []
+    for line in text.split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            if lang is None:
+                lang = stripped[3:].strip().split()[0] if stripped[3:].strip() else ""
+                body = []
+            else:
+                if lang in SHELL_LANGS:
+                    yield "\n".join(body)
+                lang = None
+        elif lang is not None:
+            body.append(line)
+
+
 def commands():
     seen = {}
     for path in glob.glob(os.path.join(ROOT, "**", "*.md"), recursive=True):
@@ -27,7 +52,7 @@ def commands():
         if any(s in rel for s in SKIP_DIRS):
             continue
         text = open(path, errors="ignore").read()
-        for block in re.findall(r"```(?:bash|sh|shell|console)?\n(.*?)```", text, re.S):
+        for block in shell_blocks(text):
             pending = ""
             for line in block.split("\n"):
                 s = line.strip()
