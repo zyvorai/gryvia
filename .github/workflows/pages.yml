@@ -25,7 +25,12 @@ jobs:
     - name: Package Helm charts into the site
       run: |
         mkdir -p website/build/charts
-        for chart in helm/*/; do helm package "$chart" -d website/build/charts; done
+        helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+        for chart in helm/*/; do
+          # Charts with dependencies (observability) need them fetched before packaging.
+          if grep -q '^dependencies:' "$chart/Chart.yaml"; then helm dependency build "$chart"; fi
+          helm package "$chart" -d website/build/charts
+        done
         helm repo index website/build/charts --url https://zyvorai.github.io/gryvia/charts
     - uses: actions/upload-pages-artifact@v3
       with: {path: website/build}

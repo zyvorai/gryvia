@@ -1,6 +1,9 @@
 # Gryvia Bare Metal Deployment Guide
 
-Complete guide for deploying Gryvia on bare metal GPU clusters.
+Provisioning guide for bare metal GPU clusters: hardware and network preparation, Terraform, Ansible, GPU drivers
+and RDMA. Once the cluster is up, continue with the [Platform Setup Guide](./COMPLETE_DEPLOYMENT_GUIDE.md) to install
+Gryvia itself. Operating an install (upgrade, uninstall, backup, troubleshooting) is covered in
+[Operations](./OPERATIONS.md).
 
 ## Quick Deploy (Single Server)
 
