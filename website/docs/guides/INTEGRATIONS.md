@@ -651,11 +651,11 @@ rate(gryvia_integration_errors_total[5m])
 # Check integration logs
 kubectl logs -n gryvia-system deploy/integrations-controller
 
-# Test webhook
-gryvia integrations test wandb
+# Check that the integrations controller is running
+kubectl get pods -n gryvia-system
 
-# View integration status
-gryvia integrations status
+# Check platform status
+gryvia status
 ```
 
 ### Authentication Failures
@@ -663,9 +663,6 @@ gryvia integrations status
 ```bash
 # Verify secret
 kubectl get secret wandb-api-key -o yaml
-
-# Test credentials
-gryvia integrations auth-test wandb
 ```
 
 ## Support

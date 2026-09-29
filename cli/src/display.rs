@@ -227,10 +227,6 @@ pub fn print_cluster_overview(nodes: &[GryviaGpuNode], jobs: &[GryviaAIJob]) {
     print_lines(cluster_overview_lines(nodes, jobs, ui::color_enabled()));
 }
 
-pub fn colorize_status(status: &str) -> String {
-    Marker::from_phase(status).paint(status)
-}
-
 /// Time elapsed since a Kubernetes timestamp.
 pub fn age_since(ts: &k8s_openapi::apimachinery::pkg::apis::meta::v1::Time) -> chrono::Duration {
     chrono::Utc::now().signed_duration_since(
@@ -315,13 +311,6 @@ pub fn print_info(message: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn colorize_status_keeps_the_text() {
-        for s in ["Running", "Pending", "Failed", "Completed", "Whatever"] {
-            assert!(colorize_status(s).contains(s));
-        }
-    }
 
     fn job(name: &str, phase: &str, gpus: u32) -> GryviaAIJob {
         serde_json::from_value(serde_json::json!({

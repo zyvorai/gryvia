@@ -1,11 +1,12 @@
 use anyhow::{Context, Result};
-use colored::*;
 use kube::api::{Api, ApiResource, GroupVersionKind, ListParams, Patch, PatchParams};
 use kube::core::DynamicObject;
-use prettytable::{format, Cell, Row, Table};
 use serde_json::json;
 
 use crate::client::GryviaClient;
+use crate::commands::flows::verdict_marker;
+use crate::display;
+use crate::ui::{self, Cell2, Marker};
 
 pub enum PolicyAction {
     Suggest {
@@ -35,7 +36,8 @@ pub async fn execute(client: &GryviaClient, action: PolicyAction) -> Result<()> 
 }
 
 async fn list_policies(client: &GryviaClient, namespace: &str, output: &str) -> Result<()> {
-    println!("{}", "━━━ Flow Policies ━━━".bold().cyan());
+    let color = ui::color_enabled();
+    println!("{}", ui::header("Flow Policies", color));
     println!();
 
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
@@ -48,18 +50,17 @@ async fn list_policies(client: &GryviaClient, namespace: &str, output: &str) -> 
     let policies = match api.list(&ListParams::default()).await {
         Ok(list) => list,
         Err(e) => {
-            println!(
-                "  {} Could not query flow policies: {}",
-                "⚠".yellow().bold(),
-                e
-            );
+            display::print_warning(&format!("Could not query flow policies: {}", e));
             println!();
             return Ok(());
         }
     };
 
     if policies.items.is_empty() {
-        println!("  {}", "No flow policies found.".dimmed());
+        println!(
+            "{}",
+            Marker::Disabled.paint_with("No flow policies found.", color)
+        );
         println!();
         return Ok(());
     }
@@ -79,90 +80,90 @@ async fn list_policies(client: &GryviaClient, namespace: &str, output: &str) -> 
     Ok(())
 }
 
-fn print_policies_table(policies: &[DynamicObject]) {
-    let mut table = Table::new();
-    table.set_format(*format::consts::FORMAT_BOX_CHARS);
-
-    table.add_row(Row::new(vec![
-        Cell::new("NAME").style_spec("Fb"),
-        Cell::new("SOURCE").style_spec("Fb"),
-        Cell::new("DESTINATION").style_spec("Fb"),
-        Cell::new("PORT").style_spec("Fb"),
-        Cell::new("ACTION").style_spec("Fb"),
-        Cell::new("INTENT").style_spec("Fb"),
-        Cell::new("STATUS").style_spec("Fb"),
-        Cell::new("MATCHED FLOWS").style_spec("Fb"),
-    ]));
-
-    for policy in policies {
-        let name = policy.metadata.name.as_deref().unwrap_or("<unknown>");
-        let spec = policy.data.get("spec");
-        let status = policy.data.get("status");
-
-        let source = spec
-            .and_then(|s| s.get("sourceService"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("-");
-        let destination = spec
-            .and_then(|s| s.get("destinationService"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("-");
-        let port = spec
-            .and_then(|s| s.get("port"))
-            .and_then(|v| v.as_u64())
-            .map(|p| p.to_string())
-            .unwrap_or_else(|| "-".to_string());
-        let action = spec
-            .and_then(|s| s.get("action"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("allow");
-        let intent = spec
-            .and_then(|s| s.get("intent"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("-");
-
-        let phase = status
-            .and_then(|s| s.get("phase"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("Pending");
-        let matched_flows = status
-            .and_then(|s| s.get("matchedFlows"))
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
-
-        let action_colored = match action {
-            "allow" | "ALLOW" => action.green().to_string(),
-            "deny" | "DENY" | "drop" | "DROP" => action.red().to_string(),
-            _ => action.yellow().to_string(),
-        };
-
-        let phase_colored = match phase {
-            "Enforced" | "Active" => phase.green().to_string(),
-            "Pending" => phase.yellow().to_string(),
-            "Suggested" => phase.cyan().to_string(),
-            _ => phase.normal().to_string(),
-        };
-
-        table.add_row(Row::new(vec![
-            Cell::new(name),
-            Cell::new(source),
-            Cell::new(destination),
-            Cell::new(&port),
-            Cell::new(&action_colored),
-            Cell::new(intent),
-            Cell::new(&phase_colored),
-            Cell::new(&matched_flows.to_string()),
-        ]));
+/// Marker for a policy phase.
+fn policy_phase_marker(phase: &str) -> Marker {
+    match phase {
+        "Enforced" | "Active" => Marker::Ok,
+        "Pending" | "Suggested" => Marker::Warn,
+        "Error" | "Failed" => Marker::Error,
+        _ => Marker::Unknown,
     }
+}
 
-    table.printstd();
+/// Lines of the flow policies table.
+pub fn policies_lines(policies: &[DynamicObject], color: bool) -> Vec<String> {
+    let rows: Vec<Vec<Cell2>> = policies
+        .iter()
+        .map(|policy| {
+            let name = policy.metadata.name.as_deref().unwrap_or("<unknown>");
+            let spec = policy.data.get("spec");
+            let status = policy.data.get("status");
+            let text = |key: &str| -> String {
+                spec.and_then(|s| s.get(key))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("-")
+                    .to_string()
+            };
+            let port = spec
+                .and_then(|s| s.get("port"))
+                .and_then(|v| v.as_u64())
+                .map(|p| p.to_string())
+                .unwrap_or_else(|| "-".to_string());
+            let action = spec
+                .and_then(|s| s.get("action"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("allow");
+            let phase = status
+                .and_then(|s| s.get("phase"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("Pending");
+            let matched_flows = status
+                .and_then(|s| s.get("matchedFlows"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            vec![
+                (name.to_string(), None),
+                (text("sourceService"), None),
+                (text("destinationService"), None),
+                (port, None),
+                (action.to_string(), Some(verdict_marker(action))),
+                (text("intent"), None),
+                (phase.to_string(), Some(policy_phase_marker(phase))),
+                (matched_flows.to_string(), None),
+            ]
+        })
+        .collect();
+    ui::grid(
+        &[
+            "NAME",
+            "SOURCE",
+            "DESTINATION",
+            "PORT",
+            "ACTION",
+            "INTENT",
+            "STATUS",
+            "MATCHED FLOWS",
+        ],
+        &rows,
+        color,
+    )
+}
+
+fn print_policies_table(policies: &[DynamicObject]) {
+    for line in policies_lines(policies, ui::color_enabled()) {
+        println!("{line}");
+    }
     println!();
 }
 
 async fn suggest_policies(client: &GryviaClient, namespace: &str) -> Result<()> {
-    println!("{}", "━━━ Suggested Policies ━━━".bold().cyan());
+    let color = ui::color_enabled();
+    println!("{}", ui::header("Suggested Policies", color));
     println!();
-    println!("  {}", "Analyzing observed traffic patterns...".dimmed());
+    println!(
+        "{}",
+        Marker::Disabled.paint_with("Analyzing observed traffic patterns...", color)
+    );
     println!();
 
     // Query for suggested policies (those with phase=Suggested)
@@ -179,11 +180,7 @@ async fn suggest_policies(client: &GryviaClient, namespace: &str) -> Result<()> 
     let suggestions = match api.list(&params).await {
         Ok(list) => list,
         Err(e) => {
-            println!(
-                "  {} Could not query policy suggestions: {}",
-                "⚠".yellow().bold(),
-                e
-            );
+            display::print_warning(&format!("Could not query policy suggestions: {}", e));
             println!();
             return Ok(());
         }
@@ -191,77 +188,88 @@ async fn suggest_policies(client: &GryviaClient, namespace: &str) -> Result<()> 
 
     if suggestions.items.is_empty() {
         println!(
-            "  {}",
-            "No policy suggestions available. Traffic analysis may still be in progress.".dimmed()
+            "{}",
+            Marker::Disabled.paint_with(
+                "No policy suggestions available. Traffic analysis may still be in progress.",
+                color
+            )
         );
         println!();
         return Ok(());
     }
 
-    for (i, suggestion) in suggestions.items.iter().enumerate() {
-        let name = suggestion.metadata.name.as_deref().unwrap_or("<unknown>");
-        let spec = suggestion.data.get("spec");
-
-        let source = spec
-            .and_then(|s| s.get("sourceService"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("-");
-        let destination = spec
-            .and_then(|s| s.get("destinationService"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("-");
-        let port = spec
-            .and_then(|s| s.get("port"))
-            .and_then(|v| v.as_u64())
-            .map(|p| p.to_string())
-            .unwrap_or_else(|| "*".to_string());
-        let action = spec
-            .and_then(|s| s.get("action"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("allow");
-        let intent = spec
-            .and_then(|s| s.get("intent"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("observed traffic pattern");
-        let confidence = spec
-            .and_then(|s| s.get("confidence"))
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
-
-        println!(
-            "  {}. {} (confidence: {:.0}%)",
-            (i + 1).to_string().bold(),
-            name.bright_white(),
-            confidence * 100.0
-        );
-        println!(
-            "     {} → {} port:{} action:{} ",
-            source.cyan(),
-            destination.cyan(),
-            port,
-            match action {
-                "allow" | "ALLOW" => action.green().to_string(),
-                "deny" | "DENY" => action.red().to_string(),
-                _ => action.yellow().to_string(),
-            }
-        );
-        println!("     Intent: {}", intent.dimmed());
-        println!(
-            "     Apply: {} policy apply {}",
-            "gryvia network".dimmed(),
-            name.dimmed()
-        );
-        println!();
+    for line in suggestion_lines(&suggestions.items, color) {
+        println!("{line}");
     }
 
     Ok(())
 }
 
+/// Lines of the numbered policy suggestions.
+pub fn suggestion_lines(suggestions: &[DynamicObject], color: bool) -> Vec<String> {
+    let mut lines = Vec::new();
+    for (i, suggestion) in suggestions.iter().enumerate() {
+        let name = suggestion.metadata.name.as_deref().unwrap_or("<unknown>");
+        let spec = suggestion.data.get("spec");
+        let text = |key: &str, default: &str| -> String {
+            spec.and_then(|s| s.get(key))
+                .and_then(|v| v.as_str())
+                .unwrap_or(default)
+                .to_string()
+        };
+        let port = spec
+            .and_then(|s| s.get("port"))
+            .and_then(|v| v.as_u64())
+            .map(|p| p.to_string())
+            .unwrap_or_else(|| "*".to_string());
+        let action = text("action", "allow");
+        let confidence = spec
+            .and_then(|s| s.get("confidence"))
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+
+        lines.push(format!(
+            "{} {} (confidence: {:.0}%)",
+            ui::ansi(&format!("{}.", i + 1), "1", color),
+            name,
+            confidence * 100.0
+        ));
+        lines.push(format!(
+            "   {} → {}  port:{}  action:{}",
+            text("sourceService", "-"),
+            text("destinationService", "-"),
+            port,
+            verdict_marker(&action).paint_with(&action, color)
+        ));
+        lines.push(format!(
+            "   {}",
+            ui::kv(
+                "Intent",
+                &text("intent", "observed traffic pattern"),
+                8,
+                color
+            )
+        ));
+        lines.push(format!(
+            "   {}",
+            ui::kv(
+                "Apply",
+                &Marker::Disabled.paint_with(&format!("gryvia network policy apply {name}"), color),
+                8,
+                color
+            )
+        ));
+        lines.push(String::new());
+    }
+    lines
+}
+
 async fn apply_policy(client: &GryviaClient, policy_name: &str, namespace: &str) -> Result<()> {
+    let color = ui::color_enabled();
     println!(
         "{} Applying policy: {}",
-        "→".cyan().bold(),
-        policy_name.bright_white()
+        ui::ansi("→", "1;36", color),
+        policy_name
     );
 
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
@@ -285,11 +293,7 @@ async fn apply_policy(client: &GryviaClient, policy_name: &str, namespace: &str)
         .unwrap_or("Unknown");
 
     if current_phase == "Enforced" || current_phase == "Active" {
-        println!(
-            "  {} Policy '{}' is already enforced.",
-            "ℹ".cyan().bold(),
-            policy_name
-        );
+        display::print_info(&format!("Policy '{}' is already enforced.", policy_name));
         return Ok(());
     }
 
@@ -314,11 +318,81 @@ async fn apply_policy(client: &GryviaClient, policy_name: &str, namespace: &str)
     .context("Failed to apply policy")?;
 
     println!(
-        "  {} Policy '{}' applied and enforced.",
-        "✓".green().bold(),
+        "{} Policy '{}' applied and enforced.",
+        Marker::Ok.paint_with(Marker::Ok.glyph(), color),
         policy_name
     );
     println!();
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::commands::network::strip_ansi;
+    use serde_json::json;
+
+    fn policy(name: &str, spec: serde_json::Value, status: serde_json::Value) -> DynamicObject {
+        serde_json::from_value(json!({
+            "apiVersion": "gryvia.io/v1alpha1",
+            "kind": "GryviaFlowPolicy",
+            "metadata": {"name": name},
+            "spec": spec,
+            "status": status,
+        }))
+        .unwrap()
+    }
+
+    fn fixture() -> Vec<DynamicObject> {
+        vec![
+            policy(
+                "web-to-api",
+                json!({"sourceService": "web", "destinationService": "api", "port": 8080,
+                    "action": "allow", "intent": "frontend traffic", "confidence": 0.9}),
+                json!({"phase": "Enforced", "matchedFlows": 120}),
+            ),
+            policy(
+                "block-db",
+                json!({"sourceService": "web", "destinationService": "db", "action": "deny"}),
+                json!({}),
+            ),
+        ]
+    }
+
+    #[test]
+    fn policies_table_is_aligned() {
+        assert_eq!(
+            policies_lines(&fixture(), false),
+            vec![
+                "NAME        SOURCE  DESTINATION  PORT  ACTION  INTENT            STATUS    MATCHED FLOWS",
+                "web-to-api  web     api          8080  allow   frontend traffic  Enforced  120",
+                "block-db    web     db           -     deny    -                 Pending   0",
+            ]
+        );
+    }
+
+    #[test]
+    fn suggestions_render() {
+        let lines = suggestion_lines(&fixture()[..1], false);
+        assert_eq!(
+            lines,
+            vec![
+                "1. web-to-api (confidence: 90%)",
+                "   web → api  port:8080  action:allow",
+                "   Intent  frontend traffic",
+                "   Apply   gryvia network policy apply web-to-api",
+                "",
+            ]
+        );
+    }
+
+    #[test]
+    fn color_strips_to_plain() {
+        let plain = policies_lines(&fixture(), false);
+        let colored = policies_lines(&fixture(), true);
+        assert!(colored.iter().any(|l| l.contains('\x1b')));
+        let stripped: Vec<String> = colored.iter().map(|l| strip_ansi(l)).collect();
+        assert_eq!(stripped, plain);
+    }
 }

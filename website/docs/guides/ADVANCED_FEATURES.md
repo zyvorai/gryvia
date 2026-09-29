@@ -67,16 +67,22 @@ spec:
 
 ```bash
 # Check cluster health
-gryvia health status cluster-gpu-health
+gryvia health
 
-# Diagnose specific GPU
-gryvia health diagnose --node gpu-node-05 --gpu 3
+# Check only GPU health
+gryvia health gpu
 
-# Manual remediation
-gryvia health remediate gpu-node-05 --action gpu-reset
+# Inspect one GPU node
+gryvia get node gpu-node-05
 
-# View history
-gryvia health history gpu-node-05
+# Manual remediation: cordon and drain the node, then reset the GPU on the host
+gryvia maintenance start gpu-node-05 --reason gpu-reset --drain
+
+# Return the node to service
+gryvia maintenance end gpu-node-05
+
+# View the health check status and recent results
+kubectl describe gryviahealthcheck cluster-gpu-health
 ```
 
 ### Health Check Types
@@ -221,20 +227,20 @@ spec:
 - **Discounts**: 5-25% off for reservations
 - **Prepaid**: Additional discount for upfront payment
 
-### CLI
+### Managing Reservations
+
+The `gryvia` CLI does not manage reservations. Create them by applying a `GryviaReservation`
+manifest (see the examples above) and inspect them with `kubectl`:
 
 ```bash
-# Create reservation
-gryvia reservation create my-reservation \
-  --team ml-research \
-  --gpu-type A100-80G \
-  --gpu-count 32 \
-  --duration 4d \
-  --exclusive
+# Create a reservation
+kubectl apply -f my-reservation.yaml
 
-# View utilization
-gryvia reservation usage my-reservation
-# Output: 75% utilized, $12,960 wasted
+# List reservations
+kubectl get gryviareservations
+
+# View a reservation and its status
+kubectl get gryviareservation my-reservation -o yaml
 ```
 
 ---
@@ -304,22 +310,22 @@ ml-research (parent)
 
 Each sub-team gets a portion of parent's quota.
 
-### CLI
+### Managing Tenants
+
+The `gryvia` CLI does not manage tenants. Create them by applying a `GryviaTenant` manifest (see
+the example above); members and quotas are part of the tenant spec. Inspect tenants with `kubectl`
+and view spending with `gryvia cost`:
 
 ```bash
-# Create tenant
-gryvia tenant create ml-research \
-  --quota-gpus 128 \
-  --quota-cost 50000
+# Create or update a tenant
+kubectl apply -f ml-research-tenant.yaml
 
-# Add member
-gryvia tenant add-member ml-research alice --role admin
+# View the tenant and its status
+kubectl get gryviatenant ml-research -o yaml
 
-# View usage
-gryvia tenant usage ml-research
-
-# Generate report
-gryvia tenant report ml-research --month 2024-01 --output report.pdf
+# View GPU quota and spend for the team
+gryvia quota ml-research --budget
+gryvia cost ml-research --period month --detailed
 ```
 
 ---
@@ -337,12 +343,18 @@ Reusable job configurations with parameters.
 
 ### Using Templates
 
+Templates are cluster-scoped `GryviaTemplate` resources. The `gryvia` CLI does not manage or
+instantiate them, so list them with `kubectl` and copy the defaults into your job manifest:
+
 ```bash
-# Create job from template
-gryvia job create --template pytorch-ddp-training \
-  --param dataPath=/data/imagenet \
-  --param batchSize=128 \
-  --param epochs=90
+# List templates
+kubectl get gryviatemplates
+
+# View a template
+kubectl get gryviatemplate pytorch-ddp-training -o yaml
+
+# Submit the resulting job
+gryvia submit --file job.yaml
 ```
 
 ### Custom Template
@@ -724,7 +736,7 @@ Don't abuse high priority. Reserve for critical work.
 
 ### 6. Profile Jobs
 
-Use performance profiler to identify optimization opportunities.
+Use `gryvia gpu training` and `gryvia gpu nccl` to identify optimization opportunities.
 
 ### 7. Reserve for Deadlines
 
@@ -742,39 +754,44 @@ Let the system scale based on demand.
 
 ```bash
 # Check budget
-gryvia budget status --team my-team
+kubectl get gryviabudgets
+gryvia quota my-team --budget
 
 # Check reservation
-gryvia reservation list
+kubectl get gryviareservations
 
 # Check health
-gryvia health status cluster-gpu-health
+gryvia health
 ```
 
 ### High Costs
 
 ```bash
 # Analyze costs
-gryvia cost analyze --team my-team
+gryvia cost my-team --detailed
 
-# Get recommendations
-gryvia cost optimize --team my-team
+# Compare periods
+gryvia cost my-team --period week
 
-# Check for idle resources
-gryvia cost waste --team my-team
+# Check for idle GPUs
+gryvia capacity
 ```
 
 ### Poor Performance
 
 ```bash
-# Profile job
-gryvia profile my-job
+# Check job status and logs
+gryvia status my-job
+gryvia logs my-job --tail 100
 
 # Check GPU health
-gryvia health check node gpu-node-05
+gryvia health gpu
 
-# View metrics
-gryvia metrics gpu-utilization
+# Check the node
+gryvia get node gpu-node-05
+
+# Check GPU communication (NCCL) for the job
+gryvia gpu nccl --job my-job
 ```
 
 ---

@@ -1,11 +1,13 @@
 use anyhow::{Context, Result};
-use colored::*;
 use kube::api::{Api, ApiResource, GroupVersionKind, ListParams, PostParams};
 use kube::core::DynamicObject;
 use serde_json::json;
 use tokio::time::{sleep, Duration};
 
 use crate::client::GryviaClient;
+use crate::commands::flows::verdict_marker;
+use crate::display;
+use crate::ui::{self, Cell2, Marker};
 
 pub async fn execute(
     client: &GryviaClient,
@@ -15,13 +17,10 @@ pub async fn execute(
     namespace: &str,
     follow: bool,
 ) -> Result<()> {
-    println!("{}", format!("━━━ Trace: {} ━━━", service).bold().cyan());
-    println!();
-    println!("  {} {}", "Service:".bold(), service.bright_white());
-    println!("  {} {}", "Duration:".bold(), duration);
-    println!("  {} {}", "Level:".bold(), level);
-    println!("  {} {}", "Namespace:".bold(), namespace);
-    println!();
+    let color = ui::color_enabled();
+    for line in trace_header_lines(service, duration, level, namespace, color) {
+        println!("{line}");
+    }
 
     // Create trace session via CRD
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
@@ -52,32 +51,29 @@ pub async fn execute(
         Ok(_) => {
             println!(
                 "{} Created trace session: {}",
-                "✓".green().bold(),
-                session_name.bright_white()
+                Marker::Ok.paint_with(Marker::Ok.glyph(), color),
+                session_name
             );
         }
         Err(e) => {
-            println!(
-                "{} Could not create trace session: {}",
-                "⚠".yellow().bold(),
-                e
-            );
+            display::print_warning(&format!("Could not create trace session: {}", e));
             println!(
                 "  {}",
-                "Displaying mock flow data for demonstration...".dimmed()
+                Marker::Disabled
+                    .paint_with("Displaying mock flow data for demonstration...", color)
             );
         }
     }
 
     println!();
-    println!("{}", "Captured Flows:".bold().underline());
+    println!("{}", ui::section("Captured Flows", color));
     println!();
 
     if follow {
         // Poll for results in follow mode
         loop {
             let flows = fetch_flows(client, namespace, service).await;
-            print_flows(&flows);
+            print_flows(&flows, color);
 
             // Check if trace session has completed
             if let Ok(session) = api.get(&session_name).await {
@@ -90,12 +86,11 @@ pub async fn execute(
 
                 if phase == "Completed" || phase == "Failed" {
                     println!();
-                    println!(
-                        "{} Trace session {} ({})",
-                        "ℹ".cyan().bold(),
+                    display::print_info(&format!(
+                        "Trace session {} ({})",
                         phase.to_lowercase(),
                         session_name
-                    );
+                    ));
                     break;
                 }
             }
@@ -107,11 +102,12 @@ pub async fn execute(
         let flows = fetch_flows(client, namespace, service).await;
         if flows.is_empty() {
             println!(
-                "  {}",
-                "No flows captured yet. Use --follow to stream live.".dimmed()
+                "{}",
+                Marker::Disabled
+                    .paint_with("No flows captured yet. Use --follow to stream live.", color)
             );
         } else {
-            print_flows(&flows);
+            print_flows(&flows, color);
         }
     }
 
@@ -193,30 +189,127 @@ async fn fetch_flows(client: &GryviaClient, namespace: &str, service: &str) -> V
     }
 }
 
-fn print_flows(flows: &[FlowEntry]) {
-    for flow in flows {
-        let verdict_display = match flow.verdict.as_str() {
-            "FORWARDED" | "ALLOW" => flow.verdict.green().to_string(),
-            "DROP" | "DENIED" => {
-                let policy_info = flow
-                    .policy
-                    .as_deref()
-                    .map(|p| format!(" (policy: {})", p))
-                    .unwrap_or_default();
-                format!("{}{}", flow.verdict.red(), policy_info.red())
-            }
-            _ => flow.verdict.yellow().to_string(),
-        };
+fn print_flows(flows: &[FlowEntry], color: bool) {
+    for line in flow_lines(flows, color) {
+        println!("{line}");
+    }
+}
 
-        println!(
-            "  {} {} → {} {} {} {} {}",
-            flow.timestamp.dimmed(),
-            flow.source.bright_white(),
-            flow.destination.bright_white(),
-            flow.protocol.cyan(),
-            flow.bytes.dimmed(),
-            flow.latency.dimmed(),
-            verdict_display,
+/// The banner and the trace parameters.
+pub fn trace_header_lines(
+    service: &str,
+    duration: &str,
+    level: &str,
+    namespace: &str,
+    color: bool,
+) -> Vec<String> {
+    vec![
+        ui::header(&format!("Trace: {service}"), color),
+        String::new(),
+        ui::kv("Service", service, 11, color),
+        ui::kv("Duration", duration, 11, color),
+        ui::kv("Level", level, 11, color),
+        ui::kv("Namespace", namespace, 11, color),
+        String::new(),
+    ]
+}
+
+/// Lines of the captured-flows table.
+fn flow_lines(flows: &[FlowEntry], color: bool) -> Vec<String> {
+    let rows: Vec<Vec<Cell2>> = flows
+        .iter()
+        .map(|flow| {
+            let marker = verdict_marker(&flow.verdict);
+            let verdict = match (marker, flow.policy.as_deref()) {
+                (Marker::Error, Some(p)) => format!("{} (policy: {})", flow.verdict, p),
+                _ => flow.verdict.clone(),
+            };
+            vec![
+                (flow.timestamp.clone(), None),
+                (flow.source.clone(), None),
+                (flow.destination.clone(), None),
+                (flow.protocol.clone(), None),
+                (flow.bytes.clone(), None),
+                (flow.latency.clone(), None),
+                (verdict, Some(marker)),
+            ]
+        })
+        .collect();
+    ui::grid(
+        &[
+            "TIMESTAMP",
+            "SOURCE",
+            "DESTINATION",
+            "PROTOCOL",
+            "BYTES",
+            "LATENCY",
+            "VERDICT",
+        ],
+        &rows,
+        color,
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::commands::network::strip_ansi;
+
+    fn fixture() -> Vec<FlowEntry> {
+        vec![
+            FlowEntry {
+                timestamp: "10:00:01".into(),
+                source: "web".into(),
+                destination: "api".into(),
+                protocol: "HTTP".into(),
+                bytes: "1.2KB".into(),
+                latency: "3ms".into(),
+                verdict: "FORWARDED".into(),
+                policy: None,
+            },
+            FlowEntry {
+                timestamp: "10:00:02".into(),
+                source: "web".into(),
+                destination: "db".into(),
+                protocol: "TCP".into(),
+                bytes: "0B".into(),
+                latency: "-".into(),
+                verdict: "DROP".into(),
+                policy: Some("deny-db".into()),
+            },
+        ]
+    }
+
+    #[test]
+    fn flows_render_aligned() {
+        assert_eq!(
+            flow_lines(&fixture(), false),
+            vec![
+                "TIMESTAMP  SOURCE  DESTINATION  PROTOCOL  BYTES  LATENCY  VERDICT",
+                "10:00:01   web     api          HTTP      1.2KB  3ms      FORWARDED",
+                "10:00:02   web     db           TCP       0B     -        DROP (policy: deny-db)",
+            ]
         );
+    }
+
+    #[test]
+    fn header_and_color() {
+        assert_eq!(
+            trace_header_lines("api", "30s", "l4", "prod", false),
+            vec![
+                "━━━ Trace: api ━━━",
+                "",
+                "Service    api",
+                "Duration   30s",
+                "Level      l4",
+                "Namespace  prod",
+                "",
+            ]
+        );
+        let plain = flow_lines(&fixture(), false);
+        let colored = flow_lines(&fixture(), true);
+        assert!(colored.iter().any(|l| l.contains('\x1b')));
+        let stripped: Vec<String> = colored.iter().map(|l| strip_ansi(l)).collect();
+        assert_eq!(stripped, plain);
     }
 }

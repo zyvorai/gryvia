@@ -25,7 +25,6 @@ serde_yaml = "0.9"
 anyhow = "1.0"
 thiserror = "2.0"
 colored = "3.1"
-prettytable-rs = "0.10"
 chrono = { version = "0.4", features = ["serde"] }
 indicatif = "0.18"
 dialoguer = "0.12"

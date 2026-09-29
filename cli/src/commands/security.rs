@@ -1,11 +1,12 @@
 use anyhow::{Context, Result};
-use colored::*;
 use kube::api::{Api, ApiResource, GroupVersionKind, ListParams, PostParams};
 use kube::core::DynamicObject;
-use prettytable::{format, Cell, Row, Table};
 use serde_json::json;
 
 use crate::client::GryviaClient;
+use crate::commands::network::severity_marker;
+use crate::display;
+use crate::ui::{self, Cell2, Marker};
 
 pub enum SecurityAction {
     Alerts {
@@ -66,7 +67,8 @@ async fn execute_alerts(
     severity: Option<&str>,
     alert_type: Option<&str>,
 ) -> Result<()> {
-    println!("{}", "━━━ Security Alerts ━━━".bold().cyan());
+    let color = ui::color_enabled();
+    println!("{}", ui::header("Security Alerts", color));
     println!();
 
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
@@ -79,18 +81,14 @@ async fn execute_alerts(
     let policies = match api.list(&ListParams::default()).await {
         Ok(list) => list,
         Err(e) => {
-            println!(
-                "  {} Could not query security policies: {}",
-                "!".yellow().bold(),
-                e
-            );
+            display::print_warning(&format!("Could not query security policies: {}", e));
             println!();
             return Ok(());
         }
     };
 
     // Collect all alerts from all policies
-    let mut all_alerts: Vec<(String, String, String, String, String)> = Vec::new();
+    let mut all_alerts: Vec<AlertRow> = Vec::new();
 
     for policy in &policies.items {
         let status = policy.data.get("status");
@@ -139,46 +137,45 @@ async fn execute_alerts(
     }
 
     if all_alerts.is_empty() {
-        println!("  {}", "No security alerts detected.".green());
+        println!(
+            "{} No security alerts detected.",
+            Marker::Ok.paint_with(Marker::Ok.glyph(), color)
+        );
         println!();
         return Ok(());
     }
 
-    let mut table = Table::new();
-    table.set_format(*format::consts::FORMAT_BOX_CHARS);
-
-    table.add_row(Row::new(vec![
-        Cell::new("SEVERITY").style_spec("Fb"),
-        Cell::new("TYPE").style_spec("Fb"),
-        Cell::new("POLICY").style_spec("Fb"),
-        Cell::new("COUNT").style_spec("Fb"),
-        Cell::new("LAST ALERT").style_spec("Fb"),
-    ]));
-
-    for (sev, det_type, policy_name, count, last_alert) in &all_alerts {
-        let severity_colored = match sev.as_str() {
-            "critical" => sev.red().bold().to_string(),
-            "high" => sev.yellow().bold().to_string(),
-            "medium" => sev.blue().to_string(),
-            "low" => sev.dimmed().to_string(),
-            _ => sev.normal().to_string(),
-        };
-
-        table.add_row(Row::new(vec![
-            Cell::new(&severity_colored),
-            Cell::new(det_type),
-            Cell::new(policy_name),
-            Cell::new(count),
-            Cell::new(last_alert),
-        ]));
+    for line in alerts_lines(&all_alerts, color) {
+        println!("{line}");
     }
-
-    table.printstd();
     println!();
-    println!("  {} Total alerts: {}", "i".cyan().bold(), all_alerts.len());
+    display::print_info(&format!("Total alerts: {}", all_alerts.len()));
     println!();
 
     Ok(())
+}
+
+type AlertRow = (String, String, String, String, String);
+
+/// Lines of the alerts table (SEVERITY TYPE POLICY COUNT LAST ALERT).
+fn alerts_lines(alerts: &[AlertRow], color: bool) -> Vec<String> {
+    let rows: Vec<Vec<Cell2>> = alerts
+        .iter()
+        .map(|(sev, det_type, policy_name, count, last_alert)| {
+            vec![
+                (sev.clone(), Some(severity_marker(sev))),
+                (det_type.clone(), None),
+                (policy_name.clone(), None),
+                (count.clone(), None),
+                (last_alert.clone(), None),
+            ]
+        })
+        .collect();
+    ui::grid(
+        &["SEVERITY", "TYPE", "POLICY", "COUNT", "LAST ALERT"],
+        &rows,
+        color,
+    )
 }
 
 fn classify_alert_severity(alert_type: &str, count: i64) -> &'static str {
@@ -203,9 +200,6 @@ fn classify_alert_severity(alert_type: &str, count: i64) -> &'static str {
 }
 
 async fn execute_status(client: &GryviaClient, namespace: &str) -> Result<()> {
-    println!("{}", "━━━ Security Status Overview ━━━".bold().cyan());
-    println!();
-
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
         "gryvia.io",
         "v1alpha1",
@@ -216,11 +210,7 @@ async fn execute_status(client: &GryviaClient, namespace: &str) -> Result<()> {
     let policies = match api.list(&ListParams::default()).await {
         Ok(list) => list,
         Err(e) => {
-            println!(
-                "  {} Could not query security policies: {}",
-                "!".yellow().bold(),
-                e
-            );
+            display::print_warning(&format!("Could not query security policies: {}", e));
             return Ok(());
         }
     };
@@ -252,43 +242,72 @@ async fn execute_status(client: &GryviaClient, namespace: &str) -> Result<()> {
             .unwrap_or(0);
     }
 
-    println!("{}", "Summary:".bold().underline());
-    println!(
-        "  Security Policies: {} ({} active)",
-        total_policies.to_string().bright_white().bold(),
-        active_policies.to_string().green()
-    );
-    println!(
-        "  Detection Rules:   {}",
-        total_detections.to_string().bright_white().bold()
-    );
-
-    let alerts_display = if total_alerts > 0 {
-        total_alerts.to_string().red().bold().to_string()
-    } else {
-        "0".green().to_string()
-    };
-    println!("  Total Alerts:      {}", alerts_display);
-    println!();
-
-    // Overall security health
-    let health = if total_alerts > 50 {
-        "CRITICAL".red().bold().to_string()
-    } else if total_alerts > 10 {
-        "WARNING".yellow().bold().to_string()
-    } else if total_alerts > 0 {
-        "MONITORING".blue().bold().to_string()
-    } else {
-        "SECURE".green().bold().to_string()
-    };
-    println!("  Security Status:   {}", health);
-    println!();
+    for line in status_lines(
+        total_policies,
+        active_policies,
+        total_detections,
+        total_alerts,
+        ui::color_enabled(),
+    ) {
+        println!("{line}");
+    }
 
     Ok(())
 }
 
+/// Lines of the security status overview.
+fn status_lines(
+    total_policies: usize,
+    active_policies: usize,
+    detections: i64,
+    alerts: i64,
+    color: bool,
+) -> Vec<String> {
+    let (marker, label) = if alerts > 50 {
+        (Marker::Error, "CRITICAL")
+    } else if alerts > 10 {
+        (Marker::Warn, "WARNING")
+    } else if alerts > 0 {
+        (Marker::Warn, "MONITORING")
+    } else {
+        (Marker::Ok, "SECURE")
+    };
+    let alerts_marker = if alerts > 0 {
+        Marker::Error
+    } else {
+        Marker::Ok
+    };
+    let w = 19;
+    vec![
+        ui::header("Security Status Overview", color),
+        String::new(),
+        ui::section("Summary", color),
+        ui::kv(
+            "Security Policies",
+            &format!("{total_policies} ({active_policies} active)"),
+            w,
+            color,
+        ),
+        ui::kv("Detection Rules", &detections.to_string(), w, color),
+        ui::kv(
+            "Total Alerts",
+            &alerts_marker.paint_with(&alerts.to_string(), color),
+            w,
+            color,
+        ),
+        String::new(),
+        ui::kv(
+            "Security Status",
+            &marker.paint_with(&format!("{} {}", marker.glyph(), label), color),
+            w,
+            color,
+        ),
+    ]
+}
+
 async fn execute_policy_list(client: &GryviaClient, namespace: &str, output: &str) -> Result<()> {
-    println!("{}", "━━━ Security Policies ━━━".bold().cyan());
+    let color = ui::color_enabled();
+    println!("{}", ui::header("Security Policies", color));
     println!();
 
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
@@ -301,17 +320,16 @@ async fn execute_policy_list(client: &GryviaClient, namespace: &str, output: &st
     let policies = match api.list(&ListParams::default()).await {
         Ok(list) => list,
         Err(e) => {
-            println!(
-                "  {} Could not query security policies: {}",
-                "!".yellow().bold(),
-                e
-            );
+            display::print_warning(&format!("Could not query security policies: {}", e));
             return Ok(());
         }
     };
 
     if policies.items.is_empty() {
-        println!("  {}", "No security policies found.".dimmed());
+        println!(
+            "{}",
+            Marker::Disabled.paint_with("No security policies found.", color)
+        );
         println!();
         return Ok(());
     }
@@ -322,82 +340,80 @@ async fn execute_policy_list(client: &GryviaClient, namespace: &str, output: &st
             crate::output::print_serialized(output, &items)?;
         }
         _ => {
-            let mut table = Table::new();
-            table.set_format(*format::consts::FORMAT_BOX_CHARS);
-
-            table.add_row(Row::new(vec![
-                Cell::new("NAME").style_spec("Fb"),
-                Cell::new("PHASE").style_spec("Fb"),
-                Cell::new("NAMESPACES").style_spec("Fb"),
-                Cell::new("RULES").style_spec("Fb"),
-                Cell::new("ALERTS").style_spec("Fb"),
-                Cell::new("AUTO-BLOCK").style_spec("Fb"),
-            ]));
-
-            for policy in &policies.items {
-                let name = policy.metadata.name.as_deref().unwrap_or("-");
-                let spec = policy.data.get("spec");
-                let status = policy.data.get("status");
-
-                let phase = status
-                    .and_then(|s| s.get("phase"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Unknown");
-
-                let namespaces = spec
-                    .and_then(|s| s.get("targetNamespaces"))
-                    .and_then(|v| v.as_array())
-                    .map(|arr| {
-                        arr.iter()
-                            .filter_map(|v| v.as_str())
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    })
-                    .unwrap_or_else(|| "-".to_string());
-
-                let rules = status
-                    .and_then(|s| s.get("activeDetections"))
-                    .and_then(|v| v.as_i64())
-                    .unwrap_or(0);
-
-                let alerts = status
-                    .and_then(|s| s.get("alertsTriggered"))
-                    .and_then(|v| v.as_i64())
-                    .unwrap_or(0);
-
-                let auto_block = spec
-                    .and_then(|s| s.get("autoBlock"))
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-
-                let phase_colored = match phase {
-                    "Active" => phase.green().to_string(),
-                    "Error" => phase.red().to_string(),
-                    _ => phase.yellow().to_string(),
-                };
-
-                let auto_block_display = if auto_block {
-                    "enabled".green().to_string()
-                } else {
-                    "disabled".dimmed().to_string()
-                };
-
-                table.add_row(Row::new(vec![
-                    Cell::new(name),
-                    Cell::new(&phase_colored),
-                    Cell::new(&namespaces),
-                    Cell::new(&rules.to_string()),
-                    Cell::new(&alerts.to_string()),
-                    Cell::new(&auto_block_display),
-                ]));
+            for line in security_policies_lines(&policies.items, color) {
+                println!("{line}");
             }
-
-            table.printstd();
         }
     }
 
     println!();
     Ok(())
+}
+
+/// Lines of the security policies table.
+fn security_policies_lines(policies: &[DynamicObject], color: bool) -> Vec<String> {
+    let rows: Vec<Vec<Cell2>> = policies
+        .iter()
+        .map(|policy| {
+            let name = policy.metadata.name.as_deref().unwrap_or("-");
+            let spec = policy.data.get("spec");
+            let status = policy.data.get("status");
+            let phase = status
+                .and_then(|s| s.get("phase"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("Unknown");
+            let namespaces = spec
+                .and_then(|s| s.get("targetNamespaces"))
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                })
+                .unwrap_or_else(|| "-".to_string());
+            let count = |key: &str| {
+                status
+                    .and_then(|s| s.get(key))
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0)
+            };
+            let auto_block = spec
+                .and_then(|s| s.get("autoBlock"))
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let phase_marker = match phase {
+                "Active" => Marker::Ok,
+                "Error" => Marker::Error,
+                _ => Marker::Warn,
+            };
+            let (block_text, block_marker) = if auto_block {
+                ("enabled", Marker::Ok)
+            } else {
+                ("disabled", Marker::Disabled)
+            };
+            vec![
+                (name.to_string(), None),
+                (phase.to_string(), Some(phase_marker)),
+                (namespaces, None),
+                (count("activeDetections").to_string(), None),
+                (count("alertsTriggered").to_string(), None),
+                (block_text.to_string(), Some(block_marker)),
+            ]
+        })
+        .collect();
+    ui::grid(
+        &[
+            "NAME",
+            "PHASE",
+            "NAMESPACES",
+            "RULES",
+            "ALERTS",
+            "AUTO-BLOCK",
+        ],
+        &rows,
+        color,
+    )
 }
 
 async fn execute_policy_create(
@@ -408,7 +424,8 @@ async fn execute_policy_create(
     rules: &[String],
     auto_block: bool,
 ) -> Result<()> {
-    println!("{}", "━━━ Create Security Policy ━━━".bold().cyan());
+    let color = ui::color_enabled();
+    println!("{}", ui::header("Create Security Policy", color));
     println!();
 
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
@@ -446,26 +463,14 @@ async fn execute_policy_create(
 
     match api.create(&PostParams::default(), &policy_obj).await {
         Ok(_) => {
-            println!(
-                "{} Created security policy: {}",
-                "OK".green().bold(),
-                name.bright_white()
-            );
-            println!("  Namespaces: {}", target_namespaces.join(", "));
-            println!("  Rules: {}", rules.join(", "));
-            println!(
-                "  Auto-block: {}",
-                if auto_block {
-                    "enabled".green()
-                } else {
-                    "disabled".dimmed()
-                }
-            );
+            for line in policy_created_lines(name, target_namespaces, rules, auto_block, color) {
+                println!("{line}");
+            }
         }
         Err(e) => {
             println!(
                 "{} Failed to create security policy: {}",
-                "ERROR".red().bold(),
+                Marker::Error.paint_with(Marker::Error.glyph(), color),
                 e
             );
         }
@@ -473,4 +478,148 @@ async fn execute_policy_create(
 
     println!();
     Ok(())
+}
+
+/// Lines confirming a created security policy.
+fn policy_created_lines(
+    name: &str,
+    namespaces: &[String],
+    rules: &[String],
+    auto_block: bool,
+    color: bool,
+) -> Vec<String> {
+    let (block_text, block_marker) = if auto_block {
+        ("enabled", Marker::Ok)
+    } else {
+        ("disabled", Marker::Disabled)
+    };
+    vec![
+        format!(
+            "{} Created security policy: {}",
+            Marker::Ok.paint_with(Marker::Ok.glyph(), color),
+            name
+        ),
+        ui::kv("Namespaces", &namespaces.join(", "), 12, color),
+        ui::kv("Rules", &rules.join(", "), 12, color),
+        ui::kv(
+            "Auto-block",
+            &block_marker.paint_with(block_text, color),
+            12,
+            color,
+        ),
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::commands::network::strip_ansi;
+    use serde_json::json;
+
+    fn policy(name: &str, spec: serde_json::Value, status: serde_json::Value) -> DynamicObject {
+        serde_json::from_value(json!({
+            "apiVersion": "gryvia.io/v1alpha1",
+            "kind": "GryviaSecurityPolicy",
+            "metadata": {"name": name},
+            "spec": spec,
+            "status": status,
+        }))
+        .unwrap()
+    }
+
+    fn alerts() -> Vec<AlertRow> {
+        vec![
+            (
+                "critical",
+                "escape",
+                "gpu-guard",
+                "7",
+                "2026-09-29T10:00:00Z",
+            ),
+            ("medium", "mining", "gpu-guard", "3", "-"),
+        ]
+        .into_iter()
+        .map(|(a, b, c, d, e)| (a.into(), b.into(), c.into(), d.into(), e.into()))
+        .collect()
+    }
+
+    #[test]
+    fn alerts_table_is_aligned() {
+        assert_eq!(
+            alerts_lines(&alerts(), false),
+            vec![
+                "SEVERITY  TYPE    POLICY     COUNT  LAST ALERT",
+                "critical  escape  gpu-guard  7      2026-09-29T10:00:00Z",
+                "medium    mining  gpu-guard  3      -",
+            ]
+        );
+    }
+
+    #[test]
+    fn status_renders() {
+        assert_eq!(
+            status_lines(3, 2, 12, 0, false),
+            vec![
+                "━━━ Security Status Overview ━━━",
+                "",
+                "Summary",
+                "Security Policies  3 (2 active)",
+                "Detection Rules    12",
+                "Total Alerts       0",
+                "",
+                "Security Status    ✓ SECURE",
+            ]
+        );
+    }
+
+    #[test]
+    fn policies_table_is_aligned() {
+        let items = vec![
+            policy(
+                "gpu-guard",
+                json!({"targetNamespaces": ["ml", "prod"], "autoBlock": true}),
+                json!({"phase": "Active", "activeDetections": 4, "alertsTriggered": 10}),
+            ),
+            policy("empty", json!({}), json!({})),
+        ];
+        assert_eq!(
+            security_policies_lines(&items, false),
+            vec![
+                "NAME       PHASE    NAMESPACES  RULES  ALERTS  AUTO-BLOCK",
+                "gpu-guard  Active   ml, prod    4      10      enabled",
+                "empty      Unknown  -           0      0       disabled",
+            ]
+        );
+    }
+
+    #[test]
+    fn created_lines_render() {
+        let lines = policy_created_lines(
+            "p",
+            &["ml".to_string()],
+            &["escape".to_string(), "mining".to_string()],
+            false,
+            false,
+        );
+        assert_eq!(
+            lines,
+            vec![
+                "✓ Created security policy: p",
+                "Namespaces  ml",
+                "Rules       escape, mining",
+                "Auto-block  disabled",
+            ]
+        );
+    }
+
+    #[test]
+    fn color_strips_to_plain() {
+        let plain = alerts_lines(&alerts(), false);
+        let colored = alerts_lines(&alerts(), true);
+        assert!(colored.iter().any(|l| l.contains('\x1b')));
+        let stripped: Vec<String> = colored.iter().map(|l| strip_ansi(l)).collect();
+        assert_eq!(stripped, plain);
+        let st = status_lines(1, 1, 1, 60, true);
+        assert!(st.iter().any(|l| l.contains('\x1b')));
+    }
 }

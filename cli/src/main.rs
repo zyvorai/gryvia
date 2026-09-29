@@ -194,7 +194,7 @@ enum Commands {
     },
 
     /// Show GPU cluster overview
-    #[command(after_help = examples(&["gryvia cluster", "gryvia cluster --detailed"]))]
+    #[command(after_help = examples(&["gryvia cluster", "gryvia cluster --detailed", "gryvia cluster -o json"]))]
     Cluster {
         /// Show detailed node information
         #[arg(short, long)]
@@ -203,10 +203,14 @@ enum Commands {
         /// Refresh interval in seconds (watch mode)
         #[arg(short, long)]
         watch: Option<u64>,
+
+        /// Output format
+        #[arg(short, long, value_enum, default_value_t = OutputFormat::Table, env = "GRYVIA_OUTPUT")]
+        output: OutputFormat,
     },
 
     /// Show GPU quota status for teams
-    #[command(after_help = examples(&["gryvia quota", "gryvia quota ml-research --budget"]))]
+    #[command(after_help = examples(&["gryvia quota", "gryvia quota ml-research --budget", "gryvia quota -o yaml"]))]
     Quota {
         /// Team name (shows all teams if not specified)
         team: Option<String>,
@@ -214,6 +218,10 @@ enum Commands {
         /// Show budget details
         #[arg(short, long)]
         budget: bool,
+
+        /// Output format
+        #[arg(short, long, value_enum, default_value_t = OutputFormat::Table, env = "GRYVIA_OUTPUT")]
+        output: OutputFormat,
     },
 
     /// Show cost analysis and spending
@@ -232,7 +240,7 @@ enum Commands {
     },
 
     /// Show queue status
-    #[command(after_help = examples(&["gryvia queue", "gryvia queue --watch 5"]))]
+    #[command(after_help = examples(&["gryvia queue", "gryvia queue --watch 5", "gryvia queue -o json"]))]
     Queue {
         /// Queue name (shows all queues if not specified)
         name: Option<String>,
@@ -240,6 +248,10 @@ enum Commands {
         /// Watch mode with refresh interval
         #[arg(short, long)]
         watch: Option<u64>,
+
+        /// Output format
+        #[arg(short, long, value_enum, default_value_t = OutputFormat::Table, env = "GRYVIA_OUTPUT")]
+        output: OutputFormat,
     },
 
     /// Interactive job creation wizard
@@ -362,7 +374,11 @@ enum MaintenanceCommands {
     },
 
     /// List nodes marked for maintenance, with age and reason
-    List,
+    List {
+        /// Output format
+        #[arg(short, long, value_enum, default_value_t = OutputFormat::Table, env = "GRYVIA_OUTPUT")]
+        output: OutputFormat,
+    },
 }
 
 #[derive(Subcommand)]
@@ -729,11 +745,19 @@ async fn run() -> Result<()> {
         Commands::Cancel { jobs, yes } => {
             commands::cancel::execute(&client, &jobs, yes).await?;
         }
-        Commands::Cluster { detailed, watch } => {
-            commands::cluster::execute(&client, detailed, watch).await?;
+        Commands::Cluster {
+            detailed,
+            watch,
+            output,
+        } => {
+            commands::cluster::execute(&client, detailed, watch, output.as_str()).await?;
         }
-        Commands::Quota { team, budget } => {
-            commands::quota::execute(&client, team, budget).await?;
+        Commands::Quota {
+            team,
+            budget,
+            output,
+        } => {
+            commands::quota::execute(&client, team, budget, output.as_str()).await?;
         }
         Commands::Cost {
             team,
@@ -742,8 +766,12 @@ async fn run() -> Result<()> {
         } => {
             commands::cost::execute(&client, team, &period, detailed).await?;
         }
-        Commands::Queue { name, watch } => {
-            commands::queue::execute(&client, name, watch).await?;
+        Commands::Queue {
+            name,
+            watch,
+            output,
+        } => {
+            commands::queue::execute(&client, name, watch, output.as_str()).await?;
         }
         Commands::Create { resource } => {
             commands::create::execute(&client, &resource).await?;
@@ -774,8 +802,8 @@ async fn run() -> Result<()> {
             MaintenanceCommands::End { node } => {
                 commands::maintenance::end(&client, &node).await?;
             }
-            MaintenanceCommands::List => {
-                commands::maintenance::list(&client).await?;
+            MaintenanceCommands::List { output } => {
+                commands::maintenance::list(&client, output.as_str()).await?;
             }
         },
         Commands::Network { action } => {
@@ -1160,6 +1188,26 @@ mod tests {
                 .unwrap();
             assert_eq!(m.subcommand_name(), Some(target));
         }
+    }
+
+    #[test]
+    fn data_commands_take_an_output_format() {
+        for args in [
+            vec!["gryvia", "cluster", "-o", "json"],
+            vec!["gryvia", "quota", "-o", "yaml"],
+            vec!["gryvia", "queue", "-o", "json"],
+            vec!["gryvia", "maintenance", "list", "-o", "json"],
+            vec!["gryvia", "capacity", "-o", "yaml"],
+            vec!["gryvia", "status", "-o", "json"],
+        ] {
+            assert!(
+                Cli::command().try_get_matches_from(args.clone()).is_ok(),
+                "{args:?} should parse"
+            );
+        }
+        assert!(Cli::command()
+            .try_get_matches_from(["gryvia", "quota", "-o", "csv"])
+            .is_err());
     }
 
     #[test]

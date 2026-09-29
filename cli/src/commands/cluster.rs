@@ -7,29 +7,37 @@ use crate::display;
 use crate::types::*;
 use crate::ui::{self, Cell2, Marker};
 
-pub async fn execute(client: &GryviaClient, detailed: bool, watch: Option<u64>) -> Result<()> {
+pub async fn execute(
+    client: &GryviaClient,
+    detailed: bool,
+    watch: Option<u64>,
+    output: &str,
+) -> Result<()> {
     if let Some(interval) = watch {
         if interval == 0 {
             anyhow::bail!("Watch interval must be greater than 0");
+        }
+        if output != "table" {
+            anyhow::bail!("--watch needs the table output format");
         }
         loop {
             // Clear screen using ANSI escape sequences. This works on POSIX-compliant
             // terminals but may render as garbage on non-ANSI terminals (e.g. Windows cmd.exe
             // without virtual terminal processing enabled).
             print!("\x1B[2J\x1B[1;1H");
-            if let Err(e) = show_cluster_overview(client, detailed).await {
+            if let Err(e) = show_cluster_overview(client, detailed, output).await {
                 eprintln!("Error refreshing cluster overview: {}", e);
             }
             sleep(Duration::from_secs(interval)).await;
         }
     } else {
-        show_cluster_overview(client, detailed).await?;
+        show_cluster_overview(client, detailed, output).await?;
     }
 
     Ok(())
 }
 
-async fn show_cluster_overview(client: &GryviaClient, detailed: bool) -> Result<()> {
+async fn show_cluster_overview(client: &GryviaClient, detailed: bool, output: &str) -> Result<()> {
     let nodes_api: Api<GryviaGpuNode> = Api::all(client.kube_client.clone());
     let jobs_api: Api<GryviaAIJob> = Api::all(client.kube_client.clone());
 
@@ -42,6 +50,11 @@ async fn show_cluster_overview(client: &GryviaClient, detailed: bool) -> Result<
         .list(&ListParams::default())
         .await
         .context("Failed to list jobs")?;
+
+    if output != "table" {
+        let doc = serde_json::json!({ "nodes": nodes.items, "jobs": jobs.items });
+        return crate::output::print_serialized(output, &doc);
+    }
 
     display::print_cluster_overview(&nodes.items, &jobs.items);
 

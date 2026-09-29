@@ -6,6 +6,8 @@ and the project aims to follow [Semantic Versioning](https://semver.org/) once i
 ## [Unreleased]
 
 ### Added
+- CLI in the style of `cilium`: colored `--help` with commands in groups, examples on every command, aliases, `--no-color`/`NO_COLOR`, shell completions (`gryvia completion`), `gryvia version`, concise errors with hints, and one output look (aligned tables with OK/Warning/Error markers) across all commands.
+- `gryvia status` reports the whole platform like `cilium status`: a component banner, workload readiness, cluster totals, image versions, errors and a per-node table (GPU health, driver, DaemonSet pods, maintenance). `--brief`, `--wait`, `--node`, `-o json|yaml`; exits 1 when a required component fails. `-o json|yaml` is also available on `cluster`, `quota`, `queue` and `maintenance list`.
 - Helm chart `helm/gryvia` installs the operators, API gateway and dashboard in one release, with optional
   Ingress, cert-manager TLS, PodDisruptionBudgets and a NetworkPolicy.
 - Tag-driven release workflow: multi-arch images on ghcr.io (mirrored to Docker Hub), signed with cosign,

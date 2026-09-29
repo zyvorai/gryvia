@@ -11,7 +11,10 @@ Command-line interface for managing Gryvia GPU clusters.
 - **Health Checks**: Monitor GPU, storage, and network health
 - **Capacity Report**: `gryvia capacity` shows total/allocated/free GPUs per type, pending demand and shortfall
 - **Node Maintenance**: `gryvia maintenance start|end|list` cordons, optionally drains (Eviction API), and tracks nodes
-- **Beautiful Output**: Colored tables and status indicators
+- **Platform Status**: `gryvia status` shows every component, workload and node (like `cilium status`), with `--brief`, `--wait` and `-o json|yaml`
+- **Grouped, Colored Help**: commands are listed in groups, every command has examples, and colors honour `--no-color`/`NO_COLOR`
+- **Shell Completions**: `gryvia completion bash|zsh|fish|powershell`
+- **Consistent Output**: aligned tables with OK/Warning/Error markers
 
 ## Installation
 
@@ -30,6 +33,61 @@ cargo install --path .
 ```
 
 ## Usage
+
+### Platform Status
+
+```bash
+# Every component, workload and node at a glance (exit code 1 when a required component fails)
+gryvia status
+
+# For scripts: OK or the failing components; wait until healthy
+gryvia status --brief
+gryvia status --wait --wait-timeout 5m
+
+# Same data as JSON or YAML
+gryvia status -o json
+```
+
+Sample output:
+
+```text
+    ______      Gryvia:       OK
+   /      \     Operators:    OK  gpu, ai, quota
+  /   G    \    API gateway:  OK  2/2 ready
+  \        /    Dashboard:    OK  2/2 ready
+   \______/     GPU nodes:    OK  2/2 ready
+                GPU add-ons:  OK  dcgm-exporter 2/2, nvidia-device-plugin 2/2
+                Collectors:   disabled  not installed
+
+Deployment gryvia-gpu-operator          Desired: 1, Ready: 1/1, Available: 1/1
+Deployment gryvia-ai-operator           Desired: 1, Ready: 1/1, Available: 1/1
+Deployment gryvia-quota-operator        Desired: 1, Ready: 1/1, Available: 1/1
+Deployment gryvia-api-gateway           Desired: 2, Ready: 2/2, Available: 2/2
+Deployment gryvia-ui                    Desired: 2, Ready: 2/2, Available: 2/2
+DaemonSet  gryvia-dcgm-exporter         Desired: 2, Ready: 2/2, Available: 2/2
+DaemonSet  gryvia-nvidia-device-plugin  Desired: 2, Ready: 2/2, Available: 2/2
+
+Cluster Pods:   5/5 running
+Jobs:           1 running, 2 pending, 3 completed, 0 failed
+Namespace:      gryvia-system
+
+Image versions
+  gryvia-ai-operator           ghcr.io/zyvorai/gryvia-ai-operator:1.0.0
+  gryvia-api-gateway           ghcr.io/zyvorai/gryvia-api-gateway:1.0.0
+  gryvia-dcgm-exporter         ghcr.io/zyvorai/gryvia-dcgm-exporter:1.0.0
+  gryvia-gpu-operator          ghcr.io/zyvorai/gryvia-gpu-operator:1.0.0
+  gryvia-nvidia-device-plugin  ghcr.io/zyvorai/gryvia-nvidia-device-plugin:1.0.0
+  gryvia-quota-operator        ghcr.io/zyvorai/gryvia-quota-operator:1.0.0
+  gryvia-ui                    ghcr.io/zyvorai/gryvia-ui:1.0.0
+
+Nodes
+  NODE    STATE  GPUS      DRIVER              GPU HEALTH  DCGM  PLUGIN  COLLECTOR  PODS
+  node-a  Ready  8 x H100  550.54 / CUDA 12.4  8/8         ✓     ✓       -          3
+  node-b  Ready  8 x H100  550.54 / CUDA 12.4  8/8         ✓     ✓       -          2
+```
+
+Colors follow the terminal: use `--no-color` or `NO_COLOR=1` to turn them off. Shell completions:
+`gryvia completion bash|zsh|fish|powershell`. See the [CLI guide](../website/docs/guides/CLI_GUIDE.md#platform-status).
 
 ### Submit a Training Job
 

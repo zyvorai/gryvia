@@ -15,6 +15,7 @@ on:
       - 'docker/**'
       - 'scripts/kind-demo.sh'
       - 'examples/demo/**'
+      - 'cli/**'
   workflow_dispatch:
 
 permissions:
@@ -45,6 +46,35 @@ jobs:
           curl -sfk -H "Authorization: Bearer $key" https://localhost:8443/api/nodes | grep -q demo-h100-1
           curl -sfk -H "Authorization: Bearer $key" https://localhost:8443/api/jobs | grep -q demo-train
           test "$(curl -sk -o /dev/null -w '%{http_code}' https://localhost:8443/api/jobs)" = "401" -o "$(curl -sk -o /dev/null -w '%{http_code}' https://localhost:8443/api/jobs)" = "403"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cli
+      - name: Build the CLI
+        run: cargo build --release --locked
+        working-directory: cli
+      - name: The CLI reads the demo cluster
+        run: |
+          gryvia="$PWD/cli/target/release/gryvia"
+          # Wait for the platform, then print the report the way a user sees it.
+          "$gryvia" status --wait --wait-timeout 3m
+          "$gryvia" status
+          test "$("$gryvia" status --brief)" = "OK"
+          # The GPU nodes in the demo are fictional, so they may be reported as a warning, never as a failure.
+          "$gryvia" status -o json | python3 -c "
+          import json, sys
+          m = json.load(sys.stdin)
+          assert m['overall'] in ('ok', 'warn'), m['overall']
+          names = [c['name'] for c in m['components']]
+          assert 'Operators' in names and 'API gateway' in names and 'Dashboard' in names, names
+          assert any(n['name'] == 'demo-h100-1' for n in m['nodes']), [n['name'] for n in m['nodes']]
+          print('status JSON ok:', m['overall'], len(m['nodes']), 'nodes')
+          "
+          "$gryvia" cluster --detailed
+          "$gryvia" capacity
+          "$gryvia" list nodes
+          "$gryvia" version
+          "$gryvia" completion bash | grep -q gryvia
       - name: Dump state on failure
         if: failure()
         run: |
