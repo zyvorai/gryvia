@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { errorMessage } from '@/lib/errors'
 import type { InferenceService } from '@/lib/api'
 import PageHero from '@/components/PageHero'
 import PagePulse from '@/components/kit/PagePulse'
@@ -235,7 +236,7 @@ function CreateInferenceServiceModal({ onClose }: { onClose: () => void }) {
                 required
                 value={formData.modelRef}
                 onChange={(e) => setFormData({ ...formData, modelRef: e.target.value })}
-                placeholder="my-model:v2"
+                placeholder="my-model" pattern="[a-z0-9]([\-a-z0-9]*[a-z0-9])?" title="Name of a model in the registry (lowercase letters, digits, hyphens)"
               />
             </label>
           </div>
@@ -306,7 +307,7 @@ function CreateInferenceServiceModal({ onClose }: { onClose: () => void }) {
 
           {createMutation.isError && (
             <p className="warning" role="alert">
-              Error deploying service: {createMutation.error instanceof Error ? createMutation.error.message : 'Unknown error'}
+              Error deploying service: {errorMessage(createMutation.error)}
             </p>
           )}
 

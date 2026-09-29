@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { errorMessage } from '@/lib/errors'
 import type { Workspace } from '@/lib/api'
 import PageHero from '@/components/PageHero'
 import PagePulse from '@/components/kit/PagePulse'
@@ -283,7 +284,7 @@ function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
 
           {createMutation.isError && (
             <p className="warning" role="alert">
-              Error creating workspace: {createMutation.error instanceof Error ? createMutation.error.message : 'Unknown error'}
+              Error creating workspace: {errorMessage(createMutation.error)}
             </p>
           )}
 

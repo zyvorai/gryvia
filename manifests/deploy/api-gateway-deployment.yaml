@@ -22,7 +22,13 @@ spec:
         command: ["/bin/sh", "-c"]
         args:
         - |
-          openssl req -x509 -nodes -days 3650 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -keyout /tls/tls.key -out /tls/tls.crt -subj "/CN=gryvia-api-gateway/O=Gryvia" -addext "subjectAltName=DNS:gryvia-api-gateway,DNS:gryvia-api-gateway.gryvia-system.svc,DNS:localhost,IP:127.0.0.1,IP:$HOST_IP"
+          # Prefer the shared self-signed pair from the gryvia-tls Secret (created by the deploy
+          # script) so every pod and restart serves the same certificate; otherwise mint one.
+          if [ -s /tls-src/tls.crt ] && [ -s /tls-src/tls.key ]; then
+            cp /tls-src/tls.crt /tls-src/tls.key /tls/
+          else
+            openssl req -x509 -nodes -days 3650 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -keyout /tls/tls.key -out /tls/tls.crt -subj "/CN=gryvia-api-gateway/O=Gryvia" -addext "subjectAltName=DNS:gryvia-api-gateway,DNS:gryvia-api-gateway.gryvia-system.svc,DNS:localhost,IP:127.0.0.1,IP:$HOST_IP"
+          fi
           chown 1000:1000 /tls/tls.key /tls/tls.crt
           chmod 600 /tls/tls.key
         env:
@@ -40,6 +46,9 @@ spec:
         volumeMounts:
         - name: tls
           mountPath: /tls
+        - name: tls-src
+          mountPath: /tls-src
+          readOnly: true
       containers:
       - name: api-gateway
         image: gryvia/api-gateway:1.0.0
@@ -104,6 +113,10 @@ spec:
         emptyDir: {}
       - name: tls
         emptyDir: {}
+      - name: tls-src
+        secret:
+          secretName: gryvia-tls
+          optional: true
 ---
 apiVersion: v1
 kind: Service

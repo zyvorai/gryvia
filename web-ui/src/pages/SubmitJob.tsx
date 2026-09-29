@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { FRAMEWORK_LABEL } from '@/lib/jobs'
 import { api } from '@/lib/api'
+import { errorMessage } from '@/lib/errors'
 import type { FabricAIJob } from '@/types'
 import { Trash2 } from 'lucide-react'
 import PageHero from '@/components/PageHero'
@@ -246,7 +247,7 @@ export default function SubmitJob() {
           <textarea
             required
             rows={3}
-            className="codeedit"
+            className="codeedit compact"
             value={formData.command}
             onChange={(e) => setFormData({ ...formData, command: e.target.value })}
             placeholder="python train.py --epochs 100 --batch-size 32"
@@ -295,7 +296,7 @@ export default function SubmitJob() {
 
         {createJobMutation.isError && (
           <p className="warning span3" role="alert">
-            Error submitting job: {createJobMutation.error instanceof Error ? createJobMutation.error.message : 'Unknown error'}
+            Error submitting job: {errorMessage(createJobMutation.error)}
           </p>
         )}
 

@@ -126,9 +126,9 @@ def make_client(fake_k8s):
     """make_client("network") -> TestClient with routers/network.py mounted."""
     import importlib
 
-    def _make(module: str) -> TestClient:
+    def _make(module: str, **deps_kw) -> TestClient:
         deps = Deps(verify_auth=_allow, k8s_custom=fake_k8s, k8s_core=FakeCore(),
-                    limiter=NoopLimiter(), job_namespace="default")
+                    limiter=NoopLimiter(), job_namespace="default", **deps_kw)
         app = FastAPI()
         app.include_router(importlib.import_module(f"routers.{module}").build_router(deps))
         return TestClient(app)

@@ -8,6 +8,9 @@ import { useNow } from '@/lib/useNow'
 import { phaseTone } from '@/lib/phase'
 import { jobFramework } from '@/lib/jobs'
 
+const shortDate = (iso: string) =>
+  new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+
 export default function JobDetails() {
   const { name } = useParams<{ name: string }>()
   const navigate = useNavigate()
@@ -64,8 +67,8 @@ export default function JobDetails() {
           headline={`${job.metadata.name} is ${phase.toLowerCase()}.`}
           tone={phase === 'Failed' ? 'bad' : undefined}
           figures={[
-            { label: 'Created', value: job.metadata.creationTimestamp ? new Date(job.metadata.creationTimestamp).toLocaleString() : 'N/A' },
-            { label: 'Started', value: job.status?.startTime ? new Date(job.status.startTime).toLocaleString() : 'N/A' },
+            { label: 'Created', value: job.metadata.creationTimestamp ? shortDate(job.metadata.creationTimestamp) : 'N/A' },
+            { label: 'Started', value: job.status?.startTime ? shortDate(job.status.startTime) : 'N/A' },
             { label: 'Duration', value: formatDuration(job.status?.startTime, job.status?.completionTime) },
             { label: 'GPU type', value: job.spec.gpuType || '-' },
             { label: 'GPU count', value: job.spec.gpus },

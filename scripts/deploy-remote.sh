@@ -76,6 +76,8 @@ fi
 VERSION="$(sed -n 's/^appVersion: *"\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' "${ROOT}/helm/gryvia-core/Chart.yaml")"
 [[ -n "$VERSION" ]] || { echo "cannot read appVersion from helm/gryvia-core/Chart.yaml" >&2; exit 1; }
 UI_NODEPORT="${GRYVIA_UI_NODEPORT:-32443}"
+TARGET_HOST="${TARGET#*@}"
+if [[ "$TARGET_HOST" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then TARGET_SAN="IP:${TARGET_HOST}"; else TARGET_SAN="DNS:${TARGET_HOST}"; fi
 API_KEY_LOCAL="${GRYVIA_API_KEY:-}"
 REMOTE_SUBDIR="${GRYVIA_REMOTE_SUBDIR:-.deployments/gryvia}"
 
@@ -258,6 +260,18 @@ helm upgrade --install gryvia-core ./helm/gryvia-core \\
   --wait --timeout 300s
 
 echo "Deploying API gateway and web UI ..."
+# One self-signed certificate for the UI and the gateway, shared by every pod through a Secret so
+# restarts and replicas serve the same certificate (a browser exception then keeps working).
+# Created once; delete the gryvia-tls Secret to rotate it.
+if ! kubectl -n gryvia-system get secret gryvia-tls >/dev/null 2>&1; then
+  TLS_DIR="\$(mktemp -d)"
+  HOST_IP="\$(hostname -I | awk '{print \$1}')"
+  openssl req -x509 -nodes -days 3650 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \\
+    -keyout "\$TLS_DIR/tls.key" -out "\$TLS_DIR/tls.crt" -subj "/CN=gryvia/O=Gryvia" \\
+    -addext "subjectAltName=DNS:gryvia,DNS:gryvia-ui,DNS:gryvia-ui.gryvia-system.svc,DNS:gryvia-api-gateway,DNS:gryvia-api-gateway.gryvia-system.svc,DNS:localhost,IP:127.0.0.1,IP:\$HOST_IP,${TARGET_SAN}"
+  kubectl -n gryvia-system create secret tls gryvia-tls --cert="\$TLS_DIR/tls.crt" --key="\$TLS_DIR/tls.key"
+  rm -rf "\$TLS_DIR"
+fi
 kubectl -n gryvia-system create secret generic gryvia-api-key \\
   --from-literal=GRYVIA_API_KEY="\$API_KEY" --dry-run=client -o yaml | kubectl apply -f -
 sed "s#image: gryvia/api-gateway:.*#image: \$REG/gryvia-api-gateway:\$VERSION#" manifests/deploy/api-gateway-deployment.yaml | kubectl apply -f -

@@ -16,7 +16,7 @@
 .card-link:hover { text-decoration: underline; }
 
 /* Forms: a label above a control, and an auto-fit grid of them (netra's .buildergrid look). */
-.field { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--text-tertiary); min-width: 0; }
+.field { display: flex; flex-direction: column; align-items: stretch; gap: 6px; font-size: 12px; color: var(--text-tertiary); min-width: 0; }
 .field input, .field select, .field textarea { width: 100%; max-width: 100%; font-size: 15px; color: var(--text-primary); }
 .formgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
 .formgrid .span-all { grid-column: 1 / -1; }
@@ -72,3 +72,19 @@ a.list-row:hover { background: var(--hover-fill); }
 .spinner { width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--hairline-1); border-top-color: var(--apple-blue); animation: spin 0.8s linear infinite; }
 .loading { display: flex; align-items: center; justify-content: center; padding: 48px 0; }
 @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+
+/* Links styled as buttons (netra only uses <button>/<label> with .buttonlike). */
+a.buttonlike { text-decoration: none; }
+a.buttonlike:hover { text-decoration: none; }
+.buttonlike.primary { background: var(--apple-blue); color: #fff; border-color: transparent; }
+.buttonlike.primary:hover { background: var(--apple-blue-hover); filter: brightness(1.06); }
+[data-theme="dark"] .buttonlike.primary:hover { box-shadow: 0 8px 24px rgba(0, 113, 227, 0.35); }
+
+/* netra's `label:has(> select)` lays a select's label out inline; stack it in filter bars like `.toolbar` does. */
+.filters label:has(> select) { flex-direction: column; align-items: flex-start; gap: 6px; font-size: 11px; color: var(--text-tertiary); }
+
+/* netra's .codeedit is a 460px editor; a short variant for one-line values. */
+.codeedit.compact { min-height: 120px; }
+
+/* A toolbar right after body text inside a card (e.g. the workspace card actions) needs breathing room. */
+.card p + .toolbar, .card .list-row + .toolbar { margin-top: 14px; }

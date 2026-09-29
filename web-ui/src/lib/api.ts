@@ -368,6 +368,12 @@ export interface AutoTunerJob {
   }
 }
 
+export interface CreateWorkflowRequest {
+  metadata: { name: string }
+  /** Steps as accepted by the gateway: name, type (job|script|webhook), dependsOn, and the step payload. */
+  spec: { steps: unknown[] }
+}
+
 export interface CreateTunerRequest {
   name: string
   algorithm: string
@@ -640,7 +646,7 @@ export const api = {
     return data
   },
 
-  createWorkflow: async (workflow: Partial<Workflow>): Promise<Workflow> => {
+  createWorkflow: async (workflow: CreateWorkflowRequest): Promise<Workflow> => {
     const { data } = await apiClient.post('/workflows', workflow)
     return data
   },

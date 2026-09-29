@@ -3,17 +3,17 @@
 Sources:
   * /api/ai/training/insight -> status of the most recently analysed FabricTrainingInsight
     (namespaced; see operators/ai-operator/api/v1).
-  * /api/ai/training/nccl    -> per-operation NCCL stats. No Gryvia CRD records these
-    (they come from eBPF tracing), so this is an empty list until one does.
-  * /api/gpu/memory          -> host/device transfer counters. FabricGpuMemoryOptimizer status
-    only carries utilisation/OOM aggregates, not transfer bytes, so counters are zero until
-    a source exists.
+  * /api/ai/training/nccl    -> per-operation NCCL stats from the eBPF collectors (routers/collector.py);
+    empty when no collector is reachable.
+  * /api/gpu/memory          -> host/device transfer counters from the same collectors; zeros when none
+    is reachable.
 Nothing is fabricated: no source object -> zeros / empty lists in the shape the UI expects.
 """
 from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, Request
 
+from .collector import fetch_all, merge_gpu_memory, merge_nccl
 from .common import Deps, list_items
 
 
@@ -81,13 +81,13 @@ def build_router(deps: Deps) -> APIRouter:
     @router.get("/api/ai/training/nccl")
     @deps.limiter.limit("30/minute")
     async def training_nccl(request: Request, _=Depends(deps.verify_auth)):
-        """NCCL per-operation stats. No cluster source exists yet, so this is empty."""
-        return {"operations": []}
+        """NCCL per-operation stats merged from every collector; empty when none is reachable."""
+        return merge_nccl(await fetch_all(deps, "/api/v1/gpu/nccl"))
 
     @router.get("/api/gpu/memory")
     @deps.limiter.limit("30/minute")
     async def gpu_memory(request: Request, _=Depends(deps.verify_auth)):
-        """Host/device transfer counters. No cluster source exists yet, so zeros."""
-        return {"h2dBytes": 0, "d2hBytes": 0, "d2dBytes": 0, "h2dCount": 0, "d2hCount": 0, "d2dCount": 0}
+        """Host/device transfer counters summed across collectors; zeros when none is reachable."""
+        return merge_gpu_memory(await fetch_all(deps, "/api/v1/gpu/memory"))
 
     return router

@@ -284,6 +284,7 @@ register_routers(app, Deps(
     k8s_core=k8s_core,
     limiter=limiter,
     job_namespace=JOB_NAMESPACE,
+    collector_urls=[u.strip().rstrip("/") for u in os.environ.get("GRYVIA_COLLECTOR_URLS", "").split(",") if u.strip()] or None,
 ))
 
 

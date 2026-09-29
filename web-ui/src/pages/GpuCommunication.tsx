@@ -241,6 +241,10 @@ function GPUMemoryChart({ stats }: { stats?: GPUMemStats }) {
 
   const maxBytes = Math.max(...transfers.map(t => t.bytes), 1)
 
+  if (transfers.every(t => t.bytes === 0)) {
+    return <p className="empty-state">No memory transfer data available yet.</p>
+  }
+
   return (
     <div className="stack">
       {transfers.map(t => (
@@ -257,9 +261,6 @@ function GPUMemoryChart({ stats }: { stats?: GPUMemStats }) {
           </div>
         </div>
       ))}
-      {(!stats || (stats.h2dBytes === 0 && stats.d2hBytes === 0 && stats.d2dBytes === 0)) && (
-        <p className="empty-state">No memory transfer data available yet.</p>
-      )}
     </div>
   )
 }

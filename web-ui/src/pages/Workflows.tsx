@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { api } from '@/lib/api'
+import { errorMessage } from '@/lib/errors'
 import type { Workflow, WorkflowStep } from '@/lib/api'
 import PageHero from '@/components/PageHero'
 import PagePulse from '@/components/kit/PagePulse'
@@ -9,6 +10,7 @@ import { countTone } from '@/components/kit/tone'
 import LoadingSpinner from '@/components/LoadingSpinner'
 
 export default function Workflows() {
+  const [showCreate, setShowCreate] = useState(false)
   const { data: workflows, isLoading, isError, refetch, isRefetching, dataUpdatedAt } = useQuery({
     queryKey: ['workflows'],
     queryFn: api.getWorkflows,
@@ -49,9 +51,9 @@ export default function Workflows() {
           <p className="eyebrow">Pipelines</p>
           <h2 className="card-title">All Workflows</h2>
           <div className="toolbar">
-            <Link to="/jobs/new" className="buttonlike primary">
+            <button className="primary" onClick={() => setShowCreate(true)}>
               Create Workflow
-            </Link>
+            </button>
             <button className="btn-refresh" onClick={() => refetch()} disabled={isRefetching}>
               Refresh
             </button>
@@ -84,6 +86,7 @@ export default function Workflows() {
         )}
         </section>
       </div>
+      {showCreate && <CreateWorkflowModal onClose={() => setShowCreate(false)} />}
     </>
   )
 }
@@ -104,6 +107,89 @@ const stepTone: Record<string, string> = {
   Running: 'info',
   Pending: '',
   Failed: 'bad',
+}
+
+
+const DEFAULT_STEPS = JSON.stringify(
+  [
+    { name: 'prepare', type: 'job', jobTemplate: { type: 'training', image: 'busybox:1.36', gpus: 0, command: ['echo', 'prepare'] } },
+    { name: 'train', type: 'job', dependsOn: ['prepare'], jobTemplate: { type: 'training', image: 'busybox:1.36', gpus: 1, command: ['echo', 'train'] } },
+  ],
+  null,
+  2,
+)
+
+function CreateWorkflowModal({ onClose }: { onClose: () => void }) {
+  const queryClient = useQueryClient()
+  const [name, setName] = useState('')
+  const [steps, setSteps] = useState(DEFAULT_STEPS)
+  const [error, setError] = useState<string | null>(null)
+
+  const createMutation = useMutation({
+    mutationFn: (body: { name: string; steps: unknown[] }) =>
+      api.createWorkflow({ metadata: { name: body.name }, spec: { steps: body.steps } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workflows'] })
+      onClose()
+    },
+  })
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(null)
+    if (!/^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/.test(name)) {
+      setError('Name must consist of lowercase alphanumeric characters or hyphens')
+      return
+    }
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(steps)
+    } catch {
+      setError('Steps must be valid JSON')
+      return
+    }
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      setError('Steps must be a non-empty JSON array')
+      return
+    }
+    createMutation.mutate({ name, steps: parsed })
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+        <h2 className="card-title">Create Workflow</h2>
+        <form onSubmit={handleSubmit} className="stack">
+          <label className="field">
+            <span>Name</span>
+            <input type="text" required value={name} onChange={(e) => setName(e.target.value)} placeholder="my-pipeline" />
+          </label>
+          <label className="field">
+            <span>Steps (JSON)</span>
+            <textarea className="codeedit compact" required value={steps} onChange={(e) => setSteps(e.target.value)} />
+          </label>
+          <p className="faint">
+            Each step has a name, an optional dependsOn list, and a payload: a jobTemplate (type, image, gpus), a script
+            (image, command) or a webhook (url).
+          </p>
+          {error && <p className="warning" role="alert">{error}</p>}
+          {createMutation.isError && (
+            <p className="warning" role="alert">
+              Error creating workflow: {errorMessage(createMutation.error)}
+            </p>
+          )}
+          <div className="toolbar">
+            <button type="button" className="btn-secondary" onClick={onClose}>
+              Cancel
+            </button>
+            <button type="submit" className="primary" disabled={createMutation.isPending}>
+              {createMutation.isPending ? 'Creating...' : 'Create Workflow'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
 }
 
 function WorkflowRow({ workflow }: { workflow: Workflow }) {

@@ -7,7 +7,7 @@ Kubernetes client (see tests/conftest.py).
 """
 import asyncio
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from fastapi import HTTPException
 from kubernetes.client.exceptions import ApiException
@@ -51,6 +51,8 @@ class Deps:
     k8s_core: Any                     # kubernetes.client.CoreV1Api (or a fake)
     limiter: Any                      # slowapi Limiter (or a no-op fake)
     job_namespace: str = "default"
+    collector_urls: Optional[List[str]] = None                                 # GRYVIA_COLLECTOR_URLS
+    collector_fetch: Optional[Callable[[str], Awaitable[List[Any]]]] = None    # tests inject this
 
 
 async def run(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { errorMessage } from '@/lib/errors'
 import type { AutoTunerJob, TunerTrial } from '@/lib/api'
 import PageHero from '@/components/PageHero'
 import PagePulse from '@/components/kit/PagePulse'
@@ -411,7 +412,7 @@ function CreateTunerModal({ onClose }: { onClose: () => void }) {
 
           {createMutation.isError && (
             <p className="warning" role="alert">
-              Error creating tuner: {createMutation.error instanceof Error ? createMutation.error.message : 'Unknown error'}
+              Error creating tuner: {errorMessage(createMutation.error)}
             </p>
           )}
 
