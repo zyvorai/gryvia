@@ -168,3 +168,11 @@ tr[data-clickable]:focus-visible { outline: 2px solid var(--apple-blue); outline
   content: none; }
 .navlinks > a, .mega-grid a { text-decoration: none; }
 .mega-grid a.active .mega-link-label { color: var(--apple-blue); }
+
+/* Visually hidden but available to assistive tech. */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+/* Sortable column header button: looks like header text, keyboard focusable. */
+.th-sort { all: unset; cursor: pointer; font: inherit; color: inherit; display: inline-flex; align-items: center; gap: 2px; }
+.th-sort:focus-visible { outline: 2px solid var(--apple-blue); outline-offset: 2px; border-radius: 4px; }
+th.num .th-sort { justify-content: flex-end; }

@@ -7,12 +7,17 @@ import { formatDate, formatRelative } from '@/lib/format'
 import { phaseTone } from '@/lib/phase'
 import { notify } from '@/lib/notify'
 import { intError, nameError, parseIntStrict } from '@/lib/forms'
-import { bestAcross, formatMetric, metricNameOf, validateParameterSpace } from '@/lib/tuner'
+import { bestAcross, formatMetric, metricNameOf } from '@/lib/tuner'
+import { initialSpaceState, spaceError, spaceJson, type ParamSpaceState } from '@/lib/paramSpace'
+import type { FilterDef, SortAccessor } from '@/lib/tableState'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
+import { useTableState } from '@/hooks/useTableState'
 import PageHero from '@/components/PageHero'
 import PagePulse from '@/components/kit/PagePulse'
 import Modal from '@/components/Modal'
 import Progress from '@/components/Progress'
+import DataTable, { type Column } from '@/components/DataTable'
+import ParamSpaceEditor from '@/components/ParamSpaceEditor'
 import { EmptyState, ErrorState, Skeleton } from '@/components/StateViews'
 import { TableCaption } from '@/components/TableCaption'
 
@@ -22,9 +27,28 @@ type Tuner = AutoTunerJob & { spec?: { direction?: 'maximize' | 'minimize'; metr
 const ALGORITHM_LABELS: Record<string, string> = { grid: 'Grid', random: 'Random', bayesian: 'Bayesian', asha: 'ASHA' }
 const algorithmLabel = (a?: string) => (a ? (ALGORITHM_LABELS[a.toLowerCase()] ?? a) : '—')
 
+const nameOf = (t: Tuner) => t.metadata?.name || 'unknown'
+const phaseOf = (t: Tuner) => t.status?.phase || 'Pending'
+
+const FILTERS: FilterDef<Tuner>[] = [
+  { name: 'status', label: 'Status', get: phaseOf },
+  { name: 'algorithm', label: 'Algorithm', get: (t) => (t.spec?.algorithm ? algorithmLabel(t.spec.algorithm) : undefined) },
+]
+const SORTS: Record<string, SortAccessor<Tuner>> = {
+  name: nameOf,
+  algorithm: (t) => t.spec?.algorithm,
+  trials: (t) => t.status?.trialsCompleted ?? 0,
+  best: (t) => t.status?.bestMetricValue ?? undefined,
+  status: phaseOf,
+  created: (t) => (t.metadata?.creationTimestamp ? Date.parse(t.metadata.creationTimestamp) : undefined),
+}
+const searchText = (t: Tuner) => `${nameOf(t)} ${phaseOf(t)} ${algorithmLabel(t.spec?.algorithm)} ${metricNameOf(t) ?? ''}`
+const DEFAULT_SORT = { key: 'created', dir: 'desc' as const }
+
 export default function AutoTuner() {
   useDocumentTitle('Auto Tuner')
   const [showCreateForm, setShowCreateForm] = useState(false)
+  const [openName, setOpenName] = useState<string | null>(null)
 
   const { data, isLoading, isError, error, refetch, isRefetching, dataUpdatedAt } = useQuery({
     queryKey: ['tuners'],
@@ -32,6 +56,7 @@ export default function AutoTuner() {
     refetchInterval: 15000,
   })
   const tuners = data as Tuner[] | undefined
+  const table = useTableState({ rows: tuners, searchText, filters: FILTERS, sortAccessors: SORTS, defaultSort: DEFAULT_SORT })
 
   if (isError && !tuners) {
     return (
@@ -41,6 +66,76 @@ export default function AutoTuner() {
       </>
     )
   }
+
+  const openTuner = tuners?.find((t) => nameOf(t) === openName)
+  const toggleOpen = (t: Tuner) => setOpenName(openName === nameOf(t) ? null : nameOf(t))
+  const columns: Column<Tuner>[] = [
+    {
+      key: 'name',
+      header: 'Name',
+      sortable: true,
+      render: (t) => (
+        <button
+          type="button"
+          className="th-sort"
+          aria-expanded={openName === nameOf(t)}
+          aria-controls="tuner-detail"
+          onClick={(e) => {
+            e.stopPropagation()
+            toggleOpen(t)
+          }}
+        >
+          <span className="faint" aria-hidden="true">{openName === nameOf(t) ? '▾' : '▸'}</span>{' '}
+          <b>{nameOf(t)}</b>
+        </button>
+      ),
+    },
+    { key: 'algorithm', header: 'Algorithm', sortable: true, render: (t) => <span className="pill">{algorithmLabel(t.spec?.algorithm)}</span> },
+    {
+      key: 'trials',
+      header: 'Trials',
+      sortable: true,
+      render: (t) => {
+        const done = t.status?.trialsCompleted ?? 0
+        const max = t.spec?.maxTrials ?? 0
+        return (
+          <>
+            <span className="muted">{done}/{max}</span>
+            <Progress value={done} max={max} label={`${nameOf(t)}: ${done} of ${max} trials complete`} />
+          </>
+        )
+      },
+    },
+    {
+      key: 'best',
+      header: 'Best metric',
+      sortable: true,
+      numeric: true,
+      render: (t) => {
+        const v = t.status?.bestMetricValue
+        const metric = metricNameOf(t)
+        return v !== undefined && v !== null ? (
+          <>
+            <b>{formatMetric(v, metric)}</b>
+            {metric && <div className="faint">{metric}{t.spec?.direction ? ` (${t.spec.direction === 'minimize' ? 'lower' : 'higher'} is better)` : ''}</div>}
+          </>
+        ) : (
+          <span className="faint">—</span>
+        )
+      },
+    },
+    { key: 'status', header: 'Status', sortable: true, render: (t) => <span className={`pill ${phaseTone(phaseOf(t))}`}>{phaseOf(t)}</span> },
+    {
+      key: 'created',
+      header: 'Created',
+      sortable: true,
+      render: (t) => (
+        <span className="faint" title={formatDate(t.metadata?.creationTimestamp)}>
+          {formatRelative(t.metadata?.creationTimestamp)}
+        </span>
+      ),
+    },
+  ]
 
   const active = tuners?.filter((t) => t.status?.phase === 'Running').length
   const trialsRunning = tuners?.reduce((sum, t) => sum + (t.status?.trialsRunning ?? 0), 0)
@@ -75,49 +170,51 @@ export default function AutoTuner() {
         <section className="card span3">
           <p className="eyebrow">Tuning</p>
           <h2 className="card-title">All tuners</h2>
-          <div className="toolbar">
-            <button className="primary" onClick={() => setShowCreateForm(true)}>
-              New tuner
-            </button>
-            <button className="btn-refresh" onClick={() => refetch()} disabled={isRefetching}>
-              Refresh
-            </button>
-            {tuners && <span className="faint">{tuners.length} total</span>}
-          </div>
           {isLoading ? (
             <Skeleton rows={4} />
-          ) : (tuners ?? []).length === 0 ? (
-            <EmptyState
-              title="No tuning jobs yet."
-              action={
-                <button className="primary" onClick={() => setShowCreateForm(true)}>
-                  Create your first tuner
-                </button>
-              }
-            >
-              A tuner runs many trials of your training image with different hyperparameters and tracks the best one.
-            </EmptyState>
           ) : (
-            <div className="table-wrap">
-              <table>
-                <TableCaption>Auto tuners</TableCaption>
-                <thead>
-                  <tr>
-                    <th scope="col">Name</th>
-                    <th scope="col">Algorithm</th>
-                    <th scope="col">Trials</th>
-                    <th scope="col" className="num">Best metric</th>
-                    <th scope="col">Status</th>
-                    <th scope="col">Details</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(tuners ?? []).map((tuner) => (
-                    <TunerRow key={tuner.metadata?.name} tuner={tuner} />
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <>
+              {openTuner && (
+                <div className="card" id="tuner-detail" role="region" aria-label={`${nameOf(openTuner)} trials`}>
+                  <div className="row">
+                    <p className="eyebrow">Trials: {nameOf(openTuner)}</p>
+                    <button type="button" className="btn-secondary" onClick={() => setOpenName(null)}>
+                      Close details
+                    </button>
+                  </div>
+                  <TunerDetail key={nameOf(openTuner)} tuner={openTuner} />
+                </div>
+              )}
+              <DataTable
+                caption="Auto tuners"
+                columns={columns}
+                state={table}
+                rowKey={nameOf}
+                onRowClick={toggleOpen}
+                actions={
+                  <>
+                    <button className="primary" onClick={() => setShowCreateForm(true)}>
+                      New tuner
+                    </button>
+                    <button className="btn-refresh" onClick={() => refetch()} disabled={isRefetching}>
+                      Refresh
+                    </button>
+                  </>
+                }
+                empty={
+                  <EmptyState
+                    title="No tuning jobs yet."
+                    action={
+                      <button className="primary" onClick={() => setShowCreateForm(true)}>
+                        Create your first tuner
+                      </button>
+                    }
+                  >
+                    A tuner runs many trials of your training image with different hyperparameters and tracks the best one.
+                  </EmptyState>
+                }
+              />
+            </>
           )}
         </section>
       </div>
@@ -128,78 +225,6 @@ export default function AutoTuner() {
 }
 
 // --- Sub-components ---
-
-function TunerRow({ tuner }: { tuner: Tuner }) {
-  const [expanded, setExpanded] = useState(false)
-  const name = tuner.metadata?.name || 'unknown'
-  const phase = tuner.status?.phase || 'Pending'
-  const trialsCompleted = tuner.status?.trialsCompleted ?? 0
-  const maxTrials = tuner.spec?.maxTrials ?? 0
-  const metricName = metricNameOf(tuner)
-  const bestValue = tuner.status?.bestMetricValue
-  const toggle = () => setExpanded((v) => !v)
-
-  return (
-    <>
-      <tr
-        className="table-row-hover"
-        data-clickable
-        tabIndex={0}
-        aria-expanded={expanded}
-        onClick={toggle}
-        onKeyDown={(e) => {
-          if (e.target !== e.currentTarget) return
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault()
-            toggle()
-          }
-        }}
-      >
-        <td>
-          <span className="faint" aria-hidden="true">{expanded ? '▾' : '▸'}</span>{' '}
-          <b>{name}</b>
-        </td>
-        <td><span className="pill">{algorithmLabel(tuner.spec?.algorithm)}</span></td>
-        <td>
-          <span className="muted">{trialsCompleted}/{maxTrials}</span>
-          <Progress value={trialsCompleted} max={maxTrials} label={`${name}: ${trialsCompleted} of ${maxTrials} trials complete`} />
-        </td>
-        <td className="num">
-          {bestValue !== undefined && bestValue !== null ? (
-            <>
-              <b>{formatMetric(bestValue, metricName)}</b>
-              {metricName && <div className="faint">{metricName}{tuner.spec?.direction ? ` (${tuner.spec.direction === 'minimize' ? 'lower' : 'higher'} is better)` : ''}</div>}
-            </>
-          ) : (
-            <span className="faint">—</span>
-          )}
-        </td>
-        <td><span className={`pill ${phaseTone(phase)}`}>{phase}</span></td>
-        <td>
-          <button
-            type="button"
-            className="btn-secondary"
-            aria-expanded={expanded}
-            onClick={(e) => {
-              e.stopPropagation()
-              toggle()
-            }}
-          >
-            {expanded ? 'Hide trials' : 'Show trials'}
-          </button>
-        </td>
-      </tr>
-
-      {expanded && (
-        <tr>
-          <td colSpan={6}>
-            <TunerDetail tuner={tuner} />
-          </td>
-        </tr>
-      )}
-    </>
-  )
-}
 
 function TunerDetail({ tuner }: { tuner: Tuner }) {
   const name = tuner.metadata?.name || 'unknown'
@@ -315,15 +340,16 @@ const INITIAL = {
   maxEpochs: '10',
   reductionFactor: '',
   minResource: '',
-  parameterSpace: '{\n  "learning_rate": {"type": "float", "min": 1e-5, "max": 1e-2},\n  "batch_size": {"type": "choice", "values": [16, 32, 64, 128]},\n  "dropout": {"type": "float", "min": 0.0, "max": 0.5}\n}',
 }
 
 function CreateTunerModal({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient()
   const [form, setForm] = useState(INITIAL)
+  const [space, setSpace] = useState<ParamSpaceState>(() => initialSpaceState())
+  const [initialSpace] = useState(space.json)
   const [touched, setTouched] = useState(false)
   const set = (patch: Partial<typeof INITIAL>) => setForm((f) => ({ ...f, ...patch }))
-  const dirty = JSON.stringify(form) !== JSON.stringify(INITIAL)
+  const dirty = JSON.stringify(form) !== JSON.stringify(INITIAL) || space.json !== initialSpace
   const isAsha = form.algorithm === 'ASHA'
 
   const createMutation = useMutation({
@@ -347,12 +373,11 @@ function CreateTunerModal({ onClose }: { onClose: () => void }) {
     maxEpochs: isAsha ? intError(form.maxEpochs, 1, 100000) : null,
     reductionFactor: isAsha ? optionalInt(form.reductionFactor, 2, 100) : null,
     minResource: isAsha ? optionalInt(form.minResource, 1, 100000) : null,
-    space: validateParameterSpace(form.parameterSpace),
+    space: spaceError(space),
   }
   const invalid = Object.values(errors).some(Boolean)
   const show = (e: string | null) => (touched ? e : null)
   const nameShown = touched || form.name !== '' ? errors.name : null
-  const spaceShown = form.parameterSpace !== INITIAL.parameterSpace || touched ? errors.space : null
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -366,7 +391,7 @@ function CreateTunerModal({ onClose }: { onClose: () => void }) {
       direction: form.direction,
       maxTrials: int(form.maxTrials),
       parallelism: int(form.parallelism),
-      parameterSpace: form.parameterSpace,
+      parameterSpace: spaceJson(space),
       jobTemplate: { type: 'training' as const, image: form.image.trim(), gpus: int(form.gpus) },
       ...(isAsha
         ? {
@@ -444,17 +469,12 @@ function CreateTunerModal({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
-        <label className="field">
-          Parameter space (JSON)
-          <textarea className="codeedit" rows={6} value={form.parameterSpace} onChange={(e) => set({ parameterSpace: e.target.value })} aria-invalid={!!spaceShown} spellCheck={false} />
-          {spaceShown ? (
-            <span className="warning" role="alert">{spaceShown}</span>
-          ) : (
-            <span className="faint">
-              One entry per parameter. float and int take min and max (optional scale "linear" or "log"; int also takes an integer step). choice takes a values list of 1 to 64 numbers or strings.
-            </span>
-          )}
-        </label>
+        <ParamSpaceEditor state={space} onChange={setSpace} showErrors={touched} />
+        {touched && !space.advanced && errors.space && (
+          <p className="warning" role="alert">
+            {errors.space}
+          </p>
+        )}
 
         {createMutation.isError && (
           <p className="warning" role="alert">

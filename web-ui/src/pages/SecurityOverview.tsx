@@ -1,27 +1,38 @@
-import { useQuery } from '@tanstack/react-query'
-import apiClient, { api } from '@/lib/api'
-import type { SecurityAlert, SecurityPolicy } from '@/lib/api'
+import { useId, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { api } from '@/lib/api'
+import type { SecurityPolicy } from '@/lib/api'
 import PageHero from '@/components/PageHero'
 import PagePulse from '@/components/kit/PagePulse'
+import Modal from '@/components/Modal'
+import ConfirmDialog from '@/components/ConfirmDialog'
 import { EmptyState, ErrorState, Skeleton } from '@/components/StateViews'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { phaseTone } from '@/lib/phase'
 import { formatDate, formatRelative } from '@/lib/format'
 import { errorMessage } from '@/lib/errors'
+import { notify } from '@/lib/notify'
+import { applySearch } from '@/lib/tableState'
 import { severityTone } from '@/lib/network'
-import { RULE_CATALOG, activeRuleTypes, countActivePolicies, policyCounters, ruleName } from '@/lib/security'
-
-type AlertsResponse = { items: SecurityAlert[]; eventSource?: boolean }
-
-// The shared api.getSecurityAlerts drops `eventSource`, so read the full response here.
-async function fetchAlerts(): Promise<AlertsResponse> {
-  const { data } = await apiClient.get('/security/alerts')
-  return { items: data?.items ?? [], eventSource: data?.eventSource }
-}
+import {
+  RULE_CATALOG,
+  SENSITIVITIES,
+  activeRuleTypes,
+  buildSecurityRequest,
+  countActivePolicies,
+  defaultRuleDrafts,
+  policyCounters,
+  ruleName,
+  validateNamespaceChip,
+  validateSecurityForm,
+  type RuleDraft,
+  type SecurityFormErrors,
+} from '@/lib/security'
 
 export default function SecurityOverview() {
   useDocumentTitle('Security')
-  const alertsQ = useQuery({ queryKey: ['securityAlerts'], queryFn: fetchAlerts, refetchInterval: 10000 })
+  const [creating, setCreating] = useState(false)
+  const alertsQ = useQuery({ queryKey: ['securityAlerts'], queryFn: api.getSecurityAlertsStatus, refetchInterval: 10000 })
   const policiesQ = useQuery({ queryKey: ['securityPolicies'], queryFn: api.getSecurityPolicies, refetchInterval: 30000 })
 
   const alerts = alertsQ.data?.items
@@ -50,6 +61,12 @@ export default function SecurityOverview() {
       <PageHero eyebrow="Security" title="Security detection." lede="eBPF-based threat detection and enforcement" tint={critical && critical > 0 ? 'red' : undefined} />
 
       <div className="grid">
+        <div className="toolbar span3">
+          <button type="button" className="primary" onClick={() => setCreating(true)}>
+            Create security policy
+          </button>
+        </div>
+
         {alertsQ.isLoading ? (
           <section className="card span3" aria-label="Live summary">
             <Skeleton rows={2} />
@@ -134,11 +151,11 @@ export default function SecurityOverview() {
           ) : policiesQ.isError && !policies ? (
             <ErrorState title="Could not load security policies." error={policiesQ.error} onRetry={() => policiesQ.refetch()} retrying={policiesQ.isFetching} />
           ) : !policies || policies.length === 0 ? (
-            <EmptyState title="No security policies configured" action={<button type="button" className="btn-secondary" onClick={() => policiesQ.refetch()}>Refresh</button>}>
+            <EmptyState title="No security policies configured" action={<button type="button" className="primary" onClick={() => setCreating(true)}>Create security policy</button>}>
               Security policies are FabricSecurityPolicy resources evaluated by the security operator. Without one, no detection rules run.
             </EmptyState>
           ) : (
-            policies.map((policy) => <PolicyRow key={policy.metadata.name} policy={policy} />)
+            <PolicyList policies={policies} />
           )}
         </section>
 
@@ -166,6 +183,8 @@ export default function SecurityOverview() {
           )}
         </section>
       </div>
+
+      {creating && <CreatePolicyModal onClose={() => setCreating(false)} />}
     </>
   )
 }
@@ -186,38 +205,327 @@ function CounterSummary({ policies }: { policies: SecurityPolicy[] }) {
   )
 }
 
-function PolicyRow({ policy }: { policy: SecurityPolicy }) {
+function PolicyList({ policies }: { policies: SecurityPolicy[] }) {
+  const [q, setQ] = useState('')
+  const [open, setOpen] = useState<string | null>(null)
+  const shown = applySearch(policies, q, (p) => `${p.metadata.name} ${(p.spec.targetNamespaces ?? []).join(' ')} ${p.status?.phase ?? ''} ${(p.spec.detectionRules ?? []).map((r) => ruleName(r.type)).join(' ')}`)
+  return (
+    <div className="stack">
+      <label className="field">
+        <span>Search policies</span>
+        <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Name, namespace, rule…" />
+      </label>
+      <p className="faint" role="status">
+        Showing {shown.length} of {policies.length}
+      </p>
+      {shown.length === 0 ? (
+        <EmptyState
+          title="No policy matches"
+          action={
+            <button type="button" className="btn-secondary" onClick={() => setQ('')}>
+              Clear search
+            </button>
+          }
+        />
+      ) : (
+        shown.map((policy) => <PolicyRow key={policy.metadata.name} policy={policy} open={open === policy.metadata.name} onToggle={() => setOpen(open === policy.metadata.name ? null : policy.metadata.name)} />)
+      )}
+    </div>
+  )
+}
+
+function PolicyRow({ policy, open, onToggle }: { policy: SecurityPolicy; open: boolean; onToggle: () => void }) {
   const phase = policy.status?.phase || 'Pending'
-  const enabled = (policy.spec.detectionRules ?? []).filter((r) => r.enabled)
-  const sensitivities = [...new Set(enabled.map((r) => r.sensitivity).filter(Boolean))]
+  const rules = policy.spec.detectionRules ?? []
+  const enabled = rules.filter((r) => r.enabled)
   const namespaces = policy.spec.targetNamespaces ?? []
   const counts = Object.entries(policy.status?.detectionCounts ?? {})
   const last = policy.status?.lastAlert
+  const detailId = `policy-detail-${policy.metadata.name}`
   return (
-    <div className="list-row">
-      <div className="grow">
-        <b>{policy.metadata.name}</b>
-        <small>
-          {enabled.length} rule{enabled.length === 1 ? '' : 's'} · {policy.status?.alertsTriggered ?? 0} alerts
-          {last && (
-            <>
-              {' '}
-              · last <span title={formatDate(last)}>{formatRelative(last)}</span>
-            </>
-          )}
-        </small>
-        <small>
-          Namespaces: {namespaces.length > 0 ? namespaces.join(', ') : 'none selected'}
-          {sensitivities.length > 0 && ` · Sensitivity: ${sensitivities.join(', ')}`}
-        </small>
-        {counts.length > 0 && <small>{counts.map(([k, v]) => `${ruleName(k)} ${v}`).join(', ')}</small>}
+    <div>
+      <div className="list-row">
+        <div className="grow">
+          <b>{policy.metadata.name}</b>
+          <small>
+            {enabled.length} rule{enabled.length === 1 ? '' : 's'} enabled · {policy.status?.alertsTriggered ?? 0} alerts
+            {last && (
+              <>
+                {' '}
+                · last <span title={formatDate(last)}>{formatRelative(last)}</span>
+              </>
+            )}
+          </small>
+        </div>
+        {policy.spec.autoBlock && (
+          <span className="pill warn" title="Matching processes are blocked automatically">
+            Auto-block
+          </span>
+        )}
+        <span className={`pill ${phaseTone(phase)}`}>{phase}</span>
+        <button type="button" className="btn-secondary" aria-expanded={open} aria-controls={detailId} aria-label={`${open ? 'Hide' : 'Show'} details of ${policy.metadata.name}`} onClick={onToggle}>
+          {open ? 'Hide' : 'Details'}
+        </button>
       </div>
-      {policy.spec.autoBlock && (
-        <span className="pill warn" title="Matching processes are blocked automatically">
-          Auto-block
-        </span>
+      {open && (
+        <div id={detailId} className="stack">
+          <small>
+            <b>Namespaces:</b> {namespaces.length > 0 ? namespaces.join(', ') : 'none selected'}
+          </small>
+          <small>
+            <b>Alert webhook:</b> {policy.spec.alertWebhook || 'none'}
+          </small>
+          <div className="table-wrap">
+            <table>
+              <caption>Detection rules of {policy.metadata.name}</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Rule</th>
+                  <th scope="col">State</th>
+                  <th scope="col">Sensitivity</th>
+                  <th scope="col" className="num">Detections</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rules.map((r) => (
+                  <tr key={r.type}>
+                    <td>{ruleName(r.type)}</td>
+                    <td>
+                      <span className={`pill ${r.enabled ? 'ok' : ''}`}>{r.enabled ? 'Enabled' : 'Disabled'}</span>
+                    </td>
+                    <td>{r.sensitivity || '—'}</td>
+                    <td className="num">{policy.status?.detectionCounts?.[r.type] ?? 0}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <small className="faint">
+            {policy.status?.activeDetections ?? 0} active detection{(policy.status?.activeDetections ?? 0) === 1 ? '' : 's'} · {policy.status?.alertsTriggered ?? 0} alert{(policy.status?.alertsTriggered ?? 0) === 1 ? '' : 's'} triggered
+            {counts.length > 0 && ` · ${counts.map(([k, v]) => `${ruleName(k)} ${v}`).join(', ')}`}
+          </small>
+        </div>
       )}
-      <span className={`pill ${phaseTone(phase)}`}>{phase}</span>
     </div>
+  )
+}
+
+function CreatePolicyModal({ onClose }: { onClose: () => void }) {
+  const uid = useId()
+  const queryClient = useQueryClient()
+  const [name, setName] = useState('')
+  const [namespaces, setNamespaces] = useState<string[]>([])
+  const [nsInput, setNsInput] = useState('')
+  const [nsError, setNsError] = useState<string | undefined>()
+  const [rules, setRules] = useState<RuleDraft[]>(defaultRuleDrafts)
+  const [webhook, setWebhook] = useState('')
+  const [autoBlock, setAutoBlock] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+
+  const values = { name, namespaces, rules, webhook, autoBlock }
+  const errors: SecurityFormErrors = submitted ? validateSecurityForm(values) : {}
+  const dirty = name !== '' || namespaces.length > 0 || nsInput !== '' || webhook !== '' || autoBlock || rules.some((r) => r.enabled)
+
+  const mutation = useMutation({
+    mutationFn: api.createSecurityPolicy,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['securityPolicies'] })
+      notify.success('Security policy created')
+      onClose()
+    },
+    onError: (err) => {
+      setConfirming(false)
+      notify.error('Could not create security policy', err)
+    },
+  })
+
+  const addNamespace = () => {
+    const v = nsInput.trim()
+    if (!v) return
+    const err = validateNamespaceChip(v, namespaces)
+    setNsError(err)
+    if (err) return
+    setNamespaces([...namespaces, v])
+    setNsInput('')
+  }
+  const setRule = (type: string, patch: Partial<RuleDraft>) => setRules(rules.map((r) => (r.type === type ? { ...r, ...patch } : r)))
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    setSubmitted(true)
+    if (Object.keys(validateSecurityForm(values)).length > 0) return
+    if (autoBlock) setConfirming(true)
+    else mutation.mutate(buildSecurityRequest(values))
+  }
+
+  const nameErr = errors.name
+  const nsErr = nsError ?? errors.namespaces
+  const hookErr = errors.webhook
+  const describe = (...ids: Array<string | false | undefined>) => ids.filter(Boolean).join(' ') || undefined
+
+  return (
+    <>
+      <Modal title="Create security policy" onClose={onClose} dirty={dirty || mutation.isPending}>
+        <form onSubmit={submit} className="stack" noValidate>
+          {mutation.isError && (
+            <div className="warning" role="alert">
+              <strong>The gateway rejected this policy.</strong>
+              <div>{errorMessage(mutation.error)}</div>
+            </div>
+          )}
+
+          <label className="field">
+            <span>Name *</span>
+            <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g., gpu-workloads" required aria-invalid={nameErr ? true : undefined} aria-describedby={describe(`${uid}-name-hint`, nameErr && `${uid}-name-err`)} />
+            <small id={`${uid}-name-hint`} className="faint">
+              Lowercase letters, digits and &quot;-&quot;, up to 63 characters.
+            </small>
+            {nameErr && (
+              <small id={`${uid}-name-err`} className="text-bad" role="alert">
+                {nameErr}
+              </small>
+            )}
+          </label>
+
+          <div className="field">
+            <label htmlFor={`${uid}-ns`}>Target namespaces *</label>
+            <div className="toolbar">
+              <input
+                id={`${uid}-ns`}
+                type="text"
+                value={nsInput}
+                onChange={(e) => {
+                  setNsInput(e.target.value)
+                  setNsError(undefined)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ',') {
+                    e.preventDefault()
+                    addNamespace()
+                  }
+                }}
+                placeholder="e.g., ml-training"
+                aria-invalid={nsErr ? true : undefined}
+                aria-describedby={describe(`${uid}-ns-hint`, nsErr && `${uid}-ns-err`)}
+              />
+              <button type="button" className="btn-secondary" onClick={addNamespace}>
+                Add namespace
+              </button>
+            </div>
+            <small id={`${uid}-ns-hint`} className="faint">
+              Press Enter to add. Each must be a Kubernetes name.
+            </small>
+            {nsErr && (
+              <small id={`${uid}-ns-err`} className="text-bad" role="alert">
+                {nsErr}
+              </small>
+            )}
+            {namespaces.length > 0 && (
+              <div className="chips" role="list" aria-label="Selected namespaces">
+                {namespaces.map((n) => (
+                  <span key={n} role="listitem">
+                    {n}{' '}
+                    <button type="button" aria-label={`Remove namespace ${n}`} onClick={() => setNamespaces(namespaces.filter((x) => x !== n))}>
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <fieldset className="field" aria-describedby={describe(errors.rules && `${uid}-rules-err`)}>
+            <legend>Detection rules *</legend>
+            <div className="table-wrap">
+              <table>
+                <caption>Detection rules for this policy</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Rule</th>
+                    <th scope="col">Enabled</th>
+                    <th scope="col">Sensitivity</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rules.map((r) => {
+                    const cat = RULE_CATALOG.find((c) => c.type === r.type)
+                    return (
+                      <tr key={r.type}>
+                        <td>
+                          {ruleName(r.type)}
+                          {cat && <small className="faint"> {cat.description}</small>}
+                        </td>
+                        <td>
+                          <input type="checkbox" role="switch" checked={r.enabled} onChange={(e) => setRule(r.type, { enabled: e.target.checked })} aria-label={`Enable ${ruleName(r.type)}`} />
+                        </td>
+                        <td>
+                          <select value={r.sensitivity} onChange={(e) => setRule(r.type, { sensitivity: e.target.value })} aria-label={`Sensitivity for ${ruleName(r.type)}`} disabled={!r.enabled}>
+                            {SENSITIVITIES.map((sv) => (
+                              <option key={sv} value={sv}>
+                                {sv}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {errors.rules && (
+              <small id={`${uid}-rules-err`} className="text-bad" role="alert">
+                {errors.rules}
+              </small>
+            )}
+          </fieldset>
+
+          <label className="field">
+            <span>Alert webhook URL</span>
+            <input type="url" value={webhook} onChange={(e) => setWebhook(e.target.value)} placeholder="https://hooks.example.com/alerts" aria-invalid={hookErr ? true : undefined} aria-describedby={describe(`${uid}-hook-hint`, hookErr && `${uid}-hook-err`)} />
+            <small id={`${uid}-hook-hint`} className="faint">
+              Optional. Alerts are posted here as JSON; must be http(s).
+            </small>
+            {hookErr && (
+              <small id={`${uid}-hook-err`} className="text-bad" role="alert">
+                {hookErr}
+              </small>
+            )}
+          </label>
+
+          <div className="field">
+            <label className="row">
+              <input type="checkbox" role="switch" checked={autoBlock} onChange={(e) => setAutoBlock(e.target.checked)} aria-describedby={`${uid}-block-hint`} />
+              <span>Auto-block matching processes</span>
+            </label>
+            <small id={`${uid}-block-hint`} className={autoBlock ? 'text-bad' : 'faint'}>
+              Warning: with auto-block on, processes that trigger an enabled rule are killed without review. False positives will interrupt workloads. Start with it off.
+            </small>
+          </div>
+
+          <div className="toolbar">
+            <button type="submit" className="primary" disabled={mutation.isPending}>
+              {mutation.isPending ? 'Creating…' : 'Create policy'}
+            </button>
+            <button type="button" className="btn-secondary" onClick={onClose} disabled={mutation.isPending}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {confirming && (
+        <ConfirmDialog
+          title={`Create ${name.trim()} with auto-block?`}
+          confirmLabel="Create with auto-block"
+          busy={mutation.isPending}
+          onCancel={() => setConfirming(false)}
+          onConfirm={() => mutation.mutate(buildSecurityRequest(values))}
+        >
+          Processes matching {rules.filter((r) => r.enabled).map((r) => ruleName(r.type)).join(', ')} in {namespaces.join(', ')} will be blocked automatically. A false positive stops a real workload. Continue?
+        </ConfirmDialog>
+      )}
+    </>
   )
 }

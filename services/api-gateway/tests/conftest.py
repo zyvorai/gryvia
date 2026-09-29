@@ -3,6 +3,7 @@ mount one router module with fake dependencies (no cluster, no main.py import)."
 import copy
 import os
 import sys
+import types
 from typing import Any, Dict, Optional
 
 import pytest
@@ -110,6 +111,70 @@ class FakeCore:
         class R:
             items = []
         return R()
+
+    # -- pods / logs / events (in-memory; seed via add_pod / add_event / set_log) --
+    def _ensure(self):
+        if not hasattr(self, "pods"):
+            self.pods, self.logs, self.events = [], {}, []
+            self.log_calls = []
+
+    def add_pod(self, name, namespace="default", job=None, phase="Running", start_time="2026-01-01T00:00:00Z",
+                containers=None, node="node-1", pod_ip="10.0.0.1", message=None):
+        """containers: list of (name, state, restarts, reason, ready)."""
+        self._ensure()
+        ns = types.SimpleNamespace
+        statuses = []
+        for cname, state, restarts, reason, ready in (containers or [("main", "running", 0, None, True)]):
+            statuses.append(ns(name=cname, ready=ready, restart_count=restarts, state=ns(
+                running=ns(reason=reason) if state == "running" else None,
+                waiting=ns(reason=reason) if state == "waiting" else None,
+                terminated=ns(reason=reason) if state == "terminated" else None)))
+        pod = ns(metadata=ns(name=name, namespace=namespace, creation_timestamp=start_time,
+                             labels={"gryvia.io/job": job} if job else {}),
+                 spec=ns(node_name=node, containers=[ns(name=c.name) for c in statuses]),
+                 status=ns(phase=phase, pod_ip=pod_ip, start_time=start_time, message=message,
+                           container_statuses=statuses))
+        self.pods.append(pod)
+        return pod
+
+    def set_log(self, pod, text_or_exc):
+        self._ensure()
+        self.logs[pod] = text_or_exc
+
+    def add_event(self, kind, name, namespace="default", type="Normal", reason="Scheduled", message="m",
+                  count=1, first="2026-01-01T00:00:00Z", last="2026-01-01T00:00:00Z"):
+        self._ensure()
+        ns = types.SimpleNamespace
+        self.events.append(ns(involved_object=ns(kind=kind, name=name), metadata=ns(namespace=namespace),
+                              type=type, reason=reason, message=message, count=count,
+                              first_timestamp=first, last_timestamp=last))
+
+    def list_namespaced_pod(self, namespace, label_selector=None, **kw):
+        self._ensure()
+        key, _, val = (label_selector or "").partition("=")
+        items = [p for p in self.pods if p.metadata.namespace == namespace
+                 and (not key or p.metadata.labels.get(key) == val)]
+        return types.SimpleNamespace(items=items)
+
+    def read_namespaced_pod_log(self, name, namespace, tail_lines=None, timestamps=False, **kw):
+        self._ensure()
+        self.log_calls.append(dict(name=name, namespace=namespace, tail_lines=tail_lines,
+                                   timestamps=timestamps, **kw))
+        res = self.logs.get(name, "")
+        if isinstance(res, Exception):
+            raise res
+        lines = res.split("\n")
+        if tail_lines is not None:
+            lines = lines[-tail_lines:]
+        return "\n".join(lines)
+
+    def list_namespaced_event(self, namespace, field_selector=None, **kw):
+        self._ensure()
+        sel = dict(part.split("=", 1) for part in (field_selector or "").split(",") if "=" in part)
+        items = [e for e in self.events if e.metadata.namespace == namespace
+                 and all({"involvedObject.name": e.involved_object.name,
+                          "involvedObject.kind": e.involved_object.kind}.get(k) == v for k, v in sel.items())]
+        return types.SimpleNamespace(items=items)
 
 
 async def _allow():  # verify_auth stand-in

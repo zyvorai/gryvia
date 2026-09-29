@@ -1,5 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
 import { api } from '@/lib/api'
+import DataTable, { type Column } from '@/components/DataTable'
+import { useTableState } from '@/hooks/useTableState'
+import type { FilterDef, SortAccessor } from '@/lib/tableState'
+import type { FabricGpuNode } from '@/types'
 import PageHero from '@/components/PageHero'
 import PagePulse from '@/components/kit/PagePulse'
 import { countTone } from '@/components/kit/tone'
@@ -9,6 +14,19 @@ import { phaseTone } from '@/lib/phase'
 import { errorMessage } from '@/lib/errors'
 import { notify } from '@/lib/notify'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
+
+const nodeName = (n: FabricGpuNode) => n.spec?.nodeName || n.metadata?.name
+const FILTERS: FilterDef<FabricGpuNode>[] = [
+  { name: 'phase', label: 'Phase', get: (n) => n.status?.phase || 'Unknown' },
+  { name: 'gpu', label: 'GPU type', get: (n) => n.spec?.gpuType },
+]
+const SORTS: Record<string, SortAccessor<FabricGpuNode>> = {
+  name: nodeName,
+  phase: (n) => n.status?.phase || 'Unknown',
+  gpus: (n) => n.spec?.gpuCount ?? 0,
+}
+const searchText = (n: FabricGpuNode) => [nodeName(n), n.spec?.gpuType, n.status?.phase, n.spec?.rdma ? 'rdma' : ''].filter(Boolean).join(' ')
+const jobsLink = (n: FabricGpuNode) => `/jobs?q=${encodeURIComponent(nodeName(n) ?? '')}`
 
 const isNum = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n)
 
@@ -29,6 +47,8 @@ export default function Nodes() {
     refetchInterval: 10000,
   })
 
+  const table = useTableState({ rows: nodes, searchText, filters: FILTERS, sortAccessors: SORTS, defaultSort: { key: 'name', dir: 'asc' }, pageSize: 10 })
+
   if (isLoading) {
     return (
       <>
@@ -48,6 +68,21 @@ export default function Nodes() {
   }
 
   const list = nodes || []
+  const columns: Column<FabricGpuNode>[] = [
+    { key: 'name', header: 'Node', sortable: true, render: (n) => nodeName(n) },
+    { key: 'phase', header: 'Phase', sortable: true, render: (n) => <span className={`pill ${phaseTone(n.status?.phase)}`}>{n.status?.phase || 'Unknown'}</span> },
+    { key: 'gpu', header: 'GPU type', render: (n) => n.spec?.gpuType || '—' },
+    { key: 'gpus', header: 'GPUs', sortable: true, numeric: true, render: (n) => n.spec?.gpuCount ?? '—' },
+    {
+      key: 'jobs',
+      header: 'Jobs',
+      render: (n) => (
+        <Link to={jobsLink(n)} className="card-link">
+          Jobs on this node
+        </Link>
+      ),
+    },
+  ]
   const ready = list.filter((n) => phaseTone(n.status?.phase) === 'ok').length
   const notReady = list.length - ready
 
@@ -82,15 +117,24 @@ export default function Nodes() {
           ]}
         />
 
-        {list.length === 0 && (
-          <section className="card span3">
-            <EmptyState title="No GPU nodes registered">
-              FabricGpuNode resources are created by the Gryvia GPU operator when it discovers GPUs on a node. Check that the GPU operator is installed and its pods are running.
-            </EmptyState>
-          </section>
-        )}
+        <section className="card span3">
+          <p className="eyebrow">NODES</p>
+          <h2 className="card-title">All nodes</h2>
+          <DataTable
+            caption="GPU nodes"
+            columns={columns}
+            state={table}
+            rowKey={(n) => n.metadata?.name}
+            searchLabel="Search nodes"
+            empty={
+              <EmptyState title="No GPU nodes registered">
+                FabricGpuNode resources are created by the Gryvia GPU operator when it discovers GPUs on a node. Check that the GPU operator is installed and its pods are running.
+              </EmptyState>
+            }
+          />
+        </section>
 
-        {list.map((node) => {
+        {table.pageRows.map((node) => {
           const phase = node.status?.phase
           return (
             <section key={node.metadata?.name} className="card span3">
@@ -99,6 +143,9 @@ export default function Nodes() {
               <div className="row">
                 <span className={`pill ${phaseTone(phase)}`}>{phase || 'Unknown'}</span>
                 {node.spec?.rdma && <span className="pill info">RDMA</span>}
+                <Link to={jobsLink(node)} className="card-link">
+                  Jobs on this node ›
+                </Link>
               </div>
 
               <div className="apple-metric-band">

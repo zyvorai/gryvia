@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dagLayers } from './dag'
+import { dagLayers, validateDag } from './dag'
 
 const names = (layers: { name: string }[][]) => layers.map((l) => l.map((s) => s.name))
 
@@ -19,5 +19,26 @@ describe('dagLayers', () => {
   })
   it('handles empty input', () => {
     expect(dagLayers([])).toEqual([])
+  })
+})
+
+
+describe('validateDag', () => {
+  it('accepts a valid graph', () => {
+    expect(validateDag([{ name: 'a' }, { name: 'b', dependsOn: ['a'] }])).toEqual([])
+  })
+  it('reports duplicates, unknown and self dependencies', () => {
+    const issues = validateDag([{ name: 'a' }, { name: 'a' }, { name: 'b', dependsOn: ['ghost', 'b'] }])
+    expect(issues.map((i) => i.kind).sort()).toEqual(['duplicate', 'self', 'unknown'])
+    expect(issues.find((i) => i.kind === 'unknown')?.steps).toEqual(['b'])
+  })
+  it('reports cycles with their members and not steps that merely feed them', () => {
+    const issues = validateDag([{ name: 'root' }, { name: 'a', dependsOn: ['root', 'b'] }, { name: 'b', dependsOn: ['a'] }])
+    expect(issues).toHaveLength(1)
+    expect(issues[0].kind).toBe('cycle')
+    expect(issues[0].steps.sort()).toEqual(['a', 'b'])
+  })
+  it('ignores blank names', () => {
+    expect(validateDag([{ name: '' }, { name: '' }])).toEqual([])
   })
 })

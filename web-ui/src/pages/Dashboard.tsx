@@ -6,7 +6,7 @@ import GPUChart from '@/components/GPUChart'
 import PageHero from '@/components/PageHero'
 import { EmptyState, ErrorState, Skeleton } from '@/components/StateViews'
 import { countByGroup, phaseTone } from '@/lib/phase'
-import { jobFramework, jobGpus } from '@/lib/jobs'
+import { jobFramework, jobGpus, jobStatusGroup } from '@/lib/jobs'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 
 export default function Dashboard() {
@@ -56,11 +56,28 @@ export default function Dashboard() {
             <b>{num(clusterStats?.totalGPUs)}</b>
           </div>
           <div>
-            <span>Running jobs{jobs && counts.pending > 0 ? ` · ${counts.pending} pending` : ''}</span>
+            <span>
+              <Link to="/jobs?f_status=Running" className="card-link">
+                Running jobs
+              </Link>
+              {jobs && counts.pending > 0 && (
+                <>
+                  {' · '}
+                  <Link to="/jobs?f_status=Pending" className="card-link">
+                    {counts.pending} pending
+                  </Link>
+                </>
+              )}
+            </span>
             <b>{num(jobs ? counts.running : undefined)}</b>
           </div>
           <div>
-            <span>Completed{successRate !== undefined ? ` · ${successRate}% success` : ''}</span>
+            <span>
+              <Link to="/jobs?f_status=Completed" className="card-link">
+                Completed
+              </Link>
+              {successRate !== undefined ? ` · ${successRate}% success` : ''}
+            </span>
             <b>{num(jobs ? counts.completed : undefined)}</b>
           </div>
           <div>
@@ -95,7 +112,7 @@ export default function Dashboard() {
             <>
               <HealthCheck label="GPU nodes" tone={clusterStats.totalNodes > 0 ? 'ok' : 'warn'} detail={`${clusterStats.totalNodes} nodes`} />
               <HealthCheck label="GPU utilization" tone={(utilization ?? 0) >= 95 ? 'bad' : (utilization ?? 0) > 80 ? 'warn' : 'ok'} detail={`${utilization}%`} />
-              <HealthCheck label="Failed jobs" tone={!jobs ? undefined : counts.failed === 0 ? 'ok' : 'warn'} detail={jobs ? `${counts.failed}` : '—'} />
+              <HealthCheck label="Failed jobs" tone={!jobs ? undefined : counts.failed === 0 ? 'ok' : 'warn'} detail={jobs ? `${counts.failed}` : '—'} to="/jobs?f_status=Failed" />
               <HealthCheck
                 label="GPUs allocated"
                 tone={totalGPUs > 0 && availableGPUs === 0 ? 'warn' : 'ok'}
@@ -105,6 +122,7 @@ export default function Dashboard() {
                 label="Job queue"
                 tone={!jobs ? undefined : counts.pending >= 10 ? 'bad' : counts.pending > 5 ? 'warn' : 'ok'}
                 detail={jobs ? `${counts.pending} pending` : '—'}
+                to="/jobs?f_status=Pending"
               />
             </>
           )}
@@ -150,7 +168,7 @@ export default function Dashboard() {
           ) : (
             <>
               {nodes.slice(0, 6).map((node) => (
-                <div key={node.metadata?.name} className="list-row">
+                <Link key={node.metadata?.name} to={`/nodes?q=${encodeURIComponent(node.spec?.nodeName || node.metadata?.name || '')}`} className="list-row">
                   <span className={`dot ${phaseTone(node.status?.phase)}`} />
                   <div className="grow">
                     <b>{node.spec?.nodeName || node.metadata?.name}</b>
@@ -159,7 +177,7 @@ export default function Dashboard() {
                     </small>
                   </div>
                   <span className="faint">{node.status?.phase || 'Unknown'}</span>
-                </div>
+                </Link>
               ))}
               {nodes.length > 6 && (
                 <p>
@@ -195,24 +213,33 @@ export default function Dashboard() {
 function JobRow({ job }: { job: FabricAIJob }) {
   const phase = job.status?.phase || 'Unknown'
   return (
-    <Link to={`/jobs/${job.metadata?.name}`} className="list-row">
-      <div className="grow">
+    <div className="list-row">
+      <Link to={`/jobs/${job.metadata?.name}`} className="grow" style={{ color: 'inherit', textDecoration: 'none' }}>
         <b>{job.metadata?.name}</b>
         <small>
           {jobFramework(job)} · {jobGpus(job)}
         </small>
-      </div>
-      <span className={`pill ${phaseTone(phase)}`}>{phase}</span>
-    </Link>
+      </Link>
+      <Link to={`/jobs?f_status=${encodeURIComponent(jobStatusGroup(job))}`} className={`pill ${phaseTone(phase)}`} title={`Show ${phase.toLowerCase()} jobs`} style={{ textDecoration: 'none' }}>
+        {phase}
+      </Link>
+    </div>
   )
 }
 
-function HealthCheck({ label, tone, detail }: { label: string; tone?: 'ok' | 'warn' | 'bad'; detail?: string }) {
-  return (
-    <div className="list-row">
+function HealthCheck({ label, tone, detail, to }: { label: string; tone?: 'ok' | 'warn' | 'bad'; detail?: string; to?: string }) {
+  const body = (
+    <>
       <span className={`dot ${tone ?? ''}`} />
       <span className="grow">{label}</span>
       {detail && <span className="faint num">{detail}</span>}
-    </div>
+    </>
+  )
+  return to ? (
+    <Link to={to} className="list-row">
+      {body}
+    </Link>
+  ) : (
+    <div className="list-row">{body}</div>
   )
 }

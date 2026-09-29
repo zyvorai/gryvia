@@ -379,6 +379,35 @@ export interface AutoTunerJob {
   }
 }
 
+// Job runtime details (pods, logs, events)
+export interface JobPod {
+  name: string
+  phase: string
+  node?: string
+  podIP?: string
+  startTime?: string
+  restarts: number
+  message?: string
+  containers: Array<{ name: string; ready: boolean; state: string; restartCount: number; reason?: string }>
+}
+
+export interface JobLogs {
+  pod: string | null
+  container?: string
+  lines: string[]
+  truncated: boolean
+}
+
+export interface JobEvent {
+  type: string
+  reason: string
+  message: string
+  count: number
+  firstSeen?: string
+  lastSeen?: string
+  object: string
+}
+
 export interface CreateWorkflowRequest {
   metadata: { name: string }
   /** Steps as accepted by the gateway: name, type (job|script|webhook), dependsOn, and the step payload. */
@@ -457,6 +486,21 @@ export const api = {
   createJob: async (job: Partial<FabricAIJob>): Promise<FabricAIJob> => {
     const { data } = await apiClient.post('/jobs', job)
     return data
+  },
+
+  getJobPods: async (name: string): Promise<JobPod[]> => {
+    const { data } = await apiClient.get(`/jobs/${encodeURIComponent(name)}/pods`)
+    return data.items || []
+  },
+
+  getJobLogs: async (name: string, opts: { pod?: string; tail?: number } = {}): Promise<JobLogs> => {
+    const { data } = await apiClient.get(`/jobs/${encodeURIComponent(name)}/logs`, { params: { pod: opts.pod, tail: opts.tail } })
+    return data
+  },
+
+  getJobEvents: async (name: string): Promise<JobEvent[]> => {
+    const { data } = await apiClient.get(`/jobs/${encodeURIComponent(name)}/events`)
+    return data.items || []
   },
 
   deleteJob: async (name: string): Promise<void> => {
@@ -551,6 +595,12 @@ export const api = {
   getSecurityAlerts: async (): Promise<SecurityAlert[]> => {
     const { data } = await apiClient.get('/security/alerts')
     return data.items || []
+  },
+
+  /** Alerts plus whether any event source is connected (false = an empty list does not mean "all clear"). */
+  getSecurityAlertsStatus: async (): Promise<{ items: SecurityAlert[]; eventSource: boolean }> => {
+    const { data } = await apiClient.get('/security/alerts')
+    return { items: data.items || [], eventSource: data.eventSource !== false }
   },
 
   getSecurityPolicies: async (): Promise<SecurityPolicy[]> => {

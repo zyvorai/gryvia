@@ -23,3 +23,12 @@ describe('summarizeCosts', () => {
     expect(periodLabel('2026-Q3')).toBe('2026-Q3')
   })
 })
+
+describe('namespacesAll', () => {
+  it('keeps every namespace while namespaces stays top 8', () => {
+    const rs = Array.from({ length: 10 }, (_, i) => r('2026-09-02', `ns${i}`, 't', i))
+    const s = summarizeCosts(rs)
+    expect(s.namespaces).toHaveLength(8)
+    expect(s.namespacesAll).toHaveLength(10)
+  })
+})

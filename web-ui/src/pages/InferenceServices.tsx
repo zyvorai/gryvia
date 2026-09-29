@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import type { InferenceService } from '@/lib/api'
@@ -7,14 +7,16 @@ import { errorMessage } from '@/lib/errors'
 import { phaseTone } from '@/lib/phase'
 import { notify } from '@/lib/notify'
 import { intError, nameError, parseIntStrict } from '@/lib/forms'
+import type { FilterDef, SortAccessor } from '@/lib/tableState'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
+import { useTableState } from '@/hooks/useTableState'
 import PageHero from '@/components/PageHero'
 import PagePulse from '@/components/kit/PagePulse'
 import Modal from '@/components/Modal'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import CopyButton from '@/components/CopyButton'
+import DataTable, { type Column } from '@/components/DataTable'
 import { EmptyState, ErrorState, Skeleton } from '@/components/StateViews'
-import { TableCaption } from '@/components/TableCaption'
 
 const BACKEND_LABELS: Record<string, string> = {
   triton: 'Triton',
@@ -29,11 +31,48 @@ function backendLabel(backend?: string): string {
   return BACKEND_LABELS[backend.toLowerCase()] ?? backend
 }
 
+const nameOf = (s: InferenceService) => s.metadata?.name || 'unknown'
+const phaseOf = (s: InferenceService) => s.status?.phase || 'Pending'
+
+const FILTERS: FilterDef<InferenceService>[] = [
+  { name: 'status', label: 'Status', get: phaseOf },
+  { name: 'backend', label: 'Backend', get: (s) => s.spec?.backend },
+]
+const SORTS: Record<string, SortAccessor<InferenceService>> = {
+  name: nameOf,
+  model: (s) => s.spec?.modelRef,
+  backend: (s) => s.spec?.backend,
+  replicas: (s) => s.status?.readyReplicas ?? 0,
+  status: phaseOf,
+  created: (s) => (s.metadata?.creationTimestamp ? Date.parse(s.metadata.creationTimestamp) : undefined),
+}
+const searchText = (s: InferenceService) => `${nameOf(s)} ${s.spec?.modelRef ?? ''} ${backendLabel(s.spec?.backend)} ${phaseOf(s)}`
+const DEFAULT_SORT = { key: 'name', dir: 'asc' as const }
+
 export default function InferenceServices() {
   useDocumentTitle('Inference')
   const queryClient = useQueryClient()
-  const [showCreateForm, setShowCreateForm] = useState(false)
+  // /inference?new=1&model=<name> (from the model registry) opens the deploy dialog prefilled.
+  const [params, setParams] = useSearchParams()
+  const [showCreateForm, setShowCreateForm] = useState(() => params.get('new') === '1')
+  const [prefillModel] = useState(() => params.get('model') ?? '')
   const [deleting, setDeleting] = useState<string | null>(null)
+  const [openName, setOpenName] = useState<string | null>(null)
+
+  const closeCreate = () => {
+    setShowCreateForm(false)
+    if (params.has('new') || params.has('model')) {
+      setParams(
+        (prev) => {
+          const next = new URLSearchParams(prev)
+          next.delete('new')
+          next.delete('model')
+          return next
+        },
+        { replace: true },
+      )
+    }
+  }
 
   const { data: services, isLoading, isError, error, refetch, isRefetching, dataUpdatedAt } = useQuery({
     queryKey: ['inferenceServices'],
@@ -54,6 +93,8 @@ export default function InferenceServices() {
     },
   })
 
+  const table = useTableState({ rows: services, searchText, filters: FILTERS, sortAccessors: SORTS, defaultSort: DEFAULT_SORT })
+
   if (isError && !services) {
     return (
       <>
@@ -62,6 +103,88 @@ export default function InferenceServices() {
       </>
     )
   }
+
+  const openService = services?.find((s) => nameOf(s) === openName)
+  const toggleOpen = (svc: InferenceService) => setOpenName(openName === nameOf(svc) ? null : nameOf(svc))
+  const deletingNow = (name: string) => deleteMutation.isPending && deleteMutation.variables === name
+  const columns: Column<InferenceService>[] = [
+    {
+      key: 'name',
+      header: 'Name',
+      sortable: true,
+      render: (svc) => (
+        <button
+          type="button"
+          className="th-sort"
+          aria-expanded={openName === nameOf(svc)}
+          aria-controls="service-detail"
+          onClick={(e) => {
+            e.stopPropagation()
+            toggleOpen(svc)
+          }}
+        >
+          <span className="faint" aria-hidden="true">{openName === nameOf(svc) ? '▾' : '▸'}</span>{' '}
+          <b>{nameOf(svc)}</b>
+        </button>
+      ),
+    },
+    { key: 'model', header: 'Model', sortable: true, render: (svc) => <span className="muted">{svc.spec?.modelRef ?? '—'}</span> },
+    { key: 'backend', header: 'Backend', sortable: true, render: (svc) => <span className="pill">{backendLabel(svc.spec?.backend)}</span> },
+    {
+      key: 'replicas',
+      header: 'Replicas',
+      sortable: true,
+      numeric: true,
+      render: (svc) => {
+        const auto = svc.spec?.autoscaling
+        return (
+          <>
+            <span>{svc.status?.readyReplicas ?? 0}/{svc.spec?.replicas ?? '—'}</span>
+            {auto?.minReplicas !== undefined && auto?.maxReplicas !== undefined && <div className="faint">autoscale {auto.minReplicas}–{auto.maxReplicas}</div>}
+          </>
+        )
+      },
+    },
+    { key: 'status', header: 'Status', sortable: true, render: (svc) => <span className={`pill ${phaseTone(phaseOf(svc))}`}>{phaseOf(svc)}</span> },
+    {
+      key: 'endpoint',
+      header: 'Endpoint',
+      render: (svc) =>
+        svc.status?.endpoint ? (
+          <div className="toolbar">
+            <span className="mono muted">{svc.status.endpoint}</span>
+            <CopyButton value={svc.status.endpoint} label="endpoint URL" />
+          </div>
+        ) : (
+          <span className="faint">—</span>
+        ),
+    },
+    {
+      key: 'canary',
+      header: 'Canary',
+      render: (svc) => {
+        const canary = svc.spec?.canary?.trafficPercent ?? 0
+        return canary > 0 ? <span className="pill info">{canary}%</span> : <span className="faint">—</span>
+      },
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      render: (svc) => (
+        <button
+          className="danger"
+          onClick={(e) => {
+            e.stopPropagation()
+            setDeleting(nameOf(svc))
+          }}
+          disabled={deletingNow(nameOf(svc))}
+          aria-label={`Delete service ${nameOf(svc)}`}
+        >
+          {deletingNow(nameOf(svc)) ? 'Deleting…' : 'Delete'}
+        </button>
+      ),
+    },
+  ]
 
   const isReady = (s: InferenceService) => ['running', 'ready'].includes((s.status?.phase ?? '').toLowerCase())
   const active = services?.filter(isReady).length
@@ -96,59 +219,41 @@ export default function InferenceServices() {
         <section className="card span3">
           <p className="eyebrow">Serving</p>
           <h2 className="card-title">All services</h2>
-          <div className="toolbar">
-            <button className="primary" onClick={() => setShowCreateForm(true)}>
-              Deploy model
-            </button>
-            <button className="btn-refresh" onClick={() => refetch()} disabled={isRefetching}>
-              Refresh
-            </button>
-            {services && <span className="faint">{services.length} total</span>}
-          </div>
           {isLoading ? (
             <Skeleton rows={4} />
-          ) : (services ?? []).length === 0 ? (
-            <EmptyState
-              title="No inference services deployed."
-              action={
-                <button className="primary" onClick={() => setShowCreateForm(true)}>
-                  Deploy a model
-                </button>
-              }
-            >
-              Serve a registered model behind an autoscaled endpoint.
-            </EmptyState>
           ) : (
-            <div className="table-wrap">
-              <table>
-                <TableCaption>Inference services</TableCaption>
-                <thead>
-                  <tr>
-                    <th scope="col">Name</th>
-                    <th scope="col">Model</th>
-                    <th scope="col">Backend</th>
-                    <th scope="col" className="num">Replicas</th>
-                    <th scope="col">Status</th>
-                    <th scope="col">Endpoint</th>
-                    <th scope="col">Canary</th>
-                    <th scope="col">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(services ?? []).map((svc) => {
-                    const name = svc.metadata?.name || 'unknown'
-                    return (
-                      <ServiceRow
-                        key={name}
-                        service={svc}
-                        deleting={deleteMutation.isPending && deleteMutation.variables === name}
-                        onDelete={() => setDeleting(name)}
-                      />
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <>
+              {openService && <ServiceDetail service={openService} deleting={deletingNow(nameOf(openService))} onClose={() => setOpenName(null)} onDelete={() => setDeleting(nameOf(openService))} />}
+              <DataTable
+                caption="Inference services"
+                columns={columns}
+                state={table}
+                rowKey={nameOf}
+                onRowClick={toggleOpen}
+                actions={
+                  <>
+                    <button className="primary" onClick={() => setShowCreateForm(true)}>
+                      Deploy model
+                    </button>
+                    <button className="btn-refresh" onClick={() => refetch()} disabled={isRefetching}>
+                      Refresh
+                    </button>
+                  </>
+                }
+                empty={
+                  <EmptyState
+                    title="No inference services deployed."
+                    action={
+                      <button className="primary" onClick={() => setShowCreateForm(true)}>
+                        Deploy a model
+                      </button>
+                    }
+                  >
+                    Serve a registered model behind an autoscaled endpoint.
+                  </EmptyState>
+                }
+              />
+            </>
           )}
         </section>
       </div>
@@ -165,50 +270,67 @@ export default function InferenceServices() {
         </ConfirmDialog>
       )}
 
-      {showCreateForm && <CreateInferenceServiceModal onClose={() => setShowCreateForm(false)} />}
+      {showCreateForm && <CreateInferenceServiceModal onClose={closeCreate} initialModel={prefillModel} />}
     </>
   )
 }
 
 // --- Sub-components ---
 
-function ServiceRow({ service, onDelete, deleting }: { service: InferenceService; onDelete: () => void; deleting: boolean }) {
-  const name = service.metadata?.name || 'unknown'
-  const phase = service.status?.phase || 'Pending'
+function ServiceDetail({ service, onClose, onDelete, deleting }: { service: InferenceService; onClose: () => void; onDelete: () => void; deleting: boolean }) {
+  const name = nameOf(service)
   const auto = service.spec?.autoscaling
-  const desired = service.spec?.replicas
   const endpoint = service.status?.endpoint
-  const canary = service.spec?.canary?.trafficPercent ?? 0
-
+  const model = service.spec?.modelRef
   return (
-    <tr>
-      <td><b>{name}</b></td>
-      <td className="muted">{service.spec?.modelRef ?? '—'}</td>
-      <td><span className="pill">{backendLabel(service.spec?.backend)}</span></td>
-      <td className="num">
-        <span>{service.status?.readyReplicas ?? 0}/{desired ?? '—'}</span>
-        {auto?.minReplicas !== undefined && auto?.maxReplicas !== undefined && (
-          <div className="faint">autoscale {auto.minReplicas}–{auto.maxReplicas}</div>
-        )}
-      </td>
-      <td><span className={`pill ${phaseTone(phase)}`}>{phase}</span></td>
-      <td>
-        {endpoint ? (
-          <div className="toolbar">
-            <span className="mono muted">{endpoint}</span>
-            <CopyButton value={endpoint} label="endpoint URL" />
-          </div>
-        ) : (
-          <span className="faint">—</span>
-        )}
-      </td>
-      <td>{canary > 0 ? <span className="pill info">{canary}%</span> : <span className="faint">—</span>}</td>
-      <td>
-        <button className="danger" onClick={onDelete} disabled={deleting} aria-label={`Delete service ${name}`}>
-          {deleting ? 'Deleting…' : 'Delete'}
+    <div className="card" id="service-detail" role="region" aria-label={`${name} details`}>
+      <div className="row">
+        <p className="eyebrow">Service: {name}</p>
+        <button type="button" className="btn-secondary" onClick={onClose}>
+          Close details
         </button>
-      </td>
-    </tr>
+      </div>
+      <div className="formgrid">
+        <div>
+          <div className="faint">Endpoint</div>
+          {endpoint ? (
+            <div className="toolbar">
+              <span className="mono muted">{endpoint}</span>
+              <CopyButton value={endpoint} label="endpoint URL" />
+            </div>
+          ) : (
+            <span className="faint">Not available yet</span>
+          )}
+        </div>
+        <div>
+          <div className="faint">Replicas ready / desired</div>
+          <span className="num">{service.status?.readyReplicas ?? 0} / {service.spec?.replicas ?? '—'}</span>
+        </div>
+        <div>
+          <div className="faint">Autoscale range</div>
+          <span className="num">{auto?.minReplicas !== undefined && auto?.maxReplicas !== undefined ? `${auto.minReplicas}–${auto.maxReplicas} replicas` : '—'}</span>
+        </div>
+        <div>
+          <div className="faint">Target GPU utilization</div>
+          <span className="num">{auto?.targetUtilization !== undefined ? `${auto.targetUtilization}%` : '—'}</span>
+        </div>
+        <div>
+          <div className="faint">Model</div>
+          {model ? (
+            <Link to={`/models?q=${encodeURIComponent(model)}`} className="card-link">
+              {model}
+            </Link>
+          ) : (
+            <span className="faint">—</span>
+          )}
+        </div>
+      </div>
+      <div className="toolbar">
+        <button className="danger" onClick={onDelete} disabled={deleting} aria-label={`Delete service ${name}`}>
+          {deleting ? 'Deleting…' : 'Delete service'}
+        </button>
+      </div>
+    </div>
   )
 }
 
@@ -221,15 +343,17 @@ const INITIAL = {
   targetUtilization: '80',
 }
 
-function CreateInferenceServiceModal({ onClose }: { onClose: () => void }) {
+function CreateInferenceServiceModal({ onClose, initialModel = '' }: { onClose: () => void; initialModel?: string }) {
   const queryClient = useQueryClient()
-  const [form, setForm] = useState(INITIAL)
+  const [initial] = useState(() => ({ ...INITIAL, modelRef: initialModel }))
+  const [form, setForm] = useState(initial)
   const [touched, setTouched] = useState(false)
   const set = (patch: Partial<typeof INITIAL>) => setForm((f) => ({ ...f, ...patch }))
-  const dirty = JSON.stringify(form) !== JSON.stringify(INITIAL)
+  const dirty = JSON.stringify(form) !== JSON.stringify(initial)
 
   const modelsQuery = useQuery({ queryKey: ['models'], queryFn: api.getModels })
-  const modelNames = Array.from(new Set((modelsQuery.data ?? []).map((m) => m.metadata?.name).filter((n): n is string => !!n)))
+  // A prefilled model stays selectable even before (or without) the registry listing it.
+  const modelNames = Array.from(new Set([...(initialModel ? [initialModel] : []), ...(modelsQuery.data ?? []).map((m) => m.metadata?.name).filter((n): n is string => !!n)]))
 
   const createMutation = useMutation({
     mutationFn: (data: Parameters<typeof api.createInferenceService>[0]) => api.createInferenceService(data),

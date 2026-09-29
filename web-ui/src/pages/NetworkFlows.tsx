@@ -1,6 +1,6 @@
-import { useMemo } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '@/lib/api'
 import type { NetworkFlow } from '@/lib/api'
 import PageHero from '@/components/PageHero'
@@ -9,9 +9,18 @@ import { EmptyState, ErrorState, Skeleton } from '@/components/StateViews'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { formatDate, formatRelative } from '@/lib/format'
 import { errorMessage } from '@/lib/errors'
-import { filterFlows, flowFilterOptions, pageWindow, verdictKind, verdictTone, type FlowFilters } from '@/lib/network'
+import { applySort, type SortAccessor, type SortDir } from '@/lib/tableState'
+import { filterFlows, flowFilterOptions, pageWindow, parseByteQuantity, parseLatencyMs, policyPrefillUrl, traceUrl, verdictKind, verdictTone, type FlowFilters } from '@/lib/network'
 
 const ITEMS_PER_PAGE = 20
+
+const SORT_ACCESSORS: Record<string, SortAccessor<NetworkFlow>> = {
+  service: (f) => f.spec.source.toLowerCase(),
+  destination: (f) => f.spec.destination.toLowerCase(),
+  verdict: (f) => (f.spec.verdict || '').toLowerCase() || undefined,
+  latency: (f) => parseLatencyMs(f.spec.latency),
+  throughput: (f) => parseByteQuantity(f.spec.bytes),
+}
 
 export default function NetworkFlows() {
   useDocumentTitle('Network flows')
@@ -21,7 +30,24 @@ export default function NetworkFlows() {
     namespace: params.get('namespace') ?? '',
     verdict: params.get('verdict') ?? '',
     protocol: params.get('protocol') ?? '',
+    source: params.get('source') ?? '',
+    destination: params.get('destination') ?? '',
   }
+  const sortParam = params.get('sort') ?? ''
+  const sortKey = sortParam in SORT_ACCESSORS ? sortParam : undefined
+  const sortDir: SortDir = params.get('dir') === 'desc' ? 'desc' : 'asc'
+  const toggleSort = (key: string) =>
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        next.set('sort', key)
+        next.set('dir', sortKey === key && sortDir === 'asc' ? 'desc' : 'asc')
+        next.delete('page')
+        return next
+      },
+      { replace: true },
+    )
+  const [expanded, setExpanded] = useState<string | null>(null)
   const requestedPage = Math.max(1, parseInt(params.get('page') ?? '1', 10) || 1)
 
   const setFilter = (key: keyof FlowFilters, value: string) => {
@@ -56,7 +82,10 @@ export default function NetworkFlows() {
 
   const all = useMemo(() => flows ?? [], [flows])
   const options = useMemo(() => flowFilterOptions(all), [all])
-  const filtered = useMemo(() => filterFlows(all, filters), [all, filters.service, filters.namespace, filters.verdict, filters.protocol]) // eslint-disable-line react-hooks/exhaustive-deps
+  const filtered = useMemo(
+    () => applySort(filterFlows(all, filters), sortKey, sortDir, SORT_ACCESSORS),
+    [all, filters.service, filters.namespace, filters.verdict, filters.protocol, filters.source, filters.destination, sortKey, sortDir], // eslint-disable-line react-hooks/exhaustive-deps
+  )
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE))
   const page = Math.min(requestedPage, totalPages)
@@ -118,6 +147,18 @@ export default function NetworkFlows() {
                   Service
                   <input type="text" value={filters.service} onChange={(e) => setFilter('service', e.target.value)} placeholder="Filter by service..." />
                 </label>
+                {(filters.source || filters.destination) && (
+                  <>
+                    <label>
+                      Source (exact)
+                      <input type="text" value={filters.source} onChange={(e) => setFilter('source', e.target.value)} />
+                    </label>
+                    <label>
+                      Destination (exact)
+                      <input type="text" value={filters.destination} onChange={(e) => setFilter('destination', e.target.value)} />
+                    </label>
+                  </>
+                )}
                 <label>
                   Namespace
                   <select value={filters.namespace} onChange={(e) => setFilter('namespace', e.target.value)}>
@@ -179,19 +220,26 @@ export default function NetworkFlows() {
                   <table>
                     <thead>
                       <tr>
-                        <th>Graph updated</th>
-                        <th>Source</th>
-                        <th>Destination</th>
-                        <th>Protocol</th>
-                        <th className="num">Port</th>
-                        {hasThroughput && <th className="num">Throughput</th>}
-                        <th className="num">Latency</th>
-                        <th>Verdict</th>
+                        <th scope="col">Graph updated</th>
+                        <SortTh label="Service" k="service" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                        <SortTh label="Destination" k="destination" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                        <th scope="col">Protocol</th>
+                        <th scope="col" className="num">Port</th>
+                        {hasThroughput && <SortTh label="Throughput" k="throughput" num sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />}
+                        <SortTh label="Latency" k="latency" num sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                        <SortTh label="Verdict" k="verdict" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                       </tr>
                     </thead>
                     <tbody>
                       {paginated.map((flow) => (
-                        <FlowRow key={flow.metadata.name} flow={flow} showThroughput={hasThroughput} />
+                        <FlowRow
+                          key={flow.metadata.name}
+                          flow={flow}
+                          showThroughput={hasThroughput}
+                          colSpan={hasThroughput ? 8 : 7}
+                          open={expanded === flow.metadata.name}
+                          onToggle={() => setExpanded(expanded === flow.metadata.name ? null : flow.metadata.name)}
+                        />
                       ))}
                     </tbody>
                   </table>
@@ -228,25 +276,90 @@ export default function NetworkFlows() {
   )
 }
 
-function FlowRow({ flow, showThroughput }: { flow: NetworkFlow; showThroughput: boolean }) {
+function SortTh({ label, k, num, sortKey, sortDir, onSort }: { label: string; k: string; num?: boolean; sortKey?: string; sortDir: SortDir; onSort: (k: string) => void }) {
+  const sorted = sortKey === k
+  return (
+    <th scope="col" className={num ? 'num' : undefined} aria-sort={sorted ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+      <button type="button" className="th-sort" onClick={() => onSort(k)}>
+        {label}
+        <span aria-hidden="true">{sorted ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}</span>
+      </button>
+    </th>
+  )
+}
+
+function FlowRow({ flow, showThroughput, colSpan, open, onToggle }: { flow: NetworkFlow; showThroughput: boolean; colSpan: number; open: boolean; onToggle: () => void }) {
+  const navigate = useNavigate()
   const ts = flow.spec.timestamp
   const verdict = flow.spec.verdict as string
+  const latency = flow.spec.latency && flow.spec.latency !== '-' ? flow.spec.latency : '—'
+  const detail: Array<[string, string]> = [
+    ['Source', flow.spec.source],
+    ['Destination', flow.spec.destination],
+    ['Protocol', flow.spec.protocol || '—'],
+    ['Port', String(flow.spec.port ?? '—')],
+    ['Verdict', verdict || 'Unknown'],
+    ['Latency', latency],
+    ['Throughput', flow.spec.bytes || '—'],
+    ['Graph updated', ts ? `${formatDate(ts)} · ${formatRelative(ts)}` : '—'],
+  ]
   return (
-    <tr>
-      <td className="faint" title={ts ? formatDate(ts) : undefined}>
-        {ts ? `${formatDate(ts)} · ${formatRelative(ts)}` : '—'}
-      </td>
-      <td>{flow.spec.source}</td>
-      <td>{flow.spec.destination}</td>
-      <td>
-        <span className="pill info">{flow.spec.protocol}</span>
-      </td>
-      <td className="mono muted num">{flow.spec.port}</td>
-      {showThroughput && <td className="muted num">{flow.spec.bytes || '—'}</td>}
-      <td className="muted num">{flow.spec.latency && flow.spec.latency !== '-' ? flow.spec.latency : '—'}</td>
-      <td>
-        <span className={`pill ${verdictTone(verdict)}`}>{verdict || 'Unknown'}</span>
-      </td>
-    </tr>
+    <Fragment>
+      <tr
+        data-clickable=""
+        tabIndex={0}
+        aria-expanded={open}
+        onClick={onToggle}
+        onKeyDown={(e) => {
+          if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
+            e.preventDefault()
+            onToggle()
+          }
+        }}
+      >
+        <td className="faint" title={ts ? formatDate(ts) : undefined}>
+          {ts ? `${formatDate(ts)} · ${formatRelative(ts)}` : '—'}
+        </td>
+        <td>{flow.spec.source}</td>
+        <td>{flow.spec.destination}</td>
+        <td>
+          <span className="pill info">{flow.spec.protocol}</span>
+        </td>
+        <td className="mono muted num">{flow.spec.port}</td>
+        {showThroughput && <td className="muted num">{flow.spec.bytes || '—'}</td>}
+        <td className="muted num">{latency}</td>
+        <td>
+          <span className={`pill ${verdictTone(verdict)}`}>{verdict || 'Unknown'}</span>
+        </td>
+      </tr>
+      {open && (
+        <tr>
+          <td colSpan={colSpan}>
+            <div className="stack">
+              <dl className="formgrid">
+                {detail.map(([k, v]) => (
+                  <div key={k}>
+                    <dt className="faint">{k}</dt>
+                    <dd className="mono">{v}</dd>
+                  </div>
+                ))}
+              </dl>
+              <div className="toolbar">
+                <button
+                  type="button"
+                  className="primary"
+                  onClick={() => navigate(policyPrefillUrl({ source: flow.spec.source, destination: flow.spec.destination, port: flow.spec.port, protocol: flow.spec.protocol }))}
+                >
+                  Create policy from this connection
+                </button>
+                <button type="button" className="btn-secondary" onClick={() => navigate(traceUrl(flow.spec.destination))}>
+                  Start trace
+                </button>
+              </div>
+            </div>
+          </td>
+        </tr>
+      )}
+    </Fragment>
   )
 }

@@ -6,21 +6,40 @@ import type { RegisteredModel } from '@/lib/api'
 import { errorMessage } from '@/lib/errors'
 import { formatDate, formatRelative } from '@/lib/format'
 import { notify } from '@/lib/notify'
+import type { FilterDef, SortAccessor } from '@/lib/tableState'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
+import { useTableState } from '@/hooks/useTableState'
 import PageHero from '@/components/PageHero'
 import PagePulse from '@/components/kit/PagePulse'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import CopyButton from '@/components/CopyButton'
+import DataTable, { type Column } from '@/components/DataTable'
 import { EmptyState, ErrorState, Skeleton } from '@/components/StateViews'
-import { TableCaption } from '@/components/TableCaption'
+
+const nameOf = (m: RegisteredModel) => m.metadata?.name || 'unknown'
+const keyOf = (m: RegisteredModel) => `${nameOf(m)}-${m.spec?.version ?? ''}`
+
+// A model's stage is its status; there is no separate phase to filter on.
+const FILTERS: FilterDef<RegisteredModel>[] = [{ name: 'stage', label: 'Stage', get: (m) => m.spec?.stage }]
+const SORTS: Record<string, SortAccessor<RegisteredModel>> = {
+  name: nameOf,
+  version: (m) => m.spec?.version,
+  stage: (m) => m.spec?.stage,
+  created: (m) => (m.metadata?.creationTimestamp ? Date.parse(m.metadata.creationTimestamp) : undefined),
+}
+const searchText = (m: RegisteredModel) => `${nameOf(m)} ${m.spec?.version ?? ''} ${m.spec?.stage ?? ''} ${m.spec?.sourceJob ?? ''}`
+const DEFAULT_SORT = { key: 'created', dir: 'desc' as const }
 
 export default function ModelRegistry() {
   useDocumentTitle('Models')
+  const [openKey, setOpenKey] = useState<string | null>(null)
   const { data: models, isLoading, isError, error, refetch, isRefetching, dataUpdatedAt } = useQuery({
     queryKey: ['models'],
     queryFn: api.getModels,
     refetchInterval: 30000,
   })
+
+  const table = useTableState({ rows: models, searchText, filters: FILTERS, sortAccessors: SORTS, defaultSort: DEFAULT_SORT })
 
   if (isError && !models) {
     return (
@@ -30,6 +49,56 @@ export default function ModelRegistry() {
       </>
     )
   }
+
+  const openModel = models?.find((m) => keyOf(m) === openKey)
+  const toggleOpen = (m: RegisteredModel) => setOpenKey(openKey === keyOf(m) ? null : keyOf(m))
+  const columns: Column<RegisteredModel>[] = [
+    {
+      key: 'name',
+      header: 'Name',
+      sortable: true,
+      render: (m) => (
+        <button
+          type="button"
+          className="th-sort"
+          aria-expanded={openKey === keyOf(m)}
+          aria-controls="model-detail"
+          onClick={(e) => {
+            e.stopPropagation()
+            toggleOpen(m)
+          }}
+        >
+          <span className="faint" aria-hidden="true">{openKey === keyOf(m) ? '▾' : '▸'}</span>{' '}
+          <b>{nameOf(m)}</b>
+        </button>
+      ),
+    },
+    { key: 'version', header: 'Version', sortable: true, render: (m) => <span className="muted">{m.spec?.version ?? '—'}</span> },
+    { key: 'stage', header: 'Stage', sortable: true, render: (m) => <StageBadge stage={m.spec?.stage} /> },
+    {
+      key: 'sourceJob',
+      header: 'Source job',
+      render: (m) =>
+        m.spec?.sourceJob ? (
+          <Link to={`/jobs/${encodeURIComponent(m.spec.sourceJob)}`} className="card-link" onClick={(e) => e.stopPropagation()}>
+            {m.spec.sourceJob}
+          </Link>
+        ) : (
+          <span className="muted">—</span>
+        ),
+    },
+    {
+      key: 'created',
+      header: 'Created',
+      sortable: true,
+      render: (m) => (
+        <span className="faint" title={formatDate(m.metadata?.creationTimestamp)}>
+          {formatRelative(m.metadata?.creationTimestamp)}
+        </span>
+      ),
+    },
+    { key: 'actions', header: 'Actions', render: (m) => <ModelActions model={m} /> },
+  ]
 
   const count = (stage: string) => models?.filter((m) => m.spec?.stage === stage).length
 
@@ -59,46 +128,46 @@ export default function ModelRegistry() {
         <section className="card span3">
           <p className="eyebrow">Registry</p>
           <h2 className="card-title">All models</h2>
-          <div className="toolbar">
-            <button className="btn-refresh" onClick={() => refetch()} disabled={isRefetching}>
-              Refresh
-            </button>
-            {models && <span className="faint">{models.length} total</span>}
-          </div>
           {isLoading ? (
             <Skeleton rows={4} />
-          ) : (models ?? []).length === 0 ? (
-            <EmptyState
-              title="No models registered yet."
-              action={
-                <Link to="/jobs/new" className="buttonlike primary">
-                  Submit a training job
-                </Link>
-              }
-            >
-              Models are registered from training jobs: when a job finishes, its output shows up here.
-            </EmptyState>
           ) : (
-            <div className="table-wrap">
-              <table>
-                <TableCaption>Registered models</TableCaption>
-                <thead>
-                  <tr>
-                    <th scope="col">Name</th>
-                    <th scope="col">Version</th>
-                    <th scope="col">Stage</th>
-                    <th scope="col">Source job</th>
-                    <th scope="col">Created</th>
-                    <th scope="col">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(models ?? []).map((model) => (
-                    <ModelRow key={`${model.metadata?.name}-${model.spec?.version}`} model={model} />
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <>
+              {openModel && (
+                <div className="card" id="model-detail" role="region" aria-label={`${nameOf(openModel)} details`}>
+                  <div className="row">
+                    <p className="eyebrow">Model: {nameOf(openModel)}</p>
+                    <button type="button" className="btn-secondary" onClick={() => setOpenKey(null)}>
+                      Close details
+                    </button>
+                  </div>
+                  <ModelDetail model={openModel} />
+                </div>
+              )}
+              <DataTable
+                caption="Registered models"
+                columns={columns}
+                state={table}
+                rowKey={keyOf}
+                onRowClick={toggleOpen}
+                actions={
+                  <button className="btn-refresh" onClick={() => refetch()} disabled={isRefetching}>
+                    Refresh
+                  </button>
+                }
+                empty={
+                  <EmptyState
+                    title="No models registered yet."
+                    action={
+                      <Link to="/jobs/new" className="buttonlike primary">
+                        Submit a training job
+                      </Link>
+                    }
+                  >
+                    Models are registered from training jobs: when a job finishes, its output shows up here.
+                  </EmptyState>
+                }
+              />
+            </>
           )}
         </section>
       </div>
@@ -126,18 +195,62 @@ function StageBadge({ stage }: { stage?: string }) {
   return <span className={`pill ${stageTone[stage] ?? ''}`}>{stage}</span>
 }
 
-function ModelRow({ model }: { model: RegisteredModel }) {
+function ModelDetail({ model }: { model: RegisteredModel }) {
+  const stage = model.spec?.stage
+  const sourceJob = model.spec?.sourceJob
+  const endpoint = model.status?.servingEndpoint
+  return (
+    <div className="formgrid">
+      <div>
+        <div className="faint">Artifact paths</div>
+        {model.spec?.artifacts && model.spec.artifacts.length > 0 ? (
+          <div className="stack">
+            {model.spec.artifacts.map((a) => (
+              <div key={a} className="toolbar">
+                <span className="mono muted">{a}</span>
+                <CopyButton value={a} label="artifact path" />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="faint">No artifacts</div>
+        )}
+      </div>
+      <div>
+        <div className="faint">Source job</div>
+        {sourceJob ? (
+          <Link to={`/jobs/${encodeURIComponent(sourceJob)}`} className="card-link">
+            {sourceJob}
+          </Link>
+        ) : (
+          <div className="faint">No source job</div>
+        )}
+      </div>
+      <div>
+        <div className="faint">Serving endpoint</div>
+        {stage === 'production' && endpoint ? (
+          <div className="toolbar">
+            <span className="mono muted">{endpoint}</span>
+            <CopyButton value={endpoint} label="endpoint" />
+          </div>
+        ) : (
+          <div className="faint">{stage === 'production' ? 'Not deployed' : 'Available in production'}</div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** Row actions: promote to the next stage (with confirmation) and serve the model. */
+function ModelActions({ model }: { model: RegisteredModel }) {
   const queryClient = useQueryClient()
-  const [expanded, setExpanded] = useState(false)
   const [confirming, setConfirming] = useState(false)
 
-  const name = model.metadata?.name || 'unknown'
+  const name = nameOf(model)
   const stage = model.spec?.stage
   const version = model.spec?.version
-  const sourceJob = model.spec?.sourceJob
   const target = stage ? PROMOTE_TARGETS[stage] : undefined
-  const created = model.metadata?.creationTimestamp
-  const endpoint = model.status?.servingEndpoint
+  const dangerous = target === 'production' || target === 'archived'
 
   const promoteMutation = useMutation({
     mutationFn: (targetStage: string) => api.promoteModel(name, targetStage),
@@ -150,105 +263,26 @@ function ModelRow({ model }: { model: RegisteredModel }) {
     onError: (err) => notify.error(`Could not promote ${name}`, err),
   })
 
-  const toggle = () => setExpanded((v) => !v)
-  const dangerous = target === 'production' || target === 'archived'
-
   return (
-    <>
-      <tr
-        className="table-row-hover"
-        data-clickable
-        tabIndex={0}
-        aria-expanded={expanded}
-        onClick={toggle}
-        onKeyDown={(e) => {
-          if (e.target !== e.currentTarget) return
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault()
-            toggle()
-          }
-        }}
-      >
-        <td>
-          <span className="faint" aria-hidden="true">{expanded ? '▾' : '▸'}</span>{' '}
-          <b>{name}</b>
-        </td>
-        <td className="muted">{version ?? '—'}</td>
-        <td>
-          <StageBadge stage={stage} />
-        </td>
-        <td className="muted">
-          {sourceJob ? (
-            <Link to={`/jobs/${encodeURIComponent(sourceJob)}`} className="card-link" onClick={(e) => e.stopPropagation()}>
-              {sourceJob}
-            </Link>
-          ) : (
-            '—'
-          )}
-        </td>
-        <td className="faint" title={formatDate(created)}>
-          {formatRelative(created)}
-        </td>
-        <td onClick={(e) => e.stopPropagation()}>
-          {target && (
-            <button
-              className="btn-secondary"
-              onClick={() => {
-                promoteMutation.reset()
-                setConfirming(true)
-              }}
-              disabled={promoteMutation.isPending}
-              aria-label={`Promote ${name} to ${target}`}
-            >
-              {promoteMutation.isPending ? 'Promoting…' : `Promote to ${target}`}
-            </button>
-          )}
-        </td>
-      </tr>
-
-      {expanded && (
-        <tr>
-          <td colSpan={6}>
-            <div className="formgrid">
-              <div>
-                <div className="faint">Artifact paths</div>
-                {model.spec?.artifacts && model.spec.artifacts.length > 0 ? (
-                  <div className="stack">
-                    {model.spec.artifacts.map((a) => (
-                      <div key={a} className="toolbar">
-                        <span className="mono muted">{a}</span>
-                        <CopyButton value={a} label="artifact path" />
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="faint">No artifacts</div>
-                )}
-              </div>
-              <div>
-                <div className="faint">Source job</div>
-                {sourceJob ? (
-                  <Link to={`/jobs/${encodeURIComponent(sourceJob)}`} className="card-link">
-                    {sourceJob}
-                  </Link>
-                ) : (
-                  <div className="faint">No source job</div>
-                )}
-              </div>
-              <div>
-                <div className="faint">Serving endpoint</div>
-                {stage === 'production' && endpoint ? (
-                  <div className="toolbar">
-                    <span className="mono muted">{endpoint}</span>
-                    <CopyButton value={endpoint} label="endpoint" />
-                  </div>
-                ) : (
-                  <div className="faint">{stage === 'production' ? 'Not deployed' : 'Available in production'}</div>
-                )}
-              </div>
-            </div>
-          </td>
-        </tr>
+    // The row toggles its details on click; these controls must not.
+    <div className="toolbar" onClick={(e) => e.stopPropagation()}>
+      {stage !== 'archived' && (
+        <Link to={`/inference?new=1&model=${encodeURIComponent(name)}`} className="buttonlike btn-secondary" aria-label={`Serve model ${name}`}>
+          Serve this model
+        </Link>
+      )}
+      {target && (
+        <button
+          className="btn-secondary"
+          onClick={() => {
+            promoteMutation.reset()
+            setConfirming(true)
+          }}
+          disabled={promoteMutation.isPending}
+          aria-label={`Promote ${name} to ${target}`}
+        >
+          {promoteMutation.isPending ? 'Promoting…' : `Promote to ${target}`}
+        </button>
       )}
 
       {confirming && target && (
@@ -273,6 +307,6 @@ function ModelRow({ model }: { model: RegisteredModel }) {
           )}
         </ConfirmDialog>
       )}
-    </>
+    </div>
   )
 }

@@ -7,16 +7,44 @@ import { formatDate, formatRelative } from '@/lib/format'
 import { phaseTone } from '@/lib/phase'
 import { notify } from '@/lib/notify'
 import { buildIdleTimeout, buildStorage, intError, nameError, parseIntStrict } from '@/lib/forms'
+import type { FilterDef, SortAccessor } from '@/lib/tableState'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
+import { useTableState } from '@/hooks/useTableState'
 import PageHero from '@/components/PageHero'
 import PagePulse from '@/components/kit/PagePulse'
 import Modal from '@/components/Modal'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { EmptyState, ErrorState, Skeleton } from '@/components/StateViews'
+import CopyButton from '@/components/CopyButton'
 import { SrOnly } from '@/components/TableCaption'
 
 /** The gateway also returns status.message; it is not in the shared type yet. */
 type WorkspaceView = Workspace & { status?: { message?: string } }
+
+const nameOf = (w: WorkspaceView) => w.metadata?.name || 'unknown'
+const phaseOf = (w: WorkspaceView) => w.status?.phase || 'Pending'
+const TYPE_LABEL: Record<string, string> = { jupyter: 'Jupyter', vscode: 'VS Code' }
+const typeOf = (w: WorkspaceView) => w.spec?.type || 'jupyter'
+
+const FILTERS: FilterDef<WorkspaceView>[] = [
+  { name: 'status', label: 'Status', get: phaseOf },
+  { name: 'type', label: 'Type', get: typeOf },
+]
+const SORTS: Record<string, SortAccessor<WorkspaceView>> = {
+  name: nameOf,
+  status: phaseOf,
+  gpus: (w) => w.spec?.gpuCount,
+  created: (w) => (w.metadata?.creationTimestamp ? Date.parse(w.metadata.creationTimestamp) : undefined),
+}
+const SORT_LABELS: [string, string][] = [
+  ['name', 'Name'],
+  ['status', 'Status'],
+  ['gpus', 'GPUs'],
+  ['created', 'Created'],
+]
+const searchText = (w: WorkspaceView) => `${nameOf(w)} ${phaseOf(w)} ${TYPE_LABEL[typeOf(w)] ?? typeOf(w)} ${w.spec?.gpuType ?? ''}`
+const DEFAULT_SORT = { key: 'name', dir: 'asc' as const }
+const PAGE_SIZE = 12
 
 export default function Workspaces() {
   useDocumentTitle('Workspaces')
@@ -63,6 +91,8 @@ export default function Workspaces() {
     },
   })
 
+  const table = useTableState({ rows: workspaces as WorkspaceView[] | undefined, searchText, filters: FILTERS, sortAccessors: SORTS, defaultSort: DEFAULT_SORT, pageSize: PAGE_SIZE })
+
   if (isError && !workspaces) {
     return (
       <>
@@ -105,7 +135,42 @@ export default function Workspaces() {
         <section className="card span3">
           <p className="eyebrow">Actions</p>
           <h2 className="card-title">Workspaces</h2>
-          <div className="toolbar">
+          <div className="toolbar" role="search">
+            <label>
+              Search
+              <input type="search" value={table.search} onChange={(e) => table.setSearch(e.target.value)} placeholder="Search…" />
+            </label>
+            {table.filterDefs.map((def) => (
+              <label key={def.name}>
+                {def.label}
+                <select value={table.filterValues[def.name] ?? ''} onChange={(e) => table.setFilter(def.name, e.target.value)}>
+                  <option value="">All</option>
+                  {table.filterOptionsFor(def).map((o) => (
+                    <option key={o} value={o}>
+                      {def.name === 'type' ? (TYPE_LABEL[o] ?? o) : o}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))}
+            <label>
+              Sort by
+              <select value={table.sortKey ?? DEFAULT_SORT.key} onChange={(e) => e.target.value !== table.sortKey && table.toggleSort(e.target.value)}>
+                {SORT_LABELS.map(([key, label]) => (
+                  <option key={key} value={key}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button type="button" className="btn-secondary" onClick={() => table.toggleSort(table.sortKey ?? DEFAULT_SORT.key)} aria-label={`Sort order: ${table.sortDir === 'asc' ? 'ascending' : 'descending'}. Reverse`}>
+              {table.sortDir === 'asc' ? '▲ Ascending' : '▼ Descending'}
+            </button>
+            {table.isFiltered && (
+              <button type="button" className="btn-secondary" onClick={table.reset}>
+                Clear filters
+              </button>
+            )}
             <button className="primary" onClick={() => setShowCreateForm(true)}>
               New workspace
             </button>
@@ -132,21 +197,53 @@ export default function Workspaces() {
               A workspace is a Jupyter or VS Code environment with GPUs attached and a persistent volume.
             </EmptyState>
           </section>
+        ) : table.filteredCount === 0 ? (
+          <section className="card span3">
+            <EmptyState
+              title="Nothing matches these filters."
+              action={
+                <button type="button" className="btn-secondary" onClick={table.reset}>
+                  Clear filters
+                </button>
+              }
+            />
+          </section>
         ) : (
-          (list ?? []).map((ws) => {
-            const name = ws.metadata?.name || 'unknown'
-            return (
-              <WorkspaceCard
-                key={name}
-                workspace={ws}
-                pausing={pauseMutation.isPending && pauseMutation.variables === name}
-                resuming={resumeMutation.isPending && resumeMutation.variables === name}
-                onPause={() => pauseMutation.mutate(name)}
-                onResume={() => resumeMutation.mutate(name)}
-                onDelete={() => setDeleting(name)}
-              />
-            )
-          })
+          <>
+            {table.pageRows.map((ws) => {
+              const name = nameOf(ws)
+              return (
+                <WorkspaceCard
+                  key={name}
+                  workspace={ws}
+                  pausing={pauseMutation.isPending && pauseMutation.variables === name}
+                  resuming={resumeMutation.isPending && resumeMutation.variables === name}
+                  onPause={() => pauseMutation.mutate(name)}
+                  onResume={() => resumeMutation.mutate(name)}
+                  onDelete={() => setDeleting(name)}
+                />
+              )
+            })}
+            <div className="toolbar span3">
+              <span className="faint" role="status">
+                Showing {table.from}–{table.to} of {table.filteredCount}
+                {table.filteredCount !== table.total ? ` (${table.total} total)` : ''}
+              </span>
+              {table.pageCount > 1 && (
+                <nav aria-label="Pagination" className="toolbar">
+                  <button type="button" className="btn-secondary" disabled={table.page <= 1} onClick={() => table.setPage(table.page - 1)}>
+                    Previous
+                  </button>
+                  <span className="faint">
+                    Page {table.page} of {table.pageCount}
+                  </span>
+                  <button type="button" className="btn-secondary" disabled={table.page >= table.pageCount} onClick={() => table.setPage(table.page + 1)}>
+                    Next
+                  </button>
+                </nav>
+              )}
+            </div>
+          </>
         )}
       </div>
 
@@ -183,7 +280,6 @@ function WorkspaceCard({ workspace, onPause, onResume, onDelete, pausing, resumi
   const phase = rawPhase || 'Pending'
   const provisioning = !rawPhase
   const wsType = workspace.spec?.type || 'jupyter'
-  const label: Record<string, string> = { jupyter: 'Jupyter', vscode: 'VS Code' }
   const url = workspace.status?.url
   const canOpen = (phase === 'Running' || phase === 'Idle') && !!url
   const gpuCount = workspace.spec?.gpuCount
@@ -191,7 +287,7 @@ function WorkspaceCard({ workspace, onPause, onResume, onDelete, pausing, resumi
 
   return (
     <section className="card">
-      <p className="eyebrow">{label[wsType] || wsType}</p>
+      <p className="eyebrow">{TYPE_LABEL[wsType] || wsType}</p>
       <h2 className="card-title">{name}</h2>
       <p>
         <span className={`pill ${phaseTone(phase)}`}>{phase}</span>
@@ -216,10 +312,13 @@ function WorkspaceCard({ workspace, onPause, onResume, onDelete, pausing, resumi
 
       <div className="toolbar">
         {canOpen && (
-          <a href={url} target="_blank" rel="noopener noreferrer" className="buttonlike btn-secondary">
-            Open <span aria-hidden="true">↗</span>
-            <SrOnly> {name} in a new tab</SrOnly>
-          </a>
+          <>
+            <a href={url} target="_blank" rel="noopener noreferrer" className="buttonlike btn-secondary">
+              Open <span aria-hidden="true">↗</span>
+              <SrOnly> {name} in a new tab</SrOnly>
+            </a>
+            <CopyButton value={url} label={`${name} URL`} />
+          </>
         )}
         {phase === 'Running' || phase === 'Idle' ? (
           <button className="btn-secondary" onClick={onPause} disabled={pausing}>

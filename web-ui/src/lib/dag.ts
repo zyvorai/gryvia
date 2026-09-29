@@ -33,3 +33,49 @@ export function dagLayers<T extends StepLike>(steps: T[]): T[][] {
   }
   return layers.filter(Boolean)
 }
+
+export type DagIssue = {
+  kind: 'duplicate' | 'unknown' | 'self' | 'cycle'
+  /** Names of the steps the problem should be shown on. */
+  steps: string[]
+  message: string
+}
+
+/**
+ * The gateway's DAG rules, run live in the form: duplicate names, dependencies on steps that do
+ * not exist, self-dependencies and cycles. Blank names are skipped (the name field reports those).
+ */
+export function validateDag(steps: StepLike[]): DagIssue[] {
+  const issues: DagIssue[] = []
+  const named = steps.filter((s) => s.name !== '')
+  const seen = new Set<string>()
+  const dup = new Set<string>()
+  for (const s of named) (seen.has(s.name) ? dup : seen).add(s.name)
+  for (const name of dup) issues.push({ kind: 'duplicate', steps: [name], message: `Step name "${name}" is used more than once.` })
+
+  const names = new Set(named.map((s) => s.name))
+  for (const s of named) {
+    for (const d of s.dependsOn ?? []) {
+      if (d === s.name) issues.push({ kind: 'self', steps: [s.name], message: `Step "${s.name}" cannot depend on itself.` })
+      else if (!names.has(d)) issues.push({ kind: 'unknown', steps: [s.name], message: `Step "${s.name}" depends on unknown step "${d}".` })
+    }
+  }
+
+  // Kahn's algorithm over the valid edges only; whatever is left over is in or behind a cycle.
+  const remaining = new Map<string, Set<string>>()
+  for (const s of named) {
+    if (remaining.has(s.name)) continue
+    remaining.set(s.name, new Set((s.dependsOn ?? []).filter((d) => d !== s.name && names.has(d))))
+  }
+  for (;;) {
+    const ready = [...remaining].filter(([, deps]) => deps.size === 0).map(([n]) => n)
+    if (ready.length === 0) break
+    for (const n of ready) remaining.delete(n)
+    for (const deps of remaining.values()) for (const n of ready) deps.delete(n)
+  }
+  if (remaining.size > 0) {
+    const members = [...remaining.keys()]
+    issues.push({ kind: 'cycle', steps: members, message: `Dependencies form a cycle: ${members.join(', ')}.` })
+  }
+  return issues
+}

@@ -1,19 +1,41 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useSearchParams } from 'react-router-dom'
 import { api } from '@/lib/api'
 import PageHero from '@/components/PageHero'
 import PagePulse from '@/components/kit/PagePulse'
 import Progress from '@/components/Progress'
+import DataTable, { type Column } from '@/components/DataTable'
+import { useTableState } from '@/hooks/useTableState'
+import { applySearch, type SortAccessor } from '@/lib/tableState'
 import VisuallyHidden from '@/components/VisuallyHidden'
 import { EmptyState, ErrorState, Skeleton } from '@/components/StateViews'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { formatBytes, formatMoney, formatPercent } from '@/lib/format'
 import { errorMessage } from '@/lib/errors'
-import { periodLabel, summarizeCosts } from '@/lib/networkCost'
+import { periodLabel, summarizeCosts, type CostGroup } from '@/lib/networkCost'
+
+const SORTERS: Record<string, SortAccessor<CostGroup>> = {
+  name: (g) => g.name.toLowerCase(),
+  cost: (g) => g.cost,
+  bytes: (g) => g.bytes,
+}
+const searchText = (g: CostGroup) => g.name
 
 export default function NetworkCost() {
   useDocumentTitle('Network cost')
-  const [selected, setSelected] = useState('')
+  const [params, setParams] = useSearchParams()
+  const selected = params.get('period') ?? ''
+  const setSelected = (p: string) =>
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        next.set('period', p)
+        next.delete('page')
+        return next
+      },
+      { replace: true },
+    )
   const { data: costData, isLoading, isError, error, refetch, isFetching, dataUpdatedAt } = useQuery({
     queryKey: ['networkCosts'],
     queryFn: api.getNetworkCosts,
@@ -65,7 +87,16 @@ function CostBody({ summary, costPerGB, periodChoices, onSelect, updatedAt, stal
   updatedAt: number
   stale?: string
 }) {
-  const { period, reports, totalCost, sameZone, crossZone, external, teams, namespaces, trend } = summary
+  const { period, reports, totalCost, sameZone, crossZone, external, teams, namespaces, namespacesAll, trend } = summary
+  const table = useTableState<CostGroup>({ rows: teams, searchText, sortAccessors: SORTERS, pageSize: 10 })
+  // One search box (the teams table's) also narrows the namespaces card; unsearched it shows the top 8.
+  const shownNamespaces = table.search.trim() ? applySearch(namespacesAll, table.search, searchText) : namespaces
+  const teamColumns: Column<CostGroup>[] = [
+    { key: 'name', header: 'Team', sortable: true, render: (t) => t.name },
+    { key: 'cost', header: 'Cost (USD)', sortable: true, numeric: true, render: (t) => <span className="mono">{formatMoney(t.cost)}</span> },
+    { key: 'bytes', header: 'Traffic', sortable: true, numeric: true, render: (t) => <span className="muted">{formatBytes(t.bytes)}</span> },
+    { key: 'share', header: '% of total', numeric: true, render: (t) => <span className="faint">{totalCost > 0 ? formatPercent((t.cost / totalCost) * 100) : '—'}</span> },
+  ]
   const totalBytes = sameZone + crossZone + external
   const label = periodLabel(period)
 
@@ -132,35 +163,22 @@ function CostBody({ summary, costPerGB, periodChoices, onSelect, updatedAt, stal
       <section className="card span2">
         <p className="eyebrow">TEAMS · {label.toUpperCase()}</p>
         <h2 className="card-title">Cost by team</h2>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Team</th>
-                <th className="num">Cost (USD)</th>
-                <th className="num">Traffic</th>
-                <th className="num">% of total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {teams.map((t) => (
-                <tr key={t.name}>
-                  <td>{t.name}</td>
-                  <td className="mono num">{formatMoney(t.cost)}</td>
-                  <td className="muted num">{formatBytes(t.bytes)}</td>
-                  <td className="faint num">{totalCost > 0 ? formatPercent((t.cost / totalCost) * 100) : '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          caption={`Network cost by team, ${label}`}
+          searchLabel="Search teams and namespaces"
+          columns={teamColumns}
+          state={table}
+          rowKey={(t) => t.name}
+          empty={<EmptyState title="No team costs in this period" />}
+        />
       </section>
 
       <section className="card">
         <p className="eyebrow">NAMESPACES</p>
         <h2 className="card-title">Top cost contributors</h2>
         <div className="stack">
-          {namespaces.map((n) => (
+          {shownNamespaces.length === 0 && <p className="faint">No namespace matches the search.</p>}
+          {shownNamespaces.map((n) => (
             <div key={n.name}>
               <div className="list-row">
                 <span className="grow">{n.name}</span>

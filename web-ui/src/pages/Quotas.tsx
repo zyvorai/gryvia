@@ -1,5 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
 import { api } from '@/lib/api'
+import DataTable, { type Column } from '@/components/DataTable'
+import { useTableState } from '@/hooks/useTableState'
+import type { FilterDef, SortAccessor } from '@/lib/tableState'
+import type { FabricQuota } from '@/types'
 import PageHero from '@/components/PageHero'
 import PagePulse from '@/components/kit/PagePulse'
 import { countTone } from '@/components/kit/tone'
@@ -9,6 +14,19 @@ import { errorMessage } from '@/lib/errors'
 import { formatMoney } from '@/lib/format'
 import { alertThreshold, allowedTypes, budgetPercent, budgetedCount, limitLabel, overBudgetAlert } from '@/lib/quotas'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
+
+const FILTERS: FilterDef<FabricQuota>[] = [
+  { name: 'budget', label: 'Budget', get: (q) => (q.spec.budget ? 'Has budget' : 'No budget'), options: ['Has budget', 'No budget'] },
+  { name: 'alert', label: 'Alert threshold', get: (q) => (q.spec.budget ? (overBudgetAlert(q) ? 'Over threshold' : 'Within threshold') : undefined), options: ['Over threshold', 'Within threshold'] },
+]
+const SORTS: Record<string, SortAccessor<FabricQuota>> = {
+  team: (q) => q.spec.team,
+  gpus: (q) => q.status?.currentUsage?.allocatedGPUs ?? 0,
+  budget: budgetPercent,
+}
+const searchText = (q: FabricQuota) => [q.spec.team, q.metadata.name, ...(q.spec.namespaces ?? [])].join(' ')
+
+const jobsLink = (q: FabricQuota) => `/jobs?f_team=${encodeURIComponent(q.spec.team)}`
 
 function tone(pct: number) {
   return pct > 90 ? 'bad' : pct > 70 ? 'warn' : undefined
@@ -21,6 +39,8 @@ export default function Quotas() {
     queryFn: api.getQuotas,
     refetchInterval: 30000,
   })
+
+  const table = useTableState({ rows: quotas, searchText, filters: FILTERS, sortAccessors: SORTS, defaultSort: { key: 'team', dir: 'asc' }, pageSize: 10 })
 
   if (isLoading) {
     return (
@@ -40,6 +60,12 @@ export default function Quotas() {
   }
 
   const list = quotas || []
+  const columns: Column<FabricQuota>[] = [
+    { key: 'team', header: 'Team', sortable: true, render: (q) => q.spec.team },
+    { key: 'gpus', header: 'GPUs allocated', sortable: true, numeric: true, render: (q) => `${q.status?.currentUsage?.allocatedGPUs ?? 0} / ${q.spec.gpuQuota?.maxGPUs ?? 0}` },
+    { key: 'budget', header: 'Budget used', sortable: true, numeric: true, render: (q) => (q.spec.budget ? `${Math.round(budgetPercent(q) ?? 0)}%` : '—') },
+    { key: 'jobs', header: 'Jobs', render: (q) => <Link to={jobsLink(q)} className="card-link">View jobs</Link> },
+  ]
   const over = list.filter(overBudgetAlert).length
   const budgeted = budgetedCount(list)
   const plural = (n: number) => (n === 1 ? '' : 's')
@@ -90,22 +116,31 @@ export default function Quotas() {
           ]}
         />
 
-        {list.length === 0 && (
-          <section className="card span3">
-            <EmptyState
-              title="No quotas yet"
-              action={
-                <a className="buttonlike btn-secondary" href="https://github.com/zyvorai/gryvia/tree/main/docs" target="_blank" rel="noreferrer">
-                  Read the docs
-                </a>
-              }
-            >
-              Quotas come from FabricQuota resources, one per team. Create one with <code className="mono">kubectl apply -f fabricquota.yaml</code> and it appears here.
-            </EmptyState>
-          </section>
-        )}
+        <section className="card span3">
+          <p className="eyebrow">TEAMS</p>
+          <h2 className="card-title">All teams</h2>
+          <DataTable
+            caption="Team quotas"
+            columns={columns}
+            state={table}
+            rowKey={(q) => q.metadata.name}
+            searchLabel="Search teams"
+            empty={
+              <EmptyState
+                title="No quotas yet"
+                action={
+                  <a className="buttonlike btn-secondary" href="https://github.com/zyvorai/gryvia/tree/main/docs" target="_blank" rel="noreferrer">
+                    Read the docs
+                  </a>
+                }
+              >
+                Quotas come from FabricQuota resources, one per team. Create one with <code className="mono">kubectl apply -f fabricquota.yaml</code> and it appears here.
+              </EmptyState>
+            }
+          />
+        </section>
 
-        {list.map((quota) => {
+        {table.pageRows.map((quota) => {
           const usage = quota.status?.currentUsage
           const budget = quota.status?.budgetStatus
           const specBudget = quota.spec.budget
@@ -123,6 +158,11 @@ export default function Quotas() {
               {quota.spec.priority !== undefined && quota.spec.priority !== null && (
                 <p><span className="pill">Priority {quota.spec.priority}</span></p>
               )}
+              <p>
+                <Link to={jobsLink(quota)} className="card-link">
+                  View jobs ›
+                </Link>
+              </p>
 
               <div className="stack">
                 <div>

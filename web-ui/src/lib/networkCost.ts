@@ -14,7 +14,10 @@ export type CostSummary = {
   crossZone: number
   external: number
   teams: CostGroup[]
+  /** Top 8 namespaces by cost. */
   namespaces: CostGroup[]
+  /** Every namespace of the period (for search). */
+  namespacesAll: CostGroup[]
   /** Total per period (ISO date labels), oldest first, last 14. */
   trend: Array<{ period: string; cost: number }>
 }
@@ -44,6 +47,7 @@ export function summarizeCosts(all: NetworkCostReport[], selected?: string): Cos
     return [...m.values()].sort((a, b) => b.cost - a.cost)
   }
 
+  const allNs = group((r) => r.namespace || 'unknown')
   const perPeriod = new Map<string, number>()
   for (const r of all) perPeriod.set(key(r), (perPeriod.get(key(r)) ?? 0) + (r.totalCostUSD || 0))
   const trend = [...perPeriod.entries()]
@@ -60,7 +64,8 @@ export function summarizeCosts(all: NetworkCostReport[], selected?: string): Cos
     crossZone: sum((r) => r.crossZoneBytes),
     external: sum((r) => r.externalBytes),
     teams: group((r) => r.team || 'unassigned'),
-    namespaces: group((r) => r.namespace || 'unknown').slice(0, 8),
+    namespaces: allNs.slice(0, 8),
+    namespacesAll: allNs,
     trend,
   }
 }

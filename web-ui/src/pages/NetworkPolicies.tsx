@@ -1,27 +1,62 @@
 import { useId, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '@/lib/api'
 import type { FlowPolicy, CreateFlowPolicyRequest } from '@/lib/api'
 import PageHero from '@/components/PageHero'
 import PagePulse from '@/components/kit/PagePulse'
 import ConfirmDialog from '@/components/ConfirmDialog'
+import DataTable, { type Column } from '@/components/DataTable'
+import Modal from '@/components/Modal'
+import { useTableState } from '@/hooks/useTableState'
+import type { FilterDef, SortAccessor } from '@/lib/tableState'
 import { EmptyState, ErrorState, Skeleton } from '@/components/StateViews'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { notify } from '@/lib/notify'
 import { errorMessage } from '@/lib/errors'
 import { phaseTone } from '@/lib/phase'
-import { bucketPolicies, INTENT_MAX, validatePolicyForm, type PolicyFormErrors, type PolicyFormValues } from '@/lib/network'
+import { bucketPolicies, flowsUrlForService, INTENT_MAX, parsePolicyPrefill, POLICY_PROTOCOLS, validatePolicyForm, type PolicyFormErrors, type PolicyFormValues, type PolicyPrefill } from '@/lib/network'
 
 type PolicyAction = 'allow' | 'deny' | 'log'
 type PolicyStatusExt = { phase?: string; matchedFlows?: number; ciliumPolicyRef?: string }
 
 const phaseOf = (p: FlowPolicy) => p.status?.phase
+const phaseLabel = (p: FlowPolicy) => p.status?.phase || 'Pending'
+
+const FILTERS: FilterDef<FlowPolicy>[] = [
+  { name: 'action', label: 'Action', get: (p) => p.spec.action, options: ['allow', 'deny', 'log'] },
+  { name: 'phase', label: 'Phase', get: phaseLabel },
+]
+const SORTERS: Record<string, SortAccessor<FlowPolicy>> = {
+  name: (p) => p.metadata.name,
+  route: (p) => `${p.spec.sourceService} ${p.spec.destinationService}`,
+  action: (p) => p.spec.action,
+  phase: phaseLabel,
+  matched: (p) => (p.status as PolicyStatusExt | undefined)?.matchedFlows,
+}
+const searchText = (p: FlowPolicy) => `${p.metadata.name} ${p.spec.sourceService} ${p.spec.destinationService} ${p.spec.protocol} ${p.spec.port} ${p.spec.action} ${phaseLabel(p)} ${p.spec.intent ?? ''}`
 
 export default function NetworkPolicies() {
   useDocumentTitle('Network policies')
-  const [showCreateForm, setShowCreateForm] = useState(false)
+  const [searchParams, setSearchParams] = useSearchParams()
+  // The create form can be opened by ?new=1&src&dst&port&protocol (from the flows page); read it once.
+  const [prefill] = useState<PolicyPrefill>(() => parsePolicyPrefill(searchParams))
+  const [showCreateForm, setShowCreateForm] = useState(prefill.open)
   const [confirming, setConfirming] = useState<FlowPolicy | null>(null)
+  const [viewing, setViewing] = useState<FlowPolicy | null>(null)
+  const closeCreate = () => {
+    setShowCreateForm(false)
+    if (searchParams.has('new')) {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev)
+          for (const k of ['new', 'src', 'dst', 'port', 'protocol']) next.delete(k)
+          return next
+        },
+        { replace: true },
+      )
+    }
+  }
   const queryClient = useQueryClient()
 
   const { data: policies, isLoading, isError, error, refetch, isFetching, dataUpdatedAt } = useQuery({
@@ -44,14 +79,56 @@ export default function NetworkPolicies() {
     mutationFn: (req: CreateFlowPolicyRequest) => api.createFlowPolicy(req),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['flowPolicies'] })
-      setShowCreateForm(false)
+      closeCreate()
       notify.success('Policy created')
     },
     onError: (err) => notify.error('Could not create policy', err),
   })
 
+  const table = useTableState<FlowPolicy>({ rows: policies, searchText, filters: FILTERS, sortAccessors: SORTERS, pageSize: 15 })
   const applyingName = applyMutation.isPending ? (applyMutation.variables as string) : undefined
   const buckets = bucketPolicies(policies, phaseOf)
+  const columns: Column<FlowPolicy>[] = [
+    { key: 'name', header: 'Policy', sortable: true, render: (p) => <b>{p.metadata.name}</b> },
+    {
+      key: 'route',
+      header: 'Connection',
+      sortable: true,
+      render: (p) => (
+        <>
+          {p.spec.sourceService} → {p.spec.destinationService} <span className="faint mono">{p.spec.protocol}:{p.spec.port}</span>
+        </>
+      ),
+    },
+    { key: 'action', header: 'Action', sortable: true, render: (p) => <ActionPill action={p.spec.action} /> },
+    { key: 'phase', header: 'Phase', sortable: true, render: (p) => <PhaseBadge phase={phaseLabel(p)} /> },
+    { key: 'matched', header: 'Matched flows', sortable: true, numeric: true, render: (p) => (p.status as PolicyStatusExt | undefined)?.matchedFlows ?? '—' },
+    {
+      key: 'actions',
+      header: 'Actions',
+      render: (p) => (
+        <div className="toolbar">
+          <Link to={flowsUrlForService(p.spec.sourceService)} className="buttonlike btn-secondary" onClick={(e) => e.stopPropagation()} aria-label={`View matching connections for ${p.metadata.name}`}>
+            View matching connections
+          </Link>
+          {p.status?.phase?.toLowerCase() === 'suggested' && (
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={(e) => {
+                e.stopPropagation()
+                setConfirming(p)
+              }}
+              disabled={applyingName === p.metadata.name}
+              aria-label={`Apply policy ${p.metadata.name}`}
+            >
+              {applyingName === p.metadata.name ? 'Requesting…' : 'Apply'}
+            </button>
+          )}
+        </div>
+      ),
+    },
+  ]
   const total = policies?.length
 
   return (
@@ -101,30 +178,27 @@ export default function NetworkPolicies() {
         {showCreateForm && (
           <CreatePolicyForm
             onSubmit={(data) => createMutation.mutate(data)}
-            onCancel={() => setShowCreateForm(false)}
+            onCancel={closeCreate}
+            initial={prefill}
             isSubmitting={createMutation.isPending}
             serverError={createMutation.isError ? errorMessage(createMutation.error) : undefined}
           />
         )}
 
         {policies && (
-          <>
-            {buckets.suggested.length > 0 && (
-              <section className="card span3">
-                <p className="eyebrow">{buckets.suggested.length} SUGGESTIONS</p>
-                <h2 className="card-title">Suggested policies</h2>
-                {buckets.suggested.map((policy) => (
-                  <PolicyRow key={policy.metadata.name} policy={policy} onApply={() => setConfirming(policy)} applying={applyingName === policy.metadata.name} />
-                ))}
-              </section>
-            )}
-
-            <section className="card span3">
-              <p className="eyebrow">{buckets.enforced.length} ENFORCED</p>
-              <h2 className="card-title">Enforced policies</h2>
-              {buckets.enforced.length === 0 ? (
+          <section className="card span3">
+            <p className="eyebrow">{policies.length} POLICIES</p>
+            <h2 className="card-title">Flow policies</h2>
+            <DataTable
+              caption="Flow policies"
+              searchLabel="Search policies"
+              columns={columns}
+              state={table}
+              rowKey={(p) => p.metadata.name}
+              onRowClick={setViewing}
+              empty={
                 <EmptyState
-                  title="No enforced policies"
+                  title="No policies yet"
                   action={
                     !showCreateForm && (
                       <button type="button" className="primary" onClick={() => setShowCreateForm(true)}>
@@ -135,31 +209,9 @@ export default function NetworkPolicies() {
                 >
                   Policies are FabricFlowPolicy resources; the network operator enforces them. Create one, or wait for the operator to suggest policies from observed traffic.
                 </EmptyState>
-              ) : (
-                buckets.enforced.map((policy) => <PolicyRow key={policy.metadata.name} policy={policy} />)
-              )}
-            </section>
-
-            {buckets.pending.length > 0 && (
-              <section className="card span3">
-                <p className="eyebrow">{buckets.pending.length} PENDING</p>
-                <h2 className="card-title">Pending policies</h2>
-                {buckets.pending.map((policy) => (
-                  <PolicyRow key={policy.metadata.name} policy={policy} />
-                ))}
-              </section>
-            )}
-
-            {buckets.other.length > 0 && (
-              <section className="card span3">
-                <p className="eyebrow">{buckets.other.length} OTHER</p>
-                <h2 className="card-title">Other policies</h2>
-                {buckets.other.map((policy) => (
-                  <PolicyRow key={policy.metadata.name} policy={policy} />
-                ))}
-              </section>
-            )}
-          </>
+              }
+            />
+          </section>
         )}
       </div>
 
@@ -175,7 +227,43 @@ export default function NetworkPolicies() {
           This will {(confirming.spec.action as string) === 'log' ? 'log (observe only)' : confirming.spec.action} {confirming.spec.protocol}:{confirming.spec.port} traffic from {confirming.spec.sourceService} to {confirming.spec.destinationService}. Enforcement is requested from the network operator; the policy stays pending until the operator confirms it.
         </ConfirmDialog>
       )}
+
+      {viewing && <PolicyDetailModal policy={viewing} onClose={() => setViewing(null)} />}
     </>
+  )
+}
+
+function PolicyDetailModal({ policy, onClose }: { policy: FlowPolicy; onClose: () => void }) {
+  const status = policy.status as PolicyStatusExt | undefined
+  const confidence = typeof policy.spec.confidence === 'number' && policy.spec.confidence > 0 ? `${Math.round(policy.spec.confidence * 100)}%` : undefined
+  const rows: Array<[string, string]> = [
+    ['Connection', `${policy.spec.sourceService} → ${policy.spec.destinationService} · ${policy.spec.protocol}:${policy.spec.port}`],
+    ['Action', policy.spec.action],
+    ['Phase', phaseLabel(policy)],
+    ['Intent', policy.spec.intent || '—'],
+    ['Matched flows', status?.matchedFlows !== undefined ? String(status.matchedFlows) : 'not reported yet'],
+    ['Cilium policy', status?.ciliumPolicyRef || 'not created yet'],
+    ...(confidence ? ([['Confidence', confidence]] as Array<[string, string]>) : []),
+  ]
+  return (
+    <Modal title={`Policy ${policy.metadata.name}`} onClose={onClose}>
+      <div className="stack">
+        {rows.map(([k, v]) => (
+          <div key={k} className="list-row">
+            <span className="grow faint">{k}</span>
+            <span className="mono">{v}</span>
+          </div>
+        ))}
+        <div className="toolbar">
+          <Link to={flowsUrlForService(policy.spec.sourceService)} className="buttonlike btn-secondary">
+            View matching connections
+          </Link>
+          <button type="button" className="btn-secondary" data-autofocus="" onClick={onClose}>
+            Close
+          </button>
+        </div>
+      </div>
+    </Modal>
   )
 }
 
@@ -189,48 +277,22 @@ function PhaseBadge({ phase }: { phase: string }) {
   return <span className={`pill ${tone}`}>{phase}</span>
 }
 
-function PolicyRow({ policy, onApply, applying }: { policy: FlowPolicy; onApply?: () => void; applying?: boolean }) {
-  const status = policy.status as PolicyStatusExt | undefined
-  const phase = status?.phase || 'Pending'
-  const confidence = typeof policy.spec.confidence === 'number' && policy.spec.confidence > 0 ? policy.spec.confidence : undefined
-  return (
-    <div className="list-row">
-      <div className="grow">
-        <b>{policy.metadata.name}</b>
-        <small>
-          {policy.spec.sourceService} → {policy.spec.destinationService} · {policy.spec.protocol}:{policy.spec.port}
-        </small>
-        <small>
-          Intent: {policy.spec.intent || '—'}
-          {status?.matchedFlows !== undefined && ` · ${status.matchedFlows} matched flows`}
-          {confidence !== undefined && ` · ${Math.round(confidence * 100)}% confidence`}
-        </small>
-        {status?.ciliumPolicyRef && (
-          <small>
-            Cilium policy: <span className="mono">{status.ciliumPolicyRef}</span>
-          </small>
-        )}
-      </div>
-      <ActionPill action={policy.spec.action} />
-      <PhaseBadge phase={phase} />
-      {onApply && (
-        <button type="button" className="btn-secondary" onClick={onApply} disabled={applying} aria-label={`Apply policy ${policy.metadata.name}`}>
-          {applying ? 'Requesting…' : 'Apply'}
-        </button>
-      )}
-    </div>
-  )
-}
-
-function CreatePolicyForm({ onSubmit, onCancel, isSubmitting, serverError }: {
+function CreatePolicyForm({ onSubmit, onCancel, isSubmitting, serverError, initial }: {
+  initial: PolicyPrefill
   onSubmit: (data: CreateFlowPolicyRequest) => void
   onCancel: () => void
   isSubmitting: boolean
   serverError?: string
 }) {
   const uid = useId()
-  const [values, setValues] = useState<PolicyFormValues>({ name: '', sourceService: '', destinationService: '', port: '80', intent: '' })
-  const [protocol, setProtocol] = useState('TCP')
+  const [values, setValues] = useState<PolicyFormValues>({
+    name: '',
+    sourceService: initial.sourceService,
+    destinationService: initial.destinationService,
+    port: initial.port,
+    intent: initial.sourceService && initial.destinationService ? `Allow ${initial.sourceService} to reach ${initial.destinationService} on port ${initial.port}` : '',
+  })
+  const [protocol, setProtocol] = useState<string>(initial.protocol)
   const [action, setAction] = useState<PolicyAction>('allow')
   const [submitted, setSubmitted] = useState(false)
 
@@ -316,10 +378,11 @@ function CreatePolicyForm({ onSubmit, onCancel, isSubmitting, serverError }: {
           <label className="field">
             <span>Protocol</span>
             <select value={protocol} onChange={(e) => setProtocol(e.target.value)}>
-              <option value="TCP">TCP</option>
-              <option value="UDP">UDP</option>
-              <option value="HTTP">HTTP</option>
-              <option value="gRPC">gRPC</option>
+              {POLICY_PROTOCOLS.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
             </select>
           </label>
           <label className="field">

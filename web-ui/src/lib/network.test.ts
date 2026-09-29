@@ -76,3 +76,103 @@ describe('policy form validation', () => {
     expect(Object.keys(e).sort()).toEqual(['destinationService', 'intent', 'name', 'port', 'sourceService'])
   })
 })
+
+import { buildTraceDuration, filterFlows as ff, flowsUrlForEdge, flowsUrlForService, graphFocusModel, parseByteQuantity, parseLatencyMs, parsePolicyPrefill, parseTraceTarget, policyPrefillUrl, traceUrl, validateTraceForm } from './network'
+
+describe('trace form', () => {
+  const ok = { targetService: 'payment-api', namespace: 'default', captureLevel: 'l4', durationAmount: '5', durationUnit: 'm' }
+  it('accepts a valid form', () => {
+    expect(validateTraceForm(ok)).toEqual({})
+    expect(buildTraceDuration('5', 'm')).toBe('5m')
+  })
+  it('mirrors the gateway duration rule', () => {
+    expect(buildTraceDuration('0', 's')).toBeNull()
+    expect(buildTraceDuration('10000', 's')).toBeNull()
+    expect(buildTraceDuration('9999', 'h')).toBe('9999h')
+    expect(buildTraceDuration('1.5', 'm')).toBeNull()
+    expect(buildTraceDuration('5', 'd')).toBeNull()
+  })
+  it('flags bad names, level and duration', () => {
+    const e = validateTraceForm({ targetService: 'Bad_Name', namespace: '', captureLevel: 'l5', durationAmount: '', durationUnit: 'm' })
+    expect(e.targetService).toBeTruthy()
+    expect(e.namespace).toBeTruthy()
+    expect(e.captureLevel).toBeTruthy()
+    expect(e.durationAmount).toBeTruthy()
+  })
+})
+
+describe('url contracts', () => {
+  it('builds and parses the policy prefill', () => {
+    const url = policyPrefillUrl({ source: 'web', destination: 'db', port: 5432, protocol: 'TCP' })
+    expect(url).toBe('/network/policies?new=1&src=web&dst=db&port=5432&protocol=TCP')
+    const p = parsePolicyPrefill(new URLSearchParams(url.split('?')[1]))
+    expect(p).toEqual({ open: true, sourceService: 'web', destinationService: 'db', port: '5432', protocol: 'TCP' })
+  })
+  it('falls back safely on junk', () => {
+    const p = parsePolicyPrefill(new URLSearchParams('new=1&port=abc&protocol=grpc'))
+    expect(p.port).toBe('80')
+    expect(p.protocol).toBe('gRPC')
+    expect(parsePolicyPrefill(new URLSearchParams('')).open).toBe(false)
+  })
+  it('links flows and traces', () => {
+    expect(flowsUrlForService('a b')).toBe('/network/flows?service=a+b')
+    expect(flowsUrlForEdge('a', 'b')).toBe('/network/flows?source=a&destination=b')
+    expect(traceUrl('db')).toBe('/network?trace=db')
+    expect(parseTraceTarget(new URLSearchParams('trace=db'))).toBe('db')
+    expect(parseTraceTarget(new URLSearchParams(''))).toBeNull()
+  })
+  it('filters by exact source and destination', () => {
+    const f = (s: string, d: string) => ({ metadata: {}, spec: { source: s, destination: d, protocol: 'TCP', verdict: 'FORWARDED' } })
+    const rows = [f('a', 'b'), f('a', 'bc'), f('b', 'a')]
+    expect(ff(rows, { ...EMPTY_FLOW_FILTERS, source: 'a', destination: 'b' })).toHaveLength(1)
+  })
+})
+
+describe('sort parsing', () => {
+  it('parses latency to ms', () => {
+    expect(parseLatencyMs('12ms')).toBe(12)
+    expect(parseLatencyMs('1.5s')).toBe(1500)
+    expect(parseLatencyMs('500us')).toBeCloseTo(0.5)
+    expect(parseLatencyMs('-')).toBeUndefined()
+    expect(parseLatencyMs('')).toBeUndefined()
+  })
+  it('parses byte quantities', () => {
+    expect(parseByteQuantity('1024')).toBe(1024)
+    expect(parseByteQuantity('2KB')).toBe(2048)
+    expect(parseByteQuantity('1Mi')).toBe(1048576)
+    expect(parseByteQuantity('lots')).toBeUndefined()
+  })
+})
+
+describe('graph focus model', () => {
+  const nodes = [
+    { id: 'a', label: 'web', health: 'healthy', flowCount: 3 },
+    { id: 'b', label: 'db', health: 'critical', flowCount: 2 },
+    { id: 'c', label: 'cache', health: 'unknown', flowCount: 0 },
+  ]
+  const edges = [
+    { source: 'a', target: 'b', verdict: 'DROP', latency: '4ms', protocol: 'TCP' },
+    { source: 'b', target: 'a', verdict: 'FORWARDED', latency: '-' },
+    { source: 'c', target: 'c', verdict: 'FORWARDED' },
+  ]
+  it('is inactive without focus', () => {
+    expect(graphFocusModel(nodes, edges, null).active).toBe(false)
+  })
+  it('highlights a node, its edges and neighbours', () => {
+    const m = graphFocusModel(nodes, edges, { kind: 'node', id: 'a' })
+    expect([...m.nodeIds].sort()).toEqual(['a', 'b'])
+    expect([...m.edgeIndexes]).toEqual([0, 1])
+    expect(m.readout?.heading).toBe('web')
+    expect(m.readout?.rows.find((r) => r.label === 'Edges')?.value).toBe('1 outgoing, 1 incoming')
+    expect(m.readout?.rows.find((r) => r.label === 'Dropped or errored edges')?.value).toBe('1')
+  })
+  it('reads out an edge with named endpoints', () => {
+    const m = graphFocusModel(nodes, edges, { kind: 'edge', index: 1 })
+    expect(m.readout?.heading).toBe('db → web')
+    expect(m.readout?.rows.find((r) => r.label === 'Latency')?.value).toBe('n/a')
+  })
+  it('ignores unknown focus targets', () => {
+    expect(graphFocusModel(nodes, edges, { kind: 'node', id: 'zzz' }).active).toBe(false)
+    expect(graphFocusModel(nodes, edges, { kind: 'edge', index: 9 }).active).toBe(false)
+  })
+})

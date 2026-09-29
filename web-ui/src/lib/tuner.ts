@@ -74,6 +74,7 @@ export function validateParameterSpace(text: string): string | null {
       }
       if (min >= max) return `Parameter "${name}": min must be less than max.`
       if (spec.scale !== undefined && spec.scale !== 'linear' && spec.scale !== 'log') return `Parameter "${name}": scale must be "linear" or "log".`
+      if (spec.scale === 'log' && min <= 0) return `Parameter "${name}": log scale needs min greater than 0.`
       if (spec.step !== undefined && (typeof spec.step !== 'number' || !Number.isInteger(spec.step) || spec.step < 1)) {
         return `Parameter "${name}": step must be a positive integer.`
       }

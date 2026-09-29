@@ -164,6 +164,12 @@ export default function GpuCommunication() {
                   <small>{humanize(s.reason) || 'Unknown cause'}</small>
                 </div>
                 <span className="pill bad">{slowdownLabel(s.slowdownFactor) ?? 'slowdown unknown'}</span>
+                <Link to="/nodes" className="buttonlike btn-secondary" aria-label={`Inspect nodes for rank ${s.rank}`}>
+                  Nodes
+                </Link>
+                <Link to="/jobs" className="buttonlike btn-secondary" aria-label={`Inspect jobs for rank ${s.rank}`}>
+                  Jobs
+                </Link>
               </div>
             ))
           )}

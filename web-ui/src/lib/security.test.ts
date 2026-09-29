@@ -25,3 +25,36 @@ describe('security helpers', () => {
     expect(c.byType[0]).toEqual(['mining', 5])
   })
 })
+
+import { buildSecurityRequest, defaultRuleDrafts, validateNamespaceChip, validateSecurityForm, validateWebhook } from './security'
+
+describe('security policy form', () => {
+  const rules = defaultRuleDrafts().map((r, i) => ({ ...r, enabled: i === 0 }))
+  const ok = { name: 'gpu-guard', namespaces: ['ml'], rules, webhook: '', autoBlock: false }
+  it('accepts a valid form and builds the gateway request', () => {
+    expect(validateSecurityForm(ok)).toEqual({})
+    const req = buildSecurityRequest({ ...ok, webhook: ' https://hooks.example.com/a ', autoBlock: true })
+    expect(req.alertWebhook).toBe('https://hooks.example.com/a')
+    expect(req.autoBlock).toBe(true)
+    expect(req.detectionRules).toHaveLength(5)
+    expect(buildSecurityRequest(ok)).not.toHaveProperty('alertWebhook')
+  })
+  it('requires name, namespaces and one enabled rule', () => {
+    const e = validateSecurityForm({ name: 'Bad Name', namespaces: [], rules: defaultRuleDrafts(), webhook: '', autoBlock: false })
+    expect(e.name).toBeTruthy()
+    expect(e.namespaces).toBeTruthy()
+    expect(e.rules).toBeTruthy()
+  })
+  it('validates namespace chips', () => {
+    expect(validateNamespaceChip('ml', [])).toBeUndefined()
+    expect(validateNamespaceChip('ML', [])).toBeTruthy()
+    expect(validateNamespaceChip('', [])).toBeTruthy()
+    expect(validateNamespaceChip('ml', ['ml'])).toMatch(/already/)
+  })
+  it('validates the webhook like the gateway', () => {
+    expect(validateWebhook('')).toBeUndefined()
+    expect(validateWebhook('http://x.io/h')).toBeUndefined()
+    expect(validateWebhook('ftp://x.io')).toBeTruthy()
+    expect(validateWebhook('not a url')).toBeTruthy()
+  })
+})

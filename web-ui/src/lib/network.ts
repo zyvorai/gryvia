@@ -73,15 +73,20 @@ export function twoWayEdges(edges: Array<{ source: string; target: string }>): b
 // ---- flows -------------------------------------------------------------------------------
 
 export type FlowLike = { metadata: { namespace?: string }; spec: { source: string; destination: string; protocol: string; verdict: string } }
-export type FlowFilters = { service: string; namespace: string; verdict: string; protocol: string }
-export const EMPTY_FLOW_FILTERS: FlowFilters = { service: '', namespace: '', verdict: '', protocol: '' }
+/** `source` / `destination` are exact matches (used by graph edge links); `service` matches either end by substring. */
+export type FlowFilters = { service: string; namespace: string; verdict: string; protocol: string; source?: string; destination?: string }
+export const EMPTY_FLOW_FILTERS: FlowFilters = { service: '', namespace: '', verdict: '', protocol: '', source: '', destination: '' }
 
 const ci = (s: string | undefined) => (s ?? '').toLowerCase()
 
 export function filterFlows<T extends FlowLike>(flows: T[], f: FlowFilters): T[] {
   const svc = ci(f.service).trim()
   const ns = ci(f.namespace).trim()
+  const src = ci(f.source).trim()
+  const dst = ci(f.destination).trim()
   return flows.filter((x) => {
+    if (src && ci(x.spec.source) !== src) return false
+    if (dst && ci(x.spec.destination) !== dst) return false
     if (svc && !ci(x.spec.source).includes(svc) && !ci(x.spec.destination).includes(svc)) return false
     if (ns && ci(x.metadata.namespace) !== ns) return false
     if (f.verdict && ci(x.spec.verdict) !== ci(f.verdict)) return false
@@ -178,4 +183,172 @@ export function severityTone(severity?: string): Tone {
     default:
       return ''
   }
+}
+
+// ---- navigation between pages (URL contracts) ---------------------------------------------
+
+export const POLICY_PROTOCOLS = ['TCP', 'UDP', 'HTTP', 'gRPC'] as const
+
+const query = (o: Record<string, string>) => new URLSearchParams(o).toString()
+
+/** Flows page filtered to one service (either end). */
+export const flowsUrlForService = (name: string) => `/network/flows?${query({ service: name })}`
+/** Flows page filtered to one directed connection. */
+export const flowsUrlForEdge = (source: string, destination: string) => `/network/flows?${query({ source, destination })}`
+/** Overview with the "Create trace" dialog opened for a target. */
+export const traceUrl = (target: string) => `/network?${query({ trace: target })}`
+export function policyPrefillUrl(c: { source: string; destination: string; port: number | string; protocol: string }): string {
+  return `/network/policies?${query({ new: '1', src: c.source, dst: c.destination, port: String(c.port), protocol: c.protocol })}`
+}
+
+export type PolicyPrefill = { open: boolean; sourceService: string; destinationService: string; port: string; protocol: string }
+
+/** `?new=1&src&dst&port&protocol` -> initial values for the create-policy form. Junk falls back to safe defaults. */
+export function parsePolicyPrefill(params: URLSearchParams): PolicyPrefill {
+  const port = (params.get('port') ?? '').trim()
+  const proto = (params.get('protocol') ?? '').trim().toLowerCase()
+  return {
+    open: params.get('new') === '1',
+    sourceService: (params.get('src') ?? '').trim(),
+    destinationService: (params.get('dst') ?? '').trim(),
+    port: /^\d{1,5}$/.test(port) ? port : '80',
+    protocol: POLICY_PROTOCOLS.find((p) => p.toLowerCase() === proto) ?? 'TCP',
+  }
+}
+
+/** `?trace=<service>` -> the target to prefill (null when absent). */
+export function parseTraceTarget(params: URLSearchParams): string | null {
+  const t = (params.get('trace') ?? '').trim()
+  return t || null
+}
+
+// ---- flow sorting helpers ----------------------------------------------------------------
+
+/** "12ms" / "1.5s" / "800us" -> milliseconds; undefined for blank, "-" or unparseable. */
+export function parseLatencyMs(latency?: string): number | undefined {
+  const m = /^(\d+(?:\.\d+)?)\s*(µs|us|ms|s|m)?$/i.exec((latency ?? '').trim())
+  if (!m) return undefined
+  const n = Number(m[1])
+  switch ((m[2] ?? 'ms').toLowerCase()) {
+    case 'µs':
+    case 'us':
+      return n / 1000
+    case 's':
+      return n * 1000
+    case 'm':
+      return n * 60000
+    default:
+      return n
+  }
+}
+
+/** "1024" / "1.5KB" / "2Mi" / "3 GB" -> bytes; undefined when unparseable. */
+export function parseByteQuantity(v?: string | number | null): number | undefined {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : undefined
+  const m = /^(\d+(?:\.\d+)?)\s*([kmgt])?i?b?$/i.exec((v ?? '').trim())
+  if (!m) return undefined
+  const pow = m[2] ? 'kmgt'.indexOf(m[2].toLowerCase()) + 1 : 0
+  return Number(m[1]) * 1024 ** pow
+}
+
+// ---- service graph focus model -------------------------------------------------------------
+
+export type GraphNodeLike = { id: string; label: string; health?: string; flowCount: number }
+export type GraphEdgeLike = { source: string; target: string; protocol?: string; latency?: string; verdict?: string }
+export type GraphFocus = { kind: 'node'; id: string } | { kind: 'edge'; index: number } | null
+export type GraphReadout = { heading: string; rows: Array<{ label: string; value: string }> }
+export type GraphFocusModel = { active: boolean; nodeIds: Set<string>; edgeIndexes: Set<number>; readout: GraphReadout | null }
+
+const latencyText = (l?: string) => (l && l.trim() && l.trim() !== '-' ? l.trim() : 'n/a')
+
+/** What is highlighted (the focus, its neighbours, its edges) and what the detail card reads out. */
+export function graphFocusModel(nodes: GraphNodeLike[], edges: GraphEdgeLike[], focus: GraphFocus): GraphFocusModel {
+  const byId = new Map(nodes.map((n) => [n.id, n]))
+  const name = (id: string) => byId.get(id)?.label ?? id
+  const nodeIds = new Set<string>()
+  const edgeIndexes = new Set<number>()
+  if (!focus) return { active: false, nodeIds, edgeIndexes, readout: null }
+
+  if (focus.kind === 'edge') {
+    const e = edges[focus.index]
+    if (!e) return { active: false, nodeIds, edgeIndexes, readout: null }
+    edgeIndexes.add(focus.index)
+    nodeIds.add(e.source)
+    nodeIds.add(e.target)
+    return {
+      active: true,
+      nodeIds,
+      edgeIndexes,
+      readout: {
+        heading: `${name(e.source)} → ${name(e.target)}`,
+        rows: [
+          { label: 'Verdict', value: e.verdict?.trim() || 'Unknown' },
+          { label: 'Latency', value: latencyText(e.latency) },
+          { label: 'Protocol', value: e.protocol?.trim() || 'n/a' },
+        ],
+      },
+    }
+  }
+
+  const node = byId.get(focus.id)
+  if (!node) return { active: false, nodeIds, edgeIndexes, readout: null }
+  nodeIds.add(node.id)
+  let outgoing = 0
+  let incoming = 0
+  let problems = 0
+  edges.forEach((e, i) => {
+    if (e.source !== node.id && e.target !== node.id) return
+    edgeIndexes.add(i)
+    nodeIds.add(e.source)
+    nodeIds.add(e.target)
+    if (e.source === node.id) outgoing += 1
+    else incoming += 1
+    const k = verdictKind(e.verdict)
+    if (k === 'drop' || k === 'error') problems += 1
+  })
+  return {
+    active: true,
+    nodeIds,
+    edgeIndexes,
+    readout: {
+      heading: node.label,
+      rows: [
+        { label: 'Health', value: healthKind(node.health)[0].toUpperCase() + healthKind(node.health).slice(1) },
+        { label: 'Connections', value: String(node.flowCount) },
+        { label: 'Edges', value: `${outgoing} outgoing, ${incoming} incoming` },
+        { label: 'Dropped or errored edges', value: String(problems) },
+      ],
+    },
+  }
+}
+
+// ---- trace form ----------------------------------------------------------------------------
+
+export const TRACE_LEVELS: Array<{ value: 'l3' | 'l4' | 'l7'; label: string; help: string }> = [
+  { value: 'l3', label: 'L3', help: 'IP-level metadata only. Lowest overhead and cost.' },
+  { value: 'l4', label: 'L4', help: 'Adds TCP/UDP ports and connection state. Moderate overhead.' },
+  { value: 'l7', label: 'L7', help: 'Parses HTTP/gRPC requests. Highest CPU overhead and capture volume; keep durations short.' },
+]
+export const DURATION_UNITS = ['s', 'm', 'h'] as const
+export const DURATION_PATTERN = /^[1-9][0-9]{0,3}[smh]$/
+
+export type TraceFormValues = { targetService: string; namespace: string; captureLevel: string; durationAmount: string; durationUnit: string }
+export type TraceFormErrors = Partial<Record<keyof TraceFormValues, string>>
+
+/** "30" + "m" -> "30m"; null when the gateway would reject it. */
+export function buildTraceDuration(amount: string, unit: string): string | null {
+  const v = `${amount.trim()}${unit}`
+  return DURATION_PATTERN.test(v) ? v : null
+}
+
+export function validateTraceForm(f: TraceFormValues): TraceFormErrors {
+  const e: TraceFormErrors = {}
+  const t = validateK8sName(f.targetService.trim(), 'Target service')
+  if (t) e.targetService = t
+  const n = validateK8sName(f.namespace.trim(), 'Namespace')
+  if (n) e.namespace = n
+  if (!TRACE_LEVELS.some((l) => l.value === f.captureLevel)) e.captureLevel = 'Choose L3, L4 or L7.'
+  if (!(DURATION_UNITS as readonly string[]).includes(f.durationUnit)) e.durationUnit = 'Choose seconds, minutes or hours.'
+  else if (!buildTraceDuration(f.durationAmount, f.durationUnit)) e.durationAmount = 'Enter a whole number from 1 to 9999 with no leading zero.'
+  return e
 }
