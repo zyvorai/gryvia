@@ -34,6 +34,9 @@ func TestParseSection(t *testing.T) {
 		{"uprobe/cudaDeviceSynchronize", AttachSpec{Kind: KindUprobe, Symbol: "cudaDeviceSynchronize"}, false},
 		{"uretprobe/cudaDeviceSynchronize", AttachSpec{Kind: KindUretprobe, Symbol: "cudaDeviceSynchronize"}, false},
 		{"kretprobe/inet_csk_accept", AttachSpec{Kind: KindKretprobe, Symbol: "inet_csk_accept"}, false},
+		{"uprobe/ucp_tag_send_nb", AttachSpec{Kind: KindUprobe, Symbol: "ucp_tag_send_nb"}, false},
+		{"uretprobe/ucp_tag_send_nbx", AttachSpec{Kind: KindUretprobe, Symbol: "ucp_tag_send_nbx"}, false},
+		{"kprobe/vfs_read", AttachSpec{Kind: KindKprobe, Symbol: "vfs_read"}, false},
 		{"uprobe", AttachSpec{}, true}, // bare section: no symbol to attach to
 		{"kprobe/", AttachSpec{}, true},
 		{"tracepoint/tcp", AttachSpec{}, true},
@@ -81,6 +84,16 @@ func TestSkipReasonGating(t *testing.T) {
 	}
 	if SkipReason(AttachSpec{Kind: KindUretprobe, Symbol: "cudaMalloc"}, Config{CUDALib: "/x"}) != "" {
 		t.Error("cuda uretprobe with lib should attach")
+	}
+	ucx := AttachSpec{Kind: KindUprobe, Symbol: "ucp_tag_send_nb"}
+	if SkipReason(ucx, Config{NCCLLib: "/x", CUDALib: "/x", CuFileLib: "/x"}) == "" {
+		t.Error("ucx uprobe must be skipped when libucp is absent")
+	}
+	if SkipReason(ucx, Config{UCXLib: "/x"}) != "" {
+		t.Error("ucx uprobe with libucp should attach")
+	}
+	if SkipReason(AttachSpec{Kind: KindUretprobe, Symbol: "ucp_tag_send_nbx"}, Config{}) == "" {
+		t.Error("ucx uretprobe must be skipped when libucp is absent")
 	}
 	cufile := AttachSpec{Kind: KindUprobe, Symbol: "cuFileRead"}
 	if SkipReason(cufile, Config{NCCLLib: "/x", CUDALib: "/x"}) == "" {
@@ -141,14 +154,14 @@ func TestIsMissingSymbol(t *testing.T) {
 
 func TestResolveLibraries(t *testing.T) {
 	dir := t.TempDir()
-	for _, n := range []string{"libnccl.so.2", "libnccl.so", "libcudart.so.12", "libcufile.so.0"} {
+	for _, n := range []string{"libnccl.so.2", "libnccl.so", "libcudart.so.12", "libcufile.so.0", "libucp.so.0", "libucs.so.0"} {
 		if err := os.WriteFile(filepath.Join(dir, n), nil, 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
 	cfg := ResolveLibraries(Config{}, nil, []string{dir})
 	if filepath.Base(cfg.NCCLLib) != "libnccl.so" || filepath.Base(cfg.CUDALib) != "libcudart.so.12" ||
-		filepath.Base(cfg.CuFileLib) != "libcufile.so.0" {
+		filepath.Base(cfg.CuFileLib) != "libcufile.so.0" || filepath.Base(cfg.UCXLib) != "libucp.so.0" {
 		t.Errorf("unexpected: %+v", cfg)
 	}
 	// Explicit config wins.
@@ -158,7 +171,7 @@ func TestResolveLibraries(t *testing.T) {
 	}
 	// Nothing found.
 	cfg = ResolveLibraries(Config{}, nil, []string{t.TempDir()})
-	if cfg.NCCLLib != "" || cfg.CUDALib != "" || cfg.CuFileLib != "" {
+	if cfg.NCCLLib != "" || cfg.CUDALib != "" || cfg.CuFileLib != "" || cfg.UCXLib != "" {
 		t.Errorf("expected empty, got %+v", cfg)
 	}
 }
@@ -245,5 +258,86 @@ func TestMaxInferPortsMatchesC(t *testing.T) {
 	m := regexp.MustCompile(`#define\s+INFER_MAX_PORTS\s+(\d+)`).FindSubmatch(src)
 	if m == nil || string(m[1]) != fmt.Sprint(MaxInferPorts) {
 		t.Errorf("INFER_MAX_PORTS in infer_latency.c does not match MaxInferPorts=%d", MaxInferPorts)
+	}
+}
+
+func TestFindUCXLibraryViaProc(t *testing.T) {
+	proc := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(proc, "42"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	maps := "7f00-7f01 r-xp 00000000 00:00 1 /usr/lib/x86_64-linux-gnu/libucs.so.0.0.0\n" +
+		"7f10-7f11 r-xp 00000000 00:00 2 /opt/ucx/lib/libucp.so.0.0.0\n"
+	if err := os.WriteFile(filepath.Join(proc, "42", "maps"), []byte(maps), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r := NewUprobeResolver(proc)
+	got, err := r.FindUCXLibrary(42)
+	if err != nil || got != filepath.Join(proc, "42", "root", "/opt/ucx/lib/libucp.so.0.0.0") {
+		t.Errorf("got %q err=%v (libucs must not be mistaken for libucp)", got, err)
+	}
+	if _, err := r.FindUCXLibrary(43); err == nil {
+		t.Error("unknown pid must fail")
+	}
+	cfg := ResolveLibraries(Config{UprobePID: 42}, r, []string{t.TempDir()})
+	if filepath.Base(cfg.UCXLib) != "libucp.so.0.0.0" {
+		t.Errorf("UCXLib via UprobePID = %q", cfg.UCXLib)
+	}
+}
+
+func TestQuotaPaceIsOptInTwice(t *testing.T) {
+	cases := []struct {
+		cfg  Config
+		skip bool
+	}{
+		{Config{}, true},
+		{Config{CgroupPath: "/sys/fs/cgroup/x"}, true}, // cgroup alone (sockops_optimize) must not enable pacing
+		{Config{QuotaPace: true}, true},                // -quota-pace without a cgroup
+		{Config{QuotaPace: true, CgroupPath: "/sys/fs/cgroup/x"}, false},
+	}
+	for _, c := range cases {
+		if got := QuotaPaceSkipReason(c.cfg) != ""; got != c.skip {
+			t.Errorf("%+v: skipped=%v want %v", c.cfg, got, c.skip)
+		}
+	}
+}
+
+func TestXDPOwners(t *testing.T) {
+	var x xdpOwners
+	if cur, ok := x.claim("ib0", "roce_cnp.o/gryvia_roce_cnp"); !ok || cur != "roce_cnp.o/gryvia_roce_cnp" {
+		t.Fatalf("first claim: %q %v", cur, ok)
+	}
+	if cur, ok := x.claim("ib0", "pfc_pause.o/gryvia_pfc_pause"); ok || cur != "roce_cnp.o/gryvia_roce_cnp" {
+		t.Errorf("second claim on the same iface must lose to the first: %q %v", cur, ok)
+	}
+	if _, ok := x.claim("ib1", "pfc_pause.o/gryvia_pfc_pause"); !ok {
+		t.Error("another interface is independent")
+	}
+	x.release("ib0")
+	if _, ok := x.claim("ib0", "pfc_pause.o/gryvia_pfc_pause"); !ok {
+		t.Error("released interface can be claimed again")
+	}
+	r := XDPConflictReason("ib0", "roce_cnp.o/gryvia_roce_cnp")
+	if !regexp.MustCompile(`ib0.*roce_cnp\.o/gryvia_roce_cnp.*one XDP program per interface`).MatchString(r) {
+		t.Errorf("reason not informative: %q", r)
+	}
+}
+
+// Every object with the pace_rate map must carry only a sockops program the
+// loader gates on -quota-pace, and the XDP/uprobe/kprobe sections of the new
+// programs must be ones the loader understands.
+func TestQuotaPaceObjectShape(t *testing.T) {
+	src, err := os.ReadFile("../../../ebpf/quota_pace.c")
+	if err != nil {
+		t.Skipf("C source not available: %v", err)
+	}
+	if !regexp.MustCompile(`SEC\("sockops"\)`).Match(src) {
+		t.Error("quota_pace.c must be a sockops program")
+	}
+	if !regexp.MustCompile(`\bpace_rate SEC\("\.maps"\)`).Match(src) {
+		t.Errorf("quota_pace.c must define the %s map", PaceRateMap)
+	}
+	if n := len(regexp.MustCompile(`SEC\("(sockops|sk_msg|xdp|tcx/[a-z]+)"\)`).FindAll(src, -1)); n != 1 {
+		t.Errorf("quota_pace.c must have exactly one program, found %d", n)
 	}
 }

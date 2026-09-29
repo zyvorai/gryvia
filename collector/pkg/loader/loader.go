@@ -8,6 +8,7 @@
 package loader
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -15,6 +16,7 @@ import (
 	"path/filepath"
 	"sort"
 	"sync"
+	"syscall"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
@@ -55,6 +57,7 @@ type Manager struct {
 	status      []ProgramStatus
 	exes        map[string]*link.Executable
 	objMaps     map[string]map[string]*ebpf.Map // object file -> map name -> map
+	xdp         xdpOwners
 }
 
 // New creates a Manager for the given configuration.
@@ -78,7 +81,7 @@ func (m *Manager) LoadAndAttach() error {
 		return fmt.Errorf("reading ebpf dir: %w", err)
 	}
 	m.cfg = ResolveLibraries(m.cfg, NewUprobeResolver(""), nil)
-	m.log.Infow("uprobe libraries", "nccl", m.cfg.NCCLLib, "cuda", m.cfg.CUDALib, "cufile", m.cfg.CuFileLib)
+	m.log.Infow("uprobe libraries", "nccl", m.cfg.NCCLLib, "cuda", m.cfg.CUDALib, "cufile", m.cfg.CuFileLib, "ucx", m.cfg.UCXLib)
 
 	for _, entry := range entries {
 		if entry.IsDir() || filepath.Ext(entry.Name()) != ".o" {
@@ -137,6 +140,14 @@ func (m *Manager) loadObject(file, path string) error {
 		}
 	}
 
+	// quota_pace.c is the only program that changes sockets: it never attaches
+	// unless -quota-pace and -cgroup-path are both set.
+	if _, ok := coll.Maps[PaceRateMap]; ok {
+		if r := QuotaPaceSkipReason(m.cfg); r != "" && skipAll == "" {
+			skipAll = r
+		}
+	}
+
 	names := make([]string, 0, len(coll.Programs))
 	for n := range coll.Programs {
 		names = append(names, n)
@@ -166,7 +177,27 @@ func (m *Manager) loadObject(file, path string) error {
 			m.addStatus(st)
 			continue
 		}
+		owner := file + "/" + name
+		if as.Kind == KindXDP {
+			if cur, ok := m.xdp.claim(m.cfg.Iface, owner); !ok {
+				st.Reason = "skipped: " + XDPConflictReason(m.cfg.Iface, cur)
+				m.log.Warnw("skipping XDP program: interface already owned", "object", file, "program", name,
+					"iface", m.cfg.Iface, "owner", cur)
+				m.addStatus(st)
+				continue
+			}
+		}
 		l, err := m.attach(as, coll.Programs[name], coll)
+		if err != nil && as.Kind == KindXDP {
+			m.xdp.release(m.cfg.Iface)
+			if errors.Is(err, syscall.EBUSY) {
+				st.Reason = "skipped: interface " + m.cfg.Iface + " already has an XDP program that this collector did not load (one XDP program per interface)"
+				m.log.Warnw("skipping XDP program: interface already has an XDP program", "object", file,
+					"program", name, "iface", m.cfg.Iface)
+				m.addStatus(st)
+				continue
+			}
+		}
 		if err != nil && IsMissingSymbol(as.Kind, err) {
 			// Optional hook (e.g. mlx5_ib_post_send, nvidia_fs_read): not an error.
 			st.Reason = "skipped: symbol not found (" + as.Symbol + ")"
@@ -284,6 +315,14 @@ func (m *Manager) attach(as AttachSpec, prog *ebpf.Program, coll *ebpf.Collectio
 		return nil, fmt.Errorf("no sockmap/sockhash in object")
 	}
 	return nil, fmt.Errorf("unsupported attach kind %q", as.Kind)
+}
+
+// Map returns a loaded map of an object file (nil when the object or map is not
+// loaded). The map belongs to the Manager: do not Close it.
+func (m *Manager) Map(object, name string) *ebpf.Map {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.objMaps[object][name]
 }
 
 // ReadCounter returns the sum over all CPUs of a __u64 counter in a map of the

@@ -94,7 +94,11 @@ func TestLayoutMatchesC(t *testing.T) {
 		}
 	}
 	// roce_cnp.c counter slots and the overlap.c state size.
-	for name, v := range map[string]uint32{"CNP_SLOT_CNP": CNPSlotCNP, "CNP_SLOT_ROCE": CNPSlotRoCE} {
+	for name, v := range map[string]uint32{
+		"CNP_SLOT_CNP": CNPSlotCNP, "CNP_SLOT_ROCE": CNPSlotRoCE,
+		"PFC_SLOT_FRAMES": PFCSlotFrames, "PFC_SLOT_LEGACY": PFCSlotLegacy, "PFC_SLOT_PRIO0": PFCSlotPrio0,
+		"PFC_PRIORITIES": PFCPriorities,
+	} {
 		m := regexp.MustCompile(`#define\s+` + name + `\s+(\d+)`).FindSubmatch(src)
 		if m == nil {
 			t.Errorf("%s missing from header", name)
@@ -104,6 +108,14 @@ func TestLayoutMatchesC(t *testing.T) {
 			t.Errorf("%s: C %d, Go %d", name, n, v)
 		}
 	}
+	if !regexp.MustCompile(`sizeof\(struct exfil_mark\) == 16`).Match(src) {
+		t.Error("exfil_mark size assert (16) missing from header")
+	}
+	if m := regexp.MustCompile(`#define\s+PFC_SLOTS\s+\(PFC_SLOT_PRIO0 \+ PFC_PRIORITIES\)`).Find(src); m == nil {
+		t.Error("PFC_SLOTS is no longer PFC_SLOT_PRIO0 + PFC_PRIORITIES; update PFCSlots")
+	} else if PFCSlots != PFCSlotPrio0+PFCPriorities {
+		t.Errorf("PFCSlots = %d, want %d", PFCSlots, PFCSlotPrio0+PFCPriorities)
+	}
 	if !regexp.MustCompile(`sizeof\(struct overlap_state\) == 16`).Match(src) {
 		t.Error("overlap_state size assert (16) missing from header")
 	}
@@ -112,6 +124,7 @@ func TestLayoutMatchesC(t *testing.T) {
 		"FABRIC_SIG_STRAGGLER": SigStraggler, "FABRIC_SIG_RDMA_RETRY": SigRDMARetry,
 		"FABRIC_SIG_GDS": SigGDS, "FABRIC_SIG_OVERLAP": SigOverlap,
 		"FABRIC_SIG_INFER_WAIT": SigInferWait, "FABRIC_SIG_CNP": SigCNP,
+		"FABRIC_SIG_PFC": SigPFC, "FABRIC_SIG_EXFIL": SigExfil, "FABRIC_SIG_UCX_SLOW": SigUCXSlow,
 	} {
 		m := regexp.MustCompile(name + `\s*=\s*(\d+)`).FindSubmatch(src)
 		if m == nil {
@@ -121,5 +134,12 @@ func TestLayoutMatchesC(t *testing.T) {
 		if n, _ := strconv.Atoi(string(m[1])); n != int(v) {
 			t.Errorf("%s: C %d, Go %d", name, n, v)
 		}
+	}
+}
+
+func TestExfilDest(t *testing.T) {
+	s := Signal{Type: SigExfil, PeerRank: 0xC0000201, Rank: 443}
+	if got := s.ExfilDest(); got != "192.0.2.1:443" {
+		t.Errorf("dest = %q", got)
 	}
 }

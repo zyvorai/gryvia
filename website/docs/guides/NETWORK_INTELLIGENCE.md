@@ -91,7 +91,7 @@ loads them and attaches each by section name. Hook types below come from the `SE
 | `rdma_trace` | kprobe (`ib_post_send`, `ib_post_recv`, `ib_poll_cq`), tracepoint (`rdma/rdma_create_qp`, `rdma/rdma_destroy_qp`) | Per-QP RDMA statistics and completion tracking. |
 ### Fabric Signal Programs
 
-Six programs feed the scheduler-facing fabric signals (`roce_cnp` keeps counters only). They are observe-only (nothing is dropped or modified) and
+Ten programs are listed here. Nine feed the scheduler-facing fabric signals and are observe-only (nothing is dropped or modified); `quota_pace` is the one exception, is off by default and is described last. Those that use a ring buffer
 emit `struct fabric_signal` on their own `fabric_events` ring buffer instead of extending the frozen 72-byte `gpu_event`.
 The collector folds the signals per job over a 5-minute window and serves them, with a `[0,1]` score penalty, at
 `GET :9090/api/v1/fabric` and as `gryvia_fabric_*` Prometheus gauges. The `GryviaFabricSignal` CRD (short name `gfs`)
@@ -105,15 +105,22 @@ carries the same fields in its status; no controller fills it yet and the score 
 | `overlap` | uprobe/uretprobe (`ncclAllReduce`, `cudaDeviceSynchronize`) | Reports a `cudaDeviceSynchronize` of at least 1 ms that runs nested inside an in-flight `ncclAllReduce` on the same thread (GPU idle while communicating). Folded as `overlapIdleRatio`, the share of the window spent in such syncs. |
 | `roce_cnp` | XDP | Counts RoCEv2 congestion notification packets (UDP 4791, BTH opcode 0x81) in per-CPU counters; always returns `XDP_PASS`. Attached only with `-iface`; the collector polls the counters and folds them as `cnpRate` (packets per second, job `_node/cnp`) and `gryvia_roce_cnp_packets_total`. |
 | `infer_latency` | kretprobe (`inet_csk_accept`), kprobe (`tcp_recvmsg`) | Time from accept to the first read on connections to the inference ports (`-infer-ports`, default `8000,8001`: vLLM and Triton HTTP; skipped when the list is empty). Folded as `inferWaitP99ms`, informational only. |
+| `ucx_gloo` | uprobe/uretprobe (`ucp_tag_send_nb`, `ucp_tag_send_nbx`) | UCX tag-send calls that blocked for at least 5 ms (the span of the posting call, not of the transfer). Skipped when `libucp.so` is not found (`-ucx-lib`, `-uprobe-pid`). Gloo is **not** probed: its allreduce symbols are C++ mangled, vary by version and are normally linked statically into `libtorch_cpu.so`, so a fixed probe could never attach. Folded as `ucxSlowP99ms`, informational only. |
+| `pfc_pause` | XDP | Counts 802.1Qbb priority-flow-control pause frames (EtherType 0x8808, opcode 0x0101) in per-CPU counters, with a count per paused priority, plus 802.3x pause frames; always `XDP_PASS`. Attached only with `-iface`; folded as `pfcRate` (frames per second, job `_node/pfc`) and `gryvia_pfc_*_total` counters. Only one XDP program can own an interface, so it conflicts with `roce_cnp`, `packet_filter` and `dns_tracker`: the collector attaches the first one and skips the others with a logged reason instead of replacing it. Many NICs handle pause frames in the MAC and never pass them to XDP, in which case the counters stay 0. |
+| `weight_exfil` | kprobe (`vfs_read`, `tcp_v4_connect`) | Observe only. A read of at least 8 MiB from a model-weight file (by name: `.safetensors`, `.gguf`, `.ckpt`, `.onnx`, `.pt`, `.pth`, `.bin`, `.h5`), followed within 30 s by a `connect` from the same process to a destination outside loopback, RFC1918 and link-local ranges, produces one signal (also logged as a warning). A read alone never does. It is a heuristic (IPv4 only, `read()` only, name-based) and a model server that legitimately calls an external API after loading weights will trip it. Folded as `exfilEvents`; it never changes `scoreDelta`. |
+| `quota_pace` | sockops (cgroup v2) | **The only program that changes anything, and it is off by default.** When a process in a cgroup that has an entry in the `pace_rate` map opens an outbound TCP connection, the socket's `SO_MAX_PACING_RATE` is lowered to that rate (never raised, and never below 1 Mbit/s). No entry, no change. Attached only with `-quota-pace` **and** `-cgroup-path`. Entries are lease-gated (15 minutes, `Pacer` in `collector/pkg/fabric`): expiry deletes the entry and the collector deletes every entry it wrote when it shuts down. Sockets that are already paced keep their rate until they close; only new connections are unpaced. **Nothing grants leases yet:** there is no `GryviaQuota` watch and no API, so enabling the flag only attaches the program and paces nothing until an operator or a future controller writes an entry. |
 
-The fabric score penalty (`scoreDelta`, capped at 1) adds 0.15 when `overlapIdleRatio` exceeds 0.3 and 0.15 when
-`cnpRate` exceeds 100 packets per second, on top of the straggler, RDMA and GDS terms. Both thresholds are heuristics
+The fabric score penalty (`scoreDelta`, capped at 1) adds 0.15 when `overlapIdleRatio` exceeds 0.3, 0.15 when
+`cnpRate` exceeds 100 packets per second and 0.10 when `pfcRate` exceeds 1000 pause frames per second, on top of the
+straggler, RDMA and GDS terms. `exfilEvents`, `ucxSlowP99ms` and `inferWaitP99ms` are informational. The thresholds are heuristics
 that have not been calibrated on real fabrics. `FabricPenalty` in the ai-operator scheduler package turns `scoreDelta`
 into up to 25 points to subtract, but nothing calls it yet.
 
 :::caution Unverified on hardware
-These programs compile and pass the kernel verifier (Linux 7.0 x86_64; arm64 compiles only). `roce_cnp` was run on
-crafted packets with `BPF_PROG_TEST_RUN` and `overlap` on a stand-in library; the GPU, RDMA
+These programs compile and pass the kernel verifier (Linux 7.0 x86_64; arm64 compiles only). `roce_cnp` and
+`pfc_pause` were run on crafted packets with `BPF_PROG_TEST_RUN`, `overlap` and `ucx_gloo` on stand-in libraries,
+`weight_exfil` briefly on the live hooks of a test process, and `quota_pace` on a throwaway cgroup on that host; none of it has run on real UCX,
+PFC or model-serving workloads or on arm64 hardware. The GPU, RDMA
 and GDS paths, real RoCE traffic and `infer_latency` attached to a live server have not been exercised on GPU, RDMA or GPUDirect Storage hardware. On the test host none of
 `ib_post_send`, `ib_poll_cq`, `mlx5_ib_*` or `nvidia_fs_read` exists, and the collector skips those hooks with a log
 line (they show as `skipped: symbol not found` in `/api/v1/ebpf/status`). `ib_post_send` and `ib_poll_cq` are inline

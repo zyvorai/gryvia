@@ -22,8 +22,9 @@ const (
 	retryRateHigh   = 0.02
 	gdsHitLow       = 0.5
 	stragglerHitsHi = 10
-	overlapIdleHigh = 0.3 // fraction of the window spent in sync inside a collective
-	cnpRateHigh     = 100 // RoCEv2 CNPs per second, averaged over the window
+	overlapIdleHigh = 0.3  // fraction of the window spent in sync inside a collective
+	cnpRateHigh     = 100  // RoCEv2 CNPs per second, averaged over the window
+	pfcRateHigh     = 1000 // PFC pause frames per second, averaged over the window
 
 	penaltyP99       = 0.25
 	penaltyRDMA      = 0.35
@@ -31,6 +32,7 @@ const (
 	penaltyStraggler = 0.25
 	penaltyOverlap   = 0.15
 	penaltyCNP       = 0.15
+	penaltyPFC       = 0.10
 )
 
 // JobKey identifies the job a signal belongs to. It is filled from Bind (a
@@ -60,9 +62,19 @@ type Status struct {
 	CNPRate float64 `json:"cnpRate"`
 	// InferWaitP99MS is the p99 accept -> first recv wait on inference ports.
 	// Informational: it does not feed ScoreDelta.
-	InferWaitP99MS float64   `json:"inferWaitP99ms"`
-	ScoreDelta     float64   `json:"scoreDelta"`
-	UpdatedAt      time.Time `json:"updatedAt"`
+	InferWaitP99MS float64 `json:"inferWaitP99ms"`
+	// PFCRate is 802.1Qbb priority-flow-control pause frames per second
+	// averaged over the window (node-level, reported under job _node/pfc).
+	PFCRate float64 `json:"pfcRate"`
+	// ExfilEvents counts weight_exfil signals (a large model-file read followed
+	// by a connect to a non-internal address) in the window. Informational: it
+	// never changes ScoreDelta.
+	ExfilEvents uint64 `json:"exfilEvents"`
+	// UCXSlowP99MS is the p99 duration of UCX tag-send calls that blocked for
+	// at least the probe threshold. Informational: it does not feed ScoreDelta.
+	UCXSlowP99MS float64   `json:"ucxSlowP99ms"`
+	ScoreDelta   float64   `json:"scoreDelta"`
+	UpdatedAt    time.Time `json:"updatedAt"`
 }
 
 type sample struct {
@@ -121,6 +133,20 @@ func (f *Folder) Unbind(pid uint32) {
 // notifications belong to the NIC, not to a pod.
 var CNPJob = JobKey{Namespace: "_node", Job: "cnp"}
 
+// PFCJob is the node-level key under which PFC pause frames are folded.
+var PFCJob = JobKey{Namespace: "_node", Job: "pfc"}
+
+// AddPFC records n 802.1Qbb PFC pause frames counted since the previous call
+// (the collector polls pfc_pause's pause_count map). Zero is ignored.
+func (f *Folder) AddPFC(n uint64) {
+	if n == 0 {
+		return
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.addLocked(PFCJob, Signal{Type: SigPFC, Bytes: n, Comm: "pfc"})
+}
+
 // AddCNP records n RoCEv2 congestion notification packets counted since the
 // previous call (the collector polls roce_cnp's cnp_count map). Zero is ignored.
 func (f *Folder) AddCNP(n uint64) {
@@ -174,8 +200,8 @@ func (f *Folder) Snapshot() map[JobKey]Status {
 
 func fold(list []sample, gdsDirect bool, window time.Duration) Status {
 	var st Status
-	var lat, inferLat []float64
-	var errs, posted, direct, total, overlapNS, cnps uint64
+	var lat, inferLat, ucxLat []float64
+	var errs, posted, direct, total, overlapNS, cnps, pfcs uint64
 	for _, sm := range list {
 		s := sm.sig
 		if sm.at.After(st.UpdatedAt) {
@@ -201,6 +227,12 @@ func fold(list []sample, gdsDirect bool, window time.Duration) Status {
 			inferLat = append(inferLat, float64(s.LatencyNS)/1e6)
 		case SigCNP:
 			cnps += s.Bytes
+		case SigPFC:
+			pfcs += s.Bytes
+		case SigExfil:
+			st.ExfilEvents++
+		case SigUCXSlow:
+			ucxLat = append(ucxLat, float64(s.LatencyNS)/1e6)
 		}
 	}
 	st.NCCLP99MS = percentile(lat, 0.99)
@@ -216,9 +248,11 @@ func fold(list []sample, gdsDirect bool, window time.Duration) Status {
 		st.GDSHitRatio = float64(direct) / float64(total)
 	}
 	st.InferWaitP99MS = percentile(inferLat, 0.99)
+	st.UCXSlowP99MS = percentile(ucxLat, 0.99)
 	if secs := window.Seconds(); secs > 0 {
 		st.OverlapIdleRatio = math.Min(1, float64(overlapNS)/1e9/secs)
 		st.CNPRate = float64(cnps) / secs
+		st.PFCRate = float64(pfcs) / secs
 	}
 	st.ScoreDelta = ScoreDelta(st)
 	return st
@@ -237,7 +271,8 @@ func percentile(v []float64, p float64) float64 {
 	return v[idx]
 }
 
-// ScoreDelta is a penalty in [0,1] the topology scorer can subtract.
+// ScoreDelta is a penalty in [0,1] the topology scorer can subtract. ExfilEvents,
+// InferWaitP99MS and UCXSlowP99MS are informational and never contribute.
 // 0 = healthy fabric, 1 = do not place another gang here.
 func ScoreDelta(st Status) float64 {
 	d := 0.0
@@ -258,6 +293,9 @@ func ScoreDelta(st Status) float64 {
 	}
 	if st.CNPRate > cnpRateHigh {
 		d += penaltyCNP
+	}
+	if st.PFCRate > pfcRateHigh {
+		d += penaltyPFC
 	}
 	return math.Max(0, math.Min(d, 1))
 }

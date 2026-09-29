@@ -43,6 +43,10 @@ hardware. Nothing in the rest of the platform depends on them, and the collector
 | `fingerprint.c` | kprobe (`tcp_v4_connect`), raw_tracepoint (`sys_enter`) | Per-process syscall and connection behaviour compared with baselines |
 | `driver_fim.c` | raw_tracepoint (`sys_enter`), kprobe (`security_file_open`) | File-integrity monitoring of NVIDIA driver files and CUDA libraries, module loading |
 | `infer_latency.c` | kretprobe (`inet_csk_accept`), kprobe (`tcp_recvmsg`) | Accept -> first recv wait of connections to the ports in `infer_ports` (collector `-infer-ports`, default 8000 vLLM and 8001 Triton) as `FABRIC_SIG_INFER_WAIT`; other ports are never recorded |
+| `ucx_gloo.c` | uprobe/uretprobe (`ucp_tag_send_nb`, `ucp_tag_send_nbx` in `libucp.so`) | UCX tag-send calls that blocked for >= 5 ms as `FABRIC_SIG_UCX_SLOW` (span of the posting call, not of the transfer). Skipped when `libucp.so` is not found (`-ucx-lib`, `-uprobe-pid`, standard dirs). **Gloo is not probed**: its C++ entry points are mangled, version-specific and usually linked statically into `libtorch_cpu.so`, so a fixed-symbol probe could never attach |
+| `pfc_pause.c` | XDP | 802.1Qbb PFC pause frames (EtherType 0x8808, opcode 0x0101; per-priority counts from the enable vector and quanta) and 802.3x pause frames in per-CPU counters (`pause_count`); always `XDP_PASS`, attached only with `-iface`. **One XDP program per interface**: conflicts with `roce_cnp`, `packet_filter` and `dns_tracker`; the collector attaches the first and skips the rest with a logged reason. Many NICs consume pause frames in the MAC and never show them to XDP |
+| `weight_exfil.c` | kprobe (`vfs_read`, `tcp_v4_connect`) | Observe only. A read request >= 8 MiB from a file named `*.safetensors/.gguf/.ckpt/.onnx/.pt/.pth/.bin/.h5`, then a `tcp_v4_connect` by the same process within 30 s to a destination that is not loopback, RFC1918, link-local or 0.0.0.0/8, emits one `FABRIC_SIG_EXFIL`. A read alone never fires. IPv4 only, `read()` only (not mmap), name-based |
+| `quota_pace.c` | sockops (cgroup v2) | **The only mutating program. Off by default.** Lowers `SO_MAX_PACING_RATE` of an outbound TCP connection (`TCP_CONNECT_CB`) when `pace_rate[<full 64-bit cgroup id>]` has an entry; no entry means the socket is untouched. Rate clamped up to 1 Mbit/s, never raised, fail open. Attached only with `-quota-pace` **and** `-cgroup-path`; entries are lease-gated by `collector/pkg/fabric` (`Pacer`), but nothing grants leases yet |
 
 ## Portability (CO-RE)
 
@@ -56,7 +60,7 @@ syscall numbers are `GRYVIA_NR_*` in the same header.
 Requirements on the node: a kernel with BTF (`CONFIG_DEBUG_INFO_BTF=y`, standard on Ubuntu 22.04+, RHEL 9, Debian 12+);
 `tcx/*` programs (`cost_tracker`, `trace_correlator`) need Linux 6.6+.
 
-Verified: all 30 programs compile with `-Wall -Werror` (clang 21; the original 24 also with clang 18) and pass the
+Verified: all 34 programs compile with `-Wall -Werror` (clang 21; the original 24 also with clang 18) and pass the
 kernel verifier on Linux 7.0 x86_64; the same sources cross-compile for arm64 (clang 21) but have not been loaded on
 an arm64 kernel. Runtime behaviour of the GPU/NCCL/RDMA/GDS programs (including `straggler`, `rdma_health` and
 `gds_trace`, `overlap`, `infer_latency`) has not been exercised on GPU, RDMA or GPUDirect Storage hardware; the kprobe symbols they use
@@ -68,6 +72,23 @@ and IPv6; non-CNP RoCE, other UDP ports, TCP, fragments and truncated frames lef
 bytes unchanged; 20000 random frames all `XDP_PASS`), and `overlap` on a private stand-in library with the real
 uprobe/uretprobe attach path (nested sync reported, sync alone and sub-millisecond sync silent, no state left behind).
 `infer_latency` is load-verified only: attaching it needs the live `inet_csk_accept` / `tcp_recvmsg` hooks.
+
+`pfc_pause` was exercised with `BPF_PROG_TEST_RUN` (PFC frames with per-priority counts, XON quanta, legacy pause, other
+ethertypes, truncated frames, 20000 random frames: all `XDP_PASS`, bytes unchanged). `ucx_gloo` ran on a private
+stand-in `libucp.so` with the real uprobe/uretprobe attach path. `weight_exfil` was attached for a few seconds to the
+live `vfs_read` / `tcp_v4_connect` hooks in a test process (read alone silent, internal destinations silent, external
+destination fires once, name and threshold edges) and detached again. `quota_pace` was run on a throwaway cgroup tree
+(never the root cgroup): no entry leaves the socket unchanged, an entry clamps it, a low rate is raised to the floor, 0 and
+out-of-range values change nothing, an already lower limit is kept, a cgroup without an entry is untouched next to one
+with an entry, an entry for the parent does not cover its children, and a deleted entry leaves the next connection
+unchanged. None of this has run on GPU, RDMA or RoCE hardware; whether pause frames reach XDP depends on the NIC.
+
+`quota_pace` is the only program that changes a socket. Its map (`pace_rate`) is empty until userspace inserts a key, so
+loading it alone changes nothing; the loader skips it unless `-quota-pace` and `-cgroup-path` are both set. Limits: only
+outbound connections are paced (the ESTABLISHED callbacks run in softirq where the current task is unrelated, and
+sockops programs cannot ask for a socket's cgroup); the key is the exact cgroup id (the directory's inode number), not
+its descendants; the kernel takes the rate as 32-bit bytes per second (max about 4.29 GB/s); a socket that is already
+paced keeps its rate until it closes, deleting the entry only unpaces new connections.
 
 ## Prerequisites
 
@@ -108,8 +129,8 @@ for GPU/AI workload tracing:
 - `struct rdma_qp_info` -- per-RDMA queue pair statistics (bytes sent/received, retransmits, completions)
 - Enums: `gpu_event_type`, `mem_direction`, `nccl_op_type`
 
-`headers/fabric_signal.h` defines the side channel used by `straggler.c`, `rdma_health.c`, `gds_trace.c`, `overlap.c` and
-`infer_latency.c` (`roce_cnp.c` only keeps counters)
+`headers/fabric_signal.h` defines the side channel used by `straggler.c`, `rdma_health.c`, `gds_trace.c`, `overlap.c`,
+`infer_latency.c`, `ucx_gloo.c` and `weight_exfil.c` (`roce_cnp.c` and `pfc_pause.c` only keep counters)
 (`gpu_event` is frozen at 72 bytes and is not extended):
 
 - `struct fabric_signal` -- 80-byte scheduler-facing signal emitted on each program's own `fabric_events` ring buffer
@@ -117,6 +138,8 @@ for GPU/AI workload tracing:
   offsets (`_Static_assert` in C, a unit test in Go)
 - `struct rank_span`, `struct rdma_health_val`, `struct gds_inflight`, `struct overlap_state` -- per-program map values
 - `CNP_SLOT_*` -- slots of `roce_cnp`'s per-CPU `cnp_count` array (`FABRIC_SIG_CNP` is synthesised by the collector from it and never appears on a ring)
+- `PFC_SLOT_*` -- slots of `pfc_pause`'s per-CPU `pause_count` array (frames, legacy pause, one per paused priority; `FABRIC_SIG_PFC` is synthesised by the collector and never appears on a ring)
+- `struct exfil_mark` -- `weight_exfil`'s per-process record of recent large model-file reads
 - Enum: `fabric_signal_type`
 
 ## How It Works

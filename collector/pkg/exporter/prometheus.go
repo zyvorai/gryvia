@@ -4,6 +4,7 @@ package exporter
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -50,6 +51,12 @@ type Metrics struct {
 	fabricOverlapIdle   *prometheus.GaugeVec
 	fabricCNPRate       *prometheus.GaugeVec
 	fabricInferWaitP99  *prometheus.GaugeVec
+	fabricPFCRate       *prometheus.GaugeVec
+	fabricExfilEvents   *prometheus.GaugeVec
+	fabricUCXSlowP99    *prometheus.GaugeVec
+	pfcFrames           prometheus.Counter
+	pfcLegacyFrames     prometheus.Counter
+	pfcPriorityFrames   *prometheus.CounterVec
 	roceCNPPackets      prometheus.Counter
 	roceRoCEPackets     prometheus.Counter
 
@@ -202,6 +209,30 @@ func NewMetrics() *Metrics {
 			Name: "gryvia_fabric_infer_wait_p99_seconds",
 			Help: "p99 accept -> first recv wait on inference ports (vLLM/Triton).",
 		}, fabricLabels),
+		fabricPFCRate: promauto.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "gryvia_fabric_pfc_rate",
+			Help: "802.1Qbb PFC pause frames per second over the window (job _node/pfc).",
+		}, fabricLabels),
+		fabricExfilEvents: promauto.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "gryvia_fabric_exfil_events",
+			Help: "weight_exfil signals in the window: large model-file read then connect to a non-internal address. Informational, never changes the score.",
+		}, fabricLabels),
+		fabricUCXSlowP99: promauto.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "gryvia_fabric_ucx_slow_p99_seconds",
+			Help: "p99 duration of UCX tag-send calls that blocked for at least 5 ms.",
+		}, fabricLabels),
+		pfcFrames: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "gryvia_pfc_pause_frames_total",
+			Help: "802.1Qbb priority flow control pause frames seen by the pfc_pause XDP program.",
+		}),
+		pfcLegacyFrames: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "gryvia_pfc_legacy_pause_frames_total",
+			Help: "802.3x link-level pause frames seen by the pfc_pause XDP program.",
+		}),
+		pfcPriorityFrames: promauto.NewCounterVec(prometheus.CounterOpts{
+			Name: "gryvia_pfc_priority_pause_frames_total",
+			Help: "PFC pause frames that pause the given priority (enabled, non-zero quanta).",
+		}, []string{"priority"}),
 		roceCNPPackets: promauto.NewCounter(prometheus.CounterOpts{
 			Name: "gryvia_roce_cnp_packets_total",
 			Help: "RoCEv2 congestion notification packets seen by the roce_cnp XDP program.",
@@ -348,6 +379,9 @@ func (m *Metrics) RecordFabric(jobs []fabric.JobStatus) {
 	m.fabricOverlapIdle.Reset()
 	m.fabricCNPRate.Reset()
 	m.fabricInferWaitP99.Reset()
+	m.fabricPFCRate.Reset()
+	m.fabricExfilEvents.Reset()
+	m.fabricUCXSlowP99.Reset()
 	for _, j := range jobs {
 		m.fabricScoreDelta.WithLabelValues(j.Namespace, j.Job).Set(j.ScoreDelta)
 		m.fabricStragglerRank.WithLabelValues(j.Namespace, j.Job).Set(float64(j.StragglerRank))
@@ -356,6 +390,9 @@ func (m *Metrics) RecordFabric(jobs []fabric.JobStatus) {
 		m.fabricOverlapIdle.WithLabelValues(j.Namespace, j.Job).Set(j.OverlapIdleRatio)
 		m.fabricCNPRate.WithLabelValues(j.Namespace, j.Job).Set(j.CNPRate)
 		m.fabricInferWaitP99.WithLabelValues(j.Namespace, j.Job).Set(j.InferWaitP99MS / 1e3)
+		m.fabricPFCRate.WithLabelValues(j.Namespace, j.Job).Set(j.PFCRate)
+		m.fabricExfilEvents.WithLabelValues(j.Namespace, j.Job).Set(float64(j.ExfilEvents))
+		m.fabricUCXSlowP99.WithLabelValues(j.Namespace, j.Job).Set(j.UCXSlowP99MS / 1e3)
 		if j.GDSMeasured {
 			m.fabricGDSHitRatio.WithLabelValues(j.Namespace, j.Job).Set(j.GDSHitRatio)
 		}
@@ -366,6 +403,18 @@ func (m *Metrics) RecordFabric(jobs []fabric.JobStatus) {
 func (m *Metrics) RecordRoCE(cnp, roce uint64) {
 	m.roceCNPPackets.Add(float64(cnp))
 	m.roceRoCEPackets.Add(float64(roce))
+}
+
+// RecordPFC adds the pause frame counts seen since the previous poll: PFC
+// frames, 802.3x legacy pause frames and the per-priority pause counts.
+func (m *Metrics) RecordPFC(frames, legacy uint64, perPriority [fabric.PFCPriorities]uint64) {
+	m.pfcFrames.Add(float64(frames))
+	m.pfcLegacyFrames.Add(float64(legacy))
+	for p, n := range perPriority {
+		if n > 0 {
+			m.pfcPriorityFrames.WithLabelValues(strconv.Itoa(p)).Add(float64(n))
+		}
+	}
 }
 
 // RecordTCPStats records TCP connection statistics for Prometheus.
