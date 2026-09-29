@@ -126,6 +126,33 @@ type GryviaAIJobStatus struct {
 
 	// Human-readable message indicating details about the current phase
 	Message string `json:"message,omitempty"`
+
+	// PlacementExplanation records, only when fabric-aware scheduling was applied,
+	// how per-node fabric health changed the node ranking (bounded to the top nodes)
+	// +kubebuilder:validation:MaxItems=16
+	PlacementExplanation []PlacementExplanation `json:"placementExplanation,omitempty"`
+}
+
+// PlacementExplanation is one node's line of the fabric-aware placement decision.
+type PlacementExplanation struct {
+	// Node is the node name
+	Node string `json:"node"`
+
+	// BaseScore is the topology/capacity score before the fabric adjustment
+	BaseScore int32 `json:"baseScore"`
+
+	// FabricPenalty is the points subtracted for fabric health (0 = none)
+	FabricPenalty int32 `json:"fabricPenalty"`
+
+	// FinalScore is what the node was ranked by
+	FinalScore int32 `json:"finalScore"`
+
+	// Reasons are the fabric signals behind the penalty
+	// +kubebuilder:validation:MaxItems=8
+	Reasons []string `json:"reasons,omitempty"`
+
+	// SignalAgeSeconds is how old the node's fabric measurement was when used
+	SignalAgeSeconds int64 `json:"signalAgeSeconds,omitempty"`
 }
 
 // JobMetrics represents job performance metrics

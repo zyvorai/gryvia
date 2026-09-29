@@ -93,6 +93,9 @@ spec:
             {{- if .Values.ebpf.publishFabricStatus }}
             - -publish-fabric-status
             {{- end }}
+            {{- if .Values.ebpf.publishNodeFabric }}
+            - -publish-node-fabric
+            {{- end }}
             {{- with .Values.ebpf.ncclLib }}
             - -nccl-lib={{ . }}
             {{- end }}

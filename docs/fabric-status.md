@@ -22,6 +22,8 @@ value is on: `list` on `gryviafabricsignals`, `patch` on `gryviafabricsignals/st
 Limits: each node's collector writes its own view, so for a job on several nodes the last writer wins; the status is
 advisory. Unit-tested against a fake API server; not run against a real cluster.
 
+See also [fabric-scheduling.md](fabric-scheduling.md) for the per-node signal used by opt-in fabric-aware scheduling.
+
 ## 2. Quota-driven pacing (MUTATING)
 
 `GryviaQuota.spec.network.maxEgressMbps` (optional, 1 to 32000) caps the outbound TCP rate of **each new connection**

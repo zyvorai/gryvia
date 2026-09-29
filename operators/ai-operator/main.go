@@ -38,6 +38,8 @@ func main() {
 	var probeAddr string
 	var enableWebhooks bool
 	var webhookCertDir string
+	var fabricAware bool
+	var fabricMaxPenalty float64
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -47,6 +49,11 @@ func main() {
 		"Serve the GryviaAIJob validating admission webhook (needs TLS certs in --webhook-cert-dir).")
 	flag.StringVar(&webhookCertDir, "webhook-cert-dir", "/tmp/k8s-webhook-server/serving-certs",
 		"Directory holding tls.crt and tls.key for the webhook server.")
+
+	flag.BoolVar(&fabricAware, "fabric-aware-scheduling", false,
+		"Rank nodes with the fresh per-node fabric health published by the collector (GryviaNodeFabric). Per-job override: annotation gryvia.io/fabric-aware=true|false. Off by default.")
+	flag.Float64Var(&fabricMaxPenalty, "fabric-max-penalty", 25,
+		"Most points fabric health may subtract from a node score (0 or above 25 means 25).")
 
 	opts := zap.Options{
 		Development: false,
@@ -81,6 +88,10 @@ func main() {
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 		Log:    ctrl.Log.WithName("controllers").WithName("GryviaAIJob"),
+
+		FabricAware:      fabricAware,
+		FabricMaxPenalty: fabricMaxPenalty,
+		Recorder:         mgr.GetEventRecorderFor("gryviaaijob-controller"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "GryviaAIJob")
 		os.Exit(1)

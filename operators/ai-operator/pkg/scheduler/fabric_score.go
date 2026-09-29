@@ -12,12 +12,11 @@ import "math"
 // operator is its own Go module), so the already-computed value is passed in
 // as a plain float64 instead of a fabric.Status.
 //
-// NOT WIRED: nothing calls these yet, and nothing produces a per-node scoreDelta
-// map: the collector's status is per job (GryviaFabricSignal.status) and, with
-// several nodes per job, last-writer-wins, so it is not a node signal.
-// scoreNodes works on integer node labels and has no per-node fabric status to
-// read.  RescoreNodes below is the optional hook a future caller can use once a
-// per-node source exists; it is inert with a nil or empty map.
+// Wiring: with the operator flag -fabric-aware-scheduling (or the per-job
+// annotation gryvia.io/fabric-aware: "true") FindOptimalNodesFabric loads the
+// fresh per-node GryviaNodeFabric objects the collector publishes
+// (-publish-node-fabric) and applies RescoreNodes-style penalties before the
+// node choice; see fabric_nodes.go. With the feature off nothing here runs.
 
 // MaxFabricPenalty is the most points a sick fabric can subtract, so it
 // cannot outrank a healthy node on topology alone.
@@ -47,19 +46,35 @@ func ApplyFabricPenalty(base, scoreDelta float64) float64 {
 
 // RescoreNodes returns a copy of nodes (the scheduler's NodeScore) with
 // ApplyFabricPenalty applied, rounded to whole points, to every node that has an
-// entry in scoreDeltas (node name -> the collector's scoreDelta).  A nil or empty map, or a node without an entry, leaves the score
-// unchanged, so the hook is a no-op until something feeds it.  The input slice
-// is never modified and the order is preserved.  It takes no part in any
-// scheduling decision today.
+// entry in scoreDeltas (node name -> the collector's scoreDelta).  A nil or empty
+// map, or a node without an entry, leaves the score unchanged.  The input slice
+// is never modified and the order is preserved.
 func RescoreNodes(nodes []NodeScore, scoreDeltas map[string]float64) []NodeScore {
+	return rescoreNodesCapped(nodes, scoreDeltas, MaxFabricPenalty)
+}
+
+// rescoreNodesCapped is RescoreNodes with the per-node penalty limited to
+// maxPoints (itself clamped to [0, MaxFabricPenalty]).
+func rescoreNodesCapped(nodes []NodeScore, scoreDeltas map[string]float64, maxPoints float64) []NodeScore {
 	out := make([]NodeScore, len(nodes))
 	copy(out, nodes)
 	if len(scoreDeltas) == 0 {
 		return out
 	}
+	if !(maxPoints > 0) {
+		return out
+	}
+	if maxPoints > MaxFabricPenalty {
+		maxPoints = MaxFabricPenalty
+	}
 	for i := range out {
 		if d, ok := scoreDeltas[out[i].NodeName]; ok {
-			out[i].Score = int(math.Round(ApplyFabricPenalty(float64(out[i].Score), d)))
+			pen := math.Min(FabricPenalty(d), maxPoints)
+			s := float64(out[i].Score) - pen
+			if s < 0 {
+				s = 0
+			}
+			out[i].Score = int(math.Round(s))
 		}
 	}
 	return out
