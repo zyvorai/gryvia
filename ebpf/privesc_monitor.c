@@ -10,20 +10,10 @@
 #include "headers/common.h"
 #include "headers/security_common.h"
 
-/* Syscall numbers for x86_64 */
-#define SYS_SETUID    105
-#define SYS_SETGID    106
-#define SYS_CAPSET     90
-#define SYS_SETREUID  113
-#define SYS_SETREGID  114
-#define SYS_SETRESUID 117
-#define SYS_SETRESGID 119
-
-/* Dangerous capabilities */
+/* Dangerous capabilities (CAP_NET_ADMIN/SYS_PTRACE/SYS_ADMIN are in gryvia_core.h) */
+#ifndef CAP_DAC_OVERRIDE
 #define CAP_DAC_OVERRIDE  1
-#define CAP_NET_ADMIN    12
-#define CAP_SYS_PTRACE   19
-#define CAP_SYS_ADMIN    21
+#endif
 
 /* Stat counter indices */
 #define PRIVESC_CTR_SETUID     0
@@ -50,7 +40,7 @@ struct {
 
 // Per-PID credential tracking (stores pre-change UID/GID).
 struct {
-    __uint(type, BPF_MAP_TYPE_HASH);
+    __uint(type, BPF_MAP_TYPE_LRU_HASH);  /* entries are never deleted */
     __uint(max_entries, MAX_ENTRIES);
     __type(key, __u64);  /* pid_tgid */
     __type(value, struct cred_snapshot);
@@ -73,8 +63,7 @@ static __always_inline void bump_privesc_counter(__u32 idx)
         __sync_fetch_and_add(cnt, 1);
 }
 
-static __always_inline void emit_privesc_event(__u32 pid, __u32 uid, __u32 gid,
-                                               __u16 syscall_nr, __u8 severity,
+static __always_inline void emit_privesc_event(__u16 syscall_nr, __u8 severity,
                                                __u32 old_uid, __u32 new_uid)
 {
     struct security_event *evt;
@@ -83,151 +72,94 @@ static __always_inline void emit_privesc_event(__u32 pid, __u32 uid, __u32 gid,
     if (!evt)
         return;
 
-    __builtin_memset(evt, 0, sizeof(*evt));
-    evt->timestamp  = bpf_ktime_get_ns();
-    evt->pid        = pid;
-    evt->uid        = uid;
-    evt->gid        = gid;
-    evt->event_type = SEC_PRIVILEGE_ESCALATION;
-    evt->severity   = severity;
+    sec_event_init(evt, SEC_PRIVILEGE_ESCALATION, severity);
     evt->syscall_nr = syscall_nr;
-    evt->cgroup_id  = bpf_get_current_cgroup_id();
     evt->old_uid    = old_uid;
     evt->new_uid    = new_uid;
-    bpf_get_current_comm(&evt->comm, sizeof(evt->comm));
 
     bpf_ringbuf_submit(evt, 0);
 }
 
+/* Non-root -> root transition requested through a set*id syscall. */
+static __always_inline void check_root_target(__u32 target, __u32 current_id,
+                                              int ctr, __u16 nr, __u8 severity,
+                                              __u32 current_uid)
+{
+    if (target == 0 && current_id != 0) {
+        bump_privesc_counter(ctr);
+        bump_privesc_counter(PRIVESC_CTR_ALERTS);
+        emit_privesc_event(nr, severity, current_uid, target);
+    }
+}
+
 /* ---- raw tracepoint on sys_enter -------------------------------------- */
 
-struct sys_enter_args {
-    unsigned long long unused;
-    long               id;
-    unsigned long      args[6];
-};
-
+/* ctx->args[0] is the syscall's struct pt_regs *, ctx->args[1] the id. */
 SEC("raw_tracepoint/sys_enter")
-int privesc_syscall_monitor(struct bpf_raw_tracepoint_args *raw_ctx)
+int privesc_syscall_monitor(struct bpf_raw_tracepoint_args *ctx)
 {
-    struct sys_enter_args *regs = (struct sys_enter_args *)raw_ctx->args[0];
-    long syscall_nr = 0;
+    unsigned long regs = ctx->args[0];
+    long nr = (long)ctx->args[1];
+    __u16 sysnr = (__u16)nr;
 
-    bpf_probe_read_kernel(&syscall_nr, sizeof(syscall_nr), &regs->id);
-
-    __u64 pid_tgid = bpf_get_current_pid_tgid();
-    __u32 pid = pid_tgid >> 32;
     __u64 uid_gid = bpf_get_current_uid_gid();
-    __u32 current_uid = (__u32)uid_gid;
-    __u32 current_gid = (__u32)(uid_gid >> 32);
+    __u32 uid = (__u32)uid_gid;
+    __u32 gid = (__u32)(uid_gid >> 32);
 
-    unsigned long arg0 = 0;
-    unsigned long arg1 = 0;
+    switch (nr) {
+    case GRYVIA_NR_setuid: {
+        /* setuid(uid) */
+        __u64 pid_tgid = bpf_get_current_pid_tgid();
+        struct cred_snapshot snap = {};
 
-    switch (syscall_nr) {
-    case SYS_SETUID:
-        /* setuid(uid_t uid) -- arg0 is target UID */
-        bpf_probe_read_kernel(&arg0, sizeof(arg0), &regs->args[0]);
-
-        if (arg0 == 0 && current_uid != 0) {
-            /* Non-root process trying to become root. */
-            bump_privesc_counter(PRIVESC_CTR_SETUID);
-            bump_privesc_counter(PRIVESC_CTR_ALERTS);
-            emit_privesc_event(pid, current_uid, current_gid,
-                               (__u16)syscall_nr, SEC_SEV_CRITICAL,
-                               current_uid, (__u32)arg0);
-        }
+        check_root_target((__u32)sec_sysarg(regs, 0), uid,
+                          PRIVESC_CTR_SETUID, sysnr, SEC_SEV_CRITICAL, uid);
 
         /* Store pre-change snapshot for correlation. */
-        {
-            struct cred_snapshot snap = {};
-            snap.uid = current_uid;
-            snap.gid = current_gid;
-            snap.timestamp = bpf_ktime_get_ns();
-            bpf_map_update_elem(&cred_tracking, &pid_tgid, &snap, BPF_ANY);
-        }
+        snap.uid = uid;
+        snap.gid = gid;
+        snap.timestamp = bpf_ktime_get_ns();
+        bpf_map_update_elem(&cred_tracking, &pid_tgid, &snap, BPF_ANY);
+        break;
+    }
+
+    case GRYVIA_NR_setgid:
+        check_root_target((__u32)sec_sysarg(regs, 0), gid,
+                          PRIVESC_CTR_SETGID, sysnr, SEC_SEV_HIGH, uid);
         break;
 
-    case SYS_SETGID:
-        /* setgid(gid_t gid) -- arg0 is target GID */
-        bpf_probe_read_kernel(&arg0, sizeof(arg0), &regs->args[0]);
-
-        if (arg0 == 0 && current_gid != 0) {
-            bump_privesc_counter(PRIVESC_CTR_SETGID);
-            bump_privesc_counter(PRIVESC_CTR_ALERTS);
-            emit_privesc_event(pid, current_uid, current_gid,
-                               (__u16)syscall_nr, SEC_SEV_HIGH,
-                               current_uid, (__u32)arg0);
-        }
+    case GRYVIA_NR_setreuid:
+        /* setreuid(ruid, euid): either may become root */
+        check_root_target((__u32)sec_sysarg(regs, 1), uid,
+                          PRIVESC_CTR_SETUID, sysnr, SEC_SEV_CRITICAL, uid);
         break;
 
-    case SYS_SETREUID:
-        /* setreuid(uid_t ruid, uid_t euid) -- check euid (arg1) */
-        bpf_probe_read_kernel(&arg1, sizeof(arg1), &regs->args[1]);
-
-        if (arg1 == 0 && current_uid != 0) {
-            bump_privesc_counter(PRIVESC_CTR_SETUID);
-            bump_privesc_counter(PRIVESC_CTR_ALERTS);
-            emit_privesc_event(pid, current_uid, current_gid,
-                               (__u16)syscall_nr, SEC_SEV_CRITICAL,
-                               current_uid, (__u32)arg1);
-        }
+    case GRYVIA_NR_setregid:
+        check_root_target((__u32)sec_sysarg(regs, 1), gid,
+                          PRIVESC_CTR_SETGID, sysnr, SEC_SEV_HIGH, uid);
         break;
 
-    case SYS_SETREGID:
-        /* setregid(gid_t rgid, gid_t egid) -- check egid (arg1) */
-        bpf_probe_read_kernel(&arg1, sizeof(arg1), &regs->args[1]);
-
-        if (arg1 == 0 && current_gid != 0) {
-            bump_privesc_counter(PRIVESC_CTR_SETGID);
-            bump_privesc_counter(PRIVESC_CTR_ALERTS);
-            emit_privesc_event(pid, current_uid, current_gid,
-                               (__u16)syscall_nr, SEC_SEV_HIGH,
-                               current_uid, (__u32)arg1);
-        }
+    case GRYVIA_NR_setresuid:
+        /* setresuid(ruid, euid, suid): check euid */
+        check_root_target((__u32)sec_sysarg(regs, 1), uid,
+                          PRIVESC_CTR_SETUID, sysnr, SEC_SEV_CRITICAL, uid);
         break;
 
-    case SYS_SETRESUID:
-        /* setresuid(uid_t ruid, uid_t euid, uid_t suid)
-         * Check euid (arg1) for escalation to root. */
-        bpf_probe_read_kernel(&arg1, sizeof(arg1), &regs->args[1]);
-
-        if (arg1 == 0 && current_uid != 0) {
-            bump_privesc_counter(PRIVESC_CTR_SETUID);
-            bump_privesc_counter(PRIVESC_CTR_ALERTS);
-            emit_privesc_event(pid, current_uid, current_gid,
-                               (__u16)syscall_nr, SEC_SEV_CRITICAL,
-                               current_uid, (__u32)arg1);
-        }
+    case GRYVIA_NR_setresgid:
+        check_root_target((__u32)sec_sysarg(regs, 1), gid,
+                          PRIVESC_CTR_SETGID, sysnr, SEC_SEV_HIGH, uid);
         break;
 
-    case SYS_SETRESGID:
-        /* setresgid(gid_t rgid, gid_t egid, gid_t sgid)
-         * Check egid (arg1). */
-        bpf_probe_read_kernel(&arg1, sizeof(arg1), &regs->args[1]);
-
-        if (arg1 == 0 && current_gid != 0) {
-            bump_privesc_counter(PRIVESC_CTR_SETGID);
-            bump_privesc_counter(PRIVESC_CTR_ALERTS);
-            emit_privesc_event(pid, current_uid, current_gid,
-                               (__u16)syscall_nr, SEC_SEV_HIGH,
-                               current_uid, (__u32)arg1);
-        }
-        break;
-
-    case SYS_CAPSET:
-        /* capset() from a container is always suspicious.
-         * We cannot easily read the capability header/data from BPF,
-         * so we flag any capset call and let userspace correlate. */
+    case GRYVIA_NR_capset:
+        /* The capability header/data live in user memory; flag the call and
+         * let userspace correlate. */
         bump_privesc_counter(PRIVESC_CTR_CAPSET);
         bump_privesc_counter(PRIVESC_CTR_ALERTS);
-        emit_privesc_event(pid, current_uid, current_gid,
-                           (__u16)syscall_nr, SEC_SEV_HIGH,
-                           current_uid, current_uid);
+        emit_privesc_event(sysnr, SEC_SEV_HIGH, uid, uid);
         break;
 
     default:
-        return 0;
+        break;
     }
 
     return 0;
@@ -236,90 +168,40 @@ int privesc_syscall_monitor(struct bpf_raw_tracepoint_args *raw_ctx)
 /* ---- kprobe/commit_creds ---------------------------------------------- */
 
 /*
- * commit_creds() is the kernel function that applies new credentials to
- * the current task.  By hooking it we catch ALL credential changes,
- * including those from setuid binaries and capability inheritance.
- *
- * commit_creds(struct cred *new)
- *
- * We read the new UID from the cred struct and compare against the
- * current (pre-commit) UID.
+ * commit_creds(struct cred *new) applies new credentials to the current
+ * task, so it sees every change, including setuid binaries and capability
+ * inheritance.  The task's current credentials are still the OLD ones at
+ * kprobe time, which lets us alert only on real transitions:
+ *   - euid non-root -> root
+ *   - dangerous effective capabilities that were NOT held before
  */
 SEC("kprobe/commit_creds")
-int BPF_KPROBE(privesc_commit_creds, void *new_cred)
+int BPF_KPROBE(privesc_commit_creds, struct cred *new_cred)
 {
-    __u64 pid_tgid = bpf_get_current_pid_tgid();
-    __u32 pid = pid_tgid >> 32;
-    __u64 uid_gid = bpf_get_current_uid_gid();
-    __u32 current_uid = (__u32)uid_gid;
-    __u32 current_gid = (__u32)(uid_gid >> 32);
+    struct task_struct *task = (struct task_struct *)bpf_get_current_task();
+    const struct cred *old_cred = BPF_CORE_READ(task, cred);
+    __u32 old_euid = BPF_CORE_READ(old_cred, euid.val);
+    __u32 new_euid = BPF_CORE_READ(new_cred, euid.val);
+    __u64 old_caps = 0, new_caps = 0;
 
-    /* Read the new UID from struct cred.
-     * struct cred layout (approximate):
-     *   offset  4: uid_t uid
-     *   offset  8: uid_t gid
-     *   offset 12: uid_t suid
-     *   offset 16: uid_t sgid
-     *   offset 20: uid_t euid
-     *   offset 24: uid_t egid
-     *
-     * We check euid (offset 20) for privilege escalation. */
-    __u32 new_euid = 0;
-    bpf_probe_read_kernel(&new_euid, sizeof(new_euid),
-                          (void *)new_cred + 20);
-
-    /* Only flag transitions TO root FROM non-root. */
-    if (new_euid == 0 && current_uid != 0) {
+    if (new_euid == 0 && old_euid != 0) {
         bump_privesc_counter(PRIVESC_CTR_CRED_CHG);
         bump_privesc_counter(PRIVESC_CTR_ALERTS);
-        emit_privesc_event(pid, current_uid, current_gid,
-                           0 /* no specific syscall */, SEC_SEV_CRITICAL,
-                           current_uid, new_euid);
+        emit_privesc_event(0 /* no specific syscall */, SEC_SEV_CRITICAL,
+                           old_euid, new_euid);
     }
 
-    /* Also check for dangerous capability additions.
-     * struct cred has cap_effective at a further offset.  The exact
-     * offset is kernel-version dependent; we read from the known
-     * position and check the relevant bits.
-     *
-     * cap_effective is a kernel_cap_t, which on modern kernels is
-     * a __u64.  Offset ~40 on most x86_64 kernels. */
-    __u64 cap_eff = 0;
-    bpf_probe_read_kernel(&cap_eff, sizeof(cap_eff),
-                          (void *)new_cred + 40);
+    BPF_CORE_READ_INTO(&old_caps, old_cred, cap_effective);
+    BPF_CORE_READ_INTO(&new_caps, new_cred, cap_effective);
 
-    /* Check for dangerous capabilities being gained. */
-    __u64 dangerous_caps = (1ULL << CAP_SYS_ADMIN) |
-                           (1ULL << CAP_NET_ADMIN) |
-                           (1ULL << CAP_SYS_PTRACE) |
-                           (1ULL << CAP_DAC_OVERRIDE);
+    __u64 dangerous = (1ULL << CAP_SYS_ADMIN) | (1ULL << CAP_NET_ADMIN) |
+                      (1ULL << CAP_SYS_PTRACE) | (1ULL << CAP_DAC_OVERRIDE);
 
-    if (cap_eff & dangerous_caps) {
-        /* Only alert if the process is in a container context.
-         * We use cgroup_id as a proxy -- non-root cgroups indicate
-         * container context.  Cgroup ID of 1 is typically the root. */
-        __u64 cgroup_id = bpf_get_current_cgroup_id();
-        if (cgroup_id > 1) {
+    if ((new_caps & ~old_caps) & dangerous) {
+        /* Only alert in a container context; cgroup id 1 is the root. */
+        if (bpf_get_current_cgroup_id() > 1) {
             bump_privesc_counter(PRIVESC_CTR_CRED_CHG);
-
-            struct security_event *evt;
-            evt = bpf_ringbuf_reserve(&privesc_events, sizeof(*evt), 0);
-            if (!evt)
-                return 0;
-
-            __builtin_memset(evt, 0, sizeof(*evt));
-            evt->timestamp  = bpf_ktime_get_ns();
-            evt->pid        = pid;
-            evt->uid        = current_uid;
-            evt->gid        = current_gid;
-            evt->event_type = SEC_PRIVILEGE_ESCALATION;
-            evt->severity   = SEC_SEV_HIGH;
-            evt->cgroup_id  = cgroup_id;
-            evt->old_uid    = current_uid;
-            evt->new_uid    = new_euid;
-            bpf_get_current_comm(&evt->comm, sizeof(evt->comm));
-
-            bpf_ringbuf_submit(evt, 0);
+            emit_privesc_event(0, SEC_SEV_HIGH, old_euid, new_euid);
         }
     }
 

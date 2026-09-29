@@ -88,18 +88,21 @@ func (a *SecurityAggregator) buildDetails(event decoder.SecurityEvent) string {
 	case decoder.SecEvtCryptoMining:
 		return fmt.Sprintf("crypto mining activity detected in process %s (PID %d)",
 			event.CommString(), event.PID)
-	case decoder.SecEvtSensitiveMount:
-		return fmt.Sprintf("sensitive mount at %s by PID %d", event.PathString(), event.PID)
+	case decoder.SecEvtDataExfiltration:
+		return fmt.Sprintf("data exfiltration: %d bytes from PID %d (%s) to %s:%d",
+			event.Bytes, event.PID, event.CommString(), decoder.IPToString(event.DstIP), event.DstPort)
+	case decoder.SecEvtDriverTampering:
+		if event.PathString() != "" {
+			return fmt.Sprintf("GPU driver file %s modified by PID %d (%s)",
+				event.PathString(), event.PID, event.CommString())
+		}
+		return fmt.Sprintf("kernel module operation (syscall %d) by PID %d (%s)",
+			event.SyscallNr, event.PID, event.CommString())
 	case decoder.SecEvtSuspiciousExec:
 		return fmt.Sprintf("suspicious exec of %s by PID %d (uid=%d)",
 			event.PathString(), event.PID, event.UID)
-	case decoder.SecEvtNetworkViolation:
-		return fmt.Sprintf("network policy violation: %s -> %s:%d",
-			decoder.IPToString(event.SrcIP), decoder.IPToString(event.DstIP), event.DstPort)
-	case decoder.SecEvtFileAccess:
-		return fmt.Sprintf("sensitive file access: %s by PID %d", event.PathString(), event.PID)
-	case decoder.SecEvtSyscallAnomaly:
-		return fmt.Sprintf("anomalous syscall %d by PID %d", event.SyscallNr, event.PID)
+	case decoder.SecEvtNamespaceBreach:
+		return fmt.Sprintf("namespace breach by PID %d (syscall %d)", event.PID, event.SyscallNr)
 	default:
 		return fmt.Sprintf("security event type=%d from PID %d", event.EventType, event.PID)
 	}

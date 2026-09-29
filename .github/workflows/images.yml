@@ -28,8 +28,6 @@ jobs:
   build:
     name: ${{ matrix.name }} (${{ matrix.platform }})
     runs-on: ${{ matrix.runner }}
-    # The eBPF collector does not compile yet (see ebpf/); keep building it so the failure stays visible.
-    continue-on-error: ${{ matrix.name == 'ebpf-collector' }}
     strategy:
       fail-fast: false
       matrix:

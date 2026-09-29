@@ -2,7 +2,7 @@
 //
 // latency_probe.c - Per-connection round-trip latency measurement.
 //
-// Hooks tcp_sendmsg (kprobe) and tcp_recvmsg (kretprobe) to measure
+// Hooks tcp_sendmsg (kprobe) and tcp_recvmsg (kprobe + kretprobe) to measure
 // the elapsed time between send and the next receive on the same
 // socket, providing an application-level RTT estimate.
 //
@@ -26,11 +26,20 @@
 
 // Timestamp of the last tcp_sendmsg per socket (keyed by sock pointer).
 struct {
-    __uint(type, BPF_MAP_TYPE_HASH);
-    __uint(max_entries, MAX_ENTRIES);
+    __uint(type, BPF_MAP_TYPE_LRU_HASH); // LRU: sockets that never receive
+    __uint(max_entries, MAX_ENTRIES);    // must not leak entries
     __type(key, __u64);   // sock pointer cast to u64
     __type(value, __u64); // timestamp in ns
 } send_ts SEC(".maps");
+
+// Socket passed to an in-progress tcp_recvmsg, keyed by pid_tgid, so the
+// kretprobe knows which socket the data arrived on.
+struct {
+    __uint(type, BPF_MAP_TYPE_LRU_HASH);
+    __uint(max_entries, MAX_ENTRIES);
+    __type(key, __u64);   // pid_tgid
+    __type(value, __u64); // sock pointer
+} recv_sk SEC(".maps");
 
 // Latency histogram: bucket_index -> count.
 struct {
@@ -77,10 +86,32 @@ int BPF_KPROBE(probe_tcp_sendmsg, struct sock *sk)
 }
 
 // tcp_recvmsg(struct sock *sk, struct msghdr *msg, ...)
+// The entry probe only remembers the socket: the RTT ends when data has
+// actually been received, i.e. at the return probe with ret > 0.
 SEC("kprobe/tcp_recvmsg")
 int BPF_KPROBE(probe_tcp_recvmsg, struct sock *sk)
 {
-    __u64 key = (__u64)sk;
+    __u64 pid_tgid = bpf_get_current_pid_tgid();
+    __u64 skp = (__u64)sk;
+
+    bpf_map_update_elem(&recv_sk, &pid_tgid, &skp, BPF_ANY);
+    return 0;
+}
+
+SEC("kretprobe/tcp_recvmsg")
+int BPF_KRETPROBE(probe_tcp_recvmsg_ret, int ret)
+{
+    __u64 pid_tgid = bpf_get_current_pid_tgid();
+    __u64 *skp = bpf_map_lookup_elem(&recv_sk, &pid_tgid);
+    if (!skp)
+        return 0;
+
+    __u64 key = *skp;
+    bpf_map_delete_elem(&recv_sk, &pid_tgid);
+
+    if (ret <= 0)
+        return 0;
+
     __u64 *ts = bpf_map_lookup_elem(&send_ts, &key);
     if (!ts)
         return 0;
@@ -104,21 +135,12 @@ int BPF_KPROBE(probe_tcp_recvmsg, struct sock *sk)
         ev.latency_ns = latency;
         ev.protocol   = IPPROTO_TCP;
 
-        __u64 pid_tgid = bpf_get_current_pid_tgid();
         ev.pid = pid_tgid >> 32;
         bpf_get_current_comm(&ev.comm, sizeof(ev.comm));
 
-        // Read addresses from the sock.
-        bpf_probe_read_kernel(&ev.src_ip, sizeof(ev.src_ip),
-                              &sk->__sk_common.skc_rcv_saddr);
-        bpf_probe_read_kernel(&ev.dst_ip, sizeof(ev.dst_ip),
-                              &sk->__sk_common.skc_daddr);
-        __u16 dport = 0;
-        bpf_probe_read_kernel(&dport, sizeof(dport),
-                              &sk->__sk_common.skc_dport);
-        ev.dst_port = bpf_ntohs(dport);
-        bpf_probe_read_kernel(&ev.src_port, sizeof(ev.src_port),
-                              &sk->__sk_common.skc_num);
+        // Read the 4-tuple from the sock (CO-RE).
+        gryvia_sock_v4_tuple((struct sock *)key, &ev.src_ip, &ev.dst_ip,
+                             &ev.src_port, &ev.dst_port);
 
         bpf_perf_event_output(ctx, &latency_events, BPF_F_CURRENT_CPU,
                               &ev, sizeof(ev));

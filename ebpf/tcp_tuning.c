@@ -11,14 +11,16 @@
 
 /* ---- tracepoint args -------------------------------------------------- */
 
+/* Matches /sys/kernel/tracing/events/tcp/tcp_probe/format (kernel >= 5.x
+ * with sockaddr-based saddr/daddr).  saddr/daddr hold a struct sockaddr_in
+ * (family, port, addr) or sockaddr_in6; sport/dport are host byte order. */
 struct tcp_probe_args {
-    __u64 pad;
-    const void *skaddr;
+    __u64 pad;            /* common_* fields */
+    __u8  saddr[28];
+    __u8  daddr[28];
     __u16 sport;
     __u16 dport;
     __u16 family;
-    __u32 saddr[1];
-    __u32 daddr[1];
     __u32 mark;
     __u16 data_len;
     __u32 snd_nxt;
@@ -28,6 +30,9 @@ struct tcp_probe_args {
     __u32 snd_wnd;
     __u32 srtt;
     __u32 rcv_wnd;
+    __u64 sock_cookie;
+    const void *skbaddr;
+    const void *skaddr;
 };
 
 /* ---- event struct ----------------------------------------------------- */
@@ -44,6 +49,7 @@ struct tcp_tuning_event {
     __u32 rcv_wnd;
     __u32 ssthresh;
     __u32 snd_wnd;
+    __u32 _pad;
     __u64 bytes_acked;
     char  comm[TASK_COMM_LEN];
 };
@@ -136,19 +142,17 @@ static __always_inline __u32 rtt_bucket(__u32 srtt_us)
 SEC("tracepoint/tcp/tcp_probe")
 int tcp_tuning_probe(struct tcp_probe_args *ctx)
 {
-    __u32 snd_cwnd = 0, ssthresh = 0, snd_wnd = 0, srtt = 0, rcv_wnd = 0;
-    __u32 saddr = 0, daddr = 0;
-    __u16 sport = 0, dport = 0;
+    /* IPv4 only: saddr/daddr are sockaddr_in, address at offset 4. */
+    if (ctx->family != AF_INET)
+        return 0;
 
-    bpf_probe_read_kernel(&sport, sizeof(sport), &ctx->sport);
-    bpf_probe_read_kernel(&dport, sizeof(dport), &ctx->dport);
-    bpf_probe_read_kernel(&saddr, sizeof(saddr), &ctx->saddr[0]);
-    bpf_probe_read_kernel(&daddr, sizeof(daddr), &ctx->daddr[0]);
-    bpf_probe_read_kernel(&snd_cwnd, sizeof(snd_cwnd), &ctx->snd_cwnd);
-    bpf_probe_read_kernel(&ssthresh, sizeof(ssthresh), &ctx->ssthresh);
-    bpf_probe_read_kernel(&snd_wnd, sizeof(snd_wnd), &ctx->snd_wnd);
-    bpf_probe_read_kernel(&srtt, sizeof(srtt), &ctx->srtt);
-    bpf_probe_read_kernel(&rcv_wnd, sizeof(rcv_wnd), &ctx->rcv_wnd);
+    __u32 snd_cwnd = ctx->snd_cwnd, ssthresh = ctx->ssthresh;
+    __u32 snd_wnd = ctx->snd_wnd, srtt = ctx->srtt, rcv_wnd = ctx->rcv_wnd;
+    __u16 sport = ctx->sport, dport = ctx->dport;
+    __u32 saddr = 0, daddr = 0;
+
+    __builtin_memcpy(&saddr, &ctx->saddr[4], sizeof(saddr));
+    __builtin_memcpy(&daddr, &ctx->daddr[4], sizeof(daddr));
 
     /* Update cwnd histogram */
     __u32 cb = cwnd_bucket(snd_cwnd);
@@ -184,6 +188,8 @@ int tcp_tuning_probe(struct tcp_probe_args *ctx)
         new_stats.avg_rtt_us  = srtt;
         new_stats.avg_rcv_wnd = rcv_wnd;
         new_stats.sample_count = 1;
+        /* If another CPU inserted first this sample is dropped, which is fine
+         * for a running average. */
         bpf_map_update_elem(&tcp_conn_stats, &key, &new_stats, BPF_NOEXIST);
     }
 
@@ -203,6 +209,7 @@ int tcp_tuning_probe(struct tcp_probe_args *ctx)
     ev->rcv_wnd   = rcv_wnd;
     ev->ssthresh  = ssthresh;
     ev->snd_wnd   = snd_wnd;
+    ev->_pad      = 0;
     ev->bytes_acked = 0;
 
     __u64 pid_tgid = bpf_get_current_pid_tgid();

@@ -2,14 +2,22 @@
 
 Complete guide to Gryvia's eBPF-powered network intelligence system for deep observability, security, and performance optimization of GPU clusters.
 
-:::caution Flow source
-Gryvia's own eBPF collector does not work yet: its kernel programs in `ebpf/` do not compile today (they need porting
-to CO-RE), so no collector image is published and the chart leaves it off (`ebpf.enabled=false`). Rather than
-duplicate that work, real flows can come from **[Netra](https://github.com/zyvorai/netra)**, the separate standalone
-eBPF network observability product. Install Netra, then set `apiGateway.netra.url` to an address the gateway pod can reach (its public IP, for example `https://<netra-public-ip>:30870`; a `*.svc` name only works when Netra runs in the same cluster) (and `apiGateway.netra.tokenSecret`
-for its API token) and the flows page reads Netra's flow history. Without either source the network graph, flows and
-security event pages stay empty. The operator, CRDs and CLI described below are implemented; the data they analyse
-comes from Netra or from a collector that is not produced yet. Netra has its own license; Gryvia only calls its HTTP API.
+:::caution Flow sources and eBPF status
+Network flows can come from two places. **[Netra](https://github.com/zyvorai/netra)**, the separate standalone eBPF
+network observability product: set `apiGateway.netra.url` to an address the gateway pod can reach (its public IP, for
+example `https://<netra-public-ip>:30870`; a `*.svc` name only works when Netra runs in the same cluster) and
+`apiGateway.netra.tokenSecret` for its API token. Netra has its own license; Gryvia only calls its HTTP API. Or
+Gryvia's **own collector** (the `ebpf-collector` DaemonSet of the `network-intelligence` chart, `ebpf.enabled=true`,
+off by default).
+
+The 24 eBPF programs in `ebpf/` are now CO-RE (no per-kernel builds; they need a node kernel with BTF, and the
+`tcx` programs Linux 6.6+). All 24 compile and pass the kernel verifier on Linux 7.0 x86_64, and on that host the
+collector attached 36 of the 83 hooks (the kprobes and tracepoints) and decoded real TCP flows. **Not yet verified:**
+arm64 (compiles, never loaded), the XDP/TCX/sockops programs (attach is config-gated: `ebpf.interface`,
+`ebpf.cgroupPath`), and everything GPU-related (NCCL/CUDA uprobes, RDMA), which needs GPU or RDMA hardware. RDMA
+kprobes attach only where the driver exports those symbols. Attach results per node are at
+`GET :9090/api/v1/ebpf/status`. The operator, CRDs and CLI described below work on whichever source you use. With
+neither source the network graph, flows and security pages stay empty.
 :::
 
 ## Table of Contents

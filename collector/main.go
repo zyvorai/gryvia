@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
 
@@ -34,7 +35,11 @@ func main() {
 		metricsAddr = flag.String("metrics-addr", ":9090", "Prometheus metrics listen address")
 		natsURL     = flag.String("nats-url", "", "NATS server URL (optional)")
 		ebpfDir     = flag.String("ebpf-dir", "/opt/gryvia/ebpf", "Directory containing compiled eBPF .o files")
-		iface       = flag.String("iface", "eth0", "Network interface for XDP attachment")
+		iface       = flag.String("iface", "", "Network interface for XDP/TCX attachment (empty = skip those programs)")
+		cgroupPath  = flag.String("cgroup-path", "", "cgroup v2 path for sockops/sk_msg attachment (empty = skip)")
+		ncclLib     = flag.String("nccl-lib", "", "path to libnccl.so for uprobes (empty = auto-discover)")
+		cudaLib     = flag.String("cuda-lib", "", "path to libcudart.so for uprobes (empty = auto-discover)")
+		uprobePID   = flag.Int("uprobe-pid", 0, "find NCCL/CUDA libraries via /proc/<pid>/maps of this process")
 		windowSec   = flag.Int("window", 300, "Aggregation sliding window in seconds")
 	)
 	flag.Parse()
@@ -59,7 +64,10 @@ func main() {
 	defer cancel()
 
 	// ---- Load eBPF programs ----
-	mgr, err := loader.New(*ebpfDir, *iface, log)
+	mgr, err := loader.New(loader.Config{
+		Dir: *ebpfDir, Iface: *iface, CgroupPath: *cgroupPath,
+		NCCLLib: *ncclLib, CUDALib: *cudaLib, UprobePID: *uprobePID,
+	}, log)
 	if err != nil {
 		log.Fatalw("failed to create eBPF loader", "error", err)
 	}
@@ -67,6 +75,19 @@ func main() {
 		log.Fatalw("failed to load eBPF programs", "error", err)
 	}
 	defer mgr.Close()
+
+	attachGauge := prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "gryvia_ebpf_program_attached",
+		Help: "1 if the eBPF program is attached, 0 otherwise.",
+	}, []string{"object", "program", "kind"})
+	prometheus.MustRegister(attachGauge)
+	for _, s := range mgr.Status() {
+		v := 0.0
+		if s.Attached {
+			v = 1
+		}
+		attachGauge.WithLabelValues(s.Object, s.Program, s.Kind).Set(v)
+	}
 
 	// ---- Initialize subsystems ----
 	metrics := exporter.NewMetrics()
@@ -94,7 +115,7 @@ func main() {
 	tcpAdvisor := tuning.NewTCPAdvisor()
 
 	// ---- Decode perf events (existing flow events) ----
-	dec, err := decoder.New(mgr.PerfReaders(), log)
+	dec, err := decoder.New(mgr.PerfReaders(loader.ClassFlow), log)
 	if err != nil {
 		log.Warnw("no perf readers available, flow decoding disabled", "error", err)
 	}
@@ -118,15 +139,18 @@ func main() {
 		go dec.Run(ctx)
 	}
 
-	// ---- Decode ring buffer events (GPU and security) ----
-	ringReaders := mgr.RingBufReaders()
-	for _, rr := range ringReaders {
-		// Start GPU decoder on each ring buffer reader.
-		// In practice, different ring buffers would be identified by map name,
-		// but here we fan out to both decoders and let them filter by event structure.
+	// ---- Decode ring buffer events, dispatched by map class ----
+	gpuRings := mgr.RingBufReaders(loader.ClassGPU)
+	for _, rr := range gpuRings {
 		go gpuDecoder.DecodeRingBuf(rr)
 	}
-	log.Infow("ring buffer readers started", "count", len(ringReaders))
+	secRings := mgr.RingBufReaders(loader.ClassSecurity)
+	for _, rr := range secRings {
+		go secDecoder.DecodeRingBuf(rr)
+	}
+	log.Infow("event readers started",
+		"flow_perf", len(mgr.PerfReaders(loader.ClassFlow)),
+		"gpu_ringbuf", len(gpuRings), "security_ringbuf", len(secRings))
 
 	// ---- GPU event processing pipeline ----
 	go func() {
@@ -237,6 +261,12 @@ func main() {
 
 	// TCP tuning endpoint.
 	mux.HandleFunc("/api/v1/tuning/tcp", tcpAdvisor.ServeHTTP)
+
+	// eBPF program attach status.
+	mux.HandleFunc("/api/v1/ebpf/status", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = encodeJSON(w, mgr.Status())
+	})
 
 	// Health check.
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {

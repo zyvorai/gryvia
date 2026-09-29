@@ -20,30 +20,39 @@ structured events to the userspace flow collector.
 | `datapipe_bottleneck.c` | tracepoint (`block/block_rq_complete`), kprobe (`tcp_recvmsg`), uprobe (`cudaLaunchKernel`, `cudaDeviceSynchronize`) | Data pipeline bottleneck detection -- correlates storage I/O, network ingestion, and GPU busy/idle phases |
 | `gradient_compress.c` | uprobe (`ncclAllReduce`) | Gradient compression analysis -- compares expected vs actual bytes per collective to detect compression ratios |
 
+## Portability (CO-RE)
+
+The programs are **CO-RE** (compile once, run everywhere): they are built without a generated `vmlinux.h`.
+`headers/gryvia_core.h` declares the few kernel structs the programs read as minimal local definitions marked
+`preserve_access_index`, and every field read goes through `BPF_CORE_READ`. The loader (cilium/ebpf) relocates
+those accesses against the running kernel's BTF (`/sys/kernel/btf/vmlinux`) at load time, so one object file works
+across kernel versions, and the same sources build for `x86_64` and `arm64` (`make ARCH=arm64`). Per-architecture
+syscall numbers are `GRYVIA_NR_*` in the same header.
+
+Requirements on the node: a kernel with BTF (`CONFIG_DEBUG_INFO_BTF=y`, standard on Ubuntu 22.04+, RHEL 9, Debian 12+);
+`tcx/*` programs (`cost_tracker`, `trace_correlator`) need Linux 6.6+.
+
+Verified: all 24 programs compile with `-Wall -Werror` (clang 18 and 21) and pass the kernel verifier on Linux 7.0
+x86_64; the same sources cross-compile for arm64 but have not been loaded on an arm64 kernel. Runtime behaviour of the
+GPU/NCCL/RDMA programs has not been exercised on GPU or RDMA hardware.
+
 ## Prerequisites
 
-- **clang** >= 12 (with BPF target support)
-- **llvm** >= 12
-- **libbpf-dev** (headers and shared library)
-- **bpftool** (optional, for vmlinux.h generation)
-- **linux-headers** for the running kernel
-
-On Fedora/RHEL:
-
-```bash
-sudo dnf install clang llvm libbpf-devel bpftool kernel-devel
-```
+- **clang** >= 12 (with BPF target support), **llvm**, **libbpf-dev**, **linux-libc-dev** (for the `asm/*.h` headers)
+- **bpftool** only for `make check`
 
 On Ubuntu/Debian:
 
 ```bash
-sudo apt install clang llvm libbpf-dev linux-tools-common linux-headers-$(uname -r)
+sudo apt install clang llvm libbpf-dev linux-libc-dev make bpftool
 ```
 
 ## Building
 
 ```bash
 make            # compile all programs to .o ELF objects
+make check      # load every object through the verifier with bpftool (needs root; cleans up after itself)
+make ARCH=arm64 # cross-compile for arm64
 make clean      # remove compiled objects
 ```
 

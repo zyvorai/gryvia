@@ -10,10 +10,10 @@
 
 #include "headers/common.h"
 
-/* Syscall numbers for x86_64 */
-#define SYS_CONNECT  42
-#define SYS_SENDTO   44
-#define SYS_RECVFROM 45
+/* Syscall numbers are per-arch; see GRYVIA_NR_* in headers/gryvia_core.h. */
+#define SYS_CONNECT  GRYVIA_NR_connect
+#define SYS_SENDTO   GRYVIA_NR_sendto
+#define SYS_RECVFROM GRYVIA_NR_recvfrom
 
 /* Process network activity record */
 struct proc_net_info {
@@ -68,20 +68,11 @@ struct {
 
 /* ---- tracepoint ------------------------------------------------------- */
 
-// struct used by raw_tracepoint/sys_enter
-struct sys_enter_args {
-    unsigned long long unused;
-    long               id;
-    unsigned long      args[6];
-};
-
+// raw_tracepoint/sys_enter: args[0] = struct pt_regs *, args[1] = syscall id.
 SEC("raw_tracepoint/sys_enter")
 int syscall_monitor(struct bpf_raw_tracepoint_args *raw_ctx)
 {
-    /* Read the syscall number from the tracepoint context. */
-    struct sys_enter_args *args = (struct sys_enter_args *)raw_ctx->args[0];
-    long syscall_nr = 0;
-    bpf_probe_read_kernel(&syscall_nr, sizeof(syscall_nr), &args->id);
+    long syscall_nr = (long)raw_ctx->args[1];
 
     /* Filter to network-related syscalls only. */
     int sc_idx = -1;

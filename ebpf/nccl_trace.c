@@ -34,12 +34,29 @@ struct nccl_op_stat {
 /* ---- BPF maps ---------------------------------------------------------- */
 
 // In-flight NCCL operations keyed by pid_tgid for entry/exit correlation.
+// LRU so entries orphaned by a thread dying mid-call (or a missed uretprobe)
+// are recycled instead of filling the map.
 struct {
-    __uint(type, BPF_MAP_TYPE_HASH);
+    __uint(type, BPF_MAP_TYPE_LRU_HASH);
     __uint(max_entries, MAX_INFLIGHT);
     __type(key, __u64);
     __type(value, struct nccl_inflight);
 } nccl_inflight_map SEC(".maps");
+
+// ncclGroupStart/End nesting state per thread (kept apart from the per-call
+// map: collectives issued inside a group would otherwise overwrite it).
+struct nccl_group {
+    __u64 start_ns;
+    __u32 depth;
+    __u32 _pad;
+};
+
+struct {
+    __uint(type, BPF_MAP_TYPE_LRU_HASH);
+    __uint(max_entries, MAX_INFLIGHT);
+    __type(key, __u64);
+    __type(value, struct nccl_group);
+} nccl_group_map SEC(".maps");
 
 // Ring buffer for gpu_event emission to userspace.
 struct {
@@ -66,16 +83,18 @@ struct {
 
 /* ---- helpers ----------------------------------------------------------- */
 
+// Entry: stash start time and payload size keyed by pid_tgid (a thread makes
+// one NCCL call at a time, so the exit probe on the same thread finds it).
 static __always_inline void record_nccl_entry(__u8 op_type, __u64 count,
-                                              __u64 rank)
+                                              __u64 dtype)
 {
     __u64 pid_tgid = bpf_get_current_pid_tgid();
 
     struct nccl_inflight info = {};
     info.start_ns = bpf_ktime_get_ns();
     info.op_type  = op_type;
-    info.count    = (__u32)count;
-    info.rank     = (__u32)rank;
+    info.bytes    = count * nccl_dtype_size(dtype);
+    info.rank     = 0;   /* ncclComm_t is opaque; rank is not readable */
 
     bpf_map_update_elem(&nccl_inflight_map, &pid_tgid, &info, BPF_ANY);
 }
@@ -102,7 +121,7 @@ static __always_inline void update_latency_hist(__u64 latency_ns)
         __sync_fetch_and_add(slot, 1);
 }
 
-static __always_inline void emit_nccl_exit(void *ctx)
+static __always_inline void emit_nccl_exit(void)
 {
     __u64 pid_tgid = bpf_get_current_pid_tgid();
 
@@ -125,7 +144,8 @@ static __always_inline void emit_nccl_exit(void *ctx)
         ev->direction     = 0;
         ev->nccl_op       = info->op_type;
         ev->_pad          = 0;
-        ev->bytes         = (__u64)info->count;
+        ev->bytes         = info->bytes;
+        ev->_pad2         = 0;
         ev->latency_ns    = latency;
         ev->src_rank      = info->rank;
         ev->dst_rank      = 0;
@@ -143,7 +163,7 @@ static __always_inline void emit_nccl_exit(void *ctx)
                                                         &op_key);
         if (stat) {
             __sync_fetch_and_add(&stat->count, 1);
-            __sync_fetch_and_add(&stat->total_bytes, (__u64)info->count);
+            __sync_fetch_and_add(&stat->total_bytes, info->bytes);
         }
     }
 
@@ -159,17 +179,17 @@ static __always_inline void emit_nccl_exit(void *ctx)
 //               ncclDataType_t datatype, ncclRedOp_t op, ncclComm_t comm,
 //               cudaStream_t stream)
 SEC("uprobe/ncclAllReduce")
-int BPF_KPROBE(nccl_allreduce_entry, void *sendbuff, void *recvbuff,
-               __u64 count)
+int BPF_UPROBE(nccl_allreduce_entry, void *sendbuff, void *recvbuff,
+               __u64 count, __u64 datatype)
 {
-    record_nccl_entry(NCCL_ALLREDUCE, count, 0);
+    record_nccl_entry(NCCL_ALLREDUCE, count, datatype);
     return 0;
 }
 
 SEC("uretprobe/ncclAllReduce")
-int BPF_KRETPROBE(nccl_allreduce_exit)
+int BPF_URETPROBE(nccl_allreduce_exit)
 {
-    emit_nccl_exit(ctx);
+    emit_nccl_exit();
     return 0;
 }
 
@@ -178,17 +198,17 @@ int BPF_KRETPROBE(nccl_allreduce_exit)
 // ncclAllGather(const void* sendbuff, void* recvbuff, size_t sendcount,
 //               ncclDataType_t datatype, ncclComm_t comm, cudaStream_t stream)
 SEC("uprobe/ncclAllGather")
-int BPF_KPROBE(nccl_allgather_entry, void *sendbuff, void *recvbuff,
-               __u64 count)
+int BPF_UPROBE(nccl_allgather_entry, void *sendbuff, void *recvbuff,
+               __u64 count, __u64 datatype)
 {
-    record_nccl_entry(NCCL_ALLGATHER, count, 0);
+    record_nccl_entry(NCCL_ALLGATHER, count, datatype);
     return 0;
 }
 
 SEC("uretprobe/ncclAllGather")
-int BPF_KRETPROBE(nccl_allgather_exit)
+int BPF_URETPROBE(nccl_allgather_exit)
 {
-    emit_nccl_exit(ctx);
+    emit_nccl_exit();
     return 0;
 }
 
@@ -198,17 +218,17 @@ int BPF_KRETPROBE(nccl_allgather_exit)
 //               ncclDataType_t datatype, int root, ncclComm_t comm,
 //               cudaStream_t stream)
 SEC("uprobe/ncclBroadcast")
-int BPF_KPROBE(nccl_broadcast_entry, void *sendbuff, void *recvbuff,
-               __u64 count)
+int BPF_UPROBE(nccl_broadcast_entry, void *sendbuff, void *recvbuff,
+               __u64 count, __u64 datatype)
 {
-    record_nccl_entry(NCCL_BROADCAST, count, 0);
+    record_nccl_entry(NCCL_BROADCAST, count, datatype);
     return 0;
 }
 
 SEC("uretprobe/ncclBroadcast")
-int BPF_KRETPROBE(nccl_broadcast_exit)
+int BPF_URETPROBE(nccl_broadcast_exit)
 {
-    emit_nccl_exit(ctx);
+    emit_nccl_exit();
     return 0;
 }
 
@@ -218,17 +238,17 @@ int BPF_KRETPROBE(nccl_broadcast_exit)
 //            ncclDataType_t datatype, ncclRedOp_t op, int root,
 //            ncclComm_t comm, cudaStream_t stream)
 SEC("uprobe/ncclReduce")
-int BPF_KPROBE(nccl_reduce_entry, void *sendbuff, void *recvbuff,
-               __u64 count)
+int BPF_UPROBE(nccl_reduce_entry, void *sendbuff, void *recvbuff,
+               __u64 count, __u64 datatype)
 {
-    record_nccl_entry(NCCL_REDUCE, count, 0);
+    record_nccl_entry(NCCL_REDUCE, count, datatype);
     return 0;
 }
 
 SEC("uretprobe/ncclReduce")
-int BPF_KRETPROBE(nccl_reduce_exit)
+int BPF_URETPROBE(nccl_reduce_exit)
 {
-    emit_nccl_exit(ctx);
+    emit_nccl_exit();
     return 0;
 }
 
@@ -238,17 +258,17 @@ int BPF_KRETPROBE(nccl_reduce_exit)
 //                   ncclDataType_t datatype, ncclRedOp_t op, ncclComm_t comm,
 //                   cudaStream_t stream)
 SEC("uprobe/ncclReduceScatter")
-int BPF_KPROBE(nccl_reducescatter_entry, void *sendbuff, void *recvbuff,
-               __u64 count)
+int BPF_UPROBE(nccl_reducescatter_entry, void *sendbuff, void *recvbuff,
+               __u64 count, __u64 datatype)
 {
-    record_nccl_entry(NCCL_REDUCESCATTER, count, 0);
+    record_nccl_entry(NCCL_REDUCESCATTER, count, datatype);
     return 0;
 }
 
 SEC("uretprobe/ncclReduceScatter")
-int BPF_KRETPROBE(nccl_reducescatter_exit)
+int BPF_URETPROBE(nccl_reducescatter_exit)
 {
-    emit_nccl_exit(ctx);
+    emit_nccl_exit();
     return 0;
 }
 
@@ -257,16 +277,16 @@ int BPF_KRETPROBE(nccl_reducescatter_exit)
 // ncclSend(const void* sendbuff, size_t count, ncclDataType_t datatype,
 //          int peer, ncclComm_t comm, cudaStream_t stream)
 SEC("uprobe/ncclSend")
-int BPF_KPROBE(nccl_send_entry, void *sendbuff, __u64 count)
+int BPF_UPROBE(nccl_send_entry, void *sendbuff, __u64 count, __u64 datatype)
 {
-    record_nccl_entry(NCCL_SEND, count, 0);
+    record_nccl_entry(NCCL_SEND, count, datatype);
     return 0;
 }
 
 SEC("uretprobe/ncclSend")
-int BPF_KRETPROBE(nccl_send_exit)
+int BPF_URETPROBE(nccl_send_exit)
 {
-    emit_nccl_exit(ctx);
+    emit_nccl_exit();
     return 0;
 }
 
@@ -275,36 +295,74 @@ int BPF_KRETPROBE(nccl_send_exit)
 // ncclRecv(void* recvbuff, size_t count, ncclDataType_t datatype,
 //          int peer, ncclComm_t comm, cudaStream_t stream)
 SEC("uprobe/ncclRecv")
-int BPF_KPROBE(nccl_recv_entry, void *recvbuff, __u64 count)
+int BPF_UPROBE(nccl_recv_entry, void *recvbuff, __u64 count, __u64 datatype)
 {
-    record_nccl_entry(NCCL_RECV, count, 0);
+    record_nccl_entry(NCCL_RECV, count, datatype);
     return 0;
 }
 
 SEC("uretprobe/ncclRecv")
-int BPF_KRETPROBE(nccl_recv_exit)
+int BPF_URETPROBE(nccl_recv_exit)
 {
-    emit_nccl_exit(ctx);
+    emit_nccl_exit();
     return 0;
 }
 
 /* ---- uprobes: ncclGroupStart / ncclGroupEnd ---------------------------- */
 
-// ncclGroupStart() marks the beginning of a group of NCCL operations.
-// We record it as a special inflight entry with op_type set to NCCL_ALLTOALL
-// (reused for group tracking).
+// A group batches several async calls; the outermost Start..End(return) span
+// is reported as one NCCL_ALLTOALL-typed event ("group").  Nested groups only
+// bump the depth counter.
 SEC("uprobe/ncclGroupStart")
-int BPF_KPROBE(nccl_group_start)
+int BPF_UPROBE(nccl_group_start)
 {
-    record_nccl_entry(NCCL_ALLTOALL, 0, 0);
+    __u64 pid_tgid = bpf_get_current_pid_tgid();
+    struct nccl_group *g = bpf_map_lookup_elem(&nccl_group_map, &pid_tgid);
+    if (g) {
+        g->depth++;
+        return 0;
+    }
+    struct nccl_group ng = {};
+    ng.start_ns = bpf_ktime_get_ns();
+    ng.depth = 1;
+    bpf_map_update_elem(&nccl_group_map, &pid_tgid, &ng, BPF_NOEXIST);
     return 0;
 }
 
-// ncclGroupEnd() completes the grouped operation batch.
-SEC("uretprobe/ncclGroupEnd")
-int BPF_KRETPROBE(nccl_group_end)
+SEC("uprobe/ncclGroupEnd")
+int BPF_UPROBE(nccl_group_end_entry)
 {
-    emit_nccl_exit(ctx);
+    __u64 pid_tgid = bpf_get_current_pid_tgid();
+    struct nccl_group *g = bpf_map_lookup_elem(&nccl_group_map, &pid_tgid);
+    if (g && g->depth > 0)
+        g->depth--;
+    return 0;
+}
+
+SEC("uretprobe/ncclGroupEnd")
+int BPF_URETPROBE(nccl_group_end)
+{
+    __u64 pid_tgid = bpf_get_current_pid_tgid();
+    struct nccl_group *g = bpf_map_lookup_elem(&nccl_group_map, &pid_tgid);
+    if (!g || g->depth > 0)
+        return 0;   /* unmatched, or still inside an outer group */
+
+    __u64 now = bpf_ktime_get_ns();
+    __u64 latency = now - g->start_ns;
+    bpf_map_delete_elem(&nccl_group_map, &pid_tgid);
+
+    struct gpu_event *ev = bpf_ringbuf_reserve(&nccl_events,
+                                               sizeof(struct gpu_event), 0);
+    if (!ev)
+        return 0;
+    __builtin_memset(ev, 0, sizeof(*ev));
+    ev->timestamp  = now;
+    ev->pid        = pid_tgid >> 32;
+    ev->event_type = GPU_EVT_NCCL_OP;
+    ev->nccl_op    = NCCL_ALLTOALL;
+    ev->latency_ns = latency;
+    bpf_get_current_comm(&ev->comm, sizeof(ev->comm));
+    bpf_ringbuf_submit(ev, 0);
     return 0;
 }
 

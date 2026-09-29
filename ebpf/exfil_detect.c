@@ -120,6 +120,9 @@ static __always_inline int is_internal_ip(__u32 ip_be)
     /* 127.0.0.0/8 loopback */
     if ((ip & 0xFF000000) == 0x7F000000)
         return 1;
+    /* 169.254.0.0/16 link-local */
+    if ((ip & 0xFFFF0000) == 0xA9FE0000)
+        return 1;
 
     return 0;
 }
@@ -160,16 +163,16 @@ static __always_inline __u64 get_window_ns(void)
  * bytes sent.
  */
 SEC("kprobe/tcp_sendmsg")
-int BPF_KPROBE(exfil_tcp_sendmsg, void *sk, void *msg, __u64 size)
+int BPF_KPROBE(exfil_tcp_sendmsg, struct sock *sk, void *msg, __u64 size)
 {
-    /* Read destination IP from sk->__sk_common.skc_daddr.
-     * skc_daddr is at offset 0 in sock_common which is the first member
-     * of struct sock.  On modern kernels it is typically at a fixed offset. */
-    __u32 dst_ip = 0;
-    /* sk_common.skc_daddr - offset varies; typically +4 bytes past skc_family
-     * On x86_64: skc_daddr is at offset 0 of inet_sock after sock_common
-     * We use a stable approach reading from the sock structure. */
-    bpf_probe_read_kernel(&dst_ip, sizeof(dst_ip), (void *)sk + 4);
+    __u32 dst_ip = 0, src_ip = 0;
+    __u16 dst_port = 0;
+    unsigned short family = BPF_CORE_READ(sk, __sk_common.skc_family);
+
+    /* IPv4 sockets only; skc_daddr is meaningless for AF_INET6. */
+    if (family != AF_INET)
+        return 0;
+    gryvia_sock_v4_tuple(sk, &src_ip, &dst_ip, NULL, &dst_port);
 
     /* Ignore internal traffic. */
     if (is_internal_ip(dst_ip))
@@ -212,26 +215,16 @@ int BPF_KPROBE(exfil_tcp_sendmsg, void *sk, void *msg, __u64 size)
                 db->last_alert_ns = now;
                 bump_exfil_counter(EXFIL_CTR_ALERTS);
 
-                __u64 uid_gid = bpf_get_current_uid_gid();
-                __u32 uid = (__u32)uid_gid;
-                __u32 gid = (__u32)(uid_gid >> 32);
-
                 struct security_event *evt;
                 evt = bpf_ringbuf_reserve(&exfil_events, sizeof(*evt), 0);
                 if (!evt)
                     return 0;
 
-                __builtin_memset(evt, 0, sizeof(*evt));
-                evt->timestamp  = bpf_ktime_get_ns();
-                evt->pid        = pid;
-                evt->uid        = uid;
-                evt->gid        = gid;
-                evt->event_type = SEC_DATA_EXFILTRATION;
-                evt->severity   = SEC_SEV_HIGH;
-                evt->cgroup_id  = bpf_get_current_cgroup_id();
+                sec_event_init(evt, SEC_DATA_EXFILTRATION, SEC_SEV_HIGH);
+                evt->src_ip     = src_ip;
                 evt->dst_ip     = dst_ip;
+                evt->dst_port   = dst_port;
                 evt->bytes      = db->total_bytes;
-                bpf_get_current_comm(&evt->comm, sizeof(evt->comm));
 
                 bpf_ringbuf_submit(evt, 0);
             }
@@ -253,11 +246,15 @@ int BPF_KPROBE(exfil_tcp_sendmsg, void *sk, void *msg, __u64 size)
  * Track new outbound connections to external IPs for correlation.
  */
 SEC("kprobe/tcp_v4_connect")
-int BPF_KPROBE(exfil_tcp_connect, void *sk, void *uaddr)
+int BPF_KPROBE(exfil_tcp_connect, struct sock *sk, struct sockaddr_in *uaddr)
 {
-    /* Read destination IP from sockaddr_in. */
-    __u32 dst_ip = 0;
-    bpf_probe_read_user(&dst_ip, sizeof(dst_ip), (void *)uaddr + 4);
+    /* uaddr is a kernel copy here: read it with the kernel helper. */
+    struct sockaddr_in sin = {};
+    if (bpf_probe_read_kernel(&sin, sizeof(sin), uaddr))
+        return 0;
+    if (sin.sin_family != AF_INET)
+        return 0;
+    __u32 dst_ip = sin.sin_addr.s_addr;
 
     if (is_internal_ip(dst_ip))
         return 0;

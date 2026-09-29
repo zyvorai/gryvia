@@ -1,0 +1,46 @@
+name: eBPF programs
+
+# Builds every program in ebpf/ (x86_64 and an arm64 cross-compile) and loads each object through the kernel
+# verifier of the runner. Loading only; nothing is attached to a hook.
+on:
+  pull_request:
+    paths:
+      - 'ebpf/**'
+      - 'collector/**'
+      - '.github/workflows/ebpf.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ebpf-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-verify:
+    name: Build and verifier-load
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends clang llvm libbpf-dev linux-libc-dev make bpftool
+      - name: Build (x86_64)
+        run: make -C ebpf
+      - name: Load every object through the verifier
+        run: |
+          uname -r
+          test -e /sys/kernel/btf/vmlinux
+          make -C ebpf check
+      - name: Cross-compile (arm64)
+        run: |
+          make -C ebpf clean
+          make -C ebpf ARCH=arm64
+          test "$(ls ebpf/*.o | wc -l)" = "24"
+  collector:
+    name: Collector tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: collector/go.mod
+      - run: go vet ./... && go test ./...
+        working-directory: collector
