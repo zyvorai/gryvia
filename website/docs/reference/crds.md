@@ -41,7 +41,7 @@ Gryvia defines 49 custom resources in the `gryvia.io` API group (version `v1`, a
 | `GryviaNetworkAnomaly` | `gryvianetworkanomalies` | Namespaced | none | `alertWebhook`, `autoMitigate`, `detectionRules`, `targetService` |
 | `GryviaNetworkCost` | `gryvianetworkcosts` | Namespaced | none | `costCenters`, `costPerGB`, `reportingInterval`, `targetNamespaces` |
 | `GryviaPriority` | `gryviapriorities` | Cluster | `value` | `description`, `preemptionPolicy`, `quotaOverride`, `sla` |
-| `GryviaQuota` | `gryviaquotas` | Cluster | `gpuQuota`, `namespaces`, `team` | `budget`, `priority` |
+| `GryviaQuota` | `gryviaquotas` | Cluster | `gpuQuota`, `namespaces`, `team` | `budget`, `network`, `priority` |
 | `GryviaQuotaPolicy` | `gryviaquotapolicies` | Cluster | none | `alerts`, `allocation`, `enforcement`, `hierarchy`, `limits`, `scope`, `timeBased` |
 | `GryviaReservation` | `gryviareservations` | Cluster | `owner`, `resources`, `schedule` | `billing`, `guarantees`, `notifications` |
 | `GryviaRetryPolicy` | `gryviaretrypolicies` | Cluster | none | `backoff`, `budget`, `circuitBreaker`, `maxRetries`, `noRetryOn`, `resourceAdjustment`, `retryOn` |

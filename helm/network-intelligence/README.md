@@ -50,6 +50,10 @@ helm install network-intelligence ./helm/network-intelligence \
 | `ebpf.interface` | Interface for the XDP/TCX programs (empty: not attached) | `""` |
 | `ebpf.cgroupPath` | cgroup v2 path for sockops/sk_msg (empty: not attached) | `""` |
 | `ebpf.ncclLib`, `ebpf.cudaLib` | Library paths for the GPU uprobes (empty: discover) | `""` |
+| `ebpf.publishFabricStatus` | Patch the status of existing `GryviaFabricSignal` objects every 30 s (`-publish-fabric-status`); adds `list` on `gryviafabricsignals` and `patch` on `gryviafabricsignals/status` to the collector ClusterRole | `false` |
+| `ebpf.quotaPace.enabled` | Attach `quota_pace`, the one eBPF program that changes sockets (`-quota-pace`); needs `ebpf.cgroupPath`; alone it paces nothing | `false` |
+| `ebpf.quotaPace.sync` | **Mutating.** Grant pace leases from `GryviaQuota` `spec.network.maxEgressMbps` (`-quota-pace-sync`); needs `ebpf.quotaPace.enabled`; adds `list` on `gryviaquotas` to the collector ClusterRole | `false` |
+| `ebpf.quotaPace.dryRun` | Log what `sync` would do and write nothing (`-quota-pace-dry-run`); needs `ebpf.quotaPace.sync` | `false` |
 | `prometheus.enabled` | Enable Prometheus metrics | `true` |
 | `prometheus.serviceMonitor.enabled` | Create ServiceMonitor | `true` |
 | `security.enabled` | Enable security monitoring | `true` |
