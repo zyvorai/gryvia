@@ -6,6 +6,8 @@ and the project aims to follow [Semantic Versioning](https://semver.org/) once i
 ## [Unreleased]
 
 ### Added
+- Estimate invoices: `/api/invoices`, a dashboard Invoices page and `gryvia invoice` build a monthly per-tenant statement from usage records (JSON or CSV). No payment processing.
+- The admission webhook now denies jobs whose GPU type is not allowed by the namespace's quota or the tenant's catalog SKUs, or that exceed the per-job GPU limit; it fails open when the quotas cannot be read.
 - GPU as a Service: tenants (`GryviaTenant`, now run by the quota operator) get an isolated `tenant-<name>` namespace; a price catalog (`GryviaGpuSku`); per-job metering (`GryviaUsageRecord`); gateway routes `/api/skus`, `/api/tenants`, `/api/usage` (+ CSV/JSON export); dashboard Catalog, Usage and Tenants pages; and `gryvia catalog`, `gryvia tenant`, `gryvia usage`. See `website/docs/guides/GPU_AS_A_SERVICE.md`.
 - Roles in the gateway: the API key and sessions are the provider admin; OIDC users are tenant users limited to their tenant's namespaces (`GRYVIA_OIDC_ADMIN_GROUPS` promotes a group). Cluster-wide routes (nodes, network, security, GPU metrics) are admin-only.
 - Network flows can come from [Netra](https://github.com/zyvorai/netra): set `apiGateway.netra.url` and `/api/network/flows` returns Netra's recent flows (falls back to service-graph edges when it is unset or unreachable).

@@ -39,6 +39,7 @@ const Workflows = lazy(() => import('./pages/Workflows'))
 const AutoTuner = lazy(() => import('./pages/AutoTuner'))
 const Catalog = lazy(() => import('./pages/Catalog'))
 const Usage = lazy(() => import('./pages/Usage'))
+const Invoices = lazy(() => import('./pages/Invoices'))
 const Tenants = lazy(() => import('./pages/Tenants'))
 
 const queryClient = new QueryClient({
@@ -160,6 +161,7 @@ function App() {
               </Route>
               <Route path="/catalog" element={<Catalog />} />
               <Route path="/usage" element={<Usage />} />
+              <Route path="/invoices" element={<Invoices />} />
               <Route path="/tenants" element={<Tenants />} />
               <Route path="/workspaces" element={<Workspaces />} />
               <Route path="/models" element={<ModelRegistry />} />

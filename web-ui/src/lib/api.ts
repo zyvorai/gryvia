@@ -4,6 +4,7 @@ import { notifyUnauthorized } from '@/lib/authEvents'
 import type { GryviaAIJob, GryviaQuota, GryviaGpuNode } from '@/types'
 import { getStoredToken, clearToken } from '@/lib/auth'
 import type { Sku, SkuBody, TenantResource, CreateTenantBody, UsageReport } from '@/lib/cloud'
+import type { InvoiceReport } from '@/lib/invoices'
 
 export interface ClusterStats {
   totalGPUs: number
@@ -680,6 +681,17 @@ export const api = {
   /** Authenticated download (the token is a bearer header, so a plain link would be rejected). */
   exportUsage: async (format: 'csv' | 'json', params: Record<string, string>): Promise<Blob> => {
     const { data } = await apiClient.get('/usage/export', { params: { ...params, format }, responseType: 'blob' })
+    return data as Blob
+  },
+
+  getInvoices: async (params: Record<string, string>): Promise<InvoiceReport> => {
+    const { data } = await apiClient.get('/invoices', { params })
+    return data
+  },
+
+  /** Authenticated invoice download (bearer header, so not a plain link). */
+  downloadInvoice: async (tenant: string, month: string, format: 'csv' | 'json'): Promise<Blob> => {
+    const { data } = await apiClient.get(`/invoices/${encodeURIComponent(tenant)}/${encodeURIComponent(month)}`, { params: { format }, responseType: 'blob' })
     return data as Blob
   },
 

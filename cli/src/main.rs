@@ -304,6 +304,26 @@ enum Commands {
         output: UsageFormat,
     },
 
+    /// Build monthly invoice estimates from metered usage
+    ///
+    /// Groups GryviaUsageRecord objects (all namespaces) into one invoice per tenant for a UTC month, with
+    /// one line per SKU. Records are assigned to the month of their start time. Invoices are estimates
+    /// from job run time; `open` is true while an included job is still running.
+    #[command(after_help = examples(&["gryvia invoice", "gryvia invoice --tenant acme --month 2026-09", "gryvia invoice --month 2026-09 -o csv", "gryvia invoice -o json"]))]
+    Invoice {
+        /// Only this tenant
+        #[arg(long)]
+        tenant: Option<String>,
+
+        /// Month to invoice, YYYY-MM (UTC; default: the current month)
+        #[arg(long, value_parser = commands::invoice::parse_month)]
+        month: Option<(i32, u32)>,
+
+        /// Output format
+        #[arg(short, long, value_enum, default_value_t = UsageFormat::Table, env = "GRYVIA_OUTPUT")]
+        output: UsageFormat,
+    },
+
     /// Interactive job creation wizard
     #[command(after_help = examples(&["gryvia create job"]))]
     Create {
@@ -925,6 +945,18 @@ async fn run() -> Result<()> {
             };
             commands::usage::execute(&client, opts).await?;
         }
+        Commands::Invoice {
+            tenant,
+            month,
+            output,
+        } => {
+            let opts = commands::invoice::Options {
+                tenant,
+                month,
+                output,
+            };
+            commands::invoice::execute(&client, opts).await?;
+        }
         Commands::Create { resource } => {
             commands::create::execute(&client, &resource).await?;
         }
@@ -1357,6 +1389,10 @@ mod tests {
             vec!["gryvia", "tenant", "get", "acme", "-o", "json"],
             vec!["gryvia", "usage", "-o", "csv"],
             vec!["gryvia", "usage", "--group-by", "day", "-o", "json"],
+            vec!["gryvia", "invoice", "-o", "csv"],
+            vec![
+                "gryvia", "invoice", "--tenant", "acme", "--month", "2026-09", "-o", "yaml",
+            ],
         ] {
             assert!(
                 Cli::command().try_get_matches_from(args.clone()).is_ok(),
@@ -1399,6 +1435,14 @@ mod tests {
         assert!(Cli::command()
             .try_get_matches_from(["gryvia", "usage", "--group-by", "week"])
             .is_err());
+        for bad in ["2026-13", "2026-9", "sept", "2026-09-01", ""] {
+            assert!(
+                Cli::command()
+                    .try_get_matches_from(["gryvia", "invoice", "--month", bad])
+                    .is_err(),
+                "--month {bad:?} should be a usage error"
+            );
+        }
         assert!(Cli::command()
             .try_get_matches_from(["gryvia", "catalog", "-o", "csv"])
             .is_err());

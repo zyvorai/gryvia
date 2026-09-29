@@ -60,6 +60,10 @@ pub struct Record {
     /// (namespace, job): what makes a job distinct.
     pub job_id: (String, String),
     pub sku: String,
+    /// The raw `spec.gpuType` (empty when unset).
+    pub gpu_type: String,
+    /// `spec.final`: the job finished and the record will not change again.
+    pub is_final: bool,
     pub start: Option<DateTime<Utc>>,
     pub gpu_hours: f64,
     pub cost: f64,
@@ -110,6 +114,11 @@ pub fn record_from_json(v: &Value) -> Record {
         tenant,
         job_id: (namespace.clone(), job),
         sku,
+        gpu_type: text(v, "/spec/gpuType"),
+        is_final: v
+            .pointer("/spec/final")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
         start: ts(v, "/spec/start")
             .or_else(|| ts(v, "/spec/end"))
             .or_else(|| ts(v, "/metadata/creationTimestamp")),

@@ -100,10 +100,18 @@ POST   /api/tenants              # admin: {name, displayName, allowedSkus, maxGP
 DELETE /api/tenants/{name}       # admin
 GET    /api/usage?tenant=&from=&to=&groupBy=tenant|sku|day   # {items:[{key,gpuHours,cost,currency,jobs}], totals}
 GET    /api/usage/export?format=csv|json&tenant=&from=&to=   # per-record rows, attachment download
+GET    /api/invoices?month=YYYY-MM&tenant=                   # {month, items:[invoice]}, one per tenant with usage
+GET    /api/invoices/{tenant}/{YYYY-MM}?format=json|csv      # one invoice; 404 if no usage (csv: INV-<tenant>-<YYYYMM>.csv)
 ```
 Usage comes from `GryviaUsageRecord` objects (metered estimates from job wall-clock time; no billing). Tenant users are
 always limited to their own tenant, whatever `tenant` says. `/api/metrics/costs` uses usage records when any exist and
 otherwise computes from jobs, priced from `GryviaGpuSku` (a built-in table only when no SKU exists).
+
+Invoices are computed on demand from usage records (nothing stored, no payments): records are bucketed by the UTC month
+of `spec.start`, one line per SKU (GPU type when the SKU is empty), `status` is always `estimate`, `open: true` marks
+that some included record is still running, and `currency` is `MIXED` (with `mixedCurrency: true`) when currencies
+differ. Missing `month` means the current UTC month; a bad one is 400. Tenant users only ever see their own tenant; asking
+for another tenant's invoice is a 404.
 
 ## Development
 

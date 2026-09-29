@@ -596,7 +596,7 @@ usually a PodDisruptionBudget) is reported as blocked and left running; the comm
 the node stays cordoned. Pods are never deleted directly. Running `start` again on a node that is already marked
 keeps the original start time, which makes retrying a blocked drain safe.
 
-## Tenants, catalog and usage
+## Tenants, catalog, usage and invoices
 
 These commands cover the [GPU as a Service](./GPU_AS_A_SERVICE.md) flow: a provider publishes SKUs, creates tenants and reads metered usage. They talk to the Kubernetes API directly, like the other commands, and need the `gryvia.io/v1alpha1` CRDs installed.
 
@@ -640,6 +640,24 @@ gryvia usage --group-by day -o csv
 - `--group-by tenant|sku|day` (default `tenant`).
 - `-o table|json|yaml|csv`. CSV has a header row and a final `total` row, and cells starting with `=`, `+`, `-` or `@` are prefixed with `'` so spreadsheets do not run them as formulas. When records use different currencies the currency shows as `MIXED`.
 - Costs are estimates: job run time times the SKU rate. No invoices or payments are processed.
+
+### `gryvia invoice`
+
+Builds monthly invoice estimates from the metered usage records (GryviaUsageRecord) in all namespaces, with the same rules as the gateway: one invoice per tenant with usage in the month, one line per SKU.
+
+```bash
+gryvia invoice
+gryvia invoice --tenant acme --month 2026-09
+gryvia invoice --month 2026-09 -o csv
+gryvia invoice -o json
+```
+
+- `--tenant` restricts to one tenant.
+- `--month YYYY-MM` selects the UTC month (default: the current month). A malformed month is a usage error. Records count toward the month of their start time.
+- Each invoice has the number `INV-<tenant>-<YYYYMM>`, the period, the currency (`MIXED` when records use different currencies), the status `estimate`, the lines (SKU, GPU type, jobs, GPU hours, rate, amount), the subtotal and the job count. Amounts are rounded to 2 decimals and GPU hours to 4.
+- `open` is true while any included record is not final (a job is still running), so the amounts may still change. The table marks this with a warning symbol.
+- `-o table|json|yaml|csv`. JSON and YAML are always an array of invoices. CSV has the header `invoice,tenant,period_from,period_to,sku,gpuType,jobs,gpuHours,rate,amount,currency`, one row per line and a `TOTAL` row per invoice; cells starting with `=`, `+`, `-` or `@` are prefixed with `'`.
+- A month without usage prints a message and exits 0. Invoices are estimates from job run time; Gryvia does not process payments.
 
 ## Network Intelligence Commands
 

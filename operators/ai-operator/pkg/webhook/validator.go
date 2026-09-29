@@ -78,6 +78,20 @@ func (v *GryviaAIJobValidator) Handle(ctx context.Context, req admission.Request
 		return admission.Denied("invalid GryviaAIJob: " + strings.Join(errs, "; "))
 	}
 
+	// Policy (quota and tenant catalog) applies to new jobs only, so a later policy change never blocks an
+	// update to a job that already exists.
+	if req.Operation == admissionv1.Create {
+		ns := req.Namespace
+		if ns == "" {
+			ns = job.Namespace
+		}
+		if policy, ok := v.loadPolicy(ctx, ns); ok {
+			if reasons := checkGPUPolicy(job, policy); len(reasons) > 0 {
+				return admission.Denied("not allowed by quota policy: " + strings.Join(reasons, "; "))
+			}
+		}
+	}
+
 	resp := admission.Allowed("GryviaAIJob is valid")
 	if warnings := v.clusterWarnings(ctx, job); len(warnings) > 0 {
 		resp = resp.WithWarnings(warnings...)
