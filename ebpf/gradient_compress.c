@@ -14,7 +14,7 @@
 
 #define MAX_INFLIGHT   65536
 #define RINGBUF_SIZE   (256 * 1024)
-#define COMP_SLOTS     8
+#define COMP_SLOTS     16   /* indexed by ncclDataType_t */
 #define TASK_COMM_LEN  16
 
 /* ---- gradient in-flight tracking --------------------------------------- */
@@ -36,9 +36,10 @@ struct compression_stat {
 
 /* ---- BPF maps ---------------------------------------------------------- */
 
-// In-flight gradient operations keyed by pid_tgid.
+// In-flight gradient operations keyed by pid_tgid (LRU: no leak if a thread
+// dies inside the call).
 struct {
-    __uint(type, BPF_MAP_TYPE_HASH);
+    __uint(type, BPF_MAP_TYPE_LRU_HASH);
     __uint(max_entries, MAX_INFLIGHT);
     __type(key, __u64);
     __type(value, struct grad_info);
@@ -61,26 +62,6 @@ struct {
 
 /* ---- helpers ----------------------------------------------------------- */
 
-// Approximate NCCL datatype sizes.  NCCL datatype enum:
-//   0=int8, 1=uint8, 2=int32, 3=uint32, 4=int64, 5=uint64,
-//   6=float16, 7=float32, 8=float64, 9=bfloat16
-static __always_inline __u64 nccl_dtype_size(__u8 dtype)
-{
-    switch (dtype) {
-    case 0: return 1;   /* ncclInt8 */
-    case 1: return 1;   /* ncclUint8 */
-    case 2: return 4;   /* ncclInt32 */
-    case 3: return 4;   /* ncclUint32 */
-    case 4: return 8;   /* ncclInt64 */
-    case 5: return 8;   /* ncclUint64 */
-    case 6: return 2;   /* ncclFloat16 */
-    case 7: return 4;   /* ncclFloat32 */
-    case 8: return 8;   /* ncclFloat64 */
-    case 9: return 2;   /* ncclBfloat16 */
-    default: return 4;  /* default to float32 */
-    }
-}
-
 static __always_inline void emit_grad_event(__u64 expected_bytes,
                                             __u64 actual_bytes,
                                             __u64 latency_ns)
@@ -90,21 +71,18 @@ static __always_inline void emit_grad_event(__u64 expected_bytes,
     if (!ev)
         return;
 
-    __u64 pid_tgid = bpf_get_current_pid_tgid();
-
+    /* Typed GPU_EVT_GRAD_COMPRESS (not NCCL_OP): nccl_trace already reports
+     * every AllReduce, and src/dst_rank here carry the expected byte count
+     * (hi/lo halves), which the rank statistics must not ingest. */
+    __builtin_memset(ev, 0, sizeof(*ev));
     ev->timestamp     = bpf_ktime_get_ns();
-    ev->pid           = pid_tgid >> 32;
-    ev->gpu_id        = 0;
-    ev->event_type    = GPU_EVT_NCCL_OP;
-    ev->direction     = 0;
+    ev->pid           = bpf_get_current_pid_tgid() >> 32;
+    ev->event_type    = GPU_EVT_GRAD_COMPRESS;
     ev->nccl_op       = NCCL_ALLREDUCE;
-    ev->_pad          = 0;
     ev->bytes         = actual_bytes;
     ev->latency_ns    = latency_ns;
     ev->src_rank      = (__u32)(expected_bytes >> 32);   /* high 32 bits */
     ev->dst_rank      = (__u32)(expected_bytes & 0xFFFFFFFF); /* low 32 */
-    ev->collective_id = 0;
-    ev->world_size    = 0;
     bpf_get_current_comm(&ev->comm, sizeof(ev->comm));
 
     bpf_ringbuf_submit(ev, 0);
@@ -118,7 +96,7 @@ static __always_inline void emit_grad_event(__u64 expected_bytes,
 //
 // On entry we capture count and datatype to compute expected bytes.
 SEC("uprobe/ncclAllReduce")
-int BPF_KPROBE(grad_allreduce_entry, void *sendbuff, void *recvbuff,
+int BPF_UPROBE(grad_allreduce_entry, void *sendbuff, void *recvbuff,
                __u64 count, __u32 datatype)
 {
     __u64 pid_tgid = bpf_get_current_pid_tgid();
@@ -127,7 +105,7 @@ int BPF_KPROBE(grad_allreduce_entry, void *sendbuff, void *recvbuff,
     gi.start_ns       = bpf_ktime_get_ns();
     gi.count          = (__u32)count;
     gi.datatype       = (__u8)datatype;
-    gi.expected_bytes = count * nccl_dtype_size((__u8)datatype);
+    gi.expected_bytes = count * nccl_dtype_size(datatype);
 
     bpf_map_update_elem(&grad_inflight, &pid_tgid, &gi, BPF_ANY);
     return 0;
@@ -139,7 +117,7 @@ int BPF_KPROBE(grad_allreduce_entry, void *sendbuff, void *recvbuff,
 // size will differ from expected, which we detect in userspace by
 // comparing the latency-normalized throughput.
 SEC("uretprobe/ncclAllReduce")
-int BPF_KRETPROBE(grad_allreduce_exit)
+int BPF_URETPROBE(grad_allreduce_exit)
 {
     __u64 pid_tgid = bpf_get_current_pid_tgid();
 
@@ -149,6 +127,7 @@ int BPF_KRETPROBE(grad_allreduce_exit)
 
     __u64 now     = bpf_ktime_get_ns();
     __u64 latency = now - gi->start_ns;
+    __u64 expected = gi->expected_bytes;
 
     /* The actual bytes for an uncompressed AllReduce equals the expected.
      * We record both; userspace detects compression by observing that
@@ -156,7 +135,9 @@ int BPF_KRETPROBE(grad_allreduce_exit)
     __u64 actual_bytes = gi->expected_bytes;
 
     /* Update per-slot compression statistics */
-    __u32 slot = gi->count % COMP_SLOTS;
+    __u32 slot = gi->datatype;   /* one slot per ncclDataType_t */
+    if (slot >= COMP_SLOTS)
+        slot = COMP_SLOTS - 1;
     struct compression_stat *cs = bpf_map_lookup_elem(&compression_stats,
                                                       &slot);
     if (cs) {
@@ -165,9 +146,8 @@ int BPF_KRETPROBE(grad_allreduce_exit)
         __sync_fetch_and_add(&cs->op_count, 1);
     }
 
-    emit_grad_event(gi->expected_bytes, actual_bytes, latency);
-
     bpf_map_delete_elem(&grad_inflight, &pid_tgid);
+    emit_grad_event(expected, actual_bytes, latency);
     return 0;
 }
 

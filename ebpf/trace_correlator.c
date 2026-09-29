@@ -11,6 +11,10 @@
 
 /* Maximum payload bytes to scan for traceparent header */
 #define MAX_PAYLOAD_SCAN 512
+/* Start offsets tried for the header name (bounded loop for the verifier) */
+#define MAX_SCAN_POS 256
+/* Bytes pulled into the linear area so payload is always addressable */
+#define PULL_BYTES 1024
 
 /* traceparent header format:
  * traceparent: 00-<32 hex trace-id>-<16 hex span-id>-<2 hex flags>
@@ -109,9 +113,8 @@ static __always_inline int parse_hex64(void *data, void *data_end,
 static __always_inline int find_traceparent(void *payload, void *data_end,
                                              int payload_len)
 {
-    /* "traceparent:" is 13 chars */
-    static const char needle[] = "traceparent:";
-    int needle_len = 12;
+    /* "traceparent:" is 12 chars */
+    const int needle_len = 12;
 
     if (payload_len > MAX_PAYLOAD_SCAN)
         payload_len = MAX_PAYLOAD_SCAN;
@@ -121,11 +124,10 @@ static __always_inline int find_traceparent(void *payload, void *data_end,
         return -1;
 
     int search_limit = payload_len - needle_len;
-    if (search_limit > MAX_PAYLOAD_SCAN - needle_len)
-        search_limit = MAX_PAYLOAD_SCAN - needle_len;
+    if (search_limit > MAX_SCAN_POS - 1)
+        search_limit = MAX_SCAN_POS - 1;
 
-    #pragma unroll
-    for (int i = 0; i < 128; i++) {
+    for (int i = 0; i < MAX_SCAN_POS; i++) {
         if (i > search_limit)
             break;
 
@@ -166,7 +168,7 @@ static __always_inline int find_traceparent(void *payload, void *data_end,
 
 /* ---- tc classifier ---------------------------------------------------- */
 
-SEC("classifier/ingress")
+SEC("tcx/ingress")
 int trace_correlator_ingress(struct __sk_buff *skb)
 {
     void *data     = (void *)(long)skb->data;
@@ -175,7 +177,7 @@ int trace_correlator_ingress(struct __sk_buff *skb)
     /* Parse Ethernet header */
     struct ethhdr *eth = data;
     if ((void *)(eth + 1) > data_end)
-        return 0;  /* TC_ACT_OK */
+        return TC_ACT_OK;
 
     if (eth->h_proto != bpf_htons(ETH_P_IP))
         return 0;
@@ -201,14 +203,34 @@ int trace_correlator_ingress(struct __sk_buff *skb)
     if (tcp_hdr_len < sizeof(struct tcphdr))
         return 0;
 
-    /* Calculate payload start and length */
+    /* The payload may live in paged (non-linear) skb data: pull the first
+     * PULL_BYTES into the linear area, then re-derive every pointer. */
+    __u32 l4_off = sizeof(struct ethhdr) + ip_hdr_len;
+    __u32 pay_off = l4_off + tcp_hdr_len;
+    if (pay_off >= skb->len)
+        return TC_ACT_OK;
+    if (bpf_skb_pull_data(skb, skb->len < PULL_BYTES ? skb->len : PULL_BYTES))
+        return TC_ACT_OK;
+
+    data     = (void *)(long)skb->data;
+    data_end = (void *)(long)skb->data_end;
+    eth = data;
+    if ((void *)(eth + 1) > data_end)
+        return TC_ACT_OK;
+    iph = (void *)(eth + 1);
+    if ((void *)(iph + 1) > data_end)
+        return TC_ACT_OK;
+    tcph = (void *)iph + ip_hdr_len;
+    if ((void *)(tcph + 1) > data_end)
+        return TC_ACT_OK;
+
     void *payload = (void *)tcph + tcp_hdr_len;
     if (payload >= data_end)
-        return 0;
+        return TC_ACT_OK;
 
     int payload_len = data_end - payload;
     if (payload_len <= 0)
-        return 0;
+        return TC_ACT_OK;
 
     /* Search for traceparent header in payload */
     int header_offset = find_traceparent(payload, data_end, payload_len);
@@ -283,7 +305,7 @@ int trace_correlator_ingress(struct __sk_buff *skb)
     *ev = tctx;
     bpf_ringbuf_submit(ev, 0);
 
-    return 0;  /* TC_ACT_OK - always pass the packet */
+    return TC_ACT_OK; /* always pass the packet */
 }
 
 char LICENSE[] SEC("license") = "Dual BSD/GPL";

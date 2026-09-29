@@ -10,12 +10,7 @@
 #include "headers/common.h"
 #include "headers/security_common.h"
 
-/* Syscall numbers for x86_64 */
-#define SYS_INIT_MODULE   175
-#define SYS_FINIT_MODULE  313
-
-/* File open flags -- O_WRONLY=1, O_RDWR=2 */
-#define FMODE_WRITE_MASK 0x03
+#define NAME_LEN 64
 
 /* Stat counter indices */
 #define FIM_CTR_FILE_WRITE  0
@@ -57,79 +52,34 @@ static __always_inline void bump_fim_counter(__u32 idx)
         __sync_fetch_and_add(cnt, 1);
 }
 
-/*
- * Check if a filename matches NVIDIA/CUDA driver patterns.
- * We do prefix/substring matching on the dentry name since full path
- * reconstruction is expensive in BPF.
- *
- * Patterns:
- *   - "nvidia" prefix  (device files /dev/nvidia*, driver libraries)
- *   - "libnvidia" prefix (NVIDIA libraries)
- *   - "libcuda" prefix (CUDA libraries)
- *   - "modprobe" prefix (modprobe config files)
- */
+/* nvidia*, libnvidia*, libcuda*: device nodes, driver and CUDA libraries. */
 static __always_inline int matches_driver_pattern(const char *name)
 {
-    /* nvidia* -- matches nvidia0, nvidia-uvm, nvidiactl, etc. */
-    if (name[0] == 'n' && name[1] == 'v' && name[2] == 'i' &&
-        name[3] == 'd' && name[4] == 'i' && name[5] == 'a')
-        return 1;
-
-    /* libnvidia* */
-    if (name[0] == 'l' && name[1] == 'i' && name[2] == 'b' &&
-        name[3] == 'n' && name[4] == 'v' && name[5] == 'i' &&
-        name[6] == 'd' && name[7] == 'i')
-        return 1;
-
-    /* libcuda* */
-    if (name[0] == 'l' && name[1] == 'i' && name[2] == 'b' &&
-        name[3] == 'c' && name[4] == 'u' && name[5] == 'd' &&
-        name[6] == 'a')
-        return 1;
-
-    return 0;
+    return SEC_STR_PREFIX(name, "nvidia") ||
+           SEC_STR_PREFIX(name, "libnvidia") ||
+           SEC_STR_PREFIX(name, "libcuda");
 }
 
-/*
- * Check if a filename matches kernel module paths.
- *
- * Patterns:
- *   - Files ending in ".ko" (kernel modules)
- *   - Files in /etc/modprobe.d/ directory
- */
+/* Kernel module files: *.ko, *.ko.xz, *.ko.zst, *.ko.gz (bounded scan). */
 static __always_inline int matches_module_pattern(const char *name)
 {
-    /* Check for ".ko" suffix -- scan for it.
-     * Since we have the dentry name (filename component), look for
-     * common nvidia module names. */
-
-    /* nvidia.ko, nvidia_drm.ko, nvidia_modeset.ko, nvidia_uvm.ko */
-    if (name[0] == 'n' && name[1] == 'v' && name[2] == 'i' &&
-        name[3] == 'd' && name[4] == 'i' && name[5] == 'a')
-        return 1;
-
+    for (int i = 0; i < NAME_LEN - 4; i++) {
+        if (name[i] == '\0')
+            return 0;
+        if (name[i] == '.' && name[i + 1] == 'k' && name[i + 2] == 'o' &&
+            (name[i + 3] == '\0' || name[i + 3] == '.'))
+            return 1;
+    }
     return 0;
 }
 
 /*
- * Check for modprobe.d config files.
- * The parent directory is modprobe.d but we only see the dentry name.
- * We flag any .conf file access that's suspicious in container context.
+ * modprobe.d style config: only the dentry name is visible (not the parent
+ * directory), so flag the conventional "blacklist-*" file names.
  */
 static __always_inline int matches_modprobe_config(const char *name)
 {
-    /* Look for filenames containing "modprobe" or "nvidia" with ".conf" */
-    if (name[0] == 'n' && name[1] == 'v' && name[2] == 'i' &&
-        name[3] == 'd' && name[4] == 'i' && name[5] == 'a')
-        return 1;
-
-    /* blacklist- prefix (common modprobe.d pattern) */
-    if (name[0] == 'b' && name[1] == 'l' && name[2] == 'a' &&
-        name[3] == 'c' && name[4] == 'k' && name[5] == 'l' &&
-        name[6] == 'i' && name[7] == 's')
-        return 1;
-
-    return 0;
+    return SEC_STR_PREFIX(name, "blacklist");
 }
 
 /* ---- kprobe/security_file_open ---------------------------------------- */
@@ -138,57 +88,36 @@ static __always_inline int matches_modprobe_config(const char *name)
  * Monitor file opens with write intent targeting GPU driver files.
  *
  * security_file_open(struct file *file)
- *
- * We read the file flags to check for write access, then examine
- * the dentry name for driver-related patterns.
  */
 SEC("kprobe/security_file_open")
-int BPF_KPROBE(fim_file_open, void *filp)
+int BPF_KPROBE(fim_file_open, struct file *filp)
 {
-    __u64 pid_tgid = bpf_get_current_pid_tgid();
-    __u32 pid = pid_tgid >> 32;
+    /* Write intent: FMODE_WRITE, or an access mode other than O_RDONLY. */
+    unsigned int f_mode = BPF_CORE_READ(filp, f_mode);
+    unsigned int f_flags = BPF_CORE_READ(filp, f_flags);
 
-    /* Read file flags to check for write intent.
-     * struct file -> f_flags is at an early offset.
-     * We check for O_WRONLY (1) or O_RDWR (2). */
-    unsigned int f_flags = 0;
-    bpf_probe_read_kernel(&f_flags, sizeof(f_flags),
-                          (void *)filp + 44); /* f_flags offset */
-
-    if (!(f_flags & FMODE_WRITE_MASK))
+    if (!(f_mode & FMODE_WRITE) && !(f_flags & O_ACCMODE))
         return 0;
 
-    /* Read dentry name. */
-    char buf[MAX_PATH_LEN];
-    __builtin_memset(buf, 0, sizeof(buf));
-
-    struct dentry *dentry = NULL;
-    bpf_probe_read_kernel(&dentry, sizeof(dentry),
-                          (void *)filp + 16); /* f_path.dentry offset */
+    struct dentry *dentry = BPF_CORE_READ(filp, f_path.dentry);
     if (!dentry)
         return 0;
 
-    const unsigned char *name = NULL;
-    bpf_probe_read_kernel(&name, sizeof(name),
-                          (void *)dentry + 40); /* d_name.name offset */
+    const unsigned char *name = BPF_CORE_READ(dentry, d_name.name);
     if (!name)
         return 0;
 
+    char buf[NAME_LEN] = {};
     bpf_probe_read_kernel_str(buf, sizeof(buf), name);
 
-    /* Check patterns. */
     int suspicious = 0;
     __u8 severity = SEC_SEV_HIGH;
 
-    if (matches_driver_pattern(buf)) {
-        suspicious = 1;
-        severity = SEC_SEV_CRITICAL;
-    } else if (matches_module_pattern(buf)) {
+    if (matches_driver_pattern(buf) || matches_module_pattern(buf)) {
         suspicious = 1;
         severity = SEC_SEV_CRITICAL;
     } else if (matches_modprobe_config(buf)) {
         suspicious = 1;
-        severity = SEC_SEV_HIGH;
     }
 
     if (!suspicious)
@@ -197,27 +126,13 @@ int BPF_KPROBE(fim_file_open, void *filp)
     bump_fim_counter(FIM_CTR_FILE_WRITE);
     bump_fim_counter(FIM_CTR_ALERTS);
 
-    __u64 uid_gid = bpf_get_current_uid_gid();
-    __u32 uid = (__u32)uid_gid;
-    __u32 gid = (__u32)(uid_gid >> 32);
-
     struct security_event *evt;
     evt = bpf_ringbuf_reserve(&fim_events, sizeof(*evt), 0);
     if (!evt)
         return 0;
 
-    __builtin_memset(evt, 0, sizeof(*evt));
-    evt->timestamp  = bpf_ktime_get_ns();
-    evt->pid        = pid;
-    evt->uid        = uid;
-    evt->gid        = gid;
-    evt->event_type = SEC_DRIVER_TAMPERING;
-    evt->severity   = severity;
-    evt->cgroup_id  = bpf_get_current_cgroup_id();
-    bpf_get_current_comm(&evt->comm, sizeof(evt->comm));
-
-    /* Copy filename into path field. */
-    __builtin_memcpy(evt->path, buf, sizeof(evt->path));
+    sec_event_init(evt, SEC_DRIVER_TAMPERING, severity);
+    __builtin_memcpy(evt->path, buf, sizeof(buf));
 
     bpf_ringbuf_submit(evt, 0);
 
@@ -226,29 +141,16 @@ int BPF_KPROBE(fim_file_open, void *filp)
 
 /* ---- raw tracepoint on sys_enter for module loading ------------------- */
 
-struct sys_enter_args {
-    unsigned long long unused;
-    long               id;
-    unsigned long      args[6];
-};
-
+/* ctx->args[1] is the syscall id (args[0] is the pt_regs pointer). */
 SEC("raw_tracepoint/sys_enter")
-int fim_module_monitor(struct bpf_raw_tracepoint_args *raw_ctx)
+int fim_module_monitor(struct bpf_raw_tracepoint_args *ctx)
 {
-    struct sys_enter_args *regs = (struct sys_enter_args *)raw_ctx->args[0];
-    long syscall_nr = 0;
+    long nr = (long)ctx->args[1];
 
-    bpf_probe_read_kernel(&syscall_nr, sizeof(syscall_nr), &regs->id);
-
-    /* Only handle init_module and finit_module. */
-    if (syscall_nr != SYS_INIT_MODULE && syscall_nr != SYS_FINIT_MODULE)
+    /* init_module, finit_module and delete_module (rmmod nvidia). */
+    if (nr != GRYVIA_NR_init_module && nr != GRYVIA_NR_finit_module &&
+        nr != GRYVIA_NR_delete_module)
         return 0;
-
-    __u64 pid_tgid = bpf_get_current_pid_tgid();
-    __u32 pid = pid_tgid >> 32;
-    __u64 uid_gid = bpf_get_current_uid_gid();
-    __u32 uid = (__u32)uid_gid;
-    __u32 gid = (__u32)(uid_gid >> 32);
 
     bump_fim_counter(FIM_CTR_MOD_LOAD);
     bump_fim_counter(FIM_CTR_ALERTS);
@@ -258,16 +160,8 @@ int fim_module_monitor(struct bpf_raw_tracepoint_args *raw_ctx)
     if (!evt)
         return 0;
 
-    __builtin_memset(evt, 0, sizeof(*evt));
-    evt->timestamp  = bpf_ktime_get_ns();
-    evt->pid        = pid;
-    evt->uid        = uid;
-    evt->gid        = gid;
-    evt->event_type = SEC_DRIVER_TAMPERING;
-    evt->severity   = SEC_SEV_HIGH;
-    evt->syscall_nr = (__u16)syscall_nr;
-    evt->cgroup_id  = bpf_get_current_cgroup_id();
-    bpf_get_current_comm(&evt->comm, sizeof(evt->comm));
+    sec_event_init(evt, SEC_DRIVER_TAMPERING, SEC_SEV_HIGH);
+    evt->syscall_nr = (__u16)nr;
 
     bpf_ringbuf_submit(evt, 0);
 

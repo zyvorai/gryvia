@@ -2,7 +2,7 @@
 FROM ubuntu:24.04 AS ebpf-builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    clang llvm libbpf-dev linux-headers-generic make \
+    clang llvm libbpf-dev linux-libc-dev make \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build/ebpf

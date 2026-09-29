@@ -10,20 +10,13 @@
 #include "headers/common.h"
 #include "headers/security_common.h"
 
-/* Syscall numbers for x86_64 */
-#define SYS_MOUNT        165
-#define SYS_UNSHARE      272
-#define SYS_SETNS        308
-#define SYS_PIVOT_ROOT   155
-#define SYS_PTRACE       101
-#define SYS_EXECVE       59
-
 /* Clone flags used for namespace manipulation */
 #define CLONE_NEWNS   0x00020000
 #define CLONE_NEWUSER 0x10000000
 
 /* ptrace request codes */
 #define PTRACE_ATTACH 16
+#define PTRACE_SEIZE  0x4206
 
 /* Escape counter indices */
 #define ESCAPE_CTR_UNSHARE     0
@@ -81,9 +74,7 @@ static __always_inline void bump_counter(__u32 idx)
         __sync_fetch_and_add(cnt, 1);
 }
 
-static __always_inline void emit_escape_event(__u32 pid, __u32 uid, __u32 gid,
-                                              __u16 syscall_nr, __u8 severity,
-                                              __u64 cgroup_id)
+static __always_inline void emit_escape_event(__u16 syscall_nr, __u8 severity)
 {
     struct security_event *evt;
 
@@ -91,109 +82,72 @@ static __always_inline void emit_escape_event(__u32 pid, __u32 uid, __u32 gid,
     if (!evt)
         return;
 
-    __builtin_memset(evt, 0, sizeof(*evt));
-    evt->timestamp  = bpf_ktime_get_ns();
-    evt->pid        = pid;
-    evt->uid        = uid;
-    evt->gid        = gid;
-    evt->event_type = SEC_CONTAINER_ESCAPE;
-    evt->severity   = severity;
+    sec_event_init(evt, SEC_CONTAINER_ESCAPE, severity);
     evt->syscall_nr = syscall_nr;
-    evt->cgroup_id  = cgroup_id;
-    bpf_get_current_comm(&evt->comm, sizeof(evt->comm));
 
     bpf_ringbuf_submit(evt, 0);
 }
 
 /* ---- raw tracepoint on sys_enter -------------------------------------- */
 
-// struct used by raw_tracepoint/sys_enter
-struct sys_enter_args {
-    unsigned long long unused;
-    long               id;
-    unsigned long      args[6];
-};
-
+/*
+ * raw_tracepoint/sys_enter: ctx->args[0] is the struct pt_regs * of the
+ * syscall, ctx->args[1] is the syscall id.
+ */
 SEC("raw_tracepoint/sys_enter")
-int escape_syscall_monitor(struct bpf_raw_tracepoint_args *raw_ctx)
+int escape_syscall_monitor(struct bpf_raw_tracepoint_args *ctx)
 {
-    struct sys_enter_args *regs = (struct sys_enter_args *)raw_ctx->args[0];
-    long syscall_nr = 0;
-
-    bpf_probe_read_kernel(&syscall_nr, sizeof(syscall_nr), &regs->id);
-
-    __u64 pid_tgid = bpf_get_current_pid_tgid();
-    __u32 pid = pid_tgid >> 32;
+    unsigned long regs = ctx->args[0];
+    long nr = (long)ctx->args[1];
+    __u32 pid = bpf_get_current_pid_tgid() >> 32;
 
     /* Only care about container processes. */
     if (!is_container_pid(pid))
         return 0;
 
-    __u64 uid_gid = bpf_get_current_uid_gid();
-    __u32 uid = (__u32)uid_gid;
-    __u32 gid = (__u32)(uid_gid >> 32);
-    __u64 cgroup_id = bpf_get_current_cgroup_id();
-
-    unsigned long arg0 = 0;
-
-    switch (syscall_nr) {
-    case SYS_UNSHARE:
-        /* Detect unshare(CLONE_NEWNS | CLONE_NEWUSER) - namespace manip */
-        bpf_probe_read_kernel(&arg0, sizeof(arg0), &regs->args[0]);
-        if (arg0 & (CLONE_NEWNS | CLONE_NEWUSER)) {
+    switch (nr) {
+    case GRYVIA_NR_unshare:
+        /* unshare(CLONE_NEWNS | CLONE_NEWUSER) - namespace manipulation */
+        if (sec_sysarg(regs, 0) & (CLONE_NEWNS | CLONE_NEWUSER)) {
             bump_counter(ESCAPE_CTR_UNSHARE);
-            emit_escape_event(pid, uid, gid, (__u16)syscall_nr,
-                              SEC_SEV_CRITICAL, cgroup_id);
+            emit_escape_event((__u16)nr, SEC_SEV_CRITICAL);
         }
         break;
 
-    case SYS_SETNS:
-        /* Detect setns() - entering host namespaces.
-         * Any setns from a container is suspicious; path check is done
-         * via the file-open kprobe below. */
+    case GRYVIA_NR_setns:
+        /* Any setns from a container is suspicious. */
         bump_counter(ESCAPE_CTR_SETNS);
-        emit_escape_event(pid, uid, gid, (__u16)syscall_nr,
-                          SEC_SEV_CRITICAL, cgroup_id);
+        emit_escape_event((__u16)nr, SEC_SEV_CRITICAL);
         break;
 
-    case SYS_MOUNT:
-        /* mount() from within a container is highly suspicious. */
+    case GRYVIA_NR_mount:
         bump_counter(ESCAPE_CTR_MOUNT);
-        emit_escape_event(pid, uid, gid, (__u16)syscall_nr,
-                          SEC_SEV_HIGH, cgroup_id);
+        emit_escape_event((__u16)nr, SEC_SEV_HIGH);
         break;
 
-    case SYS_PIVOT_ROOT:
-        /* pivot_root() from container -- changing root filesystem. */
+    case GRYVIA_NR_pivot_root:
         bump_counter(ESCAPE_CTR_PIVOT);
-        emit_escape_event(pid, uid, gid, (__u16)syscall_nr,
-                          SEC_SEV_CRITICAL, cgroup_id);
+        emit_escape_event((__u16)nr, SEC_SEV_CRITICAL);
         break;
 
-    case SYS_PTRACE:
-        /* ptrace(PTRACE_ATTACH, ...) from container. */
-        bpf_probe_read_kernel(&arg0, sizeof(arg0), &regs->args[0]);
-        if (arg0 == PTRACE_ATTACH) {
-            unsigned long target_pid = 0;
-            bpf_probe_read_kernel(&target_pid, sizeof(target_pid),
-                                  &regs->args[1]);
-            /* Targeting a PID outside the container is an escape vector. */
-            __u32 tpid = (__u32)target_pid;
+    case GRYVIA_NR_ptrace: {
+        /* ptrace(request, pid, ...): attaching outside the container. */
+        unsigned long req = sec_sysarg(regs, 0);
+
+        if (req == PTRACE_ATTACH || req == PTRACE_SEIZE) {
+            __u32 tpid = (__u32)sec_sysarg(regs, 1);
+
             if (!is_container_pid(tpid)) {
                 bump_counter(ESCAPE_CTR_PTRACE);
-                emit_escape_event(pid, uid, gid, (__u16)syscall_nr,
-                                  SEC_SEV_CRITICAL, cgroup_id);
+                emit_escape_event((__u16)nr, SEC_SEV_CRITICAL);
             }
         }
         break;
+    }
 
-    case SYS_EXECVE:
-        /* Detect execution of known escape tools from container context.
-         * Comm will be updated after exec completes; we log the event
-         * for the caller comm that initiated it. */
+    case GRYVIA_NR_execve:
         bump_counter(ESCAPE_CTR_EXECVE);
-        emit_escape_event(pid, uid, gid, (__u16)syscall_nr,
-                          SEC_SEV_MEDIUM, cgroup_id);
+        emit_escape_event((__u16)nr, SEC_SEV_MEDIUM);
         break;
 
     default:
@@ -213,75 +167,55 @@ int escape_syscall_monitor(struct bpf_raw_tracepoint_args *raw_ctx)
  *   - /dev/nvidia* or other host device files from container context
  */
 
-struct file;
-struct dentry;
-struct qstr {
-    unsigned int hash;
-    unsigned int len;
-    const unsigned char *name;
-};
+#define NAME_LEN 64
 
 SEC("kprobe/security_file_open")
 int BPF_KPROBE(escape_file_open, struct file *filp)
 {
-    __u64 pid_tgid = bpf_get_current_pid_tgid();
-    __u32 pid = pid_tgid >> 32;
+    __u32 pid = bpf_get_current_pid_tgid() >> 32;
 
     if (!is_container_pid(pid))
         return 0;
 
-    /* Read the file path from the dentry name.
-     * This uses the short dentry name -- sufficient for detecting the
-     * sensitive file names we care about. */
-    char buf[MAX_PATH_LEN];
-    __builtin_memset(buf, 0, sizeof(buf));
-
-    /* Read d_name from the dentry embedded in filp.
-     * struct file -> f_path.dentry -> d_name.name */
-    struct dentry *dentry = NULL;
-    bpf_probe_read_kernel(&dentry, sizeof(dentry),
-                          (void *)filp + 16); /* f_path.dentry offset */
+    /* Short dentry name (file->f_path.dentry->d_name.name) and the name of
+     * its parent directory. */
+    struct dentry *dentry = BPF_CORE_READ(filp, f_path.dentry);
     if (!dentry)
         return 0;
 
-    const unsigned char *name = NULL;
-    bpf_probe_read_kernel(&name, sizeof(name),
-                          (void *)dentry + 40); /* d_name.name typical offset */
+    const unsigned char *name = BPF_CORE_READ(dentry, d_name.name);
     if (!name)
         return 0;
 
+    char buf[NAME_LEN] = {};
     bpf_probe_read_kernel_str(buf, sizeof(buf), name);
 
-    /* Check for sensitive path substrings.
-     * We use simple byte-level prefix checks that the BPF verifier accepts. */
     int suspicious = 0;
     __u8 severity = SEC_SEV_HIGH;
 
-    /* /proc/1/ns/ namespace files: check for "mnt", "pid", "net" */
-    if (buf[0] == 'm' && buf[1] == 'n' && buf[2] == 't' && buf[3] == '\0') {
+    if (SEC_STR_EQ(buf, "mnt") || SEC_STR_EQ(buf, "pid") ||
+        SEC_STR_EQ(buf, "net")) {
+        /* Namespace handle: only /proc/<pid>/ns/{mnt,pid,net}.  Require
+         * the parent directory to be "ns" so ordinary files that happen to
+         * be called "net" do not alert. */
+        struct dentry *parent = BPF_CORE_READ(dentry, d_parent);
+        const unsigned char *pname =
+            parent ? BPF_CORE_READ(parent, d_name.name) : NULL;
+        char pbuf[4] = {};
+
+        if (pname)
+            bpf_probe_read_kernel_str(pbuf, sizeof(pbuf), pname);
+        if (SEC_STR_EQ(pbuf, "ns")) {
+            suspicious = 1;
+            severity = SEC_SEV_CRITICAL;
+        }
+    } else if (SEC_STR_EQ(buf, "core_pattern")) {
+        /* classic container escape via /proc/sys/kernel/core_pattern */
         suspicious = 1;
         severity = SEC_SEV_CRITICAL;
-    } else if (buf[0] == 'p' && buf[1] == 'i' && buf[2] == 'd' &&
-               buf[3] == '\0') {
+    } else if (SEC_STR_PREFIX(buf, "nvidia")) {
+        /* host GPU device nodes */
         suspicious = 1;
-        severity = SEC_SEV_CRITICAL;
-    } else if (buf[0] == 'n' && buf[1] == 'e' && buf[2] == 't' &&
-               buf[3] == '\0') {
-        suspicious = 1;
-        severity = SEC_SEV_CRITICAL;
-    }
-    /* core_pattern -- classic container escape */
-    else if (buf[0] == 'c' && buf[1] == 'o' && buf[2] == 'r' &&
-             buf[3] == 'e' && buf[4] == '_' && buf[5] == 'p' &&
-             buf[6] == 'a' && buf[7] == 't') {
-        suspicious = 1;
-        severity = SEC_SEV_CRITICAL;
-    }
-    /* nvidia device files */
-    else if (buf[0] == 'n' && buf[1] == 'v' && buf[2] == 'i' &&
-             buf[3] == 'd' && buf[4] == 'i' && buf[5] == 'a') {
-        suspicious = 1;
-        severity = SEC_SEV_HIGH;
     }
 
     if (!suspicious)
@@ -289,28 +223,13 @@ int BPF_KPROBE(escape_file_open, struct file *filp)
 
     bump_counter(ESCAPE_CTR_FILE_OPEN);
 
-    __u64 uid_gid = bpf_get_current_uid_gid();
-    __u32 uid = (__u32)uid_gid;
-    __u32 gid = (__u32)(uid_gid >> 32);
-    __u64 cgroup_id = bpf_get_current_cgroup_id();
-
     struct security_event *evt;
     evt = bpf_ringbuf_reserve(&escape_events, sizeof(*evt), 0);
     if (!evt)
         return 0;
 
-    __builtin_memset(evt, 0, sizeof(*evt));
-    evt->timestamp  = bpf_ktime_get_ns();
-    evt->pid        = pid;
-    evt->uid        = uid;
-    evt->gid        = gid;
-    evt->event_type = SEC_CONTAINER_ESCAPE;
-    evt->severity   = severity;
-    evt->cgroup_id  = cgroup_id;
-    bpf_get_current_comm(&evt->comm, sizeof(evt->comm));
-
-    /* Copy the detected filename into the path field. */
-    __builtin_memcpy(evt->path, buf, sizeof(evt->path));
+    sec_event_init(evt, SEC_CONTAINER_ESCAPE, severity);
+    __builtin_memcpy(evt->path, buf, sizeof(buf));
 
     bpf_ringbuf_submit(evt, 0);
 

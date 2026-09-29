@@ -11,7 +11,10 @@
 
 /* ---- BPF maps --------------------------------------------------------- */
 
-// Per-connection state keyed by (pid_tgid << 32 | sport).
+// Per-connection state keyed by the struct sock pointer.  The pointer is the
+// only identifier that is stable across connect/accept/close/retransmit
+// (the source port is not yet bound when tcp_v4_connect is entered and
+// retransmits run in softirq context under an unrelated pid).
 struct {
     __uint(type, BPF_MAP_TYPE_HASH);
     __uint(max_entries, MAX_ENTRIES);
@@ -27,11 +30,6 @@ struct {
 } events SEC(".maps");
 
 /* ---- helpers ---------------------------------------------------------- */
-
-static __always_inline __u64 conn_key(__u32 pid, __u16 sport)
-{
-    return ((__u64)pid << 32) | (__u64)sport;
-}
 
 static __always_inline void emit_event(void *ctx, __u32 src_ip, __u32 dst_ip,
                                        __u16 src_port, __u16 dst_port,
@@ -59,34 +57,41 @@ static __always_inline void emit_event(void *ctx, __u32 src_ip, __u32 dst_ip,
 
 /* ---- kprobes ---------------------------------------------------------- */
 
-// tcp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
-SEC("kprobe/tcp_v4_connect")
-int BPF_KPROBE(tcp_connect, struct sock *sk)
+// Start tracking a connection and emit its "connect/accept" event.
+static __always_inline void track_open(void *ctx, struct sock *sk,
+                                       __u32 dst_ip_hint, __u16 dst_port_hint)
 {
-    __u64 pid_tgid = bpf_get_current_pid_tgid();
-    __u32 pid = pid_tgid >> 32;
-
+    __u64 key = (__u64)sk;
     struct conn_info ci = {};
     ci.start_ns = bpf_ktime_get_ns();
-
-    __u16 sport = 0;
-    bpf_probe_read_kernel(&sport, sizeof(sport), &sk->__sk_common.skc_num);
-
-    __u64 key = conn_key(pid, sport);
     bpf_map_update_elem(&conn_map, &key, &ci, BPF_ANY);
 
-    // Emit connect event with zero latency (connect-start).
-    __u32 src_ip = 0, dst_ip = 0;
-    __u16 dst_port = 0;
-    bpf_probe_read_kernel(&src_ip, sizeof(src_ip),
-                          &sk->__sk_common.skc_rcv_saddr);
-    bpf_probe_read_kernel(&dst_ip, sizeof(dst_ip),
-                          &sk->__sk_common.skc_daddr);
-    bpf_probe_read_kernel(&dst_port, sizeof(dst_port),
-                          &sk->__sk_common.skc_dport);
+    __u32 src_ip, dst_ip;
+    __u16 sport, dport;
+    gryvia_sock_v4_tuple(sk, &src_ip, &dst_ip, &sport, &dport);
+    if (dst_ip == 0)
+        dst_ip = dst_ip_hint;
+    if (dport == 0)
+        dport = dst_port_hint;
 
-    emit_event(ctx, src_ip, dst_ip, sport, bpf_ntohs(dst_port),
-               IPPROTO_TCP, 0 /* forward */, 0, 0);
+    emit_event(ctx, src_ip, dst_ip, sport, dport, IPPROTO_TCP,
+               0 /* forward */, 0, 0);
+}
+
+// tcp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
+// On entry the socket is not connected yet, so the destination is taken from
+// the caller-supplied sockaddr_in.
+SEC("kprobe/tcp_v4_connect")
+int BPF_KPROBE(tcp_connect, struct sock *sk, struct sockaddr *uaddr)
+{
+    struct sockaddr_in sin = {};
+
+    if (uaddr &&
+        bpf_probe_read_kernel(&sin, sizeof(sin), uaddr) == 0 &&
+        sin.sin_family == AF_INET)
+        track_open(ctx, sk, sin.sin_addr.s_addr, bpf_ntohs(sin.sin_port));
+    else
+        track_open(ctx, sk, 0, 0);
     return 0;
 }
 
@@ -97,29 +102,7 @@ int BPF_KRETPROBE(tcp_accept, struct sock *sk)
     if (!sk)
         return 0;
 
-    __u64 pid_tgid = bpf_get_current_pid_tgid();
-    __u32 pid = pid_tgid >> 32;
-
-    struct conn_info ci = {};
-    ci.start_ns = bpf_ktime_get_ns();
-
-    __u16 sport = 0;
-    bpf_probe_read_kernel(&sport, sizeof(sport), &sk->__sk_common.skc_num);
-
-    __u64 key = conn_key(pid, sport);
-    bpf_map_update_elem(&conn_map, &key, &ci, BPF_ANY);
-
-    __u32 src_ip = 0, dst_ip = 0;
-    __u16 dst_port = 0;
-    bpf_probe_read_kernel(&src_ip, sizeof(src_ip),
-                          &sk->__sk_common.skc_rcv_saddr);
-    bpf_probe_read_kernel(&dst_ip, sizeof(dst_ip),
-                          &sk->__sk_common.skc_daddr);
-    bpf_probe_read_kernel(&dst_port, sizeof(dst_port),
-                          &sk->__sk_common.skc_dport);
-
-    emit_event(ctx, src_ip, dst_ip, sport, bpf_ntohs(dst_port),
-               IPPROTO_TCP, 0, 0, 0);
+    track_open(ctx, sk, 0, 0);
     return 0;
 }
 
@@ -127,31 +110,20 @@ int BPF_KRETPROBE(tcp_accept, struct sock *sk)
 SEC("kprobe/tcp_close")
 int BPF_KPROBE(tcp_conn_close, struct sock *sk)
 {
-    __u64 pid_tgid = bpf_get_current_pid_tgid();
-    __u32 pid = pid_tgid >> 32;
-
-    __u16 sport = 0;
-    bpf_probe_read_kernel(&sport, sizeof(sport), &sk->__sk_common.skc_num);
-
-    __u64 key = conn_key(pid, sport);
+    __u64 key = (__u64)sk;
     struct conn_info *ci = bpf_map_lookup_elem(&conn_map, &key);
     if (!ci)
         return 0;
 
     __u64 latency = bpf_ktime_get_ns() - ci->start_ns;
+    __u32 bytes = (__u32)(ci->bytes_sent + ci->bytes_recv);
 
-    __u32 src_ip = 0, dst_ip = 0;
-    __u16 dst_port = 0;
-    bpf_probe_read_kernel(&src_ip, sizeof(src_ip),
-                          &sk->__sk_common.skc_rcv_saddr);
-    bpf_probe_read_kernel(&dst_ip, sizeof(dst_ip),
-                          &sk->__sk_common.skc_daddr);
-    bpf_probe_read_kernel(&dst_port, sizeof(dst_port),
-                          &sk->__sk_common.skc_dport);
+    __u32 src_ip, dst_ip;
+    __u16 sport, dport;
+    gryvia_sock_v4_tuple(sk, &src_ip, &dst_ip, &sport, &dport);
 
-    emit_event(ctx, src_ip, dst_ip, sport, bpf_ntohs(dst_port),
-               IPPROTO_TCP, 0,
-               (__u32)(ci->bytes_sent + ci->bytes_recv), latency);
+    emit_event(ctx, src_ip, dst_ip, sport, dport, IPPROTO_TCP, 0, bytes,
+               latency);
 
     bpf_map_delete_elem(&conn_map, &key);
     return 0;
@@ -161,13 +133,7 @@ int BPF_KPROBE(tcp_conn_close, struct sock *sk)
 SEC("kprobe/tcp_retransmit_skb")
 int BPF_KPROBE(tcp_retransmit, struct sock *sk)
 {
-    __u64 pid_tgid = bpf_get_current_pid_tgid();
-    __u32 pid = pid_tgid >> 32;
-
-    __u16 sport = 0;
-    bpf_probe_read_kernel(&sport, sizeof(sport), &sk->__sk_common.skc_num);
-
-    __u64 key = conn_key(pid, sport);
+    __u64 key = (__u64)sk;
     struct conn_info *ci = bpf_map_lookup_elem(&conn_map, &key);
     if (!ci)
         return 0;

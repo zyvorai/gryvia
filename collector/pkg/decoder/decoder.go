@@ -47,11 +47,13 @@ type rawFlowEvent struct {
 	DstPort   uint16
 	Protocol  uint8
 	Verdict   uint8
-	_         [2]byte // padding
+	_         [2]byte // padding (_pad1)
 	Bytes     uint32
+	_         [4]byte // padding (_pad2): C aligns latency_ns to 8 bytes
 	LatencyNs uint64
 	PID       uint32
 	Comm      [16]byte
+	_         [4]byte // tail padding (_pad3): sizeof(struct flow_event) == 64
 }
 
 // Decoder reads from one or more perf.Reader instances and emits

@@ -36,22 +36,20 @@ collector:
   tolerations:
     - operator: Exists
 
-# eBPF configuration
-# EXPERIMENTAL and off by default: the eBPF programs in ebpf/ do not compile yet, so no collector image is
-# published. Enable only with your own collector image (collector.image.repository).
+# eBPF collector (per-node DaemonSet, image gryvia-ebpf-collector). Off by default. The programs are CO-RE and
+# need a node kernel with BTF (/sys/kernel/btf/vmlinux); tcx programs need Linux 6.6+. Verified on Linux 7.0 x86_64
+# only (arm64 compiles but is unloaded); NCCL/CUDA/RDMA programs have not run on GPU or RDMA hardware.
+# Alternatively read flows from Netra (see apiGateway.netra in the gryvia chart).
 ebpf:
   enabled: false
-  programs:
-    - name: tcp_connect
-      enabled: true
-    - name: tcp_close
-      enabled: true
-    - name: dns_monitor
-      enabled: true
-    - name: packet_drop
-      enabled: true
-    - name: nccl_monitor
-      enabled: true
+  # Attach the XDP/TCX programs (packet filter, DNS tracker, cost tracker, trace correlator) to this interface.
+  # Empty leaves them unattached.
+  interface: ""
+  # cgroup v2 path for the sockops/sk_msg programs (for example /host/sys/fs/cgroup). Empty leaves them unattached.
+  cgroupPath: ""
+  # Paths of libnccl.so / libcudart.so for the GPU uprobes. Empty tries to discover them from running processes.
+  ncclLib: ""
+  cudaLib: ""
 
 # Prometheus monitoring
 prometheus:

@@ -9,28 +9,33 @@ import (
 	"github.com/cilium/ebpf/ringbuf"
 )
 
-// Security event type constants.
+// Security event type constants; values match enum sec_event_type in
+// ebpf/headers/security_common.h.
 const (
 	SecEvtContainerEscape     uint8 = 1
 	SecEvtPrivilegeEscalation uint8 = 2
 	SecEvtCryptoMining        uint8 = 3
-	SecEvtSensitiveMount      uint8 = 4
-	SecEvtSuspiciousExec      uint8 = 5
-	SecEvtNetworkViolation    uint8 = 6
-	SecEvtFileAccess          uint8 = 7
-	SecEvtSyscallAnomaly      uint8 = 8
+	SecEvtDataExfiltration    uint8 = 4
+	SecEvtDriverTampering     uint8 = 5
+	SecEvtSuspiciousExec      uint8 = 6
+	SecEvtNamespaceBreach     uint8 = 7
 )
 
-// Security severity constants.
+// Security severity constants; values match enum sec_severity in
+// ebpf/headers/security_common.h (higher is more severe).
 const (
-	SeverityCritical uint8 = 1
-	SeverityHigh     uint8 = 2
-	SeverityMedium   uint8 = 3
-	SeverityLow      uint8 = 4
-	SeverityInfo     uint8 = 5
+	SeverityInfo     uint8 = 0
+	SeverityLow      uint8 = 1
+	SeverityMedium   uint8 = 2
+	SeverityHigh     uint8 = 3
+	SeverityCritical uint8 = 4
 )
 
-// SecurityEvent matches the security_event struct from eBPF.
+// SecurityEventSize is sizeof(struct security_event) in the eBPF programs.
+const SecurityEventSize = 336
+
+// SecurityEvent matches struct security_event from ebpf/headers/security_common.h
+// (336 bytes, all padding explicit; see TestSecurityEventLayout).
 type SecurityEvent struct {
 	Timestamp uint64
 	PID       uint32
@@ -46,6 +51,7 @@ type SecurityEvent struct {
 	DstIP     uint32
 	DstPort   uint16
 	Pad       uint16
+	Pad2      uint32 // explicit padding before Bytes (C: _pad2)
 	Bytes     uint64
 	OldUID    uint32
 	NewUID    uint32
@@ -70,16 +76,14 @@ func SecurityEventTypeName(t uint8) string {
 		return "privilege_escalation"
 	case SecEvtCryptoMining:
 		return "crypto_mining"
-	case SecEvtSensitiveMount:
-		return "sensitive_mount"
+	case SecEvtDataExfiltration:
+		return "data_exfiltration"
+	case SecEvtDriverTampering:
+		return "driver_tampering"
 	case SecEvtSuspiciousExec:
 		return "suspicious_exec"
-	case SecEvtNetworkViolation:
-		return "network_violation"
-	case SecEvtFileAccess:
-		return "file_access"
-	case SecEvtSyscallAnomaly:
-		return "syscall_anomaly"
+	case SecEvtNamespaceBreach:
+		return "namespace_breach"
 	default:
 		return "unknown"
 	}

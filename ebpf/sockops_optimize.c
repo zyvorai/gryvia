@@ -46,6 +46,17 @@ struct {
     __type(value, int);
 } sock_hash SEC(".maps");
 
+/* Shadow set of the keys currently in sock_hash.  bpf_msg_redirect_hash()
+ * drops the message when the peer is missing (and sockhash lookups cannot be
+ * released from sk_msg), so sk_msg checks this map first and passes traffic
+ * to non-local peers through the normal stack. */
+struct {
+    __uint(type, BPF_MAP_TYPE_LRU_HASH);
+    __uint(max_entries, MAX_ENTRIES);
+    __type(key, struct sock_key);
+    __type(value, __u8);
+} local_socks SEC(".maps");
+
 /* Bypass statistics (percpu for lock-free updates) */
 struct {
     __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
@@ -77,8 +88,10 @@ static __always_inline void extract_key_from_ops(struct bpf_sock_ops *skops,
     key->src_ip   = skops->local_ip4;
     key->dst_ip   = skops->remote_ip4;
     key->src_port = skops->local_port;
-    /* remote_port is in network byte order in sockops */
-    key->dst_port = bpf_ntohl(skops->remote_port) >> 16;
+    /* local_port is host order; remote_port is network order held in a u32
+     * (the kernel shifts it into the upper half) - bpf_ntohl() yields the
+     * host-order port. */
+    key->dst_port = (__u16)bpf_ntohl(skops->remote_port);
 }
 
 /* ---- sockops program -------------------------------------------------- */
@@ -86,46 +99,52 @@ static __always_inline void extract_key_from_ops(struct bpf_sock_ops *skops,
 SEC("sockops")
 int bpf_sockops(struct bpf_sock_ops *skops)
 {
-    __u32 op = skops->op;
+    /* Reply for value-returning ops (TIMEOUT_INIT, RWND_INIT, ...): -1 means
+     * "leave the TCP default"; 0 or positive would change the parameter. */
+    int rv = -1;
 
-    switch (op) {
+    switch (skops->op) {
     case BPF_SOCK_OPS_ACTIVE_ESTABLISHED_CB:
     case BPF_SOCK_OPS_PASSIVE_ESTABLISHED_CB: {
+        rv = 1;
+
         /* Only handle IPv4 */
         if (skops->family != AF_INET)
-            return 0;
+            break;
 
         update_stat(STAT_TOTAL_ESTABLISHED, 1);
 
-        /* Check if both endpoints are local (same /8 or loopback).
-         * In a real deployment, userspace would populate trusted_pairs
-         * with known local pod IP ranges. For now, we add all IPv4
-         * connections to the sockhash and let sk_msg decide. */
+        /* Heuristic for "probably same node": both endpoints in the same
+         * /16 or loopback.  Addresses are in network byte order, so build
+         * the masks with htonl().  A wrong guess is harmless: sk_msg only
+         * redirects when the peer socket is itself in sock_hash. */
         __u32 local_ip  = skops->local_ip4;
         __u32 remote_ip = skops->remote_ip4;
+        __u32 lo_mask   = bpf_htonl(0xFF000000);
+        __u32 lo_net    = bpf_htonl(0x7F000000);
+        bool loopback = (local_ip & lo_mask) == lo_net ||
+                        (remote_ip & lo_mask) == lo_net;
 
-        /* Skip if not same subnet (basic check: same /16 prefix) */
-        if ((local_ip & 0xFFFF0000) != (remote_ip & 0xFFFF0000) &&
-            local_ip != 0x0100007F && remote_ip != 0x0100007F)
-            return 0;
+        if (!loopback &&
+            (local_ip & bpf_htonl(0xFFFF0000)) != (remote_ip & bpf_htonl(0xFFFF0000)))
+            break;
 
+        /* Register THIS socket under its own key (local -> remote).  The
+         * peer registers itself under the mirrored key and sk_msg looks the
+         * peer up by that mirrored key, so no reverse entry is added here
+         * (it would overwrite the peer's own registration). */
         struct sock_key key = {};
         extract_key_from_ops(skops, &key);
 
-        /* Add socket to sockhash for potential bypass */
-        bpf_sock_hash_update(skops, &sock_hash, &key, BPF_ANY);
+        if (bpf_sock_hash_update(skops, &sock_hash, &key, BPF_ANY))
+            break;
+
+        __u8 one = 1;
+        bpf_map_update_elem(&local_socks, &key, &one, BPF_ANY);
 
         update_stat(STAT_ESTABLISHED_LOCAL, 1);
 
-        /* Also add the reverse key so the peer can find us */
-        struct sock_key rev_key = {};
-        rev_key.src_ip   = key.dst_ip;
-        rev_key.dst_ip   = key.src_ip;
-        rev_key.src_port = key.dst_port;
-        rev_key.dst_port = key.src_port;
-        bpf_sock_hash_update(skops, &sock_hash, &rev_key, BPF_ANY);
-
-        /* Enable sockops callbacks for state changes */
+        /* Enable state-change callbacks so we can drop the entry on close */
         bpf_sock_ops_cb_flags_set(skops,
             skops->bpf_sock_ops_cb_flags | BPF_SOCK_OPS_STATE_CB_FLAG);
 
@@ -133,21 +152,16 @@ int bpf_sockops(struct bpf_sock_ops *skops)
     }
 
     case BPF_SOCK_OPS_STATE_CB: {
-        /* Connection state change - remove from sockhash on close */
-        if (skops->args[1] == BPF_TCP_CLOSE ||
-            skops->args[1] == BPF_TCP_CLOSE_WAIT) {
+        /* args[1] is the new state: any transition out of ESTABLISHED (FIN,
+         * close, ...) stops redirection immediately.  Sockets are also removed
+         * from sock_hash automatically on destroy. */
+        if (skops->args[1] != BPF_TCP_ESTABLISHED) {
             struct sock_key key = {};
             extract_key_from_ops(skops, &key);
             bpf_map_delete_elem(&sock_hash, &key);
-
-            /* Also remove reverse key */
-            struct sock_key rev_key = {};
-            rev_key.src_ip   = key.dst_ip;
-            rev_key.dst_ip   = key.src_ip;
-            rev_key.src_port = key.dst_port;
-            rev_key.dst_port = key.src_port;
-            bpf_map_delete_elem(&sock_hash, &rev_key);
+            bpf_map_delete_elem(&local_socks, &key);
         }
+        rv = 1;
         break;
     }
 
@@ -155,7 +169,10 @@ int bpf_sockops(struct bpf_sock_ops *skops)
         break;
     }
 
-    return 0;
+    /* The verdict for value-returning ops travels in skops->reply; the
+     * program's own return value must be 0 or 1. */
+    skops->reply = rv;
+    return 1;
 }
 
 /* ---- sk_msg program --------------------------------------------------- */
@@ -163,19 +180,23 @@ int bpf_sockops(struct bpf_sock_ops *skops)
 SEC("sk_msg")
 int bpf_skmsg_redirect(struct sk_msg_md *msg)
 {
-    /* Build the reverse key to find the peer socket */
+    /* The peer registered itself under ITS view of the connection, i.e. the
+     * mirror of ours: (our remote -> our local). */
     struct sock_key key = {};
     key.src_ip   = msg->remote_ip4;
     key.dst_ip   = msg->local_ip4;
-    key.src_port = bpf_ntohl(msg->remote_port) >> 16;
-    key.dst_port = msg->local_port;
+    key.src_port = (__u16)bpf_ntohl(msg->remote_port);
+    key.dst_port = (__u16)msg->local_port;
 
-    /* Update stats */
-    __u64 bytes = msg->size;
-    update_stat(STAT_REDIRECTED_BYTES, bytes);
+    /* bpf_msg_redirect_hash() DROPS the message when the peer is not in the
+     * map (e.g. a remote peer), so only redirect if the peer is registered. */
+    if (!bpf_map_lookup_elem(&local_socks, &key))
+        return SK_PASS;
+
+    update_stat(STAT_REDIRECTED_BYTES, msg->size);
     update_stat(STAT_REDIRECTED_PKTS, 1);
 
-    /* Redirect to peer socket, bypassing TCP/IP stack */
+    /* Deliver straight to the peer's ingress queue, bypassing TCP/IP */
     return bpf_msg_redirect_hash(msg, &sock_hash, &key, BPF_F_INGRESS);
 }
 

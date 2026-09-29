@@ -17,28 +17,41 @@ const (
 	GPUEvtRDMARecv    uint8 = 4
 	GPUEvtCUDALaunch  uint8 = 5
 	GPUEvtCUDASync    uint8 = 6
+	// Types 7-11 are not copies or collectives; consumers that switch on
+	// types 1-6 ignore them.
+	GPUEvtCUDAAlloc    uint8 = 7  // Bytes = size, Direction 0=malloc 1=free
+	GPUEvtGradCompress uint8 = 8  // Bytes = actual, SrcRank/DstRank = expected hi/lo
+	GPUEvtTrainCycle   uint8 = 9  // Bytes = data ingested, LatencyNs = comm, CollectiveID = compute gap (us)
+	GPUEvtPipeStall    uint8 = 10 // LatencyNs = GPU idle time before a launch
+	GPUEvtPipeBusy     uint8 = 11 // LatencyNs = GPU busy span
 )
 
 // MemDirection constants for GPU memory transfers.
 const (
-	MemDirH2D  uint8 = 0 // Host to Device
-	MemDirD2H  uint8 = 1 // Device to Host
-	MemDirD2D  uint8 = 2 // Device to Device
-	MemDirPeer uint8 = 3 // Peer (GPU-to-GPU)
+	MemDirH2D     uint8 = 0 // Host to Device
+	MemDirD2H     uint8 = 1 // Device to Host
+	MemDirD2D     uint8 = 2 // Device to Device
+	MemDirPeer    uint8 = 3 // Peer (GPU-to-GPU)
+	MemDirUnknown uint8 = 4 // cudaMemcpyDefault
 )
 
-// NCCLOpType constants for NCCL collective operations.
+// NCCLOpType constants for NCCL collective operations; values match
+// enum nccl_op_type in ebpf/headers/gpu_common.h.
 const (
 	NCCLOpAllReduce     uint8 = 0
-	NCCLOpBroadcast     uint8 = 1
-	NCCLOpReduce        uint8 = 2
-	NCCLOpAllGather     uint8 = 3
+	NCCLOpAllGather     uint8 = 1
+	NCCLOpBroadcast     uint8 = 2
+	NCCLOpReduce        uint8 = 3
 	NCCLOpReduceScatter uint8 = 4
 	NCCLOpSend          uint8 = 5
 	NCCLOpRecv          uint8 = 6
+	NCCLOpGroup         uint8 = 7 // ncclGroupStart..ncclGroupEnd span (NCCL_ALLTOALL in C)
 )
 
-// GPUEvent matches the gpu_event struct from ebpf/headers/gpu_common.h.
+// GPUEvent matches the gpu_event struct from ebpf/headers/gpu_common.h
+// (72 bytes). Pad2 is the explicit 4-byte gap the C struct keeps so that
+// Bytes is 8-byte aligned at offset 24; encoding/binary does not insert
+// implicit padding.
 type GPUEvent struct {
 	Timestamp    uint64
 	PID          uint32
@@ -47,6 +60,7 @@ type GPUEvent struct {
 	Direction    uint8
 	NCCLOp       uint8
 	Pad          uint8
+	Pad2         uint32
 	Bytes        uint64
 	LatencyNs    uint64
 	SrcRank      uint32
@@ -78,6 +92,8 @@ func NCCLOpName(op uint8) string {
 		return "Send"
 	case NCCLOpRecv:
 		return "Recv"
+	case NCCLOpGroup:
+		return "Group"
 	default:
 		return "Unknown"
 	}

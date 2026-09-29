@@ -1,11 +1,26 @@
+# Gryvia eBPF programs: CO-RE, no generated vmlinux.h (see headers/gryvia_core.h).
 CLANG   ?= clang
-LLC     ?= llc
 BPFTOOL ?= bpftool
 
-ARCH    := $(shell uname -m | sed 's/x86_64/x86/' | sed 's/aarch64/arm64/')
-CFLAGS   = -O2 -g -target bpf -D__TARGET_ARCH_$(ARCH) \
-           -I/usr/include/$(shell uname -m)-linux-gnu \
-           -Wall -Werror
+# Target architecture for bpf_tracing.h / syscall numbers (x86 or arm64).
+# Override with `make ARCH=arm64` to cross-compile.
+UNAME_M := $(shell uname -m)
+ARCH    ?= $(shell echo $(UNAME_M) | sed -e 's/x86_64/x86/' -e 's/aarch64/arm64/')
+
+# <asm/types.h> etc. live in the Debian/Ubuntu multiarch include dir (which
+# clang -target bpf does not search).  Use the host's when it exists; for a
+# cross build fall back to the target arch's directory.
+ifeq ($(ARCH),arm64)
+MULTIARCH := aarch64-linux-gnu
+else
+MULTIARCH := x86_64-linux-gnu
+endif
+MULTIARCH_INC := $(firstword $(wildcard /usr/include/$(UNAME_M)-linux-gnu /usr/include/$(MULTIARCH)))
+ARCH_INC := $(if $(MULTIARCH_INC),-idirafter $(MULTIARCH_INC))
+
+CFLAGS  = -O2 -g -target bpf -D__TARGET_ARCH_$(ARCH) \
+          -I. $(ARCH_INC) \
+          -Wall -Werror
 
 PROGS = tcp_trace packet_filter latency_probe syscall_monitor dns_tracker \
         nccl_trace gpu_mem_trace rdma_trace training_pattern datapipe_bottleneck gradient_compress \
@@ -13,28 +28,33 @@ PROGS = tcp_trace packet_filter latency_probe syscall_monitor dns_tracker \
         tcp_tuning connpool_analyze numa_path sockops_optimize trace_correlator \
         latency_breakdown cost_tracker fingerprint
 
-.PHONY: all clean vmlinux
+# Where `make check` pins programs while verifying them (removed afterwards).
+CHECK_DIR ?= /sys/fs/bpf/gryvia-check-$(shell echo $$PPID)
+
+.PHONY: all clean check
 
 all: $(PROGS:%=%.o)
 
-# Generate vmlinux.h from the running kernel if bpftool is available.
-headers/vmlinux.h:
-	@if command -v $(BPFTOOL) >/dev/null 2>&1; then \
-		$(BPFTOOL) btf dump file /sys/kernel/btf/vmlinux format c > $@; \
-	else \
-		echo "WARNING: bpftool not found, skipping vmlinux.h generation"; \
-		touch $@; \
-	fi
+HDRS = headers/gryvia_core.h headers/common.h headers/gpu_common.h headers/security_common.h
 
-%.o: %.c headers/common.h
+%.o: %.c $(HDRS)
 	$(CLANG) $(CFLAGS) -c $< -o $@
 
-# Security programs depend on security_common.h as well.
-container_escape.o crypto_detect.o exfil_detect.o privesc_monitor.o driver_fim.o: headers/security_common.h
-
-# GPU/AI programs depend on gpu_common.h.
-nccl_trace.o gpu_mem_trace.o rdma_trace.o gradient_compress.o: headers/gpu_common.h
-training_pattern.o datapipe_bottleneck.o: headers/gpu_common.h
+# Run `make -k` first.  Load every built object through the kernel verifier (needs root: the
+# programs are pinned under a private bpffs dir that is always removed).
+# Programs of type uprobe/tracepoint/xdp/... are loaded, never attached.
+check:
+	@set -e; rc=0; \
+	for o in $(PROGS:%=%.o); do \
+		if [ ! -f $$o ]; then echo "MISSING   $$o (build failed? run: make -k)"; rc=1; continue; fi; \
+		d=$(CHECK_DIR)-$${o%.o}; \
+		if sudo $(BPFTOOL) prog loadall $$o $$d >/tmp/gryvia-check.$$$$.log 2>&1; then \
+			echo "LOAD OK   $$o"; \
+		else \
+			echo "LOAD FAIL $$o"; sed 's/^/    /' /tmp/gryvia-check.$$$$.log | tail -40; rc=1; \
+		fi; \
+		sudo rm -rf $$d; rm -f /tmp/gryvia-check.$$$$.log; \
+	done; exit $$rc
 
 clean:
-	rm -f *.o headers/vmlinux.h
+	rm -f *.o

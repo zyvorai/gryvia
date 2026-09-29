@@ -6,6 +6,8 @@ and the project aims to follow [Semantic Versioning](https://semver.org/) once i
 ## [Unreleased]
 
 ### Added
+- The eBPF programs are ported to CO-RE and work: all 24 in `ebpf/` compile (clang 18 and 21, x86_64 and arm64) and pass the kernel verifier on Linux 7.0; no generated `vmlinux.h` (`ebpf/headers/gryvia_core.h`), `make check` loads every object. Many programs had real bugs fixed (wrong syscall-id and register reads, hard-coded struct offsets, connection keys that never matched, unbounded loops, x86-only syscall numbers). The collector image builds again.
+- The collector attaches programs by their section name (kprobe, kretprobe, uprobe, tracepoint, raw_tracepoint, tp_btf, XDP, TCX, sockops, sk_msg), tolerates individual failures, dispatches events to the flow, GPU and security decoders, and reports per-program attach results at `/api/v1/ebpf/status`. Verified live on Linux 7.0 (36 of 83 hooks attached, real TCP flows decoded); GPU, RDMA and arm64 paths are not yet verified on hardware.
 - Estimate invoices: `/api/invoices`, a dashboard Invoices page and `gryvia invoice` build a monthly per-tenant statement from usage records (JSON or CSV). No payment processing.
 - The admission webhook now denies jobs whose GPU type is not allowed by the namespace's quota or the tenant's catalog SKUs, or that exceed the per-job GPU limit; it fails open when the quotas cannot be read.
 - GPU as a Service: tenants (`GryviaTenant`, now run by the quota operator) get an isolated `tenant-<name>` namespace; a price catalog (`GryviaGpuSku`); per-job metering (`GryviaUsageRecord`); gateway routes `/api/skus`, `/api/tenants`, `/api/usage` (+ CSV/JSON export); dashboard Catalog, Usage and Tenants pages; and `gryvia catalog`, `gryvia tenant`, `gryvia usage`. See `website/docs/guides/GPU_AS_A_SERVICE.md`.
@@ -30,6 +32,8 @@ and the project aims to follow [Semantic Versioning](https://semver.org/) once i
 - Open tabs recover automatically after a redeploy.
 
 ### Changed
+- Fixed struct-layout mismatches between the eBPF programs and the collector's Go decoders (implicit padding made every field after the gap misread; security and GPU enums disagreed).
+- The `network-intelligence` chart now runs the collector with the flags it actually has (`ebpf.interface`, `ebpf.cgroupPath`, `ebpf.ncclLib`, `ebpf.cudaLib`); the old `--enable-program` list is gone.
 - **Breaking for OIDC installs:** an OIDC token must now match a `GryviaTenant` (by `org` or `groups`); previously the claim was trusted as a namespace and every user could read cluster-wide data. Set `apiGateway.oidc.legacyNamespaces=true` only while no tenants exist.
 - Quota enforcement rejects jobs whose GPU type is not allowed; GPU prices come from the SKU catalog (one shared default table replaces two hardcoded copies).
 - The GPU operator no longer uses NVML: it runs without cgo on a distroless static image. It previously read GPU data inside its own pod, so it reported the wrong node and normally could not load the driver. `spec.drivers` is informational; nothing consumes it.

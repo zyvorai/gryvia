@@ -45,7 +45,8 @@ struct gpu_busy_info {
 /* ---- BPF maps ---------------------------------------------------------- */
 
 // Per-CPU storage I/O throughput counters.
-// Slots: 0=read_bytes, 1=write_bytes, 2=read_ops, 3=write_ops
+// Slot 0 = reads, slot 1 = writes (total_bytes/total_ops of each; slots 2-3
+// are reserved).
 struct {
     __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
     __uint(max_entries, IO_STAT_SLOTS);
@@ -62,9 +63,9 @@ struct {
     __type(value, struct net_stat);
 } net_ingest_stats SEC(".maps");
 
-// Per-PID GPU busy/idle state tracking.
+// Per-PID GPU busy/idle state tracking (LRU: exited processes age out).
 struct {
-    __uint(type, BPF_MAP_TYPE_HASH);
+    __uint(type, BPF_MAP_TYPE_LRU_HASH);
     __uint(max_entries, MAX_INFLIGHT);
     __type(key, __u32);
     __type(value, struct gpu_busy_info);
@@ -87,66 +88,66 @@ static __always_inline void emit_pipeline_event(__u8 event_type,
     if (!ev)
         return;
 
-    __u64 pid_tgid = bpf_get_current_pid_tgid();
-
+    __builtin_memset(ev, 0, sizeof(*ev));
     ev->timestamp     = bpf_ktime_get_ns();
-    ev->pid           = pid_tgid >> 32;
-    ev->gpu_id        = 0;
+    ev->pid           = bpf_get_current_pid_tgid() >> 32;
     ev->event_type    = event_type;
-    ev->direction     = 0;
-    ev->nccl_op       = 0;
-    ev->_pad          = 0;
     ev->bytes         = bytes;
     ev->latency_ns    = latency_ns;
-    ev->src_rank      = 0;
-    ev->dst_rank      = 0;
-    ev->collective_id = 0;
-    ev->world_size    = 0;
     bpf_get_current_comm(&ev->comm, sizeof(ev->comm));
 
     bpf_ringbuf_submit(ev, 0);
 }
 
-/* ---- tracepoint: block I/O completion ---------------------------------- */
+/* ---- tp_btf: block I/O completion --------------------------------------- */
 
-// tracepoint/block/block_rq_complete fires when a block I/O request
-// completes.  We extract the number of sectors (each 512 bytes) and
-// the latency from the tracepoint arguments.
-//
-// Args layout for block_rq_complete (simplified):
-//   dev, sector, nr_sector, errors, rwbs
-SEC("tracepoint/block/block_rq_complete")
-int block_rq_complete(void *ctx)
+#define REQ_OP_MASK   0xffU
+#define REQ_OP_READ   0U
+#define REQ_OP_WRITE  1U
+
+// TP_PROTO(struct request *rq, blk_status_t error, unsigned int nr_bytes).
+// tp_btf gives typed, CO-RE-safe access to the arguments (a classic
+// tracepoint would need hard-coded field offsets that move between kernels).
+// System-wide, per-CPU counters only: emitting a ring buffer event for every
+// block I/O would flood the buffer and be misread as GPU copies.
+SEC("tp_btf/block_rq_complete")
+int BPF_PROG(block_rq_complete, struct request *rq, int error,
+             unsigned int nr_bytes)
 {
-    /* We cannot portably destructure the tracepoint args struct across
-     * kernel versions without vmlinux.h, so we use a conservative
-     * approach: emit a fixed-size event and let userspace correlate. */
-    __u32 key = 0;  /* read_bytes slot */
+    __u32 op = BPF_CORE_READ(rq, cmd_flags) & REQ_OP_MASK;
+    __u32 key;
+
+    if (op == REQ_OP_READ)
+        key = 0;
+    else if (op == REQ_OP_WRITE)
+        key = 1;
+    else
+        return 0;   /* flush / discard / zone ops carry no data throughput */
+
     struct io_stat *stat = bpf_map_lookup_elem(&io_stats, &key);
     if (stat) {
-        __sync_fetch_and_add(&stat->total_ops, 1);
-        /* Approximate: sector count not easily accessible without
-         * vmlinux.h; userspace will read /proc/diskstats for accuracy */
+        stat->total_bytes += nr_bytes;   /* per-CPU slot: no atomics needed */
+        stat->total_ops   += 1;
     }
-
-    emit_pipeline_event(GPU_EVT_MEM_TRANSFER, 0, 0);
     return 0;
 }
 
-/* ---- kprobe: tcp_recvmsg (network data ingestion rate) ----------------- */
+/* ---- kretprobe: tcp_recvmsg (network data ingestion rate) --------------- */
 
-// tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, ...)
-SEC("kprobe/tcp_recvmsg")
-int BPF_KPROBE(datapipe_tcp_recv, void *sk, void *msg, __u64 len)
+// tcp_recvmsg(...) returns the byte count actually received (or -errno);
+// the `len` argument would only be the caller's buffer size.
+SEC("kretprobe/tcp_recvmsg")
+int BPF_KRETPROBE(datapipe_tcp_recv, int ret)
 {
-    /* Update network ingestion counters */
-    __u32 bytes_key = 0;
-    struct net_stat *ns = bpf_map_lookup_elem(&net_ingest_stats, &bytes_key);
-    if (ns) {
-        __sync_fetch_and_add(&ns->total_bytes, len);
-        __sync_fetch_and_add(&ns->total_ops, 1);
-    }
+    if (ret <= 0)
+        return 0;
 
+    __u32 key = 0;
+    struct net_stat *ns = bpf_map_lookup_elem(&net_ingest_stats, &key);
+    if (ns) {
+        ns->total_bytes += ret;
+        ns->total_ops   += 1;
+    }
     return 0;
 }
 
@@ -155,59 +156,56 @@ int BPF_KPROBE(datapipe_tcp_recv, void *sk, void *msg, __u64 len)
 // cudaLaunchKernel(const void *func, dim3 gridDim, dim3 blockDim,
 //                  void **args, size_t sharedMem, cudaStream_t stream)
 SEC("uprobe/cudaLaunchKernel")
-int BPF_KPROBE(datapipe_cuda_launch)
+int BPF_UPROBE(datapipe_cuda_launch)
 {
-    __u64 pid_tgid = bpf_get_current_pid_tgid();
-    __u32 pid = pid_tgid >> 32;
+    __u32 pid = bpf_get_current_pid_tgid() >> 32;
     __u64 now = bpf_ktime_get_ns();
 
     struct gpu_busy_info *gbi = bpf_map_lookup_elem(&gpu_busy_map, &pid);
-    if (gbi) {
-        /* Transitioning from idle to busy: record idle duration */
-        if (!gbi->is_busy && gbi->last_sync_ns > 0) {
-            __u64 idle_ns = now - gbi->last_sync_ns;
-            __sync_fetch_and_add(&gbi->total_idle_ns, idle_ns);
-
-            /* If GPU was idle for more than 1ms, emit a bottleneck alert */
-            if (idle_ns > 1000000) {
-                emit_pipeline_event(GPU_EVT_CUDA_LAUNCH, 0, idle_ns);
-            }
-        }
-        gbi->last_launch_ns = now;
-        gbi->is_busy = 1;
-    } else {
-        struct gpu_busy_info new_gbi = {};
-        new_gbi.last_launch_ns = now;
-        new_gbi.is_busy        = 1;
-        bpf_map_update_elem(&gpu_busy_map, &pid, &new_gbi, BPF_ANY);
+    if (!gbi) {
+        struct gpu_busy_info init = {};
+        /* NOEXIST: another thread of the process may have created it. */
+        bpf_map_update_elem(&gpu_busy_map, &pid, &init, BPF_NOEXIST);
+        gbi = bpf_map_lookup_elem(&gpu_busy_map, &pid);
+        if (!gbi)
+            return 0;
     }
 
+    /* Idle -> busy transition: account the idle time; a gap longer than 1ms
+     * means the GPU was starved (likely by the data pipeline). */
+    if (!gbi->is_busy && gbi->last_sync_ns > 0) {
+        __u64 idle_ns = now - gbi->last_sync_ns;
+        __sync_fetch_and_add(&gbi->total_idle_ns, idle_ns);
+        if (idle_ns > 1000000)
+            emit_pipeline_event(GPU_EVT_PIPE_STALL, 0, idle_ns);
+    }
+    if (!gbi->is_busy)
+        gbi->last_launch_ns = now;   /* start of this busy span */
+    gbi->is_busy = 1;
     return 0;
 }
 
 /* ---- uretprobe: cudaDeviceSynchronize (GPU compute end) ---------------- */
 
-// cudaDeviceSynchronize(void)
+// cudaDeviceSynchronize(void): everything launched so far has finished.
 SEC("uretprobe/cudaDeviceSynchronize")
-int BPF_KRETPROBE(datapipe_cuda_sync)
+int BPF_URETPROBE(datapipe_cuda_sync)
 {
-    __u64 pid_tgid = bpf_get_current_pid_tgid();
-    __u32 pid = pid_tgid >> 32;
+    __u32 pid = bpf_get_current_pid_tgid() >> 32;
     __u64 now = bpf_ktime_get_ns();
 
     struct gpu_busy_info *gbi = bpf_map_lookup_elem(&gpu_busy_map, &pid);
-    if (gbi) {
-        /* Transitioning from busy to idle */
-        if (gbi->is_busy && gbi->last_launch_ns > 0) {
-            __u64 busy_ns = now - gbi->last_launch_ns;
-            __sync_fetch_and_add(&gbi->total_busy_ns, busy_ns);
-        }
-        gbi->last_sync_ns = now;
-        gbi->is_busy = 0;
+    if (!gbi)
+        return 0;
 
-        emit_pipeline_event(GPU_EVT_CUDA_SYNC, 0, gbi->total_busy_ns);
+    if (gbi->is_busy && gbi->last_launch_ns > 0) {
+        __u64 busy_ns = now - gbi->last_launch_ns;
+        __sync_fetch_and_add(&gbi->total_busy_ns, busy_ns);
+        /* Per-span delta (not the running total) so consumers can sum it. */
+        emit_pipeline_event(GPU_EVT_PIPE_BUSY, 0, busy_ns);
     }
-
+    gbi->last_sync_ns = now;
+    gbi->is_busy = 0;
     return 0;
 }
 

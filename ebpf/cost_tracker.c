@@ -143,14 +143,15 @@ static __always_inline int parse_ip_header(struct __sk_buff *skb,
 /* ---- tc classifiers --------------------------------------------------- */
 
 /* Egress: track outbound traffic */
-SEC("classifier/egress")
+/* tcx (kernel >= 6.6); the collector loader attaches these via tcx. */
+SEC("tcx/egress")
 int cost_tracker_egress(struct __sk_buff *skb)
 {
     __u32 src_ip = 0, dst_ip = 0;
     __u64 pkt_bytes = 0;
 
     if (parse_ip_header(skb, &src_ip, &dst_ip, &pkt_bytes) < 0)
-        return 0;  /* TC_ACT_OK */
+        return TC_ACT_OK;
 
     /* Update per-pair counters */
     struct cost_key key = {};
@@ -165,24 +166,29 @@ int cost_tracker_egress(struct __sk_buff *skb)
         struct cost_value new_val = {};
         new_val.bytes_sent   = pkt_bytes;
         new_val.packets_sent = 1;
-        bpf_map_update_elem(&traffic_costs, &key, &new_val, BPF_NOEXIST);
+        if (bpf_map_update_elem(&traffic_costs, &key, &new_val, BPF_NOEXIST) &&
+            (val = bpf_map_lookup_elem(&traffic_costs, &key))) {
+            /* lost the insert race: account into the winner's entry */
+            __sync_fetch_and_add(&val->bytes_sent, pkt_bytes);
+            __sync_fetch_and_add(&val->packets_sent, 1);
+        }
     }
 
     /* Classify by zone and update aggregate stats */
     classify_and_count(src_ip, dst_ip, pkt_bytes);
 
-    return 0;  /* TC_ACT_OK */
+    return TC_ACT_OK;
 }
 
 /* Ingress: track inbound traffic */
-SEC("classifier/ingress")
+SEC("tcx/ingress")
 int cost_tracker_ingress(struct __sk_buff *skb)
 {
     __u32 src_ip = 0, dst_ip = 0;
     __u64 pkt_bytes = 0;
 
     if (parse_ip_header(skb, &src_ip, &dst_ip, &pkt_bytes) < 0)
-        return 0;  /* TC_ACT_OK */
+        return TC_ACT_OK;
 
     /* Update per-pair counters (keyed by dst->src for ingress) */
     struct cost_key key = {};
@@ -197,13 +203,17 @@ int cost_tracker_ingress(struct __sk_buff *skb)
         struct cost_value new_val = {};
         new_val.bytes_recv   = pkt_bytes;
         new_val.packets_recv = 1;
-        bpf_map_update_elem(&traffic_costs, &key, &new_val, BPF_NOEXIST);
+        if (bpf_map_update_elem(&traffic_costs, &key, &new_val, BPF_NOEXIST) &&
+            (val = bpf_map_lookup_elem(&traffic_costs, &key))) {
+            __sync_fetch_and_add(&val->bytes_recv, pkt_bytes);
+            __sync_fetch_and_add(&val->packets_recv, 1);
+        }
     }
 
     /* Classify by zone and update aggregate stats */
     classify_and_count(src_ip, dst_ip, pkt_bytes);
 
-    return 0;  /* TC_ACT_OK */
+    return TC_ACT_OK;
 }
 
 char LICENSE[] SEC("license") = "Dual BSD/GPL";

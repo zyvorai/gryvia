@@ -30,14 +30,21 @@ spec:
         - name: collector
           image: "{{ .Values.collector.image.repository }}:{{ .Values.collector.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.collector.image.pullPolicy }}
-          command:
-            - /collector
+          # The image entrypoint is /usr/local/bin/gryvia-collector; the programs live in /opt/gryvia/ebpf.
           args:
-            - --metrics-bind-address=:9090
-            {{- range .Values.ebpf.programs }}
-            {{- if .enabled }}
-            - --enable-program={{ .name }}
+            - -metrics-addr=:9090
+            - -ebpf-dir=/opt/gryvia/ebpf
+            {{- with .Values.ebpf.interface }}
+            - -iface={{ . }}
             {{- end }}
+            {{- with .Values.ebpf.cgroupPath }}
+            - -cgroup-path={{ . }}
+            {{- end }}
+            {{- with .Values.ebpf.ncclLib }}
+            - -nccl-lib={{ . }}
+            {{- end }}
+            {{- with .Values.ebpf.cudaLib }}
+            - -cuda-lib={{ . }}
             {{- end }}
           ports:
             - name: metrics

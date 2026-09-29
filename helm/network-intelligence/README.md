@@ -46,8 +46,10 @@ helm install network-intelligence ./helm/network-intelligence \
 | `collector.image.repository` | Collector image | `gryvia/ebpf-collector` |
 | `collector.hostNetwork` | Use host networking | `true` |
 | `collector.resources` | Collector resource limits | `500m CPU, 512Mi memory` |
-| `ebpf.enabled` | Enable eBPF programs | `true` |
-| `ebpf.programs` | List of eBPF programs | See `values.yaml` |
+| `ebpf.enabled` | Run the eBPF collector DaemonSet | `false` |
+| `ebpf.interface` | Interface for the XDP/TCX programs (empty: not attached) | `""` |
+| `ebpf.cgroupPath` | cgroup v2 path for sockops/sk_msg (empty: not attached) | `""` |
+| `ebpf.ncclLib`, `ebpf.cudaLib` | Library paths for the GPU uprobes (empty: discover) | `""` |
 | `prometheus.enabled` | Enable Prometheus metrics | `true` |
 | `prometheus.serviceMonitor.enabled` | Create ServiceMonitor | `true` |
 | `security.enabled` | Enable security monitoring | `true` |

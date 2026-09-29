@@ -8,6 +8,14 @@
 
 #include "headers/common.h"
 
+/*
+ * Maximum number of rules.  Every rule is checked by a bounded loop that the
+ * verifier must fully explore, so this is limited by verifier complexity
+ * (1024 exceeds the 8192-jump-sequence limit).  Keep it in sync with the
+ * filter_rules/rule_stats_map sizes below.
+ */
+#define MAX_RULES 256
+
 /* ---- filter rule ------------------------------------------------------ */
 
 struct filter_rule {
@@ -28,7 +36,7 @@ struct rule_stats {
 // Blocklist: index -> rule.
 struct {
     __uint(type, BPF_MAP_TYPE_ARRAY);
-    __uint(max_entries, 1024);
+    __uint(max_entries, MAX_RULES);
     __type(key, __u32);
     __type(value, struct filter_rule);
 } filter_rules SEC(".maps");
@@ -44,7 +52,7 @@ struct {
 // Per-rule hit counters.
 struct {
     __uint(type, BPF_MAP_TYPE_ARRAY);
-    __uint(max_entries, 1024);
+    __uint(max_entries, MAX_RULES);
     __type(key, __u32);
     __type(value, struct rule_stats);
 } rule_stats_map SEC(".maps");
@@ -108,10 +116,13 @@ int xdp_packet_filter(struct xdp_md *ctx)
     __u32 n = count ? *count : 0;
 
     // Cap iteration to avoid verifier rejection.
-    if (n > 1024)
-        n = 1024;
+    if (n > MAX_RULES)
+        n = MAX_RULES;
 
-    for (__u32 i = 0; i < n; i++) {
+    for (__u32 i = 0; i < MAX_RULES; i++) {
+        if (i >= n)
+            break;
+
         struct filter_rule *rule = bpf_map_lookup_elem(&filter_rules, &i);
         if (!rule)
             continue;
