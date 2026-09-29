@@ -42,6 +42,9 @@ spec:
             - --leader-elect={{ $.Values.ha.leaderElection }}
             - --metrics-bind-address=:8080
             - --health-probe-bind-address=:8081
+            {{- if eq $name "gpu-operator" }}
+            - --auto-register={{ $.Values.gpuOperator.autoRegister }}
+            {{- end }}
             {{- if $webhook }}
             - --enable-webhooks=true
             - --webhook-cert-dir=/tmp/k8s-webhook-server/serving-certs

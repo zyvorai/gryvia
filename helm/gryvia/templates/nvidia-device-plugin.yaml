@@ -1,4 +1,5 @@
-{{- if .Values.nvidiaDevicePlugin.enabled }}
+{{- /* Gryvia's own add-on: only when the NVIDIA GPU Operator sub-chart is not installed. */ -}}
+{{- if and .Values.nvidiaDevicePlugin.enabled (not .Values.nvidia.enabled) }}
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -18,6 +19,13 @@ spec:
       labels:
         app.kubernetes.io/component: nvidia-device-plugin
     spec:
+      {{- with .Values.nvidiaDevicePlugin.runtimeClassName }}
+      runtimeClassName: {{ . }}
+      {{- end }}
+      {{- with .Values.nvidiaDevicePlugin.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       tolerations:
         - key: nvidia.com/gpu
           operator: Exists

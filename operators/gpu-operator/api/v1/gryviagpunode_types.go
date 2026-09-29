@@ -33,7 +33,8 @@ type GryviaGpuNodeSpec struct {
 	// ComputeCapability is the CUDA compute capability
 	ComputeCapability string `json:"computeCapability,omitempty"`
 
-	// Drivers configuration
+	// Drivers is informational only and is not consumed by the operator: the
+	// driver lifecycle is managed by the NVIDIA GPU Operator or the host.
 	Drivers *DriversConfig `json:"drivers,omitempty"`
 
 	// HealthCheck configuration

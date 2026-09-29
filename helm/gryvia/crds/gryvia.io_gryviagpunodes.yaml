@@ -65,7 +65,9 @@ spec:
                 description: ComputeCapability is the CUDA compute capability
                 type: string
               drivers:
-                description: Drivers configuration
+                description: |-
+                  Drivers is informational only and is not consumed by the operator: the
+                  driver lifecycle is managed by the NVIDIA GPU Operator or the host.
                 properties:
                   cuda:
                     description: CUDA version

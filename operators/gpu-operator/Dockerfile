@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.27-bookworm AS builder
+FROM golang:1.27-alpine AS builder
 
 WORKDIR /workspace
 
@@ -14,11 +14,10 @@ COPY controllers/ controllers/
 COPY pkg/ pkg/
 
 # Build
-# go-nvml needs cgo (it dlopen()s libnvidia-ml at runtime), so link against glibc.
-RUN CGO_ENABLED=1 go build -a -o manager main.go
+RUN CGO_ENABLED=0 go build -a -o manager main.go
 
 # Runtime stage
-FROM gcr.io/distroless/base-debian12:nonroot
+FROM gcr.io/distroless/static:nonroot
 
 WORKDIR /
 

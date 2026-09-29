@@ -14,7 +14,7 @@ Complete guide for setting up a production Gryvia cluster.
 
 **GPU Nodes:**
 - NVIDIA GPUs (Tesla T4, A100, H100, etc.)
-- NVIDIA driver 525+ installed
+- NVIDIA driver 525+ (installed by the GPU Operator with `nvidia.enabled=true`, or already on the host; see [GPU nodes](../guides/GPU_NODES.md))
 - 64GB+ RAM per node
 - High-speed networking (InfiniBand/RoCE recommended)
 
@@ -644,7 +644,7 @@ data:
 # Drain node
 kubectl drain gpu-node-1 --ignore-daemonsets
 
-# Update drivers (on node)
+# Update drivers (on node). With the GPU Operator, bump nvidia.driver.version in the chart instead.
 sudo apt update
 sudo apt install nvidia-driver-535
 
@@ -661,7 +661,7 @@ kubectl uncordon gpu-node-1
 
 ```bash
 # 1. Provision new node
-# 2. Install NVIDIA drivers
+# 2. Install the NVIDIA driver (skip with nvidia.enabled=true: the GPU Operator does it)
 # 3. Join to Kubernetes cluster
 # 4. Label node
 kubectl label nodes gpu-node-5 gryvia.io/gpu=true

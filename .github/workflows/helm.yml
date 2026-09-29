@@ -72,6 +72,7 @@ jobs:
         run: |
           mkdir -p .helm-repo
           helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm repo add nvidia https://helm.ngc.nvidia.com/nvidia
           for chart in helm/*/; do
             if grep -q '^dependencies:' "$chart/Chart.yaml"; then helm dependency build "$chart"; fi
             helm package "$chart" -d .helm-repo

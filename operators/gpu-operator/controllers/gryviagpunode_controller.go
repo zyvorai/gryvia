@@ -3,6 +3,10 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"reflect"
 	"strings"
 	"time"
 
@@ -19,7 +23,7 @@ import (
 	"k8s.io/client-go/util/retry"
 
 	gryviav1 "github.com/zyvorai/gryvia/operators/gpu-operator/api/v1"
-	"github.com/zyvorai/gryvia/operators/gpu-operator/pkg/gpu"
+	"github.com/zyvorai/gryvia/operators/gpu-operator/pkg/discovery"
 )
 
 const (
@@ -37,17 +41,36 @@ const (
 	ConditionHealthy          = "Healthy"
 )
 
+const (
+	dcgmPort    = "9400"
+	dcgmTimeout = 2 * time.Second
+)
+
+// HTTPDoer is the subset of *http.Client used to scrape the DCGM exporter.
+type HTTPDoer interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
+var defaultHTTPClient HTTPDoer = &http.Client{Timeout: dcgmTimeout}
+
 // GryviaGpuNodeReconciler reconciles a GryviaGpuNode object
 type GryviaGpuNodeReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Log    logr.Logger
+
+	// HTTPClient scrapes the DCGM exporter; nil uses a client with a 2s timeout.
+	HTTPClient HTTPDoer
+	// DCGMNamespace restricts the DCGM exporter pod search to one namespace
+	// (all namespaces when empty).
+	DCGMNamespace string
 }
 
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviagpunodes,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviagpunodes/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviagpunodes/finalizers,verbs=update
 //+kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch;update;patch
+//+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop
 func (r *GryviaGpuNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -116,7 +139,7 @@ func (r *GryviaGpuNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 func (r *GryviaGpuNodeReconciler) reconcileGpuNode(ctx context.Context, gryviaNode *gryviav1.GryviaGpuNode) (ctrl.Result, error) {
 	log := r.Log.WithValues("gryviagpunode", gryviaNode.Name)
 
-	// Get the Kubernetes node
+	// Get the Kubernetes node this object describes (not the node the operator runs on).
 	node := &corev1.Node{}
 	err := r.Get(ctx, types.NamespacedName{Name: gryviaNode.Spec.NodeName}, node)
 	if err != nil {
@@ -129,58 +152,71 @@ func (r *GryviaGpuNodeReconciler) reconcileGpuNode(ctx context.Context, gryviaNo
 		return ctrl.Result{}, err
 	}
 
-	// Check and install drivers
-	if err := r.ensureDrivers(ctx, gryviaNode); err != nil {
-		log.Error(err, "Failed to ensure drivers")
-		r.updateCondition(gryviaNode, ConditionDriversInstalled, metav1.ConditionFalse, "DriverInstallFailed", err.Error())
-		gryviaNode.Status.Phase = PhaseDegraded
-		if updateErr := r.Status().Update(ctx, gryviaNode); updateErr != nil {
-			log.Error(updateErr, "Failed to update status after driver install failure")
-		}
-		return ctrl.Result{RequeueAfter: 5 * time.Minute}, err
+	// Driver and device plugin state comes from the NVIDIA GPU Operator's node
+	// labels (GPU Feature Discovery) and the node's allocatable resources.
+	alloc := map[string]string{}
+	if q, ok := node.Status.Allocatable[corev1.ResourceName(discovery.ResourceGPU)]; ok {
+		alloc[discovery.ResourceGPU] = q.String()
+	}
+	found, hasGPU := discovery.FromNode(node.Labels, alloc)
+	if hasGPU {
+		gryviaNode.Status.DriverVersion = found.DriverVersion
+		gryviaNode.Status.CudaVersion = found.CUDAVersion
+	} else {
+		gryviaNode.Status.DriverVersion = ""
+		gryviaNode.Status.CudaVersion = ""
 	}
 
-	r.updateCondition(gryviaNode, ConditionDriversInstalled, metav1.ConditionTrue, "DriversInstalled", "NVIDIA drivers installed successfully")
-
-	// Perform GPU health check
-	gpuHealth, err := r.checkGpuHealth(ctx, gryviaNode)
-	if err != nil {
-		log.Error(err, "Failed to check GPU health")
-		r.updateCondition(gryviaNode, ConditionHealthy, metav1.ConditionFalse, "HealthCheckFailed", err.Error())
-		gryviaNode.Status.Phase = PhaseDegraded
-		// Update status and requeue with exponential backoff
-		now := metav1.Now()
-		gryviaNode.Status.LastHealthCheck = &now
-		if updateErr := r.Status().Update(ctx, gryviaNode); updateErr != nil {
-			log.Error(updateErr, "Failed to update status after health check failure")
-		}
-		backoff := r.calculateBackoff(gryviaNode)
-		return ctrl.Result{RequeueAfter: backoff}, err
+	phase, message := discovery.Readiness(gryviaNode.Spec.GpuCount, found.Allocatable, gryviaNode.Status.DriverVersion)
+	if found.Allocatable >= 1 {
+		r.updateCondition(gryviaNode, ConditionDriversInstalled, metav1.ConditionTrue, "DevicePluginReady",
+			fmt.Sprintf("NVIDIA driver and device plugin are ready: %d GPU(s) allocatable", found.Allocatable))
 	} else {
-		gryviaNode.Status.GpuStatus = gpuHealth
+		r.updateCondition(gryviaNode, ConditionDriversInstalled, metav1.ConditionFalse, "WaitingForDrivers", message)
+	}
+
+	// Best-effort per-GPU status from the DCGM exporter on this node.
+	gryviaNode.Status.GpuStatus = r.scrapeDCGM(ctx, gryviaNode.Spec.NodeName)
+	worst := ""
+	for _, g := range gryviaNode.Status.GpuStatus {
+		if g.Health == discovery.HealthFailed {
+			worst = discovery.HealthFailed
+		} else if g.Health == discovery.HealthDegraded && worst == "" {
+			worst = discovery.HealthDegraded
+		}
+	}
+	switch {
+	case worst != "":
+		r.updateCondition(gryviaNode, ConditionHealthy, metav1.ConditionFalse, "GPUUnhealthy", "at least one GPU is "+strings.ToLower(worst)+" (temperature)")
+	case len(gryviaNode.Status.GpuStatus) > 0:
 		r.updateCondition(gryviaNode, ConditionHealthy, metav1.ConditionTrue, "Healthy", "All GPUs are healthy")
+	default:
+		r.updateCondition(gryviaNode, ConditionHealthy, metav1.ConditionUnknown, "NoMetrics", "no DCGM exporter metrics available for this node")
 	}
 
 	// Label the node
+	labelFailed := false
 	if err := r.labelNode(ctx, gryviaNode, node); err != nil {
 		log.Error(err, "Failed to label node")
+		labelFailed = true
 		r.updateCondition(gryviaNode, ConditionNodeLabeled, metav1.ConditionFalse, "LabelFailed", err.Error())
 	} else {
 		r.updateCondition(gryviaNode, ConditionNodeLabeled, metav1.ConditionTrue, "Labeled", "Node labeled successfully")
 	}
 
-	// Update phase based on conditions
-	if r.allConditionsTrue(gryviaNode) {
-		gryviaNode.Status.Phase = PhaseReady
-	} else if r.anyConditionFalse(gryviaNode) {
-		gryviaNode.Status.Phase = PhaseDegraded
+	if phase == discovery.PhaseReady {
+		switch {
+		case worst == discovery.HealthFailed:
+			phase = PhaseFailed
+		case worst != "" || labelFailed:
+			phase = PhaseDegraded
+		}
 	}
+	gryviaNode.Status.Phase = phase
+	log.V(1).Info("GPU node reconciled", "phase", phase, "message", message)
 
-	// Update last health check time
 	now := metav1.Now()
 	gryviaNode.Status.LastHealthCheck = &now
-
-	// Update status
 	if err := r.Status().Update(ctx, gryviaNode); err != nil {
 		log.Error(err, "Failed to update status")
 		return ctrl.Result{}, err
@@ -189,51 +225,78 @@ func (r *GryviaGpuNodeReconciler) reconcileGpuNode(ctx context.Context, gryviaNo
 	return ctrl.Result{}, nil
 }
 
-func (r *GryviaGpuNodeReconciler) ensureDrivers(ctx context.Context, gryviaNode *gryviav1.GryviaGpuNode) error {
-	// Check if NVIDIA drivers are installed
-	driverVersion, cudaVersion, err := gpu.GetDriverInfo()
-	if err != nil {
-		r.Log.Info("NVIDIA drivers not detected, triggering installation", "node", gryviaNode.Spec.NodeName, "error", err)
-
-		// In a real implementation, this would:
-		// 1. Create a DaemonSet to install drivers on the node
-		// 2. Use the NVIDIA GPU Operator or custom installation logic
-		// 3. Wait for installation to complete
-
-		gryviaNode.Status.DriverVersion = "pending"
-		gryviaNode.Status.CudaVersion = "pending"
-		return fmt.Errorf("NVIDIA drivers not yet installed on node %s: %w", gryviaNode.Spec.NodeName, err)
+// scrapeDCGM returns per-GPU status from the DCGM exporter pod running on the
+// node. It is best effort: any problem yields nil.
+func (r *GryviaGpuNodeReconciler) scrapeDCGM(ctx context.Context, nodeName string) []gryviav1.GpuStatus {
+	log := r.Log.WithValues("node", nodeName)
+	pods := &corev1.PodList{}
+	var opts []client.ListOption
+	if r.DCGMNamespace != "" {
+		opts = append(opts, client.InNamespace(r.DCGMNamespace))
 	}
-
-	gryviaNode.Status.DriverVersion = driverVersion
-	gryviaNode.Status.CudaVersion = cudaVersion
-
+	if err := r.List(ctx, pods, opts...); err != nil {
+		log.V(1).Info("Cannot list pods to find the DCGM exporter", "error", err.Error())
+		return nil
+	}
+	for i := range pods.Items {
+		p := &pods.Items[i]
+		if p.Spec.NodeName != nodeName || p.Status.PodIP == "" || p.DeletionTimestamp != nil {
+			continue
+		}
+		if p.Labels["app.kubernetes.io/component"] != "dcgm-exporter" && !strings.Contains(p.Name, "dcgm-exporter") {
+			continue
+		}
+		status, err := r.fetchDCGM(ctx, p.Status.PodIP)
+		if err != nil {
+			log.V(1).Info("DCGM exporter scrape failed", "pod", p.Name, "error", err.Error())
+			continue
+		}
+		if len(status) > 0 {
+			return status
+		}
+	}
 	return nil
 }
 
-func (r *GryviaGpuNodeReconciler) checkGpuHealth(ctx context.Context, gryviaNode *gryviav1.GryviaGpuNode) ([]gryviav1.GpuStatus, error) {
-	// Use NVML to get GPU information
-	gpuInfoList, err := gpu.GetGpuInfo(gryviaNode.Spec.GpuCount)
+func (r *GryviaGpuNodeReconciler) fetchDCGM(ctx context.Context, ip string) ([]gryviav1.GpuStatus, error) {
+	ctx, cancel := context.WithTimeout(ctx, dcgmTimeout)
+	defer cancel()
+	url := "http://" + net.JoinHostPort(ip, dcgmPort) + "/metrics"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get GPU info: %w", err)
+		return nil, err
 	}
-
-	gpuStatus := make([]gryviav1.GpuStatus, 0, len(gpuInfoList))
-	for _, gpuInfo := range gpuInfoList {
-		status := gryviav1.GpuStatus{
-			Index:       gpuInfo.Index,
-			UUID:        gpuInfo.UUID,
-			Health:      gpuInfo.Health,
-			Temperature: gpuInfo.Temperature,
-			PowerUsage:  gpuInfo.PowerUsage,
-			MemoryUsed:  gpuInfo.MemoryUsed,
-			MemoryTotal: gpuInfo.MemoryTotal,
-			Utilization: gpuInfo.Utilization,
-		}
-		gpuStatus = append(gpuStatus, status)
+	doer := r.HTTPClient
+	if doer == nil {
+		doer = defaultHTTPClient
 	}
-
-	return gpuStatus, nil
+	resp, err := doer.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status %s", resp.Status)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	if err != nil {
+		return nil, err
+	}
+	metrics := discovery.ParseDCGM(string(body))
+	out := make([]gryviav1.GpuStatus, 0, len(metrics))
+	for _, m := range metrics {
+		out = append(out, gryviav1.GpuStatus{
+			Index:       m.Index,
+			UUID:        m.UUID,
+			Health:      discovery.Health(m.Temperature),
+			Temperature: m.Temperature,
+			PowerUsage:  m.PowerUsage,
+			MemoryUsed:  m.MemoryUsed,
+			MemoryTotal: m.MemoryTotal(),
+			Utilization: m.Utilization,
+		})
+	}
+	return out, nil
 }
 
 func (r *GryviaGpuNodeReconciler) labelNode(ctx context.Context, gryviaNode *gryviav1.GryviaGpuNode, node *corev1.Node) error {
@@ -241,6 +304,11 @@ func (r *GryviaGpuNodeReconciler) labelNode(ctx context.Context, gryviaNode *gry
 		// Re-fetch node to get latest version
 		if err := r.Get(ctx, types.NamespacedName{Name: node.Name}, node); err != nil {
 			return err
+		}
+
+		before := make(map[string]string, len(node.Labels))
+		for k, v := range node.Labels {
+			before[k] = v
 		}
 
 		// Apply labels to the Kubernetes node
@@ -265,7 +333,10 @@ func (r *GryviaGpuNodeReconciler) labelNode(ctx context.Context, gryviaNode *gry
 			}
 		}
 
-		// Update the node
+		// Update the node only when something changed
+		if reflect.DeepEqual(before, node.Labels) {
+			return nil
+		}
 		return r.Update(ctx, node)
 	})
 }

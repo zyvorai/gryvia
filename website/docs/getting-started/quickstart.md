@@ -41,7 +41,18 @@ Sign in as **`admin`**; the password is the API key you set with `auth.apiKey` (
 for the scripts). If you set nothing, the key is the well-known lab default **`Admin@321`**, so always
 set your own for anything reachable from an untrusted network.
 
-## Option 3: Deploy to a remote k3s host over SSH
+## Option 3: A fresh GPU server (k3s, drivers and Gryvia in one step)
+
+On Ubuntu 22.04/24.04 with an NVIDIA GPU, as root:
+
+```bash
+sudo ./scripts/install-k3s-gpu.sh server
+```
+
+This installs k3s, Gryvia and NVIDIA's GPU Operator (driver, container toolkit, device plugin), then prints the
+dashboard URL. See [GPU nodes](../guides/GPU_NODES.md) for options, extra nodes and troubleshooting.
+
+## Option 4: Deploy to a remote k3s host over SSH
 
 Deploy to a single-node k3s server over SSH (key authentication; the SSH user needs `sudo`,
 `podman`, `helm`, and access to the k3s cluster). The script builds the images on the host and

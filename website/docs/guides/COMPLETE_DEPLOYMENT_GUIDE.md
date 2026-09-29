@@ -32,47 +32,27 @@ see the [Quick Start](../getting-started/quickstart.md).
 - Kubernetes 1.30+ cluster
 - Helm 3.12+
 - kubectl 1.30+
-- NVIDIA Driver 535+ with CUDA 12.2+
-- NVIDIA OFED 24.01+ (for InfiniBand)
+- NVIDIA driver on GPU nodes: installed by the GPU Operator (`nvidia.enabled=true`) or already on the host
+- NVIDIA OFED 24.01+ for InfiniBand (you install it; Gryvia does not)
 
 ## Step-by-Step Deployment
 
-### 1. Provision Bare Metal Infrastructure
+### 1. Get a Kubernetes cluster with working GPUs
 
-```bash
-cd terraform/bare-metal
+Gryvia needs a Kubernetes cluster whose GPU nodes can run GPU containers. Pick one path:
 
-# Configure your cluster
-cp terraform.tfvars.example terraform.tfvars
-vim terraform.tfvars  # Edit cluster configuration
+| You have | Do this |
+|---|---|
+| A fresh Ubuntu 22.04/24.04 server with an NVIDIA GPU | `sudo ./scripts/install-k3s-gpu.sh server` installs k3s, Gryvia and NVIDIA's GPU Operator (driver, container toolkit, device plugin, DCGM) in one step. Add more GPU nodes with `agent`. |
+| An existing Kubernetes cluster | Install the chart with `--set nvidia.enabled=true` to have NVIDIA's GPU Operator prepare the GPU nodes, or leave it off if your cluster already has the driver, toolkit and device plugin. |
 
-# Generate Ansible inventory and configs
-terraform apply
+Both paths are described in [GPU nodes](./GPU_NODES.md). What Gryvia does **not** install: Kubernetes itself
+(kubeadm), a CNI plugin (Calico), Multus, NVIDIA OFED/InfiniBand drivers or Fabric Manager. The Terraform and
+Ansible directories are experimental and incomplete (see `ansible/README.md`); do not rely on them.
 
-# Output files created:
-# - inventory.ini
-# - kubeadm-config.yaml
-# - node configs
-```
+### 2. Install Gryvia
 
-### 2. Deploy Kubernetes and Dependencies
-
-```bash
-cd ../../ansible
-
-# Run full deployment
-ansible-playbook -i ../terraform/bare-metal/inventory.ini playbooks/site.yaml
-
-# This installs:
-# - Kubernetes cluster (kubeadm)
-# - NVIDIA drivers and CUDA
-# - RDMA/InfiniBand drivers
-# - Container runtime (containerd)
-# - CNI (Calico)
-# - Multus CNI
-```
-
-Deployment takes ~30 minutes. Verify:
+Verify:
 
 ```bash
 kubectl get nodes
@@ -481,7 +461,7 @@ kubectl logs -n gryvia-system -l app=ai-operator
 ### GPU Optimization
 
 ```bash
-# Set persistence mode (done by Ansible already)
+# Set persistence mode (not done automatically)
 nvidia-smi -pm 1
 
 # Set GPU clocks to max

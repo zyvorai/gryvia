@@ -73,3 +73,6 @@ secrets/
 
 website/.docusaurus/
 website/build/
+
+# Helm dependencies are downloaded by `helm dependency build`; only Chart.lock is tracked
+helm/*/charts/

@@ -12,6 +12,9 @@
 #   GRYVIA_API_KEY    sign-in key; the dashboard login is admin / <key>
 #                     (default: the well-known lab key Admin@321 - change it on shared clusters)
 #   GRYVIA_NODEPORT   expose the dashboard on this NodePort (default: ClusterIP; use port-forward)
+#   GRYVIA_NVIDIA     1 = also install NVIDIA's GPU Operator (driver, container toolkit, device plugin,
+#                     DCGM) so GPU nodes get ready without manual setup: sets nvidia.enabled=true
+#   GRYVIA_HOST_DRIVER 1 = the nodes already have the NVIDIA driver (sets nvidia.driver.enabled=false)
 #   HELM_EXTRA_ARGS   extra arguments passed to `helm upgrade --install`
 set -euo pipefail
 
@@ -26,6 +29,13 @@ kubectl version --request-timeout=10s >/dev/null 2>&1 || { echo "cannot reach a 
 
 args=(upgrade --install gryvia "$CHART" --namespace "$NS" --create-namespace --set namespace.create=false --set "auth.apiKey=$KEY" --wait --timeout 300s)
 [[ -n "${GRYVIA_VERSION:-}" ]] && args+=(--version "$GRYVIA_VERSION")
+if [[ "${GRYVIA_NVIDIA:-}" == "1" ]]; then args+=(--set nvidia.enabled=true); fi
+if [[ "${GRYVIA_HOST_DRIVER:-}" == "1" ]]; then args+=(--set nvidia.driver.enabled=false); fi
+# A chart from a checkout needs its dependency (NVIDIA's GPU Operator, disabled by default) downloaded first.
+if [[ -d "$CHART" ]]; then
+  helm repo add nvidia https://helm.ngc.nvidia.com/nvidia --force-update >/dev/null
+  helm dependency build "$CHART" >/dev/null
+fi
 if [[ -n "${GRYVIA_NODEPORT:-}" ]]; then args+=(--set ui.service.type=NodePort --set "ui.service.nodePort=$GRYVIA_NODEPORT"); fi
 # shellcheck disable=SC2206
 [[ -n "${HELM_EXTRA_ARGS:-}" ]] && args+=(${HELM_EXTRA_ARGS})

@@ -6,6 +6,8 @@ and the project aims to follow [Semantic Versioning](https://semver.org/) once i
 ## [Unreleased]
 
 ### Added
+- GPU nodes prepare themselves: the chart can bundle NVIDIA's GPU Operator (`nvidia.enabled=true`: driver, container toolkit, device plugin, DCGM, node feature discovery), and `scripts/install-k3s-gpu.sh` takes a fresh Ubuntu server to k3s + Gryvia + GPU support (`agent` mode joins more nodes). CI runs the script on a real k3s (without a GPU) and dry-run tests for the GPU branches. See `website/docs/guides/GPU_NODES.md` and `docs/gpu-validation.md`.
+- The GPU operator registers a `GryviaGpuNode` for every node labelled by NVIDIA GPU feature discovery (`--auto-register`, chart value `gpuOperator.autoRegister`) and reads readiness, driver and CUDA versions from the node's labels and allocatable GPUs; per-GPU numbers come from the DCGM exporter on that node.
 - CLI in the style of `cilium`: colored `--help` with commands in groups, examples on every command, aliases, `--no-color`/`NO_COLOR`, shell completions (`gryvia completion`), `gryvia version`, concise errors with hints, and one output look (aligned tables with OK/Warning/Error markers) across all commands.
 - `gryvia status` reports the whole platform like `cilium status`: a component banner, workload readiness, cluster totals, image versions, errors and a per-node table (GPU health, driver, DaemonSet pods, maintenance). `--brief`, `--wait`, `--node`, `-o json|yaml`; exits 1 when a required component fails. `-o json|yaml` is also available on `cluster`, `quota`, `queue` and `maintenance list`.
 - Helm chart `helm/gryvia` installs the operators, API gateway and dashboard in one release, with optional
@@ -22,6 +24,9 @@ and the project aims to follow [Semantic Versioning](https://semver.org/) once i
 - Open tabs recover automatically after a redeploy.
 
 ### Changed
+- The GPU operator no longer uses NVML: it runs without cgo on a distroless static image. It previously read GPU data inside its own pod, so it reported the wrong node and normally could not load the driver. `spec.drivers` is informational; nothing consumes it.
+- The bundled NVIDIA device plugin and DCGM exporter DaemonSets only run on nodes labelled `nvidia.com/gpu.present=true` (configurable) and are skipped when the GPU Operator sub-chart is enabled. Previously they ran, and crashed, on every node.
+- Docs no longer claim the Terraform/Ansible flow installs Kubernetes, Calico, Multus or GPU drivers; those directories are marked experimental and incomplete.
 - **Breaking:** the API version is now `gryvia.io/v1alpha1` (it was `v1`), matching the project's alpha status. Objects created under `v1` are not converted: export them, change `apiVersion`, and re-apply. `scripts/rename-version.sh` documents the change; `deploy-remote.sh` recreates CRDs that still store `v1` when they hold no objects.
 - **Breaking:** API kinds renamed from `Fabric*` to `Gryvia*` (for example `FabricAIJob` is now `GryviaAIJob`).
   Recreate existing objects under the new kinds; `scripts/rename-kinds.sh` documents the mapping.

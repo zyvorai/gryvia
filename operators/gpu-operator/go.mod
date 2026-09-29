@@ -3,7 +3,6 @@ module github.com/zyvorai/gryvia/operators/gpu-operator
 go 1.27.0
 
 require (
-	github.com/NVIDIA/go-nvml v0.13.4-0
 	github.com/go-logr/logr v1.4.4
 	k8s.io/api v0.37.1
 	k8s.io/apimachinery v0.37.1

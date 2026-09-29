@@ -12,6 +12,9 @@ global:
 # All operators share one ServiceAccount and ClusterRole (see templates/rbac.yaml).
 gpuOperator:
   enabled: true
+  # Create a GryviaGpuNode for every node that carries the NVIDIA GPU feature-discovery labels
+  # (nvidia.com/gpu.present=true), and remove it again when the GPU goes away. Hand-made objects are never touched.
+  autoRegister: true
   image: {name: gryvia-gpu-operator, tag: ""}
   replicas: 1
   resources:
@@ -142,8 +145,37 @@ networkPolicy:
   enabled: false
 
 # --- GPU node add-ons ----------------------------------------------------------
+# --- NVIDIA GPU Operator (drivers, container toolkit, device plugin, DCGM, GPU feature discovery) ---------
+# Off by default, so kind and CPU-only clusters get nothing NVIDIA-specific. On a GPU cluster whose nodes do not
+# already have the NVIDIA driver and container toolkit, turn it on: `--set nvidia.enabled=true`. It installs NVIDIA's
+# own operator as a sub-chart (https://github.com/NVIDIA/gpu-operator); Gryvia then auto-registers the GPU nodes
+# it prepares. While it is on, the two DaemonSets below (Gryvia's own device plugin and DCGM exporter) are not
+# rendered. Every other key under `nvidia:` is passed through to the NVIDIA chart.
+nvidia:
+  enabled: false
+  driver:
+    # true: the driver runs in a container, nothing is needed on the host.
+    # false: the host already has the NVIDIA driver installed.
+    enabled: true
+  toolkit:
+    enabled: true
+    # k3s runs its own containerd. `scripts/install-k3s-gpu.sh` sets these; set them yourself on k3s:
+    #   - {name: CONTAINERD_CONFIG, value: /var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl}
+    #   - {name: CONTAINERD_SOCKET, value: /run/k3s/containerd/containerd.sock}
+    #   - {name: CONTAINERD_RUNTIME_CLASS, value: nvidia}
+    #   - {name: CONTAINERD_SET_AS_DEFAULT, value: "true"}
+    env: []
+
+# --- Gryvia's own GPU add-ons: used only when nvidia.enabled=false ---------------------------------------------
+# They assume the host already has the NVIDIA driver, the container toolkit and nvidia as the default (or
+# `runtimeClassName`) runtime. They run only on nodes labelled nvidia.com/gpu.present=true (set by GPU feature
+# discovery, or by hand: kubectl label node <name> nvidia.com/gpu.present=true), never on CPU nodes.
 nvidiaDevicePlugin:
   enabled: true
+  nodeSelector:
+    nvidia.com/gpu.present: "true"
+  # Set to `nvidia` when the toolkit registered an nvidia RuntimeClass but did not make it the default.
+  runtimeClassName: ""
   image:
     repository: nvcr.io/nvidia/k8s-device-plugin
     tag: v0.17.0
@@ -151,6 +183,9 @@ nvidiaDevicePlugin:
 
 dcgmExporter:
   enabled: true
+  nodeSelector:
+    nvidia.com/gpu.present: "true"
+  runtimeClassName: ""
   image:
     repository: nvcr.io/nvidia/k8s/dcgm-exporter
     tag: 3.3.9-3.6.1-ubuntu22.04
