@@ -5,13 +5,15 @@ import { api } from '@/lib/api'
 import type { FlowPolicy, CreateFlowPolicyRequest } from '@/lib/api'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import PageHero from '@/components/PageHero'
+import PagePulse from '@/components/kit/PagePulse'
+import { countTone } from '@/components/kit/tone'
 import toast from 'react-hot-toast'
 
 export default function NetworkPolicies() {
   const [showCreateForm, setShowCreateForm] = useState(false)
   const queryClient = useQueryClient()
 
-  const { data: policies, isLoading, isError } = useQuery({
+  const { data: policies, isLoading, isError, dataUpdatedAt } = useQuery({
     queryKey: ['flowPolicies'],
     queryFn: api.getFlowPolicies,
     refetchInterval: 15000,
@@ -46,7 +48,7 @@ export default function NetworkPolicies() {
     return (
       <>
         <PageHero eyebrow="Network" title="Policies unavailable." tint="red" />
-        <p className="login-error" role="alert">
+        <p className="warning" role="alert">
           Failed to load flow policies. Please check your API connection.
         </p>
       </>
@@ -58,71 +60,83 @@ export default function NetworkPolicies() {
   const suggestedPolicies = policies?.filter((p) => p.status?.phase === 'Suggested') || []
 
   return (
-    <div className="apple-story-stack">
+    <>
       <PageHero eyebrow="Network" title="Flow policies." lede="Manage network flow policies and suggestions" />
 
-      <div className="row">
-        <button
-          onClick={() => setShowCreateForm(!showCreateForm)}
-          className={showCreateForm ? 'btn-secondary' : 'primary'}
-        >
-          {showCreateForm ? 'Cancel' : 'Create Policy'}
-        </button>
-        <Link to="/network" className="buttonlike btn-secondary">
-          Back to network
-        </Link>
-      </div>
-
-      {showCreateForm && (
-        <CreatePolicyForm
-          onSubmit={(data) => createMutation.mutate(data)}
-          isSubmitting={createMutation.isPending}
-        />
-      )}
-
-      {suggestedPolicies.length > 0 && (
-        <section className="card">
-          <div className="stat-head">
-            <h2>Suggested Policies</h2>
-            <span className="pill info">{suggestedPolicies.length} suggestions</span>
-          </div>
-          {suggestedPolicies.map((policy) => (
-            <SuggestedPolicyCard
-              key={policy.metadata.name}
-              policy={policy}
-              onApply={() => applyMutation.mutate(policy.metadata.name)}
-              isApplying={applyMutation.isPending}
-            />
-          ))}
-        </section>
-      )}
-
-      <section className="card">
-        <div className="stat-head">
-          <h2>Enforced Policies</h2>
-          <span className="pill ok">{enforcedPolicies.length} active</span>
+      <div className="grid">
+        <div className="toolbar span3">
+          <button
+            onClick={() => setShowCreateForm(!showCreateForm)}
+            className={showCreateForm ? 'btn-secondary' : 'primary'}
+          >
+            {showCreateForm ? 'Cancel' : 'Create Policy'}
+          </button>
+          <Link to="/network" className="buttonlike btn-secondary">
+            Back to network
+          </Link>
         </div>
-        {enforcedPolicies.length === 0 ? (
-          <div className="list-empty">No enforced policies</div>
-        ) : (
-          enforcedPolicies.map((policy) => (
-            <PolicyCard key={policy.metadata.name} policy={policy} />
-          ))
-        )}
-      </section>
 
-      {pendingPolicies.length > 0 && (
-        <section className="card">
-          <div className="stat-head">
-            <h2>Pending Policies</h2>
-            <span className="pill warn">{pendingPolicies.length} pending</span>
-          </div>
-          {pendingPolicies.map((policy) => (
-            <PolicyCard key={policy.metadata.name} policy={policy} />
-          ))}
+        <PagePulse
+          updatedAt={dataUpdatedAt}
+          headline={
+            suggestedPolicies.length > 0
+              ? `${suggestedPolicies.length} suggested polic${suggestedPolicies.length === 1 ? 'y' : 'ies'} awaiting review.`
+              : `${enforcedPolicies.length} polic${enforcedPolicies.length === 1 ? 'y' : 'ies'} enforced.`
+          }
+          tone={suggestedPolicies.length > 0 || pendingPolicies.length > 0 ? 'warn' : undefined}
+          figures={[
+            { label: 'enforced', value: enforcedPolicies.length },
+            { label: 'pending', value: pendingPolicies.length, tone: countTone(pendingPolicies.length) },
+            { label: 'suggested', value: suggestedPolicies.length, tone: countTone(suggestedPolicies.length) },
+            { label: 'total', value: policies?.length ?? 0 },
+          ]}
+        />
+
+        {showCreateForm && (
+          <CreatePolicyForm
+            onSubmit={(data) => createMutation.mutate(data)}
+            isSubmitting={createMutation.isPending}
+          />
+        )}
+
+        {suggestedPolicies.length > 0 && (
+          <section className="card span3">
+            <p className="eyebrow">{suggestedPolicies.length} SUGGESTIONS</p>
+            <h2 className="card-title">Suggested policies</h2>
+            {suggestedPolicies.map((policy) => (
+              <SuggestedPolicyCard
+                key={policy.metadata.name}
+                policy={policy}
+                onApply={() => applyMutation.mutate(policy.metadata.name)}
+                isApplying={applyMutation.isPending}
+              />
+            ))}
+          </section>
+        )}
+
+        <section className="card span3">
+          <p className="eyebrow">{enforcedPolicies.length} ACTIVE</p>
+          <h2 className="card-title">Enforced policies</h2>
+          {enforcedPolicies.length === 0 ? (
+            <p className="empty-state">No enforced policies</p>
+          ) : (
+            enforcedPolicies.map((policy) => (
+              <PolicyCard key={policy.metadata.name} policy={policy} />
+            ))
+          )}
         </section>
-      )}
-    </div>
+
+        {pendingPolicies.length > 0 && (
+          <section className="card span3">
+            <p className="eyebrow">{pendingPolicies.length} PENDING</p>
+            <h2 className="card-title">Pending policies</h2>
+            {pendingPolicies.map((policy) => (
+              <PolicyCard key={policy.metadata.name} policy={policy} />
+            ))}
+          </section>
+        )}
+      </div>
+    </>
   )
 }
 
@@ -209,12 +223,13 @@ function CreatePolicyForm({ onSubmit, isSubmitting }: {
   }
 
   return (
-    <section className="card">
-      <h2>Create Flow Policy</h2>
+    <section className="card span3">
+      <p className="eyebrow">NEW</p>
+      <h2 className="card-title">Create flow policy</h2>
       <form onSubmit={handleSubmit} className="stack">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <label className="stack">
-            <span className="faint">Source Service *</span>
+        <div className="formgrid">
+          <label className="field">
+            <span>Source Service *</span>
             <input
               type="text"
               value={form.sourceService}
@@ -222,8 +237,8 @@ function CreatePolicyForm({ onSubmit, isSubmitting }: {
               placeholder="e.g., frontend"
             />
           </label>
-          <label className="stack">
-            <span className="faint">Destination Service *</span>
+          <label className="field">
+            <span>Destination Service *</span>
             <input
               type="text"
               value={form.destinationService}
@@ -231,16 +246,16 @@ function CreatePolicyForm({ onSubmit, isSubmitting }: {
               placeholder="e.g., payment-api"
             />
           </label>
-          <label className="stack">
-            <span className="faint">Port</span>
+          <label className="field">
+            <span>Port</span>
             <input
               type="number"
               value={form.port}
               onChange={(e) => setForm({ ...form, port: parseInt(e.target.value) || 0 })}
             />
           </label>
-          <label className="stack">
-            <span className="faint">Protocol</span>
+          <label className="field">
+            <span>Protocol</span>
             <select value={form.protocol} onChange={(e) => setForm({ ...form, protocol: e.target.value })}>
               <option value="TCP">TCP</option>
               <option value="UDP">UDP</option>
@@ -248,8 +263,8 @@ function CreatePolicyForm({ onSubmit, isSubmitting }: {
               <option value="gRPC">gRPC</option>
             </select>
           </label>
-          <label className="stack">
-            <span className="faint">Action</span>
+          <label className="field">
+            <span>Action</span>
             <select
               value={form.action}
               onChange={(e) => setForm({ ...form, action: e.target.value as 'allow' | 'deny' })}
@@ -258,8 +273,8 @@ function CreatePolicyForm({ onSubmit, isSubmitting }: {
               <option value="deny">Deny</option>
             </select>
           </label>
-          <label className="stack">
-            <span className="faint">Intent *</span>
+          <label className="field">
+            <span>Intent *</span>
             <input
               type="text"
               value={form.intent}
@@ -280,7 +295,7 @@ function CreatePolicyForm({ onSubmit, isSubmitting }: {
           <ActionPill action={form.action} />
         </div>
 
-        <div className="row">
+        <div className="toolbar">
           <button type="submit" disabled={isSubmitting} className="primary">
             {isSubmitting ? 'Creating...' : 'Create Policy'}
           </button>

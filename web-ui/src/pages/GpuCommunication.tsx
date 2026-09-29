@@ -3,9 +3,11 @@ import { api } from '@/lib/api'
 import type { TrainingInsight, GPUMemStats } from '@/lib/api'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import PageHero from '@/components/PageHero'
+import PagePulse from '@/components/kit/PagePulse'
+import { countTone } from '@/components/kit/tone'
 
 export default function GpuCommunication() {
-  const { data: ncclStats, isLoading: ncclLoading, isError: ncclError } = useQuery({
+  const { data: ncclStats, isLoading: ncclLoading, isError: ncclError, dataUpdatedAt } = useQuery({
     queryKey: ['ncclStats'],
     queryFn: api.getNCCLStats,
     refetchInterval: 15000,
@@ -29,7 +31,7 @@ export default function GpuCommunication() {
     return (
       <>
         <PageHero eyebrow="GPU communication" title="Communication data unavailable." tint="red" />
-        <p className="login-error" role="alert">
+        <p className="warning" role="alert">
           Failed to load GPU communication data. Please check your API connection.
         </p>
       </>
@@ -42,59 +44,59 @@ export default function GpuCommunication() {
   const bottleneck = trainingInsight?.bottleneck ?? '-'
 
   return (
-    <div className="apple-story-stack">
+    <>
       <PageHero
         eyebrow="GPU communication"
         title="How your GPUs talk."
         lede="NCCL collective operations, memory transfers, and training analysis"
       />
 
-      <div className="apple-metric-band">
-        <div>
-          <span>NCCL Operations</span>
-          <b>{totalOps}</b>
-        </div>
-        <div>
-          <span>Stragglers</span>
-          <b className={stragglerCount > 0 ? 'text-bad' : undefined}>{stragglerCount}</b>
-        </div>
-        <div>
-          <span>Comm Pattern</span>
-          <b>{commPattern.replace('_', ' ')}</b>
-        </div>
-        <div>
-          <span>Bottleneck</span>
-          <b className={bottleneck === 'communication' ? 'text-warn' : undefined}>{bottleneck.replace('_', ' ')}</b>
-        </div>
-      </div>
+      <div className="grid">
+        <PagePulse
+          updatedAt={dataUpdatedAt}
+          headline={
+            stragglerCount > 0
+              ? `${stragglerCount} straggler rank${stragglerCount === 1 ? '' : 's'} slowing the job.`
+              : bottleneck === 'communication'
+                ? 'Training is bottlenecked on communication.'
+                : 'All ranks performing within normal bounds.'
+          }
+          tone={stragglerCount > 0 ? 'bad' : bottleneck === 'communication' ? 'warn' : undefined}
+          figures={[
+            { label: 'NCCL operations', value: totalOps },
+            { label: 'stragglers', value: stragglerCount, tone: countTone(stragglerCount) },
+            { label: 'comm pattern', value: commPattern.replace('_', ' ') },
+            { label: 'bottleneck', value: bottleneck.replace('_', ' '), tone: bottleneck === 'communication' ? 'warn' : undefined },
+          ]}
+        />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <section className="card">
-          <h2>NCCL Collective Operations</h2>
+        <section className="card span2">
+          <p className="eyebrow">NCCL</p>
+          <h2 className="card-title">Collective operations</h2>
           {(!ncclStats?.operations || ncclStats.operations.length === 0) ? (
-            <div className="list-empty">
+            <p className="empty-state">
               No NCCL operation data available. Ensure training jobs are running with eBPF tracing.
-            </div>
+            </p>
           ) : (
             <div className="table-wrap">
               <table>
                 <thead>
                   <tr>
                     <th>Op type</th>
-                    <th style={{ textAlign: 'right' }}>Count</th>
-                    <th style={{ textAlign: 'right' }}>Avg latency</th>
-                    <th style={{ textAlign: 'right' }}>P99 latency</th>
-                    <th style={{ textAlign: 'right' }}>Total bytes</th>
+                    <th>Count</th>
+                    <th>Avg latency</th>
+                    <th>P99 latency</th>
+                    <th>Total bytes</th>
                   </tr>
                 </thead>
                 <tbody>
                   {ncclStats.operations.map((op) => (
                     <tr key={op.opType}>
                       <td className="mono">{op.opType}</td>
-                      <td style={{ textAlign: 'right' }}>{op.count.toLocaleString()}</td>
-                      <td style={{ textAlign: 'right' }}>{formatNs(op.avgLatencyNs)}</td>
-                      <td style={{ textAlign: 'right' }}>{formatNs(op.p99LatencyNs)}</td>
-                      <td className="muted" style={{ textAlign: 'right' }}>{formatBytes(op.totalBytes)}</td>
+                      <td>{op.count.toLocaleString()}</td>
+                      <td>{formatNs(op.avgLatencyNs)}</td>
+                      <td>{formatNs(op.p99LatencyNs)}</td>
+                      <td className="muted">{formatBytes(op.totalBytes)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -104,16 +106,18 @@ export default function GpuCommunication() {
         </section>
 
         <section className="card">
-          <h2>Rank Communication Heatmap</h2>
+          <p className="eyebrow">RANKS</p>
+          <h2 className="card-title">Communication heatmap</h2>
           <RankHeatmap rankStats={trainingInsight?.rankStats} />
         </section>
 
-        <section className="card">
-          <h2>Straggler Detection</h2>
+        <section className="card span2">
+          <p className="eyebrow">STRAGGLERS</p>
+          <h2 className="card-title">Straggler detection</h2>
           {(!trainingInsight?.stragglers || trainingInsight.stragglers.length === 0) ? (
-            <div className="list-empty">
+            <p className="empty-state">
               No stragglers detected. All ranks performing within normal bounds.
-            </div>
+            </p>
           ) : (
             trainingInsight.stragglers.map((straggler) => (
               <div key={straggler.rank} className="list-row">
@@ -125,33 +129,37 @@ export default function GpuCommunication() {
               </div>
             ))
           )}
-
-          <h3 style={{ marginTop: 20 }}>Training Bottleneck</h3>
-          <BottleneckIndicator bottleneck={bottleneck} ratio={trainingInsight?.commComputeRatio ?? 0} />
         </section>
 
         <section className="card">
-          <h2>GPU Memory Transfers</h2>
+          <p className="eyebrow">BOTTLENECK</p>
+          <h2 className="card-title">Training bottleneck</h2>
+          <BottleneckIndicator bottleneck={bottleneck} ratio={trainingInsight?.commComputeRatio ?? 0} />
+        </section>
+
+        <section className="card span3">
+          <p className="eyebrow">MEMORY</p>
+          <h2 className="card-title">GPU memory transfers</h2>
           <GPUMemoryChart stats={gpuMemStats} />
         </section>
       </div>
-    </div>
+    </>
   )
 }
 
-// --- Sub-components ---
-
 function RankHeatmap({ rankStats }: { rankStats?: TrainingInsight['rankStats'] }) {
   if (!rankStats || rankStats.length === 0) {
-    return <div className="list-empty">No rank data available.</div>
+    return <p className="empty-state">No rank data available.</p>
   }
 
   const maxLatency = Math.max(...rankStats.map(r => r.avgLatencyNs))
   const gridSize = Math.ceil(Math.sqrt(rankStats.length))
 
   return (
-    <div className="stack" style={{ alignItems: 'center' }}>
-      <div className="grid gap-1" style={{
+    <div className="stack">
+      <div style={{
+        display: 'grid',
+        gap: 4,
         gridTemplateColumns: `repeat(${gridSize}, minmax(0, 1fr))`,
         width: '100%',
         maxWidth: '280px',
@@ -161,8 +169,11 @@ function RankHeatmap({ rankStats }: { rankStats?: TrainingInsight['rankStats'] }
           return (
             <div
               key={rank.rank}
-              className="aspect-square flex items-center justify-center mono"
+              className="mono"
               style={{
+                display: 'grid',
+                placeItems: 'center',
+                aspectRatio: '1',
                 position: 'relative',
                 borderRadius: 6,
                 fontSize: 11,
@@ -234,10 +245,11 @@ function GPUMemoryChart({ stats }: { stats?: GPUMemStats }) {
     <div className="stack">
       {transfers.map(t => (
         <div key={t.label}>
-          <div className="stat-head" style={{ marginBottom: 6 }}>
-            <span>
-              <b>{t.label}</b> <span className="faint">{t.sublabel}</span>
-            </span>
+          <div className="list-row">
+            <div className="grow">
+              <b>{t.label}</b>
+              <small>{t.sublabel}</small>
+            </div>
             <span className="mono muted">{formatBytes(t.bytes)}</span>
           </div>
           <div className="progress">
@@ -246,7 +258,7 @@ function GPUMemoryChart({ stats }: { stats?: GPUMemStats }) {
         </div>
       ))}
       {(!stats || (stats.h2dBytes === 0 && stats.d2hBytes === 0 && stats.d2dBytes === 0)) && (
-        <div className="list-empty">No memory transfer data available yet.</div>
+        <p className="empty-state">No memory transfer data available yet.</p>
       )}
     </div>
   )

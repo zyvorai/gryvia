@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { X } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { InferenceService } from '@/lib/api'
 import PageHero from '@/components/PageHero'
+import PagePulse from '@/components/kit/PagePulse'
 import LoadingSpinner from '@/components/LoadingSpinner'
 
 const BACKEND_LABELS: Record<string, string> = {
@@ -23,7 +23,7 @@ export default function InferenceServices() {
   const queryClient = useQueryClient()
   const [showCreateForm, setShowCreateForm] = useState(false)
 
-  const { data: services, isLoading, isError, refetch, isRefetching } = useQuery({
+  const { data: services, isLoading, isError, refetch, isRefetching, dataUpdatedAt } = useQuery({
     queryKey: ['inferenceServices'],
     queryFn: api.getInferenceServices,
     refetchInterval: 15000,
@@ -37,7 +37,7 @@ export default function InferenceServices() {
   if (isError) return (
     <>
       <PageHero eyebrow="Inference" title="Services unavailable." tint="red" />
-      <p className="login-error" role="alert">Failed to load inference services. Please try again.</p>
+      <p className="warning" role="alert">Failed to load inference services. Please try again.</p>
     </>
   )
 
@@ -49,34 +49,38 @@ export default function InferenceServices() {
     : 0
 
   return (
-    <div className="apple-story-stack">
+    <>
       <PageHero eyebrow="Inference" title="Serve models at scale." lede="Model serving management." />
 
-      <div className="page-actions">
-        <button className="primary" onClick={() => setShowCreateForm(true)}>
-          Deploy Model
-        </button>
-        <button className="btn-secondary" onClick={() => refetch()} disabled={isRefetching}>
-          Refresh
-        </button>
-      </div>
+      <div className="grid">
+        <PagePulse
+          updatedAt={dataUpdatedAt}
+          headline={`${activeServices.length} of ${services?.length || 0} inference services ready.`}
+          tone={services && services.length > activeServices.length ? 'warn' : undefined}
+          figures={[
+            { label: 'Active services', value: activeServices.length },
+            { label: 'Total replicas', value: totalReplicas },
+            { label: 'Canary deployments', value: canaryDeployments.length },
+            { label: 'Avg latency', value: avgLatency > 0 ? `${avgLatency}ms` : '-' },
+          ]}
+        />
 
-      <div className="apple-metric-band">
-        <div><span>Active Services</span><b>{activeServices.length}</b></div>
-        <div><span>Total Replicas</span><b>{totalReplicas}</b></div>
-        <div><span>Canary Deployments</span><b>{canaryDeployments.length}</b></div>
-        <div><span>Avg Latency</span><b>{avgLatency > 0 ? `${avgLatency}ms` : '-'}</b></div>
-      </div>
-
-      <section className="card">
-        <div className="stat-head">
-          <h2>All Services</h2>
-          <span className="faint">{services?.length || 0} total</span>
-        </div>
+        <section className="card span3">
+          <p className="eyebrow">Serving</p>
+          <h2 className="card-title">All Services</h2>
+          <div className="toolbar">
+            <button className="primary" onClick={() => setShowCreateForm(true)}>
+              Deploy Model
+            </button>
+            <button className="btn-refresh" onClick={() => refetch()} disabled={isRefetching}>
+              Refresh
+            </button>
+            <span className="faint">{services?.length || 0} total</span>
+          </div>
         {isLoading ? (
           <LoadingSpinner />
         ) : (services || []).length === 0 ? (
-          <div className="list-empty">No inference services deployed</div>
+          <p className="empty-state">No inference services deployed</p>
         ) : (
           <div className="table-wrap">
             <table>
@@ -109,12 +113,13 @@ export default function InferenceServices() {
             </table>
           </div>
         )}
-      </section>
+        </section>
+      </div>
 
       {showCreateForm && (
         <CreateInferenceServiceModal onClose={() => setShowCreateForm(false)} />
       )}
-    </div>
+    </>
   )
 }
 
@@ -209,17 +214,12 @@ function CreateInferenceServiceModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-        <div className="stat-head" style={{ marginBottom: 16 }}>
-          <h2 style={{ margin: 0 }}>Deploy Inference Service</h2>
-          <button type="button" className="icon-button" onClick={onClose} aria-label="Close">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+        <h2 className="card-title">Deploy Inference Service</h2>
 
-        <form onSubmit={handleSubmit} className="stack" style={{ gap: 16 }}>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="faint" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Service Name</label>
+        <form onSubmit={handleSubmit} className="stack">
+          <div className="formgrid">
+            <label className="field">
+              Service Name
               <input
                 type="text"
                 required
@@ -227,9 +227,9 @@ function CreateInferenceServiceModal({ onClose }: { onClose: () => void }) {
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="my-inference-svc"
               />
-            </div>
-            <div>
-              <label className="faint" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Model Reference</label>
+            </label>
+            <label className="field">
+              Model Reference
               <input
                 type="text"
                 required
@@ -237,12 +237,12 @@ function CreateInferenceServiceModal({ onClose }: { onClose: () => void }) {
                 onChange={(e) => setFormData({ ...formData, modelRef: e.target.value })}
                 placeholder="my-model:v2"
               />
-            </div>
+            </label>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="faint" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Backend</label>
+          <div className="formgrid">
+            <label className="field">
+              Backend
               <select
                 value={formData.backend}
                 onChange={(e) => setFormData({ ...formData, backend: e.target.value })}
@@ -252,9 +252,9 @@ function CreateInferenceServiceModal({ onClose }: { onClose: () => void }) {
                 <option value="TensorRT-LLM">TensorRT-LLM</option>
                 <option value="TorchServe">TorchServe</option>
               </select>
-            </div>
-            <div>
-              <label className="faint" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Replicas</label>
+            </label>
+            <label className="field">
+              Replicas
               <input
                 type="number"
                 min="1"
@@ -263,14 +263,14 @@ function CreateInferenceServiceModal({ onClose }: { onClose: () => void }) {
                 value={formData.replicas}
                 onChange={(e) => setFormData({ ...formData, replicas: parseInt(e.target.value, 10) || 1 })}
               />
-            </div>
+            </label>
           </div>
 
-          <div>
-            <h3>Autoscaling</h3>
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <label className="faint" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Min Replicas</label>
+          <div className="stack">
+            <p className="eyebrow">Autoscaling</p>
+            <div className="formgrid">
+              <label className="field">
+                Min Replicas
                 <input
                   type="number"
                   min="0"
@@ -278,9 +278,9 @@ function CreateInferenceServiceModal({ onClose }: { onClose: () => void }) {
                   value={formData.minReplicas}
                   onChange={(e) => setFormData({ ...formData, minReplicas: parseInt(e.target.value, 10) || 0 })}
                 />
-              </div>
-              <div>
-                <label className="faint" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Max Replicas</label>
+              </label>
+              <label className="field">
+                Max Replicas
                 <input
                   type="number"
                   min="1"
@@ -288,9 +288,9 @@ function CreateInferenceServiceModal({ onClose }: { onClose: () => void }) {
                   value={formData.maxReplicas}
                   onChange={(e) => setFormData({ ...formData, maxReplicas: parseInt(e.target.value, 10) || 1 })}
                 />
-              </div>
-              <div>
-                <label className="faint" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Target CPU %</label>
+              </label>
+              <label className="field">
+                Target CPU %
                 <input
                   type="number"
                   min="10"
@@ -298,19 +298,19 @@ function CreateInferenceServiceModal({ onClose }: { onClose: () => void }) {
                   value={formData.targetUtilization}
                   onChange={(e) => setFormData({ ...formData, targetUtilization: parseInt(e.target.value, 10) || 80 })}
                 />
-              </div>
+              </label>
             </div>
           </div>
 
-          {error && <p className="text-warn">{error}</p>}
+          {error && <p className="warning" role="alert">{error}</p>}
 
           {createMutation.isError && (
-            <p className="login-error" role="alert">
+            <p className="warning" role="alert">
               Error deploying service: {createMutation.error instanceof Error ? createMutation.error.message : 'Unknown error'}
             </p>
           )}
 
-          <div className="row" style={{ justifyContent: 'flex-end' }}>
+          <div className="toolbar">
             <button type="button" className="btn-secondary" onClick={onClose}>
               Cancel
             </button>

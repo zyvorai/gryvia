@@ -5,6 +5,8 @@ import { api } from '@/lib/api'
 import type { NetworkFlow } from '@/lib/api'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import PageHero from '@/components/PageHero'
+import PagePulse from '@/components/kit/PagePulse'
+import { countTone } from '@/components/kit/tone'
 
 const ITEMS_PER_PAGE = 20
 
@@ -15,7 +17,7 @@ export default function NetworkFlows() {
   const [protocolFilter, setProtocolFilter] = useState<string>('all')
   const [page, setPage] = useState(1)
 
-  const { data: flows, isLoading, isError } = useQuery({
+  const { data: flows, isLoading, isError, dataUpdatedAt } = useQuery({
     queryKey: ['networkFlows'],
     queryFn: api.getNetworkFlows,
     refetchInterval: 5000,
@@ -47,111 +49,122 @@ export default function NetworkFlows() {
     return (
       <>
         <PageHero eyebrow="Network" title="Flows unavailable." tint="red" />
-        <p className="login-error" role="alert">
+        <p className="warning" role="alert">
           Failed to load network flows. Please check your API connection.
         </p>
       </>
     )
   }
 
+  const dropped = filtered.filter((f) => f.spec.verdict === 'DROP' || f.spec.verdict === 'DENIED').length
+  const forwarded = filtered.filter((f) => f.spec.verdict === 'FORWARDED' || f.spec.verdict === 'ALLOW').length
+
   return (
-    <div className="apple-story-stack">
+    <>
       <PageHero eyebrow="Network" title="Every flow, live." lede="Real-time network flow monitoring" />
 
-      <div className="row">
-        <Link to="/network" className="buttonlike btn-secondary">
-          Back to network
-        </Link>
-        <span className="pill ok">Live</span>
-      </div>
-
-      <section className="card">
-        <h2>Filters</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <label className="stack">
-            <span className="faint">Service</span>
-            <input
-              type="text"
-              value={serviceFilter}
-              onChange={(e) => updateFilter(setServiceFilter)(e.target.value)}
-              placeholder="Filter by service..."
-            />
-          </label>
-          <label className="stack">
-            <span className="faint">Namespace</span>
-            <input
-              type="text"
-              value={namespaceFilter}
-              onChange={(e) => updateFilter(setNamespaceFilter)(e.target.value)}
-              placeholder="Filter by namespace..."
-            />
-          </label>
-          <label className="stack">
-            <span className="faint">Verdict</span>
-            <select value={verdictFilter} onChange={(e) => updateFilter(setVerdictFilter)(e.target.value)}>
-              <option value="all">All</option>
-              <option value="FORWARDED">Forwarded</option>
-              <option value="ALLOW">Allow</option>
-              <option value="DROP">Drop</option>
-              <option value="DENIED">Denied</option>
-            </select>
-          </label>
-          <label className="stack">
-            <span className="faint">Protocol</span>
-            <select value={protocolFilter} onChange={(e) => updateFilter(setProtocolFilter)(e.target.value)}>
-              <option value="all">All</option>
-              <option value="TCP">TCP</option>
-              <option value="UDP">UDP</option>
-              <option value="HTTP">HTTP</option>
-              <option value="gRPC">gRPC</option>
-            </select>
-          </label>
-        </div>
-      </section>
-
-      <section className="card">
-        <div className="stat-head">
-          <h2>{filtered.length} flows</h2>
-          <span className="faint">Page {page} of {totalPages}</span>
-        </div>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Timestamp</th>
-                <th>Source</th>
-                <th>Destination</th>
-                <th>Protocol</th>
-                <th>Port</th>
-                <th>Bytes</th>
-                <th>Latency</th>
-                <th>Verdict</th>
-              </tr>
-            </thead>
-            <tbody>
-              {paginated.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="list-empty">No flows matching current filters</td>
-                </tr>
-              ) : (
-                paginated.map((flow) => (
-                  <FlowRow key={flow.metadata.name} flow={flow} />
-                ))
-              )}
-            </tbody>
-          </table>
+      <div className="grid">
+        <div className="toolbar span3">
+          <Link to="/network" className="buttonlike btn-secondary">
+            Back to network
+          </Link>
         </div>
 
-        {totalPages > 1 && (
-          <div className="stat-head" style={{ marginTop: 16 }}>
-            <button
-              className="btn-secondary"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1}
-            >
-              Previous
-            </button>
-            <div className="row">
+        <PagePulse
+          updatedAt={dataUpdatedAt}
+          headline={dropped > 0 ? `${dropped} flow${dropped === 1 ? '' : 's'} dropped or denied.` : 'No dropped or denied flows in view.'}
+          tone={dropped > 0 ? 'warn' : undefined}
+          figures={[
+            { label: 'flows shown', value: filtered.length },
+            { label: 'forwarded', value: forwarded },
+            { label: 'dropped / denied', value: dropped, tone: countTone(dropped) },
+            { label: 'total captured', value: flows?.length ?? 0 },
+          ]}
+        />
+
+        <section className="card span3">
+          <p className="eyebrow">FILTERS</p>
+          <h2 className="card-title">Narrow the view</h2>
+          <div className="filters">
+            <label>
+              Service
+              <input
+                type="text"
+                value={serviceFilter}
+                onChange={(e) => updateFilter(setServiceFilter)(e.target.value)}
+                placeholder="Filter by service..."
+              />
+            </label>
+            <label>
+              Namespace
+              <input
+                type="text"
+                value={namespaceFilter}
+                onChange={(e) => updateFilter(setNamespaceFilter)(e.target.value)}
+                placeholder="Filter by namespace..."
+              />
+            </label>
+            <label>
+              Verdict
+              <select value={verdictFilter} onChange={(e) => updateFilter(setVerdictFilter)(e.target.value)}>
+                <option value="all">All</option>
+                <option value="FORWARDED">Forwarded</option>
+                <option value="ALLOW">Allow</option>
+                <option value="DROP">Drop</option>
+                <option value="DENIED">Denied</option>
+              </select>
+            </label>
+            <label>
+              Protocol
+              <select value={protocolFilter} onChange={(e) => updateFilter(setProtocolFilter)(e.target.value)}>
+                <option value="all">All</option>
+                <option value="TCP">TCP</option>
+                <option value="UDP">UDP</option>
+                <option value="HTTP">HTTP</option>
+                <option value="gRPC">gRPC</option>
+              </select>
+            </label>
+          </div>
+        </section>
+
+        <section className="card span3">
+          <p className="eyebrow">PAGE {page} OF {totalPages}</p>
+          <h2 className="card-title">{filtered.length} flows</h2>
+          {paginated.length === 0 ? (
+            <p className="empty-state">No flows matching current filters</p>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Timestamp</th>
+                    <th>Source</th>
+                    <th>Destination</th>
+                    <th>Protocol</th>
+                    <th>Port</th>
+                    <th>Bytes</th>
+                    <th>Latency</th>
+                    <th>Verdict</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginated.map((flow) => (
+                    <FlowRow key={flow.metadata.name} flow={flow} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {totalPages > 1 && (
+            <div className="toolbar">
+              <button
+                className="btn-secondary"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+              >
+                Previous
+              </button>
               {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                 const pageNum = page <= 3 ? i + 1
                   : page >= totalPages - 2 ? totalPages - 4 + i
@@ -160,27 +173,26 @@ export default function NetworkFlows() {
                 return (
                   <button
                     key={pageNum}
-                    className="btn-secondary"
+                    className={pageNum === page ? 'primary' : 'btn-secondary'}
                     aria-current={pageNum === page ? 'page' : undefined}
                     onClick={() => setPage(pageNum)}
-                    style={pageNum === page ? { color: 'var(--apple-blue)', fontWeight: 700 } : undefined}
                   >
                     {pageNum}
                   </button>
                 )
               })}
+              <button
+                className="btn-secondary"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+              >
+                Next
+              </button>
             </div>
-            <button
-              className="btn-secondary"
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page === totalPages}
-            >
-              Next
-            </button>
-          </div>
-        )}
-      </section>
-    </div>
+          )}
+        </section>
+      </div>
+    </>
   )
 }
 

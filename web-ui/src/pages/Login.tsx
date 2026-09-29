@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/lib/auth'
 
+/** Same composition as netra's Login (styled by netra.css: .login-shell/.login-info/.login-card). */
 export default function Login() {
   const { isAuthenticated, authConfig, loginWithPassword, loginWithSSO, error: authError } = useAuth()
   const navigate = useNavigate()
@@ -9,8 +10,9 @@ export default function Login() {
 
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [localError, setLocalError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [localError, setLocalError] = useState('')
+  const host = window.location.host || window.location.hostname
 
   const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname || '/dashboard'
 
@@ -20,87 +22,86 @@ export default function Login() {
     }
   }, [isAuthenticated, navigate, from])
 
-  const error = localError || authError
+  const error = localError || authError || ''
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLocalError(null)
-    setIsSubmitting(true)
+    setLocalError('')
+    setBusy(true)
     try {
       await loginWithPassword(username, password)
       navigate(from, { replace: true })
     } catch (err) {
       setLocalError(err instanceof Error ? err.message : 'Authentication failed')
     } finally {
-      setIsSubmitting(false)
+      setBusy(false)
     }
-  }
-
-  const handleSSOLogin = () => {
-    setLocalError(null)
-    loginWithSSO()
   }
 
   return (
     <div className="login-shell">
-      <section>
-        <img className="brand-mark" src="/gryvia-mark.svg" alt="" style={{ width: 56, height: 56, margin: '0 auto 20px', borderRadius: 'var(--radius-lg)' }} />
+      <div className="login-info">
+        <img src="/gryvia-mark.svg" alt="Gryvia" className="login-logo" />
         <p className="eyebrow">Gryvia</p>
-        <h1 className="apple-display">Sign in.</h1>
-        <p className="apple-lede" style={{ margin: '12px auto 0' }}>Open GPU orchestration for Kubernetes.</p>
-      </section>
-
-      <div className="card login-card">
-        {error && <p className="login-error" role="alert">{error}</p>}
-
+        <h1>Open GPU orchestration for Kubernetes.</h1>
+        <p>
+          Schedule, share and observe GPU workloads with operators and CRDs you already know how to run — one control
+          plane for jobs, quotas, nodes and network intelligence.
+        </p>
+        <p className="login-host">
+          Connecting to <code>{host}</code>
+        </p>
+      </div>
+      <form className="card login-card" onSubmit={submit} noValidate>
+        <h1>Sign in.</h1>
         {authConfig?.oidcEnabled && (
-          <button className="primary" onClick={handleSSOLogin}>
+          <button type="button" className="primary" onClick={() => loginWithSSO()}>
             Sign in with SSO
           </button>
         )}
-
-        {authConfig?.oidcEnabled && authConfig?.apiKeyEnabled && <p className="faint" style={{ textAlign: 'center', margin: 0 }}>or</p>}
-
         {authConfig?.apiKeyEnabled !== false && (
-          <form onSubmit={handleSubmit} className="stack" style={{ gap: 14 }} noValidate>
-            <label htmlFor="username">
+          <>
+            <label className="tokenbox">
               Username
               <input
-                id="username"
                 value={username}
                 onChange={(e) => {
                   setUsername(e.target.value)
-                  setLocalError(null)
+                  if (localError) setLocalError('')
                 }}
                 autoFocus
                 autoComplete="username"
-                disabled={isSubmitting}
+                disabled={busy}
                 aria-invalid={Boolean(error)}
               />
             </label>
-            <label htmlFor="password">
+            <label className="tokenbox">
               Password
               <input
-                id="password"
                 type="password"
                 value={password}
                 onChange={(e) => {
                   setPassword(e.target.value)
-                  setLocalError(null)
+                  if (localError) setLocalError('')
                 }}
                 autoComplete="current-password"
-                disabled={isSubmitting}
+                disabled={busy}
                 aria-invalid={Boolean(error)}
               />
             </label>
-            <button type="submit" className={authConfig?.oidcEnabled ? 'btn-secondary' : 'primary'} disabled={isSubmitting}>
-              {isSubmitting ? 'Signing in…' : 'Sign in'}
-            </button>
-          </form>
+          </>
         )}
-
-        {authConfig === null && <p className="faint" style={{ textAlign: 'center' }}>Loading authentication…</p>}
-      </div>
+        {error ? (
+          <p className="login-error" role="alert" aria-live="assertive">
+            {error}
+          </p>
+        ) : null}
+        {authConfig?.apiKeyEnabled !== false && (
+          <button type="submit" className={authConfig?.oidcEnabled ? 'btn-secondary' : 'primary'} disabled={busy}>
+            {busy ? 'Signing in…' : 'Sign in'}
+          </button>
+        )}
+      </form>
     </div>
   )
 }

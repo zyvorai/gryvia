@@ -3,10 +3,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import type { RegisteredModel } from '@/lib/api'
 import PageHero from '@/components/PageHero'
+import PagePulse from '@/components/kit/PagePulse'
 import LoadingSpinner from '@/components/LoadingSpinner'
 
 export default function ModelRegistry() {
-  const { data: models, isLoading, isError, refetch, isRefetching } = useQuery({
+  const { data: models, isLoading, isError, refetch, isRefetching, dataUpdatedAt } = useQuery({
     queryKey: ['models'],
     queryFn: api.getModels,
     refetchInterval: 30000,
@@ -15,7 +16,7 @@ export default function ModelRegistry() {
   if (isError) return (
     <>
       <PageHero eyebrow="Models" title="Registry unavailable." tint="red" />
-      <p className="login-error" role="alert">Failed to load model registry. Please try again.</p>
+      <p className="warning" role="alert">Failed to load model registry. Please try again.</p>
     </>
   )
 
@@ -24,31 +25,34 @@ export default function ModelRegistry() {
   const devModels = models?.filter(m => m.spec?.stage === 'dev') || []
 
   return (
-    <div className="apple-story-stack">
+    <>
       <PageHero eyebrow="Models" title="Every model, versioned." lede="Model versioning and promotion." />
 
-      <div className="page-actions">
-        <button className="btn-secondary" onClick={() => refetch()} disabled={isRefetching}>
-          Refresh
-        </button>
-      </div>
+      <div className="grid">
+        <PagePulse
+          updatedAt={dataUpdatedAt}
+          headline={`${productionModels.length} of ${models?.length || 0} models in production.`}
+          figures={[
+            { label: 'Total models', value: models?.length || 0 },
+            { label: 'Production', value: productionModels.length },
+            { label: 'Staging', value: stagingModels.length },
+            { label: 'Dev', value: devModels.length },
+          ]}
+        />
 
-      <div className="apple-metric-band">
-        <div><span>Total Models</span><b>{models?.length || 0}</b></div>
-        <div><span>Production Models</span><b>{productionModels.length}</b></div>
-        <div><span>Staging</span><b>{stagingModels.length}</b></div>
-        <div><span>Dev</span><b>{devModels.length}</b></div>
-      </div>
-
-      <section className="card">
-        <div className="stat-head">
-          <h2>All Models</h2>
-          <span className="faint">{models?.length || 0} total</span>
-        </div>
+        <section className="card span3">
+          <p className="eyebrow">Registry</p>
+          <h2 className="card-title">All Models</h2>
+          <div className="toolbar">
+            <button className="btn-refresh" onClick={() => refetch()} disabled={isRefetching}>
+              Refresh
+            </button>
+            <span className="faint">{models?.length || 0} total</span>
+          </div>
         {isLoading ? (
           <LoadingSpinner />
         ) : (models || []).length === 0 ? (
-          <div className="list-empty">No models registered</div>
+          <p className="empty-state">No models registered</p>
         ) : (
           <div className="table-wrap">
             <table>
@@ -70,8 +74,9 @@ export default function ModelRegistry() {
             </table>
           </div>
         )}
-      </section>
-    </div>
+        </section>
+      </div>
+    </>
   )
 }
 
@@ -114,7 +119,7 @@ function ModelRow({ model }: { model: RegisteredModel }) {
 
   return (
     <>
-      <tr className="table-row-hover" style={{ cursor: 'pointer' }} onClick={() => setExpanded(!expanded)}>
+      <tr className="table-row-hover" onClick={() => setExpanded(!expanded)}>
         <td>
           <span className="faint" aria-hidden="true">{expanded ? '▾' : '▸'}</span>{' '}
           <b>{name}</b>
@@ -129,7 +134,7 @@ function ModelRow({ model }: { model: RegisteredModel }) {
         </td>
         <td onClick={(e) => e.stopPropagation()}>
           {promoteOptions[stage] && promoteOptions[stage].length > 0 && (
-            <div className="row" style={{ gap: 8 }}>
+            <div className="toolbar">
               <button className="btn-secondary" onClick={() => setPromoteOpen(!promoteOpen)}>
                 Promote
               </button>
@@ -152,11 +157,11 @@ function ModelRow({ model }: { model: RegisteredModel }) {
       {expanded && (
         <tr>
           <td colSpan={6}>
-            <div className="card-grid">
+            <div className="formgrid">
               <div>
                 <div className="faint">Artifact Paths</div>
                 {model.spec?.artifacts && model.spec.artifacts.length > 0 ? (
-                  <div className="stack" style={{ gap: 4 }}>
+                  <div className="stack">
                     {model.spec.artifacts.map((a, i) => (
                       <div key={i} className="mono muted">{a}</div>
                     ))}

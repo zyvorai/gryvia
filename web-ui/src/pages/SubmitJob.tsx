@@ -96,15 +96,16 @@ export default function SubmitJob() {
   }
 
   return (
-    <div className="apple-story-stack">
+    <>
       <PageHero eyebrow="Jobs" title="Launch a job in seconds." lede="Configure and submit an AI training or inference job" />
 
-      <form onSubmit={handleSubmit} className="stack">
-        <section className="card">
-          <h2>Basic Information</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <label className="stack" style={{ gap: 6 }}>
-              <span className="faint">Job Name</span>
+      <form onSubmit={handleSubmit} className="grid">
+        <section className="card span2">
+          <p className="eyebrow">IDENTITY</p>
+          <h2 className="card-title">Basic Information</h2>
+          <div className="formgrid">
+            <label className="field">
+              <span>Job Name</span>
               <input
                 type="text"
                 required
@@ -114,8 +115,8 @@ export default function SubmitJob() {
               />
             </label>
 
-            <label className="stack" style={{ gap: 6 }}>
-              <span className="faint">Framework</span>
+            <label className="field">
+              <span>Framework</span>
               <select
                 value={formData.framework}
                 onChange={(e) => setFormData({ ...formData, framework: e.target.value })}
@@ -127,8 +128,8 @@ export default function SubmitJob() {
               </select>
             </label>
 
-            <label className="stack md:col-span-2" style={{ gap: 6 }}>
-              <span className="faint">Container Image</span>
+            <label className="field span-all">
+              <span>Container Image</span>
               <input
                 type="text"
                 required
@@ -142,10 +143,11 @@ export default function SubmitJob() {
         </section>
 
         <section className="card">
-          <h2>Resource Requirements</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <label className="stack" style={{ gap: 6 }}>
-              <span className="faint">GPU Type</span>
+          <p className="eyebrow">RESOURCES</p>
+          <h2 className="card-title">Resource Requirements</h2>
+          <div className="formgrid">
+            <label className="field">
+              <span>GPU Type</span>
               <select
                 value={formData.gpuType}
                 onChange={(e) => setFormData({ ...formData, gpuType: e.target.value })}
@@ -159,8 +161,8 @@ export default function SubmitJob() {
               </select>
             </label>
 
-            <label className="stack" style={{ gap: 6 }}>
-              <span className="faint">GPU Count</span>
+            <label className="field">
+              <span>GPU Count</span>
               <input
                 type="number"
                 min="1"
@@ -171,8 +173,8 @@ export default function SubmitJob() {
               />
             </label>
 
-            <label className="stack" style={{ gap: 6 }}>
-              <span className="faint">Memory</span>
+            <label className="field">
+              <span>Memory</span>
               <input
                 type="text"
                 required
@@ -184,8 +186,8 @@ export default function SubmitJob() {
               />
             </label>
 
-            <label className="stack" style={{ gap: 6 }}>
-              <span className="faint">CPU Cores</span>
+            <label className="field">
+              <span>CPU Cores</span>
               <input
                 type="number"
                 min="1"
@@ -198,8 +200,9 @@ export default function SubmitJob() {
           </div>
         </section>
 
-        <section className="card">
-          <h2>Distributed Training</h2>
+        <section className="card span2">
+          <p className="eyebrow">SCALE</p>
+          <h2 className="card-title">Distributed Training</h2>
           <div className="stack">
             <label className="row">
               <input
@@ -211,9 +214,9 @@ export default function SubmitJob() {
             </label>
 
             {formData.distributedEnabled && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <label className="stack" style={{ gap: 6 }}>
-                  <span className="faint">Nodes</span>
+              <div className="formgrid">
+                <label className="field">
+                  <span>Nodes</span>
                   <input
                     type="number"
                     min="1"
@@ -222,8 +225,8 @@ export default function SubmitJob() {
                     onChange={(e) => setFormData({ ...formData, nodes: parseInt(e.target.value, 10) || 1 })}
                   />
                 </label>
-                <label className="stack" style={{ gap: 6 }}>
-                  <span className="faint">GPUs/Node</span>
+                <label className="field">
+                  <span>GPUs/Node</span>
                   <input
                     type="number"
                     min="1"
@@ -238,27 +241,29 @@ export default function SubmitJob() {
         </section>
 
         <section className="card">
-          <h2>Command</h2>
+          <p className="eyebrow">ENTRYPOINT</p>
+          <h2 className="card-title">Command</h2>
           <textarea
             required
             rows={3}
-            className="mono"
+            className="codeedit"
             value={formData.command}
             onChange={(e) => setFormData({ ...formData, command: e.target.value })}
             placeholder="python train.py --epochs 100 --batch-size 32"
           />
         </section>
 
-        <section className="card">
-          <div className="stat-head" style={{ marginBottom: 12 }}>
-            <h2 style={{ margin: 0 }}>Environment Variables</h2>
+        <section className="card span3">
+          <p className="eyebrow">ENVIRONMENT</p>
+          <h2 className="card-title">Environment Variables</h2>
+          <div className="toolbar">
             <button type="button" className="btn-secondary" onClick={addEnvVar}>
               Add Variable
             </button>
           </div>
-          <div className="stack" style={{ gap: 12 }}>
+          <div className="stack">
             {formData.env.map((env, idx) => (
-              <div key={env.id} className="row" style={{ flexWrap: 'nowrap' }}>
+              <div key={env.id} className="toolbar">
                 <input
                   type="text"
                   className="mono"
@@ -279,22 +284,22 @@ export default function SubmitJob() {
                   onClick={() => removeEnvVar(idx)}
                   aria-label="Remove variable"
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <Trash2 className="icon-sm" />
                 </button>
               </div>
             ))}
           </div>
         </section>
 
-        {error && <p className="text-warn">{error}</p>}
+        {error && <p className="warning span3" role="alert">{error}</p>}
 
         {createJobMutation.isError && (
-          <p className="login-error" role="alert">
+          <p className="warning span3" role="alert">
             Error submitting job: {createJobMutation.error instanceof Error ? createJobMutation.error.message : 'Unknown error'}
           </p>
         )}
 
-        <div className="row" style={{ justifyContent: 'flex-end' }}>
+        <div className="toolbar span3">
           <button type="button" className="btn-secondary" onClick={() => navigate('/jobs')}>
             Cancel
           </button>
@@ -303,7 +308,7 @@ export default function SubmitJob() {
           </button>
         </div>
       </form>
-    </div>
+    </>
   )
 }
 

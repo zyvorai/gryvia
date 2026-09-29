@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import PageHero from '@/components/PageHero'
+import PagePulse from '@/components/kit/PagePulse'
 import { useNow } from '@/lib/useNow'
 import { phaseTone } from '@/lib/phase'
 import { jobFramework } from '@/lib/jobs'
@@ -12,7 +13,7 @@ export default function JobDetails() {
   const navigate = useNavigate()
   const now = useNow()
 
-  const { data: job, isLoading, isError } = useQuery({
+  const { data: job, isLoading, isError, dataUpdatedAt } = useQuery({
     queryKey: ['job', name],
     queryFn: () => api.getJob(name!),
     enabled: !!name,
@@ -27,7 +28,7 @@ export default function JobDetails() {
     return (
       <>
         <PageHero eyebrow="Job" title="Job unavailable." tint="red" />
-        <p className="login-error" role="alert">Failed to load job details. Please try again.</p>
+        <p className="warning" role="alert">Failed to load job details. Please try again.</p>
       </>
     )
   }
@@ -50,127 +51,111 @@ export default function JobDetails() {
   const sensitivePatterns = /SECRET|PASSWORD|TOKEN|KEY|CREDENTIAL|API_KEY|PRIVATE|AUTH|ACCESS_ID|DATABASE_URL|CONN/i
 
   return (
-    <div className="apple-story-stack">
+    <>
       <PageHero
         eyebrow="Job"
         title={`${job.metadata.name}.`}
         lede={job.status?.message}
       />
 
-      <div className="page-actions">
-        <button className="btn-secondary" onClick={() => navigate('/jobs')}>
-          Back to Jobs
-        </button>
-        <span className={`pill ${phaseTone(phase)}`}>{phase}</span>
-      </div>
+      <div className="grid">
+        <PagePulse
+          updatedAt={dataUpdatedAt}
+          headline={`${job.metadata.name} is ${phase.toLowerCase()}.`}
+          tone={phase === 'Failed' ? 'bad' : undefined}
+          figures={[
+            { label: 'Created', value: job.metadata.creationTimestamp ? new Date(job.metadata.creationTimestamp).toLocaleString() : 'N/A' },
+            { label: 'Started', value: job.status?.startTime ? new Date(job.status.startTime).toLocaleString() : 'N/A' },
+            { label: 'Duration', value: formatDuration(job.status?.startTime, job.status?.completionTime) },
+            { label: 'GPU type', value: job.spec.gpuType || '-' },
+            { label: 'GPU count', value: job.spec.gpus },
+            { label: 'Memory', value: job.spec.resources?.requests?.memory ?? '-' },
+            { label: 'CPU cores', value: job.spec.resources?.requests?.cpu ?? '-' },
+          ]}
+        />
 
-      <div className="apple-metric-band">
-        <div>
-          <span>Created</span>
-          <b style={{ fontSize: 'var(--fs-h3)' }}>
-            {job.metadata.creationTimestamp ? new Date(job.metadata.creationTimestamp).toLocaleString() : 'N/A'}
-          </b>
-        </div>
-        <div>
-          <span>Started</span>
-          <b style={{ fontSize: 'var(--fs-h3)' }}>
-            {job.status?.startTime ? new Date(job.status.startTime).toLocaleString() : 'N/A'}
-          </b>
-        </div>
-        <div>
-          <span>Duration</span>
-          <b>{formatDuration(job.status?.startTime, job.status?.completionTime)}</b>
-        </div>
-      </div>
-
-      <section className="card">
-        <h2>Resource Allocation</h2>
-        <div className="apple-metric-band">
-          <div>
-            <span>GPU Type</span>
-            <b>{job.spec.gpuType || '-'}</b>
-          </div>
-          <div>
-            <span>GPU Count</span>
-            <b>{job.spec.gpus}</b>
-          </div>
-          <div>
-            <span>Memory</span>
-            <b>{job.spec.resources?.requests?.memory ?? '-'}</b>
-          </div>
-          <div>
-            <span>CPU Cores</span>
-            <b>{job.spec.resources?.requests?.cpu ?? '-'}</b>
-          </div>
-        </div>
-      </section>
-
-      <section className="card">
-        <h2>Job Configuration</h2>
-        <div className="card-grid">
-          <div>
-            <span className="faint">Framework</span>
-            <p>{jobFramework(job)}</p>
-          </div>
-          <div>
-            <span className="faint">Image</span>
-            <p className="mono">{job.spec.image}</p>
-          </div>
-          {job.spec.distributed?.enabled && (
-            <>
-              <div>
-                <span className="faint">Distributed Training</span>
-                <p>Enabled</p>
-              </div>
-              {job.spec.distributed.nodes && (
-                <div>
-                  <span className="faint">Nodes</span>
-                  <p>{job.spec.distributed.nodes}</p>
-                </div>
-              )}
-              {job.spec.distributed.gpusPerNode && (
-                <div>
-                  <span className="faint">GPUs/Node</span>
-                  <p>{job.spec.distributed.gpusPerNode}</p>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </section>
-
-      <section className="card">
-        <h2>Command</h2>
-        <code className="mono">{job.spec.command?.join(' ') || 'N/A'}</code>
-      </section>
-
-      {job.spec.env && job.spec.env.length > 0 && (
-        <section className="card">
-          <h2>Environment Variables</h2>
-          {job.spec.env.map((env, idx) => {
-            const isSensitive = sensitivePatterns.test(env.name)
-            return (
-              <div key={idx} className="list-row">
-                <span className="grow">{env.name}</span>
-                <span className="mono muted">{isSensitive ? '********' : env.value || ''}</span>
-              </div>
-            )
-          })}
-        </section>
-      )}
-
-      {job.metadata.labels && Object.keys(job.metadata.labels).length > 0 && (
-        <section className="card">
-          <h2>Labels</h2>
-          <div className="row">
-            {Object.entries(job.metadata.labels).map(([key, value]) => (
-              <span key={key} className="pill">
-                {key}: {value}
-              </span>
-            ))}
+        <section className="card span3">
+          <p className="eyebrow">STATUS</p>
+          <h2 className="card-title">Job actions</h2>
+          <div className="toolbar">
+            <button className="btn-secondary" onClick={() => navigate('/jobs')}>
+              Back to Jobs
+            </button>
+            <span className={`pill ${phaseTone(phase)}`}>{phase}</span>
           </div>
         </section>
-      )}
-    </div>
+
+        <section className="card span2">
+          <p className="eyebrow">CONFIGURATION</p>
+          <h2 className="card-title">Job Configuration</h2>
+          <div className="formgrid">
+            <div>
+              <p className="faint">Framework</p>
+              <p>{jobFramework(job)}</p>
+            </div>
+            <div>
+              <p className="faint">Image</p>
+              <p className="mono">{job.spec.image}</p>
+            </div>
+            {job.spec.distributed?.enabled && (
+              <>
+                <div>
+                  <p className="faint">Distributed Training</p>
+                  <p>Enabled</p>
+                </div>
+                {job.spec.distributed.nodes && (
+                  <div>
+                    <p className="faint">Nodes</p>
+                    <p>{job.spec.distributed.nodes}</p>
+                  </div>
+                )}
+                {job.spec.distributed.gpusPerNode && (
+                  <div>
+                    <p className="faint">GPUs/Node</p>
+                    <p>{job.spec.distributed.gpusPerNode}</p>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </section>
+
+        <section className="card">
+          <p className="eyebrow">ENTRYPOINT</p>
+          <h2 className="card-title">Command</h2>
+          <code className="mono">{job.spec.command?.join(' ') || 'N/A'}</code>
+        </section>
+
+        {job.spec.env && job.spec.env.length > 0 && (
+          <section className="card span2">
+            <p className="eyebrow">ENVIRONMENT</p>
+            <h2 className="card-title">Environment Variables</h2>
+            {job.spec.env.map((env, idx) => {
+              const isSensitive = sensitivePatterns.test(env.name)
+              return (
+                <div key={idx} className="list-row">
+                  <span className="grow">{env.name}</span>
+                  <span className="mono muted">{isSensitive ? '********' : env.value || ''}</span>
+                </div>
+              )
+            })}
+          </section>
+        )}
+
+        {job.metadata.labels && Object.keys(job.metadata.labels).length > 0 && (
+          <section className="card">
+            <p className="eyebrow">METADATA</p>
+            <h2 className="card-title">Labels</h2>
+            <div className="row">
+              {Object.entries(job.metadata.labels).map(([key, value]) => (
+                <span key={key} className="pill">
+                  {key}: {value}
+                </span>
+              ))}
+            </div>
+          </section>
+        )}
+      </div>
+    </>
   )
 }

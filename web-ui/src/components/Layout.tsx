@@ -1,6 +1,6 @@
-import { ReactNode, useState, useRef, useEffect } from 'react'
-import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { LogOut, Menu, Moon, Sun, X } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { useEffect, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/lib/auth'
 import { applyTheme, readStoredTheme, toggleTheme, type Theme } from '@/theme'
 
@@ -24,110 +24,79 @@ const navigation = [
   { name: 'Costs', href: '/costs' },
 ]
 
+/** Same markup and classes as netra's Nav (styled by netra.css). */
 export default function Layout({ children }: LayoutProps) {
   const location = useLocation()
   const navigate = useNavigate()
-  const { user, logout } = useAuth()
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const { logout } = useAuth()
   const [theme, setTheme] = useState<Theme>(readStoredTheme)
-  const userMenuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     applyTheme(theme)
   }, [theme])
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
-        setUserMenuOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
-
-  const handleLogout = () => {
-    setUserMenuOpen(false)
-    logout()
-    navigate('/login', { replace: true })
-  }
-
-  const displayName = user?.name || user?.email || 'User'
 
   const isActive = (href: string) =>
     href === '/dashboard'
       ? location.pathname === '/dashboard' || location.pathname === '/'
       : location.pathname.startsWith(href)
 
+  const handleLogout = () => {
+    logout()
+    navigate('/login', { replace: true })
+  }
+
   return (
     <>
-      <nav className="nav" aria-label="Primary">
+      <nav className="nav" aria-label="Global">
         <div className="nav-inner">
-          <Link to="/dashboard" className="brand">
-            <img className="brand-mark" src="/gryvia-mark.svg" alt="" />
+          <button type="button" className="brand" onClick={() => navigate('/dashboard')} aria-label="Gryvia home">
+            <img src="/gryvia-logomark.svg" alt="" className="brand-mark" aria-hidden />
             Gryvia
-          </Link>
-
-          <div className={menuOpen ? 'navlinks open' : 'navlinks'}>
+          </button>
+          <div className="navlinks">
             {navigation.map((item) => (
-              <NavLink
+              <button
                 key={item.name}
-                to={item.href}
-                className={isActive(item.href) ? 'active' : undefined}
+                type="button"
+                className={isActive(item.href) ? 'active' : ''}
                 aria-current={isActive(item.href) ? 'page' : undefined}
-                onClick={() => setMenuOpen(false)}
+                onClick={() => navigate(item.href)}
               >
                 {item.name}
-              </NavLink>
+              </button>
             ))}
           </div>
-
-          <div className="nav-actions" ref={userMenuRef}>
-            <span className="live-dot">
-              <i /> Live
-            </span>
+          <div className="nav-actions">
+            <button type="button" className="theme-toggle" onClick={handleLogout} aria-label="Log out" title="Log out">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+                <path d="M15 4H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M10 12h11m0 0-3.5-3.5M21 12l-3.5 3.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
             <button
-              className="icon-button"
+              type="button"
+              className="theme-toggle"
               onClick={() => setTheme(toggleTheme(theme))}
               aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              title={theme === 'dark' ? 'Light' : 'Dark'}
             >
-              {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+              {theme === 'dark' ? (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+                  <circle cx="12" cy="12" r="4" />
+                  <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+                </svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+                  <path d="M21 14.5A8.5 8.5 0 1 1 11.5 3a7 7 0 0 0 9.5 11.5z" />
+                </svg>
+              )}
             </button>
-            <button
-              className="icon-button"
-              onClick={() => setUserMenuOpen(!userMenuOpen)}
-              aria-label="Account menu"
-              aria-expanded={userMenuOpen}
-              style={{ fontWeight: 600, fontSize: 13 }}
-            >
-              {displayName.charAt(0).toUpperCase()}
-            </button>
-            <button
-              className="icon-button nav-menu-toggle"
-              onClick={() => setMenuOpen(!menuOpen)}
-              aria-label={menuOpen ? 'Close menu' : 'Open menu'}
-              aria-expanded={menuOpen}
-            >
-              {menuOpen ? <X size={18} /> : <Menu size={18} />}
-            </button>
-
-            {userMenuOpen && (
-              <div className="menu" role="menu">
-                <div className="menu-head">
-                  <b>{displayName}</b>
-                  {user?.email && <span>{user.email}</span>}
-                  <span>{user?.method === 'oidc' ? 'Signed in with SSO' : 'Signed in with API key'}</span>
-                </div>
-                <button onClick={handleLogout} role="menuitem">
-                  <LogOut size={16} /> Sign out
-                </button>
-              </div>
-            )}
           </div>
         </div>
       </nav>
-      <main>{children}</main>
+      <main>
+        <div key={location.pathname}>{children}</div>
+      </main>
     </>
   )
 }

@@ -4,9 +4,11 @@ import { api } from '@/lib/api'
 import type { ServiceGraphNode, ServiceGraphEdge } from '@/lib/api'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import PageHero from '@/components/PageHero'
+import PagePulse from '@/components/kit/PagePulse'
+import { countTone } from '@/components/kit/tone'
 
 export default function NetworkOverview() {
-  const { data: insights, isLoading: insightsLoading, isError: insightsError } = useQuery({
+  const { data: insights, isLoading: insightsLoading, isError: insightsError, dataUpdatedAt: insightsUpdatedAt } = useQuery({
     queryKey: ['trafficInsights'],
     queryFn: api.getTrafficInsights,
     refetchInterval: 15000,
@@ -36,7 +38,7 @@ export default function NetworkOverview() {
     return (
       <>
         <PageHero eyebrow="Network" title="Network insights unavailable." tint="red" />
-        <p className="login-error" role="alert">
+        <p className="warning" role="alert">
           Failed to load network insights. Please check your API connection.
         </p>
       </>
@@ -46,118 +48,108 @@ export default function NetworkOverview() {
   const anomalyCount = insights?.anomaliesDetected ?? 0
 
   return (
-    <div className="apple-story-stack">
+    <>
       <PageHero eyebrow="Network" title="Network intelligence." lede="Service mesh observability and flow management" />
 
-      <div className="row">
-        <Link to="/network/policies" className="buttonlike primary">
-          Policies
-        </Link>
-        <Link to="/network/flows" className="buttonlike btn-secondary">
-          View Flows
-        </Link>
-      </div>
-
-      <div className="apple-metric-band">
-        <div>
-          <span>Active Flows</span>
-          <b>{insights?.activeFlows ?? 0}</b>
-        </div>
-        <div>
-          <span>Policies Enforced</span>
-          <b>{insights?.policiesEnforced ?? 0}</b>
-        </div>
-        <div>
-          <span>Anomalies Detected</span>
-          <b className={anomalyCount > 0 ? 'text-warn' : undefined}>{anomalyCount}</b>
-        </div>
-        <div>
-          <span>Trace Sessions</span>
-          <b>{insights?.traceSessions ?? 0}</b>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 stack">
-          <section className="card">
-            <h2>Service Dependency Graph</h2>
-            <ServiceGraphView nodes={graph?.nodes || []} edges={graph?.edges || []} />
-          </section>
-
-          <section className="card">
-            <div className="stat-head">
-              <h2>Recent Anomalies</h2>
-              <span className="faint">{anomalies?.length || 0} total</span>
-            </div>
-            {(!anomalies || anomalies.length === 0) ? (
-              <div className="list-empty">No anomalies detected</div>
-            ) : (
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Severity</th>
-                      <th>Service</th>
-                      <th>Type</th>
-                      <th>Time</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {anomalies.slice(0, 8).map((anomaly) => (
-                      <tr key={anomaly.metadata.name}>
-                        <td>
-                          <SeverityBadge severity={anomaly.spec.severity} />
-                        </td>
-                        <td>{anomaly.spec.service}</td>
-                        <td className="muted">{anomaly.spec.type}</td>
-                        <td className="faint">{new Date(anomaly.spec.detectedAt).toLocaleTimeString()}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
+      <div className="grid">
+        <div className="toolbar span3">
+          <Link to="/network/policies" className="buttonlike primary">
+            Policies
+          </Link>
+          <Link to="/network/flows" className="buttonlike btn-secondary">
+            View Flows
+          </Link>
         </div>
 
-        <div className="stack">
-          <section className="card">
-            <h2>Active Traces</h2>
-            {(!traces || traces.length === 0) ? (
-              <div className="list-empty">No active trace sessions</div>
-            ) : (
-              traces.slice(0, 6).map((trace) => {
-                const isActive = trace.status?.phase === 'Running' || trace.status?.phase === 'Active'
-                return (
-                  <div key={trace.metadata.name} className="list-row">
-                    <div className="grow">
-                      <b>{trace.spec.targetService}</b>
-                      <small>
-                        Level: {trace.spec.captureLevel} · Duration: {trace.spec.duration}
-                        {trace.status?.flowsCaptured !== undefined && ` · ${trace.status.flowsCaptured} flows captured`}
-                      </small>
-                    </div>
-                    <span className={`pill ${isActive ? 'ok' : 'info'}`}>{trace.status?.phase || 'Pending'}</span>
+        <PagePulse
+          updatedAt={insightsUpdatedAt}
+          headline={anomalyCount > 0 ? `${anomalyCount} anomal${anomalyCount === 1 ? 'y' : 'ies'} detected across the mesh.` : 'No anomalies detected across the mesh.'}
+          tone={anomalyCount > 0 ? 'warn' : undefined}
+          figures={[
+            { label: 'Active flows', value: insights?.activeFlows ?? 0 },
+            { label: 'Policies enforced', value: insights?.policiesEnforced ?? 0 },
+            { label: 'Anomalies detected', value: anomalyCount, tone: countTone(anomalyCount) },
+            { label: 'Trace sessions', value: insights?.traceSessions ?? 0 },
+          ]}
+        />
+
+        <section className="card span2">
+          <p className="eyebrow">TOPOLOGY</p>
+          <h2 className="card-title">Service dependency graph</h2>
+          <ServiceGraphView nodes={graph?.nodes || []} edges={graph?.edges || []} />
+        </section>
+
+        <section className="card">
+          <p className="eyebrow">TRACES</p>
+          <h2 className="card-title">Active traces</h2>
+          {(!traces || traces.length === 0) ? (
+            <p className="empty-state">No active trace sessions</p>
+          ) : (
+            traces.slice(0, 6).map((trace) => {
+              const isActive = trace.status?.phase === 'Running' || trace.status?.phase === 'Active'
+              return (
+                <div key={trace.metadata.name} className="list-row">
+                  <div className="grow">
+                    <b>{trace.spec.targetService}</b>
+                    <small>
+                      Level: {trace.spec.captureLevel} · Duration: {trace.spec.duration}
+                      {trace.status?.flowsCaptured !== undefined && ` · ${trace.status.flowsCaptured} flows captured`}
+                    </small>
                   </div>
-                )
-              })
-            )}
-          </section>
+                  <span className={`pill ${isActive ? 'ok' : 'info'}`}>{trace.status?.phase || 'Pending'}</span>
+                </div>
+              )
+            })
+          )}
+        </section>
 
-          <section className="card">
-            <h2>Quick Actions</h2>
-            <div className="stack">
-              <Link to="/network/flows" className="card-link">
-                View Network Flows ›
-              </Link>
-              <Link to="/network/policies" className="card-link">
-                Manage Policies ›
-              </Link>
+        <section className="card span2">
+          <p className="eyebrow">ANOMALIES · {anomalies?.length || 0} TOTAL</p>
+          <h2 className="card-title">Recent anomalies</h2>
+          {(!anomalies || anomalies.length === 0) ? (
+            <p className="empty-state">No anomalies detected</p>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Severity</th>
+                    <th>Service</th>
+                    <th>Type</th>
+                    <th>Time</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {anomalies.slice(0, 8).map((anomaly) => (
+                    <tr key={anomaly.metadata.name}>
+                      <td>
+                        <SeverityBadge severity={anomaly.spec.severity} />
+                      </td>
+                      <td>{anomaly.spec.service}</td>
+                      <td className="muted">{anomaly.spec.type}</td>
+                      <td className="faint">{new Date(anomaly.spec.detectedAt).toLocaleTimeString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          </section>
-        </div>
+          )}
+        </section>
+
+        <section className="card">
+          <p className="eyebrow">SHORTCUTS</p>
+          <h2 className="card-title">Quick actions</h2>
+          <div className="stack">
+            <Link to="/network/flows" className="card-link">
+              View Network Flows ›
+            </Link>
+            <Link to="/network/policies" className="card-link">
+              Manage Policies ›
+            </Link>
+          </div>
+        </section>
       </div>
-    </div>
+    </>
   )
 }
 
@@ -166,9 +158,9 @@ export default function NetworkOverview() {
 function ServiceGraphView({ nodes, edges }: { nodes: ServiceGraphNode[]; edges: ServiceGraphEdge[] }) {
   if (nodes.length === 0) {
     return (
-      <div className="list-empty">
+      <p className="empty-state">
         No service graph data available. Deploy services with network policies to see the graph.
-      </div>
+      </p>
     )
   }
 
@@ -210,8 +202,8 @@ function ServiceGraphView({ nodes, edges }: { nodes: ServiceGraphNode[]; edges: 
   }
 
   return (
-    <div className="overflow-x-auto">
-      <svg width={svgWidth} height={svgHeight} className="mx-auto" style={{ minWidth: svgWidth }}>
+    <div className="table-wrap">
+      <svg width={svgWidth} height={svgHeight} style={{ minWidth: svgWidth }}>
         <defs>
           <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
             <polygon points="0 0, 8 3, 0 6" fill="var(--text-tertiary)" />

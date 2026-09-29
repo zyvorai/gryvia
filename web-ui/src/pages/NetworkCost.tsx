@@ -2,9 +2,10 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import PageHero from '@/components/PageHero'
+import PagePulse from '@/components/kit/PagePulse'
 
 export default function NetworkCost() {
-  const { data: costData, isLoading, isError } = useQuery({
+  const { data: costData, isLoading, isError, dataUpdatedAt } = useQuery({
     queryKey: ['networkCosts'],
     queryFn: api.getNetworkCosts,
     refetchInterval: 60000,
@@ -16,7 +17,7 @@ export default function NetworkCost() {
     return (
       <>
         <PageHero eyebrow="Network" title="Cost data unavailable." tint="red" />
-        <p className="login-error" role="alert">
+        <p className="warning" role="alert">
           Failed to load network cost data. Please check your API connection.
         </p>
       </>
@@ -62,31 +63,24 @@ export default function NetworkCost() {
     .slice(0, 8)
 
   return (
-    <div className="apple-story-stack">
+    <>
       <PageHero eyebrow="Network" title="What your traffic costs." lede="Cross-zone and egress network cost tracking" />
 
-      <div className="apple-metric-band">
-        <div>
-          <span>Total Network Spend</span>
-          <b>{`$${totalCost.toFixed(2)}`}</b>
-        </div>
-        <div>
-          <span>Same-Zone Traffic</span>
-          <b>{formatBytes(sameZoneTotal)}</b>
-        </div>
-        <div>
-          <span>Cross-Zone Traffic</span>
-          <b>{formatBytes(crossZoneTotal)}</b>
-        </div>
-        <div>
-          <span>Internet Egress</span>
-          <b>{formatBytes(externalTotal)}</b>
-        </div>
-      </div>
+      <div className="grid">
+        <PagePulse
+          updatedAt={dataUpdatedAt}
+          headline={`Network spend is $${totalCost.toFixed(2)} across ${reports.length} report${reports.length === 1 ? '' : 's'}.`}
+          figures={[
+            { label: 'total network spend', value: `$${totalCost.toFixed(2)}` },
+            { label: 'same-zone traffic', value: formatBytes(sameZoneTotal) },
+            { label: 'cross-zone traffic', value: formatBytes(crossZoneTotal) },
+            { label: 'internet egress', value: formatBytes(externalTotal) },
+          ]}
+        />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <section className="card">
-          <h2>Cost by Zone Type</h2>
+        <section className="card span2">
+          <p className="eyebrow">ZONES</p>
+          <h2 className="card-title">Cost by zone type</h2>
           <CostByZoneChart
             sameZone={sameZoneTotal}
             crossZone={crossZoneTotal}
@@ -96,34 +90,36 @@ export default function NetworkCost() {
         </section>
 
         <section className="card">
-          <h2>Cost Trend</h2>
+          <p className="eyebrow">TREND</p>
+          <h2 className="card-title">Cost trend</h2>
           <CostTrendChart data={trendData} />
         </section>
 
-        <section className="card">
-          <h2>Cost by Team</h2>
+        <section className="card span2">
+          <p className="eyebrow">TEAMS</p>
+          <h2 className="card-title">Cost by team</h2>
           {teamList.length === 0 ? (
-            <div className="list-empty">
+            <p className="empty-state">
               No cost data available. Configure FabricNetworkCost CRs to start tracking.
-            </div>
+            </p>
           ) : (
             <div className="table-wrap">
               <table>
                 <thead>
                   <tr>
                     <th>Team</th>
-                    <th style={{ textAlign: 'right' }}>Cost (USD)</th>
-                    <th style={{ textAlign: 'right' }}>Traffic</th>
-                    <th style={{ textAlign: 'right' }}>% of total</th>
+                    <th>Cost (USD)</th>
+                    <th>Traffic</th>
+                    <th>% of total</th>
                   </tr>
                 </thead>
                 <tbody>
                   {teamList.map((team) => (
                     <tr key={team.team}>
                       <td>{team.team}</td>
-                      <td className="mono" style={{ textAlign: 'right' }}>${team.cost.toFixed(2)}</td>
-                      <td className="muted" style={{ textAlign: 'right' }}>{formatBytes(team.bytes)}</td>
-                      <td className="faint" style={{ textAlign: 'right' }}>
+                      <td className="mono">${team.cost.toFixed(2)}</td>
+                      <td className="muted">{formatBytes(team.bytes)}</td>
+                      <td className="faint">
                         {totalCost > 0 ? ((team.cost / totalCost) * 100).toFixed(1) : '0'}%
                       </td>
                     </tr>
@@ -135,17 +131,18 @@ export default function NetworkCost() {
         </section>
 
         <section className="card">
-          <h2>Top Cost Contributors</h2>
+          <p className="eyebrow">NAMESPACES</p>
+          <h2 className="card-title">Top cost contributors</h2>
           {topContributors.length === 0 ? (
-            <div className="list-empty">No namespace cost data available.</div>
+            <p className="empty-state">No namespace cost data available.</p>
           ) : (
             <div className="stack">
               {topContributors.map(([ns, cost]) => {
                 const pct = totalCost > 0 ? (cost / totalCost) * 100 : 0
                 return (
                   <div key={ns}>
-                    <div className="stat-head" style={{ marginBottom: 6 }}>
-                      <span>{ns}</span>
+                    <div className="list-row">
+                      <span className="grow">{ns}</span>
                       <span className="mono">${cost.toFixed(2)}</span>
                     </div>
                     <div className="progress">
@@ -158,7 +155,7 @@ export default function NetworkCost() {
           )}
         </section>
       </div>
-    </div>
+    </>
   )
 }
 
@@ -182,11 +179,10 @@ function CostByZoneChart({ sameZone, crossZone, external, costPerGB }: {
         const cost = (z.bytes / (1024 * 1024 * 1024)) * z.rate
         return (
           <div key={z.label}>
-            <div className="stat-head" style={{ marginBottom: 6 }}>
-              <span>{z.label}</span>
-              <span>
-                <span className="faint">{formatBytes(z.bytes)}</span> <span className="mono">${cost.toFixed(2)}</span>
-              </span>
+            <div className="list-row">
+              <span className="grow">{z.label}</span>
+              <span className="faint">{formatBytes(z.bytes)}</span>
+              <span className="mono">${cost.toFixed(2)}</span>
             </div>
             <div className="progress">
               <span style={{ width: `${Math.max((z.bytes / maxBytes) * 100, 2)}%` }} />
@@ -202,9 +198,9 @@ function CostByZoneChart({ sameZone, crossZone, external, costPerGB }: {
 function CostTrendChart({ data }: { data: [string, number][] }) {
   if (data.length === 0) {
     return (
-      <div className="list-empty">
+      <p className="empty-state">
         Not enough data to show trend. Costs will appear after the first reporting interval.
-      </div>
+      </p>
     )
   }
 
@@ -213,13 +209,12 @@ function CostTrendChart({ data }: { data: [string, number][] }) {
 
   return (
     <div>
-      <div className="flex items-end gap-1" style={{ height: chartHeight }}>
+      <div style={{ display: 'grid', gridAutoFlow: 'column', gridAutoColumns: '1fr', alignItems: 'end', gap: 4, height: chartHeight }}>
         {data.map(([period, cost]) => {
           const height = (cost / maxCost) * chartHeight
           return (
             <div
               key={period}
-              className="flex-1"
               style={{
                 height: `${Math.max(height, 2)}px`,
                 background: 'var(--apple-blue)',
@@ -230,9 +225,9 @@ function CostTrendChart({ data }: { data: [string, number][] }) {
           )
         })}
       </div>
-      <div className="stat-head faint" style={{ marginTop: 8, fontSize: 11 }}>
-        <span>{data[0]?.[0]?.slice(5) || ''}</span>
-        <span>{data[data.length - 1]?.[0]?.slice(5) || ''}</span>
+      <div className="list-row faint">
+        <small className="grow">{data[0]?.[0]?.slice(5) || ''}</small>
+        <small>{data[data.length - 1]?.[0]?.slice(5) || ''}</small>
       </div>
     </div>
   )

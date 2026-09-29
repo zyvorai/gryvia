@@ -1,15 +1,15 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { X } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { AutoTunerJob, TunerTrial } from '@/lib/api'
 import PageHero from '@/components/PageHero'
+import PagePulse from '@/components/kit/PagePulse'
 import LoadingSpinner from '@/components/LoadingSpinner'
 
 export default function AutoTuner() {
   const [showCreateForm, setShowCreateForm] = useState(false)
 
-  const { data: tuners, isLoading, isError, refetch, isRefetching } = useQuery({
+  const { data: tuners, isLoading, isError, refetch, isRefetching, dataUpdatedAt } = useQuery({
     queryKey: ['tuners'],
     queryFn: api.getTuners,
     refetchInterval: 15000,
@@ -18,7 +18,7 @@ export default function AutoTuner() {
   if (isError) return (
     <>
       <PageHero eyebrow="Auto Tuner" title="Tuners unavailable." tint="red" />
-      <p className="login-error" role="alert">Failed to load auto tuners. Please try again.</p>
+      <p className="warning" role="alert">Failed to load auto tuners. Please try again.</p>
     </>
   )
 
@@ -33,34 +33,37 @@ export default function AutoTuner() {
     sum + (t.status?.trialsCompleted || 0), 0) || 0
 
   return (
-    <div className="apple-story-stack">
+    <>
       <PageHero eyebrow="Auto Tuner" title="Find the best hyperparameters." lede="Hyperparameter tuning." />
 
-      <div className="page-actions">
-        <button className="primary" onClick={() => setShowCreateForm(true)}>
-          New Tuner
-        </button>
-        <button className="btn-secondary" onClick={() => refetch()} disabled={isRefetching}>
-          Refresh
-        </button>
-      </div>
+      <div className="grid">
+        <PagePulse
+          updatedAt={dataUpdatedAt}
+          headline={`${activeTuners.length} of ${tuners?.length || 0} tuners running ${trialsRunning} trials.`}
+          figures={[
+            { label: 'Active tuners', value: activeTuners.length },
+            { label: 'Trials running', value: trialsRunning },
+            { label: 'Best accuracy', value: bestAccuracy > 0 ? `${(bestAccuracy * 100).toFixed(1)}%` : '-' },
+            { label: 'Trials completed', value: trialsCompleted },
+          ]}
+        />
 
-      <div className="apple-metric-band">
-        <div><span>Active Tuners</span><b>{activeTuners.length}</b></div>
-        <div><span>Trials Running</span><b>{trialsRunning}</b></div>
-        <div><span>Best Accuracy</span><b>{bestAccuracy > 0 ? `${(bestAccuracy * 100).toFixed(1)}%` : '-'}</b></div>
-        <div><span>Trials Completed</span><b>{trialsCompleted}</b></div>
-      </div>
-
-      <section className="card">
-        <div className="stat-head">
-          <h2>All Tuners</h2>
-          <span className="faint">{tuners?.length || 0} total</span>
-        </div>
+        <section className="card span3">
+          <p className="eyebrow">Tuning</p>
+          <h2 className="card-title">All Tuners</h2>
+          <div className="toolbar">
+            <button className="primary" onClick={() => setShowCreateForm(true)}>
+              New Tuner
+            </button>
+            <button className="btn-refresh" onClick={() => refetch()} disabled={isRefetching}>
+              Refresh
+            </button>
+            <span className="faint">{tuners?.length || 0} total</span>
+          </div>
         {isLoading ? (
           <LoadingSpinner />
         ) : (tuners || []).length === 0 ? (
-          <div className="list-empty">No tuning jobs yet</div>
+          <p className="empty-state">No tuning jobs yet</p>
         ) : (
           <div className="table-wrap">
             <table>
@@ -82,12 +85,13 @@ export default function AutoTuner() {
             </table>
           </div>
         )}
-      </section>
+        </section>
+      </div>
 
       {showCreateForm && (
         <CreateTunerModal onClose={() => setShowCreateForm(false)} />
       )}
-    </div>
+    </>
   )
 }
 
@@ -111,18 +115,16 @@ function TunerRow({ tuner }: { tuner: AutoTunerJob }) {
 
   return (
     <>
-      <tr className="table-row-hover" style={{ cursor: 'pointer' }} onClick={() => setExpanded(!expanded)}>
+      <tr className="table-row-hover" onClick={() => setExpanded(!expanded)}>
         <td>
           <span className="faint" aria-hidden="true">{expanded ? '▾' : '▸'}</span>{' '}
           <b>{name}</b>
         </td>
         <td><span className="pill">{algorithm}</span></td>
         <td>
-          <div className="row" style={{ gap: 8, flexWrap: 'nowrap' }}>
-            <span className="muted">{trialsCompleted}/{maxTrials}</span>
-            <div className="progress" style={{ width: 60 }}>
-              <span style={{ width: maxTrials > 0 ? `${(trialsCompleted / maxTrials) * 100}%` : '0%' }} />
-            </div>
+          <span className="muted">{trialsCompleted}/{maxTrials}</span>
+          <div className="progress">
+            <span style={{ width: maxTrials > 0 ? `${(trialsCompleted / maxTrials) * 100}%` : '0%' }} />
           </div>
         </td>
         <td>
@@ -166,15 +168,15 @@ function TunerDetail({ tuner }: { tuner: AutoTunerJob }) {
     status === 'Completed' || status === 'Succeeded' ? 'ok' : status === 'Running' ? 'info' : status === 'Failed' ? 'bad' : ''
 
   return (
-    <div className="stack" style={{ gap: 16 }}>
+    <div className="stack">
       {bestTrial && (
         <div>
-          <div className="stat-head">
+          <div className="row">
             <b>Best Trial: <span className="mono">{bestTrial.trialId}</span></b>
             <b>{bestTrial.metricValue != null ? `${(bestTrial.metricValue * 100).toFixed(2)}%` : '-'}</b>
           </div>
           {bestTrial.parameters && Object.keys(bestTrial.parameters).length > 0 && (
-            <div className="row" style={{ gap: 6, marginTop: 8 }}>
+            <div className="row">
               {Object.entries(bestTrial.parameters).map(([key, val]) => (
                 <span key={key} className="pill mono">
                   {key}={String(val)}
@@ -186,11 +188,11 @@ function TunerDetail({ tuner }: { tuner: AutoTunerJob }) {
       )}
 
       <div>
-        <h3>Trial Results</h3>
+        <p className="eyebrow">Trial Results</p>
         {isLoading ? (
           <LoadingSpinner />
         ) : (trials || []).length === 0 ? (
-          <div className="list-empty">No trials yet</div>
+          <p className="empty-state">No trials yet</p>
         ) : (
           <div className="table-wrap">
             <table>
@@ -213,7 +215,7 @@ function TunerDetail({ tuner }: { tuner: AutoTunerJob }) {
                         {isBest && <> <span className="pill ok">best</span></>}
                       </td>
                       <td>
-                        <div className="row" style={{ gap: 6 }}>
+                        <div className="row">
                           {trial.parameters && Object.entries(trial.parameters).map(([k, v]) => (
                             <span key={k} className="pill mono">
                               {k}={String(v)}
@@ -294,16 +296,11 @@ function CreateTunerModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-        <div className="stat-head" style={{ marginBottom: 16 }}>
-          <h2 style={{ margin: 0 }}>Create Tuner</h2>
-          <button type="button" className="icon-button" onClick={onClose} aria-label="Close">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+        <h2 className="card-title">Create Tuner</h2>
 
-        <form onSubmit={handleSubmit} className="stack" style={{ gap: 16 }}>
-          <div>
-            <label className="faint" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Name</label>
+        <form onSubmit={handleSubmit} className="stack">
+          <label className="field">
+            Name
             <input
               type="text"
               required
@@ -311,11 +308,11 @@ function CreateTunerModal({ onClose }: { onClose: () => void }) {
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               placeholder="my-tuning-job"
             />
-          </div>
+          </label>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="faint" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Algorithm</label>
+          <div className="formgrid">
+            <label className="field">
+              Algorithm
               <select
                 value={formData.algorithm}
                 onChange={(e) => setFormData({ ...formData, algorithm: e.target.value })}
@@ -325,9 +322,9 @@ function CreateTunerModal({ onClose }: { onClose: () => void }) {
                 <option value="Bayesian">Bayesian Optimization</option>
                 <option value="ASHA">ASHA</option>
               </select>
-            </div>
-            <div>
-              <label className="faint" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Objective Metric</label>
+            </label>
+            <label className="field">
+              Objective Metric
               <input
                 type="text"
                 required
@@ -335,12 +332,12 @@ function CreateTunerModal({ onClose }: { onClose: () => void }) {
                 onChange={(e) => setFormData({ ...formData, objectiveMetric: e.target.value })}
                 placeholder="accuracy"
               />
-            </div>
+            </label>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="faint" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Goal</label>
+          <div className="formgrid">
+            <label className="field">
+              Goal
               <select
                 value={formData.direction}
                 onChange={(e) => setFormData({ ...formData, direction: e.target.value as 'maximize' | 'minimize' })}
@@ -348,10 +345,10 @@ function CreateTunerModal({ onClose }: { onClose: () => void }) {
                 <option value="maximize">Maximize the metric</option>
                 <option value="minimize">Minimize the metric</option>
               </select>
-            </div>
+            </label>
             {formData.algorithm === 'ASHA' && (
-              <div>
-                <label className="faint" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Max Epochs (ASHA)</label>
+              <label className="field">
+                Max Epochs (ASHA)
                 <input
                   type="number"
                   min="1"
@@ -359,13 +356,13 @@ function CreateTunerModal({ onClose }: { onClose: () => void }) {
                   value={formData.maxEpochs}
                   onChange={(e) => setFormData({ ...formData, maxEpochs: parseInt(e.target.value, 10) || 1 })}
                 />
-              </div>
+              </label>
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="faint" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Trial Image</label>
+          <div className="formgrid">
+            <label className="field">
+              Trial Image
               <input
                 type="text"
                 required
@@ -373,9 +370,9 @@ function CreateTunerModal({ onClose }: { onClose: () => void }) {
                 onChange={(e) => setFormData({ ...formData, image: e.target.value })}
                 placeholder="registry.example.com/train:latest"
               />
-            </div>
-            <div>
-              <label className="faint" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>GPUs per Trial</label>
+            </label>
+            <label className="field">
+              GPUs per Trial
               <input
                 type="number"
                 min="0"
@@ -384,11 +381,11 @@ function CreateTunerModal({ onClose }: { onClose: () => void }) {
                 value={formData.gpus}
                 onChange={(e) => setFormData({ ...formData, gpus: parseInt(e.target.value, 10) || 0 })}
               />
-            </div>
+            </label>
           </div>
 
-          <div>
-            <label className="faint" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Max Trials</label>
+          <label className="field">
+            Max Trials
             <input
               type="number"
               min="1"
@@ -397,27 +394,28 @@ function CreateTunerModal({ onClose }: { onClose: () => void }) {
               value={formData.maxTrials}
               onChange={(e) => setFormData({ ...formData, maxTrials: parseInt(e.target.value, 10) || 1 })}
             />
-          </div>
+          </label>
 
-          <div>
-            <label className="faint" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Parameter Space (JSON)</label>
+          <label className="field">
+            Parameter Space (JSON)
             <textarea
+              className="codeedit"
               required
               rows={6}
               value={formData.parameterSpace}
               onChange={(e) => setFormData({ ...formData, parameterSpace: e.target.value })}
             />
-          </div>
+          </label>
 
-          {error && <p className="text-warn">{error}</p>}
+          {error && <p className="warning" role="alert">{error}</p>}
 
           {createMutation.isError && (
-            <p className="login-error" role="alert">
+            <p className="warning" role="alert">
               Error creating tuner: {createMutation.error instanceof Error ? createMutation.error.message : 'Unknown error'}
             </p>
           )}
 
-          <div className="row" style={{ justifyContent: 'flex-end' }}>
+          <div className="toolbar">
             <button type="button" className="btn-secondary" onClick={onClose}>
               Cancel
             </button>

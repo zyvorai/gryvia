@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import PageHero from '@/components/PageHero'
+import PagePulse from '@/components/kit/PagePulse'
 import { SERIES_COLORS } from '@/lib/chartColors'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 
@@ -17,7 +18,7 @@ const tick = { fontSize: 11, fill: 'var(--text-tertiary)' }
 const money = (value: unknown) => `$${Number(value ?? 0).toLocaleString()}`
 
 export default function Costs() {
-  const { data: costData, isLoading, isError } = useQuery({
+  const { data: costData, isLoading, isError, dataUpdatedAt } = useQuery({
     queryKey: ['costs'],
     queryFn: api.getCostData,
     refetchInterval: 60000,
@@ -29,7 +30,7 @@ export default function Costs() {
     return (
       <>
         <PageHero eyebrow="Costs" title="Costs unavailable." tint="red" />
-        <p className="login-error" role="alert">Failed to load cost data. Please check your API connection.</p>
+        <p className="warning" role="alert">Failed to load cost data. Please check your API connection.</p>
       </>
     )
   }
@@ -41,13 +42,16 @@ export default function Costs() {
 
   if (!hasData) {
     return (
-      <div className="apple-story-stack">
+      <>
         <PageHero eyebrow="Costs" title="Every dollar, tracked." lede="GPU compute costs and budget tracking" />
-        <div className="list-empty">
-          <h3>No Cost Data Available</h3>
-          <p>Cost data will appear here once jobs have been submitted and tracked.</p>
+        <div className="grid">
+          <section className="card span3">
+            <p className="eyebrow">COSTS</p>
+            <h2 className="card-title">No Cost Data Available</h2>
+            <p className="empty-state">Cost data will appear here once jobs have been submitted and tracked.</p>
+          </section>
         </div>
-      </div>
+      </>
     )
   }
 
@@ -63,37 +67,34 @@ export default function Costs() {
   const projection = dayOfMonth >= 3 ? Math.round((currentMonth.cost / dayOfMonth) * daysInMonth) : null
 
   return (
-    <div className="apple-story-stack">
+    <>
       <PageHero eyebrow="Costs" title="Every dollar, tracked." lede="GPU compute costs and budget tracking" />
 
-      {!costData?.hasHistoricalData && monthlyData.length === 0 && (
-        <p className="text-warn">Historical monthly data requires Prometheus integration. Showing current month only.</p>
-      )}
+      <div className="grid">
+        <PagePulse
+          updatedAt={dataUpdatedAt}
+          headline={`$${currentMonth.cost.toLocaleString()} spent this month.`}
+          tone={previousMonth && monthOverMonth > 0 ? 'warn' : undefined}
+          figures={[
+            { label: 'Current month', value: `$${currentMonth.cost.toLocaleString()}` },
+            {
+              label: 'Month over month',
+              value: previousMonth ? `${monthOverMonth >= 0 ? '+' : ''}${monthOverMonth.toFixed(1)}%` : 'N/A',
+              tone: previousMonth && monthOverMonth > 0 ? 'warn' : undefined,
+            },
+            { label: 'Avg daily cost', value: `$${dayOfMonth > 0 ? (currentMonth.cost / dayOfMonth).toFixed(0) : '0'}` },
+            { label: 'Projected', value: projection !== null ? `$${projection.toLocaleString()}` : 'N/A' },
+          ]}
+        />
 
-      <div className="apple-metric-band">
-        <div>
-          <span>Current Month</span>
-          <b>${currentMonth.cost.toLocaleString()}</b>
-        </div>
-        <div>
-          <span>Month over Month</span>
-          <b className={previousMonth && monthOverMonth > 0 ? 'text-bad' : undefined}>
-            {previousMonth ? `${monthOverMonth >= 0 ? '+' : ''}${monthOverMonth.toFixed(1)}%` : 'N/A'}
-          </b>
-        </div>
-        <div>
-          <span>Avg Daily Cost</span>
-          <b>${dayOfMonth > 0 ? (currentMonth.cost / dayOfMonth).toFixed(0) : '0'}</b>
-        </div>
-        <div>
-          <span>Projected</span>
-          <b>{projection !== null ? `$${projection.toLocaleString()}` : 'N/A'}</b>
-        </div>
-      </div>
+        {!costData?.hasHistoricalData && monthlyData.length === 0 && (
+          <p className="warning span3">Historical monthly data requires Prometheus integration. Showing current month only.</p>
+        )}
 
       {monthlyData.length > 0 && (
-        <section className="card">
-          <h2>Monthly Cost Trend</h2>
+        <section className="card span3">
+          <p className="eyebrow">TREND</p>
+          <h2 className="card-title">Monthly Cost Trend</h2>
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={monthlyData}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--hairline-1)" />
@@ -107,10 +108,10 @@ export default function Costs() {
         </section>
       )}
 
-      <div className="card-grid">
         {teamData.length > 0 && (
-          <section className="card">
-            <h2>Cost by Team</h2>
+          <section className="card span2">
+            <p className="eyebrow">TEAMS</p>
+            <h2 className="card-title">Cost by Team</h2>
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie
@@ -138,14 +139,15 @@ export default function Costs() {
 
         {gpuTypeData.length > 0 && (
           <section className="card">
-            <h2>Cost by GPU Type</h2>
+            <p className="eyebrow">GPU TYPES</p>
+            <h2 className="card-title">Cost by GPU Type</h2>
             <div className="stack">
               {gpuTypeData.map((gpu) => {
                 const totalCost = gpuTypeData.reduce((sum, g) => sum + g.cost, 0)
                 const percentage = totalCost > 0 ? (gpu.cost / totalCost) * 100 : 0
                 return (
                   <div key={gpu.type}>
-                    <div className="stat-head" style={{ marginBottom: 6 }}>
+                    <div className="row">
                       <span>{gpu.type}</span>
                       <span>
                         ${gpu.cost.toLocaleString()} <span className="faint">({gpu.hours}h)</span>
@@ -159,7 +161,7 @@ export default function Costs() {
               })}
             </div>
 
-            <h3 style={{ marginTop: 24 }}>GPU Pricing</h3>
+            <p className="eyebrow">GPU PRICING</p>
             {gpuTypeData.map((gpu) => (
               <div key={gpu.type} className="list-row">
                 <span className="grow">{gpu.type}</span>
@@ -170,6 +172,6 @@ export default function Costs() {
           </section>
         )}
       </div>
-    </div>
+    </>
   )
 }

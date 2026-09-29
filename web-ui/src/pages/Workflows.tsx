@@ -4,10 +4,12 @@ import { Link } from 'react-router-dom'
 import { api } from '@/lib/api'
 import type { Workflow, WorkflowStep } from '@/lib/api'
 import PageHero from '@/components/PageHero'
+import PagePulse from '@/components/kit/PagePulse'
+import { countTone } from '@/components/kit/tone'
 import LoadingSpinner from '@/components/LoadingSpinner'
 
 export default function Workflows() {
-  const { data: workflows, isLoading, isError, refetch, isRefetching } = useQuery({
+  const { data: workflows, isLoading, isError, refetch, isRefetching, dataUpdatedAt } = useQuery({
     queryKey: ['workflows'],
     queryFn: api.getWorkflows,
     refetchInterval: 15000,
@@ -16,7 +18,7 @@ export default function Workflows() {
   if (isError) return (
     <>
       <PageHero eyebrow="Workflows" title="Workflows unavailable." tint="red" />
-      <p className="login-error" role="alert">Failed to load workflows. Please try again.</p>
+      <p className="warning" role="alert">Failed to load workflows. Please try again.</p>
     </>
   )
 
@@ -27,34 +29,38 @@ export default function Workflows() {
     sum + (w.status?.steps?.filter(s => s.status === 'Running').length || 0), 0) || 0
 
   return (
-    <div className="apple-story-stack">
+    <>
       <PageHero eyebrow="Workflows" title="Pipelines, end to end." lede="ML pipeline management." />
 
-      <div className="page-actions">
-        <Link to="/jobs/new" className="buttonlike primary">
-          Create Workflow
-        </Link>
-        <button className="btn-secondary" onClick={() => refetch()} disabled={isRefetching}>
-          Refresh
-        </button>
-      </div>
+      <div className="grid">
+        <PagePulse
+          updatedAt={dataUpdatedAt}
+          headline={failedWorkflows.length > 0 ? `${failedWorkflows.length} workflow${failedWorkflows.length === 1 ? '' : 's'} failed.` : `${activeWorkflows.length} workflows running, none failed.`}
+          tone={countTone(failedWorkflows.length, 1)}
+          figures={[
+            { label: 'Active workflows', value: activeWorkflows.length },
+            { label: 'Completed', value: completedWorkflows.length },
+            { label: 'Failed', value: failedWorkflows.length, tone: countTone(failedWorkflows.length, 1) },
+            { label: 'Steps running', value: stepsRunning },
+          ]}
+        />
 
-      <div className="apple-metric-band">
-        <div><span>Active Workflows</span><b>{activeWorkflows.length}</b></div>
-        <div><span>Completed</span><b>{completedWorkflows.length}</b></div>
-        <div><span>Failed</span><b className={failedWorkflows.length > 0 ? 'text-bad' : undefined}>{failedWorkflows.length}</b></div>
-        <div><span>Steps Running</span><b>{stepsRunning}</b></div>
-      </div>
-
-      <section className="card">
-        <div className="stat-head">
-          <h2>All Workflows</h2>
-          <span className="faint">{workflows?.length || 0} total</span>
-        </div>
+        <section className="card span3">
+          <p className="eyebrow">Pipelines</p>
+          <h2 className="card-title">All Workflows</h2>
+          <div className="toolbar">
+            <Link to="/jobs/new" className="buttonlike primary">
+              Create Workflow
+            </Link>
+            <button className="btn-refresh" onClick={() => refetch()} disabled={isRefetching}>
+              Refresh
+            </button>
+            <span className="faint">{workflows?.length || 0} total</span>
+          </div>
         {isLoading ? (
           <LoadingSpinner />
         ) : (workflows || []).length === 0 ? (
-          <div className="list-empty">No workflows yet</div>
+          <p className="empty-state">No workflows yet</p>
         ) : (
           <div className="table-wrap">
             <table>
@@ -76,8 +82,9 @@ export default function Workflows() {
             </table>
           </div>
         )}
-      </section>
-    </div>
+        </section>
+      </div>
+    </>
   )
 }
 
@@ -111,7 +118,7 @@ function WorkflowRow({ workflow }: { workflow: Workflow }) {
 
   return (
     <>
-      <tr className="table-row-hover" style={{ cursor: 'pointer' }} onClick={() => setExpanded(!expanded)}>
+      <tr className="table-row-hover" onClick={() => setExpanded(!expanded)}>
         <td>
           <span className="faint" aria-hidden="true">{expanded ? '▾' : '▸'}</span>{' '}
           <b>{name}</b>
@@ -119,12 +126,10 @@ function WorkflowRow({ workflow }: { workflow: Workflow }) {
         <td className="muted">{totalSteps}</td>
         <td><span className={`pill ${phaseTone[phase] || ''}`}>{phase}</span></td>
         <td>
-          <div className="row" style={{ gap: 8, flexWrap: 'nowrap' }}>
-            <div className={phase === 'Failed' ? 'progress bad' : 'progress'} style={{ flex: 1, minWidth: 60 }}>
-              <span style={{ width: totalSteps > 0 ? `${(completedSteps / totalSteps) * 100}%` : '0%' }} />
-            </div>
-            <span className="faint">{completedSteps}/{totalSteps}</span>
+          <div className={phase === 'Failed' ? 'progress bad' : 'progress'}>
+            <span style={{ width: totalSteps > 0 ? `${(completedSteps / totalSteps) * 100}%` : '0%' }} />
           </div>
+          <span className="faint">{completedSteps}/{totalSteps}</span>
         </td>
         <td className="muted">{workflow.status?.duration || '-'}</td>
         <td className="faint">
@@ -135,7 +140,7 @@ function WorkflowRow({ workflow }: { workflow: Workflow }) {
       {expanded && (
         <tr>
           <td colSpan={6}>
-            <div className="faint" style={{ marginBottom: 12 }}>Workflow DAG</div>
+            <p className="eyebrow">Workflow DAG</p>
             <DAGVisualization steps={workflow.status?.steps || workflow.spec?.steps || []} />
           </td>
         </tr>
@@ -148,22 +153,23 @@ function DAGVisualization({ steps }: { steps: WorkflowStep[] }) {
   const [selectedStep, setSelectedStep] = useState<WorkflowStep | null>(null)
 
   if (steps.length === 0) {
-    return <div className="list-empty">No steps defined</div>
+    return <p className="empty-state">No steps defined</p>
   }
 
   return (
-    <div className="stack" style={{ gap: 12 }}>
-      <div className="row" style={{ gap: 8 }}>
+    <div className="stack">
+      <div className="toolbar">
         {steps.map((step, idx) => {
           const isSelected = selectedStep?.name === step.name
           return (
-            <div key={step.name || idx} className="row" style={{ gap: 8, flexWrap: 'nowrap' }}>
+            <div key={step.name || idx} className="row">
               <button
                 className={isSelected ? 'primary' : 'btn-secondary'}
                 onClick={() => setSelectedStep(isSelected ? null : step)}
               >
                 {step.name}
-                <span className={`pill ${stepTone[step.status || 'Pending'] ?? ''}`} style={{ marginLeft: 8 }}>
+                {' '}
+                <span className={`pill ${stepTone[step.status || 'Pending'] ?? ''}`}>
                   {step.status || 'Pending'}
                 </span>
               </button>
@@ -174,8 +180,8 @@ function DAGVisualization({ steps }: { steps: WorkflowStep[] }) {
       </div>
 
       {selectedStep && (
-        <div className="stack" style={{ gap: 12 }}>
-          <div className="card-grid">
+        <div className="stack">
+          <div className="formgrid">
             <div>
               <div className="faint">Step Name</div>
               <b>{selectedStep.name}</b>

@@ -1,22 +1,29 @@
 # Gryvia UX contract
 
 The dashboard (`web-ui/`) and docs site (`website/`) share one apple.com-style
-design system. Tokens live in `web-ui/src/styles/tokens.css` and are mirrored
-in `website/src/css/custom.css`. The system is adapted from the sibling
-project netra.
+design system. The dashboard's stylesheets are **netra's, copied verbatim**:
+`web-ui/src/styles/netra.css` and `netra-story.css` (source commit noted in each
+header). Do not hand-edit them; re-sync from netra. Gryvia-only classes (`.pill`, `.dot`,
+`.progress`, `.list-row`, `.formgrid`/`.field`, modal, spinner) live in `gryvia.css`,
+written with netra's tokens. Tailwind is not used. Tokens are mirrored in
+`website/src/css/custom.css`.
+
+Page markup follows netra's patterns: `PageHero`, then `<div className="grid">` holding a
+`PagePulse` (`.kit-pulse span3`) and `section.card [span2|span3]` blocks with
+`p.eyebrow` + `h2.card-title`; controls in `.toolbar`/`.filters`; tables in `.table-wrap`.
 
 ## Laws
 1. **Elevation runs up.** Dark: page `#000`, panel `#1d1d1f`, lighter cards. Light: white page, hairline cards.
 2. **Color signals deviation.** Nominal values are graphite. Blue means intent (the primary action). Red, amber and green appear only for a real state (`.pill.ok/.warn/.bad`, `.dot`, `.progress.*`).
 3. **One primary action per view** (`button.primary` / `.buttonlike.primary`). Secondary is `btn-secondary`, destructive is `danger`.
-4. **No hard-coded hex/rgba in components.** Use tokens (`var(--text-secondary)`). Tailwind is for layout utilities only (flex, grid, gap, spacing), never color.
+4. **No hard-coded hex/rgba in components.** Use tokens (`var(--text-secondary)`); layout comes from netra's classes, not inline styles.
 5. **Read-only surfaces stay read-only.**
 
 ## Structure
 | Tier | Pages | Building blocks |
 |---|---|---|
-| Story | Login, Dashboard | `PageHero`, `.apple-metric-band`, `Reveal` |
-| Browse | Jobs, Nodes, Flows, Workspaces, Models | `PageHero`, `.toolbar-pill`, `.table-wrap` |
+| Story | Login, Dashboard | netra's login composition, `PageHero`, `.apple-metric-band` |
+| Browse | Jobs, Nodes, Flows, Workspaces, Models | `PageHero`, `PagePulse`, `.toolbar`/`.filters`, `.table-wrap` |
 | Work | Quotas, Policies, Tuner, Workflows, Submit Job | `.card` panels, `.card-grid`, `.modal-card` |
 
 ## Tokens

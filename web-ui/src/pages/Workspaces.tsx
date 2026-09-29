@@ -1,16 +1,17 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { X } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { Workspace } from '@/lib/api'
 import PageHero from '@/components/PageHero'
+import PagePulse from '@/components/kit/PagePulse'
+import { countTone } from '@/components/kit/tone'
 import LoadingSpinner from '@/components/LoadingSpinner'
 
 export default function Workspaces() {
   const queryClient = useQueryClient()
   const [showCreateForm, setShowCreateForm] = useState(false)
 
-  const { data: workspaces, isLoading, isError, refetch, isRefetching } = useQuery({
+  const { data: workspaces, isLoading, isError, refetch, isRefetching, dataUpdatedAt } = useQuery({
     queryKey: ['workspaces'],
     queryFn: api.getWorkspaces,
     refetchInterval: 15000,
@@ -34,7 +35,7 @@ export default function Workspaces() {
   if (isError) return (
     <>
       <PageHero eyebrow="Workspaces" title="Workspaces unavailable." tint="red" />
-      <p className="login-error" role="alert">Failed to load workspaces. Please try again.</p>
+      <p className="warning" role="alert">Failed to load workspaces. Please try again.</p>
     </>
   )
 
@@ -44,32 +45,42 @@ export default function Workspaces() {
   const totalGPUs = workspaces?.reduce((sum, w) => sum + (w.spec?.gpuCount || 0), 0) || 0
 
   return (
-    <div className="apple-story-stack">
+    <>
       <PageHero eyebrow="Workspaces" title="Interactive GPU environments." lede="GPU-attached Jupyter and VS Code workspaces." />
 
-      <div className="page-actions">
-        <button className="primary" onClick={() => setShowCreateForm(true)}>
-          New Workspace
-        </button>
-        <button className="btn-secondary" onClick={() => refetch()} disabled={isRefetching}>
-          Refresh
-        </button>
-      </div>
+      <div className="grid">
+        <PagePulse
+          updatedAt={dataUpdatedAt}
+          headline={`${activeWorkspaces.length} of ${workspaces?.length || 0} workspaces running on ${totalGPUs} GPUs.`}
+          figures={[
+            { label: 'Active workspaces', value: activeWorkspaces.length },
+            { label: 'GPUs allocated', value: totalGPUs },
+            { label: idleWorkspaces.length > 0 ? 'Idle · may auto-pause' : 'Idle', value: idleWorkspaces.length, tone: countTone(idleWorkspaces.length) },
+            { label: 'Paused', value: pausedWorkspaces.length },
+          ]}
+        />
 
-      <div className="apple-metric-band">
-        <div><span>Active Workspaces</span><b>{activeWorkspaces.length}</b></div>
-        <div><span>Total GPUs Allocated</span><b>{totalGPUs}</b></div>
-        <div><span>Idle Workspaces{idleWorkspaces.length > 0 ? ' · may auto-pause' : ''}</span><b>{idleWorkspaces.length}</b></div>
-        <div><span>Paused</span><b>{pausedWorkspaces.length}</b></div>
-      </div>
+        <section className="card span3">
+          <p className="eyebrow">Actions</p>
+          <h2 className="card-title">Workspaces</h2>
+          <div className="toolbar">
+            <button className="primary" onClick={() => setShowCreateForm(true)}>
+              New Workspace
+            </button>
+            <button className="btn-refresh" onClick={() => refetch()} disabled={isRefetching}>
+              Refresh
+            </button>
+          </div>
+        </section>
 
-      {isLoading ? (
-        <LoadingSpinner />
-      ) : (workspaces || []).length === 0 ? (
-        <div className="list-empty">No workspaces yet. Create one to get started.</div>
-      ) : (
-        <div className="card-grid">
-          {(workspaces || []).map((ws) => (
+        {isLoading ? (
+          <section className="card span3"><LoadingSpinner /></section>
+        ) : (workspaces || []).length === 0 ? (
+          <section className="card span3">
+            <p className="empty-state">No workspaces yet. Create one to get started.</p>
+          </section>
+        ) : (
+          (workspaces || []).map((ws) => (
             <WorkspaceCard
               key={ws.metadata?.name}
               workspace={ws}
@@ -79,14 +90,14 @@ export default function Workspaces() {
               isPausing={pauseMutation.isPending}
               isResuming={resumeMutation.isPending}
             />
-          ))}
-        </div>
-      )}
+          ))
+        )}
+      </div>
 
       {showCreateForm && (
         <CreateWorkspaceModal onClose={() => setShowCreateForm(false)} />
       )}
-    </div>
+    </>
   )
 }
 
@@ -109,14 +120,11 @@ function WorkspaceCard({ workspace, onPause, onResume, onDelete, isPausing, isRe
 
   return (
     <section className="card">
-      <div className="stat-head">
-        <span className="pill">{label[wsType] || label.jupyter}</span>
-        <span className={`pill ${tone[phase] || ''}`}>{phase}</span>
-      </div>
+      <p className="eyebrow">{label[wsType] || label.jupyter}</p>
+      <h2 className="card-title">{name}</h2>
+      <p><span className={`pill ${tone[phase] || ''}`}>{phase}</span></p>
 
-      <h3 style={{ margin: '12px 0 8px' }}>{name}</h3>
-
-      <div className="stack" style={{ gap: 4, marginBottom: 16 }}>
+      <div className="stack">
         <span className="muted">{workspace.spec?.gpuType || 'GPU'} x{workspace.spec?.gpuCount || 0}</span>
         <span className="muted">Storage: {workspace.spec?.storageSize || 'N/A'}</span>
         <span className="muted">Uptime: {workspace.status?.uptime || 'N/A'}</span>
@@ -125,7 +133,7 @@ function WorkspaceCard({ workspace, onPause, onResume, onDelete, isPausing, isRe
         )}
       </div>
 
-      <div className="row">
+      <div className="toolbar">
         {phase === 'Running' && workspace.status?.url && (
           <a
             href={workspace.status.url}
@@ -147,7 +155,6 @@ function WorkspaceCard({ workspace, onPause, onResume, onDelete, isPausing, isRe
         ) : null}
         <button
           className="danger"
-          style={{ marginLeft: 'auto' }}
           onClick={() => {
             if (window.confirm(`Delete workspace "${name}"?`)) {
               onDelete(name)
@@ -197,16 +204,11 @@ function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-        <div className="stat-head" style={{ marginBottom: 16 }}>
-          <h2 style={{ margin: 0 }}>Create Workspace</h2>
-          <button type="button" className="icon-button" onClick={onClose} aria-label="Close">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+        <h2 className="card-title">Create Workspace</h2>
 
-        <form onSubmit={handleSubmit} className="stack" style={{ gap: 16 }}>
-          <div>
-            <label className="faint" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Name</label>
+        <form onSubmit={handleSubmit} className="stack">
+          <label className="field">
+            Name
             <input
               type="text"
               required
@@ -214,11 +216,11 @@ function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               placeholder="my-workspace"
             />
-          </div>
+          </label>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="faint" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Type</label>
+          <div className="formgrid">
+            <label className="field">
+              Type
               <select
                 value={formData.type}
                 onChange={(e) => setFormData({ ...formData, type: e.target.value })}
@@ -226,9 +228,9 @@ function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
                 <option value="jupyter">Jupyter</option>
                 <option value="vscode">VS Code</option>
               </select>
-            </div>
-            <div>
-              <label className="faint" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>GPU Type</label>
+            </label>
+            <label className="field">
+              GPU Type
               <select
                 value={formData.gpuType}
                 onChange={(e) => setFormData({ ...formData, gpuType: e.target.value })}
@@ -240,12 +242,12 @@ function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
                 <option value="V100">V100</option>
                 <option value="T4">T4</option>
               </select>
-            </div>
+            </label>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="faint" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>GPU Count</label>
+          <div className="formgrid">
+            <label className="field">
+              GPU Count
               <input
                 type="number"
                 min="1"
@@ -254,9 +256,9 @@ function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
                 value={formData.gpuCount}
                 onChange={(e) => setFormData({ ...formData, gpuCount: parseInt(e.target.value, 10) || 1 })}
               />
-            </div>
-            <div>
-              <label className="faint" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Storage</label>
+            </label>
+            <label className="field">
+              Storage
               <input
                 type="text"
                 required
@@ -264,9 +266,9 @@ function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
                 onChange={(e) => setFormData({ ...formData, storageSize: e.target.value })}
                 placeholder="50Gi"
               />
-            </div>
-            <div>
-              <label className="faint" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Idle Timeout</label>
+            </label>
+            <label className="field">
+              Idle Timeout
               <input
                 type="text"
                 required
@@ -274,18 +276,18 @@ function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
                 onChange={(e) => setFormData({ ...formData, idleTimeout: e.target.value })}
                 placeholder="30m"
               />
-            </div>
+            </label>
           </div>
 
-          {error && <p className="text-warn">{error}</p>}
+          {error && <p className="warning" role="alert">{error}</p>}
 
           {createMutation.isError && (
-            <p className="login-error" role="alert">
+            <p className="warning" role="alert">
               Error creating workspace: {createMutation.error instanceof Error ? createMutation.error.message : 'Unknown error'}
             </p>
           )}
 
-          <div className="row" style={{ justifyContent: 'flex-end' }}>
+          <div className="toolbar">
             <button type="button" className="btn-secondary" onClick={onClose}>
               Cancel
             </button>

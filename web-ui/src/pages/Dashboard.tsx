@@ -5,7 +5,6 @@ import type { FabricAIJob } from '@/types'
 import GPUChart from '@/components/GPUChart'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import PageHero from '@/components/PageHero'
-import Reveal from '@/components/Reveal'
 import { phaseTone } from '@/lib/phase'
 import { jobFramework, jobGpus } from '@/lib/jobs'
 
@@ -42,7 +41,7 @@ export default function Dashboard() {
     return (
       <>
         <PageHero eyebrow="Dashboard" title="Cluster unavailable." tint="red" />
-        <p className="login-error" role="alert">
+        <p className="warning" role="alert">
           Failed to load cluster stats. Please check your API connection.
         </p>
       </>
@@ -58,121 +57,109 @@ export default function Dashboard() {
   const utilization = Math.round(clusterStats?.utilizationPercent || 0)
 
   return (
-    <div className="apple-story-stack">
+    <>
       <PageHero eyebrow="Dashboard" title="Your GPU cluster, at a glance." lede="Live capacity, jobs and node health." />
 
-      <div className="apple-metric-band">
-        <div>
-          <span>GPUs · {clusterStats?.availableGPUs || 0} available</span>
-          <b>{clusterStats?.totalGPUs || 0}</b>
+      <div className="grid">
+        <div className="apple-metric-band span3">
+          <div>
+            <span>GPUs · {clusterStats?.availableGPUs || 0} available</span>
+            <b>{clusterStats?.totalGPUs || 0}</b>
+          </div>
+          <div>
+            <span>Running jobs{pendingJobs.length > 0 ? ` · ${pendingJobs.length} pending` : ''}</span>
+            <b>{runningJobs.length}</b>
+          </div>
+          <div>
+            <span>Completed{successRate > 0 ? ` · ${successRate}% success` : ''}</span>
+            <b>{completedJobs.length}</b>
+          </div>
+          <div>
+            <span>GPU utilization</span>
+            <b>{utilization}%</b>
+          </div>
         </div>
-        <div>
-          <span>Running jobs{pendingJobs.length > 0 ? ` · ${pendingJobs.length} pending` : ''}</span>
-          <b>{runningJobs.length}</b>
-        </div>
-        <div>
-          <span>Completed{successRate > 0 ? ` · ${successRate}% success` : ''}</span>
-          <b>{completedJobs.length}</b>
-        </div>
-        <div>
-          <span>GPU utilization</span>
-          <b>{utilization}%</b>
-        </div>
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 stack">
-          <Reveal>
-            <section className="card">
-              <h2>GPU utilization</h2>
-              <GPUChart
-                data={gpuMetrics?.metrics?.map((m) => ({
-                  time: new Date(m.timestamp).toLocaleTimeString(),
-                  [`${m.node}-GPU${m.gpuIndex}`]: m.utilization,
-                }))}
-              />
-            </section>
-          </Reveal>
+        <section className="card span2">
+          <p className="eyebrow">UTILIZATION</p>
+          <h2 className="card-title">GPU utilization</h2>
+          <GPUChart
+            data={gpuMetrics?.metrics?.map((m) => ({
+              time: new Date(m.timestamp).toLocaleTimeString(),
+              [`${m.node}-GPU${m.gpuIndex}`]: m.utilization,
+            }))}
+          />
+        </section>
 
-          <Reveal delay={80}>
-            <section className="card">
-              <div className="stat-head">
-                <h2>Recent jobs</h2>
-                <span className="faint">{totalJobs} total</span>
+        <section className="card">
+          <p className="eyebrow">HEALTH</p>
+          <h2 className="card-title">Cluster health</h2>
+          <HealthCheck label="GPU nodes" tone={(clusterStats?.totalNodes || 0) > 0 ? 'ok' : 'bad'} detail={`${clusterStats?.totalNodes || 0} nodes`} />
+          <HealthCheck label="GPU utilization" tone={utilization >= 95 ? 'bad' : utilization > 80 ? 'warn' : 'ok'} detail={`${utilization}%`} />
+          <HealthCheck label="Failed jobs" tone={failedJobs.length === 0 ? 'ok' : 'bad'} detail={`${failedJobs.length}`} />
+          <HealthCheck label="Available GPUs" tone={(clusterStats?.availableGPUs || 0) > 0 ? 'ok' : 'bad'} detail={`${clusterStats?.availableGPUs || 0}`} />
+          <HealthCheck label="Job queue" tone={pendingJobs.length >= 10 ? 'bad' : pendingJobs.length > 5 ? 'warn' : 'ok'} detail={`${pendingJobs.length} pending`} />
+        </section>
+
+        <section className="card span2">
+          <p className="eyebrow">JOBS · {totalJobs} TOTAL</p>
+          <h2 className="card-title">Recent jobs</h2>
+          {jobsLoading ? (
+            <LoadingSpinner />
+          ) : (jobs || []).length === 0 ? (
+            <p className="empty-state">No jobs yet</p>
+          ) : (
+            (jobs || []).slice(0, 5).map((job) => <JobRow key={job.metadata?.name} job={job} />)
+          )}
+          <p>
+            <Link to="/jobs" className="card-link">
+              View all jobs ›
+            </Link>
+          </p>
+        </section>
+
+        {nodes && nodes.length > 0 ? (
+          <section className="card">
+            <p className="eyebrow">NODES</p>
+            <h2 className="card-title">GPU nodes</h2>
+            {nodes.slice(0, 6).map((node) => (
+              <div key={node.metadata?.name} className="list-row">
+                <span className={`dot ${node.status?.phase === 'Ready' ? 'ok' : node.status?.phase === 'Degraded' ? 'warn' : 'bad'}`} />
+                <div className="grow">
+                  <b>{node.spec?.nodeName || node.metadata?.name}</b>
+                  <small>
+                    {node.spec?.gpuType} × {node.spec?.gpuCount}
+                  </small>
+                </div>
               </div>
-              {jobsLoading ? (
-                <LoadingSpinner />
-              ) : (jobs || []).length === 0 ? (
-                <div className="list-empty">No jobs yet</div>
-              ) : (
-                (jobs || []).slice(0, 5).map((job) => <JobRow key={job.metadata?.name} job={job} />)
-              )}
-              <p style={{ margin: '12px 0 0' }}>
-                <Link to="/jobs" className="card-link">
-                  View all jobs ›
+            ))}
+            {nodes.length > 6 && (
+              <p>
+                <Link to="/nodes" className="card-link">
+                  View all {nodes.length} nodes ›
                 </Link>
               </p>
-            </section>
-          </Reveal>
-        </div>
+            )}
+          </section>
+        ) : null}
 
-        <div className="stack">
-          <Reveal>
-            <section className="card">
-              <h2>Cluster health</h2>
-              <HealthCheck label="GPU nodes" tone={(clusterStats?.totalNodes || 0) > 0 ? 'ok' : 'bad'} detail={`${clusterStats?.totalNodes || 0} nodes`} />
-              <HealthCheck label="GPU utilization" tone={utilization >= 95 ? 'bad' : utilization > 80 ? 'warn' : 'ok'} detail={`${utilization}%`} />
-              <HealthCheck label="Failed jobs" tone={failedJobs.length === 0 ? 'ok' : 'bad'} detail={`${failedJobs.length}`} />
-              <HealthCheck label="Available GPUs" tone={(clusterStats?.availableGPUs || 0) > 0 ? 'ok' : 'bad'} detail={`${clusterStats?.availableGPUs || 0}`} />
-              <HealthCheck label="Job queue" tone={pendingJobs.length >= 10 ? 'bad' : pendingJobs.length > 5 ? 'warn' : 'ok'} detail={`${pendingJobs.length} pending`} />
-            </section>
-          </Reveal>
-
-          {nodes && nodes.length > 0 && (
-            <Reveal delay={80}>
-              <section className="card">
-                <h2>GPU nodes</h2>
-                {nodes.slice(0, 6).map((node) => (
-                  <div key={node.metadata?.name} className="list-row">
-                    <span className={`dot ${node.status?.phase === 'Ready' ? 'ok' : node.status?.phase === 'Degraded' ? 'warn' : 'bad'}`} />
-                    <div className="grow">
-                      <b>{node.spec?.nodeName || node.metadata?.name}</b>
-                      <small>
-                        {node.spec?.gpuType} × {node.spec?.gpuCount}
-                      </small>
-                    </div>
-                  </div>
-                ))}
-                {nodes.length > 6 && (
-                  <p style={{ margin: '12px 0 0' }}>
-                    <Link to="/nodes" className="card-link">
-                      View all {nodes.length} nodes ›
-                    </Link>
-                  </p>
-                )}
-              </section>
-            </Reveal>
-          )}
-
-          <Reveal delay={160}>
-            <section className="card">
-              <h2>Quick actions</h2>
-              <div className="row">
-                <Link to="/jobs/new" className="buttonlike primary">
-                  Submit job
-                </Link>
-                <Link to="/quotas" className="buttonlike btn-secondary">
-                  Quotas
-                </Link>
-                <Link to="/costs" className="buttonlike btn-secondary">
-                  Costs
-                </Link>
-              </div>
-            </section>
-          </Reveal>
-        </div>
+        <section className="card span3">
+          <p className="eyebrow">SHORTCUTS</p>
+          <h2 className="card-title">Quick actions</h2>
+          <div className="toolbar">
+            <Link to="/jobs/new" className="buttonlike primary">
+              Submit job
+            </Link>
+            <Link to="/quotas" className="buttonlike btn-secondary">
+              Quotas
+            </Link>
+            <Link to="/costs" className="buttonlike btn-secondary">
+              Costs
+            </Link>
+          </div>
+        </section>
       </div>
-    </div>
+    </>
   )
 }
 

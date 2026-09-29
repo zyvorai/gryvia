@@ -43,13 +43,13 @@ export default function AuthCallback() {
   return (
     <div className="login-shell">
       {displayError ? (
-        <div className="stack" style={{ alignItems: 'center' }}>
+        <div className="stack">
           <h1 className="apple-display">Authentication failed.</h1>
-          <p className="login-error" role="alert">{displayError}</p>
+          <p className="warning" role="alert">{displayError}</p>
           <p className="faint">Redirecting to login...</p>
         </div>
       ) : (
-        <div className="stack" style={{ alignItems: 'center' }}>
+        <div className="stack">
           <h1 className="apple-display">Completing sign in...</h1>
           <div className="spinner" role="status" aria-label="Loading" />
         </div>
