@@ -1,10 +1,10 @@
 use anyhow::Result;
-use kube::api::{Api, Patch, PatchParams};
 use dialoguer::Confirm;
+use kube::api::{Api, Patch, PatchParams};
 
 use crate::client::GryviaClient;
-use crate::types::*;
 use crate::display;
+use crate::types::*;
 
 pub async fn execute(client: &GryviaClient, jobs: &[String], yes: bool) -> Result<()> {
     if jobs.is_empty() {
@@ -23,10 +23,7 @@ pub async fn execute(client: &GryviaClient, jobs: &[String], yes: bool) -> Resul
         }
     }
 
-    let api: Api<GryviaAIJob> = Api::namespaced(
-        client.kube_client.clone(),
-        client.namespace(),
-    );
+    let api: Api<GryviaAIJob> = Api::namespaced(client.kube_client.clone(), client.namespace());
 
     let mut failures = Vec::new();
 
@@ -39,11 +36,14 @@ pub async fn execute(client: &GryviaClient, jobs: &[String], yes: bool) -> Resul
             }
         });
 
-        match api.patch_status(
-            job_name,
-            &PatchParams::apply("gryvia-cli"),
-            &Patch::Merge(&patch),
-        ).await {
+        match api
+            .patch_status(
+                job_name,
+                &PatchParams::apply("gryvia-cli"),
+                &Patch::Merge(&patch),
+            )
+            .await
+        {
             Ok(_) => display::print_success(&format!("Job {} cancelled", job_name)),
             Err(e) => {
                 display::print_error(&format!("Failed to cancel job {}: {}", job_name, e));
@@ -53,7 +53,11 @@ pub async fn execute(client: &GryviaClient, jobs: &[String], yes: bool) -> Resul
     }
 
     if !failures.is_empty() {
-        return Err(anyhow::anyhow!("Failed to cancel {} job(s): {}", failures.len(), failures.join(", ")));
+        return Err(anyhow::anyhow!(
+            "Failed to cancel {} job(s): {}",
+            failures.len(),
+            failures.join(", ")
+        ));
     }
 
     Ok(())

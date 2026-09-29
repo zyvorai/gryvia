@@ -1,8 +1,8 @@
 use anyhow::Result;
+use colored::*;
 use kube::api::{Api, ApiResource, GroupVersionKind, ListParams};
 use kube::core::DynamicObject;
-use prettytable::{Table, Row, Cell, format};
-use colored::*;
+use prettytable::{format, Cell, Row, Table};
 
 use crate::client::GryviaClient;
 
@@ -28,18 +28,14 @@ pub enum GpuAction {
 
 pub async fn execute(client: &GryviaClient, action: GpuAction) -> Result<()> {
     match action {
-        GpuAction::Nccl { job, follow, namespace } => {
-            execute_nccl(client, &job, follow, &namespace).await
-        }
-        GpuAction::Memory { node, namespace } => {
-            execute_memory(client, &node, &namespace).await
-        }
-        GpuAction::Rdma { node, namespace } => {
-            execute_rdma(client, &node, &namespace).await
-        }
-        GpuAction::Training { job, namespace } => {
-            execute_training(client, &job, &namespace).await
-        }
+        GpuAction::Nccl {
+            job,
+            follow,
+            namespace,
+        } => execute_nccl(client, &job, follow, &namespace).await,
+        GpuAction::Memory { node, namespace } => execute_memory(client, &node, &namespace).await,
+        GpuAction::Rdma { node, namespace } => execute_rdma(client, &node, &namespace).await,
+        GpuAction::Training { job, namespace } => execute_training(client, &job, &namespace).await,
     }
 }
 
@@ -51,7 +47,9 @@ async fn execute_nccl(
 ) -> Result<()> {
     println!(
         "{}",
-        format!("━━━ NCCL Collective Stats: {} ━━━", job).bold().magenta()
+        format!("━━━ NCCL Collective Stats: {} ━━━", job)
+            .bold()
+            .magenta()
     );
     println!();
 
@@ -61,11 +59,7 @@ async fn execute_nccl(
         "v1",
         "GryviaTrainingInsight",
     ));
-    let api: Api<DynamicObject> = Api::namespaced_with(
-        client.kube_client.clone(),
-        namespace,
-        &ar,
-    );
+    let api: Api<DynamicObject> = Api::namespaced_with(client.kube_client.clone(), namespace, &ar);
 
     let label_selector = format!("gryvia.io/job={}", job);
     let params = ListParams::default().labels(&label_selector);
@@ -97,7 +91,8 @@ async fn execute_nccl(
                 println!("  {}", "No NCCL stats found for this job.".dimmed());
                 println!(
                     "  {}",
-                    "Create a GryviaTrainingInsight CR targeting this job to collect stats.".dimmed()
+                    "Create a GryviaTrainingInsight CR targeting this job to collect stats."
+                        .dimmed()
                 );
             }
         }
@@ -132,9 +127,15 @@ fn print_nccl_stats(insight: &DynamicObject) {
 
         for rank in ranks {
             let rank_id = rank.get("rank").and_then(|v| v.as_i64()).unwrap_or(0);
-            let avg_latency = rank.get("avgLatencyNs").and_then(|v| v.as_i64()).unwrap_or(0);
+            let avg_latency = rank
+                .get("avgLatencyNs")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
             let total_bytes = rank.get("totalBytes").and_then(|v| v.as_i64()).unwrap_or(0);
-            let is_straggler = rank.get("isStraggler").and_then(|v| v.as_bool()).unwrap_or(false);
+            let is_straggler = rank
+                .get("isStraggler")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
 
             let latency_display = format_ns(avg_latency);
             let bytes_display = format_bytes(total_bytes);
@@ -185,23 +186,17 @@ fn print_nccl_stats(insight: &DynamicObject) {
     println!("  Bottleneck:        {}", bottleneck_display);
 }
 
-async fn execute_memory(
-    client: &GryviaClient,
-    node: &str,
-    _namespace: &str,
-) -> Result<()> {
+async fn execute_memory(client: &GryviaClient, node: &str, _namespace: &str) -> Result<()> {
     println!(
         "{}",
-        format!("━━━ GPU Memory Transfer Stats: {} ━━━", node).bold().magenta()
+        format!("━━━ GPU Memory Transfer Stats: {} ━━━", node)
+            .bold()
+            .magenta()
     );
     println!();
 
     // Query node GPU metrics
-    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
-        "gryvia.io",
-        "v1",
-        "GryviaGpuNode",
-    ));
+    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("gryvia.io", "v1", "GryviaGpuNode"));
     let api: Api<DynamicObject> = Api::all_with(client.kube_client.clone(), &ar);
 
     match api.get(node).await {
@@ -209,8 +204,14 @@ async fn execute_memory(
             print_gpu_memory_stats(&gpu_node);
         }
         Err(_) => {
-            println!("  {}", "GPU memory stats not yet available for this node.".dimmed());
-            println!("  {}", "Ensure eBPF collectors are deployed on the target node.".dimmed());
+            println!(
+                "  {}",
+                "GPU memory stats not yet available for this node.".dimmed()
+            );
+            println!(
+                "  {}",
+                "Ensure eBPF collectors are deployed on the target node.".dimmed()
+            );
 
             // Show placeholder stats
             println!();
@@ -302,11 +303,7 @@ fn print_gpu_memory_stats(node: &DynamicObject) {
     table.printstd();
 }
 
-async fn execute_rdma(
-    _client: &GryviaClient,
-    node: &str,
-    _namespace: &str,
-) -> Result<()> {
+async fn execute_rdma(_client: &GryviaClient, node: &str, _namespace: &str) -> Result<()> {
     println!(
         "{}",
         format!("━━━ RDMA Stats: {} ━━━", node).bold().magenta()
@@ -326,21 +323,25 @@ async fn execute_rdma(
     ]));
 
     // RDMA stats would come from the eBPF collector
-    println!("  {}", "RDMA statistics require eBPF collector to be deployed on the target node.".dimmed());
-    println!("  {}", "Ensure InfiniBand/RoCE devices are available and monitored.".dimmed());
+    println!(
+        "  {}",
+        "RDMA statistics require eBPF collector to be deployed on the target node.".dimmed()
+    );
+    println!(
+        "  {}",
+        "Ensure InfiniBand/RoCE devices are available and monitored.".dimmed()
+    );
 
     println!();
     Ok(())
 }
 
-async fn execute_training(
-    client: &GryviaClient,
-    job: &str,
-    namespace: &str,
-) -> Result<()> {
+async fn execute_training(client: &GryviaClient, job: &str, namespace: &str) -> Result<()> {
     println!(
         "{}",
-        format!("━━━ Training Insights: {} ━━━", job).bold().magenta()
+        format!("━━━ Training Insights: {} ━━━", job)
+            .bold()
+            .magenta()
     );
     println!();
 
@@ -349,11 +350,7 @@ async fn execute_training(
         "v1",
         "GryviaTrainingInsight",
     ));
-    let api: Api<DynamicObject> = Api::namespaced_with(
-        client.kube_client.clone(),
-        namespace,
-        &ar,
-    );
+    let api: Api<DynamicObject> = Api::namespaced_with(client.kube_client.clone(), namespace, &ar);
 
     // Try to get insight by job name
     let insight = match api.get(job).await {
@@ -387,8 +384,14 @@ async fn execute_training(
         } else {
             for straggler in strag_list {
                 let rank = straggler.get("rank").and_then(|v| v.as_i64()).unwrap_or(0);
-                let factor = straggler.get("slowdownFactor").and_then(|v| v.as_f64()).unwrap_or(0.0);
-                let reason = straggler.get("reason").and_then(|v| v.as_str()).unwrap_or("-");
+                let factor = straggler
+                    .get("slowdownFactor")
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.0);
+                let reason = straggler
+                    .get("reason")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("-");
                 println!(
                     "  {} Rank {} is {:.1}x slower ({})",
                     "!".red().bold(),
@@ -422,9 +425,18 @@ async fn execute_training(
     println!("  Comm/Compute:      {:.2}", ratio);
 
     let bottleneck_display = match bottleneck {
-        "communication" => format!("{} - Network is the primary bottleneck", bottleneck.red().bold()),
-        "compute" => format!("{} - GPU compute is the primary bottleneck", bottleneck.yellow()),
-        "data_loading" => format!("{} - Data loading is the primary bottleneck", bottleneck.blue()),
+        "communication" => format!(
+            "{} - Network is the primary bottleneck",
+            bottleneck.red().bold()
+        ),
+        "compute" => format!(
+            "{} - GPU compute is the primary bottleneck",
+            bottleneck.yellow()
+        ),
+        "data_loading" => format!(
+            "{} - Data loading is the primary bottleneck",
+            bottleneck.blue()
+        ),
         _ => bottleneck.dimmed().to_string(),
     };
     println!("  Bottleneck:        {}", bottleneck_display);

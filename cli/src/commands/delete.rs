@@ -1,11 +1,11 @@
 use anyhow::{Context, Result};
+use dialoguer::Confirm;
 use kube::api::{Api, ApiResource, DeleteParams, GroupVersionKind};
 use kube::core::DynamicObject;
-use dialoguer::Confirm;
 
 use crate::client::GryviaClient;
-use crate::types::*;
 use crate::display;
+use crate::types::*;
 
 pub async fn execute(client: &GryviaClient, resource: &str, name: &str, yes: bool) -> Result<()> {
     if !yes {
@@ -25,7 +25,10 @@ pub async fn execute(client: &GryviaClient, resource: &str, name: &str, yes: boo
         "storage" => delete_storage(client, name).await?,
         "network" => delete_network(client, name).await?,
         _ => {
-            anyhow::bail!("Unknown resource type: {}. Valid types: job, quota, storage, network", resource);
+            anyhow::bail!(
+                "Unknown resource type: {}. Valid types: job, quota, storage, network",
+                resource
+            );
         }
     }
 
@@ -33,12 +36,10 @@ pub async fn execute(client: &GryviaClient, resource: &str, name: &str, yes: boo
 }
 
 async fn delete_job(client: &GryviaClient, name: &str) -> Result<()> {
-    let api: Api<GryviaAIJob> = Api::namespaced(
-        client.kube_client.clone(),
-        client.namespace(),
-    );
+    let api: Api<GryviaAIJob> = Api::namespaced(client.kube_client.clone(), client.namespace());
 
-    api.delete(name, &DeleteParams::default()).await
+    api.delete(name, &DeleteParams::default())
+        .await
         .context("Failed to delete job")?;
 
     display::print_success(&format!("Job {} deleted", name));
@@ -49,7 +50,8 @@ async fn delete_job(client: &GryviaClient, name: &str) -> Result<()> {
 async fn delete_quota(client: &GryviaClient, name: &str) -> Result<()> {
     let api: Api<GryviaQuota> = Api::all(client.kube_client.clone());
 
-    api.delete(name, &DeleteParams::default()).await
+    api.delete(name, &DeleteParams::default())
+        .await
         .context("Failed to delete quota")?;
 
     display::print_success(&format!("Quota {} deleted", name));
@@ -59,12 +61,10 @@ async fn delete_quota(client: &GryviaClient, name: &str) -> Result<()> {
 
 async fn delete_storage(client: &GryviaClient, name: &str) -> Result<()> {
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("gryvia.io", "v1", "GryviaStorage"));
-    let api: Api<DynamicObject> = Api::all_with(
-        client.kube_client.clone(),
-        &ar,
-    );
+    let api: Api<DynamicObject> = Api::all_with(client.kube_client.clone(), &ar);
 
-    api.delete(name, &DeleteParams::default()).await
+    api.delete(name, &DeleteParams::default())
+        .await
         .context("Failed to delete storage")?;
 
     display::print_success(&format!("Storage {} deleted", name));
@@ -74,12 +74,10 @@ async fn delete_storage(client: &GryviaClient, name: &str) -> Result<()> {
 
 async fn delete_network(client: &GryviaClient, name: &str) -> Result<()> {
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("gryvia.io", "v1", "GryviaNetwork"));
-    let api: Api<DynamicObject> = Api::all_with(
-        client.kube_client.clone(),
-        &ar,
-    );
+    let api: Api<DynamicObject> = Api::all_with(client.kube_client.clone(), &ar);
 
-    api.delete(name, &DeleteParams::default()).await
+    api.delete(name, &DeleteParams::default())
+        .await
         .context("Failed to delete network")?;
 
     display::print_success(&format!("Network {} deleted", name));

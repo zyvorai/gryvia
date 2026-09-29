@@ -1,8 +1,8 @@
 use anyhow::Result;
+use colored::*;
 use kube::api::{Api, ApiResource, GroupVersionKind, ListParams};
 use kube::core::DynamicObject;
-use prettytable::{Table, Row, Cell, format};
-use colored::*;
+use prettytable::{format, Cell, Row, Table};
 
 use crate::client::GryviaClient;
 
@@ -23,16 +23,8 @@ pub async fn execute(
     println!("  {} {}", "Time window:".bold(), last);
     println!();
 
-    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
-        "gryvia.io",
-        "v1",
-        "GryviaFlow",
-    ));
-    let api: Api<DynamicObject> = Api::namespaced_with(
-        client.kube_client.clone(),
-        namespace,
-        &ar,
-    );
+    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("gryvia.io", "v1", "GryviaFlow"));
+    let api: Api<DynamicObject> = Api::namespaced_with(client.kube_client.clone(), namespace, &ar);
 
     let params = if let Some(svc) = service {
         let label_selector = format!("gryvia.io/service={}", svc);
@@ -144,10 +136,6 @@ fn print_flows_table(flows: &[DynamicObject]) {
 
     table.printstd();
     println!();
-    println!(
-        "  {} Total flows: {}",
-        "ℹ".cyan().bold(),
-        flows.len()
-    );
+    println!("  {} Total flows: {}", "ℹ".cyan().bold(), flows.len());
     println!();
 }

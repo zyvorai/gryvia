@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
-use kube::api::{Api, ListParams};
-use prettytable::{Table, Row, Cell, format};
 use colored::*;
+use kube::api::{Api, ListParams};
+use prettytable::{format, Cell, Row, Table};
 
 use crate::client::GryviaClient;
 use crate::types::*;
@@ -15,22 +15,32 @@ pub async fn execute(
     // Validate period
     match period {
         "day" | "week" | "month" => {}
-        _ => anyhow::bail!("Invalid period: '{}'. Valid periods: day, week, month", period),
+        _ => anyhow::bail!(
+            "Invalid period: '{}'. Valid periods: day, week, month",
+            period
+        ),
     }
     let api: Api<GryviaQuota> = Api::all(client.kube_client.clone());
 
-    let quotas = api.list(&ListParams::default()).await
+    let quotas = api
+        .list(&ListParams::default())
+        .await
         .context("Failed to list quotas")?;
 
     let filtered: Vec<_> = if let Some(team_name) = team {
-        quotas.items.iter()
+        quotas
+            .items
+            .iter()
             .filter(|q| q.spec.team == team_name)
             .collect()
     } else {
         quotas.items.iter().collect()
     };
 
-    println!("{}", format!("━━━ Cost Analysis ({}) ━━━", period).bold().cyan());
+    println!(
+        "{}",
+        format!("━━━ Cost Analysis ({}) ━━━", period).bold().cyan()
+    );
     println!();
 
     let mut table = Table::new();
@@ -53,7 +63,12 @@ pub async fn execute(
         if let Some(ref budget_status) = quota_status.budget_status {
             let team = &quota.spec.team;
             let spent = budget_status.spent_this_month;
-            let budget = quota.spec.budget.as_ref().map(|b| b.monthly_budget).unwrap_or(0.0);
+            let budget = quota
+                .spec
+                .budget
+                .as_ref()
+                .map(|b| b.monthly_budget)
+                .unwrap_or(0.0);
             let remaining = budget_status.remaining_budget;
             let percent = budget_status.percent_used;
             let projected = budget_status.projected_spend;
@@ -87,8 +102,18 @@ pub async fn execute(
     println!("{}", "Summary:".bold());
     println!("  Total Spent: {}", format!("${:.2}", total_spent).yellow());
     println!("  Total Budget: ${:.2}", total_budget);
-    println!("  Total Remaining: {}", format!("${:.2}", total_budget - total_spent).green());
-    println!("  Overall Usage: {:.1}%", if total_budget > 0.0 { total_spent / total_budget * 100.0 } else { 0.0 });
+    println!(
+        "  Total Remaining: {}",
+        format!("${:.2}", total_budget - total_spent).green()
+    );
+    println!(
+        "  Overall Usage: {:.1}%",
+        if total_budget > 0.0 {
+            total_spent / total_budget * 100.0
+        } else {
+            0.0
+        }
+    );
 
     if detailed {
         println!();
@@ -140,24 +165,48 @@ async fn show_detailed_breakdown(quotas: &[&GryviaQuota]) -> Result<()> {
     for quota in quotas {
         let quota_status = quota.status.clone().unwrap_or_default();
 
-        println!("{}", format!("Team: {}", quota.spec.team).bold().underline());
+        println!(
+            "{}",
+            format!("Team: {}", quota.spec.team).bold().underline()
+        );
         println!();
 
         // Usage breakdown
         println!("  {}", "Resource Usage:".bold());
-        println!("    Allocated GPUs:  {}", quota_status.current_usage.allocated_gpus);
-        println!("    Running Jobs:    {}", quota_status.current_usage.running_jobs);
-        println!("    Queued Jobs:     {}", quota_status.current_usage.queued_jobs);
-        println!("    GPU-Hours (MTD): {:.1}", quota_status.current_usage.gpu_hours);
+        println!(
+            "    Allocated GPUs:  {}",
+            quota_status.current_usage.allocated_gpus
+        );
+        println!(
+            "    Running Jobs:    {}",
+            quota_status.current_usage.running_jobs
+        );
+        println!(
+            "    Queued Jobs:     {}",
+            quota_status.current_usage.queued_jobs
+        );
+        println!(
+            "    GPU-Hours (MTD): {:.1}",
+            quota_status.current_usage.gpu_hours
+        );
         println!();
 
         // Quota limits
         println!("  {}", "Quota Limits:".bold());
         println!("    Max GPUs:          {}", quota.spec.gpu_quota.max_gpus);
-        println!("    Max GPUs/Job:      {}", quota.spec.gpu_quota.max_gpus_per_job);
-        println!("    Max Running Jobs:  {}", quota.spec.gpu_quota.max_running_jobs);
+        println!(
+            "    Max GPUs/Job:      {}",
+            quota.spec.gpu_quota.max_gpus_per_job
+        );
+        println!(
+            "    Max Running Jobs:  {}",
+            quota.spec.gpu_quota.max_running_jobs
+        );
         if !quota.spec.gpu_quota.allowed_gpu_types.is_empty() {
-            println!("    Allowed GPU Types: {}", quota.spec.gpu_quota.allowed_gpu_types.join(", "));
+            println!(
+                "    Allowed GPU Types: {}",
+                quota.spec.gpu_quota.allowed_gpu_types.join(", ")
+            );
         }
         println!();
 
@@ -165,8 +214,18 @@ async fn show_detailed_breakdown(quotas: &[&GryviaQuota]) -> Result<()> {
         if let Some(ref budget_spec) = quota.spec.budget {
             println!("  {}", "Budget:".bold());
             println!("    Monthly Budget:    ${:.2}", budget_spec.monthly_budget);
-            println!("    Alert Threshold:   {:.0}%", budget_spec.alert_threshold * 100.0);
-            println!("    Hard Limit:        {}", if budget_spec.hard_limit { "yes".red() } else { "no".green() });
+            println!(
+                "    Alert Threshold:   {:.0}%",
+                budget_spec.alert_threshold * 100.0
+            );
+            println!(
+                "    Hard Limit:        {}",
+                if budget_spec.hard_limit {
+                    "yes".red()
+                } else {
+                    "no".green()
+                }
+            );
 
             if let Some(ref bs) = quota_status.budget_status {
                 println!("    Spent This Month:  ${:.2}", bs.spent_this_month);
@@ -174,7 +233,10 @@ async fn show_detailed_breakdown(quotas: &[&GryviaQuota]) -> Result<()> {
                 println!("    Projected Spend:   ${:.2}", bs.projected_spend);
 
                 if bs.projected_spend > budget_spec.monthly_budget {
-                    println!("    {}", "WARNING: Projected to exceed budget!".red().bold());
+                    println!(
+                        "    {}",
+                        "WARNING: Projected to exceed budget!".red().bold()
+                    );
                 }
             }
             println!();
