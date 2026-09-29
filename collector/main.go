@@ -52,6 +52,13 @@ func main() {
 		quotaPaceSync   = flag.Bool("quota-pace-sync", false, "MUTATING, off by default: every 30 s grant a pace lease to the cgroups of pods on this node whose namespace is listed by a GryviaQuota with spec.network.maxEgressMbps (needs -quota-pace, -cgroup-path, running in a cluster and NODE_NAME). Fails open: an API error changes nothing and leases expire after 2 minutes")
 		quotaPaceDry    = flag.Bool("quota-pace-dry-run", false, "with -quota-pace-sync: log what would be granted or revoked and write nothing to the pace map")
 		publishFabric   = flag.Bool("publish-fabric-status", false, "every 30 s patch the status of an existing GryviaFabricSignal (spec.jobRef = job) with the folded fabric signals; needs a cluster (KUBERNETES_SERVICE_HOST) and RBAC (chart value ebpf.publishFabricStatus)")
+		tlsCertFile     = flag.String("tls-cert-file", "", "serve the HTTP listener over TLS (>= 1.2) with this certificate; re-read when the file changes (rotation). Needs -tls-key-file")
+		tlsKeyFile      = flag.String("tls-key-file", "", "private key for -tls-cert-file")
+		tlsClientCA     = flag.String("tls-client-ca-file", "", "enable mTLS: require and verify client certificates against this CA bundle (needs TLS); a verified client certificate authenticates every endpoint")
+		apiTokenFile    = flag.String("api-token-file", "", "file with a shared token (>= 32 chars): every endpoint except /healthz, /readyz and the flight endpoint then needs an HMAC request signature (X-Gryvia-Time / X-Gryvia-Signature)")
+		metricsToken    = flag.String("metrics-token-file", "", "file with a bearer token (>= 32 chars) that Prometheus may present on /metrics only")
+		insecureListen  = flag.Bool("insecure-listener", false, "explicitly serve every endpoint without authentication (acknowledges the risk; contradicts the auth flags)")
+		requireAuth     = flag.Bool("require-auth", false, "refuse to start unless -api-token-file, -metrics-token-file or -tls-client-ca-file is set")
 		windowSec       = flag.Int("window", 300, "Aggregation sliding window in seconds")
 	)
 	flag.Parse()
@@ -69,6 +76,15 @@ func main() {
 		"ebpf_dir", *ebpfDir,
 		"iface", *iface,
 	)
+
+	sec := securityConfig{TLSCertFile: *tlsCertFile, TLSKeyFile: *tlsKeyFile, TLSClientCAFile: *tlsClientCA,
+		APITokenFile: *apiTokenFile, MetricsTokenFile: *metricsToken, Insecure: *insecureListen, RequireAuth: *requireAuth}
+	if err := sec.validate(); err != nil {
+		log.Fatalw("invalid listener security flags", "error", err)
+	}
+	for _, w := range sec.warnings() {
+		log.Warnw(w)
+	}
 
 	// Context with signal handling.
 	ctx, cancel := signal.NotifyContext(context.Background(),
@@ -484,14 +500,35 @@ func main() {
 		_, _ = w.Write([]byte("ok"))
 	})
 
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+
 	srv := &http.Server{
-		Addr:    *metricsAddr,
-		Handler: mux,
+		Addr:              *metricsAddr,
+		Handler:           sec.authMiddleware(mux, time.Now),
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+	if sec.tlsEnabled() {
+		rl, err := newReloader(sec.TLSCertFile, sec.TLSKeyFile, sec.TLSClientCAFile,
+			func(err error) { log.Warnw("TLS reload failed", "error", err) })
+		if err != nil {
+			log.Fatalw("cannot load TLS material", "error", err)
+		}
+		srv.TLSConfig = rl.tlsConfig()
 	}
 
 	go func() {
-		log.Infow("starting HTTP server", "addr", *metricsAddr)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Infow("starting HTTP server", "addr", *metricsAddr, "tls", sec.tlsEnabled(),
+			"mtls", sec.TLSClientCAFile != "", "auth_enforced", sec.enforcing())
+		var err error
+		if sec.tlsEnabled() {
+			err = srv.ListenAndServeTLS("", "")
+		} else {
+			err = srv.ListenAndServe()
+		}
+		if err != nil && err != http.ErrServerClosed {
 			log.Fatalw("HTTP server failed", "error", err)
 		}
 	}()

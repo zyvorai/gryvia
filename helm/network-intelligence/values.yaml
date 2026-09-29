@@ -31,6 +31,13 @@ collector:
     requests:
       cpu: 100m
       memory: 128Mi
+  # Default true (unchanged). The collector needs hostPID and host paths for eBPF but, by code reading, hostNetwork
+  # only for the programs attached to a HOST network interface (XDP/TCX: packet_filter, dns_tracker, cost tracker,
+  # trace correlator, roce_cnp, pfc_pause): the loader resolves ebpf.interface with net.InterfaceByName inside the
+  # pod's own network namespace. Kprobes, tracepoints, sockops/sk_msg (cgroup) and uprobes do not depend on it.
+  # Set false ONLY with ebpf.interface empty (the chart refuses otherwise); then port 9090 is served on the pod IP
+  # instead of the node IP and ebpf.security.networkPolicy can restrict who may reach it. Not yet run on a cluster.
+  # See docs/collector-security.md.
   hostNetwork: true
   nodeSelector: {}
   tolerations:
@@ -69,6 +76,59 @@ ebpf:
     sync: false
     # Log what sync would grant or revoke and write nothing (-quota-pace-dry-run). Try this first.
     dryRun: false
+  # Security of the collector HTTP listener (port 9090: /metrics and /api/v1/*). Everything here is off by default,
+  # which keeps today's behaviour (plain HTTP, unauthenticated except the flight endpoint; the collector logs a
+  # warning at start). See docs/collector-security.md.
+  security:
+    # Refuse to start (-require-auth) unless a credential mechanism below is configured. Recommended.
+    requireAuth: false
+    # Acknowledge an unauthenticated listener explicitly (-insecure-listener). Contradicts everything else here.
+    insecureListener: false
+    # Secrets in the collector namespace holding a random >=32 character token under the given key.
+    # apiToken: every /api/v1/* request (except /api/v1/flight/diagnose, which keeps flightTokenSecret) must be
+    #   HMAC-signed with it (-api-token-file). The gateway signs with GRYVIA_COLLECTOR_TOKEN (gryvia chart
+    #   apiGateway.collector.tokenSecret).
+    # metricsToken: bearer token that opens /metrics only (-metrics-token-file), for Prometheus.
+    apiTokenSecret: ""
+    apiTokenKey: token
+    metricsTokenSecret: ""
+    metricsTokenKey: token
+    tls:
+      # Serve TLS >= 1.2 (-tls-cert-file/-tls-key-file; rotated files are picked up without a restart).
+      enabled: false
+      # Existing Secret with tls.crt and tls.key (and ca.crt when clientCA is true). Defaults to
+      # <fullname>-collector-tls, which certManager creates when enabled.
+      secretName: ""
+      # mTLS (-tls-client-ca-file=ca.crt of the Secret): every client, including Prometheus and the gateway,
+      # must present a certificate signed by that CA.
+      clientCA: false
+      # Create a cert-manager Certificate for the server (same pattern as the gryvia chart's tls.mode=certManager).
+      certManager:
+        enabled: false
+        issuerName: ""
+        issuerKind: ClusterIssuer
+        # Names in the certificate. Clients reach collectors by pod IP, so they verify one of these names
+        # (gateway: GRYVIA_COLLECTOR_SERVER_NAME / apiGateway.collector.serverName).
+        dnsNames:
+          - gryvia-collector
+    # How the collector ServiceMonitor scrapes a secured listener (used when tls.enabled).
+    serviceMonitor:
+      # Name to verify in the collector certificate (Prometheus scrapes pod IPs).
+      serverName: gryvia-collector
+      # Secret (in the ServiceMonitor's namespace) with the CA that signed the collector certificate.
+      caSecret: {name: "", key: ca.crt}
+      # mTLS: Secret (ServiceMonitor namespace) with the Prometheus client certificate and key.
+      clientCertSecret: {name: "", certKey: tls.crt, keyKey: tls.key}
+    # Rendered only when collector.hostNetwork=false (a NetworkPolicy does not apply to hostNetwork pods): limit
+    # ingress to port 9090 to the listed peers. Empty selectors mean "any pod in that namespace".
+    networkPolicy:
+      enabled: false
+      gateway:
+        namespace: gryvia-system
+        podLabels: {}
+      prometheus:
+        namespace: monitoring
+        podLabels: {}
   # Paths of libnccl.so / libcudart.so for the GPU uprobes. Empty tries to discover them from running processes.
   ncclLib: ""
   cudaLib: ""

@@ -45,6 +45,27 @@ spec:
               name: {{ .Values.apiGateway.flightTokenSecret | quote }}
               key: {{ .Values.apiGateway.flightTokenKey | quote }}
         {{- end }}
+        {{- with .Values.apiGateway.collector }}
+        {{- if .tlsSecret }}
+        - name: GRYVIA_COLLECTOR_CA_FILE
+          value: /collector-tls/ca.crt
+        {{- if .clientCert }}
+        - name: GRYVIA_COLLECTOR_CERT_FILE
+          value: /collector-tls/tls.crt
+        - name: GRYVIA_COLLECTOR_KEY_FILE
+          value: /collector-tls/tls.key
+        {{- end }}
+        - name: GRYVIA_COLLECTOR_SERVER_NAME
+          value: {{ .serverName | quote }}
+        {{- end }}
+        {{- if .tokenSecret }}
+        - name: GRYVIA_COLLECTOR_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: {{ .tokenSecret | quote }}
+              key: {{ .tokenKey | quote }}
+        {{- end }}
+        {{- end }}
         {{- if .Values.apiGateway.prometheusUrl }}
         - name: PROMETHEUS_URL
           value: {{ .Values.apiGateway.prometheusUrl | quote }}
@@ -117,6 +138,11 @@ spec:
         - name: tls
           mountPath: /tls
           readOnly: true
+        {{- if .Values.apiGateway.collector.tlsSecret }}
+        - name: collector-tls
+          mountPath: /collector-tls
+          readOnly: true
+        {{- end }}
       volumes:
       - name: tmp
         emptyDir: {}
@@ -124,6 +150,12 @@ spec:
         secret:
           secretName: {{ .Values.tls.secretName }}
           defaultMode: 0440
+      {{- if .Values.apiGateway.collector.tlsSecret }}
+      - name: collector-tls
+        secret:
+          secretName: {{ .Values.apiGateway.collector.tlsSecret | quote }}
+          defaultMode: 0440
+      {{- end }}
 ---
 apiVersion: v1
 kind: Service

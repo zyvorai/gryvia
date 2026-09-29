@@ -10,6 +10,7 @@ import ipaddress
 import json
 import logging
 import re
+import ssl
 import statistics
 import time
 from typing import Any, Dict, List, Tuple
@@ -19,6 +20,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from .collector import COLLECTOR_PORT, COLLECTOR_SELECTOR
+from .collector_transport import client_kwargs, collector_scheme, request_extensions
 from .common import Deps, run
 from .uiutil import namespaces
 
@@ -64,7 +66,7 @@ async def flight_collector_urls(deps: Deps) -> List[str]:
         except ValueError:
             continue
         host = f"[{address}]" if address.version == 6 else str(address)
-        urls.append(f"http://{host}:{COLLECTOR_PORT}")
+        urls.append(f"{collector_scheme()}://{host}:{COLLECTOR_PORT}")
     return urls[:MAX_COLLECTORS]
 
 
@@ -79,7 +81,7 @@ async def _read_node(client: httpx.AsyncClient, url: str, path: str, token: str)
     """(reachable, body). 404 means the node answered but attributed no events to the job."""
     try:
         headers = signature_headers(path, token, int(time.time()))
-        async with client.stream("GET", url + path, headers=headers) as response:
+        async with client.stream("GET", url + path, headers=headers, **request_extensions()) as response:
             if response.status_code == 404:
                 return True, None
             response.raise_for_status()
@@ -101,8 +103,13 @@ async def _fan_out(urls: List[str], path: str, token: str) -> List[Tuple[bool, A
     semaphore = asyncio.Semaphore(MAX_CONCURRENCY)
     limits = httpx.Limits(max_connections=MAX_CONCURRENCY)
     # No redirects and no proxy variables: the signed request goes to the discovered pod only.
+    try:
+        kwargs = client_kwargs()
+    except (OSError, ssl.SSLError) as exc:  # unreadable CA/client cert: fail closed
+        logger.error("collector TLS configuration unusable: %s", type(exc).__name__)
+        return [(False, None)] * len(urls)
     async with httpx.AsyncClient(timeout=NODE_TIMEOUT, follow_redirects=False, trust_env=False,
-                                 limits=limits) as client:
+                                 limits=limits, **kwargs) as client:
         async def one(url: str) -> Tuple[bool, Any]:
             async with semaphore:
                 return await _read_node(client, url, path, token)
