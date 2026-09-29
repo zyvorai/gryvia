@@ -7,7 +7,7 @@ app.kubernetes.io/component=collector. No collector reachable -> no data (never 
 """
 import asyncio
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 import httpx
 
@@ -47,16 +47,31 @@ async def _get(client: httpx.AsyncClient, url: str) -> Any:
         return None
 
 
-async def fetch_all(deps: Deps, path: str) -> List[Any]:
-    """JSON bodies from every reachable collector for `path` (e.g. /api/v1/gpu/nccl)."""
+async def fetch_all_with_stats(deps: Deps, path: str) -> Tuple[List[Any], Dict[str, int]]:
+    """(bodies, {"reachable": n, "total": m}) for `path` across every discovered collector.
+
+    The ``Deps.collector_fetch`` test hook may return either a list of bodies (total is then
+    the number of bodies) or a ``(bodies, total)`` tuple to simulate unreachable collectors.
+    """
     if deps.collector_fetch is not None:
-        return await deps.collector_fetch(path)
+        res = await deps.collector_fetch(path)
+        if isinstance(res, tuple):
+            bodies, total = list(res[0]), int(res[1])
+        else:
+            bodies, total = list(res), len(res)
+        return bodies, {"reachable": len(bodies), "total": max(total, len(bodies))}
     urls = await collector_urls(deps)
     if not urls:
-        return []
+        return [], {"reachable": 0, "total": 0}
     async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
-        bodies = await asyncio.gather(*[_get(client, u + path) for u in urls])
-    return [b for b in bodies if b is not None]
+        results = await asyncio.gather(*[_get(client, u + path) for u in urls])
+    bodies = [b for b in results if b is not None]
+    return bodies, {"reachable": len(bodies), "total": len(urls)}
+
+
+async def fetch_all(deps: Deps, path: str) -> List[Any]:
+    """JSON bodies from every reachable collector for `path` (e.g. /api/v1/gpu/nccl)."""
+    return (await fetch_all_with_stats(deps, path))[0]
 
 
 def _num(v: Any) -> float:

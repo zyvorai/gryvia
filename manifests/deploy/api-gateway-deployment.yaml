@@ -188,6 +188,13 @@ rules:
 - apiGroups: [""]
   resources: ["services", "endpoints"]
   verbs: ["get", "list"]
+# Job runtime details (pod logs and events) for the dashboard.
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get"]
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

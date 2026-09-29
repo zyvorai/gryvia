@@ -1,0 +1,10 @@
+import toast from 'react-hot-toast'
+import { errorMessage } from './errors'
+
+/** One place for user feedback after an action. */
+export const notify = {
+  success: (message: string) => toast.success(message),
+  info: (message: string) => toast(message),
+  /** Shows what went wrong, using the gateway's reason when there is one. */
+  error: (what: string, err?: unknown) => toast.error(err === undefined ? what : `${what}: ${errorMessage(err)}`),
+}

@@ -14,7 +14,9 @@ export default function Login() {
   const [localError, setLocalError] = useState('')
   const host = window.location.host || window.location.hostname
 
-  const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname || '/dashboard'
+  const state = location.state as { from?: { pathname?: string; search?: string; hash?: string }; reason?: string } | null
+  const from = state?.from?.pathname ? `${state.from.pathname}${state.from.search ?? ''}${state.from.hash ?? ''}` : '/dashboard'
+  const expired = state?.reason === 'expired'
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -54,6 +56,11 @@ export default function Login() {
       </div>
       <form className="card login-card" onSubmit={submit} noValidate>
         <h1>Sign in.</h1>
+        {expired && !error && (
+          <p className="warning" role="status">
+            Your session expired. Sign in again to continue.
+          </p>
+        )}
         {authConfig?.oidcEnabled && (
           <button type="button" className="primary" onClick={() => loginWithSSO()}>
             Sign in with SSO

@@ -1,100 +1,208 @@
 import { useQuery } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
 import { api } from '@/lib/api'
-import LoadingSpinner from '@/components/LoadingSpinner'
+import DataTable, { type Column } from '@/components/DataTable'
+import { useTableState } from '@/hooks/useTableState'
+import type { FilterDef, SortAccessor } from '@/lib/tableState'
+import type { FabricGpuNode } from '@/types'
 import PageHero from '@/components/PageHero'
 import PagePulse from '@/components/kit/PagePulse'
 import { countTone } from '@/components/kit/tone'
+import Progress from '@/components/Progress'
+import { EmptyState, ErrorState, Skeleton } from '@/components/StateViews'
+import { phaseTone } from '@/lib/phase'
+import { errorMessage } from '@/lib/errors'
+import { notify } from '@/lib/notify'
+import { useDocumentTitle } from '@/hooks/useDocumentTitle'
+
+const nodeName = (n: FabricGpuNode) => n.spec?.nodeName || n.metadata?.name
+const FILTERS: FilterDef<FabricGpuNode>[] = [
+  { name: 'phase', label: 'Phase', get: (n) => n.status?.phase || 'Unknown' },
+  { name: 'gpu', label: 'GPU type', get: (n) => n.spec?.gpuType },
+]
+const SORTS: Record<string, SortAccessor<FabricGpuNode>> = {
+  name: nodeName,
+  phase: (n) => n.status?.phase || 'Unknown',
+  gpus: (n) => n.spec?.gpuCount ?? 0,
+}
+const searchText = (n: FabricGpuNode) => [nodeName(n), n.spec?.gpuType, n.status?.phase, n.spec?.rdma ? 'rdma' : ''].filter(Boolean).join(' ')
+const jobsLink = (n: FabricGpuNode) => `/jobs?q=${encodeURIComponent(nodeName(n) ?? '')}`
+
+const isNum = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n)
+
+async function copyUuid(uuid: string) {
+  try {
+    await navigator.clipboard.writeText(uuid)
+    notify.success('GPU UUID copied')
+  } catch (err) {
+    notify.error('Could not copy the UUID', err)
+  }
+}
 
 export default function Nodes() {
-  const { data: nodes, isLoading, isError, dataUpdatedAt } = useQuery({
+  useDocumentTitle('Nodes')
+  const { data: nodes, isLoading, isError, error, refetch, isRefetching, dataUpdatedAt } = useQuery({
     queryKey: ['nodes'],
     queryFn: api.getNodes,
     refetchInterval: 10000,
   })
 
-  if (isLoading) return <LoadingSpinner />
+  const table = useTableState({ rows: nodes, searchText, filters: FILTERS, sortAccessors: SORTS, defaultSort: { key: 'name', dir: 'asc' }, pageSize: 10 })
 
-  if (isError) {
+  if (isLoading) {
     return (
       <>
-        <PageHero eyebrow="Nodes" title="Nodes unavailable." tint="red" />
-        <p className="warning" role="alert">Failed to load GPU nodes. Please check your API connection.</p>
+        <PageHero eyebrow="Nodes" title="Every GPU, accounted for." lede="Physical GPU nodes and real-time metrics" />
+        <Skeleton rows={4} />
       </>
     )
   }
 
-  const notReady = nodes?.filter((n) => n.status?.phase !== 'Ready').length || 0
+  if (isError && !nodes) {
+    return (
+      <>
+        <PageHero eyebrow="Nodes" title="Nodes unavailable." tint="red" />
+        <ErrorState title="Could not load GPU nodes." error={error} onRetry={() => refetch()} retrying={isRefetching} />
+      </>
+    )
+  }
+
+  const list = nodes || []
+  const columns: Column<FabricGpuNode>[] = [
+    { key: 'name', header: 'Node', sortable: true, render: (n) => nodeName(n) },
+    { key: 'phase', header: 'Phase', sortable: true, render: (n) => <span className={`pill ${phaseTone(n.status?.phase)}`}>{n.status?.phase || 'Unknown'}</span> },
+    { key: 'gpu', header: 'GPU type', render: (n) => n.spec?.gpuType || '—' },
+    { key: 'gpus', header: 'GPUs', sortable: true, numeric: true, render: (n) => n.spec?.gpuCount ?? '—' },
+    {
+      key: 'jobs',
+      header: 'Jobs',
+      render: (n) => (
+        <Link to={jobsLink(n)} className="card-link">
+          Jobs on this node
+        </Link>
+      ),
+    },
+  ]
+  const ready = list.filter((n) => phaseTone(n.status?.phase) === 'ok').length
+  const notReady = list.length - ready
 
   return (
     <>
       <PageHero eyebrow="Nodes" title="Every GPU, accounted for." lede="Physical GPU nodes and real-time metrics" />
 
       <div className="grid">
+        {isError && (
+          <div className="span3">
+            <ErrorState title="Could not refresh nodes; showing the last data." error={error} onRetry={() => refetch()} retrying={isRefetching} />
+          </div>
+        )}
+
         <PagePulse
           updatedAt={dataUpdatedAt}
-          headline={notReady > 0 ? `${notReady} node${notReady === 1 ? '' : 's'} not ready.` : `All ${nodes?.length || 0} nodes ready.`}
-          tone={notReady > 0 ? 'warn' : 'ok'}
+          error={isError ? errorMessage(error) : undefined}
+          headline={
+            list.length === 0
+              ? 'No GPU nodes registered.'
+              : notReady > 0
+                ? `${notReady} node${notReady === 1 ? '' : 's'} not ready.`
+                : `All ${list.length} nodes ready.`
+          }
+          tone={list.length === 0 ? undefined : notReady > 0 ? 'warn' : 'ok'}
           figures={[
-            { label: 'Total nodes', value: nodes?.length || 0 },
-            { label: 'Total GPUs', value: nodes?.reduce((sum, n) => sum + (n.spec?.gpuCount || 0), 0) || 0 },
-            { label: 'RDMA enabled', value: nodes?.filter((n) => n.spec?.rdma).length || 0 },
-            { label: 'Ready', value: nodes?.filter((n) => n.status?.phase === 'Ready').length || 0 },
+            { label: 'Total nodes', value: list.length },
+            { label: 'Total GPUs', value: list.reduce((sum, n) => sum + (n.spec?.gpuCount || 0), 0) },
+            { label: 'RDMA enabled', value: list.filter((n) => n.spec?.rdma).length },
+            { label: 'Ready', value: ready },
             { label: 'Not ready', value: notReady, tone: countTone(notReady) },
           ]}
         />
 
-        {nodes?.map((node) => {
+        <section className="card span3">
+          <p className="eyebrow">NODES</p>
+          <h2 className="card-title">All nodes</h2>
+          <DataTable
+            caption="GPU nodes"
+            columns={columns}
+            state={table}
+            rowKey={(n) => n.metadata?.name}
+            searchLabel="Search nodes"
+            empty={
+              <EmptyState title="No GPU nodes registered">
+                FabricGpuNode resources are created by the Gryvia GPU operator when it discovers GPUs on a node. Check that the GPU operator is installed and its pods are running.
+              </EmptyState>
+            }
+          />
+        </section>
+
+        {table.pageRows.map((node) => {
           const phase = node.status?.phase
-          const phaseCls = phase === 'Ready' ? 'ok' : phase === 'Degraded' ? 'warn' : 'bad'
           return (
             <section key={node.metadata?.name} className="card span3">
               <p className="eyebrow">NODE</p>
               <h2 className="card-title">{node.spec?.nodeName || node.metadata?.name}</h2>
               <div className="row">
-                <span className={`pill ${phaseCls}`}>{phase || 'Unknown'}</span>
+                <span className={`pill ${phaseTone(phase)}`}>{phase || 'Unknown'}</span>
                 {node.spec?.rdma && <span className="pill info">RDMA</span>}
+                <Link to={jobsLink(node)} className="card-link">
+                  Jobs on this node ›
+                </Link>
               </div>
 
               <div className="apple-metric-band">
                 <div>
-                  <span>GPU Type</span>
-                  <b>{node.spec?.gpuType}</b>
+                  <span>GPU type</span>
+                  <b>{node.spec?.gpuType || '—'}</b>
                 </div>
                 <div>
-                  <span>GPU Count</span>
-                  <b>{node.spec?.gpuCount}</b>
+                  <span>GPU count</span>
+                  <b>{node.spec?.gpuCount ?? '—'}</b>
                 </div>
                 <div>
-                  <span>Memory</span>
-                  <b>{node.spec?.memoryGB ? `${node.spec.memoryGB} GB` : 'N/A'}</b>
+                  <span>GPU memory (per GPU)</span>
+                  <b>{node.spec?.memoryGB ? `${node.spec.memoryGB} GB` : '—'}</b>
                 </div>
               </div>
 
               {node.status?.gpuStatus && node.status.gpuStatus.length > 0 && (
                 <div className="formgrid">
                   {node.status.gpuStatus.map((gpu) => {
-                    const memUsedGB = Number(gpu.memoryUsed) / 1024 || 0
-                    const memTotalGB = Number(gpu.memoryTotal) / 1024 || 0
-                    const temperature = gpu.temperature ?? 0
-                    const utilization = gpu.utilization ?? 0
-                    const memPercent = memTotalGB > 0 ? Math.min(100, (memUsedGB / memTotalGB) * 100) : 0
+                    const hasMem = isNum(gpu.memoryUsed) && isNum(gpu.memoryTotal) && gpu.memoryTotal > 0
+                    const memUsedGB = hasMem ? (gpu.memoryUsed as number) / 1024 : 0
+                    const memTotalGB = hasMem ? (gpu.memoryTotal as number) / 1024 : 0
+                    const memPercent = hasMem ? Math.min(100, (memUsedGB / memTotalGB) * 100) : 0
+                    const gpuName = `${node.spec?.nodeName || node.metadata?.name} GPU ${gpu.index}`
                     return (
                       <div key={gpu.index} className="stack">
                         <div className="row">
                           <b>GPU {gpu.index}</b>
-                          <span className="faint mono">{gpu.uuid?.substring(0, 12)}...</span>
+                          {gpu.health && <span className={`pill ${phaseTone(gpu.health)}`}>{gpu.health}</span>}
+                          {gpu.uuid && (
+                            <button type="button" className="btn-secondary mono" title={gpu.uuid} aria-label={`Copy UUID of GPU ${gpu.index}`} onClick={() => copyUuid(gpu.uuid!)}>
+                              {gpu.uuid.length > 16 ? `${gpu.uuid.slice(0, 12)}…` : gpu.uuid}
+                            </button>
+                          )}
                         </div>
                         <MetricBar
                           label="Temperature"
-                          value={`${temperature}°C`}
-                          percent={Math.min(temperature, 100)}
-                          tone={temperature > 80 ? 'bad' : temperature > 70 ? 'warn' : ''}
+                          available={isNum(gpu.temperature)}
+                          value={`${gpu.temperature}°C`}
+                          percent={Math.min(gpu.temperature ?? 0, 100)}
+                          tone={(gpu.temperature ?? 0) > 80 ? 'bad' : (gpu.temperature ?? 0) > 70 ? 'warn' : undefined}
+                          barLabel={`${gpuName} temperature`}
                         />
-                        <MetricBar label="Utilization" value={`${utilization}%`} percent={Math.min(utilization, 100)} />
                         <MetricBar
-                          label="Memory"
+                          label="Utilization"
+                          available={isNum(gpu.utilization)}
+                          value={`${gpu.utilization}%`}
+                          percent={Math.min(gpu.utilization ?? 0, 100)}
+                          barLabel={`${gpuName} utilization`}
+                        />
+                        <MetricBar
+                          label="GPU memory"
+                          available={hasMem}
                           value={`${memUsedGB.toFixed(1)} / ${memTotalGB.toFixed(1)} GB`}
                           percent={memPercent}
+                          barLabel={`${gpuName} memory`}
                         />
                       </div>
                     )
@@ -109,18 +217,16 @@ export default function Nodes() {
   )
 }
 
-function MetricBar({ label, value, percent, tone = '' }: {
-  label: string; value: string; percent: number; tone?: '' | 'warn' | 'bad';
+function MetricBar({ label, value, percent, tone, available, barLabel }: {
+  label: string; value: string; percent: number; tone?: 'warn' | 'bad'; available: boolean; barLabel: string
 }) {
   return (
     <div>
       <div className="row">
         <span className="faint">{label}</span>
-        <span>{value}</span>
+        <span className="num">{available ? value : '—'}</span>
       </div>
-      <div className={`progress ${tone}`}>
-        <span style={{ width: `${percent}%` }} />
-      </div>
+      <Progress value={available ? percent : 0} tone={tone} label={available ? barLabel : `${barLabel} (no data)`} />
     </div>
   )
 }

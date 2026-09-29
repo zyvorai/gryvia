@@ -1,4 +1,6 @@
 import axios from 'axios'
+import toast from 'react-hot-toast'
+import { notifyUnauthorized } from '@/lib/authEvents'
 import type { FabricAIJob, FabricQuota, FabricGpuNode } from '@/types'
 import { getStoredToken, clearToken } from '@/lib/auth'
 
@@ -32,6 +34,8 @@ export interface GPUMetricsResponse {
 }
 
 export interface CostData {
+  /** 'all-time': the totals cover every billable job since creation, not a calendar month. */
+  scope?: string
   monthly: Array<{ month: string; cost: number }>
   hasHistoricalData: boolean
   byTeam: Array<{ team: string; cost: number }>
@@ -50,7 +54,7 @@ export interface NetworkFlow {
     port: number
     bytes: string
     latency: string
-    verdict: 'FORWARDED' | 'DROP' | 'DENIED' | 'ALLOW'
+    verdict: 'FORWARDED' | 'DROP' | 'DENIED' | 'ALLOW' | 'ERROR' | ''
     policy?: string
   }
 }
@@ -62,20 +66,21 @@ export interface FlowPolicy {
     destinationService: string
     port: number
     protocol: string
-    action: 'allow' | 'deny'
+    action: 'allow' | 'deny' | 'log'
     intent: string
     confidence?: number
   }
   status?: {
     phase: 'Enforced' | 'Pending' | 'Suggested' | 'Active'
     matchedFlows: number
+    ciliumPolicyRef?: string
   }
 }
 
 export interface ServiceGraphNode {
   id: string
   label: string
-  health: 'healthy' | 'warning' | 'critical'
+  health: 'healthy' | 'warning' | 'critical' | 'unknown'
   flowCount: number
 }
 
@@ -125,11 +130,12 @@ export interface TraceSession {
 }
 
 export interface CreateFlowPolicyRequest {
+  name?: string
   sourceService: string
   destinationService: string
   port: number
   protocol: string
-  action: 'allow' | 'deny'
+  action: 'allow' | 'deny' | 'log'
   intent: string
 }
 
@@ -206,6 +212,7 @@ export interface NetworkCostData {
 
 // Training insight types
 export interface TrainingInsight {
+  source?: { name: string; namespace: string }
   rankStats: Array<{
     rank: number
     avgLatencyNs: number
@@ -225,6 +232,7 @@ export interface TrainingInsight {
 
 // NCCL stats types
 export interface NCCLStats {
+  collectors?: { reachable: number; total: number }
   operations: Array<{
     opType: string
     count: number
@@ -236,6 +244,7 @@ export interface NCCLStats {
 
 // GPU memory stats types
 export interface GPUMemStats {
+  collectors?: { reachable: number; total: number }
   h2dBytes: number
   d2hBytes: number
   d2dBytes: number
@@ -356,6 +365,8 @@ export interface AutoTunerJob {
   spec?: {
     algorithm?: string
     objectiveMetric?: string
+    metricName?: string
+    direction?: 'maximize' | 'minimize'
     maxTrials?: number
     parameterSpace?: Record<string, unknown>
   }
@@ -366,6 +377,35 @@ export interface AutoTunerJob {
     bestMetricValue?: number
     bestTrialId?: string
   }
+}
+
+// Job runtime details (pods, logs, events)
+export interface JobPod {
+  name: string
+  phase: string
+  node?: string
+  podIP?: string
+  startTime?: string
+  restarts: number
+  message?: string
+  containers: Array<{ name: string; ready: boolean; state: string; restartCount: number; reason?: string }>
+}
+
+export interface JobLogs {
+  pod: string | null
+  container?: string
+  lines: string[]
+  truncated: boolean
+}
+
+export interface JobEvent {
+  type: string
+  reason: string
+  message: string
+  count: number
+  firstSeen?: string
+  lastSeen?: string
+  object: string
 }
 
 export interface CreateWorkflowRequest {
@@ -397,24 +437,29 @@ const apiClient = axios.create({
 
 // Attach auth token to all requests
 apiClient.interceptors.request.use((config) => {
-  const token = getStoredToken() || import.meta.env.VITE_API_TOKEN || ''
+  const token = getStoredToken() || ''
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
   return config
 })
 
-// Global error handler for auth failures - redirect to login on 401
+// Session and rate-limit handling. 401 goes through the router (keeps the return path and shows
+// "session expired"); 403/429 tell the user instead of failing silently.
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const status = error.response?.status
+    if (status === 401) {
       clearToken()
-      // Redirect to login unless already on login/callback pages
       const path = window.location.pathname
-      if (path !== '/login' && path !== '/auth/callback') {
+      if (path !== '/login' && path !== '/auth/callback' && !notifyUnauthorized()) {
         window.location.href = '/login'
       }
+    } else if (status === 403) {
+      toast.error("You don't have permission to do that.", { id: 'http-403' })
+    } else if (status === 429) {
+      toast.error('Too many requests. Wait a moment and try again.', { id: 'http-429' })
     }
     return Promise.reject(error)
   }
@@ -441,6 +486,21 @@ export const api = {
   createJob: async (job: Partial<FabricAIJob>): Promise<FabricAIJob> => {
     const { data } = await apiClient.post('/jobs', job)
     return data
+  },
+
+  getJobPods: async (name: string): Promise<JobPod[]> => {
+    const { data } = await apiClient.get(`/jobs/${encodeURIComponent(name)}/pods`)
+    return data.items || []
+  },
+
+  getJobLogs: async (name: string, opts: { pod?: string; tail?: number } = {}): Promise<JobLogs> => {
+    const { data } = await apiClient.get(`/jobs/${encodeURIComponent(name)}/logs`, { params: { pod: opts.pod, tail: opts.tail } })
+    return data
+  },
+
+  getJobEvents: async (name: string): Promise<JobEvent[]> => {
+    const { data } = await apiClient.get(`/jobs/${encodeURIComponent(name)}/events`)
+    return data.items || []
   },
 
   deleteJob: async (name: string): Promise<void> => {
@@ -535,6 +595,12 @@ export const api = {
   getSecurityAlerts: async (): Promise<SecurityAlert[]> => {
     const { data } = await apiClient.get('/security/alerts')
     return data.items || []
+  },
+
+  /** Alerts plus whether any event source is connected (false = an empty list does not mean "all clear"). */
+  getSecurityAlertsStatus: async (): Promise<{ items: SecurityAlert[]; eventSource: boolean }> => {
+    const { data } = await apiClient.get('/security/alerts')
+    return { items: data.items || [], eventSource: data.eventSource !== false }
   },
 
   getSecurityPolicies: async (): Promise<SecurityPolicy[]> => {

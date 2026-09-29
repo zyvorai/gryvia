@@ -3,7 +3,7 @@ import re
 from typing import Any, Dict, List, Literal, Optional
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 
 from .common import Deps, create_item, list_items
@@ -84,8 +84,13 @@ def build_router(deps: Deps) -> APIRouter:
         # FabricSecurityPolicy status only carries counters (alertsTriggered, detectionCounts),
         # not per-event records (process/path/sourceIP), so there is no source for individual
         # alerts. Verify the backing kind is readable, then return no items rather than invent any.
-        await list_items(deps, POLICIES)
-        return {"items": []}
+        # A missing/unreadable CRD must not turn into a 500: the answer is the same either way.
+        # eventSource=false tells the UI no per-event source is wired ("no event source", not "all clear").
+        try:
+            await list_items(deps, POLICIES)
+        except HTTPException:
+            pass
+        return {"items": [], "eventSource": False}
 
     @router.get("/api/security/policies")
     @deps.limiter.limit("30/minute")

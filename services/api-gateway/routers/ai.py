@@ -13,7 +13,7 @@ from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, Request
 
-from .collector import fetch_all, merge_gpu_memory, merge_nccl
+from .collector import fetch_all_with_stats, merge_gpu_memory, merge_nccl
 from .common import Deps, list_items
 
 
@@ -76,18 +76,23 @@ def build_router(deps: Deps) -> APIRouter:
         if not analysed:
             return _empty_insight()
         latest = max(analysed, key=lambda o: (_analysis_key(o), o.get("metadata", {}).get("creationTimestamp", "")))
-        return _insight_from(latest)
+        out = _insight_from(latest)
+        m = latest.get("metadata") or {}
+        out["source"] = {"name": m.get("name", ""), "namespace": m.get("namespace", "")}
+        return out
 
     @router.get("/api/ai/training/nccl")
     @deps.limiter.limit("30/minute")
     async def training_nccl(request: Request, _=Depends(deps.verify_auth)):
         """NCCL per-operation stats merged from every collector; empty when none is reachable."""
-        return merge_nccl(await fetch_all(deps, "/api/v1/gpu/nccl"))
+        bodies, stats = await fetch_all_with_stats(deps, "/api/v1/gpu/nccl")
+        return {**merge_nccl(bodies), "collectors": stats}
 
     @router.get("/api/gpu/memory")
     @deps.limiter.limit("30/minute")
     async def gpu_memory(request: Request, _=Depends(deps.verify_auth)):
         """Host/device transfer counters summed across collectors; zeros when none is reachable."""
-        return merge_gpu_memory(await fetch_all(deps, "/api/v1/gpu/memory"))
+        bodies, stats = await fetch_all_with_stats(deps, "/api/v1/gpu/memory")
+        return {**merge_gpu_memory(bodies), "collectors": stats}
 
     return router

@@ -28,7 +28,22 @@ TRACES = "fabrictracesessions"
 
 # CRD verdicts (forwarded, dropped, error) -> the verdict vocabulary the UI understands.
 _VERDICTS = {"forwarded": "FORWARDED", "dropped": "DROP", "drop": "DROP", "denied": "DENIED",
-             "allow": "ALLOW", "allowed": "ALLOW"}
+             "allow": "ALLOW", "allowed": "ALLOW", "error": "ERROR"}
+
+# CRD node health -> exactly one of healthy | warning | critical | unknown.
+_HEALTH = {"healthy": "healthy", "ok": "healthy", "ready": "healthy", "up": "healthy",
+           "warning": "warning", "warn": "warning", "degraded": "warning",
+           "critical": "critical", "unhealthy": "critical", "bad": "critical", "down": "critical",
+           "error": "critical", "failed": "critical"}
+
+
+def norm_verdict(value: Any) -> str:
+    """Verdict vocabulary shared by /flows and /graph: FORWARDED|DROP|DENIED|ALLOW|ERROR, else ''."""
+    return _VERDICTS.get(value.strip().lower(), "") if isinstance(value, str) else ""
+
+
+def norm_health(value: Any) -> str:
+    return _HEALTH.get(value.strip().lower(), "unknown") if isinstance(value, str) else "unknown"
 
 
 def _valid_name(v: str) -> str:
@@ -146,7 +161,7 @@ def _merge_graphs(graphs: List[Dict[str, Any]]) -> Dict[str, Any]:
         for n in st.get("nodes") or []:
             nid = n.get("name")
             if nid and nid not in nodes:
-                nodes[nid] = {"id": nid, "label": nid, "health": (n.get("health") or "unknown").lower(),
+                nodes[nid] = {"id": nid, "label": nid, "health": norm_health(n.get("health")),
                               "flowCount": 0}
         for e in st.get("edges") or []:
             s, d = e.get("source"), e.get("destination")
@@ -157,7 +172,7 @@ def _merge_graphs(graphs: List[Dict[str, Any]]) -> Dict[str, Any]:
                 continue
             seen.add(key)
             edges.append({"source": s, "target": d, "protocol": e.get("protocol", ""),
-                          "latency": e.get("latencyP99", ""), "verdict": e.get("verdict", ""),
+                          "latency": e.get("latencyP99", ""), "verdict": norm_verdict(e.get("verdict")),
                           "_port": e.get("port", 0), "_throughput": e.get("throughput", ""),
                           "_updated": st.get("lastUpdated", "")})
     for e in edges:
@@ -212,7 +227,7 @@ def build_router(deps: Deps) -> APIRouter:
                     "port": e.get("port", 0),
                     "bytes": e.get("throughput", ""),
                     "latency": e.get("latencyP99", ""),
-                    "verdict": _VERDICTS.get((e.get("verdict") or "").lower(), (e.get("verdict") or "").upper()),
+                    "verdict": norm_verdict(e.get("verdict")),
                 }})
         return {"items": items}
 

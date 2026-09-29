@@ -1,8 +1,12 @@
 import { useEffect, useRef } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/lib/auth'
+import { useDocumentTitle } from '@/hooks/useDocumentTitle'
+
+const MAX_ERROR_LEN = 200
 
 export default function AuthCallback() {
+  useDocumentTitle('Signing in')
   const { handleOIDCCallback, isAuthenticated, error: authError } = useAuth()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -15,9 +19,8 @@ export default function AuthCallback() {
     const errorParam = searchParams.get('error')
 
     if (errorParam) {
+      // Stay on this page and show the error with a way back; no timed redirect.
       processed.current = true
-      // Show error and redirect to login after a delay
-      setTimeout(() => navigate('/login', { replace: true }), 3000)
       return
     }
 
@@ -25,7 +28,7 @@ export default function AuthCallback() {
       processed.current = true
       handleOIDCCallback(code)
     } else {
-      // No code and no error - redirect to login
+      // No code and no error - nothing to complete, go to login
       navigate('/login', { replace: true })
     }
   }, [searchParams, handleOIDCCallback, navigate])
@@ -37,7 +40,9 @@ export default function AuthCallback() {
     }
   }, [isAuthenticated, navigate])
 
-  const urlError = searchParams.get('error_description') || searchParams.get('error')
+  // The query string is attacker-controlled: it is only ever rendered as text, and truncated.
+  const rawUrlError = searchParams.get('error_description') || searchParams.get('error')
+  const urlError = rawUrlError && rawUrlError.length > MAX_ERROR_LEN ? `${rawUrlError.slice(0, MAX_ERROR_LEN)}…` : rawUrlError
   const displayError = urlError || authError
 
   return (
@@ -46,12 +51,16 @@ export default function AuthCallback() {
         <div className="stack">
           <h1 className="apple-display">Authentication failed.</h1>
           <p className="warning" role="alert">{displayError}</p>
-          <p className="faint">Redirecting to login...</p>
+          <p>
+            <Link to="/login" replace className="buttonlike primary">
+              Back to sign in
+            </Link>
+          </p>
         </div>
       ) : (
         <div className="stack">
           <h1 className="apple-display">Completing sign in...</h1>
-          <div className="spinner" role="status" aria-label="Loading" />
+          <div className="spinner" role="status" aria-label="Completing sign in" />
         </div>
       )}
     </div>

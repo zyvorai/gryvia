@@ -17,6 +17,8 @@ from slowapi.errors import RateLimitExceeded
 import logging
 from collections import defaultdict
 
+from routers.phases import count_phases, is_billable, normalize as normalize_phase
+
 import httpx
 from jose import jwt, jwk, JWTError
 
@@ -350,17 +352,14 @@ async def get_cluster_stats(request: Request, _=Depends(verify_auth)):
         # Count allocated GPUs from running jobs
         for job in jobs.get("items", []):
             status = job.get("status", {})
-            if status.get("phase") == "Running":
+            if normalize_phase(status.get("phase")) == "running":
                 allocated_gpus += job.get("spec", {}).get("gpus", job.get("spec", {}).get("resources", {}).get("gpuCount", 0))
 
         available_gpus = max(0, total_gpus - allocated_gpus)
         avg_utilization = gpu_utilization_sum / gpu_count if gpu_count > 0 else 0
 
-        # Count jobs by status
-        job_counts = defaultdict(int)
-        for job in jobs.get("items", []):
-            phase = job.get("status", {}).get("phase", "Unknown")
-            job_counts[phase] += 1
+        # Count jobs by status (case-insensitive; see phases.py)
+        job_counts = count_phases(job.get("status", {}).get("phase") for job in jobs.get("items", []))
 
         return {
             "totalGPUs": total_gpus,
@@ -368,10 +367,10 @@ async def get_cluster_stats(request: Request, _=Depends(verify_auth)):
             "allocatedGPUs": allocated_gpus,
             "utilizationPercent": round(avg_utilization, 1),
             "totalJobs": len(jobs.get("items", [])),
-            "runningJobs": job_counts.get("Running", 0),
-            "pendingJobs": job_counts.get("Pending", 0) + job_counts.get("Queued", 0),
-            "completedJobs": job_counts.get("Completed", 0),
-            "failedJobs": job_counts.get("Failed", 0),
+            "runningJobs": job_counts["running"],
+            "pendingJobs": job_counts["pending"],
+            "completedJobs": job_counts["completed"],
+            "failedJobs": job_counts["failed"],
             "totalNodes": len(nodes.get("items", [])),
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
@@ -456,6 +455,14 @@ async def get_cost_metrics(request: Request, _=Depends(verify_auth)):
             )
         )
 
+        # namespace -> team from FabricQuota (spec.namespaces), used to group costs
+        ns_team: Dict[str, str] = {}
+        for q in quotas.get("items", []):
+            qspec = q.get("spec") or {}
+            if qspec.get("team"):
+                for qns in qspec.get("namespaces") or []:
+                    ns_team.setdefault(qns, qspec["team"])
+
         # Calculate costs by team
         team_costs = defaultdict(float)
         gpu_type_costs = defaultdict(lambda: {"cost": 0.0, "hours": 0.0})
@@ -464,7 +471,7 @@ async def get_cost_metrics(request: Request, _=Depends(verify_auth)):
             status = job.get("status", {})
             spec = job.get("spec", {})
 
-            if status.get("phase") in ["Running", "Completed"]:
+            if is_billable(status.get("phase")):
                 gpu_type = spec.get("gpuType", spec.get("resources", {}).get("gpuType", "unknown"))
                 gpu_count = spec.get("gpus", spec.get("resources", {}).get("gpuCount", 0))
 
@@ -483,7 +490,10 @@ async def get_cost_metrics(request: Request, _=Depends(verify_auth)):
                     cost = hours * gpu_count * GPU_PRICING.get(gpu_type, 1.0)
 
                     # Add to team costs (use namespace or label as team identifier)
-                    team = job.get("metadata", {}).get("labels", {}).get("team", "default")
+                    jmeta = job.get("metadata") or {}
+                    team = (ns_team.get(jmeta.get("namespace"))
+                            or (jmeta.get("labels") or {}).get("gryvia.io/team")
+                            or "unassigned")
                     team_costs[team] += cost
 
                     # Add to GPU type costs
@@ -518,6 +528,7 @@ async def get_cost_metrics(request: Request, _=Depends(verify_auth)):
             "byTeam": by_team,
             "byGPUType": by_gpu_type,
             "totalCost": round(current_month_cost, 2),
+            "scope": "all-time",
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
     except Exception as e:
@@ -557,7 +568,7 @@ async def get_job_metrics(
             status = job.get("status", {})
             spec = job.get("spec", {})
 
-            phase = status.get("phase", "Unknown")
+            phase = normalize_phase(status.get("phase")).capitalize() or "Unknown"
             by_status[phase] += 1
 
             framework = spec.get("framework", spec.get("type", "unknown"))
@@ -592,7 +603,7 @@ async def get_job_metrics(
 @limiter.limit("30/minute")
 async def list_jobs(
     request: Request,
-    limit: int = Query(100, ge=1, le=1000),
+    limit: int = Query(500, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     _=Depends(verify_auth),
 ):
@@ -743,7 +754,7 @@ async def delete_job(request: Request, name: str, _=Depends(verify_auth)):
 @limiter.limit("30/minute")
 async def list_quotas(
     request: Request,
-    limit: int = Query(100, ge=1, le=1000),
+    limit: int = Query(500, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     _=Depends(verify_auth),
 ):
@@ -805,7 +816,7 @@ async def get_quota(request: Request, name: str, _=Depends(verify_auth)):
 @limiter.limit("30/minute")
 async def list_nodes(
     request: Request,
-    limit: int = Query(100, ge=1, le=1000),
+    limit: int = Query(500, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     _=Depends(verify_auth),
 ):

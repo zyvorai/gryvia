@@ -129,11 +129,15 @@ def _param_space_ui(params: List[Dict[str, Any]]) -> Dict[str, Any]:
 def to_ui(obj: Dict[str, Any]) -> Dict[str, Any]:
     spec, st = obj.get("spec") or {}, obj.get("status") or {}
     best = st.get("bestTrial") or {}
+    objective = spec.get("objective") or {}
+    direction = objective.get("direction")
     return {
         "metadata": meta(obj),
         "spec": prune({
             "algorithm": spec.get("searchAlgorithm"),
-            "objectiveMetric": (spec.get("objective") or {}).get("metricName"),
+            "objectiveMetric": objective.get("metricName"),
+            "metricName": objective.get("metricName"),
+            "direction": direction if direction in ("maximize", "minimize") else "maximize",
             "maxTrials": spec.get("maxTrials"),
             "parameterSpace": _param_space_ui(spec.get("parameterSpace") or []),
         }),

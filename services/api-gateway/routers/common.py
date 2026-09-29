@@ -52,7 +52,8 @@ class Deps:
     limiter: Any                      # slowapi Limiter (or a no-op fake)
     job_namespace: str = "default"
     collector_urls: Optional[List[str]] = None                                 # GRYVIA_COLLECTOR_URLS
-    collector_fetch: Optional[Callable[[str], Awaitable[List[Any]]]] = None    # tests inject this
+    # tests inject this: returns a list of bodies, or (bodies, total_collectors)
+    collector_fetch: Optional[Callable[[str], Awaitable[Any]]] = None
 
 
 async def run(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:

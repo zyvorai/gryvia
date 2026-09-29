@@ -53,7 +53,7 @@ def test_flows_and_graph_from_service_graph(client, fake_k8s):
     assert by_id["api"]["flowCount"] == 2 and by_id["api"]["health"] == "healthy"
     assert by_id["cache"]["health"] == "unknown"
     assert g["edges"][0] == {"source": "api", "target": "db", "protocol": "tcp", "latency": "3ms",
-                             "verdict": "forwarded"}
+                             "verdict": "FORWARDED"}
 
 
 def test_policies_list_and_shape(client, fake_k8s):
@@ -155,3 +155,26 @@ def test_trace_validation(client, patch):
 def test_trace_404(client):
     assert client.get("/api/network/traces/nope").status_code == 404
     assert client.get("/api/network/traces/Bad_Name").status_code == 404
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("forwarded", "FORWARDED"), ("Dropped", "DROP"), ("DROP", "DROP"), ("denied", "DENIED"),
+    ("allow", "ALLOW"), ("error", "ERROR"), ("weird", ""), (None, ""), (5, "")])
+def test_graph_verdict_vocabulary(client, fake_k8s, raw, expected):
+    edge = {"source": "a", "destination": "b", "protocol": "tcp", "port": 1}
+    if raw is not None:
+        edge["verdict"] = raw
+    fake_k8s.add("fabricservicegraphs", {"metadata": {"name": "g"}, "status": {"edges": [edge]}}, "default")
+    assert client.get("/api/network/graph").json()["edges"][0]["verdict"] == expected
+    assert client.get("/api/network/flows").json()["items"][0]["spec"]["verdict"] == expected
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("Healthy", "healthy"), ("warning", "warning"), ("Degraded", "warning"), ("unhealthy", "critical"),
+    ("bad", "critical"), ("critical", "critical"), ("???", "unknown"), (None, "unknown")])
+def test_graph_node_health_vocabulary(client, fake_k8s, raw, expected):
+    node = {"name": "n"}
+    if raw is not None:
+        node["health"] = raw
+    fake_k8s.add("fabricservicegraphs", {"metadata": {"name": "g"}, "status": {"nodes": [node]}}, "default")
+    assert client.get("/api/network/graph").json()["nodes"][0]["health"] == expected

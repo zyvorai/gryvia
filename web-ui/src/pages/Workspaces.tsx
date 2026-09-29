@@ -1,49 +1,113 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import { errorMessage } from '@/lib/errors'
 import type { Workspace } from '@/lib/api'
+import { errorMessage } from '@/lib/errors'
+import { formatDate, formatRelative } from '@/lib/format'
+import { phaseTone } from '@/lib/phase'
+import { notify } from '@/lib/notify'
+import { buildIdleTimeout, buildStorage, intError, nameError, parseIntStrict } from '@/lib/forms'
+import type { FilterDef, SortAccessor } from '@/lib/tableState'
+import { useDocumentTitle } from '@/hooks/useDocumentTitle'
+import { useTableState } from '@/hooks/useTableState'
 import PageHero from '@/components/PageHero'
 import PagePulse from '@/components/kit/PagePulse'
-import { countTone } from '@/components/kit/tone'
-import LoadingSpinner from '@/components/LoadingSpinner'
+import Modal from '@/components/Modal'
+import ConfirmDialog from '@/components/ConfirmDialog'
+import { EmptyState, ErrorState, Skeleton } from '@/components/StateViews'
+import CopyButton from '@/components/CopyButton'
+import { SrOnly } from '@/components/TableCaption'
+
+/** The gateway also returns status.message; it is not in the shared type yet. */
+type WorkspaceView = Workspace & { status?: { message?: string } }
+
+const nameOf = (w: WorkspaceView) => w.metadata?.name || 'unknown'
+const phaseOf = (w: WorkspaceView) => w.status?.phase || 'Pending'
+const TYPE_LABEL: Record<string, string> = { jupyter: 'Jupyter', vscode: 'VS Code' }
+const typeOf = (w: WorkspaceView) => w.spec?.type || 'jupyter'
+
+const FILTERS: FilterDef<WorkspaceView>[] = [
+  { name: 'status', label: 'Status', get: phaseOf },
+  { name: 'type', label: 'Type', get: typeOf },
+]
+const SORTS: Record<string, SortAccessor<WorkspaceView>> = {
+  name: nameOf,
+  status: phaseOf,
+  gpus: (w) => w.spec?.gpuCount,
+  created: (w) => (w.metadata?.creationTimestamp ? Date.parse(w.metadata.creationTimestamp) : undefined),
+}
+const SORT_LABELS: [string, string][] = [
+  ['name', 'Name'],
+  ['status', 'Status'],
+  ['gpus', 'GPUs'],
+  ['created', 'Created'],
+]
+const searchText = (w: WorkspaceView) => `${nameOf(w)} ${phaseOf(w)} ${TYPE_LABEL[typeOf(w)] ?? typeOf(w)} ${w.spec?.gpuType ?? ''}`
+const DEFAULT_SORT = { key: 'name', dir: 'asc' as const }
+const PAGE_SIZE = 12
 
 export default function Workspaces() {
+  useDocumentTitle('Workspaces')
   const queryClient = useQueryClient()
   const [showCreateForm, setShowCreateForm] = useState(false)
+  const [deleting, setDeleting] = useState<string | null>(null)
 
-  const { data: workspaces, isLoading, isError, refetch, isRefetching, dataUpdatedAt } = useQuery({
+  const { data: workspaces, isLoading, isError, error, refetch, isRefetching, dataUpdatedAt } = useQuery({
     queryKey: ['workspaces'],
     queryFn: api.getWorkspaces,
     refetchInterval: 15000,
   })
 
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ['workspaces'] })
+
   const pauseMutation = useMutation({
     mutationFn: (name: string) => api.pauseWorkspace(name),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['workspaces'] }),
+    onSuccess: (_d, name) => {
+      notify.success(`Paused ${name}`)
+      return refresh()
+    },
+    onError: (err, name) => notify.error(`Could not pause ${name}`, err),
   })
 
   const resumeMutation = useMutation({
     mutationFn: (name: string) => api.resumeWorkspace(name),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['workspaces'] }),
+    onSuccess: (_d, name) => {
+      notify.success(`Resuming ${name}`)
+      return refresh()
+    },
+    onError: (err, name) => notify.error(`Could not resume ${name}`, err),
   })
 
   const deleteMutation = useMutation({
     mutationFn: (name: string) => api.deleteWorkspace(name),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['workspaces'] }),
+    onSuccess: (_d, name) => {
+      notify.success(`Deleted ${name}`)
+      setDeleting(null)
+      return refresh()
+    },
+    onError: (err, name) => {
+      notify.error(`Could not delete ${name}`, err)
+      setDeleting(null)
+    },
   })
 
-  if (isError) return (
-    <>
-      <PageHero eyebrow="Workspaces" title="Workspaces unavailable." tint="red" />
-      <p className="warning" role="alert">Failed to load workspaces. Please try again.</p>
-    </>
-  )
+  const table = useTableState({ rows: workspaces as WorkspaceView[] | undefined, searchText, filters: FILTERS, sortAccessors: SORTS, defaultSort: DEFAULT_SORT, pageSize: PAGE_SIZE })
 
-  const activeWorkspaces = workspaces?.filter(w => w.status?.phase === 'Running') || []
-  const idleWorkspaces = workspaces?.filter(w => w.status?.phase === 'Idle') || []
-  const pausedWorkspaces = workspaces?.filter(w => w.status?.phase === 'Paused') || []
-  const totalGPUs = workspaces?.reduce((sum, w) => sum + (w.spec?.gpuCount || 0), 0) || 0
+  if (isError && !workspaces) {
+    return (
+      <>
+        <PageHero eyebrow="Workspaces" title="Workspaces unavailable." tint="red" />
+        <ErrorState title="Could not load workspaces." error={error} onRetry={() => refetch()} retrying={isRefetching} />
+      </>
+    )
+  }
+
+  const list = workspaces as WorkspaceView[] | undefined
+  const loaded = !!list
+  const count = (phase: string) => list?.filter((w) => w.status?.phase === phase).length
+  const active = count('Running')
+  const totalGPUs = list?.reduce((sum, w) => sum + (w.spec?.gpuCount ?? 0), 0)
+  const deletingWs = list?.find((w) => w.metadata?.name === deleting)
 
   return (
     <>
@@ -52,21 +116,63 @@ export default function Workspaces() {
       <div className="grid">
         <PagePulse
           updatedAt={dataUpdatedAt}
-          headline={`${activeWorkspaces.length} of ${workspaces?.length || 0} workspaces running on ${totalGPUs} GPUs.`}
+          error={isError ? errorMessage(error) : undefined}
+          headline={loaded ? `${active} of ${list.length} workspaces running on ${totalGPUs} GPUs.` : undefined}
           figures={[
-            { label: 'Active workspaces', value: activeWorkspaces.length },
+            { label: 'Active workspaces', value: active },
             { label: 'GPUs allocated', value: totalGPUs },
-            { label: idleWorkspaces.length > 0 ? 'Idle · may auto-pause' : 'Idle', value: idleWorkspaces.length, tone: countTone(idleWorkspaces.length) },
-            { label: 'Paused', value: pausedWorkspaces.length },
+            { label: 'Idle', value: count('Idle') },
+            { label: 'Paused', value: count('Paused') },
           ]}
         />
+
+        {isError && (
+          <div className="span3">
+            <ErrorState title="Showing the last data received; refreshing failed." error={error} onRetry={() => refetch()} retrying={isRefetching} />
+          </div>
+        )}
 
         <section className="card span3">
           <p className="eyebrow">Actions</p>
           <h2 className="card-title">Workspaces</h2>
-          <div className="toolbar">
+          <div className="toolbar" role="search">
+            <label>
+              Search
+              <input type="search" value={table.search} onChange={(e) => table.setSearch(e.target.value)} placeholder="Search…" />
+            </label>
+            {table.filterDefs.map((def) => (
+              <label key={def.name}>
+                {def.label}
+                <select value={table.filterValues[def.name] ?? ''} onChange={(e) => table.setFilter(def.name, e.target.value)}>
+                  <option value="">All</option>
+                  {table.filterOptionsFor(def).map((o) => (
+                    <option key={o} value={o}>
+                      {def.name === 'type' ? (TYPE_LABEL[o] ?? o) : o}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))}
+            <label>
+              Sort by
+              <select value={table.sortKey ?? DEFAULT_SORT.key} onChange={(e) => e.target.value !== table.sortKey && table.toggleSort(e.target.value)}>
+                {SORT_LABELS.map(([key, label]) => (
+                  <option key={key} value={key}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button type="button" className="btn-secondary" onClick={() => table.toggleSort(table.sortKey ?? DEFAULT_SORT.key)} aria-label={`Sort order: ${table.sortDir === 'asc' ? 'ascending' : 'descending'}. Reverse`}>
+              {table.sortDir === 'asc' ? '▲ Ascending' : '▼ Descending'}
+            </button>
+            {table.isFiltered && (
+              <button type="button" className="btn-secondary" onClick={table.reset}>
+                Clear filters
+              </button>
+            )}
             <button className="primary" onClick={() => setShowCreateForm(true)}>
-              New Workspace
+              New workspace
             </button>
             <button className="btn-refresh" onClick={() => refetch()} disabled={isRefetching}>
               Refresh
@@ -75,93 +181,155 @@ export default function Workspaces() {
         </section>
 
         {isLoading ? (
-          <section className="card span3"><LoadingSpinner /></section>
-        ) : (workspaces || []).length === 0 ? (
           <section className="card span3">
-            <p className="empty-state">No workspaces yet. Create one to get started.</p>
+            <Skeleton rows={3} />
+          </section>
+        ) : loaded && list.length === 0 ? (
+          <section className="card span3">
+            <EmptyState
+              title="No workspaces yet."
+              action={
+                <button className="primary" onClick={() => setShowCreateForm(true)}>
+                  Create your first workspace
+                </button>
+              }
+            >
+              A workspace is a Jupyter or VS Code environment with GPUs attached and a persistent volume.
+            </EmptyState>
+          </section>
+        ) : table.filteredCount === 0 ? (
+          <section className="card span3">
+            <EmptyState
+              title="Nothing matches these filters."
+              action={
+                <button type="button" className="btn-secondary" onClick={table.reset}>
+                  Clear filters
+                </button>
+              }
+            />
           </section>
         ) : (
-          (workspaces || []).map((ws) => (
-            <WorkspaceCard
-              key={ws.metadata?.name}
-              workspace={ws}
-              onPause={(name) => pauseMutation.mutate(name)}
-              onResume={(name) => resumeMutation.mutate(name)}
-              onDelete={(name) => deleteMutation.mutate(name)}
-              isPausing={pauseMutation.isPending}
-              isResuming={resumeMutation.isPending}
-            />
-          ))
+          <>
+            {table.pageRows.map((ws) => {
+              const name = nameOf(ws)
+              return (
+                <WorkspaceCard
+                  key={name}
+                  workspace={ws}
+                  pausing={pauseMutation.isPending && pauseMutation.variables === name}
+                  resuming={resumeMutation.isPending && resumeMutation.variables === name}
+                  onPause={() => pauseMutation.mutate(name)}
+                  onResume={() => resumeMutation.mutate(name)}
+                  onDelete={() => setDeleting(name)}
+                />
+              )
+            })}
+            <div className="toolbar span3">
+              <span className="faint" role="status">
+                Showing {table.from}–{table.to} of {table.filteredCount}
+                {table.filteredCount !== table.total ? ` (${table.total} total)` : ''}
+              </span>
+              {table.pageCount > 1 && (
+                <nav aria-label="Pagination" className="toolbar">
+                  <button type="button" className="btn-secondary" disabled={table.page <= 1} onClick={() => table.setPage(table.page - 1)}>
+                    Previous
+                  </button>
+                  <span className="faint">
+                    Page {table.page} of {table.pageCount}
+                  </span>
+                  <button type="button" className="btn-secondary" disabled={table.page >= table.pageCount} onClick={() => table.setPage(table.page + 1)}>
+                    Next
+                  </button>
+                </nav>
+              )}
+            </div>
+          </>
         )}
       </div>
 
-      {showCreateForm && (
-        <CreateWorkspaceModal onClose={() => setShowCreateForm(false)} />
+      {deleting && (
+        <ConfirmDialog
+          title={`Delete workspace ${deleting}?`}
+          confirmLabel="Delete workspace"
+          busy={deleteMutation.isPending}
+          onCancel={() => setDeleting(null)}
+          onConfirm={() => deleteMutation.mutate(deleting)}
+        >
+          Deleting {deleting} also deletes its {deletingWs?.spec?.storageSize ?? 'storage'} volume. This cannot be undone.
+        </ConfirmDialog>
       )}
+
+      {showCreateForm && <CreateWorkspaceModal onClose={() => setShowCreateForm(false)} />}
     </>
   )
 }
 
 // --- Sub-components ---
 
-function WorkspaceCard({ workspace, onPause, onResume, onDelete, isPausing, isResuming }: {
-  workspace: Workspace
-  onPause: (name: string) => void
-  onResume: (name: string) => void
-  onDelete: (name: string) => void
-  isPausing: boolean
-  isResuming: boolean
+function WorkspaceCard({ workspace, onPause, onResume, onDelete, pausing, resuming }: {
+  workspace: WorkspaceView
+  onPause: () => void
+  onResume: () => void
+  onDelete: () => void
+  pausing: boolean
+  resuming: boolean
 }) {
   const name = workspace.metadata?.name || 'unknown'
-  const phase = workspace.status?.phase || 'Unknown'
+  // A workspace has no phase until the operator reconciles it: that is provisioning, not unknown.
+  const rawPhase = workspace.status?.phase
+  const phase = rawPhase || 'Pending'
+  const provisioning = !rawPhase
   const wsType = workspace.spec?.type || 'jupyter'
-
-  const tone: Record<string, string> = { Running: 'ok', Paused: 'warn', Idle: 'info', Pending: 'warn', Failed: 'bad' }
-  const label: Record<string, string> = { jupyter: 'Jupyter', vscode: 'VS Code' }
+  const url = workspace.status?.url
+  const canOpen = (phase === 'Running' || phase === 'Idle') && !!url
+  const gpuCount = workspace.spec?.gpuCount
+  const gpuText = gpuCount === undefined || gpuCount === null ? '—' : gpuCount === 0 ? 'No GPU' : `${workspace.spec?.gpuType ?? 'GPU'} ×${gpuCount}`
 
   return (
     <section className="card">
-      <p className="eyebrow">{label[wsType] || label.jupyter}</p>
+      <p className="eyebrow">{TYPE_LABEL[wsType] || wsType}</p>
       <h2 className="card-title">{name}</h2>
-      <p><span className={`pill ${tone[phase] || ''}`}>{phase}</span></p>
+      <p>
+        <span className={`pill ${phaseTone(phase)}`}>{phase}</span>
+      </p>
+      {provisioning && <p className="muted">Provisioning…</p>}
+      {phase === 'Failed' && workspace.status?.message && (
+        <p className="warning" role="alert">
+          {workspace.status.message}
+        </p>
+      )}
 
       <div className="stack">
-        <span className="muted">{workspace.spec?.gpuType || 'GPU'} x{workspace.spec?.gpuCount || 0}</span>
-        <span className="muted">Storage: {workspace.spec?.storageSize || 'N/A'}</span>
-        <span className="muted">Uptime: {workspace.status?.uptime || 'N/A'}</span>
+        <span className="muted">GPUs: {gpuText}</span>
+        <span className="muted">Storage: {workspace.spec?.storageSize ?? '—'}</span>
+        <span className="muted">Uptime: {workspace.status?.uptime ?? '—'}</span>
         {workspace.status?.lastActivity && (
-          <span className="faint">Last active: {new Date(workspace.status.lastActivity).toLocaleString()}</span>
+          <span className="faint" title={formatDate(workspace.status.lastActivity)}>
+            Last active: {formatRelative(workspace.status.lastActivity)}
+          </span>
         )}
       </div>
 
       <div className="toolbar">
-        {phase === 'Running' && workspace.status?.url && (
-          <a
-            href={workspace.status.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="buttonlike btn-secondary"
-          >
-            Open
-          </a>
+        {canOpen && (
+          <>
+            <a href={url} target="_blank" rel="noopener noreferrer" className="buttonlike btn-secondary">
+              Open <span aria-hidden="true">↗</span>
+              <SrOnly> {name} in a new tab</SrOnly>
+            </a>
+            <CopyButton value={url} label={`${name} URL`} />
+          </>
         )}
         {phase === 'Running' || phase === 'Idle' ? (
-          <button className="btn-secondary" onClick={() => onPause(name)} disabled={isPausing}>
-            Pause
+          <button className="btn-secondary" onClick={onPause} disabled={pausing}>
+            {pausing ? 'Pausing…' : 'Pause'}
           </button>
         ) : phase === 'Paused' ? (
-          <button className="btn-secondary" onClick={() => onResume(name)} disabled={isResuming}>
-            Resume
+          <button className="btn-secondary" onClick={onResume} disabled={resuming}>
+            {resuming ? 'Resuming…' : 'Resume'}
           </button>
         ) : null}
-        <button
-          className="danger"
-          onClick={() => {
-            if (window.confirm(`Delete workspace "${name}"?`)) {
-              onDelete(name)
-            }
-          }}
-        >
+        <button className="danger" onClick={onDelete} aria-label={`Delete workspace ${name}`}>
           Delete
         </button>
       </div>
@@ -169,135 +337,153 @@ function WorkspaceCard({ workspace, onPause, onResume, onDelete, isPausing, isRe
   )
 }
 
+const INITIAL = {
+  name: '',
+  type: 'jupyter',
+  gpuCount: '1',
+  gpuType: 'A100-80G',
+  storageAmount: '50',
+  storageUnit: 'Gi',
+  idleAmount: '30',
+  idleUnit: 'm',
+}
+
 function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient()
-  const [formData, setFormData] = useState({
-    name: '',
-    type: 'jupyter',
-    gpuCount: 1,
-    gpuType: 'A100-80G',
-    storageSize: '50Gi',
-    idleTimeout: '30m',
-  })
-  const [error, setError] = useState<string | null>(null)
+  const [form, setForm] = useState(INITIAL)
+  const [touched, setTouched] = useState(false)
+  const set = (patch: Partial<typeof INITIAL>) => setForm((f) => ({ ...f, ...patch }))
+  const dirty = JSON.stringify(form) !== JSON.stringify(INITIAL)
 
   const createMutation = useMutation({
-    mutationFn: (data: typeof formData) => api.createWorkspace(data),
-    onSuccess: () => {
+    mutationFn: (data: Parameters<typeof api.createWorkspace>[0]) => api.createWorkspace(data),
+    onSuccess: (created, vars) => {
+      notify.success(`Created workspace ${vars.name}`)
+      // Show it immediately (with no phase yet) instead of waiting for the next poll.
+      const entry: Workspace = created?.metadata?.name ? created : { metadata: { name: vars.name }, spec: { ...vars } }
+      queryClient.setQueryData<Workspace[]>(['workspaces'], (old) => [...(old ?? []).filter((w) => w.metadata?.name !== vars.name), entry])
       queryClient.invalidateQueries({ queryKey: ['workspaces'] })
       onClose()
     },
+    onError: (err) => notify.error('Could not create workspace', err),
   })
+
+  const errors = {
+    name: nameError(form.name),
+    gpuCount: intError(form.gpuCount, 1, 64),
+    storage: buildStorage(form.storageAmount, form.storageUnit) ? null : 'Enter a whole number from 1 to 999999.',
+    idle: buildIdleTimeout(form.idleAmount, form.idleUnit) ? null : 'Enter a whole number from 1 to 99999.',
+  }
+  const invalid = Object.values(errors).some(Boolean)
+  const show = (e: string | null, always = touched) => (always ? e : null)
+  const nameShown = show(errors.name, touched || form.name !== '')
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    setError(null)
-
-    const k8sNameRegex = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/
-    if (!k8sNameRegex.test(formData.name)) {
-      setError('Name must consist of lowercase alphanumeric characters or hyphens, and must start and end with an alphanumeric character')
-      return
-    }
-
-    createMutation.mutate(formData)
+    setTouched(true)
+    if (invalid) return
+    createMutation.mutate({
+      name: form.name,
+      type: form.type,
+      gpuCount: parseIntStrict(form.gpuCount) as number,
+      gpuType: form.gpuType,
+      storageSize: buildStorage(form.storageAmount, form.storageUnit) as string,
+      idleTimeout: buildIdleTimeout(form.idleAmount, form.idleUnit) as string,
+    })
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-        <h2 className="card-title">Create Workspace</h2>
+    <Modal title="Create workspace" onClose={onClose} dirty={dirty}>
+      <form onSubmit={handleSubmit} className="stack" noValidate>
+        <label className="field">
+          Name
+          <input
+            type="text"
+            data-autofocus
+            value={form.name}
+            onChange={(e) => set({ name: e.target.value })}
+            placeholder="my-workspace"
+            aria-invalid={!!nameShown}
+            aria-describedby="ws-name-msg"
+            autoComplete="off"
+          />
+          <span id="ws-name-msg" className={nameShown ? 'warning' : 'faint'}>
+            {nameShown ?? 'Lowercase letters, digits and hyphens.'}
+          </span>
+        </label>
 
-        <form onSubmit={handleSubmit} className="stack">
+        <div className="formgrid">
           <label className="field">
-            Name
-            <input
-              type="text"
-              required
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="my-workspace"
-            />
+            Type
+            <select value={form.type} onChange={(e) => set({ type: e.target.value })}>
+              <option value="jupyter">Jupyter</option>
+              <option value="vscode">VS Code</option>
+            </select>
           </label>
+          <label className="field">
+            GPU type
+            <select value={form.gpuType} onChange={(e) => set({ gpuType: e.target.value })}>
+              {['H100', 'A100-80G', 'A100-40G', 'L40', 'V100', 'T4'].map((g) => (
+                <option key={g} value={g}>
+                  {g}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
 
-          <div className="formgrid">
-            <label className="field">
-              Type
-              <select
-                value={formData.type}
-                onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-              >
-                <option value="jupyter">Jupyter</option>
-                <option value="vscode">VS Code</option>
+        <div className="formgrid">
+          <label className="field">
+            GPU count
+            <input
+              type="number"
+              min={1}
+              max={64}
+              value={form.gpuCount}
+              onChange={(e) => set({ gpuCount: e.target.value })}
+              aria-invalid={!!show(errors.gpuCount)}
+            />
+            {show(errors.gpuCount) && <span className="warning">{errors.gpuCount}</span>}
+          </label>
+          <div className="field">
+            <label htmlFor="ws-storage">Storage</label>
+            <div className="toolbar">
+              <input id="ws-storage" type="number" min={1} max={999999} value={form.storageAmount} onChange={(e) => set({ storageAmount: e.target.value })} aria-invalid={!!show(errors.storage)} />
+              <select aria-label="Storage unit" value={form.storageUnit} onChange={(e) => set({ storageUnit: e.target.value })}>
+                <option value="Gi">Gi</option>
+                <option value="Ti">Ti</option>
               </select>
-            </label>
-            <label className="field">
-              GPU Type
-              <select
-                value={formData.gpuType}
-                onChange={(e) => setFormData({ ...formData, gpuType: e.target.value })}
-              >
-                <option value="H100">H100</option>
-                <option value="A100-80G">A100-80G</option>
-                <option value="A100-40G">A100-40G</option>
-                <option value="L40">L40</option>
-                <option value="V100">V100</option>
-                <option value="T4">T4</option>
+            </div>
+            {show(errors.storage) && <span className="warning">{errors.storage}</span>}
+          </div>
+          <div className="field">
+            <label htmlFor="ws-idle">Idle timeout</label>
+            <div className="toolbar">
+              <input id="ws-idle" type="number" min={1} max={99999} value={form.idleAmount} onChange={(e) => set({ idleAmount: e.target.value })} aria-invalid={!!show(errors.idle)} />
+              <select aria-label="Idle timeout unit" value={form.idleUnit} onChange={(e) => set({ idleUnit: e.target.value })}>
+                <option value="m">minutes</option>
+                <option value="h">hours</option>
               </select>
-            </label>
+            </div>
+            {show(errors.idle) && <span className="warning">{errors.idle}</span>}
           </div>
+        </div>
 
-          <div className="formgrid">
-            <label className="field">
-              GPU Count
-              <input
-                type="number"
-                min="1"
-                max="8"
-                required
-                value={formData.gpuCount}
-                onChange={(e) => setFormData({ ...formData, gpuCount: parseInt(e.target.value, 10) || 1 })}
-              />
-            </label>
-            <label className="field">
-              Storage
-              <input
-                type="text"
-                required
-                value={formData.storageSize}
-                onChange={(e) => setFormData({ ...formData, storageSize: e.target.value })}
-                placeholder="50Gi"
-              />
-            </label>
-            <label className="field">
-              Idle Timeout
-              <input
-                type="text"
-                required
-                value={formData.idleTimeout}
-                onChange={(e) => setFormData({ ...formData, idleTimeout: e.target.value })}
-                placeholder="30m"
-              />
-            </label>
-          </div>
+        {createMutation.isError && (
+          <p className="warning" role="alert">
+            {errorMessage(createMutation.error)}
+          </p>
+        )}
 
-          {error && <p className="warning" role="alert">{error}</p>}
-
-          {createMutation.isError && (
-            <p className="warning" role="alert">
-              Error creating workspace: {errorMessage(createMutation.error)}
-            </p>
-          )}
-
-          <div className="toolbar">
-            <button type="button" className="btn-secondary" onClick={onClose}>
-              Cancel
-            </button>
-            <button type="submit" className="primary" disabled={createMutation.isPending}>
-              {createMutation.isPending ? 'Creating...' : 'Create Workspace'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        <div className="toolbar">
+          <button type="button" className="btn-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="primary" disabled={createMutation.isPending}>
+            {createMutation.isPending ? 'Creating…' : 'Create workspace'}
+          </button>
+        </div>
+      </form>
+    </Modal>
   )
 }

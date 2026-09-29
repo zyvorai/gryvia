@@ -3,9 +3,11 @@ def test_empty_state(make_client):
     r = c.get("/api/ai/training/insight")
     assert r.status_code == 200
     assert r.json() == {"rankStats": [], "commPattern": "", "commComputeRatio": 0, "stragglers": [], "bottleneck": ""}
-    assert c.get("/api/ai/training/nccl").json() == {"operations": []}
+    none = {"reachable": 0, "total": 0}
+    assert c.get("/api/ai/training/nccl").json() == {"operations": [], "collectors": none}
     assert c.get("/api/gpu/memory").json() == {
-        "h2dBytes": 0, "d2hBytes": 0, "d2dBytes": 0, "h2dCount": 0, "d2hCount": 0, "d2dCount": 0}
+        "h2dBytes": 0, "d2hBytes": 0, "d2dBytes": 0, "h2dCount": 0, "d2hCount": 0, "d2dCount": 0,
+        "collectors": none}
 
 
 def test_insight_without_status_is_empty(make_client, fake_k8s):
@@ -78,10 +80,50 @@ def test_gpu_memory_sums_collectors(make_client):
     assert c.get("/api/gpu/memory").json() == {
         "h2dBytes": 600, "d2hBytes": 200, "d2dBytes": 900,
         "h2dCount": 6, "d2hCount": 2, "d2dCount": 9,
+        "collectors": {"reachable": 2, "total": 2},
     }
 
 
 def test_no_collector_means_no_data(make_client):
     c = make_client("ai", collector_fetch=_collector([]))
-    assert c.get("/api/ai/training/nccl").json() == {"operations": []}
-    assert all(v == 0 for v in c.get("/api/gpu/memory").json().values())
+    assert c.get("/api/ai/training/nccl").json() == {"operations": [], "collectors": {"reachable": 0, "total": 0}}
+    mem = c.get("/api/gpu/memory").json()
+    assert mem.pop("collectors") == {"reachable": 0, "total": 0}
+    assert all(v == 0 for v in mem.values())
+
+
+def test_collectors_reachable_vs_total(make_client):
+    async def fetch(path):
+        return [NODE_A[path]], 3  # 3 discovered, only 1 answered
+
+    c = make_client("ai", collector_fetch=fetch)
+    assert c.get("/api/ai/training/nccl").json()["collectors"] == {"reachable": 1, "total": 3}
+    assert c.get("/api/gpu/memory").json()["collectors"] == {"reachable": 1, "total": 3}
+
+
+def test_fetch_all_keeps_list_return(fake_k8s):
+    import asyncio
+
+    from routers.collector import fetch_all, fetch_all_with_stats
+    from routers.common import Deps
+
+    async def fetch(path):
+        return [{"a": 1}], 2
+
+    deps = Deps(verify_auth=None, k8s_custom=fake_k8s, k8s_core=None, limiter=None, collector_fetch=fetch)
+    assert asyncio.run(fetch_all(deps, "/x")) == [{"a": 1}]
+    assert asyncio.run(fetch_all_with_stats(deps, "/x")) == ([{"a": 1}], {"reachable": 1, "total": 2})
+
+
+def test_insight_source(make_client, fake_k8s):
+    fake_k8s.add("fabrictraininginsights", {
+        "metadata": {"name": "run-1"},
+        "status": {"bottleneck": "compute", "lastAnalysis": "2026-02-01T00:00:00Z"},
+    }, namespace="ml")
+    body = make_client("ai").get("/api/ai/training/insight").json()
+    assert body["source"] == {"name": "run-1", "namespace": "ml"}
+    assert body["lastAnalysis"] == "2026-02-01T00:00:00Z"
+
+
+def test_insight_source_omitted_when_empty(make_client):
+    assert "source" not in make_client("ai").get("/api/ai/training/insight").json()
