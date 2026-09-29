@@ -4,7 +4,6 @@ name: Kind end-to-end
 # checks that the API answers with the demo objects. Proves the install path works without GPUs.
 
 on:
-  workflow_dispatch:
   pull_request:
     branches: [ main ]
     paths:

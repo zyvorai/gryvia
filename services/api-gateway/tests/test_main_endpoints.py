@@ -87,3 +87,14 @@ def test_list_defaults_and_pagination(gw, path, plural, cluster):
     assert (body["total"], body["limit"], body["offset"], len(body["items"])) == (150, 10, 145, 5)
     assert c.get(path, params={"limit": 1000}).status_code == 200
     assert c.get(path, params={"limit": 1001}).status_code == 422
+
+
+def test_node_health_is_not_shadowed_by_the_node_name_route(gw):
+    # /api/nodes/health must reach the health handler; registered after /api/nodes/{name} it answered 404
+    # "Node 'health' not found".
+    c, k, _ = gw
+    k.add("gryviagpunodes", {"metadata": {"name": "n1"}, "spec": {}, "status": {"phase": "Ready"}}, None)
+    r = c.get("/api/nodes/health")
+    assert r.status_code == 200, r.text
+    assert c.get("/api/nodes/n1").status_code == 200
+    assert c.get("/api/nodes/missing").status_code == 404
