@@ -102,9 +102,11 @@ ui:
     # Secret with the ingress certificate (leave empty for none).
     tlsSecretName: ""
 
-# Sign-in. The dashboard and API use one shared bearer key.
-# LAB DEFAULT: the key below is well known (login admin / Admin@321). Change it for anything
-# reachable from an untrusted network: --set auth.apiKey=<secret> or use an existing Secret.
+# Sign-in. The dashboard and API use one shared bearer key (login: admin / <key>).
+# LAB DEFAULT: the key below is well known (Admin@321) and the dashboard shows a warning while it is
+# in use. For anything reachable from an untrusted network set your own (--set auth.apiKey=<secret>),
+# use an existing Secret, or set apiKey to "" to have the chart generate a random key once
+# (read it back: kubectl -n gryvia-system get secret gryvia-api-key -o jsonpath='{.data.GRYVIA_API_KEY}' | base64 -d).
 auth:
   apiKey: "Admin@321"
   # Existing Secret holding the key under `GRYVIA_API_KEY`; overrides apiKey.

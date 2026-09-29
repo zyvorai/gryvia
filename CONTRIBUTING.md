@@ -4,7 +4,7 @@ Thank you for your interest in contributing to Gryvia!
 
 ## Code of Conduct
 
-We pledge to make participation in our project a harassment-free experience for everyone.
+We pledge to make participation in our project a harassment-free experience for everyone. See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## How to Contribute
 

@@ -23,6 +23,8 @@ export interface UserInfo {
   groups: string[]
   org: string
   tenantNamespaces: string[] | null
+  /** True while the gateway still uses the well-known lab key. */
+  usingDefaultKey?: boolean
 }
 
 export interface AuthContextType {
@@ -99,6 +101,20 @@ export function useAuth(): AuthContextType {
 export async function fetchAuthConfig(): Promise<AuthConfig> {
   const { data } = await axios.get<AuthConfig>('/api/auth/config')
   return data
+}
+
+/** Exchanges the dashboard credentials for the bearer token; the gateway validates them. */
+export async function loginWithCredentials(username: string, password: string): Promise<string> {
+  const { data } = await axios.post<{ token: string }>('/api/auth/login', { username, password })
+  return data.token
+}
+
+/** Human message for a failed sign-in request. */
+export function loginErrorMessage(err: unknown): string {
+  const status = (err as { response?: { status?: number } })?.response?.status
+  if (status === 401 || status === 403 || status === 422) return 'Wrong username or password.'
+  if (status === 429) return 'Too many sign-in attempts. Wait a minute and try again.'
+  return 'Could not reach the API gateway. Check the URL and try again.'
 }
 
 export async function fetchUserInfo(token: string): Promise<UserInfo> {

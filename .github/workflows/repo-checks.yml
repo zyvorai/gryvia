@@ -1,0 +1,64 @@
+name: Repo checks
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  legacy-names:
+    name: No legacy Fabric* kinds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fail on Fabric* identifiers
+        run: |
+          # The kinds were renamed to Gryvia*; scripts/rename-kinds.sh and the docs that describe the rename may mention the old names.
+          if git grep -nE 'Fabric[A-Z]' -- . ':!scripts/rename-kinds.sh' ':!CHANGELOG.md' ':!website/docs/guides/OPERATIONS.md' ':!*package-lock.json'; then
+            echo "::error::Legacy Fabric* identifiers found; use the Gryvia* names."
+            exit 1
+          fi
+
+  generated-files:
+    name: Generated CRDs and docs are current
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install generators
+        run: |
+          go install sigs.k8s.io/controller-tools/cmd/controller-gen@latest
+          pip install pyyaml
+          echo "$HOME/go/bin" >> "$GITHUB_PATH"
+      - name: Regenerate CRDs and reference docs
+        run: |
+          ./scripts/gen-crds.sh
+          python3 scripts/gen-crd-docs.py
+      - name: Fail if anything changed
+        run: |
+          git status --porcelain
+          git diff --exit-code -- crds helm/gryvia/crds website/docs/reference/crds.md \
+            || { echo "::error::Generated files are stale. Run scripts/gen-crds.sh and scripts/gen-crd-docs.py and commit the result."; exit 1; }
+
+  shellcheck:
+    name: Shell scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: |
+          shellcheck -S warning scripts/install.sh scripts/kind-demo.sh scripts/rename-kinds.sh
+          bash -n scripts/deploy-remote.sh

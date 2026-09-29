@@ -17,41 +17,17 @@ spec:
       labels:
         app: gryvia-api-gateway
       annotations:
-        checksum/api-key: {{ .Values.auth.apiKey | sha256sum }}
+        checksum/api-key: {{ printf "%s%s" .Values.auth.apiKey .Values.auth.existingSecret | sha256sum }}
     spec:
       serviceAccountName: gryvia-api-gateway
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      initContainers:
-      - name: gen-cert
-        image: alpine/openssl:3.3.2
-        command: ["/bin/sh", "-c"]
-        args:
-        - |
-          # Copy the shared certificate from the {{ .Values.tls.secretName }} Secret and hand it to the
-          # non-root gateway user; mint a throwaway one if the Secret is empty.
-          if [ -s /tls-src/tls.crt ] && [ -s /tls-src/tls.key ]; then
-            cp /tls-src/tls.crt /tls-src/tls.key /tls/
-          else
-            openssl req -x509 -nodes -days 3650 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -keyout /tls/tls.key -out /tls/tls.crt -subj "/CN=gryvia-api-gateway/O=Gryvia" -addext "subjectAltName=DNS:gryvia-api-gateway,DNS:localhost,IP:127.0.0.1"
-          fi
-          chown 1000:1000 /tls/tls.key /tls/tls.crt
-          chmod 600 /tls/tls.key
-        securityContext:
-          runAsUser: 0
-          runAsNonRoot: false
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop: ["ALL"]
-            add: ["CHOWN", "DAC_OVERRIDE", "FOWNER"]
-        volumeMounts:
-        - name: tls
-          mountPath: /tls
-        - name: tls-src
-          mountPath: /tls-src
-          readOnly: true
+      securityContext:
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: api-gateway
         image: {{ include "gryvia.image" (dict "root" . "image" .Values.apiGateway.image) | quote }}
@@ -113,11 +89,9 @@ spec:
       - name: tmp
         emptyDir: {}
       - name: tls
-        emptyDir: {}
-      - name: tls-src
         secret:
           secretName: {{ .Values.tls.secretName }}
-          optional: true
+          defaultMode: 0440
 ---
 apiVersion: v1
 kind: Service

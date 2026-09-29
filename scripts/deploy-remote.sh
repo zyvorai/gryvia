@@ -128,6 +128,8 @@ check() { # check <name> <command...>
   if "\$@" >/dev/null 2>&1; then echo "  PASS  \$name"; else echo "  FAIL  \$name"; fail=1; fi
 }
 authed() { curl -sfk -H "Authorization: Bearer \$KEY" "\$@"; }
+login_ok() { curl -sfk -H 'Content-Type: application/json' -d "{\"username\":\"admin\",\"password\":\"\$KEY\"}" "\$BASE/api/auth/login" | grep -q '"token"'; }
+login_rejected() { local c; c="\$(curl -sk -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -d '{"username":"admin","password":"definitely-wrong"}' "\$BASE/api/auth/login")"; [[ "\$c" == 401 ]]; }
 unauth_rejected() { local c; c="\$(curl -sk -o /dev/null -w '%{http_code}' "\$BASE/api/cluster/stats")"; [[ "\$c" == 401 || "\$c" == 403 ]]; }
 echo "Gryvia smoke test"
 check "namespace exists" kubectl get ns gryvia-system
@@ -138,6 +140,8 @@ done
 check "UI serves index" curl -sfk "\$BASE/"
 check "API rejects a request without a key" unauth_rejected
 check "API accepts the key (cluster stats)" authed "\$BASE/api/cluster/stats"
+check "login accepts admin and the key" login_ok
+check "login rejects a wrong password" login_rejected
 check "auth/me identifies admin" bash -c "curl -sfk -H 'Authorization: Bearer \$KEY' '\$BASE/api/auth/me' | grep -q '\\"name\\": *\\"admin\\"'"
 bad_bearer_rejected() { local c; c="\$(curl -sk -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer not-the-key' "\$BASE/api/auth/me")"; [[ "\$c" == 401 || "\$c" == 403 ]]; }
 check "auth/me rejects a wrong bearer" bad_bearer_rejected

@@ -4,12 +4,14 @@ Provides REST API for Web UI with aggregated metrics and cluster data
 """
 import asyncio
 import hmac
+import ipaddress
 import os
 import urllib.parse
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from fastapi import FastAPI, HTTPException, Query, Depends, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
 from kubernetes import client, config
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -25,7 +27,27 @@ from jose import jwt, jwk, JWTError
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-limiter = Limiter(key_func=get_remote_address)
+def _client_ip(request: Request) -> str:
+    """Rate-limit key: the real client address.
+
+    Behind the dashboard's nginx every request arrives from the proxy's pod IP, so one shared
+    bucket would throttle all users together. Trust X-Forwarded-For only when the direct peer is
+    a private or loopback address (the in-cluster proxy); a peer on a public address is used as-is,
+    so the header cannot be spoofed from outside the cluster.
+    """
+    peer = get_remote_address(request)
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        try:
+            addr = ipaddress.ip_address(peer)
+            if addr.is_private or addr.is_loopback:
+                return forwarded.split(",")[0].strip() or peer
+        except ValueError:
+            pass
+    return peer
+
+
+limiter = Limiter(key_func=_client_ip)
 
 app = FastAPI(
     title="Gryvia API Gateway",
@@ -50,6 +72,13 @@ app.add_middleware(
 
 # API key for authentication (from environment or mounted secret)
 API_KEY = os.environ.get("GRYVIA_API_KEY", "").strip()
+# The well-known lab key shipped as the install default. The dashboard warns while it is in use.
+DEFAULT_LAB_KEY = "Admin@321"
+LOGIN_USERNAME = "admin"
+
+
+def using_default_key() -> bool:
+    return bool(API_KEY) and hmac.compare_digest(API_KEY.encode(), DEFAULT_LAB_KEY.encode())
 
 # OIDC configuration
 OIDC_ENABLED = os.environ.get("OIDC_ENABLED", "false").lower() in ("true", "1", "yes")
@@ -1032,6 +1061,30 @@ async def get_auth_config():
     }
 
 
+class LoginRequest(BaseModel):
+    username: str = Field(max_length=128)
+    password: str = Field(max_length=512)
+
+
+@app.post("/api/auth/login")
+@limiter.limit("10/minute")
+async def login(request: Request, body: LoginRequest):
+    """Exchange the dashboard credentials (admin / the API key) for the bearer token.
+
+    The shared API key is the bearer, so the password is validated here, on the server, and the
+    web UI carries no credential of its own. Failed attempts are slowed down and rate limited.
+    """
+    if not API_KEY:
+        raise HTTPException(status_code=401, detail="Authentication is not configured")
+    # Evaluate both comparisons before branching so timing does not reveal which one failed.
+    user_ok = hmac.compare_digest(body.username.encode(), LOGIN_USERNAME.encode())
+    pass_ok = hmac.compare_digest(body.password.encode(), API_KEY.encode())
+    if not (user_ok and pass_ok):
+        await asyncio.sleep(0.5)
+        raise HTTPException(status_code=401, detail="Wrong username or password.")
+    return {"token": API_KEY, "method": "api_key", "name": LOGIN_USERNAME, "usingDefaultKey": using_default_key()}
+
+
 @app.get("/api/auth/me")
 @limiter.limit("60/minute")
 async def get_current_user(request: Request, _=Depends(verify_auth)):
@@ -1060,6 +1113,7 @@ async def get_current_user(request: Request, _=Depends(verify_auth)):
         "groups": [],
         "org": "",
         "tenantNamespaces": None,
+        "usingDefaultKey": using_default_key(),
     }
 
 
