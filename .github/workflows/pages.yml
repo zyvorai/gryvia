@@ -21,7 +21,7 @@ jobs:
       with: {node-version: '22', cache: npm, cache-dependency-path: website/package-lock.json}
     - run: npm --prefix website ci
     - run: npm --prefix website run build
-    - uses: azure/setup-helm@v4
+    - uses: azure/setup-helm@v5
     - name: Package Helm charts into the site
       run: |
         mkdir -p website/build/charts
