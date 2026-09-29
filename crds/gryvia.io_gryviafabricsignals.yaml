@@ -77,6 +77,21 @@ spec:
                 description: CNPRate is the RoCEv2 congestion notification packets
                   per second seen on the node
                 type: number
+              e2eMeanMs:
+                description: |-
+                  E2EMeanMs is the mean end-to-end request latency in milliseconds for counter-only engines;
+                  not a percentile
+                type: number
+              e2eP99ms:
+                description: E2EP99Ms is the p99 end-to-end request latency in milliseconds
+                  inside the engine
+                type: number
+              engine:
+                description: |-
+                  Engine names the serving engine whose own metrics fill the fields below (vllm, triton,
+                  tgi, or mixed). Empty when the collector's opt-in metrics scraper (-infer-metrics) is off.
+                  Fields the engine does not export are left unset, meaning not measured, never zero
+                type: string
               exfilEvents:
                 description: |-
                   ExfilEvents is the number of large model-file reads followed by a connect to a non-internal
@@ -88,8 +103,21 @@ spec:
                   the direct GPUDirect Storage path
                 type: number
               inferWaitP99ms:
-                description: InferWaitP99Ms is the p99 wait in milliseconds from accept
-                  to first read on inference ports
+                description: |-
+                  InferWaitP99Ms is the p99 NETWORK wait in milliseconds from accept to first read on
+                  inference ports (eBPF). It is not engine queue time, time to first token or inter-token
+                  latency: see the engine fields below
+                type: number
+              itlP99ms:
+                description: |-
+                  ITLP99Ms is the p99 inter-token latency (time per output token) in milliseconds (vLLM); for
+                  TGI it is the p99 of the per-request mean time per token
+                type: number
+              kvCacheUsage:
+                description: KVCacheUsage is the KV cache usage in [0,1] reported
+                  by the engine (worst replica)
+                maximum: 1
+                minimum: 0
                 type: number
               ncclP99ms:
                 description: NCCLP99Ms is the p99 latency in milliseconds of straggler-flagged
@@ -104,10 +132,25 @@ spec:
                 description: PFCRate is the 802.1Qbb priority-flow-control pause frames
                   per second seen on the node
                 type: number
+              queueTimeMeanMs:
+                description: |-
+                  QueueTimeMeanMs is the mean engine queue time in milliseconds, for engines that export only
+                  cumulative duration counters (Triton without summary latencies); not a percentile
+                type: number
+              queueTimeP99ms:
+                description: QueueTimeP99Ms is the p99 time in milliseconds a request
+                  waited in the engine's queue
+                type: number
               rdmaRetryRate:
                 description: RDMARetryRate is the ratio of RDMA retry/RNR error completions
                   to posted sends
                 type: number
+              requestsWaiting:
+                description: |-
+                  RequestsWaiting is the number of requests queued in the engine (summed over the scraped
+                  replicas on the reporting node)
+                format: int64
+                type: integer
               scoreDelta:
                 description: ScoreDelta is the penalty in [0,1] for the topology scorer
                   (0 = healthy fabric)
@@ -118,6 +161,10 @@ spec:
                 description: StragglerRank is the rank of the most recent NCCL straggler
                 format: int32
                 type: integer
+              ttftP99ms:
+                description: TTFTP99Ms is the p99 time to first token in milliseconds
+                  over the collector window (vLLM)
+                type: number
               updatedAt:
                 description: UpdatedAt is the time the status was last refreshed from
                   collector signals

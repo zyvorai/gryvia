@@ -34,6 +34,15 @@ struct trace_context {
     __u64 timestamp;
 };
 
+/* The collector (collector/pkg/trace) decodes this struct as a 56-byte little-endian record. */
+_Static_assert(sizeof(struct trace_context) == 56, "trace_context size");
+_Static_assert(__builtin_offsetof(struct trace_context, span_id) == 16, "span_id offset");
+_Static_assert(__builtin_offsetof(struct trace_context, src_ip) == 32, "src_ip offset");
+_Static_assert(__builtin_offsetof(struct trace_context, dst_ip) == 36, "dst_ip offset");
+_Static_assert(__builtin_offsetof(struct trace_context, src_port) == 40, "src_port offset");
+_Static_assert(__builtin_offsetof(struct trace_context, dst_port) == 42, "dst_port offset");
+_Static_assert(__builtin_offsetof(struct trace_context, timestamp) == 48, "timestamp offset");
+
 /* 4-tuple key for trace context map */
 struct trace_key {
     __u32 src_ip;

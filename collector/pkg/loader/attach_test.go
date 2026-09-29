@@ -118,6 +118,8 @@ func TestClassifyMap(t *testing.T) {
 		{"nccl_events", ebpf.PerfEventArray, ClassNone},
 		{"fabric_events", ebpf.RingBuf, ClassFabric},
 		{"fabric_events", ebpf.PerfEventArray, ClassNone}, // wrong reader type
+		{"trace_events", ebpf.RingBuf, ClassTrace},
+		{"trace_events", ebpf.PerfEventArray, ClassNone}, // wrong reader type
 		{"privesc_events", ebpf.RingBuf, ClassSecurity},
 		{"fim_events", ebpf.RingBuf, ClassSecurity},
 		{"syscall_events", ebpf.PerfEventArray, ClassNone},

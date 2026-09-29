@@ -56,6 +56,25 @@ ebpf:
   # ClusterRole additionally gets list on gryviafabricsignals and patch on gryviafabricsignals/status; it creates
   # nothing. Jobs are attributed through the Flight Recorder's pod resolver (needs NODE_NAME, set by this chart).
   publishFabricStatus: false
+  # Serving-engine latency (time to first token, inter-token latency, engine queue time). Kernel probes cannot see
+  # tokens, so the collector reads the engines' OWN Prometheus endpoints (vLLM, NVIDIA Triton, HuggingFace TGI) with
+  # read-only HTTP GETs. Off by default: with no targets and discover=false nothing is scraped and no flag is passed.
+  # Figures appear on the collector's /metrics (gryvia_inference_*) and, with publishFabricStatus, in the status of
+  # the job's GryviaFabricSignal. See docs/inference-latency.md.
+  inferMetrics:
+    # Static targets, one string each: "name=vllm,url=http://10.0.0.5:8000/metrics" with optional
+    # ",engine=vllm|triton|tgi" (default: detected) and ",namespace=NS,job=JOB" (attributes the figures to a job).
+    # The collector has hostNetwork by default, so 127.0.0.1 is the node; use pod IPs or Service DNS names.
+    targets: []
+    # Also scrape http://<podIP>:<port>/metrics of pods ON THIS NODE that carry a gryvia.io/job label and declare one of
+    # `ports` as a containerPort. Uses the pod-list permission the collector already has; needs NODE_NAME (set here).
+    discover: false
+    ports: "8000,8002,8080"
+    interval: 15s
+  # Correlate W3C traceparent headers (plaintext HTTP/1.x, IPv4, requests to gryvia.io/job pods) with the Flight
+  # Recorder timeline and serve GET /api/v1/flight/trace (HMAC-protected). Needs ebpf.interface and
+  # ebpf.flightTokenSecret. TLS-terminated traffic is invisible to it. Off by default.
+  traceCorrelation: false
   # quota_pace is the only eBPF program that changes anything: it lowers SO_MAX_PACING_RATE of new outbound TCP
   # connections of cgroups that hold a lease. Everything here is off by default and needs cgroupPath.
   quotaPace:

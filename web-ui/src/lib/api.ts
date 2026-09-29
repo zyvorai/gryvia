@@ -457,6 +457,28 @@ export interface FlightReport {
   events: FlightEvent[]
 }
 
+// Serving-engine latency of a job (vLLM, Triton, TGI), read from GryviaFabricSignal.status by the gateway.
+// Every figure is optional: a missing key means "not measured", never zero. Latencies are milliseconds.
+export interface InferenceLatency {
+  namespace: string
+  job: string
+  /** False unless the collector's opt-in metrics scraper published an engine. */
+  available: boolean
+  engine?: string
+  updatedAt?: string
+  ttftP99ms?: number
+  itlP99ms?: number
+  queueTimeP99ms?: number
+  e2eP99ms?: number
+  /** Means, for engines that export only duration counters (Triton without summaries). */
+  queueTimeMeanMs?: number
+  e2eMeanMs?: number
+  requestsWaiting?: number
+  kvCacheUsage?: number
+  /** Network accept -> first recv wait (eBPF). Not engine queue time. */
+  inferWaitP99ms?: number
+}
+
 const apiClient = axios.create({
   baseURL: '/api',
   timeout: 30000,
@@ -714,6 +736,11 @@ export const api = {
 
   getFlightReport: async (job: string, namespace: string): Promise<FlightReport> => {
     const { data } = await apiClient.get(`/flight/jobs/${encodeURIComponent(job)}`, { params: { namespace } })
+    return data
+  },
+
+  getInferenceLatency: async (job: string, namespace: string): Promise<InferenceLatency> => {
+    const { data } = await apiClient.get(`/flight/inference/${encodeURIComponent(job)}`, { params: { namespace } })
     return data
   },
 

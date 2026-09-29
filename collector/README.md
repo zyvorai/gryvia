@@ -72,7 +72,10 @@ Metric families include `gryvia_network_*` (flow bytes, latency, active connecti
 | `-cgroup-path` | empty | cgroup v2 path for `sockops`/`sk_msg`; empty skips them |
 | `-nccl-lib`, `-cuda-lib`, `-cufile-lib` | empty | Library paths for the NCCL, CUDA runtime and cuFile uprobes; empty means auto-discover |
 | `-uprobe-pid` | `0` | Find those libraries through `/proc/<pid>/maps` of this process |
-| `-infer-ports` | `8000,8001` | Local TCP ports of inference servers for `infer_latency` (at most 8; empty disables it) |
+| `-infer-ports` | `8000,8001` | Local TCP ports of inference servers for `infer_latency` (at most 8; empty disables it). Measures the network accept wait only |
+| `-infer-metrics` | empty | Opt in: scrape a serving engine's own Prometheus endpoint (vLLM, Triton, TGI) for TTFT, ITL, queue time; repeatable, `name=..,url=..[,engine=..][,namespace=..,job=..]`. See [docs/inference-latency.md](../docs/inference-latency.md) |
+| `-infer-metrics-discover`, `-infer-metrics-ports`, `-infer-metrics-interval` | off, `8000,8002,8080`, `15s` | Also scrape labelled job pods of this node that declare one of the ports |
+| `-trace-correlate` | off | Opt in: attach W3C trace ids to the Flight Recorder timeline and serve `GET /api/v1/flight/trace` (HMAC-protected); needs `-iface` and `-flight-token-file` |
 | `-flight-token-file` | empty | File with the Flight Recorder token (at least 32 characters); empty disables the endpoint |
 | `-window` | `300` | Aggregation window in seconds |
 | `-nats-url` | empty | Accepted but not implemented: no NATS connection is made |

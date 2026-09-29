@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -28,9 +29,11 @@ import (
 	"github.com/zyvorai/gryvia/collector/pkg/fabric"
 	"github.com/zyvorai/gryvia/collector/pkg/flight"
 	"github.com/zyvorai/gryvia/collector/pkg/graph"
+	"github.com/zyvorai/gryvia/collector/pkg/inference"
 	"github.com/zyvorai/gryvia/collector/pkg/kube"
 	"github.com/zyvorai/gryvia/collector/pkg/loader"
 	"github.com/zyvorai/gryvia/collector/pkg/security"
+	"github.com/zyvorai/gryvia/collector/pkg/trace"
 	"github.com/zyvorai/gryvia/collector/pkg/tuning"
 )
 
@@ -53,7 +56,13 @@ func main() {
 		quotaPaceDry    = flag.Bool("quota-pace-dry-run", false, "with -quota-pace-sync: log what would be granted or revoked and write nothing to the pace map")
 		publishFabric   = flag.Bool("publish-fabric-status", false, "every 30 s patch the status of an existing GryviaFabricSignal (spec.jobRef = job) with the folded fabric signals; needs a cluster (KUBERNETES_SERVICE_HOST) and RBAC (chart value ebpf.publishFabricStatus)")
 		windowSec       = flag.Int("window", 300, "Aggregation sliding window in seconds")
+		inferDiscover   = flag.Bool("infer-metrics-discover", false, "opt in: also scrape http://<podIP>:<port>/metrics of pods on this node that carry a gryvia.io/job label and declare a container port from -infer-metrics-ports (needs a cluster and NODE_NAME; uses the pod-list RBAC the collector already has)")
+		inferPorts2     = flag.String("infer-metrics-ports", "8000,8002,8080", "container ports probed by -infer-metrics-discover (vLLM 8000, Triton metrics 8002, TGI 8080)")
+		inferInterval   = flag.Duration("infer-metrics-interval", inference.DefaultInterval, "scrape period of the serving-engine metrics (minimum 5s)")
+		traceCorrelate  = flag.Bool("trace-correlate", false, "opt in: consume trace_correlator's trace_events ring (W3C traceparent of plaintext HTTP/1.x requests to job pods, IPv4), attach trace ids to the Flight Recorder timeline and serve GET /api/v1/flight/trace (HMAC-protected like the flight endpoint). Needs -iface and -flight-token-file")
 	)
+	var inferTargets stringList
+	flag.Var(&inferTargets, "infer-metrics", "opt in: scrape a serving engine's Prometheus endpoint (vLLM, Triton, TGI); repeatable, or ';'-separated: name=vllm,url=http://10.0.0.5:8000/metrics[,engine=vllm|triton|tgi][,namespace=NS,job=JOB]")
 	flag.Parse()
 
 	// Logger.
@@ -77,6 +86,10 @@ func main() {
 
 	if *quotaPace && *cgroupPath == "" {
 		log.Fatalw("-quota-pace needs -cgroup-path: pacing is only ever attached to an explicit cgroup")
+	}
+
+	if *traceCorrelate && (*iface == "" || *flightTokenFile == "") {
+		log.Fatalw("-trace-correlate needs -iface (trace_correlator attaches to it) and -flight-token-file (the trace lookup is HMAC-protected)")
 	}
 
 	if (*quotaPaceSync || *quotaPaceDry) && !*quotaPace {
@@ -233,13 +246,18 @@ func main() {
 		}
 	}
 
+	// Serving-engine metrics (vLLM / Triton / TGI): opt-in, read-only HTTP GETs of the engines' own
+	// /metrics endpoints. Kernel probes cannot see tokens, so TTFT, ITL and engine queue time can
+	// only come from the engine.
+	scraper := startInferenceScraper(ctx, log, fabricFolder, node, inferTargets, *inferDiscover, *inferPorts2, *inferInterval)
+
 	// Publishing fabric status writes to the cluster, so it needs an explicit flag and a cluster.
 	if *publishFabric {
 		client, err := kube.NewInCluster()
 		if err != nil {
 			log.Warnw("-publish-fabric-status ignored", "error", err)
 		} else {
-			go (&fabric.Publisher{API: client, Folder: fabricFolder, Log: log}).Run(ctx)
+			go (&fabric.Publisher{API: client, Folder: fabricFolder, Log: log, Inference: scraper != nil}).Run(ctx)
 			log.Infow("publishing fabric status to GryviaFabricSignal (existing objects only)", "interval", fabric.PublishInterval.String())
 		}
 	}
@@ -259,6 +277,22 @@ func main() {
 	// TCP tuning advisor.
 	tcpAdvisor := tuning.NewTCPAdvisor()
 
+	// Trace correlation (opt-in): index the traceparent headers trace_correlator saw, keyed by
+	// connection, and let the Flight Recorder attach trace ids to events of the same connection.
+	var traceIndex *trace.Index
+	if *traceCorrelate {
+		traceIndex = trace.NewIndex()
+		recorder.SetCorrelator(traceIndex)
+		rings := mgr.RingBufReaders(loader.ClassTrace)
+		if len(rings) == 0 {
+			log.Warnw("-trace-correlate: trace_correlator is not loaded, so no trace ids will be seen (needs -iface and a loadable trace_correlator.o)")
+		}
+		for _, rr := range rings {
+			go traceIndex.Consume(rr, identity)
+		}
+		log.Infow("trace correlation enabled (plaintext HTTP/1.x, IPv4, requests to gryvia.io/job pods on this node)", "trace_rings", len(rings))
+	}
+
 	// ---- Decode perf events (existing flow events) ----
 	dec, err := decoder.New(mgr.PerfReaders(loader.ClassFlow), log)
 	if err != nil {
@@ -277,6 +311,10 @@ func main() {
 						kind = "tcp_retransmit"
 					}
 					observation := flight.Event{Identity: id, Source: "ebpf", Kind: kind, Bytes: uint64(ev.Bytes), DurationNs: ev.LatencyNs}
+					if traceIndex != nil && ev.Protocol == 6 {
+						tp := trace.TupleFromFlow(ev.SrcIP, ev.SrcPort, ev.DstIP, ev.DstPort)
+						observation.Tuple = &tp
+					}
 					if ev.Verdict == 2 {
 						observation.Retransmits, observation.Bytes = ev.Bytes, 0
 					}
@@ -365,6 +403,12 @@ func main() {
 	go func() {
 		for sig := range fabricDecoder.Events() {
 			fabricBinder.Add(sig)
+			if sig.Type == fabric.SigInferWait && traceIndex != nil {
+				// Only with trace correlation on: the accept wait joins a request by pod, port and time.
+				if id, ok := identity.Resolve(sig.PID); ok {
+					recorder.Record(flight.Event{Identity: id, Source: "ebpf", Kind: "inference_accept_wait", DurationNs: sig.LatencyNS, LocalPort: uint16(sig.Rank)})
+				}
+			}
 			if sig.Type == fabric.SigExfil {
 				// Observe only: the probe emits one signal per read burst. Never enforced here.
 				log.Warnw("possible model-weight exfiltration: large model-file read followed by a connect to a non-internal address",
@@ -468,6 +512,16 @@ func main() {
 	mux.HandleFunc("/api/v1/ai/training", trainingAnalyzer.ServeHTTP)
 	mux.HandleFunc("/api/v1/ai/pipeline", pipelineAnalyzer.ServeHTTP)
 	mux.Handle("/api/v1/flight/diagnose", flightAuth(recorder, *flightTokenFile))
+	if traceIndex != nil {
+		mux.Handle("/api/v1/flight/trace", flightAuth(&trace.Handler{Index: traceIndex, Recorder: recorder, Node: node}, *flightTokenFile))
+	}
+	if scraper != nil {
+		// Same HMAC protection as the flight endpoint: the answer lists target addresses.
+		mux.Handle("/api/v1/inference", flightAuth(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_ = encodeJSON(w, scraper.Status())
+		}), *flightTokenFile))
+	}
 
 	// TCP tuning endpoint.
 	mux.HandleFunc("/api/v1/tuning/tcp", tcpAdvisor.ServeHTTP)
@@ -540,4 +594,57 @@ func startQuotaSync(ctx context.Context, log *zap.SugaredLogger, pacer *fabric.P
 	go s.Run(ctx, fabric.QuotaSyncInterval)
 	log.Warnw("quota pace sync running", "interval", fabric.QuotaSyncInterval.String(), "dry_run", dryRun, "node", node,
 		"own_namespace", strings.TrimSpace(string(own)), "cgroup_root", cgroupPath)
+}
+
+// stringList is a repeatable string flag.
+type stringList []string
+
+func (l *stringList) String() string     { return strings.Join(*l, ";") }
+func (l *stringList) Set(v string) error { *l = append(*l, v); return nil }
+
+// startInferenceScraper starts the serving-engine metrics scraper when it was asked for
+// (-infer-metrics and/or -infer-metrics-discover) and returns it; nil means it is off. Readings
+// are folded into the fabric folder under the target's namespace/job (or "_unattributed"/name
+// for a static target without attribution).
+func startInferenceScraper(ctx context.Context, log *zap.SugaredLogger, folder *fabric.Folder, node string,
+	specs []string, discover bool, discoverPorts string, interval time.Duration) *inference.Scraper {
+	if len(specs) == 0 && !discover {
+		return nil
+	}
+	static, err := inference.ParseTargets(strings.Join(specs, ";"))
+	if err != nil {
+		log.Fatalw("invalid -infer-metrics", "error", err)
+	}
+	var disc func(context.Context) ([]inference.Target, error)
+	if discover {
+		ports, err := inference.ParsePorts(discoverPorts)
+		if err != nil {
+			log.Fatalw("invalid -infer-metrics-ports", "error", err)
+		}
+		if client, err := kube.NewInCluster(); err != nil {
+			log.Warnw("-infer-metrics-discover ignored", "error", err)
+		} else if node == "" {
+			log.Warnw("-infer-metrics-discover ignored: NODE_NAME is not set")
+		} else {
+			disc = func(ctx context.Context) ([]inference.Target, error) {
+				return inference.Discover(ctx, client, node, ports)
+			}
+		}
+	}
+	if len(static) == 0 && disc == nil {
+		return nil
+	}
+	sink := func(t inference.Target, r inference.Reading) {
+		key := fabric.JobKey{Namespace: t.Namespace, Job: t.Job}
+		if t.Namespace == "" {
+			key = fabric.JobKey{Namespace: "_unattributed", Job: t.Name}
+		}
+		folder.SetInference(key, t.Name, r)
+	}
+	s := inference.NewScraper(static, disc, sink, log)
+	s.Interval = interval
+	go s.Run(ctx)
+	log.Infow("scraping serving-engine metrics (read-only HTTP GET)", "static_targets", len(static),
+		"discover", disc != nil, "interval", fmt.Sprint(interval))
+	return s
 }

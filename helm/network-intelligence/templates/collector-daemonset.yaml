@@ -64,6 +64,22 @@ spec:
             {{- if .Values.ebpf.publishFabricStatus }}
             - -publish-fabric-status
             {{- end }}
+            {{- if .Values.ebpf.traceCorrelation }}
+            {{- if not (and .Values.ebpf.interface .Values.ebpf.flightTokenSecret) }}
+            {{- fail "ebpf.traceCorrelation needs ebpf.interface and ebpf.flightTokenSecret" }}
+            {{- end }}
+            - -trace-correlate
+            {{- end }}
+            {{- range .Values.ebpf.inferMetrics.targets }}
+            - {{ printf "-infer-metrics=%s" . | quote }}
+            {{- end }}
+            {{- if .Values.ebpf.inferMetrics.discover }}
+            - -infer-metrics-discover
+            - -infer-metrics-ports={{ .Values.ebpf.inferMetrics.ports }}
+            {{- end }}
+            {{- if or .Values.ebpf.inferMetrics.targets .Values.ebpf.inferMetrics.discover }}
+            - -infer-metrics-interval={{ .Values.ebpf.inferMetrics.interval }}
+            {{- end }}
             {{- with .Values.ebpf.ncclLib }}
             - -nccl-lib={{ . }}
             {{- end }}

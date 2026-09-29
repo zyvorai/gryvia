@@ -31,7 +31,35 @@ type Event struct {
 	Bytes       uint64    `json:"bytes,omitempty"`
 	Retransmits uint32    `json:"retransmits,omitempty"`
 	DurationNs  uint64    `json:"duration_ns,omitempty"`
+	// TraceID is the W3C trace id of the request this event belongs to, attached at report
+	// time from the node-local trace index (see Correlator). TraceMatch says how sure the
+	// match is: "tuple" (same TCP 4-tuple) or "port_time" (same pod and local port within a
+	// couple of seconds; used for events that carry no 4-tuple).
+	TraceID    string `json:"traceId,omitempty"`
+	TraceMatch string `json:"traceMatch,omitempty"`
+	// Tuple and LocalPort are inputs to trace correlation only; they are never serialised (the
+	// timeline does not expose remote addresses).
+	Tuple     *Tuple `json:"-"`
+	LocalPort uint16 `json:"-"`
 	// Observations are deliberately not interpreted as GPU utilization or wire bytes.
+}
+
+// Tuple is an IPv4 TCP 4-tuple as seen from one endpoint; direction is not significant to
+// correlation.
+type Tuple struct {
+	SrcIP   [4]byte
+	SrcPort uint16
+	DstIP   [4]byte
+	DstPort uint16
+}
+
+// Correlator maps events to W3C trace ids (implemented by trace.Index).
+type Correlator interface {
+	// ByTuple returns the trace observed on the same 4-tuple (either direction) closest to at.
+	ByTuple(t Tuple, at time.Time) (traceID string, ok bool)
+	// ByPodPort returns the trace id of the only request seen for pod (namespace/name) on local
+	// port near at; ok is false when there is none or when several distinct traces compete.
+	ByPodPort(namespace, pod string, port uint16, at time.Time) (traceID string, ok bool)
 }
 
 type Finding struct {
@@ -87,6 +115,68 @@ type Recorder struct {
 	mu   sync.RWMutex
 	jobs map[string]*ring
 	node string
+	corr Correlator
+}
+
+// SetCorrelator enables trace id annotation of reports. nil (the default) disables it.
+func (r *Recorder) SetCorrelator(c Correlator) {
+	r.mu.Lock()
+	r.corr = c
+	r.mu.Unlock()
+}
+
+// annotate sets TraceID/TraceMatch on e when the correlator knows the request.
+func annotate(c Correlator, e *Event) {
+	if c == nil {
+		return
+	}
+	if e.Tuple != nil {
+		if id, ok := c.ByTuple(*e.Tuple, e.Time); ok {
+			e.TraceID, e.TraceMatch = id, "tuple"
+			return
+		}
+	}
+	if e.LocalPort != 0 && e.Identity.Pod != "" {
+		if id, ok := c.ByPodPort(e.Identity.Namespace, e.Identity.Pod, e.LocalPort, e.Time); ok {
+			e.TraceID, e.TraceMatch = id, "port_time"
+		}
+	}
+}
+
+// TraceEvents returns the events of the given jobs (namespace/job) that correlate with traceID,
+// oldest first, at most limit. It needs a Correlator; without one it returns nil.
+func (r *Recorder) TraceEvents(traceID string, jobs []Identity, limit int) []Event {
+	r.mu.RLock()
+	c := r.corr
+	if c == nil {
+		r.mu.RUnlock()
+		return nil
+	}
+	var all []Event
+	seen := map[string]bool{}
+	for _, j := range jobs {
+		k := key(j.Namespace, j.Job)
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
+		if g, ok := r.jobs[k]; ok {
+			all = append(all, g.tail(len(g.buf))...)
+		}
+	}
+	r.mu.RUnlock()
+	var out []Event
+	for _, e := range all {
+		annotate(c, &e)
+		if e.TraceID == traceID {
+			out = append(out, e)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Time.Before(out[j].Time) })
+	if limit > 0 && len(out) > limit {
+		out = out[len(out)-limit:]
+	}
+	return out
 }
 
 func New(node string) *Recorder { return &Recorder{jobs: make(map[string]*ring), node: node} }
@@ -129,12 +219,16 @@ func (r *Recorder) Report(ns, job string, limit int) (Report, bool) {
 	r.mu.RLock()
 	g, ok := r.jobs[key(ns, job)]
 	var copyEvents []Event
+	corr := r.corr
 	if ok {
 		copyEvents = g.tail(limit)
 	}
 	r.mu.RUnlock()
 	if !ok {
 		return Report{}, false
+	}
+	for i := range copyEvents {
+		annotate(corr, &copyEvents[i])
 	}
 	sort.SliceStable(copyEvents, func(i, j int) bool { return copyEvents[i].Time.Before(copyEvents[j].Time) })
 	rep := Report{Namespace: ns, Job: job, Node: r.node, Scope: "node-local; observed events only", Events: copyEvents, Counts: map[string]int{}, Findings: []Finding{}}

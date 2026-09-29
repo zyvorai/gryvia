@@ -326,6 +326,7 @@ const (
 	ClassGPU      MapClass = "gpu"
 	ClassSecurity MapClass = "security"
 	ClassFabric   MapClass = "fabric"
+	ClassTrace    MapClass = "trace"
 	ClassNone     MapClass = ""
 )
 
@@ -344,6 +345,8 @@ var mapClasses = map[string]MapClass{
 	// overlap, infer_latency, ucx_gloo, weight_exfil; roce_cnp and pfc_pause have
 	// counters only, no ring)
 	"fabric_events": ClassFabric,
+	// ring buffer carrying struct trace_context (W3C traceparent seen at ingress, trace_correlator.c)
+	"trace_events": ClassTrace,
 	// ring buffers carrying struct security_event
 	"escape_events":  ClassSecurity,
 	"mining_events":  ClassSecurity,
@@ -364,7 +367,7 @@ func ClassifyMap(name string, t ebpf.MapType) MapClass {
 	switch {
 	case c == ClassFlow && t == ebpf.PerfEventArray:
 		return c
-	case (c == ClassGPU || c == ClassSecurity || c == ClassFabric) && t == ebpf.RingBuf:
+	case (c == ClassGPU || c == ClassSecurity || c == ClassFabric || c == ClassTrace) && t == ebpf.RingBuf:
 		return c
 	}
 	return ClassNone

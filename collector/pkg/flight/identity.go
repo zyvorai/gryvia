@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"regexp"
@@ -20,6 +21,9 @@ var podUID = regexp.MustCompile(`pod([0-9a-fA-F]{8}[-_][0-9a-fA-F]{4}[-_][0-9a-f
 
 type podList struct {
 	Items []struct {
+		Status struct {
+			PodIP string `json:"podIP"`
+		} `json:"status"`
 		Metadata struct {
 			UID       string            `json:"uid"`
 			Name      string            `json:"name"`
@@ -27,7 +31,8 @@ type podList struct {
 			Labels    map[string]string `json:"labels"`
 		} `json:"metadata"`
 		Spec struct {
-			NodeName string `json:"nodeName"`
+			NodeName    string `json:"nodeName"`
+			HostNetwork bool   `json:"hostNetwork"`
 		} `json:"spec"`
 	} `json:"items"`
 }
@@ -37,6 +42,7 @@ type podList struct {
 type Resolver struct {
 	mu      sync.RWMutex
 	byUID   map[string]Identity
+	byIP    map[string]Identity // pod IP -> identity (pods with a job label, not on the host network)
 	proc    string
 	node    string
 	updated time.Time
@@ -63,6 +69,7 @@ func (r *Resolver) SetPods(raw []byte) error {
 		return err
 	}
 	next := make(map[string]Identity, len(list.Items))
+	nextIP := make(map[string]Identity, len(list.Items))
 	for _, p := range list.Items {
 		if p.Spec.NodeName != r.node {
 			continue
@@ -75,10 +82,16 @@ func (r *Resolver) SetPods(raw []byte) error {
 		if rank == "" {
 			rank = p.Metadata.Labels["apps.kubernetes.io/pod-index"]
 		}
-		next[normalizeUID(p.Metadata.UID)] = Identity{Namespace: p.Metadata.Namespace, Job: job, Pod: p.Metadata.Name, Node: r.node, Rank: rank}
+		id := Identity{Namespace: p.Metadata.Namespace, Job: job, Pod: p.Metadata.Name, Node: r.node, Rank: rank}
+		next[normalizeUID(p.Metadata.UID)] = id
+		// Host-network pods share the node's address: an IP would not identify them.
+		if ip := net.ParseIP(p.Status.PodIP); ip != nil && !p.Spec.HostNetwork {
+			nextIP[ip.String()] = id
+		}
 	}
 	r.mu.Lock()
 	r.byUID = next
+	r.byIP = nextIP
 	r.updated = time.Now()
 	r.mu.Unlock()
 	return nil
@@ -103,6 +116,18 @@ func (r *Resolver) Resolve(pid uint32) (Identity, bool) {
 	}
 	r.mu.RUnlock()
 	return id, ok
+}
+
+// ResolveIP identifies the job pod on this node that owns ip (dotted IPv4). It fails closed like
+// Resolve: an unknown address or a pod list older than a minute yields false.
+func (r *Resolver) ResolveIP(ip string) (Identity, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	id, ok := r.byIP[ip]
+	if !ok || time.Since(r.updated) > time.Minute {
+		return Identity{}, false
+	}
+	return id, true
 }
 
 // Run refreshes the node's pods every 15 seconds. The API server TLS CA and

@@ -69,6 +69,9 @@ detail page, for the job's own namespace. It loads only when you press Load
 observations (each load contacts every collector) and is not polled. A tenant
 user without access to the namespace sees a 403 message.
 
+Opt-in request tracing (W3C `traceparent` ids attached to events, `GET /api/flight/trace/{traceId}`) and engine latency
+(`gryvia-flight -inference`) are described in [inference-latency.md](inference-latency.md).
+
 ## Collector authentication
 
 The gateway signs each collector request with
