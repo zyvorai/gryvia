@@ -37,6 +37,38 @@ outliers. This comparison cannot identify the underlying GPU or network cause.
 running collector pod are not counted, and `truncated` is true when a node
 returned its 200-event limit or more than 500 events were merged.
 
+## Command line and dashboard
+
+Both read the gateway's cluster view (`GET /api/flight/jobs/{job}?namespace=`),
+so neither needs the collector token; that token stays between the gateway and
+the collectors. Both show a partial view as partial: `coverage.complete` is
+false when a discovered collector did not answer, and `truncated` is true when
+events were dropped.
+
+`gryvia-flight` (source in `collector/cmd/gryvia-flight`, built with
+`cd collector && go build ./cmd/gryvia-flight`; the collector image does not
+contain it) runs anywhere that can reach the gateway, for example through
+`kubectl -n gryvia-system port-forward svc/<gateway> 8080:8080`. HTTPS is
+required except for `localhost`. The credential is the gateway API key, a
+session or an OIDC token; it is never a flag value. Provide it with
+`-token-file FILE`, `-token-file -` (stdin) or `GRYVIA_API_TOKEN`:
+
+```text
+gryvia-flight -gateway http://localhost:8080 -namespace ml -job train -token-file ~/.gryvia-token
+gryvia-flight -gateway https://gryvia.example -namespace ml -job train -o text -require-complete
+```
+
+`-o json` (default) prints the gateway response; `-o text` prints a summary.
+Exit codes: 0 fetched, 1 request failed (401 rejected token, 403 namespace not
+allowed for a tenant token, 503 gateway token unset or no collector reachable),
+2 usage error, 3 partial or truncated with `-require-complete`. TLS is verified
+and redirects are not followed, so the token is never sent elsewhere.
+
+The dashboard shows the same report in the Flight Recorder card on a job's
+detail page, for the job's own namespace. It loads only when you press Load
+observations (each load contacts every collector) and is not polled. A tenant
+user without access to the namespace sees a 403 message.
+
 ## Collector authentication
 
 The gateway signs each collector request with
@@ -129,5 +161,5 @@ spec:
   node's addresses and a pod NetworkPolicy does not apply. Use node firewall
   rules, or set `collector.hostNetwork=false` before relying on the policy above.
 
-A CLI command, GPU/RDMA validation and per-job rank identity in the underlying
-NCCL probe still precede general availability.
+GPU/RDMA validation and per-job rank identity in the underlying NCCL probe
+still precede general availability.
