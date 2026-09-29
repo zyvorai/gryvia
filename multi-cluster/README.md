@@ -52,7 +52,7 @@ helm install gryvia-federation gryvia/gryvia-federation \
 ```yaml
 # cluster-a.yaml
 apiVersion: gryvia.io/v1
-kind: FabricCluster
+kind: GryviaCluster
 metadata:
   name: cluster-a
   namespace: gryvia-system
@@ -100,10 +100,10 @@ kubectl apply -f cluster-a.yaml
 
 ```bash
 # List registered clusters
-kubectl get fabricclusters -n gryvia-system
+kubectl get gryviaclusters -n gryvia-system
 
 # Check cluster status
-kubectl describe fabriccluster cluster-a
+kubectl describe gryviacluster cluster-a
 
 # View aggregated resources
 kfctl federation status
@@ -122,7 +122,7 @@ Jobs are automatically placed based on:
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: training-job
   annotations:
@@ -181,7 +181,7 @@ metadata:
 ```yaml
 # Replicate dataset across clusters
 apiVersion: gryvia.io/v1
-kind: FabricDataset
+kind: GryviaDataset
 metadata:
   name: imagenet
 spec:
@@ -202,7 +202,7 @@ spec:
 ```yaml
 # Schedule job where data exists
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: training-with-data
 spec:
@@ -219,7 +219,7 @@ spec:
 ```yaml
 # Enable automatic failover
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: critical-job
   annotations:
@@ -283,7 +283,7 @@ kfctl federation costs --by-team ml-research
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricFederatedQuota
+kind: GryviaFederatedQuota
 metadata:
   name: ml-research-federated
 spec:
@@ -553,7 +553,7 @@ kubectl --kubeconfig=<path> get nodes
 
 ```bash
 # Check placement decision
-kubectl describe fabricaijob <job-name> | grep -A 10 "Placement"
+kubectl describe gryviaaijob <job-name> | grep -A 10 "Placement"
 
 # Check cluster capacity
 kfctl federation capacity
@@ -567,7 +567,7 @@ kubectl logs -n gryvia-system \
 
 ```bash
 # Check replication status
-kubectl get fabricdataset imagenet -o yaml
+kubectl get gryviadataset imagenet -o yaml
 
 # Force sync
 kfctl federation sync-dataset imagenet

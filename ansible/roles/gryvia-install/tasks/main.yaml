@@ -28,16 +28,16 @@
     state: present
     src: "{{ item }}"
   loop:
-    - ../../../crds/fabricgpunode.yaml
-    - ../../../crds/fabricaijob.yaml
-    - ../../../crds/fabricstorage.yaml
-    - ../../../crds/fabricnetwork.yaml
-    - ../../../crds/fabricquota.yaml
+    - ../../../crds/gryviagpunode.yaml
+    - ../../../crds/gryviaaijob.yaml
+    - ../../../crds/gryviastorage.yaml
+    - ../../../crds/gryvianetwork.yaml
+    - ../../../crds/gryviaquota.yaml
 
 - name: Install Gryvia core via Helm
   kubernetes.core.helm:
     name: gryvia
-    chart_ref: ../../../helm/gryvia-core
+    chart_ref: ../../../helm/gryvia
     release_namespace: gryvia-system
     create_namespace: yes
     values:

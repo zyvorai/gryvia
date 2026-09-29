@@ -1,4 +1,4 @@
-"""Model registry routes (FabricModelRegistry, namespaced) for the dashboard."""
+"""Model registry routes (GryviaModelRegistry, namespaced) for the dashboard."""
 from typing import Any, Dict, List, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict
 from .common import Deps, patch_item
 from .uiutil import find_one, list_all, meta, prune
 
-PLURAL = "fabricmodelregistries"
+PLURAL = "gryviamodelregistries"
 
 # Same promotion ladder the UI offers.
 NEXT_STAGE = {"dev": ["staging"], "staging": ["production"], "production": ["archived"]}

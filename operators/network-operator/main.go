@@ -58,11 +58,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controllers.FabricNetworkReconciler{
+	if err = (&controllers.GryviaNetworkReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "FabricNetwork")
+		setupLog.Error(err, "unable to create controller", "controller", "GryviaNetwork")
 		os.Exit(1)
 	}
 

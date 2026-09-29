@@ -8,21 +8,21 @@ import (
 	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 )
 
-// --- FabricAIJob re-exports ---
+// --- GryviaAIJob re-exports ---
 
-type FabricAIJob = gryviav1.FabricAIJob
-type FabricAIJobList = gryviav1.FabricAIJobList
-type FabricAIJobSpec = gryviav1.FabricAIJobSpec
-type FabricAIJobStatus = gryviav1.FabricAIJobStatus
+type GryviaAIJob = gryviav1.GryviaAIJob
+type GryviaAIJobList = gryviav1.GryviaAIJobList
+type GryviaAIJobSpec = gryviav1.GryviaAIJobSpec
+type GryviaAIJobStatus = gryviav1.GryviaAIJobStatus
 type DistributedConfig = gryviav1.DistributedConfig
 type JobMetrics = gryviav1.JobMetrics
 
-// --- FabricAutoTuner re-exports ---
+// --- GryviaAutoTuner re-exports ---
 
-type FabricAutoTuner = gryviav1.FabricAutoTuner
-type FabricAutoTunerList = gryviav1.FabricAutoTunerList
-type FabricAutoTunerSpec = gryviav1.FabricAutoTunerSpec
-type FabricAutoTunerStatus = gryviav1.FabricAutoTunerStatus
+type GryviaAutoTuner = gryviav1.GryviaAutoTuner
+type GryviaAutoTunerList = gryviav1.GryviaAutoTunerList
+type GryviaAutoTunerSpec = gryviav1.GryviaAutoTunerSpec
+type GryviaAutoTunerStatus = gryviav1.GryviaAutoTunerStatus
 type ParameterSpec = gryviav1.ParameterSpec
 type ObjectiveSpec = gryviav1.ObjectiveSpec
 type ASHAConfig = gryviav1.ASHAConfig
@@ -50,12 +50,12 @@ const (
 	ParameterTypeCategorical = gryviav1.ParameterTypeCategorical
 )
 
-// --- FabricWorkflow re-exports ---
+// --- GryviaWorkflow re-exports ---
 
-type FabricWorkflow = gryviav1.FabricWorkflow
-type FabricWorkflowList = gryviav1.FabricWorkflowList
-type FabricWorkflowSpec = gryviav1.FabricWorkflowSpec
-type FabricWorkflowStatus = gryviav1.FabricWorkflowStatus
+type GryviaWorkflow = gryviav1.GryviaWorkflow
+type GryviaWorkflowList = gryviav1.GryviaWorkflowList
+type GryviaWorkflowSpec = gryviav1.GryviaWorkflowSpec
+type GryviaWorkflowStatus = gryviav1.GryviaWorkflowStatus
 type WorkflowStep = gryviav1.WorkflowStep
 type ScriptStep = gryviav1.ScriptStep
 type WebhookStep = gryviav1.WebhookStep
@@ -68,12 +68,12 @@ const (
 	StepTypeWebhook = gryviav1.StepTypeWebhook
 )
 
-// --- FabricModelRegistry re-exports ---
+// --- GryviaModelRegistry re-exports ---
 
-type FabricModelRegistry = gryviav1.FabricModelRegistry
-type FabricModelRegistryList = gryviav1.FabricModelRegistryList
-type FabricModelRegistrySpec = gryviav1.FabricModelRegistrySpec
-type FabricModelRegistryStatus = gryviav1.FabricModelRegistryStatus
+type GryviaModelRegistry = gryviav1.GryviaModelRegistry
+type GryviaModelRegistryList = gryviav1.GryviaModelRegistryList
+type GryviaModelRegistrySpec = gryviav1.GryviaModelRegistrySpec
+type GryviaModelRegistryStatus = gryviav1.GryviaModelRegistryStatus
 type ModelSource = gryviav1.ModelSource
 type ModelArtifacts = gryviav1.ModelArtifacts
 type ServingConfig = gryviav1.ServingConfig
@@ -86,12 +86,12 @@ const (
 	ModelStageArchived   = gryviav1.ModelStageArchived
 )
 
-// --- FabricInferenceService re-exports ---
+// --- GryviaInferenceService re-exports ---
 
-type FabricInferenceService = gryviav1.FabricInferenceService
-type FabricInferenceServiceList = gryviav1.FabricInferenceServiceList
-type FabricInferenceServiceSpec = gryviav1.FabricInferenceServiceSpec
-type FabricInferenceServiceStatus = gryviav1.FabricInferenceServiceStatus
+type GryviaInferenceService = gryviav1.GryviaInferenceService
+type GryviaInferenceServiceList = gryviav1.GryviaInferenceServiceList
+type GryviaInferenceServiceSpec = gryviav1.GryviaInferenceServiceSpec
+type GryviaInferenceServiceStatus = gryviav1.GryviaInferenceServiceStatus
 type AutoscalingConfig = gryviav1.AutoscalingConfig
 type CanaryConfig = gryviav1.CanaryConfig
 type HealthCheckConfig = gryviav1.HealthCheckConfig
@@ -105,12 +105,12 @@ const (
 	BackendTorchServe  = gryviav1.BackendTorchServe
 )
 
-// --- FabricWorkspace re-exports ---
+// --- GryviaWorkspace re-exports ---
 
-type FabricWorkspace = gryviav1.FabricWorkspace
-type FabricWorkspaceList = gryviav1.FabricWorkspaceList
-type FabricWorkspaceSpec = gryviav1.FabricWorkspaceSpec
-type FabricWorkspaceStatus = gryviav1.FabricWorkspaceStatus
+type GryviaWorkspace = gryviav1.GryviaWorkspace
+type GryviaWorkspaceList = gryviav1.GryviaWorkspaceList
+type GryviaWorkspaceSpec = gryviav1.GryviaWorkspaceSpec
+type GryviaWorkspaceStatus = gryviav1.GryviaWorkspaceStatus
 
 // Workspace type constants
 const (
@@ -118,15 +118,15 @@ const (
 	WorkspaceTypeVSCode  = gryviav1.WorkspaceTypeVSCode
 )
 
-// --- FabricGPUNode re-exports ---
+// --- GryviaGPUNode re-exports ---
 
-type FabricGPUNode = gryviav1.FabricGpuNode
-type FabricGPUNodeList = gryviav1.FabricGpuNodeList
+type GryviaGPUNode = gryviav1.GryviaGpuNode
+type GryviaGPUNodeList = gryviav1.GryviaGpuNodeList
 
-// --- FabricCheckpointGuard re-exports ---
+// --- GryviaCheckpointGuard re-exports ---
 
-type FabricCheckpointGuard = gryviav1.FabricCheckpointGuard
-type FabricCheckpointGuardList = gryviav1.FabricCheckpointGuardList
+type GryviaCheckpointGuard = gryviav1.GryviaCheckpointGuard
+type GryviaCheckpointGuardList = gryviav1.GryviaCheckpointGuardList
 
 // --- GroupVersion ---
 

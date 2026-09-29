@@ -7,7 +7,7 @@ use crate::types::*;
 use crate::display;
 
 pub async fn execute(client: &GryviaClient, team: Option<String>, budget: bool) -> Result<()> {
-    let api: Api<FabricQuota> = Api::all(client.kube_client.clone());
+    let api: Api<GryviaQuota> = Api::all(client.kube_client.clone());
 
     let quotas = api.list(&ListParams::default()).await
         .context("Failed to list quotas")?;
@@ -33,7 +33,7 @@ pub async fn execute(client: &GryviaClient, team: Option<String>, budget: bool) 
     Ok(())
 }
 
-fn print_quota_details(quota: &FabricQuota, show_budget: bool) {
+fn print_quota_details(quota: &GryviaQuota, show_budget: bool) {
     let team = &quota.spec.team;
     let unknown = "<unknown>".to_string();
     let quota_name = quota.metadata.name.as_ref().unwrap_or(&unknown);

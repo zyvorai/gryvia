@@ -83,7 +83,7 @@ def prune(d: Dict[str, Any]) -> Dict[str, Any]:
 
 
 class JobTemplate(BaseModel):
-    """Subset of FabricAIJobSpec accepted from the dashboard (required: type, gpus, image)."""
+    """Subset of GryviaAIJobSpec accepted from the dashboard (required: type, gpus, image)."""
     model_config = ConfigDict(extra="forbid")
 
     type: Literal["training", "inference", "fine-tuning", "evaluation"] = "training"

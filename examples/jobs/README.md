@@ -94,8 +94,8 @@ kubectl apply -f <job-file>.yaml
 
 ### Check job status
 ```bash
-kubectl get fabricaijobs
-kubectl describe fabricaijob <job-name>
+kubectl get gryviaaijobs
+kubectl describe gryviaaijob <job-name>
 ```
 
 ### View job logs
@@ -105,7 +105,7 @@ kubectl logs -l job-name=<job-name>
 
 ### Delete a job
 ```bash
-kubectl delete fabricaijob <job-name>
+kubectl delete gryviaaijob <job-name>
 ```
 
 ### Monitor GPU usage
@@ -136,7 +136,7 @@ Create job chains using dependencies:
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: inference-job
 spec:
@@ -151,7 +151,7 @@ Set job priorities:
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: urgent-job
 spec:
@@ -165,7 +165,7 @@ Allow job preemption for higher priority work:
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: preemptible-job
 spec:
@@ -241,13 +241,13 @@ labels:
 
 Check quota limits:
 ```bash
-kubectl get fabricquotas
-kubectl describe fabricquota <quota-name>
+kubectl get gryviaquotas
+kubectl describe gryviaquota <quota-name>
 ```
 
 Check GPU availability:
 ```bash
-kubectl get fabricgpunodes
+kubectl get gryviagpunodes
 ```
 
 ### Out of Memory errors

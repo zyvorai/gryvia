@@ -59,12 +59,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controllers.FabricStorageReconciler{
+	if err = (&controllers.GryviaStorageReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
-		Log:    ctrl.Log.WithName("controllers").WithName("FabricStorage"),
+		Log:    ctrl.Log.WithName("controllers").WithName("GryviaStorage"),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "FabricStorage")
+		setupLog.Error(err, "unable to create controller", "controller", "GryviaStorage")
 		os.Exit(1)
 	}
 

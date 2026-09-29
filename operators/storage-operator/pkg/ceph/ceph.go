@@ -27,7 +27,7 @@ const (
 )
 
 // InstallCSIDriver installs the CephFS CSI driver
-func InstallCSIDriver(ctx context.Context, k8sClient client.Client, storage *gryviav1.FabricStorage) error {
+func InstallCSIDriver(ctx context.Context, k8sClient client.Client, storage *gryviav1.GryviaStorage) error {
 	if err := ensureServiceAccount(ctx, k8sClient); err != nil {
 		return fmt.Errorf("failed to create ServiceAccount: %w", err)
 	}
@@ -149,7 +149,7 @@ func ensureRBAC(ctx context.Context, k8sClient client.Client) error {
 	return err
 }
 
-func ensureCephConfigMap(ctx context.Context, k8sClient client.Client, storage *gryviav1.FabricStorage) error {
+func ensureCephConfigMap(ctx context.Context, k8sClient client.Client, storage *gryviav1.GryviaStorage) error {
 	configData := []map[string]interface{}{
 		{
 			"clusterID": storage.Name,
@@ -192,7 +192,7 @@ func ensureCephConfigMap(ctx context.Context, k8sClient client.Client, storage *
 	return k8sClient.Update(ctx, existing)
 }
 
-func ensureController(ctx context.Context, k8sClient client.Client, storage *gryviav1.FabricStorage) error {
+func ensureController(ctx context.Context, k8sClient client.Client, storage *gryviav1.GryviaStorage) error {
 	replicas := int32(1)
 
 	deployment := &appsv1.Deployment{

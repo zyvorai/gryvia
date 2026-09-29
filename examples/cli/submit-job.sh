@@ -7,7 +7,7 @@ echo "Submitting LLM training job..."
 
 gryvia submit -f - <<EOF
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: llm-training
   namespace: ml-training

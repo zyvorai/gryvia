@@ -35,7 +35,7 @@ Optimize costs with spot/preemptible GPU instances while maintaining reliability
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: training-spot
   annotations:
@@ -94,7 +94,7 @@ data:
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: llama-training-spot
   annotations:
@@ -131,7 +131,7 @@ Mix spot and on-demand for optimal cost/reliability:
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: hybrid-training
 spec:
@@ -318,7 +318,7 @@ Metrics tracked:
 kfctl spot prices --gpu-type A100-80G --days 7
 
 # Adjust max price
-kubectl annotate fabricaijob my-job \
+kubectl annotate gryviaaijob my-job \
   gryvia.io/spot-max-price=18.00 --overwrite
 
 # Or switch to different GPU type
@@ -342,7 +342,7 @@ kfctl spot migrate my-job --to on-demand
 
 ```bash
 # Enable checkpoint verification
-kubectl patch fabricaijob my-job -p '{
+kubectl patch gryviaaijob my-job -p '{
   "spec": {
     "checkpointing": {
       "verification": true,

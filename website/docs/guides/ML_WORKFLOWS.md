@@ -4,21 +4,21 @@ Complete guide to Gryvia's machine learning workflow capabilities, including hyp
 
 ## Table of Contents
 
-1. [Hyperparameter Tuning (FabricAutoTuner)](#hyperparameter-tuning-fabricautotuner)
-2. [DAG-Based Pipelines (FabricWorkflow)](#dag-based-pipelines-fabricworkflow)
-3. [Model Registry (FabricModelRegistry)](#model-registry-fabricmodelregistry)
-4. [Inference Serving (FabricInferenceService)](#inference-serving-fabricinferenceservice)
-5. [Interactive Workspaces (FabricWorkspace)](#interactive-workspaces-fabricworkspace)
+1. [Hyperparameter Tuning (GryviaAutoTuner)](#hyperparameter-tuning-gryviaautotuner)
+2. [DAG-Based Pipelines (GryviaWorkflow)](#dag-based-pipelines-gryviaworkflow)
+3. [Model Registry (GryviaModelRegistry)](#model-registry-gryviamodelregistry)
+4. [Inference Serving (GryviaInferenceService)](#inference-serving-gryviainferenceservice)
+5. [Interactive Workspaces (GryviaWorkspace)](#interactive-workspaces-gryviaworkspace)
 
 ---
 
-## Hyperparameter Tuning (FabricAutoTuner)
+## Hyperparameter Tuning (GryviaAutoTuner)
 
 Automated hyperparameter optimization with multiple search strategies and early stopping.
 
 ### Overview
 
-FabricAutoTuner provides a Kubernetes-native hyperparameter tuning system that integrates directly with Gryvia's GPU scheduling and quota management. It supports four search strategies:
+GryviaAutoTuner provides a Kubernetes-native hyperparameter tuning system that integrates directly with Gryvia's GPU scheduling and quota management. It supports four search strategies:
 
 - **Grid Search**: Exhaustive search over all parameter combinations. Best for small, discrete parameter spaces.
 - **Random Search**: Random sampling from parameter distributions. Effective for large parameter spaces where not all parameters are equally important.
@@ -29,7 +29,7 @@ FabricAutoTuner provides a Kubernetes-native hyperparameter tuning system that i
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricAutoTuner
+kind: GryviaAutoTuner
 metadata:
   name: resnet-hpo
   namespace: ml-research
@@ -131,7 +131,7 @@ gryvia cancel resnet-hpo
 
 ### Status Tracking
 
-The FabricAutoTuner status reports trial progress and the current best result:
+The GryviaAutoTuner status reports trial progress and the current best result:
 
 ```yaml
 status:
@@ -153,13 +153,13 @@ status:
 
 ---
 
-## DAG-Based Pipelines (FabricWorkflow)
+## DAG-Based Pipelines (GryviaWorkflow)
 
 Multi-step ML pipelines with dependency management, conditional execution, and fan-out/fan-in patterns.
 
 ### Overview
 
-FabricWorkflow lets you define complex ML pipelines as directed acyclic graphs (DAGs). Each step in the workflow can:
+GryviaWorkflow lets you define complex ML pipelines as directed acyclic graphs (DAGs). Each step in the workflow can:
 
 - Depend on one or more upstream steps
 - Run conditionally based on upstream results
@@ -171,7 +171,7 @@ FabricWorkflow lets you define complex ML pipelines as directed acyclic graphs (
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricWorkflow
+kind: GryviaWorkflow
 metadata:
   name: llm-training-pipeline
   namespace: ml-research
@@ -328,23 +328,23 @@ gryvia cancel llm-training-pipeline
 
 ---
 
-## Model Registry (FabricModelRegistry)
+## Model Registry (GryviaModelRegistry)
 
 Versioned model storage with stage-based promotion and automated deployment.
 
 ### Overview
 
-FabricModelRegistry provides a Kubernetes-native model registry for tracking trained models through their lifecycle. Models progress through three stages:
+GryviaModelRegistry provides a Kubernetes-native model registry for tracking trained models through their lifecycle. Models progress through three stages:
 
 1. **dev** -- Initial stage after training. Used for experimentation and evaluation.
 2. **staging** -- Promoted for integration testing and validation against production data.
-3. **production** -- Approved for live serving. Promotion to production can trigger automatic deployment via FabricInferenceService.
+3. **production** -- Approved for live serving. Promotion to production can trigger automatic deployment via GryviaInferenceService.
 
 ### Example
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricModelRegistry
+kind: GryviaModelRegistry
 metadata:
   name: llama-3-fine-tuned
   namespace: ml-research
@@ -435,20 +435,20 @@ gryvia get modelregistry llama-3-fine-tuned --output yaml
 
 When a model is promoted to `production` with `autoDeploy.enabled: true`, Gryvia automatically:
 
-1. Creates or updates the referenced FabricInferenceService
+1. Creates or updates the referenced GryviaInferenceService
 2. Starts a canary rollout with the configured weight schedule
 3. Monitors latency and error rate against success thresholds
 4. Completes the rollout or triggers auto-rollback on threshold violation
 
 ---
 
-## Inference Serving (FabricInferenceService)
+## Inference Serving (GryviaInferenceService)
 
 Production model serving with multiple backends, canary deployments, and auto-rollback.
 
 ### Overview
 
-FabricInferenceService deploys trained models as scalable inference endpoints. It supports four serving backends:
+GryviaInferenceService deploys trained models as scalable inference endpoints. It supports four serving backends:
 
 | Backend | Best For | Features |
 |---------|----------|----------|
@@ -461,7 +461,7 @@ FabricInferenceService deploys trained models as scalable inference endpoints. I
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricInferenceService
+kind: GryviaInferenceService
 metadata:
   name: llama-3-serving
   namespace: ml-production
@@ -572,13 +572,13 @@ gryvia metrics inference llama-3-serving
 
 ---
 
-## Interactive Workspaces (FabricWorkspace)
+## Interactive Workspaces (GryviaWorkspace)
 
 Managed interactive development environments with GPU access, persistent storage, and idle management.
 
 ### Overview
 
-FabricWorkspace provides on-demand interactive environments for data scientists and ML engineers. Supported environment types:
+GryviaWorkspace provides on-demand interactive environments for data scientists and ML engineers. Supported environment types:
 
 - **Jupyter** -- JupyterLab with pre-installed ML frameworks and GPU drivers
 - **VS Code** -- Code Server (VS Code in browser) with full extension support
@@ -590,7 +590,7 @@ Workspaces include persistent storage, automatic idle detection, and pause/resum
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricWorkspace
+kind: GryviaWorkspace
 metadata:
   name: research-notebook
   namespace: ml-research

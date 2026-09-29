@@ -4,7 +4,7 @@
 ---
 # 1. Storage Backend - VAST Data for training data
 apiVersion: gryvia.io/v1
-kind: FabricStorage
+kind: GryviaStorage
 metadata:
   name: vast-production
 spec:
@@ -23,7 +23,7 @@ spec:
 ---
 # 2. Network Configuration - RDMA InfiniBand for distributed training
 apiVersion: gryvia.io/v1
-kind: FabricNetwork
+kind: GryviaNetwork
 metadata:
   name: rdma-training-network
 spec:
@@ -40,7 +40,7 @@ spec:
 ---
 # 3. GPU Nodes - Register H100 cluster
 apiVersion: gryvia.io/v1
-kind: FabricGpuNode
+kind: GryviaGpuNode
 metadata:
   name: gpu-node-01
 spec:
@@ -57,7 +57,7 @@ spec:
 ---
 # 4. Team Quotas - ML Research Team
 apiVersion: gryvia.io/v1
-kind: FabricQuota
+kind: GryviaQuota
 metadata:
   name: team-ml-research
 spec:
@@ -78,7 +78,7 @@ spec:
 ---
 # 5. Team Quotas - Computer Vision Team
 apiVersion: gryvia.io/v1
-kind: FabricQuota
+kind: GryviaQuota
 metadata:
   name: team-cv
 spec:
@@ -132,7 +132,7 @@ stringData:
 ---
 # 8. Distributed Training Job - LLM on 32x H100
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: llm-pretraining
   namespace: ml-training
@@ -187,7 +187,7 @@ spec:
 ---
 # 9. Inference Service - Computer Vision Model
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: cv-inference-service
   namespace: cv-prod

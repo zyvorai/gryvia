@@ -213,7 +213,7 @@ export default function NetworkFlows() {
               </h2>
               {all.length === 0 ? (
                 <EmptyState title="No connections observed yet" action={<Link to="/network" className="buttonlike btn-secondary">Back to network</Link>}>
-                  Connections come from the FabricServiceGraph that the network-intelligence operator builds from eBPF flow data. The operator has not reported any yet.
+                  Connections come from the GryviaServiceGraph that the network-intelligence operator builds from eBPF flow data. The operator has not reported any yet.
                 </EmptyState>
               ) : filtered.length === 0 ? (
                 <EmptyState title="No connections match these filters" action={<button type="button" className="btn-secondary" onClick={clearFilters}>Clear filters</button>}>

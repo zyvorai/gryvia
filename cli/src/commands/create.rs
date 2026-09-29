@@ -152,7 +152,7 @@ async fn create_job(client: &GryviaClient) -> Result<()> {
 
     let job_spec = json!({
         "apiVersion": "gryvia.io/v1",
-        "kind": "FabricAIJob",
+        "kind": "GryviaAIJob",
         "metadata": {
             "name": name,
             "namespace": client.namespace(),
@@ -187,7 +187,7 @@ async fn create_job(client: &GryviaClient) -> Result<()> {
     }
 
     let ar = kube::api::ApiResource::from_gvk(
-        &kube::api::GroupVersionKind::gvk("gryvia.io", "v1", "FabricAIJob"),
+        &kube::api::GroupVersionKind::gvk("gryvia.io", "v1", "GryviaAIJob"),
     );
     let api: Api<kube::core::DynamicObject> = Api::namespaced_with(
         client.kube_client.clone(),
@@ -280,7 +280,7 @@ async fn create_quota(client: &GryviaClient) -> Result<()> {
     let quota_name = format!("{}-quota", team);
     let mut quota_spec = json!({
         "apiVersion": "gryvia.io/v1",
-        "kind": "FabricQuota",
+        "kind": "GryviaQuota",
         "metadata": {
             "name": quota_name,
         },
@@ -315,7 +315,7 @@ async fn create_quota(client: &GryviaClient) -> Result<()> {
     }
 
     let ar = kube::api::ApiResource::from_gvk(
-        &kube::api::GroupVersionKind::gvk("gryvia.io", "v1", "FabricQuota"),
+        &kube::api::GroupVersionKind::gvk("gryvia.io", "v1", "GryviaQuota"),
     );
     let api: Api<kube::core::DynamicObject> = Api::all_with(
         client.kube_client.clone(),

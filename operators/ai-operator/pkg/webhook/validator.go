@@ -16,34 +16,34 @@ import (
 	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 )
 
-// FabricAIJobValidator implements a ValidatingWebhook for FabricAIJob.
+// GryviaAIJobValidator implements a ValidatingWebhook for GryviaAIJob.
 // It ensures that submitted jobs have valid GPU configurations, that
 // requested GPU types exist in the cluster, and that distributed configs
 // are consistent.
-type FabricAIJobValidator struct {
+type GryviaAIJobValidator struct {
 	Client  client.Client
 	decoder admission.Decoder
 	log     logr.Logger
 }
 
-// NewFabricAIJobValidator creates a new validator.
-func NewFabricAIJobValidator(c client.Client) *FabricAIJobValidator {
-	return &FabricAIJobValidator{
+// NewGryviaAIJobValidator creates a new validator.
+func NewGryviaAIJobValidator(c client.Client) *GryviaAIJobValidator {
+	return &GryviaAIJobValidator{
 		Client: c,
 		log:    ctrl.Log.WithName("webhook").WithName("validator"),
 	}
 }
 
-// Handle processes an admission request for FabricAIJob validation.
-func (v *FabricAIJobValidator) Handle(ctx context.Context, req admission.Request) admission.Response {
-	job := &gryviav1.FabricAIJob{}
+// Handle processes an admission request for GryviaAIJob validation.
+func (v *GryviaAIJobValidator) Handle(ctx context.Context, req admission.Request) admission.Response {
+	job := &gryviav1.GryviaAIJob{}
 
 	if err := v.decoder.Decode(req, job); err != nil {
-		v.log.Error(err, "Failed to decode FabricAIJob")
+		v.log.Error(err, "Failed to decode GryviaAIJob")
 		return admission.Errored(http.StatusBadRequest, fmt.Errorf("failed to decode request: %w", err))
 	}
 
-	v.log.Info("Validating FabricAIJob", "name", job.Name, "namespace", job.Namespace)
+	v.log.Info("Validating GryviaAIJob", "name", job.Name, "namespace", job.Namespace)
 
 	// Run all validations.
 	if err := v.validateGPUCount(ctx, job); err != nil {
@@ -70,12 +70,12 @@ func (v *FabricAIJobValidator) Handle(ctx context.Context, req admission.Request
 		return admission.Denied(err.Error())
 	}
 
-	return admission.Allowed("FabricAIJob is valid")
+	return admission.Allowed("GryviaAIJob is valid")
 }
 
 // validateGPUCount checks that the requested GPU count does not exceed any
 // single node's capacity in the cluster.
-func (v *FabricAIJobValidator) validateGPUCount(ctx context.Context, job *gryviav1.FabricAIJob) error {
+func (v *GryviaAIJobValidator) validateGPUCount(ctx context.Context, job *gryviav1.GryviaAIJob) error {
 	if job.Spec.GPUs <= 0 {
 		return fmt.Errorf("spec.gpus must be greater than 0, got %d", job.Spec.GPUs)
 	}
@@ -124,7 +124,7 @@ func (v *FabricAIJobValidator) validateGPUCount(ctx context.Context, job *gryvia
 
 // validateGPUType checks that the requested GPU type exists on at least one
 // node in the cluster.
-func (v *FabricAIJobValidator) validateGPUType(ctx context.Context, job *gryviav1.FabricAIJob) error {
+func (v *GryviaAIJobValidator) validateGPUType(ctx context.Context, job *gryviav1.GryviaAIJob) error {
 	if job.Spec.GpuType == "" || job.Spec.GpuType == "any" {
 		return nil
 	}
@@ -161,7 +161,7 @@ func (v *FabricAIJobValidator) validateGPUType(ctx context.Context, job *gryviav
 
 // validateDistributedConfig checks that the distributed training configuration
 // is internally consistent.
-func (v *FabricAIJobValidator) validateDistributedConfig(job *gryviav1.FabricAIJob) error {
+func (v *GryviaAIJobValidator) validateDistributedConfig(job *gryviav1.GryviaAIJob) error {
 	dist := job.Spec.Distributed
 	if dist == nil || !dist.Enabled {
 		return nil
@@ -216,7 +216,7 @@ func (v *FabricAIJobValidator) validateDistributedConfig(job *gryviav1.FabricAIJ
 }
 
 // validateResourceRequests checks that resource requests are properly formed.
-func (v *FabricAIJobValidator) validateResourceRequests(job *gryviav1.FabricAIJob) error {
+func (v *GryviaAIJobValidator) validateResourceRequests(job *gryviav1.GryviaAIJob) error {
 	// Validate CPU requests if specified.
 	if cpu, ok := job.Spec.Resources.Requests[corev1.ResourceCPU]; ok {
 		if cpu.Cmp(resource.MustParse("0")) <= 0 {
@@ -252,7 +252,7 @@ func (v *FabricAIJobValidator) validateResourceRequests(job *gryviav1.FabricAIJo
 }
 
 // validateImage checks that an image is specified.
-func (v *FabricAIJobValidator) validateImage(job *gryviav1.FabricAIJob) error {
+func (v *GryviaAIJobValidator) validateImage(job *gryviav1.GryviaAIJob) error {
 	if job.Spec.Image == "" {
 		return fmt.Errorf("spec.image is required")
 	}
@@ -260,7 +260,7 @@ func (v *FabricAIJobValidator) validateImage(job *gryviav1.FabricAIJob) error {
 }
 
 // validatePriority checks that priority is within the valid range.
-func (v *FabricAIJobValidator) validatePriority(job *gryviav1.FabricAIJob) error {
+func (v *GryviaAIJobValidator) validatePriority(job *gryviav1.GryviaAIJob) error {
 	if job.Spec.Priority < 0 || job.Spec.Priority > 100 {
 		return fmt.Errorf("spec.priority must be between 0 and 100, got %d", job.Spec.Priority)
 	}
@@ -268,7 +268,7 @@ func (v *FabricAIJobValidator) validatePriority(job *gryviav1.FabricAIJob) error
 }
 
 // InjectDecoder injects the admission decoder.
-func (v *FabricAIJobValidator) InjectDecoder(d admission.Decoder) error {
+func (v *GryviaAIJobValidator) InjectDecoder(d admission.Decoder) error {
 	v.decoder = d
 	return nil
 }

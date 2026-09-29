@@ -61,12 +61,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controllers.FabricAIJobReconciler{
+	if err = (&controllers.GryviaAIJobReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
-		Log:    ctrl.Log.WithName("controllers").WithName("FabricAIJob"),
+		Log:    ctrl.Log.WithName("controllers").WithName("GryviaAIJob"),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "FabricAIJob")
+		setupLog.Error(err, "unable to create controller", "controller", "GryviaAIJob")
 		os.Exit(1)
 	}
 
@@ -77,50 +77,50 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controllers.FabricLiveExperimentReconciler{
+	if err = (&controllers.GryviaLiveExperimentReconciler{
 		Client:    mgr.GetClient(),
 		Scheme:    mgr.GetScheme(),
-		Log:       ctrl.Log.WithName("controllers").WithName("FabricLiveExperiment"),
+		Log:       ctrl.Log.WithName("controllers").WithName("GryviaLiveExperiment"),
 		Clientset: clientset,
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "FabricLiveExperiment")
+		setupLog.Error(err, "unable to create controller", "controller", "GryviaLiveExperiment")
 		os.Exit(1)
 	}
 
-	if err = (&controllers.FabricCheckpointGuardReconciler{
+	if err = (&controllers.GryviaCheckpointGuardReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
-		Log:    ctrl.Log.WithName("controllers").WithName("FabricCheckpointGuard"),
+		Log:    ctrl.Log.WithName("controllers").WithName("GryviaCheckpointGuard"),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "FabricCheckpointGuard")
+		setupLog.Error(err, "unable to create controller", "controller", "GryviaCheckpointGuard")
 		os.Exit(1)
 	}
 
-	if err = (&controllers.FabricTrainingProfilerReconciler{
+	if err = (&controllers.GryviaTrainingProfilerReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		Log:      ctrl.Log.WithName("controllers").WithName("FabricTrainingProfiler"),
-		Recorder: mgr.GetEventRecorderFor("fabrictrainingprofiler-controller"),
+		Log:      ctrl.Log.WithName("controllers").WithName("GryviaTrainingProfiler"),
+		Recorder: mgr.GetEventRecorderFor("gryviatrainingprofiler-controller"),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "FabricTrainingProfiler")
+		setupLog.Error(err, "unable to create controller", "controller", "GryviaTrainingProfiler")
 		os.Exit(1)
 	}
 
-	if err = (&controllers.FabricModelLineageReconciler{
+	if err = (&controllers.GryviaModelLineageReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "FabricModelLineage")
+		setupLog.Error(err, "unable to create controller", "controller", "GryviaModelLineage")
 		os.Exit(1)
 	}
 
-	if err = (&controllers.FabricTrainingTimeMachineReconciler{
+	if err = (&controllers.GryviaTrainingTimeMachineReconciler{
 		Client:      mgr.GetClient(),
 		Scheme:      mgr.GetScheme(),
-		Log:         ctrl.Log.WithName("controllers").WithName("FabricTrainingTimeMachine"),
+		Log:         ctrl.Log.WithName("controllers").WithName("GryviaTrainingTimeMachine"),
 		ForkHandler: timemachine.NewForkHandler(mgr.GetClient()),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "FabricTrainingTimeMachine")
+		setupLog.Error(err, "unable to create controller", "controller", "GryviaTrainingTimeMachine")
 		os.Exit(1)
 	}
 

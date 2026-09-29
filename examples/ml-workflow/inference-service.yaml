@@ -1,13 +1,13 @@
-# FabricInferenceService - Deploy an LLM with vLLM backend and canary rollout
+# GryviaInferenceService - Deploy an LLM with vLLM backend and canary rollout
 # Serves a model from the registry with autoscaling, health checks, and a 90/10
 # traffic split between the primary and canary versions.
 apiVersion: gryvia.io/v1
-kind: FabricInferenceService
+kind: GryviaInferenceService
 metadata:
   name: llama-70b-serving
   namespace: ml-serving
 spec:
-  # Reference to the FabricModelRegistry entry to serve
+  # Reference to the GryviaModelRegistry entry to serve
   modelRef: llama-70b-v2-0
 
   # vLLM backend optimized for LLM serving with continuous batching
@@ -41,7 +41,7 @@ spec:
   canary:
     enabled: true
     weight: 10                        # 10% traffic to canary (90% to primary)
-    modelVersion: llama-70b-v2-1      # FabricModelRegistry name for canary
+    modelVersion: llama-70b-v2-1      # GryviaModelRegistry name for canary
     autoPromote: true                 # Auto-promote if canary stays healthy
     promoteAfterSeconds: 3600         # Wait 1 hour before auto-promoting
 

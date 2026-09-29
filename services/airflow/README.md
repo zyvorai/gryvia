@@ -26,7 +26,7 @@ Orchestrate ML data pipelines with Apache Airflow and Gryvia.
 ## Features
 
 - **GPU-Aware Scheduling**: Schedule tasks to GPU nodes
-- **Gryvia Integration**: Submit jobs via FabricAIJob CRD
+- **Gryvia Integration**: Submit jobs via GryviaAIJob CRD
 - **Data Validation**: Validate datasets before training
 - **Cost Tracking**: Track pipeline costs
 - **MLflow Integration**: Auto-register models
@@ -190,7 +190,7 @@ for i, config in enumerate(configs):
 
 ## Gryvia Integration
 
-### Submit FabricAIJob from Airflow
+### Submit GryviaAIJob from Airflow
 
 ```python
 from kubernetes import client, config
@@ -200,7 +200,7 @@ def submit_gryvia_job(**context):
 
     job_spec = {
         'apiVersion': 'gryvia.io/v1',
-        'kind': 'FabricAIJob',
+        'kind': 'GryviaAIJob',
         'metadata': {
             'name': 'airflow-training',
             'namespace': 'default'
@@ -221,7 +221,7 @@ def submit_gryvia_job(**context):
         group='gryvia.io',
         version='v1',
         namespace='default',
-        plural='fabricaijobs',
+        plural='gryviaaijobs',
         body=job_spec
     )
 
@@ -247,7 +247,7 @@ def check_job_status(**context):
         group='gryvia.io',
         version='v1',
         namespace='default',
-        plural='fabricaijobs',
+        plural='gryviaaijobs',
         name='airflow-training'
     )
 
@@ -279,7 +279,7 @@ def calculate_cost(**context):
         group='gryvia.io',
         version='v1',
         namespace='default',
-        plural='fabricaijobs',
+        plural='gryviaaijobs',
         name='airflow-training'
     )
 

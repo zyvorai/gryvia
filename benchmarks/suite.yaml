@@ -79,7 +79,7 @@ data:
 ---
 # ResNet50 Benchmark Job
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: bench-resnet50-8gpu
   namespace: gryvia-system
@@ -195,7 +195,7 @@ spec:
 ---
 # Multi-Node Scaling Benchmark
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: bench-scaling-4node
   namespace: gryvia-system

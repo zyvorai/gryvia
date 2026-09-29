@@ -40,16 +40,16 @@ func NewClientFromExisting(c client.Client) *GryviaClient {
 	return &GryviaClient{client: c}
 }
 
-// --- FabricAIJob operations ---
+// --- GryviaAIJob operations ---
 
-// CreateJob creates a new FabricAIJob in the given namespace.
-func (t *GryviaClient) CreateJob(ctx context.Context, job *FabricAIJob) error {
+// CreateJob creates a new GryviaAIJob in the given namespace.
+func (t *GryviaClient) CreateJob(ctx context.Context, job *GryviaAIJob) error {
 	return t.client.Create(ctx, job)
 }
 
-// GetJob retrieves a FabricAIJob by name and namespace.
-func (t *GryviaClient) GetJob(ctx context.Context, namespace, name string) (*FabricAIJob, error) {
-	job := &FabricAIJob{}
+// GetJob retrieves a GryviaAIJob by name and namespace.
+func (t *GryviaClient) GetJob(ctx context.Context, namespace, name string) (*GryviaAIJob, error) {
+	job := &GryviaAIJob{}
 	err := t.client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, job)
 	if err != nil {
 		return nil, err
@@ -57,9 +57,9 @@ func (t *GryviaClient) GetJob(ctx context.Context, namespace, name string) (*Fab
 	return job, nil
 }
 
-// ListJobs returns all FabricAIJobs in the given namespace.
-func (t *GryviaClient) ListJobs(ctx context.Context, namespace string, opts ...client.ListOption) (*FabricAIJobList, error) {
-	list := &FabricAIJobList{}
+// ListJobs returns all GryviaAIJobs in the given namespace.
+func (t *GryviaClient) ListJobs(ctx context.Context, namespace string, opts ...client.ListOption) (*GryviaAIJobList, error) {
+	list := &GryviaAIJobList{}
 	allOpts := append([]client.ListOption{client.InNamespace(namespace)}, opts...)
 	err := t.client.List(ctx, list, allOpts...)
 	if err != nil {
@@ -68,9 +68,9 @@ func (t *GryviaClient) ListJobs(ctx context.Context, namespace string, opts ...c
 	return list, nil
 }
 
-// DeleteJob deletes a FabricAIJob by name and namespace.
+// DeleteJob deletes a GryviaAIJob by name and namespace.
 func (t *GryviaClient) DeleteJob(ctx context.Context, namespace, name string) error {
-	job := &FabricAIJob{
+	job := &GryviaAIJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
@@ -79,12 +79,12 @@ func (t *GryviaClient) DeleteJob(ctx context.Context, namespace, name string) er
 	return t.client.Delete(ctx, job)
 }
 
-// UpdateJobStatus updates the status of a FabricAIJob.
-func (t *GryviaClient) UpdateJobStatus(ctx context.Context, job *FabricAIJob) error {
+// UpdateJobStatus updates the status of a GryviaAIJob.
+func (t *GryviaClient) UpdateJobStatus(ctx context.Context, job *GryviaAIJob) error {
 	return t.client.Status().Update(ctx, job)
 }
 
-// WatchJob returns a watch.Interface that receives events for FabricAIJob changes.
+// WatchJob returns a watch.Interface that receives events for GryviaAIJob changes.
 // Note: This requires the client to support watching (e.g., a cached client from a Manager).
 // For non-cached clients, consider using an informer instead.
 func (t *GryviaClient) WatchJob(ctx context.Context, namespace string) (watch.Interface, error) {
@@ -95,16 +95,16 @@ func (t *GryviaClient) WatchJob(ctx context.Context, namespace string) (watch.In
 	return nil, fmt.Errorf("Watch requires an informer-backed client; use manager's cache instead")
 }
 
-// --- FabricAutoTuner operations ---
+// --- GryviaAutoTuner operations ---
 
-// CreateAutoTuner creates a new FabricAutoTuner.
-func (t *GryviaClient) CreateAutoTuner(ctx context.Context, tuner *FabricAutoTuner) error {
+// CreateAutoTuner creates a new GryviaAutoTuner.
+func (t *GryviaClient) CreateAutoTuner(ctx context.Context, tuner *GryviaAutoTuner) error {
 	return t.client.Create(ctx, tuner)
 }
 
-// GetAutoTuner retrieves a FabricAutoTuner by name and namespace.
-func (t *GryviaClient) GetAutoTuner(ctx context.Context, namespace, name string) (*FabricAutoTuner, error) {
-	tuner := &FabricAutoTuner{}
+// GetAutoTuner retrieves a GryviaAutoTuner by name and namespace.
+func (t *GryviaClient) GetAutoTuner(ctx context.Context, namespace, name string) (*GryviaAutoTuner, error) {
+	tuner := &GryviaAutoTuner{}
 	err := t.client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, tuner)
 	if err != nil {
 		return nil, err
@@ -112,9 +112,9 @@ func (t *GryviaClient) GetAutoTuner(ctx context.Context, namespace, name string)
 	return tuner, nil
 }
 
-// ListAutoTuners returns all FabricAutoTuners in the given namespace.
-func (t *GryviaClient) ListAutoTuners(ctx context.Context, namespace string, opts ...client.ListOption) (*FabricAutoTunerList, error) {
-	list := &FabricAutoTunerList{}
+// ListAutoTuners returns all GryviaAutoTuners in the given namespace.
+func (t *GryviaClient) ListAutoTuners(ctx context.Context, namespace string, opts ...client.ListOption) (*GryviaAutoTunerList, error) {
+	list := &GryviaAutoTunerList{}
 	allOpts := append([]client.ListOption{client.InNamespace(namespace)}, opts...)
 	err := t.client.List(ctx, list, allOpts...)
 	if err != nil {
@@ -123,9 +123,9 @@ func (t *GryviaClient) ListAutoTuners(ctx context.Context, namespace string, opt
 	return list, nil
 }
 
-// DeleteAutoTuner deletes a FabricAutoTuner by name and namespace.
+// DeleteAutoTuner deletes a GryviaAutoTuner by name and namespace.
 func (t *GryviaClient) DeleteAutoTuner(ctx context.Context, namespace, name string) error {
-	tuner := &FabricAutoTuner{
+	tuner := &GryviaAutoTuner{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
@@ -134,16 +134,16 @@ func (t *GryviaClient) DeleteAutoTuner(ctx context.Context, namespace, name stri
 	return t.client.Delete(ctx, tuner)
 }
 
-// --- FabricWorkflow operations ---
+// --- GryviaWorkflow operations ---
 
-// CreateWorkflow creates a new FabricWorkflow.
-func (t *GryviaClient) CreateWorkflow(ctx context.Context, wf *FabricWorkflow) error {
+// CreateWorkflow creates a new GryviaWorkflow.
+func (t *GryviaClient) CreateWorkflow(ctx context.Context, wf *GryviaWorkflow) error {
 	return t.client.Create(ctx, wf)
 }
 
-// GetWorkflow retrieves a FabricWorkflow by name and namespace.
-func (t *GryviaClient) GetWorkflow(ctx context.Context, namespace, name string) (*FabricWorkflow, error) {
-	wf := &FabricWorkflow{}
+// GetWorkflow retrieves a GryviaWorkflow by name and namespace.
+func (t *GryviaClient) GetWorkflow(ctx context.Context, namespace, name string) (*GryviaWorkflow, error) {
+	wf := &GryviaWorkflow{}
 	err := t.client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, wf)
 	if err != nil {
 		return nil, err
@@ -151,9 +151,9 @@ func (t *GryviaClient) GetWorkflow(ctx context.Context, namespace, name string) 
 	return wf, nil
 }
 
-// ListWorkflows returns all FabricWorkflows in the given namespace.
-func (t *GryviaClient) ListWorkflows(ctx context.Context, namespace string, opts ...client.ListOption) (*FabricWorkflowList, error) {
-	list := &FabricWorkflowList{}
+// ListWorkflows returns all GryviaWorkflows in the given namespace.
+func (t *GryviaClient) ListWorkflows(ctx context.Context, namespace string, opts ...client.ListOption) (*GryviaWorkflowList, error) {
+	list := &GryviaWorkflowList{}
 	allOpts := append([]client.ListOption{client.InNamespace(namespace)}, opts...)
 	err := t.client.List(ctx, list, allOpts...)
 	if err != nil {
@@ -162,9 +162,9 @@ func (t *GryviaClient) ListWorkflows(ctx context.Context, namespace string, opts
 	return list, nil
 }
 
-// DeleteWorkflow deletes a FabricWorkflow by name and namespace.
+// DeleteWorkflow deletes a GryviaWorkflow by name and namespace.
 func (t *GryviaClient) DeleteWorkflow(ctx context.Context, namespace, name string) error {
-	wf := &FabricWorkflow{
+	wf := &GryviaWorkflow{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
@@ -173,16 +173,16 @@ func (t *GryviaClient) DeleteWorkflow(ctx context.Context, namespace, name strin
 	return t.client.Delete(ctx, wf)
 }
 
-// --- FabricModelRegistry operations ---
+// --- GryviaModelRegistry operations ---
 
-// CreateModelRegistry creates a new FabricModelRegistry entry.
-func (t *GryviaClient) CreateModelRegistry(ctx context.Context, model *FabricModelRegistry) error {
+// CreateModelRegistry creates a new GryviaModelRegistry entry.
+func (t *GryviaClient) CreateModelRegistry(ctx context.Context, model *GryviaModelRegistry) error {
 	return t.client.Create(ctx, model)
 }
 
-// GetModelRegistry retrieves a FabricModelRegistry by name and namespace.
-func (t *GryviaClient) GetModelRegistry(ctx context.Context, namespace, name string) (*FabricModelRegistry, error) {
-	model := &FabricModelRegistry{}
+// GetModelRegistry retrieves a GryviaModelRegistry by name and namespace.
+func (t *GryviaClient) GetModelRegistry(ctx context.Context, namespace, name string) (*GryviaModelRegistry, error) {
+	model := &GryviaModelRegistry{}
 	err := t.client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, model)
 	if err != nil {
 		return nil, err
@@ -190,9 +190,9 @@ func (t *GryviaClient) GetModelRegistry(ctx context.Context, namespace, name str
 	return model, nil
 }
 
-// ListModelRegistries returns all FabricModelRegistry entries in the given namespace.
-func (t *GryviaClient) ListModelRegistries(ctx context.Context, namespace string, opts ...client.ListOption) (*FabricModelRegistryList, error) {
-	list := &FabricModelRegistryList{}
+// ListModelRegistries returns all GryviaModelRegistry entries in the given namespace.
+func (t *GryviaClient) ListModelRegistries(ctx context.Context, namespace string, opts ...client.ListOption) (*GryviaModelRegistryList, error) {
+	list := &GryviaModelRegistryList{}
 	allOpts := append([]client.ListOption{client.InNamespace(namespace)}, opts...)
 	err := t.client.List(ctx, list, allOpts...)
 	if err != nil {
@@ -201,9 +201,9 @@ func (t *GryviaClient) ListModelRegistries(ctx context.Context, namespace string
 	return list, nil
 }
 
-// DeleteModelRegistry deletes a FabricModelRegistry by name and namespace.
+// DeleteModelRegistry deletes a GryviaModelRegistry by name and namespace.
 func (t *GryviaClient) DeleteModelRegistry(ctx context.Context, namespace, name string) error {
-	model := &FabricModelRegistry{
+	model := &GryviaModelRegistry{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
@@ -222,16 +222,16 @@ func (t *GryviaClient) PromoteModel(ctx context.Context, namespace, name string,
 	return t.client.Update(ctx, model)
 }
 
-// --- FabricInferenceService operations ---
+// --- GryviaInferenceService operations ---
 
-// CreateInferenceService creates a new FabricInferenceService.
-func (t *GryviaClient) CreateInferenceService(ctx context.Context, svc *FabricInferenceService) error {
+// CreateInferenceService creates a new GryviaInferenceService.
+func (t *GryviaClient) CreateInferenceService(ctx context.Context, svc *GryviaInferenceService) error {
 	return t.client.Create(ctx, svc)
 }
 
-// GetInferenceService retrieves a FabricInferenceService by name and namespace.
-func (t *GryviaClient) GetInferenceService(ctx context.Context, namespace, name string) (*FabricInferenceService, error) {
-	svc := &FabricInferenceService{}
+// GetInferenceService retrieves a GryviaInferenceService by name and namespace.
+func (t *GryviaClient) GetInferenceService(ctx context.Context, namespace, name string) (*GryviaInferenceService, error) {
+	svc := &GryviaInferenceService{}
 	err := t.client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, svc)
 	if err != nil {
 		return nil, err
@@ -239,9 +239,9 @@ func (t *GryviaClient) GetInferenceService(ctx context.Context, namespace, name 
 	return svc, nil
 }
 
-// ListInferenceServices returns all FabricInferenceServices in the given namespace.
-func (t *GryviaClient) ListInferenceServices(ctx context.Context, namespace string, opts ...client.ListOption) (*FabricInferenceServiceList, error) {
-	list := &FabricInferenceServiceList{}
+// ListInferenceServices returns all GryviaInferenceServices in the given namespace.
+func (t *GryviaClient) ListInferenceServices(ctx context.Context, namespace string, opts ...client.ListOption) (*GryviaInferenceServiceList, error) {
+	list := &GryviaInferenceServiceList{}
 	allOpts := append([]client.ListOption{client.InNamespace(namespace)}, opts...)
 	err := t.client.List(ctx, list, allOpts...)
 	if err != nil {
@@ -250,9 +250,9 @@ func (t *GryviaClient) ListInferenceServices(ctx context.Context, namespace stri
 	return list, nil
 }
 
-// DeleteInferenceService deletes a FabricInferenceService by name and namespace.
+// DeleteInferenceService deletes a GryviaInferenceService by name and namespace.
 func (t *GryviaClient) DeleteInferenceService(ctx context.Context, namespace, name string) error {
-	svc := &FabricInferenceService{
+	svc := &GryviaInferenceService{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
@@ -261,16 +261,16 @@ func (t *GryviaClient) DeleteInferenceService(ctx context.Context, namespace, na
 	return t.client.Delete(ctx, svc)
 }
 
-// --- FabricWorkspace operations ---
+// --- GryviaWorkspace operations ---
 
-// CreateWorkspace creates a new FabricWorkspace.
-func (t *GryviaClient) CreateWorkspace(ctx context.Context, ws *FabricWorkspace) error {
+// CreateWorkspace creates a new GryviaWorkspace.
+func (t *GryviaClient) CreateWorkspace(ctx context.Context, ws *GryviaWorkspace) error {
 	return t.client.Create(ctx, ws)
 }
 
-// GetWorkspace retrieves a FabricWorkspace by name and namespace.
-func (t *GryviaClient) GetWorkspace(ctx context.Context, namespace, name string) (*FabricWorkspace, error) {
-	ws := &FabricWorkspace{}
+// GetWorkspace retrieves a GryviaWorkspace by name and namespace.
+func (t *GryviaClient) GetWorkspace(ctx context.Context, namespace, name string) (*GryviaWorkspace, error) {
+	ws := &GryviaWorkspace{}
 	err := t.client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, ws)
 	if err != nil {
 		return nil, err
@@ -278,9 +278,9 @@ func (t *GryviaClient) GetWorkspace(ctx context.Context, namespace, name string)
 	return ws, nil
 }
 
-// ListWorkspaces returns all FabricWorkspaces in the given namespace.
-func (t *GryviaClient) ListWorkspaces(ctx context.Context, namespace string, opts ...client.ListOption) (*FabricWorkspaceList, error) {
-	list := &FabricWorkspaceList{}
+// ListWorkspaces returns all GryviaWorkspaces in the given namespace.
+func (t *GryviaClient) ListWorkspaces(ctx context.Context, namespace string, opts ...client.ListOption) (*GryviaWorkspaceList, error) {
+	list := &GryviaWorkspaceList{}
 	allOpts := append([]client.ListOption{client.InNamespace(namespace)}, opts...)
 	err := t.client.List(ctx, list, allOpts...)
 	if err != nil {
@@ -289,9 +289,9 @@ func (t *GryviaClient) ListWorkspaces(ctx context.Context, namespace string, opt
 	return list, nil
 }
 
-// DeleteWorkspace deletes a FabricWorkspace by name and namespace.
+// DeleteWorkspace deletes a GryviaWorkspace by name and namespace.
 func (t *GryviaClient) DeleteWorkspace(ctx context.Context, namespace, name string) error {
-	ws := &FabricWorkspace{
+	ws := &GryviaWorkspace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
@@ -320,11 +320,11 @@ func (t *GryviaClient) ResumeWorkspace(ctx context.Context, namespace, name stri
 	return t.client.Update(ctx, ws)
 }
 
-// --- FabricGPUNode operations ---
+// --- GryviaGPUNode operations ---
 
-// GetGPUNode retrieves a FabricGPUNode by name.
-func (t *GryviaClient) GetGPUNode(ctx context.Context, name string) (*FabricGPUNode, error) {
-	node := &FabricGPUNode{}
+// GetGPUNode retrieves a GryviaGPUNode by name.
+func (t *GryviaClient) GetGPUNode(ctx context.Context, name string) (*GryviaGPUNode, error) {
+	node := &GryviaGPUNode{}
 	err := t.client.Get(ctx, types.NamespacedName{Name: name}, node)
 	if err != nil {
 		return nil, err
@@ -332,9 +332,9 @@ func (t *GryviaClient) GetGPUNode(ctx context.Context, name string) (*FabricGPUN
 	return node, nil
 }
 
-// ListGPUNodes returns all FabricGPUNodes.
-func (t *GryviaClient) ListGPUNodes(ctx context.Context, opts ...client.ListOption) (*FabricGPUNodeList, error) {
-	list := &FabricGPUNodeList{}
+// ListGPUNodes returns all GryviaGPUNodes.
+func (t *GryviaClient) ListGPUNodes(ctx context.Context, opts ...client.ListOption) (*GryviaGPUNodeList, error) {
+	list := &GryviaGPUNodeList{}
 	err := t.client.List(ctx, list, opts...)
 	if err != nil {
 		return nil, err
@@ -342,16 +342,16 @@ func (t *GryviaClient) ListGPUNodes(ctx context.Context, opts ...client.ListOpti
 	return list, nil
 }
 
-// --- FabricCheckpointGuard operations ---
+// --- GryviaCheckpointGuard operations ---
 
-// CreateCheckpointGuard creates a new FabricCheckpointGuard.
-func (t *GryviaClient) CreateCheckpointGuard(ctx context.Context, guard *FabricCheckpointGuard) error {
+// CreateCheckpointGuard creates a new GryviaCheckpointGuard.
+func (t *GryviaClient) CreateCheckpointGuard(ctx context.Context, guard *GryviaCheckpointGuard) error {
 	return t.client.Create(ctx, guard)
 }
 
-// GetCheckpointGuard retrieves a FabricCheckpointGuard by name and namespace.
-func (t *GryviaClient) GetCheckpointGuard(ctx context.Context, namespace, name string) (*FabricCheckpointGuard, error) {
-	guard := &FabricCheckpointGuard{}
+// GetCheckpointGuard retrieves a GryviaCheckpointGuard by name and namespace.
+func (t *GryviaClient) GetCheckpointGuard(ctx context.Context, namespace, name string) (*GryviaCheckpointGuard, error) {
+	guard := &GryviaCheckpointGuard{}
 	err := t.client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, guard)
 	if err != nil {
 		return nil, err
@@ -359,9 +359,9 @@ func (t *GryviaClient) GetCheckpointGuard(ctx context.Context, namespace, name s
 	return guard, nil
 }
 
-// ListCheckpointGuards returns all FabricCheckpointGuards in the given namespace.
-func (t *GryviaClient) ListCheckpointGuards(ctx context.Context, namespace string, opts ...client.ListOption) (*FabricCheckpointGuardList, error) {
-	list := &FabricCheckpointGuardList{}
+// ListCheckpointGuards returns all GryviaCheckpointGuards in the given namespace.
+func (t *GryviaClient) ListCheckpointGuards(ctx context.Context, namespace string, opts ...client.ListOption) (*GryviaCheckpointGuardList, error) {
+	list := &GryviaCheckpointGuardList{}
 	allOpts := append([]client.ListOption{client.InNamespace(namespace)}, opts...)
 	err := t.client.List(ctx, list, allOpts...)
 	if err != nil {
@@ -370,9 +370,9 @@ func (t *GryviaClient) ListCheckpointGuards(ctx context.Context, namespace strin
 	return list, nil
 }
 
-// DeleteCheckpointGuard deletes a FabricCheckpointGuard by name and namespace.
+// DeleteCheckpointGuard deletes a GryviaCheckpointGuard by name and namespace.
 func (t *GryviaClient) DeleteCheckpointGuard(ctx context.Context, namespace, name string) error {
-	guard := &FabricCheckpointGuard{
+	guard := &GryviaCheckpointGuard{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,

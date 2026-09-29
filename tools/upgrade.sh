@@ -90,7 +90,7 @@ pre_upgrade_checks() {
     log_info "Running pre-upgrade checks..."
 
     # Check for running jobs
-    local running_jobs=$(kubectl get fabricaijobs -A --field-selector=status.phase=Running -o json | jq '.items | length')
+    local running_jobs=$(kubectl get gryviaaijobs -A --field-selector=status.phase=Running -o json | jq '.items | length')
 
     if [ "${running_jobs}" -gt 0 ]; then
         log_warn "${running_jobs} jobs are currently running"
@@ -143,7 +143,7 @@ upgrade_crds() {
     crd_tmpdir=$(mktemp -d)
     trap 'rm -rf "${crd_tmpdir}"' RETURN
 
-    for crd in fabricgpunode fabricaijob fabricstorage fabricnetwork fabricquota; do
+    for crd in gryviagpunode gryviaaijob gryviastorage gryvianetwork gryviaquota; do
         log_info "  Downloading ${crd}..."
         local crd_file="${crd_tmpdir}/${crd}.yaml"
         if ! curl -sSfL "${crd_url}/${crd}.yaml" -o "${crd_file}"; then

@@ -1,7 +1,7 @@
 import axios from 'axios'
 import toast from 'react-hot-toast'
 import { notifyUnauthorized } from '@/lib/authEvents'
-import type { FabricAIJob, FabricQuota, FabricGpuNode } from '@/types'
+import type { GryviaAIJob, GryviaQuota, GryviaGpuNode } from '@/types'
 import { getStoredToken, clearToken } from '@/lib/auth'
 
 export interface ClusterStats {
@@ -421,7 +421,7 @@ export interface CreateTunerRequest {
   direction: 'maximize' | 'minimize'
   maxTrials: number
   parameterSpace: string
-  /** The job run for each trial (required by the FabricAutoTuner CRD). */
+  /** The job run for each trial (required by the GryviaAutoTuner CRD). */
   jobTemplate: { type: 'training'; image: string; gpus: number }
   /** Required when algorithm is ASHA. */
   ashaConfig?: { maxEpochs: number }
@@ -473,17 +473,17 @@ export const api = {
   },
 
   // Jobs - routed through API gateway
-  getJobs: async (): Promise<FabricAIJob[]> => {
+  getJobs: async (): Promise<GryviaAIJob[]> => {
     const { data } = await apiClient.get('/jobs')
     return data.items || []
   },
 
-  getJob: async (name: string): Promise<FabricAIJob> => {
+  getJob: async (name: string): Promise<GryviaAIJob> => {
     const { data } = await apiClient.get(`/jobs/${encodeURIComponent(name)}`)
     return data
   },
 
-  createJob: async (job: Partial<FabricAIJob>): Promise<FabricAIJob> => {
+  createJob: async (job: Partial<GryviaAIJob>): Promise<GryviaAIJob> => {
     const { data } = await apiClient.post('/jobs', job)
     return data
   },
@@ -508,23 +508,23 @@ export const api = {
   },
 
   // Quotas - routed through API gateway
-  getQuotas: async (): Promise<FabricQuota[]> => {
+  getQuotas: async (): Promise<GryviaQuota[]> => {
     const { data } = await apiClient.get('/quotas')
     return data.items || []
   },
 
-  getQuota: async (name: string): Promise<FabricQuota> => {
+  getQuota: async (name: string): Promise<GryviaQuota> => {
     const { data } = await apiClient.get(`/quotas/${encodeURIComponent(name)}`)
     return data
   },
 
   // Nodes - routed through API gateway
-  getNodes: async (): Promise<FabricGpuNode[]> => {
+  getNodes: async (): Promise<GryviaGpuNode[]> => {
     const { data } = await apiClient.get('/nodes')
     return data.items || []
   },
 
-  getNode: async (name: string): Promise<FabricGpuNode> => {
+  getNode: async (name: string): Promise<GryviaGpuNode> => {
     const { data } = await apiClient.get(`/nodes/${encodeURIComponent(name)}`)
     return data
   },

@@ -29,7 +29,7 @@ var gpuPricing = map[string]float64{
 }
 
 // CalculateBudget calculates budget status for a quota
-func CalculateBudget(ctx context.Context, k8sClient client.Client, quota *gryviav1.FabricQuota, currentUsage *gryviav1.QuotaUsage) (*gryviav1.BudgetStatus, error) {
+func CalculateBudget(ctx context.Context, k8sClient client.Client, quota *gryviav1.GryviaQuota, currentUsage *gryviav1.QuotaUsage) (*gryviav1.BudgetStatus, error) {
 	budgetStatus := &gryviav1.BudgetStatus{}
 
 	if quota.Spec.Budget == nil {
@@ -65,7 +65,7 @@ func CalculateBudget(ctx context.Context, k8sClient client.Client, quota *gryvia
 	return budgetStatus, nil
 }
 
-func calculateAverageRate(quota *gryviav1.FabricQuota) float64 {
+func calculateAverageRate(quota *gryviav1.GryviaQuota) float64 {
 	gpuPricingMu.RLock()
 	defer gpuPricingMu.RUnlock()
 

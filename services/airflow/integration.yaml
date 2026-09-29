@@ -268,7 +268,7 @@ rules:
     resources: ["pods", "pods/log"]
     verbs: ["create", "get", "list", "watch", "delete"]
   - apiGroups: ["gryvia.io"]
-    resources: ["fabricaijobs"]
+    resources: ["gryviaaijobs"]
     verbs: ["create", "get", "list", "watch", "delete"]
 
 ---
@@ -339,7 +339,7 @@ data:
     def create_preprocessing_job():
         job_yaml = {
             'apiVersion': 'gryvia.io/v1',
-            'kind': 'FabricAIJob',
+            'kind': 'GryviaAIJob',
             'metadata': {
                 'name': 'data-preprocessing',
                 'namespace': 'default'

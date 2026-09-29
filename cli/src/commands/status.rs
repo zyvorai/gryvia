@@ -13,7 +13,7 @@ pub async fn execute(client: &GryviaClient, job: &str, follow: bool) -> Result<(
             // terminals but may render as garbage on non-ANSI terminals (e.g. Windows cmd.exe
             // without virtual terminal processing enabled).
             print!("\x1B[2J\x1B[1;1H");
-            let api: Api<FabricAIJob> = Api::namespaced(
+            let api: Api<GryviaAIJob> = Api::namespaced(
                 client.kube_client.clone(),
                 client.namespace(),
             );
@@ -34,7 +34,7 @@ pub async fn execute(client: &GryviaClient, job: &str, follow: bool) -> Result<(
             sleep(Duration::from_secs(5)).await;
         }
     } else {
-        let api: Api<FabricAIJob> = Api::namespaced(
+        let api: Api<GryviaAIJob> = Api::namespaced(
             client.kube_client.clone(),
             client.namespace(),
         );
@@ -48,7 +48,7 @@ pub async fn execute(client: &GryviaClient, job: &str, follow: bool) -> Result<(
     Ok(())
 }
 
-fn print_job_status(job: &FabricAIJob) {
+fn print_job_status(job: &GryviaAIJob) {
     let unknown = "<unknown>".to_string();
     let name = job.metadata.name.as_ref().unwrap_or(&unknown);
 

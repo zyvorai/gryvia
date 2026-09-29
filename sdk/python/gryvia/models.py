@@ -75,7 +75,7 @@ class JobMetadata(BaseModel):
 
 
 class JobSpec(BaseModel):
-    """Spec for a FabricAIJob."""
+    """Spec for a GryviaAIJob."""
 
     image: str = ""
     gpus: int = 0
@@ -89,7 +89,7 @@ class JobSpec(BaseModel):
 
 
 class JobStatus(BaseModel):
-    """Status of a FabricAIJob."""
+    """Status of a GryviaAIJob."""
 
     phase: str = "Unknown"
     start_time: str | None = Field(None, alias="startTime")
@@ -100,10 +100,10 @@ class JobStatus(BaseModel):
 
 
 class Job(BaseModel):
-    """A FabricAIJob resource."""
+    """A GryviaAIJob resource."""
 
     api_version: str = Field("gryvia.io/v1", alias="apiVersion")
-    kind: str = "FabricAIJob"
+    kind: str = "GryviaAIJob"
     metadata: JobMetadata = Field(default_factory=JobMetadata)
     spec: JobSpec = Field(default_factory=JobSpec)
     status: JobStatus = Field(default_factory=JobStatus)
@@ -143,10 +143,10 @@ class JobMetrics(BaseModel):
 # ---------------------------------------------------------------------------
 
 class Quota(BaseModel):
-    """A FabricQuota resource (raw Kubernetes object)."""
+    """A GryviaQuota resource (raw Kubernetes object)."""
 
     api_version: str = Field("gryvia.io/v1", alias="apiVersion")
-    kind: str = "FabricQuota"
+    kind: str = "GryviaQuota"
     metadata: dict[str, Any] = Field(default_factory=dict)
     spec: dict[str, Any] = Field(default_factory=dict)
     status: dict[str, Any] = Field(default_factory=dict)
@@ -198,10 +198,10 @@ class QuotaUsageResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 class Node(BaseModel):
-    """A FabricGPUNode resource (raw Kubernetes object)."""
+    """A GryviaGPUNode resource (raw Kubernetes object)."""
 
     api_version: str = Field("gryvia.io/v1", alias="apiVersion")
-    kind: str = "FabricGPUNode"
+    kind: str = "GryviaGPUNode"
     metadata: dict[str, Any] = Field(default_factory=dict)
     spec: dict[str, Any] = Field(default_factory=dict)
     status: dict[str, Any] = Field(default_factory=dict)

@@ -1,5 +1,5 @@
 apiVersion: gryvia.io/v1
-kind: FabricNetwork
+kind: GryviaNetwork
 metadata:
   name: rdma-fabric
 spec:

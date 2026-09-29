@@ -1,8 +1,8 @@
-# FabricAutoPolicy - Self-learning firewall that observes traffic and suggests policies
+# GryviaAutoPolicy - Self-learning firewall that observes traffic and suggests policies
 # Starts in learn mode for 10 minutes, observes traffic patterns in the target
 # namespaces, then generates suggested network policies for review.
 apiVersion: gryvia.io/v1
-kind: FabricAutoPolicy
+kind: GryviaAutoPolicy
 metadata:
   name: production-auto-firewall
   namespace: gryvia-system

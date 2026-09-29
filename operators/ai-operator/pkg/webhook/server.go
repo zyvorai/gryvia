@@ -11,10 +11,10 @@ import (
 
 const (
 	// ValidatingWebhookPath is the HTTP path for the validating webhook.
-	ValidatingWebhookPath = "/validate-gryvia-ai-v1-fabricaijob"
+	ValidatingWebhookPath = "/validate-gryvia-ai-v1-gryviaaijob"
 
 	// MutatingWebhookPath is the HTTP path for the mutating webhook.
-	MutatingWebhookPath = "/mutate-gryvia-ai-v1-fabricaijob"
+	MutatingWebhookPath = "/mutate-gryvia-ai-v1-gryviaaijob"
 
 	// DefaultWebhookPort is the default port for the webhook server.
 	DefaultWebhookPort = 9443
@@ -86,7 +86,7 @@ func SetupWebhooks(mgr ctrl.Manager, config WebhookConfig) error {
 
 // registerValidatingWebhook creates and registers the validating webhook handler.
 func registerValidatingWebhook(mgr ctrl.Manager, c client.Client, log logr.Logger) error {
-	validator := NewFabricAIJobValidator(c)
+	validator := NewGryviaAIJobValidator(c)
 
 	hookServer := mgr.GetWebhookServer()
 	hookServer.Register(ValidatingWebhookPath, &webhook.Admission{
@@ -99,7 +99,7 @@ func registerValidatingWebhook(mgr ctrl.Manager, c client.Client, log logr.Logge
 
 // registerMutatingWebhook creates and registers the mutating webhook handler.
 func registerMutatingWebhook(mgr ctrl.Manager, c client.Client, log logr.Logger) error {
-	mutator := NewFabricAIJobMutator(c)
+	mutator := NewGryviaAIJobMutator(c)
 
 	hookServer := mgr.GetWebhookServer()
 	hookServer.Register(MutatingWebhookPath, &webhook.Admission{

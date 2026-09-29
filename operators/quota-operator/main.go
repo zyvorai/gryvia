@@ -58,19 +58,19 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controllers.FabricQuotaReconciler{
+	if err = (&controllers.GryviaQuotaReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "FabricQuota")
+		setupLog.Error(err, "unable to create controller", "controller", "GryviaQuota")
 		os.Exit(1)
 	}
 
-	if err = (&controllers.FabricCostPredictorReconciler{
+	if err = (&controllers.GryviaCostPredictorReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "FabricCostPredictor")
+		setupLog.Error(err, "unable to create controller", "controller", "GryviaCostPredictor")
 		os.Exit(1)
 	}
 

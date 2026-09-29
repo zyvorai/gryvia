@@ -19,7 +19,7 @@ The Network Operator manages high-performance networking for AI workloads in Gry
 ## Architecture
 
 ```
-FabricNetwork CR
+GryviaNetwork CR
        ↓
 Network Operator
        ↓
@@ -37,7 +37,7 @@ Pod Network Interfaces
 
 ```bash
 # Apply CRD
-kubectl apply -f crds/fabricnetwork.yaml
+kubectl apply -f crds/gryvianetwork.yaml
 
 # Deploy operator
 kubectl apply -f operators/network-operator/config/
@@ -79,7 +79,7 @@ echo 32 > /sys/class/net/ens1f0/device/sriov_numvfs
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricNetwork
+kind: GryviaNetwork
 metadata:
   name: rdma-infiniband
 spec:
@@ -100,7 +100,7 @@ spec:
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricNetwork
+kind: GryviaNetwork
 metadata:
   name: sriov-highspeed
 spec:
@@ -152,7 +152,7 @@ spec:
 - ConfigMap-based device configuration (device list serialized as JSON)
 
 **Files:**
-- `controllers/fabricnetwork_controller.go` - Main reconciliation
+- `controllers/gryvianetwork_controller.go` - Main reconciliation
 - `pkg/rdma/rdma.go` - RDMA device plugin and node config (~200 LOC)
 
 ### SR-IOV Configuration

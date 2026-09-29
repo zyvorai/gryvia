@@ -2,16 +2,16 @@
 # Example: Live Experiment with Hyperparameter Sweep
 #
 # This example creates three training jobs with different learning rates and
-# a FabricLiveExperiment that compares them in real time with early stopping.
+# a GryviaLiveExperiment that compares them in real time with early stopping.
 #
 # Usage:
 #   kubectl apply -f live-experiment-example.yaml
-#   kubectl get fabricliveexperiment lr-sweep -w
+#   kubectl get gryvialiveexperiment lr-sweep -w
 #
 
 # Job 1: Learning rate 0.001
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: resnet-lr-001
   namespace: ml-team
@@ -35,7 +35,7 @@ spec:
 ---
 # Job 2: Learning rate 0.01
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: resnet-lr-01
   namespace: ml-team
@@ -59,7 +59,7 @@ spec:
 ---
 # Job 3: Learning rate 0.1
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: resnet-lr-1
   namespace: ml-team
@@ -83,7 +83,7 @@ spec:
 ---
 # Live Experiment: Compare all three jobs
 apiVersion: gryvia.io/v1
-kind: FabricLiveExperiment
+kind: GryviaLiveExperiment
 metadata:
   name: lr-sweep
   namespace: ml-team

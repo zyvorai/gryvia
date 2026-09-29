@@ -128,7 +128,7 @@ terraform init && terraform apply
 cd generated && ./deploy.sh
 
 export KUBECONFIG=./generated/kubeconfig
-kubectl get fabricgpunodes
+kubectl get gryviagpunodes
 kubectl apply -f ../../examples/training/simple-pytorch-training.yaml
 ```
 
@@ -168,13 +168,13 @@ Go SDK. 30+ CRDs, grouped by area, in [Core Components](#core-components).
 <details>
 <summary><b>30+ CRDs across core, ML workflow, operations and network intelligence</b></summary>
 
-**Core:** `FabricGpuNode`, `FabricAIJob`, `FabricStorage`, `FabricNetwork`, `FabricQuota`
+**Core:** `GryviaGpuNode`, `GryviaAIJob`, `GryviaStorage`, `GryviaNetwork`, `GryviaQuota`
 
-**ML workflow:** `FabricAutoTuner`, `FabricWorkflow`, `FabricModelRegistry`, `FabricInferenceService`, `FabricWorkspace`, `FabricTemplate`
+**ML workflow:** `GryviaAutoTuner`, `GryviaWorkflow`, `GryviaModelRegistry`, `GryviaInferenceService`, `GryviaWorkspace`, `GryviaTemplate`
 
-**Operations & enterprise:** `FabricAutoScaler`, `FabricBudget`, `FabricChargeback`, `FabricTenant`, `FabricSLA`, `FabricAudit`, `FabricReservation`, `FabricPriority`
+**Operations & enterprise:** `GryviaAutoScaler`, `GryviaBudget`, `GryviaChargeback`, `GryviaTenant`, `GryviaSLA`, `GryviaAudit`, `GryviaReservation`, `GryviaPriority`
 
-**Network intelligence:** `FabricFlowPolicy`, `FabricTrafficInsight`, `FabricAutoPolicy`, `FabricTraceSession`, `FabricServiceGraph`, `FabricNetworkAnomaly`
+**Network intelligence:** `GryviaFlowPolicy`, `GryviaTrafficInsight`, `GryviaAutoPolicy`, `GryviaTraceSession`, `GryviaServiceGraph`, `GryviaNetworkAnomaly`
 
 </details>
 
@@ -228,16 +228,16 @@ Storage and network throughput depend on the hardware, filesystem and fabric you
 ## Security
 
 OIDC/SSO with PKCE, JWT validation and JWKS caching · per-tenant namespaces, NetworkPolicies and
-ResourceQuotas via `FabricTenant` · least-privilege RBAC scoped per CRD · non-root containers (UID
+ResourceQuotas via `GryviaTenant` · least-privilege RBAC scoped per CRD · non-root containers (UID
 65532, read-only root filesystem) · no blanket `privileged: true` on GPU device plugins ·
 default-deny network policies with auto-generated rules from observed traffic · admission webhooks
-validating `FabricAIJob` at creation · full audit trail via `FabricAudit` · input validation on
+validating `GryviaAIJob` at creation · full audit trail via `GryviaAudit` · input validation on
 budgets, job names and quotas · pinned image tags, never `:latest`.
 
 ## Real-World Use Cases
 
-Large-model training (`FabricAIJob` with `distributed.nodes`/`gpusPerNode`), multi-tenant GPU
-sharing with per-team budgets (`FabricQuota`), and inference at scale with replica fan-out — worked
+Large-model training (`GryviaAIJob` with `distributed.nodes`/`gpusPerNode`), multi-tenant GPU
+sharing with per-team budgets (`GryviaQuota`), and inference at scale with replica fan-out — worked
 examples in [examples/](examples/) and the [user guide](website/docs/user-guide/jobs.md).
 
 ---

@@ -27,7 +27,7 @@ const (
 )
 
 // InstallCSIDriver installs the VAST CSI driver
-func InstallCSIDriver(ctx context.Context, k8sClient client.Client, storage *gryviav1.FabricStorage) error {
+func InstallCSIDriver(ctx context.Context, k8sClient client.Client, storage *gryviav1.GryviaStorage) error {
 	// Create ServiceAccount
 	if err := ensureServiceAccount(ctx, k8sClient); err != nil {
 		return fmt.Errorf("failed to create ServiceAccount: %w", err)
@@ -131,7 +131,7 @@ func ensureRBAC(ctx context.Context, k8sClient client.Client) error {
 	return err
 }
 
-func ensureController(ctx context.Context, k8sClient client.Client, storage *gryviav1.FabricStorage) error {
+func ensureController(ctx context.Context, k8sClient client.Client, storage *gryviav1.GryviaStorage) error {
 	// Ensure the endpoint secret exists
 	secretName := fmt.Sprintf("%s-endpoint", storage.Name)
 	if err := ensureEndpointSecret(ctx, k8sClient, secretName, storage.Spec.Endpoint); err != nil {
@@ -267,7 +267,7 @@ func ensureEndpointSecret(ctx context.Context, k8sClient client.Client, secretNa
 	return k8sClient.Update(ctx, existing)
 }
 
-func ensureNodeDaemonSet(ctx context.Context, k8sClient client.Client, storage *gryviav1.FabricStorage) error {
+func ensureNodeDaemonSet(ctx context.Context, k8sClient client.Client, storage *gryviav1.GryviaStorage) error {
 	secretName := fmt.Sprintf("%s-endpoint", storage.Name)
 
 	ds := &appsv1.DaemonSet{

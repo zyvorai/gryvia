@@ -41,17 +41,17 @@ class MigrationTool:
         print(f"{BLUE}Discovering resources in source cluster...{NC}\n")
 
         resources = {
-            "fabricaijobs": [],
-            "fabricworkflows": [],
-            "fabricqueues": [],
-            "fabricusers": [],
+            "gryviaaijobs": [],
+            "gryviaworkflows": [],
+            "gryviaqueues": [],
+            "gryviausers": [],
             "configmaps": [],
             "secrets": [],
             "pvcs": []
         }
 
         # Get custom resources
-        for resource_type in ["fabricaijobs", "fabricworkflows", "fabricqueues", "fabricusers"]:
+        for resource_type in ["gryviaaijobs", "gryviaworkflows", "gryviaqueues", "gryviausers"]:
             try:
                 items = self.source_api.list_cluster_custom_object(
                     group="gryvia.io",
@@ -187,11 +187,11 @@ class MigrationTool:
         import_order = [
             "configmaps",
             "secrets",
-            "fabricqueues",
-            "fabricusers",
+            "gryviaqueues",
+            "gryviausers",
             "pvcs",
-            "fabricworkflows",
-            "fabricaijobs"
+            "gryviaworkflows",
+            "gryviaaijobs"
         ]
 
         stats = {"succeeded": 0, "failed": 0, "skipped": 0}
@@ -217,8 +217,8 @@ class MigrationTool:
                         resource["metadata"]["namespace"] = namespace
 
                     # Import based on type
-                    if resource_type in ["fabricaijobs", "fabricworkflows",
-                                        "fabricqueues", "fabricusers"]:
+                    if resource_type in ["gryviaaijobs", "gryviaworkflows",
+                                        "gryviaqueues", "gryviausers"]:
                         dest_api.create_namespaced_custom_object(
                             group="gryvia.io",
                             version="v1",
@@ -270,7 +270,7 @@ class MigrationTool:
             jobs = self.source_api.list_cluster_custom_object(
                 group="gryvia.io",
                 version="v1",
-                plural="fabricaijobs"
+                plural="gryviaaijobs"
             )
         except Exception as e:
             print(f"{RED}Error listing jobs: {e}{NC}")
@@ -326,7 +326,7 @@ class MigrationTool:
                         group="gryvia.io",
                         version="v1",
                         namespace=namespace,
-                        plural="fabricaijobs",
+                        plural="gryviaaijobs",
                         body=cleaned_job
                     )
 

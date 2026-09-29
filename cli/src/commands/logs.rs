@@ -32,7 +32,7 @@ pub async fn execute(
         .context("Failed to list pods for job")?;
 
     if pods.items.is_empty() {
-        let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("gryvia.io", "v1", "FabricAIJob"));
+        let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("gryvia.io", "v1", "GryviaAIJob"));
         let jobs_api: Api<DynamicObject> = Api::namespaced_with(
             client.kube_client.clone(),
             client.namespace(),

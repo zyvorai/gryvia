@@ -1,4 +1,4 @@
-"""Workspace routes (FabricWorkspace, namespaced) for the dashboard."""
+"""Workspace routes (GryviaWorkspace, namespaced) for the dashboard."""
 import re
 from typing import Any, Dict, Literal
 
@@ -8,8 +8,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from .common import Deps, create_item, delete_item, patch_item
 from .uiutil import NAME_MAX, NAME_PATTERN, find_one, fmt_duration, list_all, meta, namespaces, prune
 
-PLURAL = "fabricworkspaces"
-KIND = "FabricWorkspace"
+PLURAL = "gryviaworkspaces"
+KIND = "GryviaWorkspace"
 _TIMEOUT_RE = re.compile(r"^([1-9][0-9]{0,4})([mh])$")
 
 

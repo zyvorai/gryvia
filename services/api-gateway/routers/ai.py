@@ -1,13 +1,13 @@
 """AI / GPU communication routes used by the web dashboard's GPU Communication page.
 
 Sources:
-  * /api/ai/training/insight -> status of the most recently analysed FabricTrainingInsight
+  * /api/ai/training/insight -> status of the most recently analysed GryviaTrainingInsight
     (namespaced; see operators/ai-operator/api/v1).
   * /api/ai/training/nccl    -> per-operation NCCL stats from the eBPF collectors (routers/collector.py);
     empty when no collector is reachable.
   * /api/gpu/memory          -> host/device transfer counters from the same collectors; zeros when none
     is reachable.
-Nothing is fabricated: no source object -> zeros / empty lists in the shape the UI expects.
+Nothing is gryviaated: no source object -> zeros / empty lists in the shape the UI expects.
 """
 from typing import Any, Dict
 
@@ -71,7 +71,7 @@ def build_router(deps: Deps) -> APIRouter:
     @deps.limiter.limit("30/minute")
     async def training_insight(request: Request, _=Depends(deps.verify_auth)):
         """Latest training communication analysis (empty shape when none exists)."""
-        items = await list_items(deps, "fabrictraininginsights")
+        items = await list_items(deps, "gryviatraininginsights")
         analysed = [o for o in items if o.get("status")]
         if not analysed:
             return _empty_insight()

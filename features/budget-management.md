@@ -20,7 +20,7 @@ Gryvia provides sophisticated budget management to control GPU compute costs:
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricBudget
+kind: GryviaBudget
 metadata:
   name: ml-team-budget
 spec:
@@ -55,7 +55,7 @@ kubectl apply -f budget.yaml
 
 Check status:
 ```bash
-kubectl get fabricbudget ml-team-budget
+kubectl get gryviabudget ml-team-budget
 
 # Output:
 # NAME              SCOPE         PERIOD   BUDGET   USED     UTILIZATION   STATE
@@ -296,7 +296,7 @@ priority:
 Submit high-priority job:
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: critical-job
 spec:
@@ -309,14 +309,14 @@ spec:
 ### Get Budget
 
 ```bash
-kubectl get fabricbudget ml-team-budget -o yaml
+kubectl get gryviabudget ml-team-budget -o yaml
 ```
 
 ### Check Current Usage
 
 ```bash
 # Using kubectl
-kubectl get fabricbudget ml-team-budget -o jsonpath='{.status.usage}'
+kubectl get gryviabudget ml-team-budget -o jsonpath='{.status.usage}'
 
 # Using kfctl
 kfctl quota status --team ml-research
@@ -342,7 +342,7 @@ kfctl quota status --team ml-research
 View projected spending:
 
 ```bash
-kubectl get fabricbudget ml-team-budget \
+kubectl get gryviabudget ml-team-budget \
   -o jsonpath='{.status.forecast}' | jq
 ```
 
@@ -565,7 +565,7 @@ kfctl budget efficiency --team ml-research
 
 ```bash
 # Check budget status
-kubectl get fabricbudget -o wide
+kubectl get gryviabudget -o wide
 
 # Request temporary override
 kfctl budget override \
@@ -581,7 +581,7 @@ kfctl budget override \
 kubectl logs -n gryvia-system deploy/budget-controller
 
 # Verify budget is enabled
-kubectl get fabricbudget my-budget -o yaml | grep enforcement
+kubectl get gryviabudget my-budget -o yaml | grep enforcement
 ```
 
 ### Alerts Not Sending
@@ -591,7 +591,7 @@ kubectl get fabricbudget my-budget -o yaml | grep enforcement
 kfctl budget test-alert --type email --recipient test@company.com
 
 # Check alert history
-kubectl get fabricbudget my-budget \
+kubectl get gryviabudget my-budget \
   -o jsonpath='{.status.alerts}' | jq
 ```
 
@@ -603,7 +603,7 @@ kubectl get fabricbudget my-budget \
 # Organization-wide annual budget
 ---
 apiVersion: gryvia.io/v1
-kind: FabricBudget
+kind: GryviaBudget
 metadata:
   name: org-annual
 spec:
@@ -614,7 +614,7 @@ spec:
 # Department quarterly budgets
 ---
 apiVersion: gryvia.io/v1
-kind: FabricBudget
+kind: GryviaBudget
 metadata:
   name: ml-dept-q1
 spec:
@@ -625,7 +625,7 @@ spec:
 # Team monthly budgets
 ---
 apiVersion: gryvia.io/v1
-kind: FabricBudget
+kind: GryviaBudget
 metadata:
   name: ml-research-monthly
 spec:
@@ -636,7 +636,7 @@ spec:
 # User daily budgets
 ---
 apiVersion: gryvia.io/v1
-kind: FabricBudget
+kind: GryviaBudget
 metadata:
   name: alice-daily
 spec:

@@ -30,7 +30,7 @@ const (
 
 // GpuMetrics represents collected GPU performance metrics for a single job
 type GpuMetrics struct {
-	// JobName is the name of the FabricAIJob
+	// JobName is the name of the GryviaAIJob
 	JobName string
 
 	// GpuType is the GPU model (H100, A100, V100, T4)

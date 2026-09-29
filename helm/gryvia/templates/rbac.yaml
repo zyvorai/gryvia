@@ -1,0 +1,516 @@
+{{- if .Values.rbac.create -}}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "gryvia.fullname" . }}-manager-role
+  labels:
+    {{- include "gryvia.labels" . | nindent 4 }}
+rules:
+  # Manage GryviaGpuNode resources
+  - apiGroups:
+      - gryvia.io
+    resources:
+      - gryviagpunodes
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - gryvia.io
+    resources:
+      - gryviagpunodes/status
+    verbs:
+      - get
+      - patch
+      - update
+  - apiGroups:
+      - gryvia.io
+    resources:
+      - gryviagpunodes/finalizers
+    verbs:
+      - update
+
+  # Manage GryviaAIJob resources
+  - apiGroups:
+      - gryvia.io
+    resources:
+      - gryviaaijobs
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - gryvia.io
+    resources:
+      - gryviaaijobs/status
+    verbs:
+      - get
+      - patch
+      - update
+  - apiGroups:
+      - gryvia.io
+    resources:
+      - gryviaaijobs/finalizers
+    verbs:
+      - update
+
+  # Manage Kubernetes nodes
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+    verbs:
+      - get
+      - list
+      - watch
+      - update
+      - patch
+
+  # Manage GryviaQuota resources
+  - apiGroups:
+      - gryvia.io
+    resources:
+      - gryviaquotas
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - gryvia.io
+    resources:
+      - gryviaquotas/status
+    verbs:
+      - get
+      - patch
+      - update
+  - apiGroups:
+      - gryvia.io
+    resources:
+      - gryviaquotas/finalizers
+    verbs:
+      - update
+
+  # Manage GryviaNetwork resources
+  - apiGroups:
+      - gryvia.io
+    resources:
+      - gryvianetworks
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - gryvia.io
+    resources:
+      - gryvianetworks/status
+    verbs:
+      - get
+      - patch
+      - update
+  - apiGroups:
+      - gryvia.io
+    resources:
+      - gryvianetworks/finalizers
+    verbs:
+      - update
+
+  # Manage GryviaStorage resources
+  - apiGroups:
+      - gryvia.io
+    resources:
+      - gryviastorages
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - gryvia.io
+    resources:
+      - gryviastorages/status
+    verbs:
+      - get
+      - patch
+      - update
+  - apiGroups:
+      - gryvia.io
+    resources:
+      - gryviastorages/finalizers
+    verbs:
+      - update
+
+  # Manage pods (scoped to gryvia-managed pods)
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - delete
+
+  # Manage StatefulSets
+  - apiGroups:
+      - apps
+    resources:
+      - statefulsets
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - delete
+
+  # Manage Services
+  - apiGroups:
+      - ""
+    resources:
+      - services
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - delete
+
+  # Manage PVCs
+  - apiGroups:
+      - ""
+    resources:
+      - persistentvolumeclaims
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - delete
+
+  # Manage GryviaCheckpointGuard resources
+  - apiGroups:
+      - gryvia.io
+    resources:
+      - gryviacheckpointguards
+      - gryviacheckpointguards/status
+      - gryviacheckpointguards/finalizers
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+
+  # Manage GryviaCostPredictor resources
+  - apiGroups:
+      - gryvia.io
+    resources:
+      - gryviacostpredictors
+      - gryviacostpredictors/status
+      - gryviacostpredictors/finalizers
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+
+  # Manage GryviaLiveExperiment resources
+  - apiGroups:
+      - gryvia.io
+    resources:
+      - gryvialiveexperiments
+      - gryvialiveexperiments/status
+      - gryvialiveexperiments/finalizers
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+
+  # Manage GryviaModelLineage resources
+  - apiGroups:
+      - gryvia.io
+    resources:
+      - gryviamodellineages
+      - gryviamodellineages/status
+      - gryviamodellineages/finalizers
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+
+  # Manage GryviaTrainingProfiler resources
+  - apiGroups:
+      - gryvia.io
+    resources:
+      - gryviatrainingprofilers
+      - gryviatrainingprofilers/status
+      - gryviatrainingprofilers/finalizers
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+
+  # Manage GryviaTrainingTimeMachine resources
+  - apiGroups:
+      - gryvia.io
+    resources:
+      - gryviatrainingtimemachines
+      - gryviatrainingtimemachines/status
+      - gryviatrainingtimemachines/finalizers
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+
+  # Manage GryviaGpuMemoryOptimizer resources
+  - apiGroups:
+      - gryvia.io
+    resources:
+      - gryviagpumemoryoptimizers
+      - gryviagpumemoryoptimizers/status
+      - gryviagpumemoryoptimizers/finalizers
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+
+  # Manage additional CRD resources
+  - apiGroups:
+      - gryvia.io
+    resources:
+      - gryviabudgets
+      - gryviabudgets/status
+      - gryviabudgets/finalizers
+      - gryviachargebacks
+      - gryviachargebacks/status
+      - gryviachargebacks/finalizers
+      - gryviaquotapolicies
+      - gryviaquotapolicies/status
+      - gryviaquotapolicies/finalizers
+      - gryviaaudits
+      - gryviaaudits/status
+      - gryviaautoscalers
+      - gryviaautoscalers/status
+      - gryviabenchmarks
+      - gryviabenchmarks/status
+      - gryviagpusharingpolicies
+      - gryviagpusharingpolicies/status
+      - gryviajobhooks
+      - gryviajobhooks/status
+      - gryviapriorities
+      - gryviapriorities/status
+      - gryviaslas
+      - gryviaslas/status
+      - gryviatemplates
+      - gryviatemplates/status
+      - gryviadatasets
+      - gryviadatasets/status
+      - gryviafederations
+      - gryviafederations/status
+      - gryviametrics
+      - gryviametrics/status
+      - gryviaretrypolicies
+      - gryviaretrypolicies/status
+      - gryviadrtests
+      - gryviadrtests/status
+      - gryviareservations
+      - gryviareservations/status
+      - gryviahealthchecks
+      - gryviahealthchecks/status
+      - gryviatenants
+      - gryviatenants/status
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+
+  # Manage Namespaces and ResourceQuotas
+  - apiGroups:
+      - ""
+    resources:
+      - namespaces
+      - resourcequotas
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+
+  # Manage DaemonSets and ConfigMaps
+  - apiGroups:
+      - apps
+    resources:
+      - daemonsets
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - delete
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+      - secrets
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - delete
+
+  # Manage StorageClasses
+  - apiGroups:
+      - storage.k8s.io
+    resources:
+      - storageclasses
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - delete
+
+  # Manage NetworkAttachmentDefinitions (Multus)
+  - apiGroups:
+      - k8s.cni.cncf.io
+    resources:
+      - network-attachment-definitions
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - delete
+
+  # Read pod logs for experiment scraping
+  - apiGroups:
+      - ""
+    resources:
+      - pods/log
+    verbs:
+      - get
+
+  # Manage ServiceAccounts and RBAC for CSI drivers
+  - apiGroups:
+      - ""
+    resources:
+      - serviceaccounts
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - delete
+  - apiGroups:
+      - rbac.authorization.k8s.io
+    resources:
+      - clusterroles
+      - clusterrolebindings
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - delete
+
+  # Leader election
+  - apiGroups:
+      - coordination.k8s.io
+    resources:
+      - leases
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+
+  # Events
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "gryvia.fullname" . }}-manager-rolebinding
+  labels:
+    {{- include "gryvia.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "gryvia.fullname" . }}-manager-role
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "gryvia.serviceAccountName" . }}
+    namespace: {{ .Values.namespace.name }}
+{{- end }}

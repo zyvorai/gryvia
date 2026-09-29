@@ -70,7 +70,7 @@ spec:
         setOwnerReference: true
         manifest: |
           apiVersion: gryvia.io/v1
-          kind: FabricAIJob
+          kind: GryviaAIJob
           metadata:
             name: trial-{{inputs.parameters.trial-id}}
             namespace: default

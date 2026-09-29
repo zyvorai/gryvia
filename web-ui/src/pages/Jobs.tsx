@@ -12,15 +12,15 @@ import { errorMessage } from '@/lib/errors'
 import { formatDate, formatRelative } from '@/lib/format'
 import { JOB_LIST_LIMIT, STATUS_FILTER_OPTIONS, jobCreatedMs, jobFramework, jobSearchText, jobStatusGroup, jobTeam } from '@/lib/jobs'
 import type { FilterDef, SortAccessor } from '@/lib/tableState'
-import type { FabricAIJob } from '@/types'
+import type { GryviaAIJob } from '@/types'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 
-const FILTERS: FilterDef<FabricAIJob>[] = [
+const FILTERS: FilterDef<GryviaAIJob>[] = [
   { name: 'status', label: 'Status', get: jobStatusGroup, options: STATUS_FILTER_OPTIONS },
   { name: 'team', label: 'Team', get: jobTeam },
   { name: 'framework', label: 'Framework', get: jobFramework },
 ]
-const SORTS: Record<string, SortAccessor<FabricAIJob>> = {
+const SORTS: Record<string, SortAccessor<GryviaAIJob>> = {
   name: (j) => j.metadata?.name,
   status: (j) => j.status?.phase || 'Unknown',
   gpus: (j) => j.spec?.gpus ?? 0,
@@ -47,7 +47,7 @@ export default function Jobs() {
   const activeStatus = (table.filterValues.status ?? '').toLowerCase()
   const truncated = (jobs?.length ?? 0) >= JOB_LIST_LIMIT
 
-  const columns: Column<FabricAIJob>[] = [
+  const columns: Column<GryviaAIJob>[] = [
     {
       key: 'name',
       header: 'Name',
@@ -156,7 +156,7 @@ export default function Jobs() {
                     </Link>
                   }
                 >
-                  Jobs are FabricAIJob resources, created from this UI or with kubectl. The Gryvia operator schedules them onto GPU nodes.
+                  Jobs are GryviaAIJob resources, created from this UI or with kubectl. The Gryvia operator schedules them onto GPU nodes.
                 </EmptyState>
               }
             />

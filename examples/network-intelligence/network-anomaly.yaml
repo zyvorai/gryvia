@@ -1,8 +1,8 @@
-# FabricNetworkAnomaly - Detect and alert on network performance anomalies
+# GryviaNetworkAnomaly - Detect and alert on network performance anomalies
 # Monitors the payment service for latency spikes > 100ms and throughput drops,
 # with automatic mitigation enabled and alerts sent to a webhook.
 apiVersion: gryvia.io/v1
-kind: FabricNetworkAnomaly
+kind: GryviaNetworkAnomaly
 metadata:
   name: payment-anomaly-detector
   namespace: production

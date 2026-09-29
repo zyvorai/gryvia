@@ -15,7 +15,7 @@ The Quota Operator manages GPU quotas and budgets for teams in Gryvia. It enforc
 ## Architecture
 
 ```
-FabricQuota CR
+GryviaQuota CR
        ↓
 Quota Operator (1min reconcile loop)
        ↓
@@ -32,7 +32,7 @@ Team Tags  GPU Count  Reject    Monthly
 
 ```bash
 # Apply CRD
-kubectl apply -f crds/fabricquota.yaml
+kubectl apply -f crds/gryviaquota.yaml
 
 # Deploy operator
 kubectl apply -f operators/quota-operator/config/
@@ -47,7 +47,7 @@ kubectl get pods -n gryvia-system -l app=quota-operator
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricQuota
+kind: GryviaQuota
 metadata:
   name: team-ml
 spec:
@@ -75,7 +75,7 @@ spec:
 ### Check Quota Status
 
 ```bash
-kubectl get fabricquota team-ml -o yaml
+kubectl get gryviaquota team-ml -o yaml
 ```
 
 Output:
@@ -99,9 +99,9 @@ status:
 
 ### Quota Controller
 
-**Main Reconciler** (`controllers/fabricquota_controller.go`)
+**Main Reconciler** (`controllers/gryviaquota_controller.go`)
 - Reconciles every 1 minute
-- Uses `EnqueueRequestsFromMapFunc` to watch FabricAIJob changes and map them to the corresponding FabricQuota objects, ensuring quotas are re-evaluated promptly when jobs change
+- Uses `EnqueueRequestsFromMapFunc` to watch GryviaAIJob changes and map them to the corresponding GryviaQuota objects, ensuring quotas are re-evaluated promptly when jobs change
 - Labels namespaces with team info
 - Calculates current GPU usage
 - Enforces quota limits (including `AllowedGPUTypes` -- jobs requesting a disallowed GPU type are queued rather than scheduled)
@@ -155,7 +155,7 @@ ensuring no job silently bypasses quota enforcement.
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricQuota
+kind: GryviaQuota
 metadata:
   name: team-nlp
 spec:
@@ -177,7 +177,7 @@ spec:
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricQuota
+kind: GryviaQuota
 metadata:
   name: team-dev
 spec:
@@ -201,7 +201,7 @@ spec:
 ### View All Quotas
 
 ```bash
-kubectl get fabricquotas
+kubectl get gryviaquotas
 ```
 
 Output:
@@ -216,7 +216,7 @@ team-dev    development    Active   4/8         8      $1,234     $5,000
 ### Check Budget Status
 
 ```bash
-kubectl get fabricquota team-ml -o jsonpath='{.status.budgetStatus}' | jq
+kubectl get gryviaquota team-ml -o jsonpath='{.status.budgetStatus}' | jq
 ```
 
 Output:
@@ -234,7 +234,7 @@ Output:
 The operator sets a condition when budget threshold is reached:
 
 ```bash
-kubectl get fabricquota team-ml -o jsonpath='{.status.conditions[?(@.type=="BudgetAlert")]}'
+kubectl get gryviaquota team-ml -o jsonpath='{.status.conditions[?(@.type=="BudgetAlert")]}'
 ```
 
 ## Integration with AI Workload Operator
@@ -279,8 +279,8 @@ is empty or the hourly rate is negative, NaN, or infinite.
 ## RBAC
 
 The operator requires:
-- `fabricquotas`: Full CRUD
-- `fabricaijobs`: Get, List, Watch, Update, Patch
+- `gryviaquotas`: Full CRUD
+- `gryviaaijobs`: Get, List, Watch, Update, Patch
 - `namespaces`: Get, List, Watch, Update, Patch
 - `resourcequotas`: Full CRUD (future use)
 
@@ -292,7 +292,7 @@ The operator requires:
 kubectl logs -n gryvia-system -l app=quota-operator
 
 # Verify quota exists
-kubectl get fabricquota
+kubectl get gryviaquota
 
 # Check namespace labels
 kubectl get namespace ml-training -o yaml | grep gryvia.io/team
@@ -304,23 +304,23 @@ kubectl get namespace ml-training -o yaml | grep gryvia.io/team
 kubectl exec -it <operator-pod> -- env | grep GPU_PRICING
 
 # Check job timestamps
-kubectl get fabricaijobs -n ml-training -o yaml | grep startTime
+kubectl get gryviaaijobs -n ml-training -o yaml | grep startTime
 
 # Recalculate manually
-kubectl delete fabricquota team-ml
+kubectl delete gryviaquota team-ml
 kubectl apply -f examples/quota/team-ml-quota.yaml
 ```
 
 **Jobs Not Being Rejected**
 ```bash
 # Check quota status
-kubectl get fabricquota team-ml -o jsonpath='{.status.phase}'
+kubectl get gryviaquota team-ml -o jsonpath='{.status.phase}'
 
 # Verify job namespace has correct team label
 kubectl get namespace ml-training -o jsonpath='{.metadata.labels}'
 
 # Check job phase
-kubectl get fabricaijob -n ml-training <job-name> -o jsonpath='{.status.phase}'
+kubectl get gryviaaijob -n ml-training <job-name> -o jsonpath='{.status.phase}'
 ```
 
 ## Performance
@@ -359,12 +359,12 @@ kubectl apply -f examples/quota/team-cv-quota.yaml
 kubectl apply -f examples/quota/team-nlp-quota.yaml
 
 # Verify all quotas are active
-kubectl get fabricquotas
+kubectl get gryviaquotas
 
 # Launch a training job
 kubectl apply -f - <<EOF
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: llm-training
   namespace: nlp-training
@@ -378,5 +378,5 @@ spec:
 EOF
 
 # Check quota updated
-kubectl get fabricquota team-nlp -o jsonpath='{.status.currentUsage}'
+kubectl get gryviaquota team-nlp -o jsonpath='{.status.currentUsage}'
 ```

@@ -1,12 +1,12 @@
-# FabricTrainingProfiler - Automatic GPU Efficiency Analysis
+# GryviaTrainingProfiler - Automatic GPU Efficiency Analysis
 
 Automatic GPU efficiency analysis that profiles training jobs and produces actionable recommendations to improve throughput, reduce cost, and maximize GPU utilization.
 
 ## Overview
 
-FabricTrainingProfiler is a Kubernetes-native profiling system that:
+GryviaTrainingProfiler is a Kubernetes-native profiling system that:
 
-- **Automatically profiles** running FabricAIJob training workloads
+- **Automatically profiles** running GryviaAIJob training workloads
 - **Calculates MFU** (Model FLOPS Utilization) to measure actual vs theoretical GPU performance
 - **Generates actionable recommendations** across batch size, data loading, mixed precision, compilation, distributed strategy, and GPU type selection
 - **Compares against baselines** for H100, A100, V100, and T4 GPUs
@@ -18,14 +18,14 @@ FabricTrainingProfiler is a Kubernetes-native profiling system that:
 ### 1. Deploy the CRD
 
 ```bash
-kubectl apply -f crds/gryvia.io_fabrictrainingprofilers.yaml
+kubectl apply -f crds/gryvia.io_gryviatrainingprofilers.yaml
 ```
 
 ### 2. Create a Profiler
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricTrainingProfiler
+kind: GryviaTrainingProfiler
 metadata:
   name: my-profiler
   namespace: default
@@ -77,14 +77,14 @@ kubectl apply -f profiler.yaml
 
 ```bash
 # View profiler status
-kubectl get fabrictrainingprofilers
+kubectl get gryviatrainingprofilers
 
 # Output:
 # NAME          JOBSPROFILED   AVGMFU   EFFICIENCYSCORE   AGE
 # my-profiler   12             34.5     67.8              2h
 
 # View detailed recommendations
-kubectl describe fabrictrainingprofiler my-profiler
+kubectl describe gryviatrainingprofiler my-profiler
 
 # View recommendation events
 kubectl get events --field-selector reason=ProfilerBatchSize
@@ -209,7 +209,7 @@ spec:
 
 ### On-Demand
 
-Profiles matching jobs only when the FabricTrainingProfiler CR is created or updated. Useful for one-shot debugging sessions.
+Profiles matching jobs only when the GryviaTrainingProfiler CR is created or updated. Useful for one-shot debugging sessions.
 
 ```yaml
 spec:
@@ -257,7 +257,7 @@ spec:
 
 ### Store in Job Status
 
-When `storeInJobStatus: true`, the profiler updates the `gpuUtilization` field in the FabricAIJob's `.status.metrics` with the efficiency score.
+When `storeInJobStatus: true`, the profiler updates the `gpuUtilization` field in the GryviaAIJob's `.status.metrics` with the efficiency score.
 
 ### Emit Events
 
@@ -299,13 +299,13 @@ See `examples/training/profiler-example.yaml` for complete examples including:
 
 ```bash
 # Check that jobs match the selector
-kubectl get fabricaijobs -l gryvia.io/type=training
+kubectl get gryviaaijobs -l gryvia.io/type=training
 
 # Check profiler status
-kubectl describe fabrictrainingprofiler my-profiler
+kubectl describe gryviatrainingprofiler my-profiler
 
 # Verify jobs are in Running phase
-kubectl get fabricaijobs -o custom-columns=NAME:.metadata.name,PHASE:.status.phase
+kubectl get gryviaaijobs -o custom-columns=NAME:.metadata.name,PHASE:.status.phase
 ```
 
 ### Missing Metrics

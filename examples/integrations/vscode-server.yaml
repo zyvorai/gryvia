@@ -1,9 +1,9 @@
 ---
 # VSCode Server with GPU Access
 # code-server listens on 8080; expose it with `kubectl port-forward` or your own Service
-# (FabricAIJob has no ports/probes fields).
+# (GryviaAIJob has no ports/probes fields).
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: vscode-gpu
   namespace: default

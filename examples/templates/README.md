@@ -60,7 +60,7 @@ Distributed data parallel training with PyTorch.
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: pytorch-ddp-template
 spec:
@@ -118,7 +118,7 @@ Multi-worker distributed training with TensorFlow.
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: tensorflow-distributed-template
 spec:
@@ -150,7 +150,7 @@ Large model training with DeepSpeed ZeRO optimization.
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: deepspeed-training-template
 spec:
@@ -228,7 +228,7 @@ Parameter-efficient fine-tuning with LoRA.
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: lora-finetuning-template
 spec:
@@ -271,7 +271,7 @@ High-throughput LLM inference server with vLLM.
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: vllm-inference-template
 spec:
@@ -348,7 +348,7 @@ Large-scale data preprocessing job.
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: dataset-preprocessing-template
 spec:
@@ -380,7 +380,7 @@ spec:
 ```yaml
 # my-template.yaml
 apiVersion: gryvia.io/v1
-kind: FabricJobTemplate
+kind: GryviaJobTemplate
 metadata:
   name: my-custom-template
 spec:

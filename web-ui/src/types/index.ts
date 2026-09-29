@@ -1,4 +1,4 @@
-export interface FabricAIJob {
+export interface GryviaAIJob {
   apiVersion: string
   kind: string
   metadata: {
@@ -38,7 +38,7 @@ export interface FabricAIJob {
   }
 }
 
-export interface FabricQuota {
+export interface GryviaQuota {
   apiVersion: string
   kind: string
   metadata: {
@@ -77,7 +77,7 @@ export interface FabricQuota {
   }
 }
 
-export interface FabricGpuNode {
+export interface GryviaGpuNode {
   apiVersion: string
   kind: string
   metadata: {

@@ -73,7 +73,7 @@ kubectl describe node gpu-node-1 | grep nvidia.com/mig
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: small-inference
 spec:
@@ -329,7 +329,7 @@ sudo reboot
 kubectl describe node gpu-node-1 | grep mig
 
 # Check requested profile
-kubectl describe fabricaijob my-job | grep mig
+kubectl describe gryviaaijob my-job | grep mig
 
 # Verify profile exists
 nvidia-smi mig -lgi

@@ -1,0 +1,109 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.22.0
+  name: gryviaautopolicies.gryvia.io
+spec:
+  group: gryvia.io
+  names:
+    kind: GryviaAutoPolicy
+    listKind: GryviaAutoPolicyList
+    plural: gryviaautopolicies
+    singular: gryviaautopolicy
+  scope: Namespaced
+  versions:
+  - name: v1
+    schema:
+      openAPIV3Schema:
+        description: GryviaAutoPolicy is the Schema for the gryviaautopolicies API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: GryviaAutoPolicySpec defines the desired state of GryviaAutoPolicy
+            properties:
+              approvalRequired:
+                description: ApprovalRequired indicates whether human approval is
+                  needed before enforcement
+                type: boolean
+              excludeServices:
+                description: ExcludeServices is the list of services to exclude from
+                  policy generation
+                items:
+                  type: string
+                type: array
+              learningWindow:
+                description: LearningWindow is the duration for the learning phase
+                  (e.g., 24h, 7d)
+                type: string
+              mode:
+                description: Mode determines the operational mode (learn, suggest,
+                  enforce)
+                type: string
+              targetNamespaces:
+                description: TargetNamespaces is the list of namespaces to monitor
+                items:
+                  type: string
+                type: array
+            type: object
+          status:
+            description: GryviaAutoPolicyStatus defines the observed state of GryviaAutoPolicy
+            properties:
+              appliedPolicies:
+                description: AppliedPolicies is the number of policies that have been
+                  enforced
+                type: integer
+              lastLearned:
+                description: LastLearned is the timestamp of the last learning cycle
+                format: date-time
+                type: string
+              learnedPolicies:
+                description: LearnedPolicies is the number of traffic patterns learned
+                type: integer
+              phase:
+                description: Phase is the current operational phase (learning, suggesting,
+                  enforcing)
+                type: string
+              suggestedPolicies:
+                description: SuggestedPolicies is the list of suggested network policies
+                items:
+                  description: SuggestedPolicy represents a policy recommendation
+                    based on learned traffic
+                  properties:
+                    confidence:
+                      description: Confidence is the confidence score (0.0 - 1.0)
+                      type: number
+                    destination:
+                      description: Destination is the traffic destination service
+                      type: string
+                    port:
+                      description: Port is the destination port
+                      type: integer
+                    source:
+                      description: Source is the traffic source service
+                      type: string
+                  type: object
+                type: array
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

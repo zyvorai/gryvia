@@ -4,7 +4,7 @@ Navigate training history, fork experiments from any checkpoint, and manage chec
 
 ## Overview
 
-FabricTrainingTimeMachine provides training experiment management that:
+GryviaTrainingTimeMachine provides training experiment management that:
 
 - **Checkpoint Timeline**: Indexes all checkpoints with associated metrics
 - **Fork from Any Point**: Create new training jobs from any checkpoint with modified hyperparameters
@@ -16,7 +16,7 @@ FabricTrainingTimeMachine provides training experiment management that:
 
 ### Checkpoint Timeline
 
-The time machine watches a source FabricAIJob and indexes its checkpoints as they are created. For each checkpoint, it records:
+The time machine watches a source GryviaAIJob and indexes its checkpoints as they are created. For each checkpoint, it records:
 
 - Training step and epoch
 - Metrics (loss, accuracy, learning rate, etc.)
@@ -30,7 +30,7 @@ This creates a searchable timeline of the training run.
 The key feature: create new training jobs from any point in the timeline. A fork:
 
 1. Selects a checkpoint (by step, epoch, or best metric)
-2. Creates a new FabricAIJob that resumes from that checkpoint
+2. Creates a new GryviaAIJob that resumes from that checkpoint
 3. Applies overrides (environment variables, arguments)
 4. Tracks the forked job's progress
 
@@ -63,7 +63,7 @@ llama-70b-finetune (source)
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricTrainingTimeMachine
+kind: GryviaTrainingTimeMachine
 metadata:
   name: my-experiment-tm
   namespace: ml-team
@@ -244,7 +244,7 @@ if os.getenv("GRYVIA_RESUME_FROM_CHECKPOINT") == "true":
 
 ```bash
 # List time machines
-kubectl get fabrictrainingtimemachines -n ml-team
+kubectl get gryviatrainingtimemachines -n ml-team
 
 # View time machine status
 kubectl describe fttm my-experiment-tm -n ml-team
@@ -319,13 +319,13 @@ Use `keepMilestones` to preserve checkpoints at key training phases (warm-up com
 ## Architecture
 
 ```
-FabricAIJob (source) --> Time Machine Controller
+GryviaAIJob (source) --> Time Machine Controller
                               |
                     [Checkpoint Indexer]
                        /      |       \
                 Timeline  Retention  Fork Handler
                  Index     Policy        |
-                   |          |     [Create FabricAIJob]
+                   |          |     [Create GryviaAIJob]
                    v          v          |
                 Status    Prune       Forked Jobs
                           Files          |
@@ -335,5 +335,5 @@ FabricAIJob (source) --> Time Machine Controller
 ## Support
 
 - Issues: https://github.com/zyvorai/gryvia/issues
-- CRD Reference: `crds/gryvia.io_fabrictrainingtimemachines.yaml`
+- CRD Reference: `crds/gryvia.io_gryviatrainingtimemachines.yaml`
 - Example: `examples/training/timemachine-example.yaml`

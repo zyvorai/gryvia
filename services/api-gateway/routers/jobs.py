@@ -1,4 +1,4 @@
-"""Job runtime detail routes: pods, logs and events of a FabricAIJob for the dashboard."""
+"""Job runtime detail routes: pods, logs and events of a GryviaAIJob for the dashboard."""
 import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -9,8 +9,8 @@ from kubernetes.client.exceptions import ApiException
 from .common import Deps, http_error, run
 from .uiutil import NAME_MAX, NAME_PATTERN, find_one, prune
 
-PLURAL = "fabricaijobs"
-KIND = "FabricAIJob"
+PLURAL = "gryviaaijobs"
+KIND = "GryviaAIJob"
 JOB_LABEL = "gryvia.io/job"
 MAX_EVENTS = 100
 MAX_EVENT_PODS = 20
@@ -155,7 +155,7 @@ def build_router(deps: Deps) -> APIRouter:
         except Exception as exc:  # noqa: BLE001
             raise http_error(exc, f"read logs of pod {pod_name}") from exc
 
-        # Split on \n only (str.splitlines also splits on \r, \x0b, \x1c... which would fabricate lines).
+        # Split on \n only (str.splitlines also splits on \r, \x0b, \x1c... which would gryviaate lines).
         lines = raw.split("\n") if isinstance(raw, str) else []
         if lines and lines[-1] == "":
             lines.pop()

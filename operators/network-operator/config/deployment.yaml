@@ -67,10 +67,10 @@ metadata:
   name: network-operator-role
 rules:
 - apiGroups: ["gryvia.io"]
-  resources: ["fabricnetworks"]
+  resources: ["gryvianetworks"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 - apiGroups: ["gryvia.io"]
-  resources: ["fabricnetworks/status"]
+  resources: ["gryvianetworks/status"]
   verbs: ["get", "update", "patch"]
 - apiGroups: [""]
   resources: ["nodes"]

@@ -33,7 +33,7 @@ pub async fn execute(client: &GryviaClient, resource: &str, name: &str, yes: boo
 }
 
 async fn delete_job(client: &GryviaClient, name: &str) -> Result<()> {
-    let api: Api<FabricAIJob> = Api::namespaced(
+    let api: Api<GryviaAIJob> = Api::namespaced(
         client.kube_client.clone(),
         client.namespace(),
     );
@@ -47,7 +47,7 @@ async fn delete_job(client: &GryviaClient, name: &str) -> Result<()> {
 }
 
 async fn delete_quota(client: &GryviaClient, name: &str) -> Result<()> {
-    let api: Api<FabricQuota> = Api::all(client.kube_client.clone());
+    let api: Api<GryviaQuota> = Api::all(client.kube_client.clone());
 
     api.delete(name, &DeleteParams::default()).await
         .context("Failed to delete quota")?;
@@ -58,7 +58,7 @@ async fn delete_quota(client: &GryviaClient, name: &str) -> Result<()> {
 }
 
 async fn delete_storage(client: &GryviaClient, name: &str) -> Result<()> {
-    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("gryvia.io", "v1", "FabricStorage"));
+    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("gryvia.io", "v1", "GryviaStorage"));
     let api: Api<DynamicObject> = Api::all_with(
         client.kube_client.clone(),
         &ar,
@@ -73,7 +73,7 @@ async fn delete_storage(client: &GryviaClient, name: &str) -> Result<()> {
 }
 
 async fn delete_network(client: &GryviaClient, name: &str) -> Result<()> {
-    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("gryvia.io", "v1", "FabricNetwork"));
+    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("gryvia.io", "v1", "GryviaNetwork"));
     let api: Api<DynamicObject> = Api::all_with(
         client.kube_client.clone(),
         &ar,

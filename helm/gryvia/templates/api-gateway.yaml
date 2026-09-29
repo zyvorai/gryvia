@@ -1,0 +1,234 @@
+{{- if .Values.apiGateway.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gryvia-api-gateway
+  namespace: {{ include "gryvia.namespace" . }}
+  labels:
+    {{- include "gryvia.labels" . | nindent 4 }}
+    app: gryvia-api-gateway
+spec:
+  replicas: {{ .Values.apiGateway.replicas }}
+  selector:
+    matchLabels:
+      app: gryvia-api-gateway
+  template:
+    metadata:
+      labels:
+        app: gryvia-api-gateway
+      annotations:
+        checksum/api-key: {{ .Values.auth.apiKey | sha256sum }}
+    spec:
+      serviceAccountName: gryvia-api-gateway
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+      - name: gen-cert
+        image: alpine/openssl:3.3.2
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          # Copy the shared certificate from the {{ .Values.tls.secretName }} Secret and hand it to the
+          # non-root gateway user; mint a throwaway one if the Secret is empty.
+          if [ -s /tls-src/tls.crt ] && [ -s /tls-src/tls.key ]; then
+            cp /tls-src/tls.crt /tls-src/tls.key /tls/
+          else
+            openssl req -x509 -nodes -days 3650 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -keyout /tls/tls.key -out /tls/tls.crt -subj "/CN=gryvia-api-gateway/O=Gryvia" -addext "subjectAltName=DNS:gryvia-api-gateway,DNS:localhost,IP:127.0.0.1"
+          fi
+          chown 1000:1000 /tls/tls.key /tls/tls.crt
+          chmod 600 /tls/tls.key
+        securityContext:
+          runAsUser: 0
+          runAsNonRoot: false
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+            add: ["CHOWN", "DAC_OVERRIDE", "FOWNER"]
+        volumeMounts:
+        - name: tls
+          mountPath: /tls
+        - name: tls-src
+          mountPath: /tls-src
+          readOnly: true
+      containers:
+      - name: api-gateway
+        image: {{ include "gryvia.image" (dict "root" . "image" .Values.apiGateway.image) | quote }}
+        imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+        ports:
+        - containerPort: 8080
+          name: https
+        env:
+        {{- if .Values.apiGateway.prometheusUrl }}
+        - name: PROMETHEUS_URL
+          value: {{ .Values.apiGateway.prometheusUrl | quote }}
+        {{- end }}
+        - name: GRYVIA_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "gryvia.apiKeySecret" . }}
+              key: GRYVIA_API_KEY
+        - name: GRYVIA_JOB_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: LOG_LEVEL
+          value: "INFO"
+        - name: GRYVIA_TLS_CERT
+          value: /tls/tls.crt
+        - name: GRYVIA_TLS_KEY
+          value: /tls/tls.key
+        resources:
+          {{- toYaml .Values.apiGateway.resources | nindent 10 }}
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: https
+            scheme: HTTPS
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: https
+            scheme: HTTPS
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: tls
+          mountPath: /tls
+          readOnly: true
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: tls
+        emptyDir: {}
+      - name: tls-src
+        secret:
+          secretName: {{ .Values.tls.secretName }}
+          optional: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gryvia-api-gateway
+  namespace: {{ include "gryvia.namespace" . }}
+  labels:
+    {{- include "gryvia.labels" . | nindent 4 }}
+    app: gryvia-api-gateway
+spec:
+  type: ClusterIP
+  selector:
+    app: gryvia-api-gateway
+  ports:
+  - port: 8080
+    targetPort: https
+    protocol: TCP
+    name: https
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gryvia-api-gateway
+  namespace: {{ include "gryvia.namespace" . }}
+  labels:
+    {{- include "gryvia.labels" . | nindent 4 }}
+{{- if .Values.rbac.create }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "gryvia.fullname" . }}-api-gateway
+  labels:
+    {{- include "gryvia.labels" . | nindent 4 }}
+rules:
+# Read every kind the gateway serves.
+- apiGroups: ["gryvia.io"]
+  resources:
+  - gryviaaijobs
+  - gryviaquotas
+  - gryviagpunodes
+  - gryviastorages
+  - gryvianetworks
+  - gryviaworkspaces
+  - gryviamodelregistries
+  - gryviainferenceservices
+  - gryviaworkflows
+  - gryviaautotuners
+  - gryviaflowpolicies
+  - gryviatrafficinsights
+  - gryviaservicegraphs
+  - gryvianetworkanomalies
+  - gryvianetworkcosts
+  - gryviatracesessions
+  - gryviasecuritypolicies
+  - gryviatraininginsights
+  - gryviagpumemoryoptimizers
+  verbs: ["get", "list", "watch"]
+# Write only the kinds the API creates, deletes or updates.
+- apiGroups: ["gryvia.io"]
+  resources:
+  - gryviaaijobs
+  - gryviaworkspaces
+  - gryviainferenceservices
+  - gryviaworkflows
+  - gryviaautotuners
+  - gryviaflowpolicies
+  - gryviatracesessions
+  - gryviasecuritypolicies
+  - gryviamodelregistries
+  verbs: ["create", "delete", "patch"]
+- apiGroups: [""]
+  resources: ["nodes", "pods", "namespaces"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["services", "endpoints"]
+  verbs: ["get", "list"]
+# Job runtime details (pod logs and events) for the dashboard.
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get"]
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "gryvia.fullname" . }}-api-gateway
+  labels:
+    {{- include "gryvia.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "gryvia.fullname" . }}-api-gateway
+subjects:
+- kind: ServiceAccount
+  name: gryvia-api-gateway
+  namespace: {{ include "gryvia.namespace" . }}
+{{- end }}
+{{- if and .Values.podDisruptionBudget.enabled (gt (int .Values.apiGateway.replicas) 1) }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: gryvia-api-gateway
+  namespace: {{ include "gryvia.namespace" . }}
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      app: gryvia-api-gateway
+{{- end }}
+{{- end }}

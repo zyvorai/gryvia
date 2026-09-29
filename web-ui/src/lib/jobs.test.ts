@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { FabricAIJob, FabricGpuNode, FabricQuota } from '@/types'
+import type { GryviaAIJob, GryviaGpuNode, GryviaQuota } from '@/types'
 import {
   EMPTY_FORM, argvPreview, capacityHints, envSource, formIsDirty, gpuTypeOptions, isSensitiveEnv, jobConditions, jobSearchText,
   jobStatusGroup, jobToForm, joinCommand, logText, nameTaken, podNodes, priorityError, retryLimitError, splitCommand, timeoutError,
@@ -17,17 +17,17 @@ describe('env redaction', () => {
   })
 })
 
-const job = (over: Partial<FabricAIJob['spec']> & Record<string, unknown> = {}, labels: Record<string, string> = {}): FabricAIJob =>
+const job = (over: Partial<GryviaAIJob['spec']> & Record<string, unknown> = {}, labels: Record<string, string> = {}): GryviaAIJob =>
   ({
     apiVersion: 'gryvia.io/v1',
-    kind: 'FabricAIJob',
+    kind: 'GryviaAIJob',
     metadata: { name: 'src', labels },
     spec: { type: 'fine-tuning', image: 'img:1', gpus: 8, gpuType: 'A100-80G', command: ['python', 'train.py'], args: ['--name', 'a b'], ...over },
-  }) as FabricAIJob
+  }) as GryviaAIJob
 
-const node = (gpuType: string) => ({ metadata: { name: gpuType }, spec: { gpuType, gpuCount: 8, nodeName: gpuType } }) as FabricGpuNode
-const quota = (allowed: string[], maxGPUs = 16, perJob = 8, allocated = 0): FabricQuota =>
-  ({ metadata: { name: 'q' }, spec: { team: 'ml', gpuQuota: { maxGPUs, maxGPUsPerJob: perJob, allowedGPUTypes: allowed, maxRunningJobs: 5 } }, status: { currentUsage: { allocatedGPUs: allocated } } }) as FabricQuota
+const node = (gpuType: string) => ({ metadata: { name: gpuType }, spec: { gpuType, gpuCount: 8, nodeName: gpuType } }) as GryviaGpuNode
+const quota = (allowed: string[], maxGPUs = 16, perJob = 8, allocated = 0): GryviaQuota =>
+  ({ metadata: { name: 'q' }, spec: { team: 'ml', gpuQuota: { maxGPUs, maxGPUsPerJob: perJob, allowedGPUTypes: allowed, maxRunningJobs: 5 } }, status: { currentUsage: { allocatedGPUs: allocated } } }) as GryviaQuota
 
 describe('command splitting', () => {
   it('round-trips quoted arguments', () => {
@@ -60,7 +60,7 @@ describe('jobToForm', () => {
     expect(values.env.map((e) => [e.name, e.secret])).toEqual([['BATCH', false], ['HF_TOKEN', true]])
   })
   it('falls back to defaults for a sparse job', () => {
-    const { values } = jobToForm({ metadata: { name: 'x' }, spec: {} } as unknown as FabricAIJob)
+    const { values } = jobToForm({ metadata: { name: 'x' }, spec: {} } as unknown as GryviaAIJob)
     expect(values).toMatchObject({ type: 'training', framework: 'pytorch', gpuCount: 1, priority: '', timeout: '' })
   })
   it('detects dirtiness', () => {
@@ -127,7 +127,7 @@ describe('list helpers', () => {
   it('detects duplicate names and orders conditions', () => {
     expect(nameTaken('src', [job()])).toBe(true)
     expect(nameTaken('', [job()])).toBe(false)
-    const withConds = { ...job(), status: { phase: 'Running', conditions: [{ type: 'B', status: 'True', lastTransitionTime: '2026-01-02T00:00:00Z' }, { type: 'A', status: 'True', lastTransitionTime: '2026-01-01T00:00:00Z' }, { type: 'C', status: 'True' }] } } as unknown as FabricAIJob
+    const withConds = { ...job(), status: { phase: 'Running', conditions: [{ type: 'B', status: 'True', lastTransitionTime: '2026-01-02T00:00:00Z' }, { type: 'A', status: 'True', lastTransitionTime: '2026-01-01T00:00:00Z' }, { type: 'C', status: 'True' }] } } as unknown as GryviaAIJob
     expect(jobConditions(withConds).map((c) => c.type)).toEqual(['A', 'B', 'C'])
     expect(podNodes([{ node: 'n1' }, { node: 'n1' }, {}, { node: 'n2' }])).toEqual(['n1', 'n2'])
     expect(logText([])).toBe('')

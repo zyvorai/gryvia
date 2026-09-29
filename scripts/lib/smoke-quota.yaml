@@ -1,7 +1,7 @@
 # Applied and removed by scripts/deploy-remote.sh to prove a custom resource
 # is accepted by the API server and visible through the Gryvia API.
 apiVersion: gryvia.io/v1
-kind: FabricQuota
+kind: GryviaQuota
 metadata:
   name: gryvia-smoke
 spec:

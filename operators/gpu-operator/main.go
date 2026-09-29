@@ -62,22 +62,22 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controllers.FabricGpuNodeReconciler{
+	if err = (&controllers.GryviaGpuNodeReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
-		Log:    ctrl.Log.WithName("controllers").WithName("FabricGpuNode"),
+		Log:    ctrl.Log.WithName("controllers").WithName("GryviaGpuNode"),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "FabricGpuNode")
+		setupLog.Error(err, "unable to create controller", "controller", "GryviaGpuNode")
 		os.Exit(1)
 	}
 
-	if err = (&controllers.FabricGpuMemoryOptimizerReconciler{
+	if err = (&controllers.GryviaGpuMemoryOptimizerReconciler{
 		Client:    mgr.GetClient(),
 		Scheme:    mgr.GetScheme(),
-		Log:       ctrl.Log.WithName("controllers").WithName("FabricGpuMemoryOptimizer"),
+		Log:       ctrl.Log.WithName("controllers").WithName("GryviaGpuMemoryOptimizer"),
 		Predictor: memory.NewPredictor(24 * time.Hour),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "FabricGpuMemoryOptimizer")
+		setupLog.Error(err, "unable to create controller", "controller", "GryviaGpuMemoryOptimizer")
 		os.Exit(1)
 	}
 

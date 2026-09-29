@@ -54,9 +54,9 @@ spec:
 
   # What to backup
   resources:
-    - fabricaijobs
-    - fabricquotas
-    - fabricgpunodes
+    - gryviaaijobs
+    - gryviaquotas
+    - gryviagpunodes
     - configmaps
     - secrets
     - persistentvolumeclaims
@@ -213,13 +213,13 @@ kfctl cluster resume
 # Restore specific resources
 kfctl restore \
   --backup gryvia-20240115 \
-  --resources fabricaijobs,fabricquotas \
+  --resources gryviaaijobs,gryviaquotas \
   --namespace default
 
 # Restore single job
 kfctl restore \
   --backup gryvia-20240115 \
-  --resource fabricaijob/training-job-123
+  --resource gryviaaijob/training-job-123
 
 # Restore to different namespace
 kfctl restore \
@@ -378,11 +378,11 @@ kfctl audit deletions --hours 24
 
 # 2. Restore deleted resources
 kfctl restore \
-  --resource fabricaijob/critical-training \
+  --resource gryviaaijob/critical-training \
   --timestamp "2024-01-15T14:30:00Z"
 
 # 3. Verify restoration
-kubectl get fabricaijob critical-training
+kubectl get gryviaaijob critical-training
 ```
 
 ## Testing DR Procedures

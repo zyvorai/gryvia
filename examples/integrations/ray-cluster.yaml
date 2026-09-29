@@ -255,7 +255,7 @@ data:
 ---
 # Gryvia Quota for Ray cluster
 apiVersion: gryvia.io/v1
-kind: FabricQuota
+kind: GryviaQuota
 metadata:
   name: ray-cluster-quota
 spec:

@@ -39,7 +39,7 @@ class GPUProfiler:
                 group="gryvia.io",
                 version="v1",
                 namespace=self.namespace,
-                plural="fabricaijobs",
+                plural="gryviaaijobs",
                 name=job_name
             )
 
@@ -319,7 +319,7 @@ class GPUProfiler:
                 group="gryvia.io",
                 version="v1",
                 namespace=self.namespace,
-                plural="fabricaijobs"
+                plural="gryviaaijobs"
             )
 
             print(f"{CYAN}Profiling all jobs in namespace: {self.namespace}{NC}\n")

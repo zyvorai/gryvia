@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { api } from '@/lib/api'
-import type { FabricAIJob } from '@/types'
+import type { GryviaAIJob } from '@/types'
 import GPUChart from '@/components/GPUChart'
 import PageHero from '@/components/PageHero'
 import { EmptyState, ErrorState, Skeleton } from '@/components/StateViews'
@@ -148,7 +148,7 @@ export default function Dashboard() {
                 </Link>
               }
             >
-              Jobs are FabricAIJob resources; the Gryvia operator schedules them onto GPU nodes once you submit one.
+              Jobs are GryviaAIJob resources; the Gryvia operator schedules them onto GPU nodes once you submit one.
             </EmptyState>
           ) : (
             (jobs || []).slice(0, 5).map((job) => <JobRow key={job.metadata?.name} job={job} />)
@@ -168,7 +168,7 @@ export default function Dashboard() {
           ) : nodesQ.isLoading ? (
             <Skeleton rows={3} />
           ) : !nodes || nodes.length === 0 ? (
-            <EmptyState title="No GPU nodes registered">FabricGpuNode resources are registered by the GPU operator once it discovers GPUs. Check that the operator is running.</EmptyState>
+            <EmptyState title="No GPU nodes registered">GryviaGpuNode resources are registered by the GPU operator once it discovers GPUs. Check that the operator is running.</EmptyState>
           ) : (
             <>
               {nodes.slice(0, 6).map((node) => (
@@ -214,7 +214,7 @@ export default function Dashboard() {
   )
 }
 
-function JobRow({ job }: { job: FabricAIJob }) {
+function JobRow({ job }: { job: GryviaAIJob }) {
   const phase = job.status?.phase || 'Unknown'
   return (
     <div className="list-row">

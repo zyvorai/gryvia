@@ -175,7 +175,7 @@ gryvia delete job my-job --yes
 
 ### Validate YAML
 
-Validates the YAML file structure and checks that `apiVersion` and `kind` match known Gryvia types (e.g., `gryvia.io/v1` / `FabricAIJob`).
+Validates the YAML file structure and checks that `apiVersion` and `kind` match known Gryvia types (e.g., `gryvia.io/v1` / `GryviaAIJob`).
 
 ```bash
 gryvia validate -f job.yaml
@@ -332,8 +332,8 @@ gryvia --context my-cluster list jobs
 Ensure your Kubernetes user has permissions to access Gryvia CRDs:
 
 ```bash
-kubectl auth can-i list fabricaijobs
-kubectl auth can-i get fabricquotas
+kubectl auth can-i list gryviaaijobs
+kubectl auth can-i get gryviaquotas
 ```
 
 ### CRD Not Found

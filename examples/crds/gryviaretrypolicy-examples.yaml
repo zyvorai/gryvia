@@ -1,0 +1,184 @@
+# Example: Standard Retry Policy
+apiVersion: gryvia.io/v1
+kind: GryviaRetryPolicy
+metadata:
+  name: standard-retry
+spec:
+  maxRetries: 3
+
+  backoff:
+    type: exponential
+    initialDelay: 1m
+    maxDelay: 30m
+    multiplier: 2
+
+  # Retry on common transient failures
+  retryOn:
+    conditions:
+      - type: NodeFailure
+        enabled: true
+      - type: NetworkError
+        enabled: true
+      - type: SpotInterruption
+        enabled: true
+
+  # Don't retry on user errors
+  noRetryOn:
+    exitCodes: [1, 2]  # User script errors
+    errors:
+      - "invalid argument"
+      - "permission denied"
+---
+# Example: Aggressive Retry with Resource Adjustment
+apiVersion: gryvia.io/v1
+kind: GryviaRetryPolicy
+metadata:
+  name: adaptive-retry
+spec:
+  maxRetries: 5
+
+  backoff:
+    type: exponential
+    initialDelay: 30s
+    maxDelay: 1h
+    multiplier: 2
+
+  retryOn:
+    conditions:
+      - type: OutOfMemory
+        enabled: true
+      - type: NodeFailure
+        enabled: true
+      - type: SpotInterruption
+        enabled: true
+
+  # Automatically adjust resources on retry
+  resourceAdjustment:
+    enabled: true
+
+    onOutOfMemory:
+      increaseMemory: 50%  # Increase memory by 50%
+      increaseGPUMemory: true  # Switch to GPU with more memory
+
+  budget:
+    maxCostUSD: 1000  # Don't spend more than $1000 on retries
+    maxTotalTime: 24h  # Give up after 24 hours
+
+  circuitBreaker:
+    enabled: true
+    failureThreshold: 5  # Stop after 5 consecutive failures
+    resetTimeout: 2h
+---
+# Example: Spot Instance Retry Policy
+apiVersion: gryvia.io/v1
+kind: GryviaRetryPolicy
+metadata:
+  name: spot-retry
+spec:
+  maxRetries: 10  # Spot can be interrupted frequently
+
+  backoff:
+    type: fixed
+    initialDelay: 2m  # Quick retry for spot interruptions
+
+  retryOn:
+    conditions:
+      - type: SpotInterruption
+        enabled: true
+      - type: NodeFailure
+        enabled: true
+
+  budget:
+    maxCostUSD: 500
+---
+# Example: Job Using Retry Policy
+apiVersion: gryvia.io/v1
+kind: GryviaAIJob
+metadata:
+  name: resilient-training
+spec:
+  type: training
+
+  # Retries are governed by the GryviaRetryPolicy "adaptive-retry" (see above);
+  # retryLimit is the job-level cap.
+  retryLimit: 3
+
+  gpus: 8
+  gpuType: A100-40G
+
+  # The job must checkpoint itself for retries to resume (--checkpoint-dir below)
+
+  image: nvcr.io/nvidia/pytorch:24.01-py3
+  command: ["python", "train.py", "--checkpoint-dir=/checkpoints"]
+---
+# Retry History Example
+apiVersion: v1
+kind: Event
+metadata:
+  name: job-retry-history
+type: Normal
+reason: JobRetried
+message: |
+  Job Retry History: resilient-training
+  =====================================
+
+  Attempt 1:
+    Start: 2024-01-21 08:00:00
+    End: 2024-01-21 08:45:00 (FAILED)
+    Failure: SpotInterruption
+    Exit Code: 143 (SIGTERM)
+    Cost: $12.00
+    Action: Retry in 1m
+
+  Attempt 2:
+    Start: 2024-01-21 08:46:00
+    End: 2024-01-21 10:15:00 (FAILED)
+    Failure: OutOfMemory
+    Exit Code: 137
+    Cost: $29.20
+    Action: Increased memory A100-40G → A100-80G, retry in 2m
+
+  Attempt 3:
+    Start: 2024-01-21 10:17:00
+    End: 2024-01-21 14:30:00 (SUCCESS)
+    Exit Code: 0
+    Cost: $87.20
+    Checkpoint: Resumed from epoch 23
+
+  Summary:
+    Total Attempts: 3
+    Total Time: 6h 30m
+    Total Cost: $128.40
+    Success: Yes
+    Final Resource: 8x A100-80G
+---
+# Retry with Different Resources
+apiVersion: gryvia.io/v1
+kind: GryviaRetryPolicy
+metadata:
+  name: escalating-resources
+spec:
+  maxRetries: 4
+
+  # On OOM, retry with more memory (instead of a fixed escalation ladder)
+  resourceAdjustment:
+    enabled: true
+    onOutOfMemory:
+      increaseMemory: "50%"
+      increaseGPUMemory: true   # move to a GPU type with more memory
+---
+# Fibonacci Backoff Example
+apiVersion: gryvia.io/v1
+kind: GryviaRetryPolicy
+metadata:
+  name: fibonacci-retry
+spec:
+  maxRetries: 10
+
+  backoff:
+    type: fibonacci
+    initialDelay: 1m
+    maxDelay: 2h
+
+  # Backoff sequence:
+  # 1m, 1m, 2m, 3m, 5m, 8m, 13m, 21m, 34m, 55m, 89m (capped at 2h)

@@ -16,7 +16,7 @@ This is a realistic, investor-ready roadmap for taking Gryvia from MVP to produc
 - NVIDIA GPU Operator integration
 
 ✅ **Core Custom Operators (v1)**
-- **FabricAIJob Operator** (1,500 LOC Go) - SHIPPED
+- **GryviaAIJob Operator** (1,500 LOC Go) - SHIPPED
 - **GPU Node Operator** (2,000 LOC Go) - SHIPPED
 - Capabilities:
   - Create StatefulSet for training
@@ -55,7 +55,7 @@ This is a realistic, investor-ready roadmap for taking Gryvia from MVP to produc
    - [ ] Complete VAST CSI driver integration
    - [ ] Test storage performance (target: 20GB/s)
    - [ ] Create production `vast-fast` StorageClass
-   - [ ] Build FabricStorage Operator (Go)
+   - [ ] Build GryviaStorage Operator (Go)
 
 2. **Upgrade AIJob Operator**
    - [ ] Automatically create PVC per job
@@ -78,7 +78,7 @@ This is a realistic, investor-ready roadmap for taking Gryvia from MVP to produc
 - **10–20 GB/s** read/write from training pods
 
 ### Effort Estimate
-- **FabricStorage Operator:** 2 weeks
+- **GryviaStorage Operator:** 2 weeks
 - **Fault tolerance:** 1 week
 - **Testing & validation:** 1 week
 
@@ -97,13 +97,13 @@ This is a realistic, investor-ready roadmap for taking Gryvia from MVP to produc
    - [ ] Test multi-node connectivity
 
 2. **SR-IOV Operator Integration**
-   - [ ] Build FabricNetwork Operator (Go)
+   - [ ] Build GryviaNetwork Operator (Go)
    - [ ] Configure SR-IOV NICs on GPU nodes
    - [ ] Expose RDMA devices to pods
    - [ ] Test InfiniBand/RoCE
 
 3. **AIJob Network Support**
-   - [ ] Add `spec.network: rdma` to FabricAIJob
+   - [ ] Add `spec.network: rdma` to GryviaAIJob
    - [ ] Annotate pods for SR-IOV automatically
    - [ ] Configure NCCL environment variables
    - [ ] Test multi-node training
@@ -111,13 +111,13 @@ This is a realistic, investor-ready roadmap for taking Gryvia from MVP to produc
 ### Deliverables (Month 3)
 - Multi-node distributed training works
 - GPU-to-GPU communication uses RDMA
-- FabricNetwork Operator complete
+- GryviaNetwork Operator complete
 
 ### Success Metric
 - **NCCL bandwidth near hardware limits** (a 400GbE link is about 50 GB/s per direction)
 
 ### Effort Estimate
-- **FabricNetwork Operator:** 2 weeks
+- **GryviaNetwork Operator:** 2 weeks
 - **Cilium integration:** 1 week
 - **Performance testing:** 1 week
 
@@ -270,7 +270,7 @@ This is a realistic, investor-ready roadmap for taking Gryvia from MVP to produc
 | Layer | Month 1 (NOW) | Month 6 (GOAL) |
 |-------|---------------|----------------|
 | **GPU Management** | ✅ GPU Operator ready | ✅ Full automation |
-| **AI Jobs** | ✅ FabricAIJob Operator | ✅ + Scheduling + Queueing |
+| **AI Jobs** | ✅ GryviaAIJob Operator | ✅ + Scheduling + Queueing |
 | **Storage** | ✅ Templates ready | ✅ VAST + CSI + Operator |
 | **Networking** | ✅ RDMA templates | ✅ Cilium + SR-IOV + RDMA |
 | **Scheduling** | ✅ Basic | ✅ Custom + Kueue |
@@ -368,7 +368,7 @@ Run these tests **every month**:
 4. [ ] Write Month 2 detailed specs
 
 ### Month 2 Kickoff
-1. [ ] Build FabricStorage Operator
+1. [ ] Build GryviaStorage Operator
 2. [ ] Test VAST integration
 3. [ ] Implement fault tolerance
 4. [ ] Run first benchmarks

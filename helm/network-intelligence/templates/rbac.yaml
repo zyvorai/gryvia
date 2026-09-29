@@ -7,13 +7,13 @@ metadata:
   labels:
     {{- include "network-intelligence.labels" . | nindent 4 }}
 rules:
-  # Manage FabricNetwork resources
+  # Manage GryviaNetwork resources
   - apiGroups:
       - gryvia.io
     resources:
-      - fabricnetworks
-      - fabricnetworks/status
-      - fabricnetworks/finalizers
+      - gryvianetworks
+      - gryvianetworks/status
+      - gryvianetworks/finalizers
     verbs:
       - create
       - delete

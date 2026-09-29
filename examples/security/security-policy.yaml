@@ -1,9 +1,9 @@
-# FabricSecurityPolicy - eBPF-based runtime security for GPU workloads
+# GryviaSecurityPolicy - eBPF-based runtime security for GPU workloads
 # Monitors production and ml-training namespaces for container escapes,
 # crypto mining, data exfiltration, and privilege escalation. Automatically
 # blocks detected threats and sends alerts to a webhook.
 apiVersion: gryvia.io/v1
-kind: FabricSecurityPolicy
+kind: GryviaSecurityPolicy
 metadata:
   name: gpu-workload-security
   namespace: gryvia-system

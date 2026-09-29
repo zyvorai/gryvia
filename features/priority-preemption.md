@@ -20,7 +20,7 @@ For system and infrastructure jobs.
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: system-job
 spec:
@@ -143,7 +143,7 @@ spec:
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: my-job
 spec:
@@ -268,7 +268,7 @@ High-priority jobs can exceed team quotas:
 ```yaml
 # Priority class configuration
 apiVersion: gryvia.io/v1
-kind: FabricPriority
+kind: GryviaPriority
 metadata:
   name: high
 spec:
@@ -426,7 +426,7 @@ spec:
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricPriority
+kind: GryviaPriority
 metadata:
   name: paper-deadline
 spec:
@@ -468,7 +468,7 @@ sla:
 kfctl queue status
 
 # Check if being preempted repeatedly
-kubectl describe fabricaijob my-job | grep -i preempt
+kubectl describe gryviaaijob my-job | grep -i preempt
 
 # Temporarily increase priority
 kfctl priority set my-job high
@@ -501,7 +501,7 @@ kfctl checkpoint test my-job
 
 ## Examples
 
-See `crds/gryvia.io_fabricpriorities.yaml` for:
+See `crds/gryvia.io_gryviapriorities.yaml` for:
 - Priority class definitions
 - Example jobs with priorities
 - Preemption event examples

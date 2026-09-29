@@ -4,7 +4,7 @@ Proactive GPU memory management with OOM prevention, right-sizing recommendation
 
 ## Overview
 
-FabricGpuMemoryOptimizer provides intelligent GPU memory management that:
+GryviaGpuMemoryOptimizer provides intelligent GPU memory management that:
 
 - **OOM Prevention**: Profiles memory growth and predicts OOM before it happens
 - **Right-Sizing**: Recommends GPU type downgrades or count reductions based on actual usage
@@ -15,7 +15,7 @@ FabricGpuMemoryOptimizer provides intelligent GPU memory management that:
 
 ### OOM Prevention
 
-The optimizer continuously monitors GPU memory usage from FabricGpuNode status reports. It collects memory usage samples over time and uses configurable projection methods (linear, exponential, or polynomial) to predict when a GPU will run out of memory.
+The optimizer continuously monitors GPU memory usage from GryviaGpuNode status reports. It collects memory usage samples over time and uses configurable projection methods (linear, exponential, or polynomial) to predict when a GPU will run out of memory.
 
 When OOM is predicted, the optimizer can:
 
@@ -64,7 +64,7 @@ The optimizer can operate at three levels:
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricGpuMemoryOptimizer
+kind: GryviaGpuMemoryOptimizer
 metadata:
   name: cluster-memory-optimizer
 spec:
@@ -95,7 +95,7 @@ spec:
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricGpuMemoryOptimizer
+kind: GryviaGpuMemoryOptimizer
 metadata:
   name: inference-optimizer
 spec:
@@ -120,7 +120,7 @@ spec:
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricGpuMemoryOptimizer
+kind: GryviaGpuMemoryOptimizer
 metadata:
   name: training-optimizer
 spec:
@@ -170,10 +170,10 @@ status:
 
 ```bash
 # List memory optimizers
-kubectl get fabricgpumemoryoptimizers
+kubectl get gryviagpumemoryoptimizers
 
 # View optimizer status
-kubectl describe fabricgpumemoryoptimizer cluster-memory-optimizer
+kubectl describe gryviagpumemoryoptimizer cluster-memory-optimizer
 
 # Check events for OOM warnings
 kubectl get events --field-selector reason=OomPredicted
@@ -242,7 +242,7 @@ The `minimumGpuMemoryHeadroom` should account for:
 ## Architecture
 
 ```
-FabricGpuNode (status.gpuStatus) --> Memory Optimizer Controller
+GryviaGpuNode (status.gpuStatus) --> Memory Optimizer Controller
                                          |
                                     [Predictor]
                                      /    |    \
@@ -255,5 +255,5 @@ FabricGpuNode (status.gpuStatus) --> Memory Optimizer Controller
 ## Support
 
 - Issues: https://github.com/zyvorai/gryvia/issues
-- CRD Reference: `crds/gryvia.io_fabricgpumemoryoptimizers.yaml` (generated from the Go types)
+- CRD Reference: `crds/gryvia.io_gryviagpumemoryoptimizers.yaml` (generated from the Go types)
 - Example: `examples/training/memory-optimizer-example.yaml`

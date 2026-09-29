@@ -17,7 +17,7 @@ pub async fn execute(file: &str) -> Result<()> {
     display::print_success("YAML file is valid");
 
     // Validate that it's a known Gryvia resource type
-    let known_kinds = ["FabricAIJob", "FabricQuota", "FabricGpuNode", "FabricStorage", "FabricNetwork"];
+    let known_kinds = ["GryviaAIJob", "GryviaQuota", "GryviaGpuNode", "GryviaStorage", "GryviaNetwork"];
     if let Some(ref types) = obj.types {
         if types.api_version != "gryvia.io/v1" {
             display::print_warning(&format!("apiVersion '{}' is not gryvia.io/v1", types.api_version));
@@ -32,4 +32,44 @@ pub async fn execute(file: &str) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn write_temp(name: &str, body: &str) -> PathBuf {
+        let path = std::env::temp_dir().join(format!("gryvia-validate-{}-{}.yaml", std::process::id(), name));
+        fs::write(&path, body).unwrap();
+        path
+    }
+
+    #[tokio::test]
+    async fn accepts_a_known_resource() {
+        let path = write_temp(
+            "ok",
+            "apiVersion: gryvia.io/v1\nkind: GryviaAIJob\nmetadata:\n  name: demo\n",
+        );
+        assert!(execute(path.to_str().unwrap()).await.is_ok());
+        let _ = fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn warns_but_succeeds_for_unknown_kinds() {
+        let path = write_temp(
+            "unknown",
+            "apiVersion: gryvia.io/v1\nkind: Nope\nmetadata:\n  name: demo\n",
+        );
+        assert!(execute(path.to_str().unwrap()).await.is_ok());
+        let _ = fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn rejects_invalid_yaml_and_missing_files() {
+        let bad = write_temp("bad", "metadata: [unclosed");
+        assert!(execute(bad.to_str().unwrap()).await.is_err());
+        let _ = fs::remove_file(bad);
+        assert!(execute("/nonexistent/gryvia.yaml").await.is_err());
+    }
 }

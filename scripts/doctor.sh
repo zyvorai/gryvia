@@ -93,7 +93,7 @@ echo ""
 # ── CRDs ──
 echo "  ── CRDs ──"
 
-for crd in fabricaijobs fabricgpunodes fabricquotas fabricstorages fabricnetworks; do
+for crd in gryviaaijobs gryviagpunodes gryviaquotas gryviastorages gryvianetworks; do
     if kubectl get crd "${crd}.gryvia.io" &>/dev/null 2>&1; then
         ok "${crd}.gryvia.io"
     else
@@ -125,9 +125,9 @@ echo ""
 # ── Resources ──
 echo "  ── Resources ──"
 
-GPU_NODE_COUNT=$(kubectl get fabricgpunodes --no-headers 2>/dev/null | wc -l || echo 0)
-JOB_COUNT=$(kubectl get fabricaijobs --all-namespaces --no-headers 2>/dev/null | wc -l || echo 0)
-QUOTA_COUNT=$(kubectl get fabricquotas --no-headers 2>/dev/null | wc -l || echo 0)
+GPU_NODE_COUNT=$(kubectl get gryviagpunodes --no-headers 2>/dev/null | wc -l || echo 0)
+JOB_COUNT=$(kubectl get gryviaaijobs --all-namespaces --no-headers 2>/dev/null | wc -l || echo 0)
+QUOTA_COUNT=$(kubectl get gryviaquotas --no-headers 2>/dev/null | wc -l || echo 0)
 
 ok "GPU nodes: $GPU_NODE_COUNT registered"
 ok "AI jobs: $JOB_COUNT total"
@@ -139,15 +139,15 @@ if $VERBOSE; then
 
     echo ""
     echo "  GPU Nodes:"
-    kubectl get fabricgpunodes -o wide 2>/dev/null || echo "  (none)"
+    kubectl get gryviagpunodes -o wide 2>/dev/null || echo "  (none)"
 
     echo ""
     echo "  Recent Jobs:"
-    kubectl get fabricaijobs --all-namespaces 2>/dev/null | head -10 || echo "  (none)"
+    kubectl get gryviaaijobs --all-namespaces 2>/dev/null | head -10 || echo "  (none)"
 
     echo ""
     echo "  Quotas:"
-    kubectl get fabricquotas 2>/dev/null || echo "  (none)"
+    kubectl get gryviaquotas 2>/dev/null || echo "  (none)"
 fi
 
 echo ""

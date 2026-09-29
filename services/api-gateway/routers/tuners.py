@@ -1,4 +1,4 @@
-"""Auto-tuner routes (FabricAutoTuner, namespaced) for the dashboard."""
+"""Auto-tuner routes (GryviaAutoTuner, namespaced) for the dashboard."""
 import json
 import math
 import re
@@ -10,8 +10,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from .common import Deps, create_item
 from .uiutil import NAME_MAX, NAME_PATTERN, JobTemplate, find_one, fmt_duration, list_all, meta, namespaces, prune
 
-PLURAL = "fabricautotuners"
-KIND = "FabricAutoTuner"
+PLURAL = "gryviaautotuners"
+KIND = "GryviaAutoTuner"
 
 ALGORITHMS = {"grid", "random", "bayesian", "asha"}
 _PARAM_NAME = r"^[A-Za-z_][A-Za-z0-9_.-]{0,62}$"

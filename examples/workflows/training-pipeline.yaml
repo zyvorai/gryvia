@@ -59,7 +59,7 @@ spec:
         action: create
         manifest: |
           apiVersion: gryvia.io/v1
-          kind: FabricAIJob
+          kind: GryviaAIJob
           metadata:
             name: data-prep-{{workflow.name}}
             namespace: default
@@ -87,7 +87,7 @@ spec:
         action: create
         manifest: |
           apiVersion: gryvia.io/v1
-          kind: FabricAIJob
+          kind: GryviaAIJob
           metadata:
             name: training-{{workflow.name}}
             namespace: default
@@ -124,7 +124,7 @@ spec:
         action: create
         manifest: |
           apiVersion: gryvia.io/v1
-          kind: FabricAIJob
+          kind: GryviaAIJob
           metadata:
             name: eval-{{workflow.name}}
             namespace: default
@@ -153,7 +153,7 @@ spec:
         action: create
         manifest: |
           apiVersion: gryvia.io/v1
-          kind: FabricAIJob
+          kind: GryviaAIJob
           metadata:
             name: export-{{workflow.name}}
             namespace: default

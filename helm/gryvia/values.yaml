@@ -1,299 +1,206 @@
-# Default values for Gryvia
-# This is a YAML-formatted file.
-# Declare variables to be passed into your templates.
+# Default values for the Gryvia chart (operators, API gateway and dashboard).
 
-# Global settings
 global:
-  imageRegistry: ghcr.io
-  imagePullSecrets: []
-  storageClass: ""
+  # Registry prefix for every Gryvia image: <registry>/<image.name>:<tag>.
+  # Mirrored on Docker Hub as docker.io/zyvorai.
+  imageRegistry: ghcr.io/zyvorai
+  # Defaults to the chart appVersion.
+  imageTag: ""
+  imagePullPolicy: IfNotPresent
 
-# Namespace to deploy to
-namespace: gryvia-system
-
-# GPU Operator
+# --- Operators ---------------------------------------------------------------
+# All operators share one ServiceAccount and ClusterRole (see templates/rbac.yaml).
 gpuOperator:
   enabled: true
-  replicaCount: 2
-  image:
-    repository: zyvorai/gryvia-gpu-operator
-    tag: "1.0.0"
-    pullPolicy: IfNotPresent
+  image: {name: gryvia-gpu-operator, tag: ""}
+  replicas: 1
   resources:
-    limits:
-      cpu: 500m
-      memory: 512Mi
-    requests:
-      cpu: 200m
-      memory: 256Mi
+    limits: {cpu: 500m, memory: 512Mi}
+    requests: {cpu: 100m, memory: 128Mi}
+  healthCheck:
+    enabled: true
+    intervalSeconds: 60
   nodeSelector: {}
   tolerations: []
-  affinity:
-    podAntiAffinity:
-      preferredDuringSchedulingIgnoredDuringExecution:
-        - weight: 100
-          podAffinityTerm:
-            labelSelector:
-              matchExpressions:
-                - key: app
-                  operator: In
-                  values:
-                    - gryvia-gpu-operator
-            topologyKey: kubernetes.io/hostname
 
-# AI Workload Operator
 aiOperator:
   enabled: true
-  replicaCount: 2
-  image:
-    repository: zyvorai/gryvia-ai-operator
-    tag: "1.0.0"
-    pullPolicy: IfNotPresent
+  image: {name: gryvia-ai-operator, tag: ""}
+  replicas: 1
   resources:
-    limits:
-      cpu: 500m
-      memory: 512Mi
-    requests:
-      cpu: 200m
-      memory: 256Mi
-  webhook:
-    enabled: true
-    port: 9443
-    certManager:
-      enabled: true
+    limits: {cpu: 500m, memory: 512Mi}
+    requests: {cpu: 100m, memory: 128Mi}
+  nodeSelector: {}
+  tolerations: []
 
-# Storage Operator
-storageOperator:
-  enabled: true
-  replicaCount: 2
-  image:
-    repository: zyvorai/gryvia-storage-operator
-    tag: "1.0.0"
-    pullPolicy: IfNotPresent
-  resources:
-    limits:
-      cpu: 500m
-      memory: 512Mi
-    requests:
-      cpu: 200m
-      memory: 256Mi
-
-# Network Operator
-networkOperator:
-  enabled: true
-  replicaCount: 2
-  image:
-    repository: zyvorai/gryvia-network-operator
-    tag: "1.0.0"
-    pullPolicy: IfNotPresent
-  resources:
-    limits:
-      cpu: 500m
-      memory: 512Mi
-    requests:
-      cpu: 200m
-      memory: 256Mi
-
-# Quota Operator
 quotaOperator:
   enabled: true
-  replicaCount: 2
-  image:
-    repository: zyvorai/gryvia-quota-operator
-    tag: "1.0.0"
-    pullPolicy: IfNotPresent
+  image: {name: gryvia-quota-operator, tag: ""}
+  replicas: 1
   resources:
-    limits:
-      cpu: 500m
-      memory: 512Mi
-    requests:
-      cpu: 200m
-      memory: 256Mi
+    limits: {cpu: 500m, memory: 512Mi}
+    requests: {cpu: 100m, memory: 128Mi}
+  nodeSelector: {}
+  tolerations: []
+  # Default GPU pricing (USD per hour)
+  pricing:
+    H100: 8.00
+    A100-80G: 4.00
+    A100-40G: 3.00
+    L40: 2.50
+    A10: 1.50
+    V100: 2.00
+    T4: 0.75
 
-# Web UI
-webUI:
-  enabled: true
-  replicaCount: 2
-  image:
-    repository: zyvorai/gryvia-ui
-    tag: "1.0.0"
-    pullPolicy: IfNotPresent
-  service:
-    type: ClusterIP
-    port: 80
-    targetPort: 80
-  ingress:
-    enabled: false
-    className: nginx
-    annotations:
-      cert-manager.io/cluster-issuer: letsencrypt-prod
-    hosts:
-      - host: gryvia.example.com
-        paths:
-          - path: /
-            pathType: Prefix
-    tls:
-      - secretName: gryvia-ui-tls
-        hosts:
-          - gryvia.example.com
+storageOperator:
+  enabled: false
+  image: {name: gryvia-storage-operator, tag: ""}
+  replicas: 1
   resources:
-    limits:
-      cpu: 200m
-      memory: 256Mi
-    requests:
-      cpu: 100m
-      memory: 128Mi
+    limits: {cpu: 200m, memory: 256Mi}
+    requests: {cpu: 50m, memory: 64Mi}
+  nodeSelector: {}
+  tolerations: []
 
-# API Gateway
+networkOperator:
+  enabled: false
+  image: {name: gryvia-network-operator, tag: ""}
+  replicas: 1
+  resources:
+    limits: {cpu: 200m, memory: 256Mi}
+    requests: {cpu: 50m, memory: 64Mi}
+  nodeSelector: {}
+  tolerations: []
+
+# --- API gateway and dashboard -----------------------------------------------
 apiGateway:
   enabled: true
-  replicaCount: 2
-  image:
-    repository: zyvorai/gryvia-api-gateway
-    tag: "1.0.0"
-    pullPolicy: IfNotPresent
-  service:
-    type: ClusterIP
-    port: 8080
+  image: {name: gryvia-api-gateway, tag: ""}
+  replicas: 2
+  # Optional Prometheus URL for cost and metrics history.
+  prometheusUrl: ""
   resources:
-    limits:
-      cpu: 500m
-      memory: 512Mi
-    requests:
-      cpu: 200m
-      memory: 256Mi
-  prometheus:
-    url: http://prometheus-operated.gryvia-system:9090
+    limits: {cpu: 500m, memory: 512Mi}
+    requests: {cpu: 200m, memory: 256Mi}
 
-# CRD Installation
-crds:
-  install: true
-  # Set to false to skip CRD installation (for upgrades)
-  keep: true
+ui:
+  enabled: true
+  image: {name: gryvia-ui, tag: ""}
+  replicas: 2
+  resources:
+    limits: {cpu: 200m, memory: 256Mi}
+    requests: {cpu: 100m, memory: 128Mi}
+  service:
+    # ClusterIP, NodePort or LoadBalancer. The dashboard is HTTPS on port 443.
+    type: ClusterIP
+    nodePort: null
+  ingress:
+    enabled: false
+    className: ""
+    host: gryvia.example.com
+    annotations: {}
+    # Secret with the ingress certificate (leave empty for none).
+    tlsSecretName: ""
 
-# RBAC
-rbac:
-  create: true
-  # Additional cluster role rules
-  additionalRules: []
+# Sign-in. The dashboard and API use one shared bearer key.
+# LAB DEFAULT: the key below is well known (login admin / Admin@321). Change it for anything
+# reachable from an untrusted network: --set auth.apiKey=<secret> or use an existing Secret.
+auth:
+  apiKey: "Admin@321"
+  # Existing Secret holding the key under `GRYVIA_API_KEY`; overrides apiKey.
+  existingSecret: ""
 
-# Service Accounts
-serviceAccounts:
-  create: true
-  annotations: {}
+# TLS between browser -> UI and UI -> gateway.
+tls:
+  # selfSigned: the chart mints one certificate and reuses it on upgrades.
+  # existingSecret: use the kubernetes.io/tls Secret named below.
+  # certManager: request a certificate from the issuer named below.
+  mode: selfSigned
+  secretName: gryvia-tls
+  extraSANs: []
+  certManager:
+    issuerName: ""
+    issuerKind: ClusterIssuer
+
+# --- Optional hardening -------------------------------------------------------
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
 
 networkPolicy:
-  enabled: true
-  # Enable network policies for security
+  enabled: false
 
-# Monitoring
-prometheus:
+# --- GPU node add-ons ----------------------------------------------------------
+nvidiaDevicePlugin:
   enabled: true
-  server:
-    persistentVolume:
-      enabled: true
-      size: 50Gi
-  alertmanager:
-    enabled: true
-    persistentVolume:
-      enabled: true
-      size: 10Gi
+  image:
+    repository: nvcr.io/nvidia/k8s-device-plugin
+    tag: v0.17.0
+    pullPolicy: IfNotPresent
 
-grafana:
-  enabled: true
-  # adminPassword must be set explicitly via --set or a secret
-  # adminPassword: ""
-  # existingSecret: my-grafana-secret
-  persistence:
-    enabled: true
-    size: 10Gi
-  dashboardProviders:
-    dashboardproviders.yaml:
-      apiVersion: 1
-      providers:
-        - name: 'gryvia'
-          orgId: 1
-          folder: 'Gryvia'
-          type: file
-          disableDeletion: false
-          editable: true
-          options:
-            path: /var/lib/grafana/dashboards/gryvia
-  dashboards:
-    gryvia:
-      gryvia-overview:
-        gnetId: 0
-        datasource: Prometheus
-      gryvia-gpus:
-        gnetId: 0
-        datasource: Prometheus
-      gryvia-costs:
-        gnetId: 0
-        datasource: Prometheus
-
-# DCGM Exporter for GPU metrics
 dcgmExporter:
   enabled: true
   image:
     repository: nvcr.io/nvidia/k8s/dcgm-exporter
-    tag: 3.3.0-3.2.0-ubuntu22.04
-  resources:
-    limits:
-      cpu: 200m
-      memory: 256Mi
-    requests:
-      cpu: 100m
-      memory: 128Mi
-  serviceMonitor:
-    enabled: true
-    interval: 30s
+    tag: 3.3.9-3.6.1-ubuntu22.04
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 9400
 
-# GPU Pricing (for cost calculations)
-gpuPricing:
-  H100: 8.00
-  A100-80G: 4.00
-  A100-40G: 3.50
-  L40: 2.50
-  V100: 2.00
-  T4: 1.00
+# --- Cluster plumbing -----------------------------------------------------------
+rbac:
+  create: true
 
-# Default quotas (optional initial setup)
-defaultQuotas:
-  enabled: false
-  quotas:
-    - name: default-quota
-      team: default
-      namespaces:
-        - default
-      gpuQuota:
-        maxGPUs: 8
-        maxGPUsPerJob: 4
-        allowedGPUTypes:
-          - H100
-          - A100-80G
-          - L40
-        maxRunningJobs: 10
-      priority: 100
+serviceAccount:
+  create: true
+  name: gryvia-operator
+  annotations: {}
 
-# Example jobs (for testing)
-exampleJobs:
-  enabled: false
-  # Deploy example jobs for testing
+namespace:
+  create: true
+  name: gryvia-system
 
-# High Availability
-highAvailability:
+crds:
+  install: true
+  keep: true
+
+monitoring:
   enabled: true
-  # Enable leader election for operators
-
-# Metrics
-metrics:
-  enabled: true
-  serviceMonitor:
+  prometheus:
     enabled: true
-    interval: 30s
-    scrapeTimeout: 10s
+    serviceMonitor:
+      enabled: true
+      interval: 30s
+  grafana:
+    enabled: true
+    dashboards:
+      enabled: true
 
-# Logging
-logging:
-  level: info
-  # Options: debug, info, warn, error
+ha:
+  enabled: false
+  leaderElection: true
+
+# Container-level security context (operators)
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 65532
+  capabilities:
+    drop:
+      - ALL
+
+# Pod-level security context (operators)
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+nameOverride: ""
+fullnameOverride: ""
+imagePullSecrets: []
+labels: {}
+annotations: {}

@@ -7,7 +7,7 @@ This directory contains example configurations for running AI workloads on Gryvi
 #### Simple Single-GPU Training
 ```bash
 kubectl apply -f training/simple-pytorch-training.yaml
-kubectl get fabricaijob pytorch-simple-training
+kubectl get gryviaaijob pytorch-simple-training
 kubectl logs -f $(kubectl get pod -l gryvia.io/job=pytorch-simple-training -o name)
 ```
 
@@ -15,7 +15,7 @@ kubectl logs -f $(kubectl get pod -l gryvia.io/job=pytorch-simple-training -o na
 ```bash
 # Create PVCs for data and checkpoints first
 kubectl apply -f distributed/multi-gpu-training.yaml
-kubectl get fabricaijob distributed-llama-training
+kubectl get gryviaaijob distributed-llama-training
 ```
 
 ### Inference Examples
@@ -23,7 +23,7 @@ kubectl get fabricaijob distributed-llama-training
 #### LLM Inference with vLLM
 ```bash
 kubectl apply -f inference/llm-inference.yaml
-kubectl get fabricaijob llama-inference
+kubectl get gryviaaijob llama-inference
 
 # Port forward to access the API
 kubectl port-forward svc/llama-inference-headless 8000:8000
@@ -43,8 +43,8 @@ curl http://localhost:8000/v1/completions \
 #### Register a GPU Node
 ```bash
 kubectl apply -f gpu-nodes/h100-node.yaml
-kubectl get fabricgpunode
-kubectl describe fabricgpunode gpu-h100-01
+kubectl get gryviagpunode
+kubectl describe gryviagpunode gpu-h100-01
 ```
 
 ### Storage Configuration
@@ -52,7 +52,7 @@ kubectl describe fabricgpunode gpu-h100-01
 #### Setup VAST Storage
 ```bash
 kubectl apply -f storage/vast-storage.yaml
-kubectl get fabricstorage
+kubectl get gryviastorage
 ```
 
 ### Network Configuration
@@ -60,7 +60,7 @@ kubectl get fabricstorage
 #### Setup RDMA Network
 ```bash
 kubectl apply -f network/rdma-network.yaml
-kubectl get fabricnetwork
+kubectl get gryvianetwork
 ```
 
 ### Quotas
@@ -68,7 +68,7 @@ kubectl get fabricnetwork
 #### Set Team GPU Quota
 ```bash
 kubectl apply -f quotas/team-quota.yaml
-kubectl get fabricquota
+kubectl get gryviaquota
 ```
 
 ## Best Practices
@@ -84,7 +84,7 @@ kubectl get fabricquota
 
 Watch job progress:
 ```bash
-kubectl get fabricaijob -w
+kubectl get gryviaaijob -w
 ```
 
 Check GPU utilization:

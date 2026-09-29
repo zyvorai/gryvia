@@ -52,91 +52,28 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 Create the name of the service account to use
 */}}
 {{- define "gryvia.serviceAccountName" -}}
-{{- if .Values.serviceAccounts.create }}
-{{- default (include "gryvia.fullname" .) .Values.serviceAccounts.name }}
+{{- if .Values.serviceAccount.create }}
+{{- default (include "gryvia.fullname" .) .Values.serviceAccount.name }}
 {{- else }}
-{{- default "default" .Values.serviceAccounts.name }}
+{{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
 
 {{/*
-GPU Operator labels
+Image reference for a component: <registry>/<name>:<tag>. The tag falls back to global.imageTag, then appVersion.
+Usage: {{ include "gryvia.image" (dict "root" . "image" .Values.gpuOperator.image) }}
 */}}
-{{- define "gryvia.gpuOperator.labels" -}}
-{{ include "gryvia.labels" . }}
-app.kubernetes.io/component: gpu-operator
+{{- define "gryvia.image" -}}
+{{- $tag := default (default .root.Chart.AppVersion .root.Values.global.imageTag) .image.tag -}}
+{{- printf "%s/%s:%s" (trimSuffix "/" .root.Values.global.imageRegistry) .image.name $tag -}}
 {{- end }}
 
-{{/*
-AI Operator labels
-*/}}
-{{- define "gryvia.ioOperator.labels" -}}
-{{ include "gryvia.labels" . }}
-app.kubernetes.io/component: ai-operator
+{{/* Namespace for every namespaced resource. */}}
+{{- define "gryvia.namespace" -}}
+{{- .Values.namespace.name -}}
 {{- end }}
 
-{{/*
-Storage Operator labels
-*/}}
-{{- define "gryvia.storageOperator.labels" -}}
-{{ include "gryvia.labels" . }}
-app.kubernetes.io/component: storage-operator
-{{- end }}
-
-{{/*
-Network Operator labels
-*/}}
-{{- define "gryvia.networkOperator.labels" -}}
-{{ include "gryvia.labels" . }}
-app.kubernetes.io/component: network-operator
-{{- end }}
-
-{{/*
-Quota Operator labels
-*/}}
-{{- define "gryvia.quotaOperator.labels" -}}
-{{ include "gryvia.labels" . }}
-app.kubernetes.io/component: quota-operator
-{{- end }}
-
-{{/*
-Web UI labels
-*/}}
-{{- define "gryvia.webUI.labels" -}}
-{{ include "gryvia.labels" . }}
-app.kubernetes.io/component: web-ui
-{{- end }}
-
-{{/*
-API Gateway labels
-*/}}
-{{- define "gryvia.apiGateway.labels" -}}
-{{ include "gryvia.labels" . }}
-app.kubernetes.io/component: api-gateway
-{{- end }}
-
-{{/*
-Image pull secrets
-*/}}
-{{- define "gryvia.imagePullSecrets" -}}
-{{- if .Values.global.imagePullSecrets }}
-imagePullSecrets:
-{{- range .Values.global.imagePullSecrets }}
-  - name: {{ . }}
-{{- end }}
-{{- end }}
-{{- end }}
-
-{{/*
-Return the appropriate apiVersion for RBAC
-*/}}
-{{- define "gryvia.rbac.apiVersion" -}}
-{{- print "rbac.authorization.k8s.io/v1" }}
-{{- end }}
-
-{{/*
-Return the appropriate apiVersion for NetworkPolicy
-*/}}
-{{- define "gryvia.networkPolicy.apiVersion" -}}
-{{- print "networking.k8s.io/v1" }}
+{{/* Name of the API key Secret. */}}
+{{- define "gryvia.apiKeySecret" -}}
+{{- default "gryvia-api-key" .Values.auth.existingSecret -}}
 {{- end }}

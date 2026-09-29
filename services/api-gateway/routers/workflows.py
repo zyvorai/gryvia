@@ -1,4 +1,4 @@
-"""Workflow routes (FabricWorkflow, namespaced) for the dashboard."""
+"""Workflow routes (GryviaWorkflow, namespaced) for the dashboard."""
 from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, Request
@@ -7,8 +7,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from .common import Deps, create_item
 from .uiutil import NAME_MAX, NAME_PATTERN, JobTemplate, find_one, fmt_duration, list_all, meta, namespaces, prune
 
-PLURAL = "fabricworkflows"
-KIND = "FabricWorkflow"
+PLURAL = "gryviaworkflows"
+KIND = "GryviaWorkflow"
 
 _STEP_NAME = dict(min_length=1, max_length=NAME_MAX, pattern=NAME_PATTERN)
 

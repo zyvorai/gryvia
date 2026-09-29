@@ -5,17 +5,17 @@ kind: ClusterRole
 metadata:
   name: gryvia:team-admin
 rules:
-# Full access to FabricAIJobs
+# Full access to GryviaAIJobs
 - apiGroups: ["gryvia.io"]
-  resources: ["fabricaijobs"]
+  resources: ["gryviaaijobs"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 # Read access to quotas
 - apiGroups: ["gryvia.io"]
-  resources: ["fabricquotas"]
+  resources: ["gryviaquotas"]
   verbs: ["get", "list", "watch"]
 # Read access to nodes
 - apiGroups: ["gryvia.io"]
-  resources: ["fabricgpunodes"]
+  resources: ["gryviagpunodes"]
   verbs: ["get", "list", "watch"]
 # Pod logs access
 - apiGroups: [""]
@@ -34,15 +34,15 @@ metadata:
 rules:
 # Create and manage own jobs
 - apiGroups: ["gryvia.io"]
-  resources: ["fabricaijobs"]
+  resources: ["gryviaaijobs"]
   verbs: ["get", "list", "watch", "create", "delete"]
 # Read quotas
 - apiGroups: ["gryvia.io"]
-  resources: ["fabricquotas"]
+  resources: ["gryviaquotas"]
   verbs: ["get", "list", "watch"]
 # Read nodes
 - apiGroups: ["gryvia.io"]
-  resources: ["fabricgpunodes"]
+  resources: ["gryviagpunodes"]
   verbs: ["get", "list", "watch"]
 # View own pods
 - apiGroups: [""]
@@ -57,15 +57,15 @@ metadata:
 rules:
 # Read jobs
 - apiGroups: ["gryvia.io"]
-  resources: ["fabricaijobs"]
+  resources: ["gryviaaijobs"]
   verbs: ["get", "list", "watch"]
 # Read quotas
 - apiGroups: ["gryvia.io"]
-  resources: ["fabricquotas"]
+  resources: ["gryviaquotas"]
   verbs: ["get", "list", "watch"]
 # Read nodes
 - apiGroups: ["gryvia.io"]
-  resources: ["fabricgpunodes"]
+  resources: ["gryviagpunodes"]
   verbs: ["get", "list", "watch"]
 # Read pods
 - apiGroups: [""]
@@ -80,10 +80,10 @@ metadata:
 rules:
 # Full access to all Gryvia resources
 - apiGroups: ["gryvia.io"]
-  resources: ["fabricaijobs", "fabricquotas", "fabricgpunodes", "fabricstorages", "fabricnetworks"]
+  resources: ["gryviaaijobs", "gryviaquotas", "gryviagpunodes", "gryviastorages", "gryvianetworks"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 - apiGroups: ["gryvia.io"]
-  resources: ["fabricaijobs/status", "fabricquotas/status", "fabricgpunodes/status", "fabricstorages/status", "fabricnetworks/status"]
+  resources: ["gryviaaijobs/status", "gryviaquotas/status", "gryviagpunodes/status", "gryviastorages/status", "gryvianetworks/status"]
   verbs: ["get", "update", "patch"]
 # Manage nodes
 - apiGroups: [""]

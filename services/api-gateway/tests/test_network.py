@@ -40,7 +40,7 @@ def test_empty_insights_graph_costs(client):
 
 
 def test_flows_and_graph_from_service_graph(client, fake_k8s):
-    fake_k8s.add("fabricservicegraphs", GRAPH, NS)
+    fake_k8s.add("gryviaservicegraphs", GRAPH, NS)
     flows = client.get("/api/network/flows").json()["items"]
     assert len(flows) == 2
     assert flows[0]["spec"] == {"timestamp": "2026-01-02T00:00:00Z", "source": "api", "destination": "db",
@@ -57,7 +57,7 @@ def test_flows_and_graph_from_service_graph(client, fake_k8s):
 
 
 def test_policies_list_and_shape(client, fake_k8s):
-    fake_k8s.add("fabricflowpolicies", obj("p1", {
+    fake_k8s.add("gryviaflowpolicies", obj("p1", {
         "source": {"service": "a"}, "destination": {"service": "b", "port": 80},
         "protocol": "tcp", "action": "allow", "intent": "secure"},
         {"phase": "Enforced", "enforced": True, "matchedFlows": 7}), NS)
@@ -74,7 +74,7 @@ def test_create_policy(client, fake_k8s):
     assert r.status_code == 201
     j = r.json()
     assert j["spec"]["sourceService"] == "web" and j["spec"]["protocol"] == "tcp" and j["spec"]["port"] == 8080
-    stored = fake_k8s.store[("fabricflowpolicies", NS, j["metadata"]["name"])]
+    stored = fake_k8s.store[("gryviaflowpolicies", NS, j["metadata"]["name"])]
     assert stored["spec"]["destination"] == {"service": "api", "port": 8080}
     assert client.post("/api/network/policies", json=body).status_code == 409
 
@@ -91,10 +91,10 @@ def test_create_policy_validation(client, patch):
 
 
 def test_apply_policy(client, fake_k8s):
-    fake_k8s.add("fabricflowpolicies", obj("p1", {"source": {"service": "a"}}), NS)
+    fake_k8s.add("gryviaflowpolicies", obj("p1", {"source": {"service": "a"}}), NS)
     r = client.post("/api/network/policies/p1/apply")
     assert r.status_code == 200
-    ann = fake_k8s.store[("fabricflowpolicies", NS, "p1")]["metadata"]["annotations"]
+    ann = fake_k8s.store[("gryviaflowpolicies", NS, "p1")]["metadata"]["annotations"]
     assert "gryvia.io/apply-requested-at" in ann
 
 
@@ -104,14 +104,14 @@ def test_apply_policy_404(client):
 
 
 def test_anomalies_and_insights(client, fake_k8s):
-    fake_k8s.add("fabricnetworkanomalies", obj("an1", {"targetService": "api"}, {"anomalies": [
+    fake_k8s.add("gryvianetworkanomalies", obj("an1", {"targetService": "api"}, {"anomalies": [
         {"type": "latency", "severity": "High", "detected": "2026-01-02T00:00:00Z", "description": "slow"}]}), NS)
-    fake_k8s.add("fabrictrafficinsights", obj("ti1", {"service": "db"}, {"anomalies": [
+    fake_k8s.add("gryviatrafficinsights", obj("ti1", {"service": "db"}, {"anomalies": [
         {"type": "drops", "severity": "low", "detected": "2026-01-03T00:00:00Z"}]}), NS)
-    fake_k8s.add("fabricservicegraphs", GRAPH, NS)
-    fake_k8s.add("fabricflowpolicies", obj("p1", {}, {"enforced": True}), NS)
-    fake_k8s.add("fabricflowpolicies", obj("p2", {}, {"phase": "Pending"}), NS)
-    fake_k8s.add("fabrictracesessions", obj("t1", {"service": "api"}), NS)
+    fake_k8s.add("gryviaservicegraphs", GRAPH, NS)
+    fake_k8s.add("gryviaflowpolicies", obj("p1", {}, {"enforced": True}), NS)
+    fake_k8s.add("gryviaflowpolicies", obj("p2", {}, {"phase": "Pending"}), NS)
+    fake_k8s.add("gryviatracesessions", obj("t1", {"service": "api"}), NS)
     items = client.get("/api/network/anomalies").json()["items"]
     assert [i["spec"]["service"] for i in items] == ["db", "api"]
     assert items[1]["spec"]["severity"] == "high" and items[1]["metadata"]["name"] == "an1-0"
@@ -120,7 +120,7 @@ def test_anomalies_and_insights(client, fake_k8s):
 
 
 def test_costs(client, fake_k8s):
-    fake_k8s.add("fabricnetworkcosts", obj("c1", {"costPerGB": {"sameZone": 0, "crossZone": 0.01,
+    fake_k8s.add("gryvianetworkcosts", obj("c1", {"costPerGB": {"sameZone": 0, "crossZone": 0.01,
                                                                  "internetEgress": 0.09}}, {"reports": [
         {"period": "2026-01-01", "namespace": "ml", "team": "t", "sameZoneBytes": 1, "crossZoneBytes": 2,
          "externalBytes": 3, "totalCostUSD": 1.5}]}), NS)
@@ -136,8 +136,8 @@ def test_traces_create_get_list(client, fake_k8s):
     name = r.json()["metadata"]["name"]
     assert r.json()["spec"] == {"targetService": "api", "duration": "5m", "captureLevel": "l7",
                                 "namespace": "ml"}
-    assert fake_k8s.store[("fabrictracesessions", NS, name)]["spec"]["service"] == "api"
-    fake_k8s.store[("fabrictracesessions", NS, name)]["status"] = {"phase": "active", "flowsCaptured": 4}
+    assert fake_k8s.store[("gryviatracesessions", NS, name)]["spec"]["service"] == "api"
+    fake_k8s.store[("gryviatracesessions", NS, name)]["status"] = {"phase": "active", "flowsCaptured": 4}
     got = client.get(f"/api/network/traces/{name}").json()
     assert got["status"] == {"phase": "Active", "flowsCaptured": 4}
     assert len(client.get("/api/network/traces").json()["items"]) == 1
@@ -164,7 +164,7 @@ def test_graph_verdict_vocabulary(client, fake_k8s, raw, expected):
     edge = {"source": "a", "destination": "b", "protocol": "tcp", "port": 1}
     if raw is not None:
         edge["verdict"] = raw
-    fake_k8s.add("fabricservicegraphs", {"metadata": {"name": "g"}, "status": {"edges": [edge]}}, "default")
+    fake_k8s.add("gryviaservicegraphs", {"metadata": {"name": "g"}, "status": {"edges": [edge]}}, "default")
     assert client.get("/api/network/graph").json()["edges"][0]["verdict"] == expected
     assert client.get("/api/network/flows").json()["items"][0]["spec"]["verdict"] == expected
 
@@ -176,5 +176,5 @@ def test_graph_node_health_vocabulary(client, fake_k8s, raw, expected):
     node = {"name": "n"}
     if raw is not None:
         node["health"] = raw
-    fake_k8s.add("fabricservicegraphs", {"metadata": {"name": "g"}, "status": {"nodes": [node]}}, "default")
+    fake_k8s.add("gryviaservicegraphs", {"metadata": {"name": "g"}, "status": {"nodes": [node]}}, "default")
     assert client.get("/api/network/graph").json()["nodes"][0]["health"] == expected

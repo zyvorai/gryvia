@@ -8,7 +8,7 @@ Complete guide to submitting and managing AI workloads with Gryvia.
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: my-training-job
   namespace: default
@@ -74,7 +74,7 @@ gryvia status my-training-job
 watch gryvia status my-training-job
 
 # Get detailed info
-kubectl describe fabricaijob my-training-job
+kubectl describe gryviaaijob my-training-job
 ```
 
 ### Viewing Logs
@@ -100,7 +100,7 @@ gryvia logs my-training-job > training.log
 gryvia cancel my-training-job
 
 # Delete job
-kubectl delete fabricaijob my-training-job
+kubectl delete gryviaaijob my-training-job
 ```
 
 ## Distributed Training
@@ -357,7 +357,7 @@ gryvia profile my-training-job
 
 ```bash
 # Check scheduling events
-kubectl describe fabricaijob my-training-job
+kubectl describe gryviaaijob my-training-job
 
 # Check GPU availability
 gryvia cluster nodes
@@ -376,7 +376,7 @@ gryvia logs my-training-job
 kubectl get events --field-selector involvedObject.name=my-training-job
 
 # Describe job
-kubectl describe fabricaijob my-training-job
+kubectl describe gryviaaijob my-training-job
 ```
 
 ### Out of Memory

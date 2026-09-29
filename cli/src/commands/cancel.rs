@@ -23,7 +23,7 @@ pub async fn execute(client: &GryviaClient, jobs: &[String], yes: bool) -> Resul
         }
     }
 
-    let api: Api<FabricAIJob> = Api::namespaced(
+    let api: Api<GryviaAIJob> = Api::namespaced(
         client.kube_client.clone(),
         client.namespace(),
     );

@@ -32,7 +32,7 @@ pub async fn execute(
 }
 
 async fn show_queue(client: &GryviaClient, name: &Option<String>) -> Result<()> {
-    let api: Api<FabricAIJob> = Api::all(client.kube_client.clone());
+    let api: Api<GryviaAIJob> = Api::all(client.kube_client.clone());
 
     let jobs = api.list(&ListParams::default()).await
         .context("Failed to list jobs")?;

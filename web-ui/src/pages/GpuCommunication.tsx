@@ -15,7 +15,7 @@ import { collectorState, formatNs, humanize, normalizeBottleneck, ratioPercent, 
 type WithCollectors = { collectors?: Collectors }
 type InsightExt = TrainingInsight & { source?: { name?: string; namespace?: string } }
 
-const NO_ANALYSIS_HELP = 'Training analysis is produced from NCCL traces of a running training job (a FabricAIJob with eBPF tracing enabled). Start or resume a training job and the analysis appears here.'
+const NO_ANALYSIS_HELP = 'Training analysis is produced from NCCL traces of a running training job (a GryviaAIJob with eBPF tracing enabled). Start or resume a training job and the analysis appears here.'
 
 export default function GpuCommunication() {
   useDocumentTitle('GPU communication')

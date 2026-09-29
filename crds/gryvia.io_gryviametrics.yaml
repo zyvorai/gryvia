@@ -1,0 +1,223 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.22.0
+  name: gryviametrics.gryvia.io
+spec:
+  group: gryvia.io
+  names:
+    kind: GryviaMetric
+    listKind: GryviaMetricList
+    plural: gryviametrics
+    singular: gryviametric
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.type
+      name: Type
+      type: string
+    - jsonPath: .status.currentValue
+      name: Current-Value
+      type: string
+    - jsonPath: .spec.unit
+      name: Unit
+      type: string
+    - jsonPath: .status.state
+      name: State
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: GryviaMetric is the Schema for the gryviametrics API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: GryviaMetricSpec defines the desired state of GryviaMetric
+            properties:
+              description:
+                description: Description is a human-readable description
+                type: string
+              labels:
+                additionalProperties:
+                  type: string
+                description: Labels are grouping labels
+                type: object
+              name:
+                description: Name is the metric name
+                type: string
+              retention:
+                description: Retention defines how long to keep metric data
+                type: string
+              source:
+                description: Source defines how to collect this metric
+                properties:
+                  jobOutput:
+                    description: JobOutput defines a job output parsing source
+                    properties:
+                      file:
+                        description: File is the file to parse
+                        type: string
+                      jsonPath:
+                        description: JSONPath is the JSON path to extract
+                        type: string
+                      pattern:
+                        description: Pattern is a regex to extract the metric
+                        type: string
+                    type: object
+                  prometheus:
+                    description: Prometheus defines a Prometheus query source
+                    properties:
+                      interval:
+                        description: Interval is the query interval
+                        type: string
+                      query:
+                        description: Query is the PromQL query
+                        type: string
+                    required:
+                    - query
+                    type: object
+                  script:
+                    description: Script defines a custom script source
+                    properties:
+                      command:
+                        description: Command to execute
+                        items:
+                          type: string
+                        type: array
+                      interval:
+                        description: Interval is the execution interval
+                        type: string
+                    required:
+                    - command
+                    type: object
+                  type:
+                    description: Type is the source type (prometheus, job-output,
+                      webhook, script, log-parser)
+                    type: string
+                  webhook:
+                    description: Webhook defines a webhook callback source
+                    properties:
+                      interval:
+                        description: Interval is the polling interval
+                        type: string
+                      url:
+                        description: URL to call
+                        type: string
+                    required:
+                    - url
+                    type: object
+                required:
+                - type
+                type: object
+              thresholds:
+                description: Thresholds define warning and critical thresholds
+                properties:
+                  actions:
+                    description: Actions are actions to take when thresholds are breached
+                    items:
+                      type: string
+                    type: array
+                  critical:
+                    description: Critical defines critical thresholds
+                    properties:
+                      max:
+                        description: Max is the maximum acceptable value
+                        type: number
+                      min:
+                        description: Min is the minimum acceptable value
+                        type: number
+                    type: object
+                  warning:
+                    description: Warning defines warning thresholds
+                    properties:
+                      max:
+                        description: Max is the maximum acceptable value
+                        type: number
+                      min:
+                        description: Min is the minimum acceptable value
+                        type: number
+                    type: object
+                type: object
+              type:
+                description: Type is the metric type (gauge, counter, histogram, summary)
+                type: string
+              unit:
+                description: Unit is the unit of measurement
+                type: string
+              visualization:
+                description: Visualization defines how to display the metric
+                properties:
+                  dashboard:
+                    description: Dashboard is the Grafana dashboard name
+                    type: string
+                  format:
+                    description: Format is the chart format (line, bar, gauge, table)
+                    type: string
+                  panel:
+                    description: Panel is the Grafana panel name
+                    type: string
+                type: object
+            required:
+            - name
+            - source
+            type: object
+          status:
+            description: GryviaMetricStatus defines the observed state of GryviaMetric
+            properties:
+              currentValue:
+                description: CurrentValue is the latest metric value
+                type: number
+              history:
+                description: History holds recent metric data points
+                items:
+                  description: MetricHistoryEntry holds a single metric data point
+                  properties:
+                    job:
+                      description: Job that produced this measurement
+                      type: string
+                    timestamp:
+                      description: Timestamp of the measurement
+                      format: date-time
+                      type: string
+                    value:
+                      description: Value of the measurement
+                      type: number
+                  required:
+                  - value
+                  type: object
+                type: array
+              lastUpdate:
+                description: LastUpdate is the time of the last metric update
+                format: date-time
+                type: string
+              state:
+                description: State is the current threshold state (normal, warning,
+                  critical)
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

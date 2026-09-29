@@ -10,7 +10,7 @@ Schedule jobs based on priority levels (critical, high, medium, low).
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: critical-training
   annotations:
@@ -240,7 +240,7 @@ kubectl patch configmap gryvia-config -n gryvia-system \
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   annotations:
     gryvia.io/scheduling-policy: cost-optimized
@@ -252,7 +252,7 @@ spec:
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricQuota
+kind: GryviaQuota
 metadata:
   name: ml-research
 spec:
@@ -287,7 +287,7 @@ spec:
 kubectl get schedulingpolicy fair-share -o yaml
 
 # Check scheduling decisions
-kubectl describe fabricaijob <job-name> | grep "Scheduling Decision"
+kubectl describe gryviaaijob <job-name> | grep "Scheduling Decision"
 
 # Policy performance
 kfctl policy metrics fair-share
@@ -361,7 +361,7 @@ teams:
 kubectl get schedulingpolicy
 
 # View scheduling events
-kubectl describe fabricaijob <job-name>
+kubectl describe gryviaaijob <job-name>
 
 # Check quota
 kfctl quota <team-name>

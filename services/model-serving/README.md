@@ -99,7 +99,7 @@ Optimized inference with NVIDIA TensorRT.
 # Submit build job
 kubectl apply -f - <<EOF
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: build-trt-llm
 spec:
@@ -248,7 +248,7 @@ print(f"Model exported to {output_dir}")
 ```bash
 kubectl apply -f - <<EOF
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: export-llama-7b
 spec:

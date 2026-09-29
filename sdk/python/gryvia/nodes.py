@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
 
 class Nodes:
-    """Manage FabricGPUNode resources.
+    """Manage GryviaGPUNode resources.
 
     This class is not instantiated directly -- use ``client.nodes`` instead.
     """

@@ -1,0 +1,172 @@
+name: Release
+
+# Tag-driven release: push a tag like v0.1.0 to publish multi-arch images (ghcr.io, mirrored to
+# Docker Hub when credentials are configured), the Helm chart (OCI) and CLI binaries, then create
+# the GitHub release. Images and the chart are signed keylessly with cosign.
+#
+# Repository secrets (Docker Hub mirror is skipped when they are absent):
+#   DOCKERHUB_USERNAME, DOCKERHUB_TOKEN
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build (for example v0.1.0-rc1); images are pushed with this tag'
+        required: true
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+
+env:
+  GHCR: ghcr.io/zyvorai
+  HUB: docker.io/zyvorai
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  images:
+    name: Image ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    env:
+      HAS_HUB: ${{ secrets.DOCKERHUB_TOKEN != '' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {name: gpu-operator,     context: operators/gpu-operator,     file: operators/gpu-operator/Dockerfile}
+          - {name: ai-operator,      context: operators/ai-operator,      file: operators/ai-operator/Dockerfile}
+          - {name: quota-operator,   context: operators/quota-operator,   file: operators/quota-operator/Dockerfile}
+          - {name: storage-operator, context: operators/storage-operator, file: operators/storage-operator/Dockerfile}
+          - {name: network-operator, context: operators/network-operator, file: operators/network-operator/Dockerfile}
+          - {name: api-gateway,      context: services/api-gateway,       file: services/api-gateway/Dockerfile}
+          - {name: ui,               context: .,                          file: docker/Dockerfile.ui}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: sigstore/cosign-installer@v3
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Log in to Docker Hub
+        if: env.HAS_HUB == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Compute tags
+        id: tags
+        run: |
+          v="${TAG#v}"
+          tags="${GHCR}/gryvia-${{ matrix.name }}:${v}"
+          # Only stable releases move "latest" and the minor tag.
+          if [[ "$v" != *-* ]]; then
+            tags="$tags,${GHCR}/gryvia-${{ matrix.name }}:latest,${GHCR}/gryvia-${{ matrix.name }}:${v%.*}"
+          fi
+          echo "tags=$tags" >> "$GITHUB_OUTPUT"
+      - name: Build and push (amd64, arm64)
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          provenance: true
+          sbom: true
+          labels: |
+            org.opencontainers.image.source=https://github.com/zyvorai/gryvia
+            org.opencontainers.image.version=${{ env.TAG }}
+            org.opencontainers.image.licenses=Apache-2.0
+      - name: Sign image
+        run: cosign sign --yes "${GHCR}/gryvia-${{ matrix.name }}@${{ steps.build.outputs.digest }}"
+      - name: Mirror to Docker Hub
+        if: env.HAS_HUB == 'true'
+        run: |
+          v="${TAG#v}"
+          extra=()
+          if [[ "$v" != *-* ]]; then extra=(-t "${HUB}/gryvia-${{ matrix.name }}:latest" -t "${HUB}/gryvia-${{ matrix.name }}:${v%.*}"); fi
+          docker buildx imagetools create -t "${HUB}/gryvia-${{ matrix.name }}:${v}" "${extra[@]}" \
+            "${GHCR}/gryvia-${{ matrix.name }}@${{ steps.build.outputs.digest }}"
+
+  chart:
+    name: Helm chart
+    runs-on: ubuntu-latest
+    needs: images
+    env:
+      HAS_HUB: ${{ secrets.DOCKERHUB_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - uses: sigstore/cosign-installer@v3
+      - name: Package
+        run: |
+          v="${TAG#v}"
+          helm lint helm/gryvia
+          helm package helm/gryvia --version "$v" --app-version "$v" -d dist
+      - name: Push to ghcr.io (OCI)
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+          out=$(helm push dist/gryvia-*.tgz oci://${GHCR}/charts 2>&1 | tee /dev/stderr)
+          digest=$(echo "$out" | sed -n 's/^Digest: //p')
+          cosign sign --yes "${GHCR}/charts/gryvia@${digest}"
+      - name: Push to Docker Hub (OCI)
+        if: env.HAS_HUB == 'true'
+        run: |
+          echo "${{ secrets.DOCKERHUB_TOKEN }}" | helm registry login registry-1.docker.io -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+          helm push dist/gryvia-*.tgz oci://registry-1.docker.io/zyvorai
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chart
+          path: dist/*.tgz
+
+  cli:
+    name: CLI ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-latest,    target: linux-amd64}
+          - {os: ubuntu-24.04-arm, target: linux-arm64}
+          - {os: macos-latest,     target: darwin-arm64}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build
+        working-directory: cli
+        run: cargo build --release --locked
+      - name: Package
+        run: |
+          mkdir dist
+          cp cli/target/release/gryvia "dist/gryvia-${TAG}-${{ matrix.target }}"
+          (cd dist && shasum -a 256 "gryvia-${TAG}-${{ matrix.target }}" > "gryvia-${TAG}-${{ matrix.target }}.sha256")
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-${{ matrix.target }}
+          path: dist/*
+
+  release:
+    name: GitHub release
+    runs-on: ubuntu-latest
+    needs: [images, chart, cli]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pre=()
+          [[ "$TAG" == *-* ]] && pre=(--prerelease)
+          gh release create "$TAG" artifacts/* --generate-notes --title "$TAG" "${pre[@]}"

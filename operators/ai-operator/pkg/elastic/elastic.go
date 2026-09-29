@@ -78,7 +78,7 @@ func NewElasticScaler(c client.Client) *ElasticScaler {
 // Register adds a job to elastic scaling management. If the job's spec does
 // not have elastic config (via annotations or the Distributed field), this
 // is a no-op.
-func (es *ElasticScaler) Register(job *gryviav1.FabricAIJob) error {
+func (es *ElasticScaler) Register(job *gryviav1.GryviaAIJob) error {
 	cfg := getElasticConfig(job)
 	if cfg == nil {
 		return nil // Not an elastic job.
@@ -136,7 +136,7 @@ func (es *ElasticScaler) Unregister(namespace, jobName string) {
 // ScaleUp expands a running job to use additional GPUs by adding more nodes.
 // The additionalGPUs parameter is interpreted as additional nodes worth of
 // GPUs (additionalGPUs / gpusPerNode).
-func (es *ElasticScaler) ScaleUp(ctx context.Context, job *gryviav1.FabricAIJob, additionalGPUs int32) error {
+func (es *ElasticScaler) ScaleUp(ctx context.Context, job *gryviav1.GryviaAIJob, additionalGPUs int32) error {
 	es.mu.Lock()
 	key := fmt.Sprintf("%s/%s", job.Namespace, job.Name)
 	state, exists := es.states[key]
@@ -186,7 +186,7 @@ func (es *ElasticScaler) ScaleUp(ctx context.Context, job *gryviav1.FabricAIJob,
 
 // ScaleDown gracefully shrinks a running job by releasing some nodes.
 // The releaseGPUs parameter is interpreted as nodes worth of GPUs to release.
-func (es *ElasticScaler) ScaleDown(ctx context.Context, job *gryviav1.FabricAIJob, releaseGPUs int32) error {
+func (es *ElasticScaler) ScaleDown(ctx context.Context, job *gryviav1.GryviaAIJob, releaseGPUs int32) error {
 	es.mu.Lock()
 	key := fmt.Sprintf("%s/%s", job.Namespace, job.Name)
 	state, exists := es.states[key]
@@ -236,7 +236,7 @@ func (es *ElasticScaler) ScaleDown(ctx context.Context, job *gryviav1.FabricAIJo
 
 // applyScale updates the StatefulSet replica count and relevant environment
 // variables to match the new node count.
-func (es *ElasticScaler) applyScale(ctx context.Context, job *gryviav1.FabricAIJob, newNodeCount int32) error {
+func (es *ElasticScaler) applyScale(ctx context.Context, job *gryviav1.GryviaAIJob, newNodeCount int32) error {
 	stsName := fmt.Sprintf("%s-training", job.Name)
 
 	sts := &appsv1.StatefulSet{}
@@ -289,7 +289,7 @@ func (es *ElasticScaler) applyScale(ctx context.Context, job *gryviav1.FabricAIJ
 		return fmt.Errorf("failed to update StatefulSet %s: %w", stsName, err)
 	}
 
-	// Update the FabricAIJob status.
+	// Update the GryviaAIJob status.
 	job.Status.GpusAllocated = newNodeCount * job.Spec.GPUs
 	if job.Spec.Distributed != nil && job.Spec.Distributed.GpusPerNode > 0 {
 		job.Status.GpusAllocated = newNodeCount * job.Spec.Distributed.GpusPerNode
@@ -300,7 +300,7 @@ func (es *ElasticScaler) applyScale(ctx context.Context, job *gryviav1.FabricAIJ
 
 // ensureElasticEnvVars injects or updates PyTorch Elastic (torchrun)
 // environment variables in the container.
-func (es *ElasticScaler) ensureElasticEnvVars(container *corev1.Container, job *gryviav1.FabricAIJob, currentNodes int32) {
+func (es *ElasticScaler) ensureElasticEnvVars(container *corev1.Container, job *gryviav1.GryviaAIJob, currentNodes int32) {
 	cfg := getElasticConfig(job)
 	if cfg == nil {
 		return
@@ -427,7 +427,7 @@ type ScaleRecommendation struct {
 // BuildElasticPodTemplate augments a pod template with elastic training
 // environment variables and annotations. This should be called from the
 // controller when building the StatefulSet for an elastic job.
-func BuildElasticPodTemplate(template *corev1.PodTemplateSpec, job *gryviav1.FabricAIJob) {
+func BuildElasticPodTemplate(template *corev1.PodTemplateSpec, job *gryviav1.GryviaAIJob) {
 	cfg := getElasticConfig(job)
 	if cfg == nil {
 		return
@@ -470,9 +470,9 @@ func BuildElasticPodTemplate(template *corev1.PodTemplateSpec, job *gryviav1.Fab
 	}
 }
 
-// getElasticConfig extracts elastic configuration from a FabricAIJob.
+// getElasticConfig extracts elastic configuration from a GryviaAIJob.
 // It checks annotations first, then falls back to the Distributed spec.
-func getElasticConfig(job *gryviav1.FabricAIJob) *ElasticConfig {
+func getElasticConfig(job *gryviav1.GryviaAIJob) *ElasticConfig {
 	// Check annotations.
 	if job.Annotations != nil {
 		minStr, hasMin := job.Annotations[AnnotationMinNodes]
@@ -570,13 +570,13 @@ func NewElasticResourceRequirements(gpusPerNode int32, baseResources corev1.Reso
 }
 
 // IsElasticJob returns true if the job is configured for elastic scaling.
-func IsElasticJob(job *gryviav1.FabricAIJob) bool {
+func IsElasticJob(job *gryviav1.GryviaAIJob) bool {
 	return getElasticConfig(job) != nil
 }
 
 // GetElasticBounds returns the min/max nodes for an elastic job.
 // Returns (0, 0) if the job is not elastic.
-func GetElasticBounds(job *gryviav1.FabricAIJob) (minNodes, maxNodes int32) {
+func GetElasticBounds(job *gryviav1.GryviaAIJob) (minNodes, maxNodes int32) {
 	cfg := getElasticConfig(job)
 	if cfg == nil {
 		return 0, 0
@@ -586,7 +586,7 @@ func GetElasticBounds(job *gryviav1.FabricAIJob) (minNodes, maxNodes int32) {
 
 // ReconcileElasticAnnotations ensures the job's annotations reflect the
 // current elastic state. Called during controller reconciliation.
-func ReconcileElasticAnnotations(job *gryviav1.FabricAIJob) {
+func ReconcileElasticAnnotations(job *gryviav1.GryviaAIJob) {
 	cfg := getElasticConfig(job)
 	if cfg == nil {
 		return
@@ -607,7 +607,7 @@ func ReconcileElasticAnnotations(job *gryviav1.FabricAIJob) {
 
 // NewElasticStatefulSetMeta returns ObjectMeta suitable for an elastic
 // StatefulSet, including labels and annotations for elastic management.
-func NewElasticStatefulSetMeta(job *gryviav1.FabricAIJob) metav1.ObjectMeta {
+func NewElasticStatefulSetMeta(job *gryviav1.GryviaAIJob) metav1.ObjectMeta {
 	labels := map[string]string{
 		"gryvia.io/job":     job.Name,
 		"gryvia.io/type":    job.Spec.Type,

@@ -21,7 +21,7 @@ The Storage Operator manages parallel filesystem integrations for AI workloads i
 ## Architecture
 
 ```
-FabricStorage CR
+GryviaStorage CR
        ↓
 Storage Operator
        ↓
@@ -36,7 +36,7 @@ StorageClass (ReadWriteMany PVCs)
 
 ```bash
 # Apply CRD
-kubectl apply -f crds/fabricstorage.yaml
+kubectl apply -f crds/gryviastorage.yaml
 
 # Deploy operator
 kubectl apply -f operators/storage-operator/config/
@@ -51,7 +51,7 @@ kubectl get pods -n gryvia-system -l app=storage-operator
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricStorage
+kind: GryviaStorage
 metadata:
   name: vast-production
 spec:
@@ -97,7 +97,7 @@ The operator deploys:
 - StorageClass with RWX access mode and `Retain` reclaim policy (default)
 
 **Files:**
-- `controllers/fabricstorage_controller.go` - Main reconciliation loop
+- `controllers/gryviastorage_controller.go` - Main reconciliation loop
 - `pkg/vast/vast.go` - VAST-specific CSI deployment (~300 LOC)
 
 ### Health Monitoring

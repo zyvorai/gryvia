@@ -136,7 +136,7 @@ kubectl create rolebinding ml-research-users \
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: my-job
 spec:
@@ -210,7 +210,7 @@ rules:
   - level: RequestResponse
     resources:
       - group: gryvia.io
-        resources: ["fabricaijobs", "fabricquotas"]
+        resources: ["gryviaaijobs", "gryviaquotas"]
 ```
 
 ### 7. Resource Quotas
@@ -303,7 +303,7 @@ kubectl config set-credentials alice \
 
 ```bash
 # Check user permissions
-kubectl auth can-i create fabricaijobs --as alice@example.com
+kubectl auth can-i create gryviaaijobs --as alice@example.com
 
 # List all permissions for user
 kubectl auth can-i --list --as alice@example.com

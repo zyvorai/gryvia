@@ -1,0 +1,138 @@
+# Example: MLPerf ResNet50 Benchmark
+apiVersion: gryvia.io/v1
+kind: GryviaBenchmark
+metadata:
+  name: mlperf-resnet50
+  namespace: benchmarks
+spec:
+  type: mlperf
+
+  target:
+    gpuType: A100-80G
+    gpuCount: 8
+
+  mlperf:
+    workload: resnet50
+    batchSize: 256
+    precision: fp16
+    targetMetric: throughput
+
+  baseline:
+    enabled: true
+    values:
+      throughput: 9200  # images/sec
+    regressionThreshold: 5
+
+  schedule:
+    type: recurring
+    cron: "0 2 * * 0"  # Weekly on Sunday 2 AM
+
+---
+# Example: NCCL All-Reduce Benchmark
+apiVersion: gryvia.io/v1
+kind: GryviaBenchmark
+metadata:
+  name: nccl-allreduce
+  namespace: benchmarks
+spec:
+  type: nccl
+
+  target:
+    gpuType: A100-80G
+    gpuCount: 16
+    networkType: infiniband
+
+  nccl:
+    operations: [all-reduce]
+    messageSizes: [8, 16, 32, 64, 128, 256, 512, 1024, 2048]  # MB
+    iterations: 100
+    warmupIters: 20
+
+  baseline:
+    enabled: true
+    benchmarkRef: nccl-allreduce-baseline
+    regressionThreshold: 3
+---
+# Example: GPU Memory Bandwidth Benchmark
+apiVersion: gryvia.io/v1
+kind: GryviaBenchmark
+metadata:
+  name: gpu-memory-bw
+  namespace: benchmarks
+spec:
+  type: gpu-memory
+
+  target:
+    gpuType: H100
+    gpuCount: 1
+
+  gpuMemory:
+    testType: both
+    sizes: [1MB, 10MB, 100MB, 1GB, 10GB]
+    directions: [h2d, d2h, d2d]
+
+  baseline:
+    enabled: true
+    values:
+      h2d_bandwidth: 26  # GB/s
+      d2h_bandwidth: 26  # GB/s
+      d2d_bandwidth: 3350  # GB/s (H100 HBM3)
+---
+# Example: Storage I/O Benchmark
+apiVersion: gryvia.io/v1
+kind: GryviaBenchmark
+metadata:
+  name: storage-io
+  namespace: benchmarks
+spec:
+  type: io-throughput
+
+  target:
+    gpuType: T4
+    gpuCount: 1
+
+  ioThroughput:
+    storageClass: vast-data
+    fileSize: 10GB
+    blockSize: 1MB
+    operations: [read, write, random-read, random-write]
+    threads: 8
+
+  baseline:
+    enabled: true
+    values:
+      read_throughput: 2000  # MB/s
+      write_throughput: 1500  # MB/s
+---
+# Example: Custom PyTorch Benchmark
+apiVersion: gryvia.io/v1
+kind: GryviaBenchmark
+metadata:
+  name: custom-pytorch
+  namespace: benchmarks
+spec:
+  type: custom
+
+  target:
+    gpuType: A100-80G
+    gpuCount: 8
+
+  custom:
+    image: nvcr.io/nvidia/pytorch:24.01-py3
+    command: [python]
+    args:
+      - benchmark.py
+      - --model=bert-large
+      - --batch-size=64
+      - --iterations=100
+
+    metrics:
+      - name: throughput
+        unit: samples/sec
+        higherIsBetter: true
+      - name: gpu_memory
+        unit: GB
+        higherIsBetter: false
+      - name: training_time
+        unit: seconds
+        higherIsBetter: false

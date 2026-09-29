@@ -1,7 +1,7 @@
 ---
-# FabricAIJob: Distributed LLM training job with checkpointing support
+# GryviaAIJob: Distributed LLM training job with checkpointing support
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: llama-70b-finetune
   namespace: default
@@ -65,9 +65,9 @@ spec:
       effect: "NoSchedule"
 
 ---
-# FabricCheckpointGuard: Monitors the above job and manages checkpoints
+# GryviaCheckpointGuard: Monitors the above job and manages checkpoints
 apiVersion: gryvia.io/v1
-kind: FabricCheckpointGuard
+kind: GryviaCheckpointGuard
 metadata:
   name: llama-training-guard
   namespace: default

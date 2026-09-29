@@ -20,7 +20,7 @@ type CheckpointMetadata struct {
 	// Path is the filesystem path to the checkpoint
 	Path string `json:"path"`
 
-	// JobName is the name of the FabricAIJob that produced this checkpoint
+	// JobName is the name of the GryviaAIJob that produced this checkpoint
 	JobName string `json:"jobName"`
 
 	// CreatedAt is the timestamp when the checkpoint was created

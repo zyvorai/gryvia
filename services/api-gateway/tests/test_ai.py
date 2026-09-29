@@ -11,16 +11,16 @@ def test_empty_state(make_client):
 
 
 def test_insight_without_status_is_empty(make_client, fake_k8s):
-    fake_k8s.add("fabrictraininginsights", {"metadata": {"name": "a"}, "spec": {}}, namespace="default")
+    fake_k8s.add("gryviatraininginsights", {"metadata": {"name": "a"}, "spec": {}}, namespace="default")
     assert make_client("ai").get("/api/ai/training/insight").json()["rankStats"] == []
 
 
 def test_populated_insight_uses_latest(make_client, fake_k8s):
-    fake_k8s.add("fabrictraininginsights", {
+    fake_k8s.add("gryviatraininginsights", {
         "metadata": {"name": "old"},
         "status": {"bottleneck": "compute", "lastAnalysis": "2026-01-01T00:00:00Z"},
     }, namespace="default")
-    fake_k8s.add("fabrictraininginsights", {
+    fake_k8s.add("gryviatraininginsights", {
         "metadata": {"name": "new"},
         "status": {
             "bottleneck": "communication", "commPattern": "ring_allreduce", "commComputeRatio": 0.42,
@@ -116,7 +116,7 @@ def test_fetch_all_keeps_list_return(fake_k8s):
 
 
 def test_insight_source(make_client, fake_k8s):
-    fake_k8s.add("fabrictraininginsights", {
+    fake_k8s.add("gryviatraininginsights", {
         "metadata": {"name": "run-1"},
         "status": {"bottleneck": "compute", "lastAnalysis": "2026-02-01T00:00:00Z"},
     }, namespace="ml")

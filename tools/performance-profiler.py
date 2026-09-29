@@ -39,7 +39,7 @@ class PerformanceProfiler:
                 group="gryvia.io",
                 version="v1",
                 namespace=namespace,
-                plural="fabricaijobs",
+                plural="gryviaaijobs",
                 name=job_name
             )
         except Exception as e:

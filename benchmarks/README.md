@@ -407,7 +407,7 @@ nvidia-smi -lgc 1410
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: custom-benchmark
 spec:

@@ -10,7 +10,7 @@ import (
 )
 
 // CalculateUsage calculates current resource usage for a quota
-func CalculateUsage(ctx context.Context, k8sClient client.Client, quota *gryviav1.FabricQuota) (*gryviav1.QuotaUsage, error) {
+func CalculateUsage(ctx context.Context, k8sClient client.Client, quota *gryviav1.GryviaQuota) (*gryviav1.QuotaUsage, error) {
 	usage := &gryviav1.QuotaUsage{}
 
 	// Get all AI jobs in quota namespaces
@@ -20,7 +20,7 @@ func CalculateUsage(ctx context.Context, k8sClient client.Client, quota *gryviav
 	gpuHours := 0.0
 
 	for _, nsName := range quota.Spec.Namespaces {
-		jobs := &gryviav1.FabricAIJobList{}
+		jobs := &gryviav1.GryviaAIJobList{}
 		if err := k8sClient.List(ctx, jobs, client.InNamespace(nsName)); err != nil {
 			return nil, err
 		}
@@ -53,7 +53,7 @@ func CalculateUsage(ctx context.Context, k8sClient client.Client, quota *gryviav
 }
 
 // GetMonthlyGPUHours calculates total GPU hours for the current month
-func GetMonthlyGPUHours(ctx context.Context, k8sClient client.Client, quota *gryviav1.FabricQuota) (float64, error) {
+func GetMonthlyGPUHours(ctx context.Context, k8sClient client.Client, quota *gryviav1.GryviaQuota) (float64, error) {
 	// Get start of current month
 	now := time.Now()
 	startOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
@@ -61,7 +61,7 @@ func GetMonthlyGPUHours(ctx context.Context, k8sClient client.Client, quota *gry
 	totalHours := 0.0
 
 	for _, nsName := range quota.Spec.Namespaces {
-		jobs := &gryviav1.FabricAIJobList{}
+		jobs := &gryviav1.GryviaAIJobList{}
 		if err := k8sClient.List(ctx, jobs, client.InNamespace(nsName)); err != nil {
 			return 0, err
 		}

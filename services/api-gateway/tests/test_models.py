@@ -4,7 +4,7 @@ NS = "default"
 
 
 def seed(fake_k8s, name="bert", stage="dev", **spec):
-    fake_k8s.add("fabricmodelregistries", {
+    fake_k8s.add("gryviamodelregistries", {
         "metadata": {"name": name},
         "spec": {"modelName": "bert", "version": "v1", "stage": stage,
                  "source": {"jobRef": "train-1"},
@@ -29,7 +29,7 @@ def test_list_and_get(make_client, fake_k8s):
 
 
 def test_no_source_omits_field(make_client, fake_k8s):
-    fake_k8s.add("fabricmodelregistries", {"metadata": {"name": "m"}, "spec": {"version": "v2"}}, namespace=NS)
+    fake_k8s.add("gryviamodelregistries", {"metadata": {"name": "m"}, "spec": {"version": "v2"}}, namespace=NS)
     spec = make_client("models").get("/api/models/m").json()["spec"]
     assert "sourceJob" not in spec and spec["artifacts"] == []
 
@@ -44,7 +44,7 @@ def test_promote(make_client, fake_k8s, cur, target):
     seed(fake_k8s, stage=cur)
     r = make_client("models").post("/api/models/bert/promote", json={"targetStage": target})
     assert r.status_code == 200 and r.json()["spec"]["stage"] == target
-    assert fake_k8s.store[("fabricmodelregistries", NS, "bert")]["spec"]["stage"] == target
+    assert fake_k8s.store[("gryviamodelregistries", NS, "bert")]["spec"]["stage"] == target
 
 
 @pytest.mark.parametrize("cur,target", [("dev", "production"), ("staging", "dev"), ("archived", "dev"),
@@ -53,7 +53,7 @@ def test_promote_invalid_transition(make_client, fake_k8s, cur, target):
     seed(fake_k8s, stage=cur)
     r = make_client("models").post("/api/models/bert/promote", json={"targetStage": target})
     assert r.status_code == 409
-    assert fake_k8s.store[("fabricmodelregistries", NS, "bert")]["spec"]["stage"] == cur
+    assert fake_k8s.store[("gryviamodelregistries", NS, "bert")]["spec"]["stage"] == cur
 
 
 def test_promote_validation(make_client, fake_k8s):

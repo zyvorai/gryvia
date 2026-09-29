@@ -24,7 +24,7 @@ type ClusterCapacity struct {
 type TeamAllocation struct {
 	// Team identifier (namespace or team label).
 	Team string
-	// Weight derived from FabricQuota (higher weight = larger fair share).
+	// Weight derived from GryviaQuota (higher weight = larger fair share).
 	Weight float64
 	// Allocated tracks the resources currently consumed by this team.
 	Allocated ResourceVector
@@ -49,7 +49,7 @@ func NewDRFScheduler(capacity ClusterCapacity) *DRFScheduler {
 }
 
 // RegisterTeam adds or updates a team with the given weight.
-// Weight should be derived from the FabricQuota's MaxGPUs or explicit priority.
+// Weight should be derived from the GryviaQuota's MaxGPUs or explicit priority.
 func (d *DRFScheduler) RegisterTeam(team string, weight float64) {
 	if weight <= 0 {
 		weight = 1.0

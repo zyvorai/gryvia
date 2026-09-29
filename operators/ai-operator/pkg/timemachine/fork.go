@@ -11,7 +11,7 @@ import (
 	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 )
 
-// ForkHandler creates new FabricAIJob resources from checkpoint state
+// ForkHandler creates new GryviaAIJob resources from checkpoint state
 type ForkHandler struct {
 	Client client.Client
 }
@@ -21,10 +21,10 @@ func NewForkHandler(c client.Client) *ForkHandler {
 	return &ForkHandler{Client: c}
 }
 
-// CreateForkedJob creates a new FabricAIJob from a source job and a fork specification.
+// CreateForkedJob creates a new GryviaAIJob from a source job and a fork specification.
 // It clones the source job spec, applies overrides from the fork, and sets environment
 // variables to resume from the specified checkpoint step.
-func (f *ForkHandler) CreateForkedJob(ctx context.Context, sourceJob *gryviav1.FabricAIJob, fork gryviav1.ForkSpec, checkpointStep int) (string, error) {
+func (f *ForkHandler) CreateForkedJob(ctx context.Context, sourceJob *gryviav1.GryviaAIJob, fork gryviav1.ForkSpec, checkpointStep int) (string, error) {
 	// Determine the new job name
 	newJobName := fork.NewJobName
 	if newJobName == "" {
@@ -34,8 +34,8 @@ func (f *ForkHandler) CreateForkedJob(ctx context.Context, sourceJob *gryviav1.F
 	// Build the forked job spec by cloning the source
 	forkedSpec := buildForkedSpec(sourceJob.Spec, fork, checkpointStep)
 
-	// Create the forked FabricAIJob
-	forkedJob := &gryviav1.FabricAIJob{
+	// Create the forked GryviaAIJob
+	forkedJob := &gryviav1.GryviaAIJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      newJobName,
 			Namespace: sourceJob.Namespace,
@@ -56,8 +56,8 @@ func (f *ForkHandler) CreateForkedJob(ctx context.Context, sourceJob *gryviav1.F
 	return newJobName, nil
 }
 
-// buildForkedSpec creates a new FabricAIJobSpec by cloning the source and applying overrides
-func buildForkedSpec(sourceSpec gryviav1.FabricAIJobSpec, fork gryviav1.ForkSpec, checkpointStep int) gryviav1.FabricAIJobSpec {
+// buildForkedSpec creates a new GryviaAIJobSpec by cloning the source and applying overrides
+func buildForkedSpec(sourceSpec gryviav1.GryviaAIJobSpec, fork gryviav1.ForkSpec, checkpointStep int) gryviav1.GryviaAIJobSpec {
 	// Deep clone the source spec
 	spec := cloneJobSpec(sourceSpec)
 
@@ -94,9 +94,9 @@ func buildForkedSpec(sourceSpec gryviav1.FabricAIJobSpec, fork gryviav1.ForkSpec
 	return spec
 }
 
-// cloneJobSpec creates a deep copy of a FabricAIJobSpec
-func cloneJobSpec(src gryviav1.FabricAIJobSpec) gryviav1.FabricAIJobSpec {
-	spec := gryviav1.FabricAIJobSpec{
+// cloneJobSpec creates a deep copy of a GryviaAIJobSpec
+func cloneJobSpec(src gryviav1.GryviaAIJobSpec) gryviav1.GryviaAIJobSpec {
+	spec := gryviav1.GryviaAIJobSpec{
 		Type:            src.Type,
 		Model:           src.Model,
 		GPUs:            src.GPUs,
@@ -196,7 +196,7 @@ func applyEnvOverride(envVars []corev1.EnvVar, override gryviav1.EnvOverride) []
 }
 
 // buildForkLabels creates labels for a forked job
-func buildForkLabels(sourceJob *gryviav1.FabricAIJob, fork gryviav1.ForkSpec) map[string]string {
+func buildForkLabels(sourceJob *gryviav1.GryviaAIJob, fork gryviav1.ForkSpec) map[string]string {
 	labels := map[string]string{
 		"gryvia.io/forked-from": sourceJob.Name,
 		"gryvia.io/fork":        fork.Name,

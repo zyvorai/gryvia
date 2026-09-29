@@ -19,7 +19,7 @@ Build complex ML workflows with job dependencies and conditional execution.
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricWorkflow
+kind: GryviaWorkflow
 metadata:
   name: training-pipeline
 spec:
@@ -108,7 +108,7 @@ jobs:
 
 ```yaml
 apiVersion: gryvia.io/v1
-kind: FabricWorkflow
+kind: GryviaWorkflow
 metadata:
   name: daily-retraining
 spec:

@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
 
 class Quotas:
-    """Manage FabricQuota resources.
+    """Manage GryviaQuota resources.
 
     This class is not instantiated directly -- use ``client.quotas`` instead.
     """

@@ -1,0 +1,104 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.22.0
+  name: gryviasecuritypolicies.gryvia.io
+spec:
+  group: gryvia.io
+  names:
+    kind: GryviaSecurityPolicy
+    listKind: GryviaSecurityPolicyList
+    plural: gryviasecuritypolicies
+    singular: gryviasecuritypolicy
+  scope: Namespaced
+  versions:
+  - name: v1
+    schema:
+      openAPIV3Schema:
+        description: GryviaSecurityPolicy is the Schema for the gryviasecuritypolicies
+          API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: GryviaSecurityPolicySpec defines the desired state of GryviaSecurityPolicy
+            properties:
+              alertWebhook:
+                description: AlertWebhook is the URL to send security alerts to
+                type: string
+              autoBlock:
+                description: AutoBlock enables automatic blocking of detected threats
+                type: boolean
+              detectionRules:
+                description: DetectionRules defines the security detection rules to
+                  apply
+                items:
+                  description: SecurityDetectionRule defines a single security detection
+                    rule
+                  properties:
+                    enabled:
+                      description: Enabled indicates whether this detection rule is
+                        active
+                      type: boolean
+                    sensitivity:
+                      description: Sensitivity controls the detection sensitivity
+                        (low, medium, high)
+                      type: string
+                    type:
+                      description: Type is the detection type (escape, mining, exfiltration,
+                        privesc, driver_fim)
+                      type: string
+                  type: object
+                type: array
+              targetNamespaces:
+                description: TargetNamespaces is the list of namespaces to monitor
+                items:
+                  type: string
+                type: array
+            type: object
+          status:
+            description: GryviaSecurityPolicyStatus defines the observed state of
+              GryviaSecurityPolicy
+            properties:
+              activeDetections:
+                description: ActiveDetections is the number of active detection rules
+                type: integer
+              alertsTriggered:
+                description: AlertsTriggered is the total number of alerts triggered
+                type: integer
+              detectionCounts:
+                additionalProperties:
+                  type: integer
+                description: DetectionCounts maps detection type to count of triggered
+                  alerts
+                type: object
+              lastAlert:
+                description: LastAlert is the timestamp of the last alert
+                format: date-time
+                type: string
+              phase:
+                description: Phase is the current reconciliation phase
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

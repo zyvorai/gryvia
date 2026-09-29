@@ -1,4 +1,4 @@
-"""Inference service routes (FabricInferenceService, namespaced) for the dashboard."""
+"""Inference service routes (GryviaInferenceService, namespaced) for the dashboard."""
 from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -7,9 +7,9 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from .common import Deps, create_item, delete_item, get_item
 from .uiutil import NAME_MAX, NAME_PATTERN, find_one, list_all, meta, namespaces, prune
 
-PLURAL = "fabricinferenceservices"
-KIND = "FabricInferenceService"
-MODELS_PLURAL = "fabricmodelregistries"
+PLURAL = "gryviainferenceservices"
+KIND = "GryviaInferenceService"
+MODELS_PLURAL = "gryviamodelregistries"
 
 # UI display names -> CRD enum values.
 BACKENDS = {

@@ -1,8 +1,8 @@
-# FabricAIJob - Elastic distributed training with dynamic scaling
+# GryviaAIJob - Elastic distributed training with dynamic scaling
 # Starts with 4 nodes but can elastically scale between 2 and 8 nodes based
 # on cluster availability. Annotations configure the elastic scheduler behavior.
 apiVersion: gryvia.io/v1
-kind: FabricAIJob
+kind: GryviaAIJob
 metadata:
   name: llama-elastic-training
   namespace: ml-training

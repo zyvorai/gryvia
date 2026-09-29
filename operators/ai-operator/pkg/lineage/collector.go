@@ -20,10 +20,10 @@ type CollectedProvenance struct {
 	// Infrastructure details gathered from the cluster
 	Infrastructure gryviav1.InfrastructureProvenance
 
-	// Training details gathered from the FabricAIJob
+	// Training details gathered from the GryviaAIJob
 	Training gryviav1.TrainingProvenance
 
-	// Events gathered from the FabricAIJob
+	// Events gathered from the GryviaAIJob
 	Events gryviav1.EventsProvenance
 
 	// Code provenance gathered from the job container image
@@ -46,9 +46,9 @@ func NewCollector(c client.Client) *Collector {
 	return &Collector{Client: c}
 }
 
-// CollectProvenance gathers provenance data from the referenced FabricAIJob
+// CollectProvenance gathers provenance data from the referenced GryviaAIJob
 // and related cluster resources.
-func (c *Collector) CollectProvenance(ctx context.Context, lineage *gryviav1.FabricModelLineage) (*CollectedProvenance, error) {
+func (c *Collector) CollectProvenance(ctx context.Context, lineage *gryviav1.GryviaModelLineage) (*CollectedProvenance, error) {
 	logger := log.FromContext(ctx)
 	result := &CollectedProvenance{}
 
@@ -58,18 +58,18 @@ func (c *Collector) CollectProvenance(ctx context.Context, lineage *gryviav1.Fab
 		return result, nil
 	}
 
-	// Fetch the referenced FabricAIJob
-	job := &gryviav1.FabricAIJob{}
+	// Fetch the referenced GryviaAIJob
+	job := &gryviav1.GryviaAIJob{}
 	err := c.Get(ctx, types.NamespacedName{
 		Name:      jobRef,
 		Namespace: lineage.Namespace,
 	}, job)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("Referenced FabricAIJob not found", "jobRef", jobRef)
+			logger.Info("Referenced GryviaAIJob not found", "jobRef", jobRef)
 			return result, nil
 		}
-		return nil, fmt.Errorf("failed to get FabricAIJob %s: %w", jobRef, err)
+		return nil, fmt.Errorf("failed to get GryviaAIJob %s: %w", jobRef, err)
 	}
 
 	result.JobFound = true
@@ -90,8 +90,8 @@ func (c *Collector) CollectProvenance(ctx context.Context, lineage *gryviav1.Fab
 	return result, nil
 }
 
-// collectInfrastructure gathers infrastructure details from a FabricAIJob
-func (c *Collector) collectInfrastructure(job *gryviav1.FabricAIJob) gryviav1.InfrastructureProvenance {
+// collectInfrastructure gathers infrastructure details from a GryviaAIJob
+func (c *Collector) collectInfrastructure(job *gryviav1.GryviaAIJob) gryviav1.InfrastructureProvenance {
 	infra := gryviav1.InfrastructureProvenance{
 		GPUNodes:       job.Status.NodesAllocated,
 		NetworkType:    job.Spec.Network,
@@ -113,8 +113,8 @@ func (c *Collector) collectInfrastructure(job *gryviav1.FabricAIJob) gryviav1.In
 	return infra
 }
 
-// collectTraining gathers training configuration from a FabricAIJob
-func (c *Collector) collectTraining(job *gryviav1.FabricAIJob, lineage *gryviav1.FabricModelLineage) gryviav1.TrainingProvenance {
+// collectTraining gathers training configuration from a GryviaAIJob
+func (c *Collector) collectTraining(job *gryviav1.GryviaAIJob, lineage *gryviav1.GryviaModelLineage) gryviav1.TrainingProvenance {
 	training := gryviav1.TrainingProvenance{
 		JobRef: job.Name,
 	}
@@ -140,8 +140,8 @@ func (c *Collector) collectTraining(job *gryviav1.FabricAIJob, lineage *gryviav1
 	return training
 }
 
-// collectCode gathers code provenance from a FabricAIJob
-func (c *Collector) collectCode(job *gryviav1.FabricAIJob, lineage *gryviav1.FabricModelLineage) gryviav1.CodeProvenance {
+// collectCode gathers code provenance from a GryviaAIJob
+func (c *Collector) collectCode(job *gryviav1.GryviaAIJob, lineage *gryviav1.GryviaModelLineage) gryviav1.CodeProvenance {
 	code := lineage.Spec.Provenance.Code
 
 	// Auto-fill container image from the job spec if not already set
@@ -152,8 +152,8 @@ func (c *Collector) collectCode(job *gryviav1.FabricAIJob, lineage *gryviav1.Fab
 	return code
 }
 
-// collectEvents gathers event data from a FabricAIJob
-func (c *Collector) collectEvents(job *gryviav1.FabricAIJob) gryviav1.EventsProvenance {
+// collectEvents gathers event data from a GryviaAIJob
+func (c *Collector) collectEvents(job *gryviav1.GryviaAIJob) gryviav1.EventsProvenance {
 	events := gryviav1.EventsProvenance{}
 
 	// Detect anomalies from job conditions
@@ -185,7 +185,7 @@ func (c *Collector) collectEvents(job *gryviav1.FabricAIJob) gryviav1.EventsProv
 
 // ComputeProvenanceHash computes a SHA256 hash of the lineage provenance data.
 // When cryptographic chaining is enabled, it incorporates the previous hash.
-func ComputeProvenanceHash(lineage *gryviav1.FabricModelLineage, previousHash string) (string, error) {
+func ComputeProvenanceHash(lineage *gryviav1.GryviaModelLineage, previousHash string) (string, error) {
 	// Build a canonical representation of the provenance
 	provenanceData := struct {
 		Model      gryviav1.ModelIdentity  `json:"model"`
@@ -212,7 +212,7 @@ func ComputeProvenanceHash(lineage *gryviav1.FabricModelLineage, previousHash st
 }
 
 // EvaluateCompliance evaluates compliance status based on the lineage spec
-func EvaluateCompliance(lineage *gryviav1.FabricModelLineage) string {
+func EvaluateCompliance(lineage *gryviav1.GryviaModelLineage) string {
 	if len(lineage.Spec.Compliance.RegulatoryFramework) == 0 {
 		return "Compliant"
 	}
@@ -262,7 +262,7 @@ func EvaluateCompliance(lineage *gryviav1.FabricModelLineage) string {
 }
 
 // CheckLineageCompleteness determines if all required provenance data is present
-func CheckLineageCompleteness(lineage *gryviav1.FabricModelLineage) bool {
+func CheckLineageCompleteness(lineage *gryviav1.GryviaModelLineage) bool {
 	// Model identity must be complete
 	if lineage.Spec.Model.Name == "" || lineage.Spec.Model.Version == "" {
 		return false
@@ -287,7 +287,7 @@ func CheckLineageCompleteness(lineage *gryviav1.FabricModelLineage) bool {
 }
 
 // CheckReproducibility checks if the model can be reproduced from recorded provenance
-func CheckReproducibility(lineage *gryviav1.FabricModelLineage) bool {
+func CheckReproducibility(lineage *gryviav1.GryviaModelLineage) bool {
 	// Need code commit
 	if lineage.Spec.Provenance.Code.GitCommit == "" {
 		return false

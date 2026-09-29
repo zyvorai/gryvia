@@ -76,7 +76,7 @@ export default function Costs() {
                 </Link>
               }
             >
-              The gateway computes costs from the GPU-hours of jobs, grouped by team quota (FabricQuota). They appear here once a job has run.
+              The gateway computes costs from the GPU-hours of jobs, grouped by team quota (GryviaQuota). They appear here once a job has run.
             </EmptyState>
           </section>
         </div>

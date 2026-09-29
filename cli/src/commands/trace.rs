@@ -34,7 +34,7 @@ pub async fn execute(
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
         "gryvia.io",
         "v1",
-        "FabricTraceSession",
+        "GryviaTraceSession",
     ));
     let api: Api<DynamicObject> = Api::namespaced_with(
         client.kube_client.clone(),
@@ -45,7 +45,7 @@ pub async fn execute(
     let session_name = format!("trace-{}-{}", service, chrono::Utc::now().timestamp());
     let trace_obj = serde_json::from_value(json!({
         "apiVersion": "gryvia.io/v1",
-        "kind": "FabricTraceSession",
+        "kind": "GryviaTraceSession",
         "metadata": {
             "name": session_name,
             "namespace": namespace,
@@ -145,7 +145,7 @@ async fn fetch_flows(
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
         "gryvia.io",
         "v1",
-        "FabricFlow",
+        "GryviaFlow",
     ));
     let api: Api<DynamicObject> = Api::namespaced_with(
         client.kube_client.clone(),
