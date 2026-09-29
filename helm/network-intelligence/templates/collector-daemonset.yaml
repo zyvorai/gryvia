@@ -96,6 +96,18 @@ spec:
             {{- if .Values.ebpf.publishNodeFabric }}
             - -publish-node-fabric
             {{- end }}
+            {{- if .Values.ebpf.attributeNetwork }}
+            {{- if not .Values.ebpf.interface }}
+            {{- fail "ebpf.attributeNetwork needs ebpf.interface (cost_tracker is a tcx program)" }}
+            {{- end }}
+            - -attribute-network
+            {{- end }}
+            {{- if .Values.ebpf.publishNetworkUsage }}
+            {{- if not .Values.ebpf.attributeNetwork }}
+            {{- fail "ebpf.publishNetworkUsage needs ebpf.attributeNetwork" }}
+            {{- end }}
+            - -publish-network-usage
+            {{- end }}
             {{- with .Values.ebpf.ncclLib }}
             - -nccl-lib={{ . }}
             {{- end }}

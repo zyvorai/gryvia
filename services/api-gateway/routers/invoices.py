@@ -16,6 +16,8 @@ from fastapi.responses import Response
 
 from .tenancy import is_admin
 from .uiutil import namespaces, parse_ts
+from .netusage import (clean, fetch_network_records, hour_of, in_month as hour_in_month, load_rates,
+                       network_lines, tenant_of as net_tenant_of)
 from .usage import _csv_cell, _currency, _num, _start_of, _tenant_of, fetch_records
 from .common import Deps
 
@@ -44,7 +46,8 @@ def in_month(rec: Dict[str, Any], year: int, month: int) -> bool:
     return u.year == year and u.month == month
 
 
-def build_invoice(tenant: str, year: int, month: int, records: List[Dict[str, Any]]) -> Dict[str, Any]:
+def build_invoice(tenant: str, year: int, month: int, records: List[Dict[str, Any]],
+                  network: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     groups: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()
     all_cur: set = set()
     jobs_all: set = set()
@@ -90,6 +93,17 @@ def build_invoice(tenant: str, year: int, month: int, records: List[Dict[str, An
         inv["mixedCurrency"] = True
     if open_:
         inv["open"] = True
+    if network:
+        # Kept apart from the GPU lines: subtotal above is GPU only.
+        inv["networkLines"] = network["lines"]
+        inv["networkSubtotal"] = network["subtotal"]
+        inv["networkNote"] = network["note"]
+        if network.get("open"):
+            inv["open"] = True
+        if not records:
+            inv["currency"] = network["currency"]
+        elif network["currency"] != currency:
+            inv["mixedCurrency"] = True
     return inv
 
 
@@ -105,7 +119,13 @@ def invoice_csv(inv: Dict[str, Any]) -> str:
     for ln in inv["lines"]:
         row(ln["sku"], ln["gpuType"], ln["jobs"], ln["gpuHours"], ln["rate"], ln["amount"], ln["currency"])
     row("TOTAL", "", inv["jobs"], round(sum(ln["gpuHours"] for ln in inv["lines"]), 4), "", inv["subtotal"],
-        inv["currency"])
+        inv["currency"])  # GPU only
+    if "networkLines" in inv:  # network egress estimate, after and apart from the GPU total; gpuHours holds GB
+        for ln in inv["networkLines"]:
+            row(f"network:{ln['peerClass']}/{ln['zoneClass']}", "egress-GB", "", ln["egressGB"],
+                "" if ln["rate"] is None else ln["rate"], ln["amount"], ln["currency"])
+        row("NETWORK-SUBTOTAL", "egress-GB", "", round(sum(ln["egressGB"] for ln in inv["networkLines"]), 6), "",
+            inv["networkSubtotal"], inv["currency"])
     return buf.getvalue()
 
 
@@ -126,7 +146,26 @@ def build_router(deps: Deps) -> APIRouter:
                 if tenant and t != tenant:
                     continue
                 by_tenant.setdefault(t, []).append(r)
-        return [build_invoice(t, year, month, by_tenant[t]) for t in sorted(by_tenant)]
+        # Network usage (opt-in feature): only tenants with records AND a rate table get networkLines.
+        rates = await load_rates(deps)
+        net_by_tenant: Dict[str, List[Dict[str, Any]]] = {}
+        if rates is not None:
+            net = await _network_records(request, tenant)
+            for r in clean(net, "collector", tenant):
+                h = hour_of(r)
+                if h is not None and hour_in_month(h, year, month):
+                    net_by_tenant.setdefault(net_tenant_of(r), []).append(r)
+        return [
+            build_invoice(t, year, month, by_tenant.get(t, []), network_lines(net_by_tenant.get(t, []), rates))
+            for t in sorted(set(by_tenant) | set(net_by_tenant))]
+
+    async def _network_records(request: Request, tenant: Optional[str]) -> List[Dict[str, Any]]:
+        try:
+            if is_admin(request):
+                return await fetch_network_records(deps.k8s_custom, None)
+            return await fetch_network_records(deps.k8s_custom, namespaces(request, deps))
+        except Exception:  # noqa: BLE001 - the CRD may not be installed: invoices must still work
+            return []
 
     @router.get("/api/invoices")
     @deps.limiter.limit("30/minute")

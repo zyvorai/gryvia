@@ -30,6 +30,7 @@ import (
 	"github.com/zyvorai/gryvia/collector/pkg/graph"
 	"github.com/zyvorai/gryvia/collector/pkg/kube"
 	"github.com/zyvorai/gryvia/collector/pkg/loader"
+	"github.com/zyvorai/gryvia/collector/pkg/netcost"
 	"github.com/zyvorai/gryvia/collector/pkg/security"
 	"github.com/zyvorai/gryvia/collector/pkg/tuning"
 )
@@ -60,6 +61,8 @@ func main() {
 		metricsToken    = flag.String("metrics-token-file", "", "file with a bearer token (>= 32 chars) that Prometheus may present on /metrics only")
 		insecureListen  = flag.Bool("insecure-listener", false, "explicitly serve every endpoint without authentication (acknowledges the risk; contradicts the auth flags)")
 		requireAuth     = flag.Bool("require-auth", false, "refuse to start unless -api-token-file, -metrics-token-file or -tls-client-ca-file is set")
+		attributeNet    = flag.Bool("attribute-network", false, "attribute the bytes counted by cost_tracker (needs -iface, a cluster and NODE_NAME) to tenants and peer/zone classes; reads pods, nodes and namespaces. Off by default; see docs/network-cost-attribution.md")
+		publishNetUsage = flag.Bool("publish-network-usage", false, "every 60 s write per-tenant egress as GryviaNetworkUsageRecord objects into tenant-<name> namespaces (needs -attribute-network and RBAC: chart value ebpf.publishNetworkUsage)")
 		windowSec       = flag.Int("window", 300, "Aggregation sliding window in seconds")
 	)
 	flag.Parse()
@@ -273,6 +276,13 @@ func main() {
 			go (&fabric.NodePublisher{API: client, Folder: fabricFolder, Node: node, Log: log}).Run(ctx)
 			log.Infow("publishing node fabric health to GryviaNodeFabric", "node", node, "interval", fabric.NodePublishInterval.String())
 		}
+	}
+
+	if *publishNetUsage && !*attributeNet {
+		log.Fatalw("-publish-network-usage needs -attribute-network")
+	}
+	if *attributeNet {
+		startNetworkAttribution(ctx, log, mgr, node, *publishNetUsage)
 	}
 
 	// GPU aggregators.
@@ -592,4 +602,42 @@ func startQuotaSync(ctx context.Context, log *zap.SugaredLogger, pacer *fabric.P
 	go s.Run(ctx, fabric.QuotaSyncInterval)
 	log.Warnw("quota pace sync running", "interval", fabric.QuotaSyncInterval.String(), "dry_run", dryRun, "node", node,
 		"own_namespace", strings.TrimSpace(string(own)), "cgroup_root", cgroupPath)
+}
+
+// startNetworkAttribution runs the opt-in tenant network cost pipeline: the cost_tracker byte counters are
+// folded per scan into per-(hour, tenant, peer, zone) totals and, with publish, written as
+// GryviaNetworkUsageRecord. Every prerequisite is checked; a missing one leaves the feature off with a log line.
+func startNetworkAttribution(ctx context.Context, log *zap.SugaredLogger, mgr *loader.Manager, node string, publish bool) {
+	m := mgr.Map("cost_tracker.o", "traffic_costs")
+	if m == nil {
+		log.Warnw("-attribute-network ignored: cost_tracker.o is not loaded (needs -iface, kernel >= 6.6 with tcx)")
+		return
+	}
+	if node == "" {
+		log.Warnw("-attribute-network ignored: NODE_NAME is not set")
+		return
+	}
+	client, err := kube.NewInCluster()
+	if err != nil {
+		log.Warnw("-attribute-network ignored", "error", err)
+		return
+	}
+	dir := netcost.NewDirectory()
+	meter := netcost.NewMeter(dir, node)
+	go dir.Run(ctx, client, func(err error) { log.Warnw("network attribution: directory refresh failed", "error", err) })
+	go netcost.RunScan(ctx, m, meter, func(err error) { log.Warnw("network attribution: reading traffic_costs failed", "error", err) })
+	prometheus.MustRegister(prometheus.NewCounterFunc(prometheus.CounterOpts{
+		Name: "gryvia_netcost_unattributed_bytes_total",
+		Help: "Bytes seen by cost_tracker that were not attributed to a tenant (unknown, non-tenant, hostNetwork, loopback, same-node).",
+	}, func() float64 {
+		var n uint64
+		for _, v := range meter.Stats().Skipped {
+			n += v
+		}
+		return float64(n)
+	}))
+	log.Infow("network attribution running (unverified on a real cluster; egress-only billing)", "node", node, "publish", publish)
+	if publish {
+		go (&netcost.Publisher{API: client, Meter: meter, Node: node, Log: log}).Run(ctx)
+	}
 }

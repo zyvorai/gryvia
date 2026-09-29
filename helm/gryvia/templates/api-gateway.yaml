@@ -218,6 +218,14 @@ rules:
   - gryviausagerecords
   - gryviafabricsignals
   verbs: ["get", "list", "watch"]
+{{- if .Values.apiGateway.networkCost.enabled }}
+# apiGateway.networkCost.enabled: read the measured network usage and its price list.
+- apiGroups: ["gryvia.io"]
+  resources:
+  - gryvianetworkusagerecords
+  - gryvianetworkrates
+  verbs: ["get", "list", "watch"]
+{{- end }}
 # Write only the kinds the API creates, deletes or updates.
 - apiGroups: ["gryvia.io"]
   resources:

@@ -69,6 +69,14 @@ ebpf:
   # create to one name; the collector only writes the object named after its own NODE_NAME). Read by the
   # ai-operator only when its fabric-aware scheduling is on (see docs/fabric-scheduling.md).
   publishNodeFabric: false
+  # Attribute the bytes counted by cost_tracker (needs `interface`) to tenants and peer/zone classes
+  # (flag -attribute-network; docs/network-cost-attribution.md). Off by default. Reads only; no extra RBAC
+  # (pods, nodes, namespaces are already readable by the collector role).
+  attributeNetwork: false
+  # Also write per-tenant egress as GryviaNetworkUsageRecord objects into tenant-<name> namespaces every 60 s
+  # (flag -publish-network-usage). Needs attributeNetwork. Off by default. When on, the collector ClusterRole
+  # additionally gets get/create/patch on gryvianetworkusagerecords.
+  publishNetworkUsage: false
   # quota_pace is the only eBPF program that changes anything: it lowers SO_MAX_PACING_RATE of new outbound TCP
   # connections of cgroups that hold a lease. Everything here is off by default and needs cgroupPath.
   quotaPace:

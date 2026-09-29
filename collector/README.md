@@ -69,6 +69,8 @@ Metric families include `gryvia_network_*` (flow bytes, latency, active connecti
 | `-metrics-addr` | `:9090` | HTTP listen address |
 | `-ebpf-dir` | `/opt/gryvia/ebpf` | Directory with the compiled `.o` files |
 | `-iface` | empty | Interface for XDP/TCX programs (`packet_filter`, `dns_tracker`, `roce_cnp`, `cost_tracker`, `trace_correlator`); empty skips them |
+| `-attribute-network` | off | Attribute `cost_tracker` byte counters to tenants and peer/zone classes (needs `-iface`, a cluster, `NODE_NAME`); see [`docs/network-cost-attribution.md`](../docs/network-cost-attribution.md) |
+| `-publish-network-usage` | off | Write per-tenant egress as `GryviaNetworkUsageRecord` objects every 60 s (needs `-attribute-network`) |
 | `-cgroup-path` | empty | cgroup v2 path for `sockops`/`sk_msg`; empty skips them |
 | `-nccl-lib`, `-cuda-lib`, `-cufile-lib` | empty | Library paths for the NCCL, CUDA runtime and cuFile uprobes; empty means auto-discover |
 | `-uprobe-pid` | `0` | Find those libraries through `/proc/<pid>/maps` of this process |

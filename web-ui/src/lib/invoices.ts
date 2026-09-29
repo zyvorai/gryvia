@@ -1,5 +1,7 @@
 // Pure helpers for the Invoices page. Invoices are estimates built from job run time and catalog rates.
 export interface InvoiceLine { sku: string; gpuType: string; gpuHours: number; rate: number; amount: number; jobs: number }
+/** Egress estimate line (opt-in network cost attribution). rate is null and priced false for unpriced zone classes. */
+export interface NetworkLine { peerClass: string; zoneClass: string; egressBytes: number; egressGB: number; rate: number | null; amount: number; priced: boolean; currency: string }
 export interface Invoice {
   number: string
   tenant: string
@@ -12,6 +14,10 @@ export interface Invoice {
   jobs: number
   open?: boolean
   note?: string
+  /** Present only when network usage records and a GryviaNetworkRate exist; separate from the GPU subtotal. */
+  networkLines?: NetworkLine[]
+  networkSubtotal?: number
+  networkNote?: string
 }
 export interface InvoiceReport { month: string; items: Invoice[] }
 
@@ -70,4 +76,14 @@ export function invoiceTotalDisplay(inv: Pick<Invoice, 'subtotal' | 'currency'>)
 
 export function periodLabel(p: { from: string; to: string }): string {
   return `${p.from.slice(0, 10)} to ${p.to.slice(0, 10)}`
+}
+
+/** "cross-zone" -> "cross zone": zone and peer classes are kebab-case identifiers. */
+export function classLabel(c: string): string {
+  return c.replace(/-/g, ' ')
+}
+
+/** Price per GB, or "not priced" for classes without a rate. */
+export function networkRateDisplay(l: Pick<NetworkLine, 'rate' | 'priced' | 'currency'>): string {
+  return l.priced && l.rate !== null ? `${formatMoney(l.rate, l.currency || 'USD')}/GB` : 'not priced'
 }
