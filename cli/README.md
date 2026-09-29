@@ -123,10 +123,10 @@ gryvia cluster --watch 5
 gryvia quota
 
 # View specific team quota
-gryvia quota --team ml-research
+gryvia quota ml-research
 
 # Show budget details
-gryvia quota --team ml-research --budget
+gryvia quota ml-research --budget
 ```
 
 ### Cost Analysis
@@ -138,10 +138,10 @@ The `--period` parameter is validated and only accepts `day`, `week`, or `month`
 gryvia cost
 
 # View costs for specific team
-gryvia cost --team ml-research
+gryvia cost ml-research
 
 # Detailed breakdown
-gryvia cost --team ml-research --detailed
+gryvia cost ml-research --detailed
 ```
 
 ### Health Checks
@@ -178,7 +178,7 @@ gryvia delete job my-job --yes
 Validates the YAML file structure and checks that `apiVersion` and `kind` match known Gryvia types (e.g., `gryvia.io/v1` / `GryviaAIJob`).
 
 ```bash
-gryvia validate -f job.yaml
+gryvia validate job.yaml
 ```
 
 ## Global Options
@@ -203,7 +203,7 @@ gryvia --verbose submit -f job.yaml
 gryvia cluster
 
 # 2. View available quota
-gryvia quota --team ml-research --budget
+gryvia quota ml-research --budget
 
 # 3. Submit training job
 gryvia submit -f llm-training.yaml --wait
@@ -215,23 +215,23 @@ gryvia status llm-training
 gryvia logs llm-training --follow
 
 # 6. Check cost impact
-gryvia cost --team ml-research
+gryvia cost ml-research
 ```
 
 ### Team Manager Workflow
 
 ```bash
 # View team quota status
-gryvia quota --team computer-vision --budget
+gryvia quota computer-vision --budget
 
 # List all running jobs
 gryvia list jobs | grep Running
 
 # Check monthly spending
-gryvia cost --team computer-vision --period month
+gryvia cost computer-vision --period month
 
 # Check if approaching budget
-gryvia quota --team computer-vision
+gryvia quota computer-vision
 ```
 
 ## Output Formats

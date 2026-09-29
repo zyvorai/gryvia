@@ -62,3 +62,24 @@ jobs:
         run: |
           shellcheck -S warning scripts/install.sh scripts/kind-demo.sh scripts/rename-kinds.sh
           bash -n scripts/deploy-remote.sh
+
+  docs-accuracy:
+    name: Documented commands and examples are valid
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cli
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pyyaml
+      - name: Build the CLI
+        run: cargo build --locked
+        working-directory: cli
+      - name: Every documented `gryvia` command is accepted by the CLI parser
+        run: python3 scripts/check-cli-docs.py
+      - name: Every example manifest matches its CRD schema
+        run: python3 scripts/check-examples.py

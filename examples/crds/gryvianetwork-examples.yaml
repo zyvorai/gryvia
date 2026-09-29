@@ -1,95 +1,54 @@
-# Example: InfiniBand HDR200 Configuration
+# Examples: cluster networks. A GryviaNetwork creates the NetworkAttachmentDefinitions that jobs
+# attach to. networkType is one of rdma, sriov or standard.
+#
+# Example: InfiniBand (RDMA) network
 apiVersion: gryvia.io/v1
-kind: GryviaNetworkPolicy
+kind: GryviaNetwork
 metadata:
   name: infiniband-hdr200
 spec:
-  topology: infiniband
-
-  infiniband:
-    enabled: true
-    speed: HDR200  # 200 Gb/s
-    subnetManager: ib-sm.cluster.local
-    rdma:
-      mode: exclusive
-      devicesPerNode: 8
-
-  gpuDirect:
-    enabled: true
-    numaAffinity: true
-
-  nccl:
-    socketIfName: "ib0"
-    ibGidIndex: 3
-    ibTc: 136
-    minNRings: 8
-    maxNRings: 16
-    ibDisable: false
-    p2pDisable: false
-
-  bandwidthReservation:
-    enabled: true
-    minBandwidthGbps: 100
-    maxBandwidthGbps: 200
+  networkType: rdma
+  targetNamespace: default
+  mtu: 4096
+  rdma:
+    mode: infiniband
+    devices: [mlx5_0, mlx5_1, mlx5_2, mlx5_3]
+    subnet: 10.100.0.0/16
+    gateway: 10.100.0.1
+  nodeSelector:
+    gryvia.io/rdma: "true"
 ---
-# Example: RoCEv2 Configuration
+# Example: RoCE v2 (RDMA over Ethernet) network
 apiVersion: gryvia.io/v1
-kind: GryviaNetworkPolicy
+kind: GryviaNetwork
 metadata:
   name: roce-v2
 spec:
-  topology: roce
-
-  roce:
-    enabled: true
-    version: v2
-    pfc:
-      enabled: true
-      priorities: [3, 4]
-    ecn:
-      enabled: true
-
-  sriov:
-    enabled: true
-    vfsPerNIC: 16
-    resourcePool: mellanox-rdma
-
-  gpuDirect:
-    enabled: true
-
-  nccl:
-    socketIfName: "enp0s3f0"
-    minNRings: 4
-    maxNRings: 8
+  networkType: rdma
+  targetNamespace: default
+  mtu: 9000
+  rdma:
+    mode: roce
+    devices: [mlx5_0, mlx5_1]
+    subnet: 10.200.0.0/16
+  nodeSelector:
+    gryvia.io/roce: "true"
 ---
-# Example: Multi-Rail Network
+# Example: SR-IOV virtual functions on a physical NIC
 apiVersion: gryvia.io/v1
-kind: GryviaNetworkPolicy
+kind: GryviaNetwork
 metadata:
-  name: multi-rail
+  name: sriov-eth1
 spec:
-  topology: multi-rail
+  networkType: sriov
+  targetNamespace: default
+  sriov:
+    physicalInterface: eth1
+    numVfs: 8
+    resourceName: gryvia.io/sriov_eth1
+    vfDriver: vfio-pci
+    subnet: 10.150.0.0/16
 
-  # Use multiple network interfaces for bandwidth aggregation
-  infiniband:
-    enabled: true
-    speed: HDR200
-    rdma:
-      mode: exclusive
-      devicesPerNode: 8  # 8 IB interfaces per node
-
-  nccl:
-    # Use all IB interfaces
-    socketIfName: "ib0,ib1,ib2,ib3,ib4,ib5,ib6,ib7"
-    minNRings: 16
-    maxNRings: 32
-
-  segmentation:
-    enabled: true
-    vlans:
-      management: 100
-      storage: 200
-      compute: 300
 ---
 # Example: Job with Network Requirements
 apiVersion: gryvia.io/v1
@@ -100,7 +59,7 @@ spec:
   type: training
 
   # Network requirements
-  # RDMA fabric (InfiniBand HDR200 with GPUDirect, see GryviaNetworkPolicy above)
+  # RDMA network (see the GryviaNetwork "infiniband-hdr200" example above)
   network: rdma
 
   # Enable NCCL optimizations

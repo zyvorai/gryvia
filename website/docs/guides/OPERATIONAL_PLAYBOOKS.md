@@ -2,6 +2,8 @@
 
 Standard operating procedures and runbooks for Gryvia operations.
 
+> Run `gryvia <command> --help` for options. Commands not shown here are not implemented yet; the playbooks use `kubectl` for those steps.
+
 ## Table of Contents
 
 1. [Emergency Response](#emergency-response)
@@ -25,37 +27,29 @@ Standard operating procedures and runbooks for Gryvia operations.
 **Response Steps:**
 
 ```bash
-# 1. Identify failed node
-gryvia health status cluster-gpu-health
+# 1. Identify the failed node
+gryvia health gpu
+gryvia list nodes
 
 # 2. Cordon node immediately
 kubectl cordon gpu-node-05
 
-# 3. List affected jobs
-kubectl get gryviaaijobs -o wide | grep gpu-node-05
+# 3. List affected jobs (job pods carry the label gryvia.io/job=<name>)
+kubectl get pods -A -o wide | grep gpu-node-05
 
-# 4. Migrate running jobs
-for job in $(kubectl get gryviaaijobs -o name | grep running); do
-  gryvia job migrate $job --target-node gpu-node-06
-done
-
-# 5. Drain node gracefully
+# 4. Drain node gracefully (evicted job pods are rescheduled on other nodes
+#    if the job allows it; otherwise cancel and resubmit the job)
 kubectl drain gpu-node-05 --ignore-daemonsets --delete-emptydir-data
 
-# 6. Run diagnostics
-gryvia health diagnose --node gpu-node-05
+# 5. Inspect the node and its events
+kubectl describe node gpu-node-05
+kubectl get events -A --field-selector involvedObject.name=gpu-node-05
 
-# 7. Create incident ticket
-gryvia incident create \
-  --title "GPU node failure: gpu-node-05" \
-  --severity high \
-  --assign sre-team
+# 6. Check GPU-level details reported by Gryvia
+gryvia get node gpu-node-05
 
-# 8. Schedule maintenance
-# If hardware replacement needed:
-gryvia maintenance schedule gpu-node-05 \
-  --action "Replace failed GPU" \
-  --window "2024-01-22 02:00-06:00"
+# 7. Record the incident in your ticketing system and, if hardware
+#    replacement is needed, schedule a maintenance window with the data center team
 ```
 
 **Recovery:**
@@ -66,13 +60,14 @@ gryvia maintenance schedule gpu-node-05 \
 kubectl uncordon gpu-node-05
 
 # 2. Verify health
-gryvia health check node gpu-node-05
+gryvia health gpu
+gryvia get node gpu-node-05
 
-# 3. Run test job
-gryvia job test --node gpu-node-05 --gpu-count 8
+# 3. Run a small test job on the node (see the job spec reference for the format)
+gryvia validate test-job.yaml
+gryvia submit -f test-job.yaml --wait
 
-# 4. Close incident
-gryvia incident resolve <incident-id>
+# 4. Close the incident in your ticketing system
 ```
 
 ---
@@ -88,33 +83,24 @@ gryvia incident resolve <incident-id>
 
 ```bash
 # 1. Check current capacity
-gryvia cluster status
+gryvia cluster --detailed
 
 # 2. View queue
-gryvia queue status default
+gryvia queue
 
-# 3. Identify bottleneck
-gryvia capacity analyze
+# 3. Identify the jobs holding GPUs
+gryvia list jobs -a
 
 # 4. Options:
 
-# Option A: Scale up (if auto-scaling enabled)
-gryvia autoscale trigger --gpu-type A100-80G --count 16
+# Option A: Cancel or resubmit lower-priority jobs to free GPUs
+gryvia cancel <job-name>
 
-# Option B: Optimize existing jobs
-gryvia profile analyze-queue
-# Shows jobs that can be right-sized or use different GPU types
+# Option B: Add GPU nodes (see Capacity Planning) and check they appear
+gryvia list nodes
 
-# Option C: Enable GPU sharing for dev jobs
-gryvia gpu-sharing enable --gpu-type T4 --max-pods 4
-
-# Option D: Migrate low-priority jobs to spot
-gryvia job migrate-to-spot --priority low --count 10
-
-# 5. Communicate to users
-gryvia announcement create \
-  --title "Cluster at capacity" \
-  --message "Long queue times expected. Consider using spot instances or T4 GPUs."
+# 5. Communicate the situation to users through your usual channels
+#    (for example the team chat channel)
 ```
 
 ---
@@ -129,37 +115,25 @@ gryvia announcement create \
 
 ```bash
 # 1. Check budget status
-gryvia budget status --team ml-research
+gryvia quota ml-research --budget
 
 # 2. Analyze spending
-gryvia cost analyze --team ml-research --breakdown
+gryvia cost ml-research --detailed
 
 # 3. Identify cost drivers
-gryvia cost top-jobs --team ml-research --top 10
+gryvia list jobs
 
 # 4. Options:
 
-# Option A: Request budget increase
-gryvia budget request-increase \
-  --team ml-research \
-  --amount 10000 \
-  --justification "Critical deadline"
+# Option A: Request a budget increase
+# Ask the team lead or finance owner, then update the team's GryviaQuota:
+kubectl edit gryviaquota <quota-name>
 
-# Option B: Optimize spending
+# Option B: Reduce spending
 # Cancel low-priority jobs
-gryvia job cancel --priority low --team ml-research
+gryvia cancel <job-name>
 
-# Enable spot instances
-gryvia job migrate-to-spot --team ml-research
-
-# Use smaller GPUs
-gryvia recommend right-size --team ml-research
-
-# 5. Set up alerts
-gryvia budget alert create \
-  --team ml-research \
-  --threshold 80 \
-  --notify team-lead@company.com
+# 5. Set up budget alerts with your monitoring stack (for example Prometheus alert rules)
 ```
 
 ---
@@ -171,20 +145,21 @@ gryvia budget alert create \
 **Diagnosis:**
 
 ```bash
-# 1. Profile the job
-gryvia profile training-job-42
+# 1. Check job status and recent logs
+gryvia status training-job-42
+gryvia logs training-job-42 --tail 200
 
-# 2. Check GPU utilization
-gryvia metrics gpu-utilization training-job-42
+# 2. Check training insights
+gryvia gpu training --job training-job-42
 
-# 3. Check data loading
-gryvia profile data-loading training-job-42
+# 3. Check job events
+kubectl describe gryviaaijob training-job-42
 
 # 4. Check network
-gryvia network metrics training-job-42
+gryvia network status
 
-# 5. Get recommendations
-gryvia optimize training-job-42
+# 5. Check collective communication
+gryvia gpu nccl --job training-job-42
 ```
 
 **Common Fixes:**
@@ -223,19 +198,19 @@ spec:
 **Diagnosis:**
 
 ```bash
-# 1. Check network configuration
-gryvia network nccl-check training-job-42
+# 1. Check NCCL collective operation stats
+gryvia gpu nccl --job training-job-42
 
-# 2. Test network bandwidth
-gryvia network test bandwidth \
-  --nodes gpu-node-01,gpu-node-02 \
-  --gpus-per-node 8
+# 2. Check RDMA and GPU memory transfer stats on the nodes
+gryvia gpu rdma --node gpu-node-01
+gryvia gpu memory --node gpu-node-01
 
-# 3. Check topology
-gryvia topology analyze training-job-42
+# 3. Check network health and anomalies
+gryvia network status
+gryvia network anomalies
 
 # 4. View NCCL logs
-kubectl logs training-job-42 | grep NCCL
+gryvia logs training-job-42 --tail 500 | grep NCCL
 ```
 
 **Common Fixes:**
@@ -272,45 +247,28 @@ spec:
 **Process:**
 
 ```bash
-# 1. Generate monthly report
-gryvia cost report --month 2024-01 --output report.pdf
+# 1. Review spending for the month, all teams
+gryvia cost --period month --detailed
 
-# 2. Analyze by team
-gryvia cost breakdown --group-by team
+# 2. Review a single team
+gryvia cost ml-research --period month --detailed
 
-# 3. Identify waste
-gryvia cost waste --last 30d
+# 3. Compare against quota and budget
+gryvia quota --budget
 
-# 4. Get optimization recommendations
-gryvia cost optimize --potential-savings
-
-# 5. Compare to budget
-gryvia budget compare --month 2024-01
-
-# 6. Project next month
-gryvia cost forecast --next-month
+# 4. Identify long-running or large jobs
+gryvia list jobs -a
 ```
 
 **Optimization Actions:**
 
 ```bash
-# Enable spot instances for batch jobs
-gryvia job migrate-to-spot --job-type batch --dry-run
-gryvia job migrate-to-spot --job-type batch --confirm
+# Cancel jobs that are no longer needed
+gryvia cancel <job-name>
 
-# Enable MIG for development
-gryvia gpu-sharing enable --gpu-type A100-80G --profile all-1g.10gb
-
-# Right-size over-provisioned jobs
-gryvia recommend right-size --execute
-
-# Set up budget alerts
-for team in ml-research cv-team nlp-team; do
-  gryvia budget alert create \
-    --team $team \
-    --threshold 75,90,100 \
-    --action warn,warn,block
-done
+# Review quotas and adjust them where teams are over-provisioned
+gryvia quota ml-research --budget
+kubectl edit gryviaquota <quota-name>
 ```
 
 ---
@@ -322,61 +280,39 @@ done
 **Process:**
 
 ```bash
-# 1. Analyze current utilization
-gryvia capacity analyze --last 90d
+# 1. Review current cluster capacity and node details
+gryvia cluster --detailed
 
-# 2. Forecast demand
-gryvia capacity forecast --next-quarter
+# 2. Review quota usage per team
+gryvia quota --budget
 
-# 3. Identify gaps
-gryvia capacity gaps --horizon 90d
+# 3. Review queue pressure
+gryvia queue
 
-# 4. Generate expansion plan
-gryvia capacity plan --output expansion-plan.json
-
-# 5. Estimate costs
-gryvia capacity cost-estimate expansion-plan.json
-
-# 6. Create presentation
-gryvia capacity presentation --output capacity-review-q2.pdf
+# 4. Review spending trends
+gryvia cost --period month
 ```
+
+Build the demand forecast, expansion plan, cost estimate and budget request
+with your usual planning and procurement tools; Gryvia does not generate these yet.
 
 **Expansion Procedure:**
 
 ```bash
-# 1. Request budget approval
-gryvia budget request-capex \
-  --amount 500000 \
-  --justification "Q2 capacity expansion" \
-  --attach expansion-plan.json
-
-# 2. Order hardware
+# 1. Obtain budget approval and order hardware
 # (External procurement process)
 
-# 3. Schedule installation
-gryvia maintenance schedule-installation \
-  --nodes 16 \
-  --gpu-type A100-80G \
-  --date 2024-04-01
+# 2. Install, network and join the new nodes to Kubernetes
+# (Follow the New Node Onboarding checklist below)
 
-# 4. Pre-configure
-gryvia node preconfigure \
-  --count 16 \
-  --gpu-type A100-80G \
-  --network infiniband-hdr200
+# 3. Confirm the new nodes are Ready
+kubectl get nodes
 
-# 5. Add to cluster
-for node in gpu-node-{17..32}; do
-  gryvia node add $node --validate
-done
+# 4. Verify Gryvia sees them and the cluster is healthy
+gryvia list nodes
+gryvia health gpu
 
-# 6. Verify
-gryvia cluster validate
-
-# 7. Announce
-gryvia announcement create \
-  --title "Capacity Expansion Complete" \
-  --message "16 new A100-80G nodes available"
+# 5. Announce the new capacity to users through your usual channels
 ```
 
 ---
@@ -388,103 +324,59 @@ gryvia announcement create \
 **Pre-Maintenance:**
 
 ```bash
-# 1. Announce maintenance (7 days before)
-gryvia announcement create \
-  --title "Scheduled Maintenance" \
-  --message "Maintenance window: Jan 28, 02:00-06:00 UTC" \
-  --send-email
+# 1. Announce the maintenance window to users (for example 7 days before)
+#    through your usual channels
 
-# 2. Create maintenance window
-gryvia maintenance create \
-  --start "2024-01-28T02:00:00Z" \
-  --duration 4h \
-  --nodes gpu-node-{01..04}
+# 2. Send reminders (for example 24 hours before)
 
-# 3. Send reminders (24h before)
-gryvia announcement remind maintenance-001
-
-# 4. Verify no critical jobs scheduled
-gryvia jobs list --during-maintenance maintenance-001
+# 3. Review the jobs running on the affected nodes
+gryvia list jobs -a
+kubectl get pods -A -o wide --field-selector spec.nodeName=gpu-node-01
 ```
 
 **During Maintenance:**
 
 ```bash
-# 1. Enable maintenance mode
-gryvia maintenance start maintenance-001
+# 1. Cordon nodes
+for node in gpu-node-01 gpu-node-02 gpu-node-03 gpu-node-04; do
+  kubectl cordon $node
+done
 
-# 2. Cordon nodes
-gryvia maintenance cordon maintenance-001
+# 2. Drain gracefully
+for node in gpu-node-01 gpu-node-02 gpu-node-03 gpu-node-04; do
+  kubectl drain $node --ignore-daemonsets --delete-emptydir-data --timeout=30m
+done
 
-# 3. Drain gracefully
-gryvia maintenance drain maintenance-001 --timeout 30m
-
-# 4. Perform maintenance
+# 3. Perform maintenance
 # - Update firmware
 # - Apply patches
 # - Hardware upgrades
 # - Network configuration
 
-# 5. Validate nodes
-for node in gpu-node-{01..04}; do
-  gryvia health check node $node
-  gryvia health test $node --full
+# 4. Validate nodes
+gryvia health gpu
+gryvia get node gpu-node-01
+
+# 5. Uncordon nodes
+for node in gpu-node-01 gpu-node-02 gpu-node-03 gpu-node-04; do
+  kubectl uncordon $node
 done
-
-# 6. Uncordon nodes
-gryvia maintenance uncordon maintenance-001
-
-# 7. End maintenance mode
-gryvia maintenance complete maintenance-001
 ```
 
 **Post-Maintenance:**
 
 ```bash
 # 1. Verify cluster health
-gryvia health status cluster-gpu-health
+gryvia health
+gryvia cluster --detailed
 
-# 2. Run smoke tests
-gryvia test smoke
+# 2. Run a smoke test job
+gryvia submit -f smoke-test.yaml --wait
 
 # 3. Monitor for issues
-gryvia monitor --window 2h
+gryvia queue --watch 30
 
-# 4. Send completion notice
-gryvia announcement create \
-  --title "Maintenance Complete" \
-  --message "All systems operational"
-```
-
----
-
-### Rolling Updates
-
-**Procedure:**
-
-```bash
-# 1. Plan rollout
-gryvia upgrade plan --version 1.1.0
-
-# 2. Create rollout
-gryvia upgrade create \
-  --version 1.1.0 \
-  --strategy rolling \
-  --max-unavailable 25%
-
-# 3. Start rollout
-gryvia upgrade start
-
-# 4. Monitor progress
-gryvia upgrade status
-
-# 5. If issues detected
-gryvia upgrade pause
-# Fix issues
-gryvia upgrade resume
-
-# 6. Complete rollout
-gryvia upgrade verify
+# 4. Send a completion notice to users through your usual channels
 ```
 
 ---
@@ -502,48 +394,30 @@ gryvia upgrade verify
 
 **P0 Incident Response:**
 
+Declaring the incident, notifying stakeholders, assembling the response team,
+opening a war room and posting status updates (every 15 minutes) happen in your
+incident tooling (for example PagerDuty and Slack); Gryvia does not manage incidents.
+
 ```bash
-# 1. Declare incident
-gryvia incident create \
-  --severity P0 \
-  --title "Cluster outage" \
-  --description "Complete cluster unavailable"
+# 1. Assess the cluster
+gryvia cluster --detailed
+gryvia health
 
-# 2. Notify stakeholders
-gryvia incident notify \
-  --channels slack,pagerduty,email \
-  --recipients on-call,leadership
+# 2. Check the control plane and Gryvia components
+kubectl get nodes
+kubectl get pods -A | grep -v Running
 
-# 3. Assemble response team
-gryvia incident assign \
-  --incident-lead alice \
-  --tech-lead bob \
-  --comms-lead charlie
+# 3. Review recent events
+kubectl get events -A --sort-by=.lastTimestamp
 
-# 4. Create war room
-gryvia incident war-room create
-
-# 5. Update status every 15 minutes
-gryvia incident update \
-  --status "Investigating root cause" \
-  --eta "30 minutes to diagnosis"
-
-# 6. Implement fix
+# 4. Implement fix
 # ... resolution steps ...
 
-# 7. Verify resolution
-gryvia health status cluster-gpu-health
-gryvia test smoke
+# 5. Verify resolution
+gryvia health
+gryvia list jobs -a
 
-# 8. Clear incident
-gryvia incident resolve \
-  --resolution "Restored from backup" \
-  --duration "2h 15m"
-
-# 9. Schedule post-mortem
-gryvia incident post-mortem schedule \
-  --date "2024-01-23 14:00" \
-  --required alice,bob,charlie
+# 6. Close the incident and schedule the post-mortem in your incident tooling
 ```
 
 **Post-Mortem Template:**
@@ -607,11 +481,11 @@ gryvia incident post-mortem schedule \
 ### Job Troubleshooting
 
 ```bash
-☐ Check job status: gryvia job status <name>
-☐ View logs: gryvia job logs <name>
+☐ Check job status: gryvia status <name>
+☐ View logs: gryvia logs <name>
 ☐ Check events: kubectl describe gryviaaijob <name>
 ☐ Verify resources available
-☐ Check quota/budget
+☐ Check quota/budget: gryvia quota <team> --budget
 ☐ Review node health
 ☐ Check network connectivity
 ☐ Verify image exists and accessible
@@ -671,34 +545,32 @@ GPUError:
 
 ```bash
 # Cluster health
-gryvia health status cluster-gpu-health
-gryvia cluster validate
-gryvia node list --unhealthy
+gryvia health
+gryvia cluster --detailed
+gryvia list nodes
 
 # Performance
-gryvia profile <job-name>
-gryvia metrics gpu-utilization
-gryvia network metrics
+gryvia status <job-name>
+gryvia gpu training --job <job-name>
+gryvia gpu nccl --job <job-name>
+gryvia network status
 
 # Cost
-gryvia cost analyze
-gryvia cost optimize
-gryvia budget status
+gryvia cost <team> --detailed
+gryvia quota <team> --budget
 
 # Capacity
-gryvia capacity analyze
-gryvia capacity forecast
-gryvia queue status
+gryvia cluster --detailed
+gryvia queue
 
-# Incidents
-gryvia incident create
-gryvia incident update
-gryvia incident resolve
+# Jobs
+gryvia list jobs -a
+gryvia cancel <job-name>
 
-# Maintenance
-gryvia maintenance create
-gryvia maintenance start
-gryvia maintenance complete
+# Maintenance (kubectl)
+# kubectl cordon <node>
+# kubectl drain <node> --ignore-daemonsets --delete-emptydir-data
+# kubectl uncordon <node>
 ```
 
 ---

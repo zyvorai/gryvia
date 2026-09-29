@@ -1,6 +1,8 @@
 # Gryvia CLI Guide
 
-The Gryvia CLI provides a powerful command-line interface for managing GPU clusters, submitting jobs, monitoring quotas, and analyzing costs.
+The Gryvia CLI provides a command-line interface for managing GPU clusters, submitting jobs, monitoring quotas, and analyzing costs.
+
+Run `gryvia <command> --help` for the authoritative list of options for any command; this guide may lag behind the CLI.
 
 ## Installation
 
@@ -75,7 +77,7 @@ gryvia cluster --detailed
 gryvia quota
 
 # Specific team with budget details
-gryvia quota --team ml-research --budget
+gryvia quota ml-research --budget
 ```
 
 ### 4. Analyze Costs
@@ -85,7 +87,7 @@ gryvia quota --team ml-research --budget
 gryvia cost
 
 # Specific team with details
-gryvia cost --team ml-research --detailed
+gryvia cost ml-research --detailed
 ```
 
 ## Common Workflows
@@ -94,7 +96,7 @@ gryvia cost --team ml-research --detailed
 
 ```bash
 # 1. Check available GPU quota
-gryvia quota --team my-team
+gryvia quota my-team
 
 # 2. View available GPU nodes
 gryvia list nodes
@@ -109,26 +111,26 @@ gryvia status my-experiment
 gryvia logs my-experiment --follow
 
 # 6. Check cost impact
-gryvia cost --team my-team
+gryvia cost my-team
 ```
 
 ### Team Manager Workflow
 
 ```bash
 # 1. View team quota and budget status
-gryvia quota --team computer-vision --budget
+gryvia quota computer-vision --budget
 
 # 2. List running jobs
 gryvia list jobs
 
 # 3. Check monthly spending
-gryvia cost --team computer-vision --period month
+gryvia cost computer-vision --period month
 
 # 4. Cancel expensive job if needed (sets status to "Cancelled", preserves job record)
 gryvia cancel expensive-job
 
 # 5. Monitor budget alerts
-gryvia quota --team computer-vision
+gryvia quota computer-vision
 ```
 
 ### Cluster Admin Workflow
@@ -236,10 +238,10 @@ gryvia cancel my-job --yes
 gryvia list quotas
 
 # Specific team quota
-gryvia quota --team ml-research
+gryvia quota ml-research
 
 # With budget details
-gryvia quota --team ml-research --budget
+gryvia quota ml-research --budget
 ```
 
 #### Quota Details
@@ -266,7 +268,7 @@ The `--period` parameter is validated and only accepts `day`, `week`, or `month`
 gryvia cost
 
 # Specific team
-gryvia cost --team ml-research
+gryvia cost ml-research
 
 # Different time periods
 gryvia cost --period day
@@ -274,7 +276,7 @@ gryvia cost --period week
 gryvia cost --period month
 
 # Detailed breakdown
-gryvia cost --team ml-research --detailed
+gryvia cost ml-research --detailed
 ```
 
 #### Budget Alerts
@@ -321,8 +323,8 @@ gryvia get node gpu-worker-01 --output json
 # View job queue (pending/queued/scheduling jobs)
 gryvia queue
 
-# Filter by name
-gryvia queue --name my-experiment
+# Show a single queue by name
+gryvia queue my-experiment
 
 # Watch mode (refresh every 5 seconds)
 gryvia queue --watch 5
@@ -396,99 +398,80 @@ Validates the YAML file structure and checks that `apiVersion` and `kind` match 
 
 ```bash
 # Validate job YAML before submission
-gryvia validate -f job.yaml
+gryvia validate job.yaml
 ```
 
 ## Network Intelligence Commands
 
-### Network Tracing
+### Network Overview
 
 ```bash
-# Start a live trace session for a pod
-gryvia network trace --pod training-worker-0 --duration 5m
+# Network health overview
+gryvia network status
+```
 
-# Trace with protocol and port filters
-gryvia network trace --pod training-worker-0 \
-  --protocol TCP --port 29500 --duration 2m
+### Network Tracing
 
-# Trace across a namespace
-gryvia network trace --namespace ml-research --duration 1m
+`gryvia network trace` takes the target service as a positional argument. The capture level is `l3`, `l4` or `l7` (default `l7`), and the duration defaults to `2m`.
 
-# View results from a completed trace session
-gryvia network trace --session debug-training-latency --results
+```bash
+# Trace a service for 5 minutes
+gryvia network trace training-service --duration 5m
+
+# Trace at L4 in a specific namespace
+gryvia network trace training-service --level l4 --trace-namespace ml-research --duration 2m
+
+# Stream results live
+gryvia network trace training-service --follow
 ```
 
 ### Flow Analysis
 
 ```bash
-# View real-time flows for a namespace
-gryvia network flows --namespace ml-research
+# Recent flows in a namespace
+gryvia network flows --flow-namespace ml-research
 
-# Top flows by volume
-gryvia network flows --top 20 --sort bytes
-
-# Flows for a specific pod
-gryvia network flows --pod training-worker-0
+# Flows for a specific service over the last hour
+gryvia network flows --service training-service --last 1h
 
 # Export flows as JSON
-gryvia network flows --namespace ml-research --output json
+gryvia network flows --flow-namespace ml-research --output json
 ```
 
 ### Service Graph
 
 ```bash
 # View ASCII service dependency graph
-gryvia network graph --namespace ml-research
+gryvia network graph --graph-namespace ml-research
 
-# Multiple namespaces
-gryvia network graph --namespace ml-research,ml-platform,storage
-
-# Export as DOT format for Graphviz
-gryvia network graph --namespace ml-research --output dot > graph.dot
-
-# Include external endpoints
-gryvia network graph --namespace ml-research --external
+# JSON output
+gryvia network graph --graph-namespace ml-research --format json
 ```
 
 ### Network Policy Management
 
 ```bash
-# List active flow policies
+# List flow policies
 gryvia network policy list
 
-# Apply a flow policy
-gryvia network policy apply -f flow-policy.yaml
+# Show auto-generated policy suggestions
+gryvia network policy suggest --policy-namespace ml-research
 
-# Audit mode (log but don't enforce)
-gryvia network policy audit --namespace ml-research
-
-# View autopolicy suggestions
-gryvia network policy suggestions
-
-# Accept an autopolicy suggestion
-gryvia network policy accept suggestion-name
-
-# View blocked traffic
-gryvia network policy blocked --namespace ml-research
+# Apply a suggested policy by name
+gryvia network policy apply suggestion-name --policy-namespace ml-research
 ```
 
 ### Anomaly Detection
 
 ```bash
-# View active network anomalies
+# View detected network anomalies
 gryvia network anomalies
 
-# Filter by severity
+# Filter by severity (critical, high, medium, low)
 gryvia network anomalies --severity critical
 
-# View anomaly details
-gryvia network anomalies --name latency-degradation --details
-
-# Acknowledge an anomaly
-gryvia network anomalies ack latency-degradation
-
-# View anomaly history
-gryvia network anomalies --history --days 7
+# Filter by service, as JSON
+gryvia network anomalies --service training-service --output json
 ```
 
 For full documentation on network intelligence features, see [Network Intelligence Guide](NETWORK_INTELLIGENCE.md).
@@ -502,17 +485,18 @@ gryvia security alerts
 # Filter by severity
 gryvia security alerts --severity critical
 
-# View security policy status
+# Filter by alert type (escape, mining, exfiltration, privesc)
+gryvia security alerts --alert-type mining
+
+# View security status overview
 gryvia security status
 
-# Apply a security policy
-gryvia security policy apply -f security-policy.yaml
+# List security policies
+gryvia security policy list
 
-# View blocked threats
-gryvia security alerts --type blocked
-
-# Export security report
-gryvia security alerts --output json --days 30 > security-report.json
+# Create a security policy
+gryvia security policy create my-policy \
+  --namespaces ml-research,ml-platform --rules escape,mining --auto-block
 ```
 
 ## GPU Network Analysis Commands
@@ -521,20 +505,14 @@ gryvia security alerts --output json --days 30 > security-report.json
 # View NCCL communication metrics for a training job
 gryvia gpu nccl --job llm-distributed-training
 
-# Monitor GPU memory usage per pod
-gryvia gpu memory --namespace ml-research
+# View GPU memory transfer stats for a node
+gryvia gpu memory --node gpu-node-01
 
 # View RDMA statistics for a node
 gryvia gpu rdma --node gpu-node-01
 
-# Training communication analysis
+# Training insights for a job
 gryvia gpu training --job llm-distributed-training
-
-# Straggler detection
-gryvia gpu training --job llm-distributed-training --stragglers
-
-# Gradient compression analysis
-gryvia gpu training --job llm-distributed-training --gradients
 ```
 
 For full documentation on GPU-level network analysis, see [Network Intelligence Guide](NETWORK_INTELLIGENCE.md#gpu-programs).
@@ -596,7 +574,7 @@ set -e
 
 # Check quota
 echo "Checking quota..."
-gryvia quota --team ml-research --budget
+gryvia quota ml-research --budget
 
 # Submit job
 echo "Submitting job..."
@@ -646,7 +624,7 @@ echo "-------------------"
 for team in ml-research computer-vision nlp; do
     echo ""
     echo "Team: $team"
-    gryvia cost --team $team
+    gryvia cost $team
 done
 ```
 
@@ -761,23 +739,15 @@ alias kfc="gryvia cluster"
 
 # Usage
 kfj                    # List jobs
-kfq --team my-team     # Check quota
+kfq my-team            # Check quota
 kfc --watch 5          # Watch cluster
 ```
 
-### 4. Use Tab Completion
-
-```bash
-# Generate completion script (future feature)
-gryvia completion bash > /etc/bash_completion.d/gryvia
-gryvia completion zsh > ~/.zsh/completion/_gryvia
-```
-
-### 5. Validate Before Submitting
+### 4. Validate Before Submitting
 
 ```bash
 # Always validate YAML
-gryvia validate -f job.yaml
+gryvia validate job.yaml
 
 # Then submit if valid
 gryvia submit -f job.yaml
