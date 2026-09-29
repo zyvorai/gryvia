@@ -184,7 +184,7 @@ export default function JobDetails() {
         </section>
 
         <section className="card span2">
-          <p className="eyebrow">CONFIGURATION</p>
+          <p className="eyebrow">SPEC</p>
           <h2 className="card-title">Job configuration</h2>
           <div className="formgrid">
             <div>
@@ -265,7 +265,7 @@ export default function JobDetails() {
                     {source ?? (sensitive && !shown ? '********' : literal === '' ? '(empty)' : literal)}
                   </span>
                   {sensitive && (
-                    <button type="button" className="btn-secondary" aria-pressed={shown} aria-label={`${shown ? 'Hide' : 'Reveal'} value of ${e.name}`} onClick={() => toggleReveal(idx)}>
+                    <button type="button" className="btn-secondary" aria-label={`${shown ? 'Hide' : 'Reveal'} value of ${e.name}`} onClick={() => toggleReveal(idx)}>
                       {shown ? 'Hide' : 'Reveal'}
                     </button>
                   )}
@@ -286,7 +286,7 @@ export default function JobDetails() {
             <h2 className="card-title">Labels</h2>
             <div className="row">
               {labels.map(([key, value]) => (
-                <span key={key} className="pill mono" style={{ textTransform: 'none' }}>
+                <span key={key} className="pill mono pill-raw">
                   {key}={value}
                 </span>
               ))}
@@ -327,7 +327,7 @@ function PodsCard({ pods }: { pods: PodsQuery }) {
       ) : pods.isLoading ? (
         <Skeleton rows={2} />
       ) : !list || list.length === 0 ? (
-        <p className="faint">No pods yet. They appear once the job is scheduled.</p>
+        <p className="faint">No pods yet. The Gryvia operator creates them once the job is scheduled onto a GPU node.</p>
       ) : (
         <div className="table-wrap">
           <table>
@@ -397,6 +397,7 @@ function downloadText(filename: string, text: string) {
 }
 
 function LogsCard({ name, pods }: { name: string; pods: PodsQuery }) {
+  const now = useNow()
   const [podChoice, setPodChoice] = useState('')
   const [tail, setTail] = useState(200)
   const [follow, setFollow] = useState(false)
@@ -462,9 +463,14 @@ function LogsCard({ name, pods }: { name: string; pods: PodsQuery }) {
               <input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} />
               <span>Follow</span>
             </label>
-            <button type="button" className="btn-refresh" onClick={() => logsQ.refetch()} disabled={logsQ.isFetching}>
+            <button type="button" className="btn-refresh" onClick={() => logsQ.refetch()} disabled={logsQ.isFetching} aria-busy={logsQ.isFetching}>
               {logsQ.isFetching ? 'Loading…' : 'Refresh'}
             </button>
+            {logsQ.dataUpdatedAt > 0 && (
+              <span className="faint" role="status">
+                Updated {formatRelative(logsQ.dataUpdatedAt, now)}
+              </span>
+            )}
             <CopyButton value={text} label="logs" />
             <button type="button" className="btn-secondary" disabled={!text} onClick={() => downloadText(`${name}-${pod}.log`, text)}>
               Download
@@ -482,12 +488,11 @@ function LogsCard({ name, pods }: { name: string; pods: PodsQuery }) {
               {logs?.truncated && <p className="faint">Output was truncated; showing the last {tail} lines or fewer. Download for what is loaded.</p>}
               <pre
                 ref={areaRef}
-                className="mono"
+                className="mono log-view"
                 role="log"
                 aria-live="off"
                 aria-label={`Logs of pod ${pod}`}
                 tabIndex={0}
-                style={{ maxHeight: 420, overflow: 'auto', margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}
               >
                 {lines && lines.length > 0 ? text : logs?.message || notStarted ? '' : '(no output)'}
               </pre>
@@ -512,7 +517,7 @@ function EventsCard({ name }: { name: string }) {
       ) : eventsQ.isLoading ? (
         <Skeleton rows={2} />
       ) : events.length === 0 ? (
-        <p className="faint">No events recorded for this job.</p>
+        <p className="faint">No events recorded for this job. Events are emitted by the Gryvia operator and the Kubernetes scheduler as it runs.</p>
       ) : (
         <div className="table-wrap">
           <table>
@@ -557,7 +562,7 @@ function ConditionsCard({ job }: { job: Parameters<typeof jobConditions>[0] }) {
     <section className="card span3">
       <p className="eyebrow">STATUS</p>
       <h2 className="card-title">Conditions</h2>
-      <ol className="stack" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+      <ol className="stack list-plain">
         {conditions.map((c, i) => (
           <li key={`${c.type}-${i}`} className="list-row">
             <span className={`dot ${c.status === 'True' ? 'ok' : c.status === 'False' ? 'warn' : ''}`} aria-hidden="true" />

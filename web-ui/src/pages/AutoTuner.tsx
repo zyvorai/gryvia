@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import type { AutoTunerJob } from '@/lib/api'
@@ -6,7 +6,8 @@ import { errorMessage } from '@/lib/errors'
 import { formatDate, formatRelative } from '@/lib/format'
 import { phaseTone } from '@/lib/phase'
 import { notify } from '@/lib/notify'
-import { intError, nameError, parseIntStrict } from '@/lib/forms'
+import { fieldAria, intError, nameError, parseIntStrict } from '@/lib/forms'
+import { useNow } from '@/lib/useNow'
 import { bestAcross, formatMetric, metricNameOf } from '@/lib/tuner'
 import { initialSpaceState, spaceError, spaceJson, type ParamSpaceState } from '@/lib/paramSpace'
 import type { FilterDef, SortAccessor } from '@/lib/tableState'
@@ -49,6 +50,7 @@ export default function AutoTuner() {
   useDocumentTitle('Auto Tuner')
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [openName, setOpenName] = useState<string | null>(null)
+  const now = useNow(30000)
 
   const { data, isLoading, isError, error, refetch, isRefetching, dataUpdatedAt } = useQuery({
     queryKey: ['tuners'],
@@ -79,14 +81,14 @@ export default function AutoTuner() {
           type="button"
           className="th-sort"
           aria-expanded={openName === nameOf(t)}
-          aria-controls="tuner-detail"
+          aria-controls={openName === nameOf(t) ? 'tuner-detail' : undefined}
           onClick={(e) => {
             e.stopPropagation()
             toggleOpen(t)
           }}
         >
           <span className="faint" aria-hidden="true">{openName === nameOf(t) ? '▾' : '▸'}</span>{' '}
-          <b>{nameOf(t)}</b>
+          <b className="mono">{nameOf(t)}</b>
         </button>
       ),
     },
@@ -95,12 +97,13 @@ export default function AutoTuner() {
       key: 'trials',
       header: 'Trials',
       sortable: true,
+      numeric: true,
       render: (t) => {
         const done = t.status?.trialsCompleted ?? 0
         const max = t.spec?.maxTrials ?? 0
         return (
           <>
-            <span className="muted">{done}/{max}</span>
+            <span className="muted num">{done}/{max}</span>
             <Progress value={done} max={max} label={`${nameOf(t)}: ${done} of ${max} trials complete`} />
           </>
         )
@@ -131,7 +134,7 @@ export default function AutoTuner() {
       sortable: true,
       render: (t) => (
         <span className="faint" title={formatDate(t.metadata?.creationTimestamp)}>
-          {formatRelative(t.metadata?.creationTimestamp)}
+          {formatRelative(t.metadata?.creationTimestamp, now)}
         </span>
       ),
     },
@@ -146,7 +149,7 @@ export default function AutoTuner() {
 
   return (
     <>
-      <PageHero eyebrow="Auto Tuner" title="Find the best hyperparameters." lede="Hyperparameter tuning." />
+      <PageHero eyebrow="Auto Tuner" title="Find the best hyperparameters." lede="Hyperparameter searches that run many trials of your training image and track the best." />
 
       <div className="grid">
         <PagePulse
@@ -182,7 +185,7 @@ export default function AutoTuner() {
                       Close details
                     </button>
                   </div>
-                  <TunerDetail key={nameOf(openTuner)} tuner={openTuner} />
+                  <TunerDetail key={nameOf(openTuner)} tuner={openTuner} now={now} />
                 </div>
               )}
               <DataTable
@@ -193,24 +196,24 @@ export default function AutoTuner() {
                 onRowClick={toggleOpen}
                 actions={
                   <>
-                    <button className="primary" onClick={() => setShowCreateForm(true)}>
+                    <button type="button" className="primary" onClick={() => setShowCreateForm(true)}>
                       New tuner
                     </button>
-                    <button className="btn-refresh" onClick={() => refetch()} disabled={isRefetching}>
-                      Refresh
-                    </button>
+                    <button type="button" className="btn-refresh" onClick={() => refetch()} disabled={isRefetching} aria-busy={isRefetching}>
+{isRefetching ? 'Refreshing…' : 'Refresh'}
+</button>
                   </>
                 }
                 empty={
                   <EmptyState
                     title="No tuning jobs yet."
                     action={
-                      <button className="primary" onClick={() => setShowCreateForm(true)}>
+                      <button type="button" className="primary" onClick={() => setShowCreateForm(true)}>
                         Create your first tuner
                       </button>
                     }
                   >
-                    A tuner runs many trials of your training image with different hyperparameters and tracks the best one.
+                    Tuners are created here. Each runs trials of your training image and reports the best metric.
                   </EmptyState>
                 }
               />
@@ -226,7 +229,7 @@ export default function AutoTuner() {
 
 // --- Sub-components ---
 
-function TunerDetail({ tuner }: { tuner: Tuner }) {
+function TunerDetail({ tuner, now }: { tuner: Tuner; now: number }) {
   const name = tuner.metadata?.name || 'unknown'
   const metricName = metricNameOf(tuner)
 
@@ -271,7 +274,7 @@ function TunerDetail({ tuner }: { tuner: Tuner }) {
         ) : isError ? (
           <ErrorState title="Could not load trials." error={error} onRetry={() => refetch()} retrying={isRefetching} />
         ) : (trials ?? []).length === 0 ? (
-          <EmptyState title="No trials yet.">Trials appear here once the tuner starts running them.</EmptyState>
+          <EmptyState title="No trials yet.">Trials are reported by the tuner as it runs them, so they appear here once it starts.</EmptyState>
         ) : (
           <div className="table-wrap">
             <table>
@@ -282,7 +285,7 @@ function TunerDetail({ tuner }: { tuner: Tuner }) {
                   <th scope="col">Parameters</th>
                   <th scope="col" className="num">{metricName ?? 'Metric'}</th>
                   <th scope="col">Status</th>
-                  <th scope="col">Duration</th>
+                  <th scope="col" className="num">Duration</th>
                 </tr>
               </thead>
               <tbody>
@@ -311,7 +314,7 @@ function TunerDetail({ tuner }: { tuner: Tuner }) {
                       <b>{formatMetric(trial.metricValue, metricName)}</b>
                     </td>
                     <td><span className={`pill ${phaseTone(trial.status)}`}>{trial.status ?? '—'}</span></td>
-                    <td className="faint">{trial.duration ?? '—'}</td>
+                    <td className="faint num">{trial.duration ?? '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -320,7 +323,7 @@ function TunerDetail({ tuner }: { tuner: Tuner }) {
         )}
         {tuner.metadata?.creationTimestamp && (
           <p className="faint" title={formatDate(tuner.metadata.creationTimestamp)}>
-            Created {formatRelative(tuner.metadata.creationTimestamp)}
+            Created {formatRelative(tuner.metadata.creationTimestamp, now)}
           </p>
         )}
       </div>
@@ -347,6 +350,7 @@ function CreateTunerModal({ onClose }: { onClose: () => void }) {
   const [form, setForm] = useState(INITIAL)
   const [space, setSpace] = useState<ParamSpaceState>(() => initialSpaceState())
   const [initialSpace] = useState(space.json)
+  const uid = useId()
   const [touched, setTouched] = useState(false)
   const set = (patch: Partial<typeof INITIAL>) => setForm((f) => ({ ...f, ...patch }))
   const dirty = JSON.stringify(form) !== JSON.stringify(INITIAL) || space.json !== initialSpace
@@ -378,6 +382,12 @@ function CreateTunerModal({ onClose }: { onClose: () => void }) {
   const invalid = Object.values(errors).some(Boolean)
   const show = (e: string | null) => (touched ? e : null)
   const nameShown = touched || form.name !== '' ? errors.name : null
+  const msg = (id: string, err: string | null | undefined, hint?: string) =>
+    err || hint ? (
+      <span id={`${uid}-${id}-msg`} className={err ? 'warning' : 'faint'}>
+        {err ?? hint}
+      </span>
+    ) : null
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -406,21 +416,24 @@ function CreateTunerModal({ onClose }: { onClose: () => void }) {
     createMutation.mutate(body)
   }
 
-  const num = (label: string, key: keyof typeof INITIAL, err: string | null, hint?: string, min = 0, max?: number, required = true) => (
-    <label className="field">
-      {label}
-      <input type="number" min={min} max={max} required={false} value={form[key]} onChange={(e) => set({ [key]: e.target.value })} aria-invalid={!!show(err)} aria-required={required} />
-      {show(err) ? <span className="warning">{err}</span> : hint && <span className="faint">{hint}</span>}
-    </label>
-  )
+  const num = (label: string, key: keyof typeof INITIAL, err: string | null, hint?: string, min = 0, max?: number, required = true) => {
+    const shown = show(err)
+    return (
+      <label className="field">
+        {label}
+        <input type="number" min={min} max={max} required={false} value={form[key]} onChange={(e) => set({ [key]: e.target.value })} aria-required={required} {...fieldAria(`${uid}-${key}`, shown, !!hint)} />
+        {msg(key, shown, hint)}
+      </label>
+    )
+  }
 
   return (
-    <Modal title="Create tuner" onClose={onClose} dirty={dirty}>
+    <Modal className="modal-wide" title="Create tuner" onClose={onClose} dirty={dirty}>
       <form onSubmit={handleSubmit} className="stack" noValidate>
         <label className="field">
           Name
-          <input type="text" data-autofocus value={form.name} onChange={(e) => set({ name: e.target.value })} placeholder="my-tuning-job" aria-invalid={!!nameShown} autoComplete="off" />
-          {nameShown && <span className="warning">{nameShown}</span>}
+          <input type="text" data-autofocus value={form.name} onChange={(e) => set({ name: e.target.value })} placeholder="my-tuning-job" autoComplete="off" spellCheck={false} {...fieldAria(`${uid}-name`, nameShown, true)} />
+          {msg('name', nameShown, 'Lowercase letters, digits and hyphens.')}
         </label>
 
         <div className="formgrid">
@@ -435,8 +448,8 @@ function CreateTunerModal({ onClose }: { onClose: () => void }) {
           </label>
           <label className="field">
             Objective metric
-            <input type="text" value={form.objectiveMetric} onChange={(e) => set({ objectiveMetric: e.target.value })} placeholder="accuracy" aria-invalid={!!show(errors.objective)} />
-            {show(errors.objective) && <span className="warning">{errors.objective}</span>}
+            <input type="text" value={form.objectiveMetric} onChange={(e) => set({ objectiveMetric: e.target.value })} placeholder="accuracy" spellCheck={false} {...fieldAria(`${uid}-objective`, show(errors.objective))} />
+            {msg('objective', show(errors.objective))}
           </label>
           <label className="field">
             Goal
@@ -450,8 +463,8 @@ function CreateTunerModal({ onClose }: { onClose: () => void }) {
         <div className="formgrid">
           <label className="field">
             Trial image
-            <input type="text" value={form.image} onChange={(e) => set({ image: e.target.value })} placeholder="registry.example.com/train:latest" aria-invalid={!!show(errors.image)} aria-required="true" />
-            {show(errors.image) ? <span className="warning">{errors.image}</span> : <span className="faint">Required. The container each trial runs; it must report the objective metric.</span>}
+            <input type="text" className="mono" value={form.image} onChange={(e) => set({ image: e.target.value })} placeholder="registry.example.com/train:latest" autoComplete="off" spellCheck={false} aria-required="true" {...fieldAria(`${uid}-image`, show(errors.image), true)} />
+            {msg('image', show(errors.image), 'Required. The container each trial runs; it must report the objective metric.')}
           </label>
           {num('GPUs per trial', 'gpus', errors.gpus, undefined, 0, 1024)}
         </div>

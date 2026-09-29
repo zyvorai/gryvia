@@ -11,7 +11,7 @@ import type { FabricAIJob } from '@/types'
 import { Trash2 } from 'lucide-react'
 import PageHero from '@/components/PageHero'
 import ConfirmDialog from '@/components/ConfirmDialog'
-import { ErrorState } from '@/components/StateViews'
+import { ErrorState, Skeleton } from '@/components/StateViews'
 import { notify } from '@/lib/notify'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 
@@ -200,8 +200,9 @@ export default function SubmitJob() {
 
   return (
     <>
-      <PageHero eyebrow="Jobs" title="Launch a job in seconds." lede="Configure and submit an AI training or inference job" />
+      <PageHero eyebrow="Submit job" title="Launch a job in seconds." lede="Configure an AI training or inference job and submit it to the cluster." />
 
+      {cloneName && cloneQ.isLoading && <Skeleton rows={1} />}
       {cloneName && (
         <p className="muted" role="status">
           {cloneQ.isLoading
@@ -218,10 +219,10 @@ export default function SubmitJob() {
       <form onSubmit={handleSubmit} className="grid">
         <section className="card span2">
           <p className="eyebrow">IDENTITY</p>
-          <h2 className="card-title">Basic Information</h2>
+          <h2 className="card-title">Basic information</h2>
           <div className="formgrid">
             <label className="field">
-              <span>Job Name</span>
+              <span>Job name</span>
               <input
                 type="text"
                 required
@@ -252,7 +253,7 @@ export default function SubmitJob() {
             </label>
 
             <label className="field">
-              <span>Job Type</span>
+              <span>Job type</span>
               <select value={formData.type} onChange={(e) => setFormData({ ...formData, type: e.target.value })}>
                 {JOB_TYPES.map((t) => (
                   <option key={t} value={t}>
@@ -277,7 +278,7 @@ export default function SubmitJob() {
             </label>
 
             <label className="field span-all">
-              <span>Container Image</span>
+              <span>Container image</span>
               <input
                 type="text"
                 required
@@ -292,10 +293,10 @@ export default function SubmitJob() {
 
         <section className="card">
           <p className="eyebrow">RESOURCES</p>
-          <h2 className="card-title">Resource Requirements</h2>
+          <h2 className="card-title">Resource requirements</h2>
           <div className="formgrid">
             <label className="field">
-              <span>GPU Type</span>
+              <span>GPU type</span>
               <select
                 value={formData.gpuType}
                 onChange={(e) => setFormData({ ...formData, gpuType: e.target.value })}
@@ -309,7 +310,7 @@ export default function SubmitJob() {
             </label>
 
             <label className="field">
-              <span>GPU Count</span>
+              <span>GPU count</span>
               <input
                 type="number"
                 min="1"
@@ -350,7 +351,7 @@ export default function SubmitJob() {
             </label>
 
             <label className="field">
-              <span>CPU Cores</span>
+              <span>CPU cores</span>
               <input
                 type="number"
                 min="1"
@@ -365,7 +366,7 @@ export default function SubmitJob() {
 
         <section className="card span2">
           <p className="eyebrow">SCALE</p>
-          <h2 className="card-title">Distributed Training</h2>
+          <h2 className="card-title">Distributed training</h2>
           <div className="stack">
             <label className="row">
               <input
@@ -395,7 +396,7 @@ export default function SubmitJob() {
                   />
                 </label>
                 <label className="field">
-                  <span>GPUs/Node</span>
+                  <span>GPUs per node</span>
                   <input
                     type="number"
                     min="1"
@@ -442,7 +443,7 @@ export default function SubmitJob() {
                 aria-describedby="priority-help"
                 placeholder="default"
               />
-              <small id="priority-help" className={priorityProblem ? 'warning' : 'faint'}>
+              <small id="priority-help" className={priorityProblem ? 'warning' : 'faint'} role={priorityProblem ? 'alert' : undefined}>
                 {priorityProblem ?? 'Higher runs first. Leave empty for the default.'}
               </small>
             </label>
@@ -456,7 +457,7 @@ export default function SubmitJob() {
                 aria-describedby="timeout-help"
                 placeholder="e.g. 2h"
               />
-              <small id="timeout-help" className={timeoutProblem ? 'warning' : 'faint'}>
+              <small id="timeout-help" className={timeoutProblem ? 'warning' : 'faint'} role={timeoutProblem ? 'alert' : undefined}>
                 {timeoutProblem ?? 'Stop the job after this long: 30m, 2h, 7d. Empty means no timeout.'}
               </small>
             </label>
@@ -472,7 +473,7 @@ export default function SubmitJob() {
                 aria-describedby="retry-help"
                 placeholder="default"
               />
-              <small id="retry-help" className={retryProblem ? 'warning' : 'faint'}>
+              <small id="retry-help" className={retryProblem ? 'warning' : 'faint'} role={retryProblem ? 'alert' : undefined}>
                 {retryProblem ?? 'Retries after a failure. Leave empty for the default.'}
               </small>
             </label>
@@ -481,11 +482,11 @@ export default function SubmitJob() {
 
         <section className="card span3">
           <p className="eyebrow">ENVIRONMENT</p>
-          <h2 className="card-title">Environment Variables</h2>
+          <h2 className="card-title">Environment variables</h2>
           <p className="faint">Values are stored in the job spec in plain text. Put real secrets in Kubernetes Secrets instead; marking a value secret only hides it while you type.</p>
           <div className="toolbar">
             <button type="button" className="btn-secondary" onClick={addEnvVar}>
-              Add Variable
+              Add variable
             </button>
           </div>
           <div className="stack">
@@ -516,7 +517,7 @@ export default function SubmitJob() {
                   <span>Secret</span>
                 </label>
                 {env.secret && (
-                  <button type="button" className="btn-secondary" aria-pressed={shown.has(env.id)} aria-label={`${shown.has(env.id) ? 'Hide' : 'Show'} value of variable ${idx + 1}`} onClick={() => toggleShown(env.id)}>
+                  <button type="button" className="btn-secondary" aria-label={`${shown.has(env.id) ? 'Hide' : 'Show'} value of variable ${idx + 1}`} onClick={() => toggleShown(env.id)}>
                     {shown.has(env.id) ? 'Hide' : 'Show'}
                   </button>
                 )}
@@ -543,7 +544,7 @@ export default function SubmitJob() {
 
         {createJobMutation.isError && (
           <p className="warning span3" role="alert">
-            Error submitting job: {errorMessage(createJobMutation.error)}
+            Could not submit the job: {errorMessage(createJobMutation.error)}
           </p>
         )}
 
@@ -552,7 +553,7 @@ export default function SubmitJob() {
             Cancel
           </button>
           <button type="submit" className="primary" disabled={createJobMutation.isPending}>
-            {createJobMutation.isPending ? 'Submitting...' : 'Submit Job'}
+            {createJobMutation.isPending ? 'Submitting…' : 'Submit job'}
           </button>
         </div>
       </form>

@@ -1,111 +1,79 @@
 # Gryvia Web UI
 
-Dark-themed React dashboard for Gryvia GPU compute platform, inspired by hyper2kvm's design language.
+React dashboard for the Gryvia GPU orchestration platform. The look follows the sibling `netra` project:
+its stylesheets are copied verbatim into `src/styles/netra*.css` (do not hand-edit them) and Gryvia-specific
+additions live in `src/styles/gryvia.css`. Light or dark follows the system setting and can be toggled.
 
 ## Features
 
-- **Real-time Dashboard** - Cluster stats, GPU utilization charts, job pipeline view
-- **Job Management** - Submit, monitor, and manage AI training/inference jobs
-- **Quota Tracking** - Team-based GPU quotas and budget monitoring
-- **Node Monitoring** - Real-time GPU metrics (temperature, utilization, memory)
-- **Cost Analysis** - GPU compute costs by team and GPU type with projections
-- **Dark Theme** - Slate-based dark design with gradient stat cards and glow effects
-- **Responsive** - Top navbar layout with mobile hamburger menu
-- **Error Boundary** - Graceful error handling with recovery
-- **Auth Support** - Bearer token auth via `localStorage` (`gryvia_token`) or `VITE_API_TOKEN` env var
-- **404 Catch-All** - Unknown routes display a styled 404 page
-
-## Design System
-
-- **Background**: Dark slate (`#0f172a`)
-- **Cards**: `bg-slate-800/50` with `border-slate-700/50` and rounded-xl
-- **Stat Cards**: Gradient backgrounds (`stat-card-blue`, `stat-card-green`, etc.)
-- **Text**: `text-white` (headings), `text-slate-300` (body), `text-slate-400` (muted)
-- **Accents**: Blue (`#3b82f6`), Green (`#22c55e`), Purple (`#a855f7`), Cyan (`#06b6d4`)
-- **Font**: Inter (Google Fonts)
-- **Animations**: `animate-fade-in`, `animate-pulse-dot`, `card-glow` hover effects
+- **Dashboard** - cluster stats, GPU utilization, job pipeline, links into the pages behind each number
+- **Jobs** - searchable, filterable, sortable table (state lives in the URL, so views are shareable); submit, clone,
+  delete; job details show conditions, pods, logs (tail) and events
+- **Workspaces, Models, Inference, Workflows, Tuner** - list pages with the same table controls, detail panels,
+  create forms and confirmations; structured editors for tuner parameter spaces and workflow steps (with DAG
+  validation) and an "Advanced: edit as JSON" escape hatch
+- **Quotas, Nodes, Costs** - team quotas and budgets, GPU node health, spend to date; drill-down links to the jobs
+  they own
+- **Network and Security** - interactive service graph, observed flows, flow policies (`?new=1` prefill), trace
+  sessions, security policies, GPU communication analysis. Empty states name the operator or collector that feeds the
+  data instead of showing reassuring zeros
+- **Auth** - login (admin credentials or a bearer key), session-expiry handling that returns you to the page you were on
+- **Accessibility** - skip link, focus moves to the page on navigation, modal focus trap and Escape, keyboard-operable
+  rows, `aria-sort` headers, per-page document titles
+- **Resilience** - in-shell error boundary with retry, stale-data indicator, toasts for every mutation
 
 ## Tech Stack
 
-- **React 18** with TypeScript
-- **Vite** - Build tool and dev server
-- **TailwindCSS** - Dark theme with CSS custom properties
-- **React Query** - Data fetching with 10-30s refetch intervals
-- **React Router** - Client-side routing
-- **Recharts** - Charts with dark tooltip styling
-- **Lucide React** - Icon library
-- **Axios** - HTTP client with auth interceptors
+- **React 19** + **TypeScript** on **Vite**
+- **React Router** (lazy routes), **TanStack Query** (polling; no retry on 4xx)
+- **Recharts** for charts
+- Plain global CSS with netra design tokens (no Tailwind)
+- **Vitest** + Testing Library (jsdom)
 
 ## Development
 
 ```bash
 cd web-ui
 npm install
-npm run dev     # http://localhost:5173
-npm run build   # Production build to dist/
-npm run lint    # ESLint check
+npm run dev      # http://localhost:5173, proxies /api to a gateway on localhost:8001
+npm run build    # production build to dist/
+npm run lint     # ESLint, zero warnings allowed
+npm test         # unit and component tests
+npx tsc --noEmit # type check
 ```
 
 ## API
 
-The UI communicates through the Gryvia API Gateway (not directly to the Kubernetes API):
+The UI talks only to the Gryvia API Gateway. All endpoints require `Authorization: Bearer <token>`; the token comes
+from the login screen (stored in `localStorage` as `gryvia_token`). See
+[`services/api-gateway/README.md`](../services/api-gateway/README.md) and the
+[API reference](../website/docs/developer-guide/api-reference.md) for the routes, including the job runtime routes
+`GET /api/jobs/{name}/pods|logs|events`.
 
-| Endpoint | Description |
-|----------|-------------|
-| `GET /api/cluster/stats` | Cluster overview (GPUs, jobs, nodes) |
-| `GET /api/jobs` | List AI jobs (pagination: `limit`, `offset`) |
-| `GET /api/jobs/:name` | Get job details |
-| `POST /api/jobs` | Submit new job |
-| `DELETE /api/jobs/:name` | Delete job |
-| `GET /api/quotas` | List team quotas (pagination: `limit`, `offset`) |
-| `GET /api/quotas/:name` | Get quota details |
-| `GET /api/nodes` | List GPU nodes (pagination: `limit`, `offset`) |
-| `GET /api/nodes/:name` | Get node details |
-| `GET /api/nodes/health` | Node health status |
-| `GET /api/metrics/gpu` | GPU utilization metrics |
-| `GET /api/metrics/costs` | Cost analysis data |
-| `GET /api/metrics/jobs` | Job metrics |
-| `GET /api/quota/usage` | Quota usage summary |
-
-All endpoints require `Authorization: Bearer <token>` header.
-
-Typed API responses include `ClusterStats`, `GPUMetricsResponse`, and `CostData` interfaces (see `src/lib/api.ts`).
+Typed responses and request bodies live in `src/lib/api.ts`.
 
 ## Deployment
 
-```bash
-# Build Docker image
-docker build -t gryvia-ui:1.0.0 -f docker/Dockerfile.ui .
+The UI is served over HTTPS by nginx (port 8443, NodePort 32443 by default) and proxies `/api/` to the gateway.
+The certificate is self-signed and shared through the `gryvia-tls` Secret. Deploy everything with:
 
-# Deploy to Kubernetes
-kubectl apply -f manifests/deploy/ui-deployment.yaml
+```bash
+./scripts/deploy-remote.sh <host> <ssh-user>
 ```
 
 ## Project Structure
 
 ```
-web-ui/
-  src/
-    components/
-      Layout.tsx          # Top navbar, mobile menu
-      StatCard.tsx         # Gradient stat cards
-      JobsTable.tsx        # Dark-themed job table
-      GPUChart.tsx         # GPU utilization line chart
-      LoadingSpinner.tsx   # Spinner with text
-      ErrorBoundary.tsx    # React error boundary
-    pages/
-      Dashboard.tsx        # Main dashboard with pipeline
-      Jobs.tsx             # Job listing + stats
-      JobDetails.tsx       # Job detail view
-      SubmitJob.tsx        # Job submission form
-      Quotas.tsx           # Team quota cards
-      Nodes.tsx            # GPU node metrics
-      Costs.tsx            # Cost analysis charts
-    lib/api.ts             # Typed API client with auth
-    types/index.ts         # TypeScript types
-    index.css              # Dark theme CSS (matches hyper2kvm)
-    App.tsx                # Routes + error boundary
-    main.tsx               # Entry point
+web-ui/src/
+  components/   Layout (grouped nav), Modal, ConfirmDialog, DataTable, StateViews (error/empty/skeleton),
+                Progress, CopyButton, ParamSpaceEditor, StepEditor, ErrorBoundary, AuthProvider, ...
+  hooks/        useTableState (URL-backed table state), useDocumentTitle
+  lib/          api client, phase (single status vocabulary), format (dates, bytes, money),
+                tableState, notify, errors, authEvents, and per-page logic (jobs, network, security,
+                tuner, paramSpace, workflowSteps, dag, ...) with tests beside each file
+  pages/        one file per route (see App.tsx)
+  styles/       netra.css, netra-story.css (verbatim copies) and gryvia.css (extras)
+  App.tsx       routes, protected layout, session guard, query client defaults
 ```
 
 ## License

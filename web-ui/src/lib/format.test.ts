@@ -53,3 +53,12 @@ describe('formatBytes / formatMoney / formatPercent', () => {
     expect(formatPercent(undefined)).toBe('—')
   })
 })
+
+describe('formatNumber', () => {
+  it('groups thousands and handles missing values', async () => {
+    const { formatNumber } = await import('./format')
+    expect(formatNumber(1234567)).toBe('1,234,567')
+    expect(formatNumber(12.34)).toBe('12.3')
+    expect(formatNumber(undefined)).toBe('—')
+  })
+})

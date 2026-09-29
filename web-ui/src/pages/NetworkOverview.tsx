@@ -6,7 +6,7 @@ import type { ServiceGraphNode, ServiceGraphEdge, NetworkAnomaly, TraceSession }
 import Modal from '@/components/Modal'
 import PageHero from '@/components/PageHero'
 import PagePulse from '@/components/kit/PagePulse'
-import VisuallyHidden from '@/components/VisuallyHidden'
+import { TableCaption } from '@/components/TableCaption'
 import { EmptyState, ErrorState, Skeleton } from '@/components/StateViews'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { phaseTone } from '@/lib/phase'
@@ -62,11 +62,18 @@ export default function NetworkOverview() {
   }
   const serviceNames = [...new Set((graphQ.data?.nodes ?? []).map((n) => n.label))].sort((a, b) => a.localeCompare(b))
   const anomalyCount = insights?.anomaliesDetected
+  const refreshing = insightsQ.isFetching || graphQ.isFetching || anomaliesQ.isFetching || tracesQ.isFetching
+  const refreshAll = () => {
+    void insightsQ.refetch()
+    void graphQ.refetch()
+    void anomaliesQ.refetch()
+    void tracesQ.refetch()
+  }
   const pulseError = insightsQ.isError ? errorMessage(insightsQ.error) : undefined
 
   return (
     <>
-      <PageHero eyebrow="Network" title="Network intelligence." lede="Service mesh observability and flow management" />
+      <PageHero eyebrow="Network" title="Network intelligence." lede="Service dependencies, anomalies and trace sessions across the mesh." />
 
       <div className="grid">
         <div className="toolbar span3">
@@ -76,6 +83,9 @@ export default function NetworkOverview() {
           <Link to="/network/flows" className="buttonlike btn-secondary">
             View flows
           </Link>
+          <button type="button" className="btn-secondary" onClick={refreshAll} disabled={refreshing} aria-busy={refreshing}>
+            {refreshing ? 'Refreshing…' : 'Refresh'}
+          </button>
         </div>
 
         {insightsQ.isLoading ? (
@@ -123,7 +133,7 @@ export default function NetworkOverview() {
         </section>
 
         <section className="card">
-          <p className="eyebrow">TRACES</p>
+          <p className="eyebrow">CAPTURE</p>
           <h2 className="card-title">Active traces</h2>
           <div className="toolbar">
             <button type="button" className="primary" onClick={() => setCreating(true)}>
@@ -136,7 +146,7 @@ export default function NetworkOverview() {
             <ErrorState title="Could not load trace sessions." error={tracesQ.error} onRetry={() => tracesQ.refetch()} retrying={tracesQ.isFetching} />
           ) : !tracesQ.data || tracesQ.data.length === 0 ? (
             <EmptyState title="No active trace sessions">
-              A trace captures flows for one service for a fixed time. Use Create trace to start one; the network-intelligence operator runs it.
+              A trace captures flows for one service for a fixed time. Use Create trace to start one; the network-intelligence operator runs it and reports the result here.
             </EmptyState>
           ) : (
             <>
@@ -162,13 +172,14 @@ export default function NetworkOverview() {
           ) : (
             <div className="table-wrap">
               <table>
+                <TableCaption>Recent network anomalies</TableCaption>
                 <thead>
                   <tr>
-                    <th>Severity</th>
-                    <th>Service</th>
-                    <th>Type</th>
-                    <th>Description</th>
-                    <th>Detected</th>
+                    <th scope="col">Severity</th>
+                    <th scope="col">Service</th>
+                    <th scope="col">Type</th>
+                    <th scope="col">Description</th>
+                    <th scope="col">Detected</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -491,7 +502,7 @@ function InteractiveGraph({ nodes, edges }: { nodes: ServiceGraphNode[]; edges: 
   return (
     <div>
       <div className="table-wrap">
-        <svg width={svgWidth} height={svgHeight} style={{ minWidth: svgWidth }} role="group" aria-label={summary}>
+        <svg width={svgWidth} height={svgHeight} role="group" aria-label={summary}>
           <defs>
             {Object.values(EDGE_STYLE).map((s) => (
               <marker key={s.marker} id={s.marker} markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
@@ -581,33 +592,37 @@ function InteractiveGraph({ nodes, edges }: { nodes: ServiceGraphNode[]; edges: 
         )}
       </div>
 
-      <div className="row faint" style={{ flexWrap: 'wrap', gap: 16, marginTop: 8 }}>
+      <div className="row faint mt-10">
         <span>Node border:</span>
         {(Object.keys(HEALTH_STROKE) as HealthKind[]).map((h) => (
-          <span key={h} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <i aria-hidden="true" style={{ width: 14, height: 10, borderRadius: 3, border: `2px ${h === 'unknown' ? 'dashed' : 'solid'} ${HEALTH_STROKE[h]}` }} />
+          <span key={h} className="row">
+            <svg width="16" height="12" aria-hidden="true">
+              <rect x="1.5" y="1.5" width="13" height="9" rx="3" fill="none" stroke={HEALTH_STROKE[h]} strokeWidth="2" strokeDasharray={h === 'unknown' ? '3 2' : undefined} />
+            </svg>
             {HEALTH_LABEL[h]}
           </span>
         ))}
       </div>
-      <div className="row faint" style={{ flexWrap: 'wrap', gap: 16, marginTop: 4 }}>
+      <div className="row faint mt-10">
         <span>Edge:</span>
         {(Object.keys(EDGE_STYLE) as VerdictKind[]).map((k) => (
-          <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <i aria-hidden="true" style={{ width: 18, height: 0, borderTop: `2px ${EDGE_STYLE[k].dash ? 'dashed' : 'solid'} ${EDGE_STYLE[k].color}` }} />
+          <span key={k} className="row">
+            <svg width="20" height="8" aria-hidden="true">
+              <line x1="0" y1="4" x2="20" y2="4" stroke={EDGE_STYLE[k].color} strokeWidth="2" strokeDasharray={EDGE_STYLE[k].dash} />
+            </svg>
             {EDGE_STYLE[k].label}
           </span>
         ))}
       </div>
 
-      <VisuallyHidden>
+      <div className="sr-only">
         <table>
-          <caption>Services and connections in the dependency graph</caption>
+          <TableCaption>Services in the dependency graph</TableCaption>
           <thead>
             <tr>
-              <th>Service</th>
-              <th>Health</th>
-              <th>Connections</th>
+              <th scope="col">Service</th>
+              <th scope="col">Health</th>
+              <th scope="col">Connections</th>
             </tr>
           </thead>
           <tbody>
@@ -615,17 +630,18 @@ function InteractiveGraph({ nodes, edges }: { nodes: ServiceGraphNode[]; edges: 
               <tr key={n.id}>
                 <td>{n.label}</td>
                 <td>{HEALTH_LABEL[healthKind(n.health)]}</td>
-                <td>{n.flowCount}</td>
+                <td className="num">{n.flowCount}</td>
               </tr>
             ))}
           </tbody>
         </table>
         <table>
+          <TableCaption>Connections in the dependency graph</TableCaption>
           <thead>
             <tr>
-              <th>Connection</th>
-              <th>Verdict</th>
-              <th>Latency</th>
+              <th scope="col">Connection</th>
+              <th scope="col">Verdict</th>
+              <th scope="col">Latency</th>
             </tr>
           </thead>
           <tbody>
@@ -640,7 +656,7 @@ function InteractiveGraph({ nodes, edges }: { nodes: ServiceGraphNode[]; edges: 
             ))}
           </tbody>
         </table>
-      </VisuallyHidden>
+      </div>
     </div>
   )
 }

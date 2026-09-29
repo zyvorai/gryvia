@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import { dagLayers } from '@/lib/dag'
+import { dagLayers, describeSteps } from '@/lib/dag'
 import {
   emptyStep,
   HTTP_METHODS,
@@ -41,13 +41,22 @@ export default function StepEditor({ state, onChange, showErrors = false }: Prop
   const touch = (id: string) => setTouched((t) => (t.has(id) ? t : new Set(t).add(id)))
   const setSteps = (steps: StepDraft[]) => onChange(withSpec(state, steps, state.params))
 
+  // The last non-blank name each step had, so clearing a name field and retyping keeps its dependents attached.
+  const lastName = useRef(new Map<string, string>())
+  const nameBefore = (step: StepDraft) => (step.name !== '' ? step.name : lastName.current.get(step.id) ?? '')
+
   const edit = (id: string, patch: Partial<StepDraft>) => {
     touch(id)
     const old = state.steps.find((s) => s.id === id)
     let steps = state.steps.map((s) => (s.id === id ? { ...s, ...patch } : s))
-    // Renaming a step keeps everything that depended on it pointing at it.
-    if (old && patch.name !== undefined && old.name !== '' && old.name !== patch.name) {
-      steps = steps.map((s) => ({ ...s, dependsOn: s.dependsOn.map((d) => (d === old.name ? (patch.name as string) : d)) }))
+    if (old && patch.name !== undefined) {
+      const prev = nameBefore(old)
+      // Renaming a step keeps everything that depended on it pointing at it (a blank name waits for the next one).
+      if (patch.name !== '' && prev !== '' && prev !== patch.name) {
+        steps = steps.map((s) => ({ ...s, dependsOn: s.dependsOn.map((d) => (d === prev ? (patch.name as string) : d)) }))
+      }
+      if (patch.name !== '') lastName.current.set(id, patch.name)
+      else if (prev !== '') lastName.current.set(id, prev)
     }
     setSteps(steps)
   }
@@ -58,7 +67,9 @@ export default function StepEditor({ state, onChange, showErrors = false }: Prop
   }
   const remove = (id: string) => {
     const gone = state.steps.find((s) => s.id === id)
-    setSteps(state.steps.filter((s) => s.id !== id).map((s) => ({ ...s, dependsOn: s.dependsOn.filter((d) => d !== gone?.name) })))
+    const goneName = gone ? nameBefore(gone) : ''
+    lastName.current.delete(id)
+    setSteps(state.steps.filter((s) => s.id !== id).map((s) => ({ ...s, dependsOn: s.dependsOn.filter((d) => d !== goneName) })))
   }
   const move = (id: string, dir: -1 | 1) => {
     const i = state.steps.findIndex((s) => s.id === id)
@@ -322,10 +333,10 @@ function StepFields({
       </fieldset>
 
       <div className="toolbar">
-        <button id={`${uid}-up`} type="button" className="btn-secondary" disabled={index === 0} onClick={() => onMove(-1)} aria-label={`Move step ${label} up`}>
+        <button id={`${uid}-up`} type="button" className="btn-secondary" disabled={index === 0} onClick={() => onMove(-1)} aria-label={`Move up: step ${label}`}>
           Move up
         </button>
-        <button id={`${uid}-down`} type="button" className="btn-secondary" disabled={index === count - 1} onClick={() => onMove(1)} aria-label={`Move step ${label} down`}>
+        <button id={`${uid}-down`} type="button" className="btn-secondary" disabled={index === count - 1} onClick={() => onMove(1)} aria-label={`Move down: step ${label}`}>
           Move down
         </button>
         <button type="button" className="danger" onClick={onRemove} aria-label={`Remove step ${label}`}>
@@ -344,18 +355,23 @@ function DagPreview({ steps }: { steps: StepDraft[] }) {
   return (
     <div className="stack">
       <p className="eyebrow">Execution order</p>
-      <div className="row" role="list" aria-label="Steps grouped by dependency, left to right">
+      <ol className="sr-only" aria-label="Execution order">
+        {describeSteps(named, (s) => `type ${s.type}`).map((line) => (
+          <li key={line}>{line}</li>
+        ))}
+      </ol>
+      <div className="row" role="img" aria-label="Diagram of the steps grouped by dependency, left to right. The execution order list describes it.">
         {layers.map((layer, i) => (
-          <div key={i} className="row" role="listitem">
+          <div key={i} className="row">
             {i > 0 && (
               <span className="faint" aria-hidden="true">
                 →
               </span>
             )}
-            <div className="stack" role="group" aria-label={`Stage ${i + 1}${layer.length > 1 ? ', runs in parallel' : ''}`}>
+            <div className="stack">
               {layer.map((s) => (
                 <span key={s.id} className="pill">
-                  {s.name} <span className="faint">{s.type}</span>
+                  <span className="mono">{s.name}</span> <span className="faint">{s.type}</span>
                 </span>
               ))}
             </div>

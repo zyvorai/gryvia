@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom'
 import { api } from '@/lib/api'
 import Progress from '@/components/Progress'
 import { EmptyState, ErrorState, Skeleton } from '@/components/StateViews'
-import { formatMoney } from '@/lib/format'
+import { TableCaption } from '@/components/TableCaption'
+import { formatMoney, formatNumber } from '@/lib/format'
 import { errorMessage } from '@/lib/errors'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import PageHero from '@/components/PageHero'
@@ -21,7 +22,7 @@ const tooltipStyle = {
 }
 const tick = { fontSize: 11, fill: 'var(--text-tertiary)' }
 const money = (value: unknown) => formatMoney(Number(value ?? 0))
-const axisMoney = (value: unknown) => `$${Number(value ?? 0).toLocaleString()}`
+const hoursLabel = (h: number) => `${formatNumber(h)} GPU-h`
 
 export default function Costs() {
   useDocumentTitle('Costs')
@@ -31,7 +32,7 @@ export default function Costs() {
     refetchInterval: 60000,
   })
 
-  const hero = <PageHero eyebrow="Costs" title="Every dollar, tracked." lede="GPU compute costs and budget tracking" />
+  const hero = <PageHero eyebrow="Costs" title="Every dollar, tracked." lede="GPU spend by team and GPU type." />
 
   if (isLoading) {
     return (
@@ -67,7 +68,6 @@ export default function Costs() {
         {hero}
         <div className="grid">
           <section className="card span3">
-            <p className="eyebrow">COSTS</p>
             <EmptyState
               title="No cost data yet"
               action={
@@ -76,7 +76,7 @@ export default function Costs() {
                 </Link>
               }
             >
-              Costs are computed from GPU-hours of submitted jobs, grouped by team quota. They appear here once a job has run.
+              The gateway computes costs from the GPU-hours of jobs, grouped by team quota (FabricQuota). They appear here once a job has run.
             </EmptyState>
           </section>
         </div>
@@ -102,7 +102,7 @@ export default function Costs() {
           figures={[
             { label: totalLabel, value: formatMoney(total) },
             { label: 'Teams', value: teamData.length },
-            { label: 'GPU hours', value: gpuTypeData.reduce((sum, g) => sum + g.hours, 0) },
+            { label: 'GPU time', value: hoursLabel(gpuTypeData.reduce((sum, g) => sum + g.hours, 0)) },
           ]}
         />
 
@@ -120,12 +120,29 @@ export default function Costs() {
               <BarChart data={monthlyData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--hairline-1)" />
                 <XAxis dataKey="month" tick={tick} stroke="var(--hairline-1)" />
-                <YAxis tick={tick} stroke="var(--hairline-1)" tickFormatter={axisMoney} />
+                <YAxis tick={tick} stroke="var(--hairline-1)" tickFormatter={money} />
                 <Tooltip contentStyle={tooltipStyle} formatter={money} />
                 <Legend wrapperStyle={{ fontSize: 12, color: 'var(--text-secondary)' }} />
                 <Bar dataKey="cost" fill="var(--apple-blue)" name="Cost (USD)" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
+            <table className="sr-only">
+              <TableCaption>Monthly cost</TableCaption>
+              <thead>
+                <tr>
+                  <th scope="col">Month</th>
+                  <th scope="col">Cost</th>
+                </tr>
+              </thead>
+              <tbody>
+                {monthlyData.map((m) => (
+                  <tr key={m.month}>
+                    <td>{m.month}</td>
+                    <td>{formatMoney(m.cost)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </section>
         )}
 
@@ -146,7 +163,7 @@ export default function Costs() {
             </ResponsiveContainer>
             {teamData.map((t) => (
               <div key={t.team} className="list-row">
-                <span className="grow">{t.team}</span>
+                <span className="grow mono">{t.team}</span>
                 <span className="num">{formatMoney(t.cost)}</span>
               </div>
             ))}
@@ -165,7 +182,7 @@ export default function Costs() {
                     <div className="row">
                       <span>{gpu.type}</span>
                       <span className="num">
-                        {formatMoney(gpu.cost)} <span className="faint">({gpu.hours}h)</span>
+                        {formatMoney(gpu.cost)} <span className="faint">({hoursLabel(gpu.hours)})</span>
                       </span>
                     </div>
                     <Progress value={percentage} label={`${gpu.type} share of spend`} />
@@ -178,7 +195,7 @@ export default function Costs() {
             {gpuTypeData.map((gpu) => (
               <div key={gpu.type} className="list-row">
                 <span className="grow">{gpu.type}</span>
-                <span className="faint num">{gpu.hours}h</span>
+                <span className="faint num">{hoursLabel(gpu.hours)}</span>
                 <span className="num">{gpu.hours > 0 ? `${formatMoney(gpu.cost / gpu.hours)}/hr` : '—'}</span>
               </div>
             ))}

@@ -72,7 +72,7 @@ export default function DataTable<T>({ caption, columns, state, rowKey, onRowCli
         <>
           <div className="table-wrap">
             <table>
-              <caption style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>{caption}</caption>
+              <caption className="sr-only">{caption}</caption>
               <thead>
                 <tr>
                   {columns.map((c) => {
@@ -125,7 +125,7 @@ export default function DataTable<T>({ caption, columns, state, rowKey, onRowCli
               </tbody>
             </table>
           </div>
-          <div className="toolbar" style={{ justifyContent: 'space-between' }}>
+          <div className="toolbar toolbar-between">
             <span className="faint" role="status">
               Showing {state.from}–{state.to} of {filteredCount}
               {filteredCount !== total ? ` (${total} total)` : ''}

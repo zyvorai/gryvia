@@ -4,12 +4,13 @@ import { api } from '@/lib/api'
 import type { SecurityPolicy } from '@/lib/api'
 import PageHero from '@/components/PageHero'
 import PagePulse from '@/components/kit/PagePulse'
+import { TableCaption } from '@/components/TableCaption'
 import Modal from '@/components/Modal'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { EmptyState, ErrorState, Skeleton } from '@/components/StateViews'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { phaseTone } from '@/lib/phase'
-import { formatDate, formatRelative } from '@/lib/format'
+import { formatDate, formatNumber, formatRelative } from '@/lib/format'
 import { errorMessage } from '@/lib/errors'
 import { notify } from '@/lib/notify'
 import { applySearch } from '@/lib/tableState'
@@ -58,12 +59,24 @@ export default function SecurityOverview() {
 
   return (
     <>
-      <PageHero eyebrow="Security" title="Security detection." lede="eBPF-based threat detection and enforcement" tint={critical && critical > 0 ? 'red' : undefined} />
+      <PageHero eyebrow="Security" title="Security detection." lede="eBPF threat-detection alerts, policies and rule coverage." tint={critical && critical > 0 ? 'red' : undefined} />
 
       <div className="grid">
         <div className="toolbar span3">
           <button type="button" className="primary" onClick={() => setCreating(true)}>
             Create security policy
+          </button>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => {
+              void alertsQ.refetch()
+              void policiesQ.refetch()
+            }}
+            disabled={alertsQ.isFetching || policiesQ.isFetching}
+            aria-busy={alertsQ.isFetching || policiesQ.isFetching}
+          >
+            {alertsQ.isFetching || policiesQ.isFetching ? 'Refreshing…' : 'Refresh'}
           </button>
         </div>
 
@@ -109,17 +122,18 @@ export default function SecurityOverview() {
               Alerts come from the security operator&apos;s eBPF event stream. Until it is connected, an empty list does not mean your workloads are safe.
             </EmptyState>
           ) : !alerts || alerts.length === 0 ? (
-            <EmptyState title="No security alerts">The event source is connected and has reported no alerts.</EmptyState>
+            <EmptyState title="No security alerts">The security operator's event source is connected and has reported no alerts.</EmptyState>
           ) : (
             <div className="table-wrap">
               <table>
+                <TableCaption>Recent security alerts</TableCaption>
                 <thead>
                   <tr>
-                    <th>Severity</th>
-                    <th>Event type</th>
-                    <th>Process</th>
-                    <th>Path</th>
-                    <th>Time</th>
+                    <th scope="col">Severity</th>
+                    <th scope="col">Event type</th>
+                    <th scope="col">Process</th>
+                    <th scope="col">Path</th>
+                    <th scope="col">Time</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -144,7 +158,7 @@ export default function SecurityOverview() {
         </section>
 
         <section className="card">
-          <p className="eyebrow">POLICIES</p>
+          <p className="eyebrow">CONFIGURATION</p>
           <h2 className="card-title">Security policies</h2>
           {policiesQ.isLoading ? (
             <Skeleton rows={3} />
@@ -152,7 +166,7 @@ export default function SecurityOverview() {
             <ErrorState title="Could not load security policies." error={policiesQ.error} onRetry={() => policiesQ.refetch()} retrying={policiesQ.isFetching} />
           ) : !policies || policies.length === 0 ? (
             <EmptyState title="No security policies configured" action={<button type="button" className="primary" onClick={() => setCreating(true)}>Create security policy</button>}>
-              Security policies are FabricSecurityPolicy resources evaluated by the security operator. Without one, no detection rules run.
+              Security policies are FabricSecurityPolicy resources evaluated by the security operator. Without one, no detection rules run and no alerts are produced.
             </EmptyState>
           ) : (
             <PolicyList policies={policies} />
@@ -192,8 +206,8 @@ export default function SecurityOverview() {
 function CounterSummary({ policies }: { policies: SecurityPolicy[] }) {
   const c = policyCounters(policies)
   return (
-    <p className="faint" style={{ marginTop: 12 }}>
-      Policy counters: {c.alerts.toLocaleString()} alert{c.alerts === 1 ? '' : 's'} triggered
+    <p className="faint mt-10">
+      Policy counters: {formatNumber(c.alerts)} alert{c.alerts === 1 ? '' : 's'} triggered
       {c.lastAlert && (
         <>
           {' '}
@@ -263,8 +277,9 @@ function PolicyRow({ policy, open, onToggle }: { policy: SecurityPolicy; open: b
           </span>
         )}
         <span className={`pill ${phaseTone(phase)}`}>{phase}</span>
-        <button type="button" className="btn-secondary" aria-expanded={open} aria-controls={detailId} aria-label={`${open ? 'Hide' : 'Show'} details of ${policy.metadata.name}`} onClick={onToggle}>
-          {open ? 'Hide' : 'Details'}
+        <button type="button" className="btn-secondary" aria-expanded={open} aria-controls={open ? detailId : undefined} onClick={onToggle}>
+          {open ? 'Hide details' : 'Show details'}
+          <span className="sr-only"> of {policy.metadata.name}</span>
         </button>
       </div>
       {open && (
@@ -277,7 +292,7 @@ function PolicyRow({ policy, open, onToggle }: { policy: SecurityPolicy; open: b
           </small>
           <div className="table-wrap">
             <table>
-              <caption>Detection rules of {policy.metadata.name}</caption>
+              <TableCaption>{`Detection rules of ${policy.metadata.name}`}</TableCaption>
               <thead>
                 <tr>
                   <th scope="col">Rule</th>
@@ -435,11 +450,11 @@ function CreatePolicyModal({ onClose }: { onClose: () => void }) {
             )}
           </div>
 
-          <fieldset className="field" aria-describedby={describe(errors.rules && `${uid}-rules-err`)}>
+          <fieldset className="field" aria-invalid={errors.rules ? true : undefined} aria-describedby={describe(errors.rules && `${uid}-rules-err`)}>
             <legend>Detection rules *</legend>
             <div className="table-wrap">
               <table>
-                <caption>Detection rules for this policy</caption>
+                <TableCaption>Detection rules for this policy</TableCaption>
                 <thead>
                   <tr>
                     <th scope="col">Rule</th>

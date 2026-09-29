@@ -87,7 +87,7 @@ kubectl apply -f manifests/deploy/ui-deployment.yaml
 
 # Expose as NodePort
 kubectl patch svc gryvia-ui -n gryvia-system \
-  --type=merge -p '{"spec":{"type":"NodePort","ports":[{"port":80,"targetPort":80,"nodePort":30081}]}}'
+  --type=merge -p '{"spec":{"type":"NodePort","ports":[{"port":443,"targetPort":"https","nodePort":32443}]}}'
 ```
 
 ### 4. Build and Deploy API Gateway
@@ -119,22 +119,23 @@ kubectl get pods -n gryvia-system
 
 kubectl get svc -n gryvia-system
 # gryvia-api-gateway   NodePort   8080:30088/TCP
-# gryvia-ui            NodePort   80:30081/TCP
+# gryvia-ui            NodePort   443:32443/TCP
 ```
 
 ## Access the Dashboard
 
 Open your browser:
 ```
-http://<server-ip>:30081
+https://<server-ip>:32443
 ```
 
-The dark-themed dashboard shows:
-- GPU cluster overview with stat cards
-- Job pipeline (pending, running, completed, failed)
-- GPU utilization charts
-- Node health indicators
-- Quick action links
+The certificate is self-signed, so accept the browser warning once. The dashboard follows your system light or
+dark setting and includes:
+- Cluster overview, job pipeline (pending, running, completed, failed) and GPU utilization, each linking to the page behind it
+- Jobs with search, filters, sorting, and per-job pods, logs and events
+- Workspaces, models, inference services, workflows and the auto-tuner, with structured create forms
+- Quotas, GPU nodes and costs, with drill-down links to the jobs involved
+- Network flows and policies, security policies and GPU communication analysis, which say so when no collector is feeding them
 
 ## Register GPU Nodes
 

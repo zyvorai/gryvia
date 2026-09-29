@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import type { Workspace } from '@/lib/api'
@@ -6,7 +6,8 @@ import { errorMessage } from '@/lib/errors'
 import { formatDate, formatRelative } from '@/lib/format'
 import { phaseTone } from '@/lib/phase'
 import { notify } from '@/lib/notify'
-import { buildIdleTimeout, buildStorage, intError, nameError, parseIntStrict } from '@/lib/forms'
+import { buildIdleTimeout, buildStorage, fieldAria, intError, nameError, parseIntStrict } from '@/lib/forms'
+import { useNow } from '@/lib/useNow'
 import type { FilterDef, SortAccessor } from '@/lib/tableState'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { useTableState } from '@/hooks/useTableState'
@@ -51,6 +52,7 @@ export default function Workspaces() {
   const queryClient = useQueryClient()
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
+  const now = useNow(30000)
 
   const { data: workspaces, isLoading, isError, error, refetch, isRefetching, dataUpdatedAt } = useQuery({
     queryKey: ['workspaces'],
@@ -111,7 +113,7 @@ export default function Workspaces() {
 
   return (
     <>
-      <PageHero eyebrow="Workspaces" title="Interactive GPU environments." lede="GPU-attached Jupyter and VS Code workspaces." />
+      <PageHero eyebrow="Workspaces" title="Interactive GPU environments." lede="Jupyter and VS Code environments with GPUs attached, read from the cluster every 15 seconds." />
 
       <div className="grid">
         <PagePulse
@@ -133,8 +135,8 @@ export default function Workspaces() {
         )}
 
         <section className="card span3">
-          <p className="eyebrow">Actions</p>
-          <h2 className="card-title">Workspaces</h2>
+          <p className="eyebrow">Browse</p>
+          <h2 className="card-title">All workspaces</h2>
           <div className="toolbar" role="search">
             <label>
               Search
@@ -171,12 +173,12 @@ export default function Workspaces() {
                 Clear filters
               </button>
             )}
-            <button className="primary" onClick={() => setShowCreateForm(true)}>
+            <button type="button" className="primary" onClick={() => setShowCreateForm(true)}>
               New workspace
             </button>
-            <button className="btn-refresh" onClick={() => refetch()} disabled={isRefetching}>
-              Refresh
-            </button>
+            <button type="button" className="btn-refresh" onClick={() => refetch()} disabled={isRefetching} aria-busy={isRefetching}>
+{isRefetching ? 'Refreshing…' : 'Refresh'}
+</button>
           </div>
         </section>
 
@@ -189,7 +191,7 @@ export default function Workspaces() {
             <EmptyState
               title="No workspaces yet."
               action={
-                <button className="primary" onClick={() => setShowCreateForm(true)}>
+                <button type="button" className="primary" onClick={() => setShowCreateForm(true)}>
                   Create your first workspace
                 </button>
               }
@@ -216,6 +218,7 @@ export default function Workspaces() {
                 <WorkspaceCard
                   key={name}
                   workspace={ws}
+                  now={now}
                   pausing={pauseMutation.isPending && pauseMutation.variables === name}
                   resuming={resumeMutation.isPending && resumeMutation.variables === name}
                   onPause={() => pauseMutation.mutate(name)}
@@ -266,8 +269,9 @@ export default function Workspaces() {
 
 // --- Sub-components ---
 
-function WorkspaceCard({ workspace, onPause, onResume, onDelete, pausing, resuming }: {
+function WorkspaceCard({ workspace, now, onPause, onResume, onDelete, pausing, resuming }: {
   workspace: WorkspaceView
+  now: number
   onPause: () => void
   onResume: () => void
   onDelete: () => void
@@ -286,13 +290,15 @@ function WorkspaceCard({ workspace, onPause, onResume, onDelete, pausing, resumi
   const gpuText = gpuCount === undefined || gpuCount === null ? '—' : gpuCount === 0 ? 'No GPU' : `${workspace.spec?.gpuType ?? 'GPU'} ×${gpuCount}`
 
   return (
-    <section className="card">
+    <section className="card" aria-labelledby={`ws-${name}-title`}>
       <p className="eyebrow">{TYPE_LABEL[wsType] || wsType}</p>
-      <h2 className="card-title">{name}</h2>
+      <h2 className="card-title mono" id={`ws-${name}-title`}>
+        {name}
+      </h2>
       <p>
         <span className={`pill ${phaseTone(phase)}`}>{phase}</span>
       </p>
-      {provisioning && <p className="muted">Provisioning…</p>}
+      {provisioning && <p className="muted" role="status">Provisioning: the operator has not reported a phase yet.</p>}
       {phase === 'Failed' && workspace.status?.message && (
         <p className="warning" role="alert">
           {workspace.status.message}
@@ -301,11 +307,15 @@ function WorkspaceCard({ workspace, onPause, onResume, onDelete, pausing, resumi
 
       <div className="stack">
         <span className="muted">GPUs: {gpuText}</span>
-        <span className="muted">Storage: {workspace.spec?.storageSize ?? '—'}</span>
-        <span className="muted">Uptime: {workspace.status?.uptime ?? '—'}</span>
+        <span className="muted">
+          Storage: <span className="num">{workspace.spec?.storageSize ?? '—'}</span>
+        </span>
+        <span className="muted">
+          Uptime: <span className="num">{workspace.status?.uptime ?? '—'}</span>
+        </span>
         {workspace.status?.lastActivity && (
           <span className="faint" title={formatDate(workspace.status.lastActivity)}>
-            Last active: {formatRelative(workspace.status.lastActivity)}
+            Last active: {formatRelative(workspace.status.lastActivity, now)}
           </span>
         )}
       </div>
@@ -321,15 +331,15 @@ function WorkspaceCard({ workspace, onPause, onResume, onDelete, pausing, resumi
           </>
         )}
         {phase === 'Running' || phase === 'Idle' ? (
-          <button className="btn-secondary" onClick={onPause} disabled={pausing}>
+          <button type="button" className="btn-secondary" onClick={onPause} disabled={pausing}>
             {pausing ? 'Pausing…' : 'Pause'}
           </button>
         ) : phase === 'Paused' ? (
-          <button className="btn-secondary" onClick={onResume} disabled={resuming}>
+          <button type="button" className="btn-secondary" onClick={onResume} disabled={resuming}>
             {resuming ? 'Resuming…' : 'Resume'}
           </button>
         ) : null}
-        <button className="danger" onClick={onDelete} aria-label={`Delete workspace ${name}`}>
+        <button type="button" className="danger" onClick={onDelete} aria-label={`Delete workspace ${name}`}>
           Delete
         </button>
       </div>
@@ -351,6 +361,7 @@ const INITIAL = {
 function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient()
   const [form, setForm] = useState(INITIAL)
+  const uid = useId()
   const [touched, setTouched] = useState(false)
   const set = (patch: Partial<typeof INITIAL>) => setForm((f) => ({ ...f, ...patch }))
   const dirty = JSON.stringify(form) !== JSON.stringify(INITIAL)
@@ -392,6 +403,16 @@ function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
     })
   }
 
+  const gpuErr = show(errors.gpuCount)
+  const storageErr = show(errors.storage)
+  const idleErr = show(errors.idle)
+  const msg = (id: string, err: string | null | undefined, hint?: string) =>
+    err || hint ? (
+      <span id={`${uid}-${id}-msg`} className={err ? 'warning' : 'faint'}>
+        {err ?? hint}
+      </span>
+    ) : null
+
   return (
     <Modal title="Create workspace" onClose={onClose} dirty={dirty}>
       <form onSubmit={handleSubmit} className="stack" noValidate>
@@ -403,13 +424,11 @@ function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
             value={form.name}
             onChange={(e) => set({ name: e.target.value })}
             placeholder="my-workspace"
-            aria-invalid={!!nameShown}
-            aria-describedby="ws-name-msg"
             autoComplete="off"
+            spellCheck={false}
+            {...fieldAria(`${uid}-name`, nameShown, true)}
           />
-          <span id="ws-name-msg" className={nameShown ? 'warning' : 'faint'}>
-            {nameShown ?? 'Lowercase letters, digits and hyphens.'}
-          </span>
+          {msg('name', nameShown, 'Lowercase letters, digits and hyphens.')}
         </label>
 
         <div className="formgrid">
@@ -435,37 +454,30 @@ function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
         <div className="formgrid">
           <label className="field">
             GPU count
-            <input
-              type="number"
-              min={1}
-              max={64}
-              value={form.gpuCount}
-              onChange={(e) => set({ gpuCount: e.target.value })}
-              aria-invalid={!!show(errors.gpuCount)}
-            />
-            {show(errors.gpuCount) && <span className="warning">{errors.gpuCount}</span>}
+            <input type="number" min={1} max={64} value={form.gpuCount} onChange={(e) => set({ gpuCount: e.target.value })} {...fieldAria(`${uid}-gpu`, gpuErr)} />
+            {msg('gpu', gpuErr)}
           </label>
           <div className="field">
-            <label htmlFor="ws-storage">Storage</label>
+            <label htmlFor={`${uid}-storage`}>Storage</label>
             <div className="toolbar">
-              <input id="ws-storage" type="number" min={1} max={999999} value={form.storageAmount} onChange={(e) => set({ storageAmount: e.target.value })} aria-invalid={!!show(errors.storage)} />
+              <input id={`${uid}-storage`} type="number" min={1} max={999999} value={form.storageAmount} onChange={(e) => set({ storageAmount: e.target.value })} {...fieldAria(`${uid}-storage`, storageErr)} />
               <select aria-label="Storage unit" value={form.storageUnit} onChange={(e) => set({ storageUnit: e.target.value })}>
                 <option value="Gi">Gi</option>
                 <option value="Ti">Ti</option>
               </select>
             </div>
-            {show(errors.storage) && <span className="warning">{errors.storage}</span>}
+            {msg('storage', storageErr)}
           </div>
           <div className="field">
-            <label htmlFor="ws-idle">Idle timeout</label>
+            <label htmlFor={`${uid}-idle`}>Idle timeout</label>
             <div className="toolbar">
-              <input id="ws-idle" type="number" min={1} max={99999} value={form.idleAmount} onChange={(e) => set({ idleAmount: e.target.value })} aria-invalid={!!show(errors.idle)} />
+              <input id={`${uid}-idle`} type="number" min={1} max={99999} value={form.idleAmount} onChange={(e) => set({ idleAmount: e.target.value })} {...fieldAria(`${uid}-idle`, idleErr, true)} />
               <select aria-label="Idle timeout unit" value={form.idleUnit} onChange={(e) => set({ idleUnit: e.target.value })}>
                 <option value="m">minutes</option>
                 <option value="h">hours</option>
               </select>
             </div>
-            {show(errors.idle) && <span className="warning">{errors.idle}</span>}
+            {msg('idle', idleErr, 'The workspace goes idle after this long without activity.')}
           </div>
         </div>
 

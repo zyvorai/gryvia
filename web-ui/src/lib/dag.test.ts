@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dagLayers, validateDag } from './dag'
+import { dagLayers, describeSteps, validateDag } from './dag'
 
 const names = (layers: { name: string }[][]) => layers.map((l) => l.map((s) => s.name))
 
@@ -40,5 +40,12 @@ describe('validateDag', () => {
   })
   it('ignores blank names', () => {
     expect(validateDag([{ name: '' }, { name: '' }])).toEqual([])
+  })
+})
+
+describe('describeSteps', () => {
+  it('lists steps in execution order with stage, dependencies and extra detail', () => {
+    const out = describeSteps([{ name: 'deploy', dependsOn: ['train', 'ghost'] }, { name: 'train', dependsOn: ['prep'] }, { name: 'prep' }], (s) => (s.name === 'prep' ? 'Succeeded' : undefined))
+    expect(out).toEqual(['prep: stage 1, no dependencies, Succeeded', 'train: stage 2, runs after prep', 'deploy: stage 3, runs after train'])
   })
 })

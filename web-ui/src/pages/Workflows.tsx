@@ -8,7 +8,8 @@ import { formatDate, formatRelative } from '@/lib/format'
 import { countByGroup, phaseGroup, phaseTone } from '@/lib/phase'
 import { notify } from '@/lib/notify'
 import { nameError } from '@/lib/forms'
-import { dagLayers } from '@/lib/dag'
+import { dagLayers, describeSteps } from '@/lib/dag'
+import { useNow } from '@/lib/useNow'
 import { initialSpecState, specBody, specError, type SpecState } from '@/lib/workflowSteps'
 import type { FilterDef, SortAccessor } from '@/lib/tableState'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
@@ -40,6 +41,7 @@ export default function Workflows() {
   useDocumentTitle('Workflows')
   const [showCreate, setShowCreate] = useState(false)
   const [openName, setOpenName] = useState<string | null>(null)
+  const now = useNow(30000)
   const { data: workflows, isLoading, isError, error, refetch, isRefetching, dataUpdatedAt } = useQuery({
     queryKey: ['workflows'],
     queryFn: api.getWorkflows,
@@ -68,14 +70,14 @@ export default function Workflows() {
           type="button"
           className="th-sort"
           aria-expanded={openName === nameOf(w)}
-          aria-controls="workflow-detail"
+          aria-controls={openName === nameOf(w) ? 'workflow-detail' : undefined}
           onClick={(e) => {
             e.stopPropagation()
             setOpenName(openName === nameOf(w) ? null : nameOf(w))
           }}
         >
           <span className="faint" aria-hidden="true">{openName === nameOf(w) ? '▾' : '▸'}</span>{' '}
-          <b>{nameOf(w)}</b>
+          <b className="mono">{nameOf(w)}</b>
         </button>
       ),
     },
@@ -90,19 +92,19 @@ export default function Workflows() {
         return (
           <>
             <Progress value={done} max={total} label={`${nameOf(w)}: ${done} of ${total} steps complete`} tone={phaseGroup(phaseOf(w)) === 'failed' ? 'bad' : undefined} />
-            <span className="faint">{done}/{total}</span>
+            <span className="faint num">{done}/{total}</span>
           </>
         )
       },
     },
-    { key: 'duration', header: 'Duration', sortable: true, render: (w) => <span className="muted">{w.status?.duration ?? '—'}</span> },
+    { key: 'duration', header: 'Duration', sortable: true, numeric: true, render: (w) => <span className="muted">{w.status?.duration ?? '—'}</span> },
     {
       key: 'started',
       header: 'Started',
       sortable: true,
       render: (w) => (
         <span className="faint" title={formatDate(w.status?.startedAt)}>
-          {formatRelative(w.status?.startedAt)}
+          {formatRelative(w.status?.startedAt, now)}
         </span>
       ),
     },
@@ -114,7 +116,7 @@ export default function Workflows() {
 
   return (
     <>
-      <PageHero eyebrow="Workflows" title="Pipelines, end to end." lede="ML pipeline management." />
+      <PageHero eyebrow="Workflows" title="Pipelines, end to end." lede="Pipelines of jobs, scripts and webhooks that run in dependency order." />
 
       <div className="grid">
         <PagePulse
@@ -152,7 +154,7 @@ export default function Workflows() {
               {openWorkflow && (
                 <div className="card" id="workflow-detail" role="region" aria-label={`${nameOf(openWorkflow)} details`}>
                   <div className="row">
-                    <p className="eyebrow">Workflow DAG: {nameOf(openWorkflow)}</p>
+                    <p className="eyebrow">Steps: {nameOf(openWorkflow)}</p>
                     <button type="button" className="btn-secondary" onClick={() => setOpenName(null)}>
                       Close details
                     </button>
@@ -168,24 +170,24 @@ export default function Workflows() {
                 onRowClick={(w) => setOpenName(openName === nameOf(w) ? null : nameOf(w))}
                 actions={
                   <>
-                    <button className="primary" onClick={() => setShowCreate(true)}>
+                    <button type="button" className="primary" onClick={() => setShowCreate(true)}>
                       Create workflow
                     </button>
-                    <button className="btn-refresh" onClick={() => refetch()} disabled={isRefetching}>
-                      Refresh
-                    </button>
+                    <button type="button" className="btn-refresh" onClick={() => refetch()} disabled={isRefetching} aria-busy={isRefetching}>
+{isRefetching ? 'Refreshing…' : 'Refresh'}
+</button>
                   </>
                 }
                 empty={
                   <EmptyState
                     title="No workflows yet."
                     action={
-                      <button className="primary" onClick={() => setShowCreate(true)}>
+                      <button type="button" className="primary" onClick={() => setShowCreate(true)}>
                         Create your first workflow
                       </button>
                     }
                   >
-                    A workflow chains jobs, scripts and webhooks into a pipeline, with steps that wait for the ones they depend on.
+                    Workflows are created here. Each step waits for the steps it depends on before it starts.
                   </EmptyState>
                 }
               />
@@ -243,7 +245,7 @@ function CreateWorkflowModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <Modal title="Create workflow" onClose={onClose} dirty={dirty}>
+    <Modal className="modal-wide" title="Create workflow" onClose={onClose} dirty={dirty}>
       <form onSubmit={handleSubmit} className="stack" noValidate>
         <label className="field">
           <span>Name</span>
@@ -282,13 +284,18 @@ function DAGVisualization({ steps, started }: { steps: WorkflowStep[]; started: 
   const selectedStep = steps.find((s) => s.name === selectedName)
 
   if (steps.length === 0) {
-    return <EmptyState title="No steps defined." />
+    return <EmptyState title="No steps defined.">The workflow spec lists no steps, so there is nothing to run.</EmptyState>
   }
 
   const layers = dagLayers(steps)
 
   return (
     <div className="stack">
+      <ol className="sr-only" aria-label="Execution order">
+        {describeSteps(steps, (s) => stepStatus(s)).map((line) => (
+          <li key={line}>{line}</li>
+        ))}
+      </ol>
       <div className="row" role="group" aria-label="Workflow steps, left to right by dependency">
         {layers.map((layer, i) => (
           <div key={i} className="row">
@@ -305,7 +312,7 @@ function DAGVisualization({ steps, started }: { steps: WorkflowStep[]; started: 
                     aria-pressed={isSelected}
                     onClick={() => setSelectedName(isSelected ? null : step.name)}
                   >
-                    {step.name} <span className={`pill ${phaseTone(status)}`}>{status}</span>
+                    <span className="mono">{step.name}</span> <span className={`pill ${phaseTone(status)}`}>{status}</span>
                   </button>
                 )
               })}
@@ -319,7 +326,7 @@ function DAGVisualization({ steps, started }: { steps: WorkflowStep[]; started: 
           <div className="formgrid">
             <div>
               <div className="faint">Step name</div>
-              <b>{selectedStep.name}</b>
+              <b className="mono">{selectedStep.name}</b>
             </div>
             <div>
               <div className="faint">Type</div>
@@ -327,7 +334,7 @@ function DAGVisualization({ steps, started }: { steps: WorkflowStep[]; started: 
             </div>
             <div>
               <div className="faint">Depends on</div>
-              <span className="muted">{selectedStep.dependsOn && selectedStep.dependsOn.length > 0 ? selectedStep.dependsOn.join(', ') : 'Nothing (starts first)'}</span>
+              <span className="muted mono">{selectedStep.dependsOn && selectedStep.dependsOn.length > 0 ? selectedStep.dependsOn.join(', ') : 'Nothing (starts first)'}</span>
             </div>
             <div>
               <div className="faint">Status</div>
@@ -335,7 +342,7 @@ function DAGVisualization({ steps, started }: { steps: WorkflowStep[]; started: 
             </div>
             <div>
               <div className="faint">Duration</div>
-              <span className="muted">{selectedStep.duration ?? '—'}</span>
+              <span className="muted num">{selectedStep.duration ?? '—'}</span>
             </div>
           </div>
           {selectedStep.jobRef && (
