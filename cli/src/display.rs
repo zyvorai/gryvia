@@ -8,7 +8,7 @@ pub fn print_jobs_table(jobs: &[GryviaAIJob]) {
 
     table.add_row(Row::new(vec![
         Cell::new("NAME").style_spec("Fb"),
-        Cell::new("FRAMEWORK").style_spec("Fb"),
+        Cell::new("TYPE").style_spec("Fb"),
         Cell::new("GPUS").style_spec("Fb"),
         Cell::new("GPU TYPE").style_spec("Fb"),
         Cell::new("STATUS").style_spec("Fb"),
@@ -18,16 +18,16 @@ pub fn print_jobs_table(jobs: &[GryviaAIJob]) {
     let unknown = "<unknown>".to_string();
     for job in jobs {
         let name = job.metadata.name.as_ref().unwrap_or(&unknown);
-        let framework = &job.spec.framework;
-        let gpus = job.spec.resources.gpu_count.to_string();
-        let gpu_type = &job.spec.resources.gpu_type;
+        let job_type = &job.spec.job_type;
+        let gpus = job.spec.gpus.to_string();
+        let gpu_type = &job.spec.gpu_type;
         let job_status = job.status.clone().unwrap_or_default();
         let status = colorize_status(&job_status.phase);
         let age = format_age(job.metadata.creation_timestamp.as_ref());
 
         table.add_row(Row::new(vec![
             Cell::new(name),
-            Cell::new(framework),
+            Cell::new(job_type),
             Cell::new(&gpus),
             Cell::new(gpu_type),
             Cell::new(&status),
@@ -144,7 +144,7 @@ pub fn print_cluster_overview(nodes: &[GryviaGpuNode], jobs: &[GryviaAIJob]) {
     for job in jobs {
         let job_status = job.status.clone().unwrap_or_default();
         if job_status.phase == "Running" {
-            allocated_gpus += job.spec.resources.gpu_count;
+            allocated_gpus += job.spec.gpus;
         }
     }
 

@@ -102,7 +102,7 @@ class JobStatus(BaseModel):
 class Job(BaseModel):
     """A GryviaAIJob resource."""
 
-    api_version: str = Field("gryvia.io/v1", alias="apiVersion")
+    api_version: str = Field("gryvia.io/v1alpha1", alias="apiVersion")
     kind: str = "GryviaAIJob"
     metadata: JobMetadata = Field(default_factory=JobMetadata)
     spec: JobSpec = Field(default_factory=JobSpec)
@@ -145,7 +145,7 @@ class JobMetrics(BaseModel):
 class Quota(BaseModel):
     """A GryviaQuota resource (raw Kubernetes object)."""
 
-    api_version: str = Field("gryvia.io/v1", alias="apiVersion")
+    api_version: str = Field("gryvia.io/v1alpha1", alias="apiVersion")
     kind: str = "GryviaQuota"
     metadata: dict[str, Any] = Field(default_factory=dict)
     spec: dict[str, Any] = Field(default_factory=dict)
@@ -200,7 +200,7 @@ class QuotaUsageResponse(BaseModel):
 class Node(BaseModel):
     """A GryviaGPUNode resource (raw Kubernetes object)."""
 
-    api_version: str = Field("gryvia.io/v1", alias="apiVersion")
+    api_version: str = Field("gryvia.io/v1alpha1", alias="apiVersion")
     kind: str = "GryviaGPUNode"
     metadata: dict[str, Any] = Field(default_factory=dict)
     spec: dict[str, Any] = Field(default_factory=dict)

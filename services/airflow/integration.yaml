@@ -338,7 +338,7 @@ data:
     # Task 2: Data Preprocessing (GPU)
     def create_preprocessing_job():
         job_yaml = {
-            'apiVersion': 'gryvia.io/v1',
+            'apiVersion': 'gryvia.io/v1alpha1',
             'kind': 'GryviaAIJob',
             'metadata': {
                 'name': 'data-preprocessing',

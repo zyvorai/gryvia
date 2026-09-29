@@ -2,7 +2,7 @@
 # Job Dependencies and DAG Workflows
 # Define complex job workflows with dependencies
 
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaWorkflow
 metadata:
   name: ml-training-workflow
@@ -158,7 +158,7 @@ spec:
 
 ---
 # Fan-out/Fan-in Pattern
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaWorkflow
 metadata:
   name: hyperparameter-sweep-workflow
@@ -207,7 +207,7 @@ spec:
 
 ---
 # Conditional Workflows
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaWorkflow
 metadata:
   name: conditional-workflow
@@ -241,7 +241,7 @@ spec:
 
 ---
 # Retry with Different Resources
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaWorkflow
 metadata:
   name: adaptive-retry-workflow
@@ -271,7 +271,7 @@ spec:
 
 ---
 # Scheduled Workflow
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaWorkflow
 metadata:
   name: daily-retraining
@@ -308,7 +308,7 @@ spec:
 
 ---
 # Dynamic DAG Generation
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaWorkflow
 metadata:
   name: dynamic-dag
@@ -337,7 +337,7 @@ spec:
 
 ---
 # Cross-Workflow Dependencies
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaWorkflow
 metadata:
   name: workflow-b
@@ -353,7 +353,7 @@ spec:
 
 ---
 # Workflow Status CRD
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaWorkflow
 metadata:
   name: example-workflow

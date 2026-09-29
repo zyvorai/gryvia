@@ -35,7 +35,7 @@ pub async fn execute(
     // Submit job
     let ar = ApiResource::from_gvk(&kube::api::GroupVersionKind::gvk(
         "gryvia.io",
-        "v1",
+        "v1alpha1",
         "GryviaAIJob",
     ));
     let api: Api<DynamicObject> =
@@ -71,7 +71,7 @@ async fn wait_for_completion(client: &GryviaClient, job_name: &str) -> Result<()
 
     let ar = ApiResource::from_gvk(&kube::api::GroupVersionKind::gvk(
         "gryvia.io",
-        "v1",
+        "v1alpha1",
         "GryviaAIJob",
     ));
     let api: Api<DynamicObject> =

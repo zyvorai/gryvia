@@ -25,7 +25,7 @@ GryviaLiveExperiment enables running multiple training jobs simultaneously and c
 ### Basic Example
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaLiveExperiment
 metadata:
   name: lr-sweep
@@ -51,7 +51,7 @@ spec:
 ### With Early Stopping
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaLiveExperiment
 metadata:
   name: architecture-search

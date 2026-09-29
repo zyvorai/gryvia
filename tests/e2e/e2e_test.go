@@ -75,13 +75,13 @@ func TestE2E_AIJobLifecycle(t *testing.T) {
 	// Define GryviaAIJob resource
 	gvr := schema.GroupVersionResource{
 		Group:    "gryvia.io",
-		Version:  "v1",
+		Version:  "v1alpha1",
 		Resource: "gryviaaijobs",
 	}
 
 	job := &unstructured.Unstructured{
 		Object: map[string]interface{}{
-			"apiVersion": "gryvia.io/v1",
+			"apiVersion": "gryvia.io/v1alpha1",
 			"kind":       "GryviaAIJob",
 			"metadata": map[string]interface{}{
 				"name":      jobName,
@@ -169,13 +169,13 @@ func TestE2E_QuotaEnforcement(t *testing.T) {
 
 	quotaGVR := schema.GroupVersionResource{
 		Group:    "gryvia.io",
-		Version:  "v1",
+		Version:  "v1alpha1",
 		Resource: "gryviaquotas",
 	}
 
 	quota := &unstructured.Unstructured{
 		Object: map[string]interface{}{
-			"apiVersion": "gryvia.io/v1",
+			"apiVersion": "gryvia.io/v1alpha1",
 			"kind":       "GryviaQuota",
 			"metadata": map[string]interface{}{
 				"name": quotaName,
@@ -256,7 +256,7 @@ func TestE2E_NodeRegistration(t *testing.T) {
 
 	nodeGVR := schema.GroupVersionResource{
 		Group:    "gryvia.io",
-		Version:  "v1",
+		Version:  "v1alpha1",
 		Resource: "gryviagpunodes",
 	}
 
@@ -289,13 +289,13 @@ func TestE2E_StorageProvisioning(t *testing.T) {
 
 	storageGVR := schema.GroupVersionResource{
 		Group:    "gryvia.io",
-		Version:  "v1",
+		Version:  "v1alpha1",
 		Resource: "gryviastorages",
 	}
 
 	storage := &unstructured.Unstructured{
 		Object: map[string]interface{}{
-			"apiVersion": "gryvia.io/v1",
+			"apiVersion": "gryvia.io/v1alpha1",
 			"kind":       "GryviaStorage",
 			"metadata": map[string]interface{}{
 				"name": storageName,

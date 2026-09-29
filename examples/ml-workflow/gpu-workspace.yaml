@@ -1,7 +1,7 @@
 # GryviaWorkspace - GPU-attached JupyterLab environment for interactive ML work
 # Creates a persistent development workspace with 2 A100 GPUs, auto-pause on
 # idle, and pre-configured ML libraries.
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaWorkspace
 metadata:
   name: research-notebook

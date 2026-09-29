@@ -1,5 +1,5 @@
 # Example: Time Machine for LLM fine-tuning job
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaTrainingTimeMachine
 metadata:
   name: llama-finetune-timemachine
@@ -53,7 +53,7 @@ spec:
       newJobName: llama-70b-extended
 ---
 # Example: Time Machine with step-based fork
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaTrainingTimeMachine
 metadata:
   name: resnet-experiment-timemachine

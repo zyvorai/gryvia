@@ -48,20 +48,20 @@ fn print_job_status(job: &GryviaAIJob) {
     println!("{}", format!("━━━ Job: {} ━━━", name).bold().cyan());
     println!();
 
-    println!("{} {}", "Framework:".bold(), job.spec.framework);
+    println!("{} {}", "Type:".bold(), job.spec.job_type);
     println!("{} {}", "Image:".bold(), job.spec.image);
     println!();
 
     println!("{}", "Resources:".bold().underline());
-    println!("  GPU Type: {}", job.spec.resources.gpu_type);
-    println!("  GPU Count: {}", job.spec.resources.gpu_count);
-    println!("  Memory: {}", job.spec.resources.memory);
-    println!("  CPU: {}", job.spec.resources.cpu);
+    println!("  GPU Type: {}", job.spec.gpu_type);
+    println!("  GPU Count: {}", job.spec.gpus);
+    println!("  Memory: {}", job.spec.resources.request("memory"));
+    println!("  CPU: {}", job.spec.resources.request("cpu"));
     println!();
 
     if job.spec.distributed.enabled {
         println!("{}", "Distributed Training:".bold().underline());
-        println!("  Strategy: {}", job.spec.distributed.strategy);
+        println!("  Framework: {}", job.spec.distributed.framework);
         println!("  Nodes: {}", job.spec.distributed.nodes);
         println!("  GPUs/Node: {}", job.spec.distributed.gpus_per_node);
         println!();

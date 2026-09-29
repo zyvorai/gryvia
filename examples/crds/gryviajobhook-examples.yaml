@@ -1,5 +1,5 @@
 # Example: Pre-Start Data Validation Hook
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaJobHook
 metadata:
   name: validate-data-pre-start
@@ -22,7 +22,7 @@ spec:
   failurePolicy: fail-job  # Don't start job if validation fails
 ---
 # Example: Post-Completion Model Upload
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaJobHook
 metadata:
   name: upload-model-post-completion
@@ -52,7 +52,7 @@ spec:
     backoff: 1m
 ---
 # Example: On-Failure Notification
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaJobHook
 metadata:
   name: notify-on-failure
@@ -86,7 +86,7 @@ spec:
   failurePolicy: ignore
 ---
 # Example: Pre-Checkpoint Hook
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaJobHook
 metadata:
   name: optimize-checkpoint
@@ -105,7 +105,7 @@ spec:
   failurePolicy: ignore  # Don't fail checkpoint if compression fails
 ---
 # Example: Webhook Integration (Weights & Biases)
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaJobHook
 metadata:
   name: wandb-integration
@@ -135,7 +135,7 @@ spec:
   failurePolicy: ignore
 ---
 # Example: Pre-Retry Resource Adjustment
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaJobHook
 metadata:
   name: adjust-resources-pre-retry
@@ -161,7 +161,7 @@ spec:
   failurePolicy: ignore
 ---
 # Example: Cost Tracking Hook
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaJobHook
 metadata:
   name: track-job-cost
@@ -183,7 +183,7 @@ spec:
         }
 ---
 # Example: Model Registry Hook
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaJobHook
 metadata:
   name: register-model
@@ -212,7 +212,7 @@ spec:
           )
 ---
 # Example: Slack Notification with Rich Format
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaJobHook
 metadata:
   name: slack-job-completion
@@ -250,7 +250,7 @@ spec:
         }
 ---
 # Example: Auto-Cleanup Hook
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaJobHook
 metadata:
   name: cleanup-scratch

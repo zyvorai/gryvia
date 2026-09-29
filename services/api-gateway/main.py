@@ -28,6 +28,7 @@ from routers.phases import count_phases, is_billable, normalize as normalize_pha
 
 import httpx
 from jose import jwt, JWTError
+from jose.exceptions import JOSEError
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -154,6 +155,9 @@ OIDC_AUDIENCE = os.environ.get("OIDC_AUDIENCE", "").strip() or OIDC_CLIENT_ID
 _jwks_cache: Dict[str, Any] = {}
 _jwks_cache_time: float = 0
 _JWKS_CACHE_TTL = 3600  # 1 hour
+# A token naming an unknown key forces a refresh (the provider may have rotated keys). Unauthenticated
+# callers can send such tokens, so refresh at most once per interval to avoid hammering the provider.
+_JWKS_MIN_REFRESH_SECONDS = 30
 _oidc_discovery: Optional[Dict[str, Any]] = None
 
 
@@ -191,6 +195,17 @@ async def _get_jwks() -> Dict[str, Any]:
         return _jwks_cache
 
 
+async def _fetch_jwks_or_503() -> Dict[str, Any]:
+    """_get_jwks, with an unreachable or broken identity provider reported as 503, not a crash."""
+    try:
+        return await _get_jwks()
+    except HTTPException:
+        raise
+    except Exception:
+        logger.warning("Failed to fetch OIDC signing keys")
+        raise HTTPException(status_code=503, detail="OIDC provider unreachable")
+
+
 async def _validate_jwt_token(token: str) -> Dict[str, Any]:
     """Validate a JWT token against the OIDC provider's JWKS."""
     try:
@@ -199,7 +214,7 @@ async def _validate_jwt_token(token: str) -> Dict[str, Any]:
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token header")
 
-    jwks_data = await _get_jwks()
+    jwks_data = await _fetch_jwks_or_503()
     kid = unverified_header.get("kid")
 
     # Find the matching key
@@ -210,14 +225,16 @@ async def _validate_jwt_token(token: str) -> Dict[str, Any]:
             break
 
     if not rsa_key:
-        # Key not found - maybe keys rotated, refresh cache and retry once
+        # Key not found - maybe keys rotated, refresh the cache and retry once. Skipped when the keys
+        # were fetched moments ago, so unknown-kid tokens cannot force a fetch per request.
         global _jwks_cache_time
-        _jwks_cache_time = 0
-        jwks_data = await _get_jwks()
-        for key in jwks_data.get("keys", []):
-            if key.get("kid") == kid:
-                rsa_key = key
-                break
+        if time.monotonic() - _jwks_cache_time >= _JWKS_MIN_REFRESH_SECONDS:
+            _jwks_cache_time = 0
+            jwks_data = await _fetch_jwks_or_503()
+            for key in jwks_data.get("keys", []):
+                if key.get("kid") == kid:
+                    rsa_key = key
+                    break
 
     if not rsa_key:
         raise HTTPException(
@@ -231,13 +248,19 @@ async def _validate_jwt_token(token: str) -> Dict[str, Any]:
             algorithms=["RS256", "RS384", "RS512", "ES256", "ES384"],
             audience=OIDC_AUDIENCE,
             issuer=OIDC_ISSUER_URL,
+            options={
+                "require_exp": True,
+                "require_iss": True,
+                "require_aud": True,
+                "require_sub": True,
+            },
         )
         return payload
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token has expired")
     except jwt.JWTClaimsError as e:
         raise HTTPException(status_code=401, detail=f"Invalid token claims: {e}")
-    except JWTError:
+    except (JWTError, JOSEError):
         raise HTTPException(status_code=401, detail="Invalid token")
 
 
@@ -439,14 +462,14 @@ async def get_cluster_stats(request: Request, _=Depends(verify_auth)):
             loop.run_in_executor(
                 None,
                 lambda: k8s_custom.list_cluster_custom_object(
-                    group="gryvia.io", version="v1", plural="gryviagpunodes"
+                    group="gryvia.io", version="v1alpha1", plural="gryviagpunodes"
                 ),
             ),
             loop.run_in_executor(
                 None,
                 lambda: k8s_custom.list_namespaced_custom_object(
                     group="gryvia.io",
-                    version="v1",
+                    version="v1alpha1",
                     namespace=JOB_NAMESPACE,
                     plural="gryviaaijobs",
                 ),
@@ -527,7 +550,7 @@ async def get_gpu_metrics(
         nodes = await loop.run_in_executor(
             None,
             lambda: k8s_custom.list_cluster_custom_object(
-                group="gryvia.io", version="v1", plural="gryviagpunodes"
+                group="gryvia.io", version="v1alpha1", plural="gryviagpunodes"
             ),
         )
 
@@ -565,7 +588,7 @@ async def get_cost_metrics(request: Request, _=Depends(verify_auth)):
         quotas = await loop.run_in_executor(
             None,
             lambda: k8s_custom.list_cluster_custom_object(
-                group="gryvia.io", version="v1", plural="gryviaquotas"
+                group="gryvia.io", version="v1alpha1", plural="gryviaquotas"
             ),
         )
 
@@ -574,7 +597,7 @@ async def get_cost_metrics(request: Request, _=Depends(verify_auth)):
             None,
             lambda: k8s_custom.list_namespaced_custom_object(
                 group="gryvia.io",
-                version="v1",
+                version="v1alpha1",
                 namespace=JOB_NAMESPACE,
                 plural="gryviaaijobs",
             ),
@@ -686,7 +709,7 @@ async def get_job_metrics(
             None,
             lambda: k8s_custom.list_namespaced_custom_object(
                 group="gryvia.io",
-                version="v1",
+                version="v1alpha1",
                 namespace=JOB_NAMESPACE,
                 plural="gryviaaijobs",
             ),
@@ -762,7 +785,10 @@ async def list_jobs(
             jobs = await loop.run_in_executor(
                 None,
                 lambda ns=ns: k8s_custom.list_namespaced_custom_object(
-                    group="gryvia.io", version="v1", namespace=ns, plural="gryviaaijobs"
+                    group="gryvia.io",
+                    version="v1alpha1",
+                    namespace=ns,
+                    plural="gryviaaijobs",
                 ),
             )
             all_items.extend(jobs.get("items", []))
@@ -792,7 +818,7 @@ async def get_job(request: Request, name: str, _=Depends(verify_auth)):
             None,
             lambda: k8s_custom.get_namespaced_custom_object(
                 group="gryvia.io",
-                version="v1",
+                version="v1alpha1",
                 namespace=JOB_NAMESPACE,
                 plural="gryviaaijobs",
                 name=name,
@@ -821,9 +847,9 @@ async def create_job(request: Request, _=Depends(verify_auth)):
             raise HTTPException(
                 status_code=400, detail="Request body must be a JSON object"
             )
-        if body.get("apiVersion") != "gryvia.io/v1":
+        if body.get("apiVersion") != "gryvia.io/v1alpha1":
             raise HTTPException(
-                status_code=400, detail="apiVersion must be gryvia.io/v1"
+                status_code=400, detail="apiVersion must be gryvia.io/v1alpha1"
             )
         if body.get("kind") != "GryviaAIJob":
             raise HTTPException(status_code=400, detail="kind must be GryviaAIJob")
@@ -847,7 +873,7 @@ async def create_job(request: Request, _=Depends(verify_auth)):
             None,
             lambda: k8s_custom.create_namespaced_custom_object(
                 group="gryvia.io",
-                version="v1",
+                version="v1alpha1",
                 namespace=target_ns,
                 plural="gryviaaijobs",
                 body=body,
@@ -874,7 +900,7 @@ async def delete_job(request: Request, name: str, _=Depends(verify_auth)):
             None,
             lambda: k8s_custom.delete_namespaced_custom_object(
                 group="gryvia.io",
-                version="v1",
+                version="v1alpha1",
                 namespace=JOB_NAMESPACE,
                 plural="gryviaaijobs",
                 name=name,
@@ -905,7 +931,7 @@ async def list_quotas(
         quotas = await loop.run_in_executor(
             None,
             lambda: k8s_custom.list_cluster_custom_object(
-                group="gryvia.io", version="v1", plural="gryviaquotas"
+                group="gryvia.io", version="v1alpha1", plural="gryviaquotas"
             ),
         )
 
@@ -935,7 +961,7 @@ async def get_quota(request: Request, name: str, _=Depends(verify_auth)):
             None,
             lambda: k8s_custom.get_cluster_custom_object(
                 group="gryvia.io",
-                version="v1",
+                version="v1alpha1",
                 plural="gryviaquotas",
                 name=name,
             ),
@@ -965,7 +991,7 @@ async def list_nodes(
         nodes = await loop.run_in_executor(
             None,
             lambda: k8s_custom.list_cluster_custom_object(
-                group="gryvia.io", version="v1", plural="gryviagpunodes"
+                group="gryvia.io", version="v1alpha1", plural="gryviagpunodes"
             ),
         )
 
@@ -995,7 +1021,7 @@ async def get_node(request: Request, name: str, _=Depends(verify_auth)):
             None,
             lambda: k8s_custom.get_cluster_custom_object(
                 group="gryvia.io",
-                version="v1",
+                version="v1alpha1",
                 plural="gryviagpunodes",
                 name=name,
             ),
@@ -1025,7 +1051,7 @@ async def get_quota_usage(
         quotas = await loop.run_in_executor(
             None,
             lambda: k8s_custom.list_cluster_custom_object(
-                group="gryvia.io", version="v1", plural="gryviaquotas"
+                group="gryvia.io", version="v1alpha1", plural="gryviaquotas"
             ),
         )
 
@@ -1088,7 +1114,7 @@ async def get_node_health(
         nodes = await loop.run_in_executor(
             None,
             lambda: k8s_custom.list_cluster_custom_object(
-                group="gryvia.io", version="v1", plural="gryviagpunodes"
+                group="gryvia.io", version="v1alpha1", plural="gryviagpunodes"
             ),
         )
 

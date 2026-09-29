@@ -94,7 +94,7 @@ Both operators are Kubernetes controllers built with Go and the controller-runti
 ### Example Usage
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaStorage
 metadata:
   name: vast-production
@@ -156,7 +156,7 @@ Result: Automatic deployment of:
 
 **RDMA Network:**
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaNetwork
 metadata:
   name: rdma-ib
@@ -177,7 +177,7 @@ Result:
 
 **SR-IOV Network:**
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaNetwork
 metadata:
   name: sriov-net

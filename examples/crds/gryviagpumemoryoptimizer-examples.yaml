@@ -1,5 +1,5 @@
 # Example: Cluster-wide GPU Memory Optimizer
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaGpuMemoryOptimizer
 metadata:
   name: cluster-memory-optimizer
@@ -31,7 +31,7 @@ spec:
     enabled: false
 ---
 # Example: Namespace-scoped optimizer with inference packing
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaGpuMemoryOptimizer
 metadata:
   name: inference-ns-optimizer

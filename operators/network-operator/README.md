@@ -78,7 +78,7 @@ echo 32 > /sys/class/net/ens1f0/device/sriov_numvfs
 ### RDMA InfiniBand Network
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaNetwork
 metadata:
   name: rdma-infiniband
@@ -99,7 +99,7 @@ spec:
 ### SR-IOV Network
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaNetwork
 metadata:
   name: sriov-highspeed

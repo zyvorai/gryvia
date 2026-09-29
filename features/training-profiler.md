@@ -24,7 +24,7 @@ kubectl apply -f crds/gryvia.io_gryviatrainingprofilers.yaml
 ### 2. Create a Profiler
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaTrainingProfiler
 metadata:
   name: my-profiler

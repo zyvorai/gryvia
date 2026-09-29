@@ -186,6 +186,31 @@ enum Commands {
         component: String,
     },
 
+    /// Report GPU capacity: total, allocated and free GPUs per type, pending demand and shortfall
+    ///
+    /// Read-only. Supply comes from GryviaGpuNode objects, allocation from Running jobs and demand
+    /// from Pending/Queued/Scheduling jobs. Jobs that do not name a GPU type (or say "any") are
+    /// counted only in the cluster totals. This is a snapshot, not a forecast.
+    Capacity {
+        /// Output format (table, json)
+        #[arg(short, long, default_value = "table")]
+        output: String,
+
+        /// Only report this GPU type (case-insensitive); jobs without a type are excluded
+        #[arg(long)]
+        gpu_type: Option<String>,
+    },
+
+    /// Mark nodes for maintenance: cordon, optionally drain, and list
+    ///
+    /// Uses the standard Kubernetes cordon flag plus the annotations gryvia.io/maintenance (start
+    /// time) and gryvia.io/maintenance-reason. Draining uses the Eviction API only, so
+    /// PodDisruptionBudgets are respected; pods are never deleted directly.
+    Maintenance {
+        #[command(subcommand)]
+        action: MaintenanceCommands,
+    },
+
     /// Network intelligence commands
     Network {
         #[command(subcommand)]
@@ -203,6 +228,37 @@ enum Commands {
         #[command(subcommand)]
         action: GpuCommands,
     },
+}
+
+#[derive(Subcommand)]
+enum MaintenanceCommands {
+    /// Cordon a node and mark it as under maintenance
+    Start {
+        /// Kubernetes node name
+        node: String,
+
+        /// Why the node is being taken out of service (stored in the annotation)
+        #[arg(long)]
+        reason: Option<String>,
+
+        /// Also evict the node's pods via the Eviction API (skips DaemonSet and mirror pods;
+        /// pods blocked by a PodDisruptionBudget are reported and left running)
+        #[arg(long)]
+        drain: bool,
+
+        /// Skip the confirmation prompt for --drain
+        #[arg(short, long)]
+        yes: bool,
+    },
+
+    /// Uncordon a node and remove the maintenance annotations
+    End {
+        /// Kubernetes node name
+        node: String,
+    },
+
+    /// List nodes marked for maintenance, with age and reason
+    List,
 }
 
 #[derive(Subcommand)]
@@ -520,6 +576,25 @@ async fn main() -> Result<()> {
         Commands::Health { component } => {
             commands::health::execute(&client, &component).await?;
         }
+        Commands::Capacity { output, gpu_type } => {
+            commands::capacity::execute(&client, &output, gpu_type.as_deref()).await?;
+        }
+        Commands::Maintenance { action } => match action {
+            MaintenanceCommands::Start {
+                node,
+                reason,
+                drain,
+                yes,
+            } => {
+                commands::maintenance::start(&client, &node, reason.as_deref(), drain, yes).await?;
+            }
+            MaintenanceCommands::End { node } => {
+                commands::maintenance::end(&client, &node).await?;
+            }
+            MaintenanceCommands::List => {
+                commands::maintenance::list(&client).await?;
+            }
+        },
         Commands::Network { action } => {
             let has_ns_flag = namespace_flag.is_some();
             let ns_default = client.namespace().to_string();

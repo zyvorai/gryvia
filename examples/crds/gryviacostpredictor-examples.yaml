@@ -1,5 +1,5 @@
 # Example: Cost Predictor
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaCostPredictor
 metadata:
   name: default-predictor

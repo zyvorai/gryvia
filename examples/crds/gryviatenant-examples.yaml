@@ -1,5 +1,5 @@
 # Example: ML Research Team
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaTenant
 metadata:
   name: ml-research
@@ -77,7 +77,7 @@ spec:
     auditRetention: 1y
 ---
 # Example: Production Inference Team
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaTenant
 metadata:
   name: production-inference
@@ -122,7 +122,7 @@ spec:
     auditRetention: 7y
 ---
 # Example: Sub-Team (Hierarchical)
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaTenant
 metadata:
   name: ml-research-cv
@@ -149,7 +149,7 @@ spec:
     concurrentGPUs: 32
 ---
 # Example: External Collaborator Tenant
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaTenant
 metadata:
   name: university-collab
@@ -195,7 +195,7 @@ spec:
     auditRetention: 2y
 ---
 # Tenant Status Example
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaTenant
 metadata:
   name: ml-research

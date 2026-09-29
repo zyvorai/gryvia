@@ -9,7 +9,7 @@ Advanced scheduling policies for optimizing GPU resource allocation in Gryvia.
 Schedule jobs based on priority levels (critical, high, medium, low).
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: critical-training
@@ -239,7 +239,7 @@ kubectl patch configmap gryvia-config -n gryvia-system \
 ### Per-Job Policy
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   annotations:
@@ -251,7 +251,7 @@ spec:
 ### Per-Team Policy
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaQuota
 metadata:
   name: ml-research
@@ -387,7 +387,7 @@ kfctl policy test <policy-name>
 Create custom scheduling policies:
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: SchedulingPolicy
 metadata:
   name: custom-ml-policy

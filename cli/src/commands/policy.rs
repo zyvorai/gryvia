@@ -40,7 +40,7 @@ async fn list_policies(client: &GryviaClient, namespace: &str, output: &str) -> 
 
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
         "gryvia.io",
-        "v1",
+        "v1alpha1",
         "GryviaFlowPolicy",
     ));
     let api: Api<DynamicObject> = Api::namespaced_with(client.kube_client.clone(), namespace, &ar);
@@ -168,7 +168,7 @@ async fn suggest_policies(client: &GryviaClient, namespace: &str) -> Result<()> 
     // Query for suggested policies (those with phase=Suggested)
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
         "gryvia.io",
-        "v1",
+        "v1alpha1",
         "GryviaFlowPolicy",
     ));
     let api: Api<DynamicObject> = Api::namespaced_with(client.kube_client.clone(), namespace, &ar);
@@ -266,7 +266,7 @@ async fn apply_policy(client: &GryviaClient, policy_name: &str, namespace: &str)
 
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
         "gryvia.io",
-        "v1",
+        "v1alpha1",
         "GryviaFlowPolicy",
     ));
     let api: Api<DynamicObject> = Api::namespaced_with(client.kube_client.clone(), namespace, &ar);

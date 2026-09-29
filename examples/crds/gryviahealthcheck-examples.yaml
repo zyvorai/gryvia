@@ -1,5 +1,5 @@
 # Example: Cluster-Wide GPU Health Monitoring
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaHealthCheck
 metadata:
   name: cluster-gpu-health
@@ -85,7 +85,7 @@ spec:
     maxAttempts: 3
 ---
 # Example: Per-Node Health Check
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaHealthCheck
 metadata:
   name: dgx-node-health
@@ -122,7 +122,7 @@ spec:
     autoRemediate: false  # Manual intervention for DGX
 ---
 # Example: Job-Level Health Monitoring
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaHealthCheck
 metadata:
   name: job-gpu-health
@@ -151,7 +151,7 @@ spec:
     alert: true
 ---
 # Health Check Status Example
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaHealthCheck
 metadata:
   name: cluster-gpu-health

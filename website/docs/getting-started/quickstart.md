@@ -75,7 +75,7 @@ The dashboard follows your system light or dark setting and includes:
 
 ```yaml
 # gpu-node.yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaGpuNode
 metadata:
   name: gpu-node-01
@@ -97,7 +97,7 @@ kubectl get gryviagpunodes
 
 ```yaml
 # training-job.yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: pytorch-test
@@ -121,7 +121,7 @@ kubectl get gryviaaijobs
 
 ```yaml
 # team-quota.yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaQuota
 metadata:
   name: ml-research

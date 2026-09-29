@@ -14,7 +14,7 @@ spec:
     singular: gryvianetworkcost
   scope: Namespaced
   versions:
-  - name: v1
+  - name: v1alpha1
     schema:
       openAPIV3Schema:
         description: GryviaNetworkCost is the Schema for the gryvianetworkcosts API

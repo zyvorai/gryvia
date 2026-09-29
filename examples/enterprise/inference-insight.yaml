@@ -1,7 +1,7 @@
 # GryviaInferenceInsight - Latency breakdown analysis for inference endpoints
 # Provides per-phase latency measurements (DNS, TCP, TLS, GPU queue, GPU exec,
 # postprocess) to identify bottlenecks in the serving pipeline.
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaInferenceInsight
 metadata:
   name: llm-serving-latency

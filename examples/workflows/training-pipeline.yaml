@@ -58,7 +58,7 @@ spec:
       resource:
         action: create
         manifest: |
-          apiVersion: gryvia.io/v1
+          apiVersion: gryvia.io/v1alpha1
           kind: GryviaAIJob
           metadata:
             name: data-prep-{{workflow.name}}
@@ -86,7 +86,7 @@ spec:
       resource:
         action: create
         manifest: |
-          apiVersion: gryvia.io/v1
+          apiVersion: gryvia.io/v1alpha1
           kind: GryviaAIJob
           metadata:
             name: training-{{workflow.name}}
@@ -123,7 +123,7 @@ spec:
       resource:
         action: create
         manifest: |
-          apiVersion: gryvia.io/v1
+          apiVersion: gryvia.io/v1alpha1
           kind: GryviaAIJob
           metadata:
             name: eval-{{workflow.name}}
@@ -152,7 +152,7 @@ spec:
       resource:
         action: create
         manifest: |
-          apiVersion: gryvia.io/v1
+          apiVersion: gryvia.io/v1alpha1
           kind: GryviaAIJob
           metadata:
             name: export-{{workflow.name}}

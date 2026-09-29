@@ -20,12 +20,14 @@ and the project aims to follow [Semantic Versioning](https://semver.org/) once i
 - Open tabs recover automatically after a redeploy.
 
 ### Changed
+- **Breaking:** the API version is now `gryvia.io/v1alpha1` (it was `v1`), matching the project's alpha status. Objects created under `v1` are not converted: export them, change `apiVersion`, and re-apply. `scripts/rename-version.sh` documents the change; `deploy-remote.sh` recreates CRDs that still store `v1` when they hold no objects.
 - **Breaking:** API kinds renamed from `Fabric*` to `Gryvia*` (for example `FabricAIJob` is now `GryviaAIJob`).
   Recreate existing objects under the new kinds; `scripts/rename-kinds.sh` documents the mapping.
 - The dashboard follows netra's design system and defaults to the system light or dark setting.
 - Status vocabulary unified across pages (`Succeeded` counts as completed, `Scheduling` as pending).
 
 ### Fixed
+- The release rehearsal showed the eBPF collector image has never built (its kernel programs do not compile). It is no longer published and is off by default in the network-intelligence chart; documented as experimental.
 - Costs are labelled as spend to date; empty states name the operator or collector that feeds the data instead
   of showing reassuring zeros.
 - Rate limits count per client address instead of per proxy pod.

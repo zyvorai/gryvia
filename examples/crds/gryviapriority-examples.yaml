@@ -1,5 +1,5 @@
 # System-Critical Priority (highest)
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaPriority
 metadata:
   name: system-critical
@@ -15,7 +15,7 @@ spec:
     guaranteedResources: true
 ---
 # Production Priority (very high)
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaPriority
 metadata:
   name: production
@@ -31,7 +31,7 @@ spec:
     guaranteedResources: true
 ---
 # High Priority
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaPriority
 metadata:
   name: high
@@ -47,7 +47,7 @@ spec:
     guaranteedResources: false
 ---
 # Normal Priority (default)
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaPriority
 metadata:
   name: normal
@@ -62,7 +62,7 @@ spec:
     guaranteedResources: false
 ---
 # Low Priority
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaPriority
 metadata:
   name: low
@@ -77,7 +77,7 @@ spec:
     guaranteedResources: false
 ---
 # Best-Effort Priority (lowest)
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaPriority
 metadata:
   name: best-effort
@@ -92,7 +92,7 @@ spec:
     guaranteedResources: false
 ---
 # Spot Priority (for spot instance jobs)
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaPriority
 metadata:
   name: spot
@@ -107,7 +107,7 @@ spec:
     guaranteedResources: false
 ---
 # Example Job with Priority
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: critical-training
@@ -123,7 +123,7 @@ spec:
   command: ["python", "train.py"]
 ---
 # Example: Preemptible Job
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: batch-job
@@ -141,7 +141,7 @@ spec:
   command: ["python", "train.py", "--checkpoint-dir=/checkpoints"]
 ---
 # Example: Production Serving (highest priority)
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: llm-serving

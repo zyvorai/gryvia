@@ -81,7 +81,11 @@ async fn check_gpu_health(client: &GryviaClient) -> Result<()> {
 async fn check_storage_health(client: &GryviaClient) -> Result<()> {
     println!("{}", "Storage:".bold().underline());
 
-    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("gryvia.io", "v1", "GryviaStorage"));
+    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
+        "gryvia.io",
+        "v1alpha1",
+        "GryviaStorage",
+    ));
     let api: Api<DynamicObject> = Api::all_with(client.kube_client.clone(), &ar);
 
     let storages = match api.list(&ListParams::default()).await {
@@ -175,7 +179,11 @@ async fn check_storage_health(client: &GryviaClient) -> Result<()> {
 async fn check_network_health(client: &GryviaClient) -> Result<()> {
     println!("{}", "Network:".bold().underline());
 
-    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("gryvia.io", "v1", "GryviaNetwork"));
+    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
+        "gryvia.io",
+        "v1alpha1",
+        "GryviaNetwork",
+    ));
     let api: Api<DynamicObject> = Api::all_with(client.kube_client.clone(), &ar);
 
     let networks = match api.list(&ListParams::default()).await {

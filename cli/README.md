@@ -9,6 +9,8 @@ Command-line interface for managing Gryvia GPU clusters.
 - **Cluster Overview**: Real-time cluster status and GPU utilization
 - **Cost Analysis**: Track spending and budget usage
 - **Health Checks**: Monitor GPU, storage, and network health
+- **Capacity Report**: `gryvia capacity` shows total/allocated/free GPUs per type, pending demand and shortfall
+- **Node Maintenance**: `gryvia maintenance start|end|list` cordons, optionally drains (Eviction API), and tracks nodes
 - **Beautiful Output**: Colored tables and status indicators
 
 ## Installation
@@ -40,6 +42,19 @@ gryvia submit -f job.yaml --wait
 
 # Submit and follow logs
 gryvia submit -f job.yaml --logs
+```
+
+### Capacity and Maintenance
+
+```bash
+# GPU capacity per type (read-only)
+gryvia capacity
+gryvia capacity --gpu-type H100 --output json
+
+# Take a node out of service, optionally evicting its pods
+gryvia maintenance start gpu-node-05 --reason "firmware update" --drain
+gryvia maintenance list
+gryvia maintenance end gpu-node-05
 ```
 
 ### List Resources
@@ -175,7 +190,7 @@ gryvia delete job my-job --yes
 
 ### Validate YAML
 
-Validates the YAML file structure and checks that `apiVersion` and `kind` match known Gryvia types (e.g., `gryvia.io/v1` / `GryviaAIJob`).
+Validates the YAML file structure and checks that `apiVersion` and `kind` match known Gryvia types (e.g., `gryvia.io/v1alpha1` / `GryviaAIJob`).
 
 ```bash
 gryvia validate job.yaml

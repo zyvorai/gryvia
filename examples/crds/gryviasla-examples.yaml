@@ -1,5 +1,5 @@
 # Example: Platinum SLA (Production)
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaSLA
 metadata:
   name: production-platinum
@@ -56,7 +56,7 @@ spec:
         - sre-team@company.com
 ---
 # Example: Gold SLA (Research)
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaSLA
 metadata:
   name: research-gold
@@ -102,7 +102,7 @@ spec:
         - ml-team-lead@company.com
 ---
 # Example: Silver SLA (Development)
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaSLA
 metadata:
   name: dev-silver
@@ -146,7 +146,7 @@ spec:
         - dev-team@company.com
 ---
 # Example: Job with SLA
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: production-inference
@@ -167,7 +167,7 @@ spec:
   command: ["python", "-m", "vllm.entrypoints.api_server"]
 ---
 # SLA Status Example
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaSLA
 metadata:
   name: production-platinum

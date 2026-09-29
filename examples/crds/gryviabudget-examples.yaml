@@ -1,5 +1,5 @@
 # Example: Monthly Team Budget
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaBudget
 metadata:
   name: ml-research-monthly
@@ -64,7 +64,7 @@ spec:
     overrideLimitPercent: 10  # High-priority jobs can use 10% over budget
 ---
 # Example: Quarterly Project Budget
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaBudget
 metadata:
   name: llm-training-q1
@@ -97,7 +97,7 @@ spec:
     enabled: false  # No rollover for project budgets
 ---
 # Example: User Daily Budget (Development)
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaBudget
 metadata:
   name: dev-user-alice-daily
@@ -127,7 +127,7 @@ spec:
     gracePeriod: 1h
 ---
 # Example: Namespace Weekly Budget
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaBudget
 metadata:
   name: production-weekly
@@ -161,7 +161,7 @@ spec:
     overrideLimitPercent: 25  # Production can burst to 125%
 ---
 # Budget Status Example
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaBudget
 metadata:
   name: ml-research-monthly

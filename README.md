@@ -241,7 +241,7 @@ Storage and network throughput depend on the hardware, filesystem and fabric you
 
 ## Status and security
 
-Gryvia is **alpha**. APIs (`gryvia.io/v1` CRDs) may change between releases and there is no upgrade
+Gryvia is **alpha**. APIs (`gryvia.io/v1alpha1` CRDs) may change between releases and there is no upgrade
 guarantee yet; see the [changelog](CHANGELOG.md). What exists today:
 
 - OIDC/SSO with PKCE and JWT validation in the API gateway, plus a shared-key login (constant-time
@@ -251,6 +251,11 @@ guarantee yet; see the [changelog](CHANGELOG.md). What exists today:
 - `GryviaTenant` creates per-tenant namespaces, ResourceQuotas and optional NetworkPolicies; the chart
   offers an opt-in NetworkPolicy for the gateway.
 - Release images and the Helm chart are signed with cosign and ship SBOM and provenance attestations.
+
+**Experimental, not working yet:** the eBPF flow collector (`ebpf/`, `collector/`). Its 23 kernel programs do not
+compile today (they need porting to CO-RE with a generated `vmlinux.h`), so no collector image is published and
+the network graph, flows and security event pages stay empty until a flow source exists. The rest of the platform
+does not depend on it.
 
 Read the [threat model and known limits](SECURITY.md) before exposing an install beyond a lab, and report
 vulnerabilities privately as described there.

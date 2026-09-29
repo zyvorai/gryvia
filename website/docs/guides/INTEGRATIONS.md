@@ -7,7 +7,7 @@ Gryvia integrates seamlessly with popular ML platforms and tools.
 ### Weights & Biases
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: training-with-wandb
@@ -81,7 +81,7 @@ Access: `http://<external-ip>:6006`
 ### HuggingFace Hub
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaJobHook
 metadata:
   name: push-to-huggingface
@@ -134,7 +134,7 @@ spec:
 ### DVC (Data Version Control)
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaDataset
 metadata:
   name: my-dataset
@@ -308,7 +308,7 @@ pipeline {
 ### Job Notifications
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaJobHook
 metadata:
   name: slack-notifications
@@ -426,7 +426,7 @@ spec:
 ### S3 Backup
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaJobHook
 metadata:
   name: backup-checkpoints

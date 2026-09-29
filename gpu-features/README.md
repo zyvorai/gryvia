@@ -72,7 +72,7 @@ kubectl describe node gpu-node-1 | grep nvidia.com/mig
 #### Request MIG Instance
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: small-inference
@@ -350,7 +350,7 @@ nvidia-smi -i 0 --query-compute-apps=pid,used_memory --format=csv
 For GPUs that don't support MIG (V100, T4), use time-sharing:
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GPUSharingPolicy
 metadata:
   name: gpu-sharing

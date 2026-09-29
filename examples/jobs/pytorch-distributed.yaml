@@ -1,4 +1,4 @@
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: pytorch-distributed-training

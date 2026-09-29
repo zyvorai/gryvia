@@ -68,7 +68,7 @@ GET /api/nodes/{name}         # Get node by name
 ```
 
 **Notes:**
-- `POST /api/jobs` validates that `apiVersion` is `gryvia.io/v1` and `kind` is a known Gryvia type.
+- `POST /api/jobs` validates that `apiVersion` is `gryvia.io/v1alpha1` and `kind` is a known Gryvia type.
 - Cost responses include a `hasHistoricalData` field indicating whether Prometheus data is available.
 - Monthly cost trend data is not available through the gateway (historical trends require Prometheus).
 
@@ -184,7 +184,7 @@ POST /api/v1/jobs/{namespace}
 
 ```json
 {
-  "apiVersion": "gryvia.io/v1",
+  "apiVersion": "gryvia.io/v1alpha1",
   "kind": "GryviaAIJob",
   "metadata": {
     "name": "new-training-job",
@@ -434,7 +434,7 @@ POST /api/v1/quotas
 
 ```json
 {
-  "apiVersion": "gryvia.io/v1",
+  "apiVersion": "gryvia.io/v1alpha1",
   "kind": "GryviaQuota",
   "metadata": {
     "name": "new-team"

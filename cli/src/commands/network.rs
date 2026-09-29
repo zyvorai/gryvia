@@ -11,7 +11,11 @@ pub async fn execute_status(client: &GryviaClient, namespace: &str) -> Result<()
     println!();
 
     // Query flows
-    let flow_ar = ApiResource::from_gvk(&GroupVersionKind::gvk("gryvia.io", "v1", "GryviaFlow"));
+    let flow_ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
+        "gryvia.io",
+        "v1alpha1",
+        "GryviaFlow",
+    ));
     let flow_api: Api<DynamicObject> =
         Api::namespaced_with(client.kube_client.clone(), namespace, &flow_ar);
 
@@ -23,7 +27,7 @@ pub async fn execute_status(client: &GryviaClient, namespace: &str) -> Result<()
     // Query policies
     let policy_ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
         "gryvia.io",
-        "v1",
+        "v1alpha1",
         "GryviaFlowPolicy",
     ));
     let policy_api: Api<DynamicObject> =
@@ -51,7 +55,7 @@ pub async fn execute_status(client: &GryviaClient, namespace: &str) -> Result<()
     // Query anomalies
     let anomaly_ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
         "gryvia.io",
-        "v1",
+        "v1alpha1",
         "GryviaNetworkAnomaly",
     ));
     let anomaly_api: Api<DynamicObject> =
@@ -80,7 +84,7 @@ pub async fn execute_status(client: &GryviaClient, namespace: &str) -> Result<()
     // Query trace sessions
     let trace_ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
         "gryvia.io",
-        "v1",
+        "v1alpha1",
         "GryviaTraceSession",
     ));
     let trace_api: Api<DynamicObject> =
@@ -158,7 +162,7 @@ pub async fn execute_anomalies(
 
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
         "gryvia.io",
-        "v1",
+        "v1alpha1",
         "GryviaNetworkAnomaly",
     ));
     let api: Api<DynamicObject> = Api::namespaced_with(client.kube_client.clone(), namespace, &ar);

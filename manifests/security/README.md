@@ -135,7 +135,7 @@ kubectl create rolebinding ml-research-users \
 ### Use service account in jobs
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: my-job

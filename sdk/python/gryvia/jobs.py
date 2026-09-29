@@ -75,7 +75,7 @@ class Jobs:
 
             # From a dict
             await client.jobs.create({
-                "apiVersion": "gryvia.io/v1",
+                "apiVersion": "gryvia.io/v1alpha1",
                 "kind": "GryviaAIJob",
                 "metadata": {"name": "my-training"},
                 "spec": {

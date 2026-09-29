@@ -1,5 +1,5 @@
 # Example: Multi-Region Federation
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaFederation
 metadata:
   name: global-federation
@@ -111,7 +111,7 @@ spec:
     preferCheaper: true
 ---
 # Example: Federated Job
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: federated-training

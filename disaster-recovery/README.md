@@ -39,7 +39,7 @@ Comprehensive disaster recovery and business continuity for Gryvia.
 ### 1. Continuous Backup
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: BackupPolicy
 metadata:
   name: production-backup
@@ -84,7 +84,7 @@ spec:
 ### 2. Data Replication
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: DataReplication
 metadata:
   name: primary-to-secondary
@@ -124,7 +124,7 @@ spec:
 ### 3. Multi-Region Setup
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: MultiRegionConfig
 metadata:
   name: dr-config
@@ -390,7 +390,7 @@ kubectl get gryviaaijob critical-training
 ### Regular DR Drills
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: DRDrill
 metadata:
   name: quarterly-dr-drill

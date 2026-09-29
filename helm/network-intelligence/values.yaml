@@ -37,8 +37,10 @@ collector:
     - operator: Exists
 
 # eBPF configuration
+# EXPERIMENTAL and off by default: the eBPF programs in ebpf/ do not compile yet, so no collector image is
+# published. Enable only with your own collector image (collector.image.repository).
 ebpf:
-  enabled: true
+  enabled: false
   programs:
     - name: tcp_connect
       enabled: true

@@ -1,5 +1,5 @@
 # Example: Model Accuracy Metric
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaMetric
 metadata:
   name: model-accuracy
@@ -32,7 +32,7 @@ spec:
     framework: pytorch
 ---
 # Example: Throughput Metric
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaMetric
 metadata:
   name: inference-throughput
@@ -61,7 +61,7 @@ spec:
     format: line
 ---
 # Example: GPU Memory Usage
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaMetric
 metadata:
   name: gpu-memory-utilization
@@ -89,7 +89,7 @@ spec:
     format: gauge
 ---
 # Example: Training Loss
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaMetric
 metadata:
   name: training-loss
@@ -114,7 +114,7 @@ spec:
   retention: "90d"  # Keep for 90 days
 ---
 # Example: Custom Script Metric
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaMetric
 metadata:
   name: data-freshness
@@ -145,7 +145,7 @@ spec:
       - notify
 ---
 # Example: Using Metrics in Job
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: training-with-metrics

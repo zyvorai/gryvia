@@ -51,7 +51,7 @@ helm install gryvia-federation gryvia/gryvia-federation \
 
 ```yaml
 # cluster-a.yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaCluster
 metadata:
   name: cluster-a
@@ -121,7 +121,7 @@ Jobs are automatically placed based on:
 5. Team preferences
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: training-job
@@ -180,7 +180,7 @@ metadata:
 
 ```yaml
 # Replicate dataset across clusters
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaDataset
 metadata:
   name: imagenet
@@ -201,7 +201,7 @@ spec:
 
 ```yaml
 # Schedule job where data exists
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: training-with-data
@@ -218,7 +218,7 @@ spec:
 
 ```yaml
 # Enable automatic failover
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: critical-job
@@ -282,7 +282,7 @@ kfctl federation costs --by-team ml-research
 ### Budget Allocation
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaFederatedQuota
 metadata:
   name: ml-research-federated

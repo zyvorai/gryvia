@@ -14,7 +14,7 @@ spec:
     singular: gryviachargeback
   scope: Cluster
   versions:
-  - name: v1
+  - name: v1alpha1
     schema:
       openAPIV3Schema:
         description: GryviaChargeback is the Schema for the gryviachargebacks API

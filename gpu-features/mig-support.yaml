@@ -149,7 +149,7 @@ data:
 
 ---
 # Example Job using MIG
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: inference-mig
@@ -170,7 +170,7 @@ spec:
 
 ---
 # Job Template for Development (1g.10gb)
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaJobTemplate
 metadata:
   name: mig-development
@@ -190,7 +190,7 @@ spec:
 
 ---
 # Job Template for Fine-Tuning (2g.20gb)
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaJobTemplate
 metadata:
   name: mig-fine-tuning
@@ -207,7 +207,7 @@ spec:
 
 ---
 # Scheduling Policy for MIG
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: SchedulingPolicy
 metadata:
   name: mig-bin-packing
@@ -256,7 +256,7 @@ data:
 
 ---
 # GPU Node with MIG Configuration
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaGPUNode
 metadata:
   name: gpu-node-1-mig
@@ -288,7 +288,7 @@ spec:
 
 ---
 # Cost Optimization with MIG
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: SchedulingPolicy
 metadata:
   name: cost-optimized-mig

@@ -1,4 +1,5 @@
 pub mod cancel;
+pub mod capacity;
 pub mod cluster;
 pub mod cost;
 pub mod create;
@@ -10,6 +11,7 @@ pub mod graph;
 pub mod health;
 pub mod list;
 pub mod logs;
+pub mod maintenance;
 pub mod network;
 pub mod policy;
 pub mod queue;

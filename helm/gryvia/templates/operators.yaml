@@ -2,6 +2,8 @@
 {{- $ops := dict "gpu-operator" .Values.gpuOperator "ai-operator" .Values.aiOperator "quota-operator" .Values.quotaOperator "storage-operator" .Values.storageOperator "network-operator" .Values.networkOperator -}}
 {{- range $name, $op := $ops }}
 {{- if $op.enabled }}
+{{- /* Only the ai-operator serves the GryviaAIJob admission webhook. */ -}}
+{{- $webhook := and (eq $name "ai-operator") $.Values.webhook.enabled }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -40,6 +42,10 @@ spec:
             - --leader-elect={{ $.Values.ha.leaderElection }}
             - --metrics-bind-address=:8080
             - --health-probe-bind-address=:8081
+            {{- if $webhook }}
+            - --enable-webhooks=true
+            - --webhook-cert-dir=/tmp/k8s-webhook-server/serving-certs
+            {{- end }}
           ports:
             - name: metrics
               containerPort: 8080
@@ -47,6 +53,11 @@ spec:
             - name: health
               containerPort: 8081
               protocol: TCP
+            {{- if $webhook }}
+            - name: webhook
+              containerPort: 9443
+              protocol: TCP
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /healthz
@@ -63,6 +74,19 @@ spec:
             {{- toYaml $op.resources | nindent 12 }}
           securityContext:
             {{- toYaml $.Values.securityContext | nindent 12 }}
+          {{- if $webhook }}
+          volumeMounts:
+            - name: webhook-certs
+              mountPath: /tmp/k8s-webhook-server/serving-certs
+              readOnly: true
+          {{- end }}
+      {{- if $webhook }}
+      volumes:
+        - name: webhook-certs
+          secret:
+            secretName: {{ include "gryvia.webhookSecretName" $ }}
+            defaultMode: 0440
+      {{- end }}
       {{- with $op.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

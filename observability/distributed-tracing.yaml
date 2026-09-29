@@ -283,7 +283,7 @@ spec:
 
 ---
 # Example: Instrumented Job
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: traced-training

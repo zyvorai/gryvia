@@ -1,5 +1,5 @@
 # Example: A100 Queue Auto-Scaler
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAutoScaler
 metadata:
   name: a100-autoscaler
@@ -39,7 +39,7 @@ spec:
     maxHourlyCost: 1000  # Max $1000/hour for autoscaled nodes
 ---
 # Example: Cloud-Based Auto-Scaler with Spot Instances
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAutoScaler
 metadata:
   name: t4-spot-autoscaler
@@ -80,7 +80,7 @@ spec:
     scaleToZero: true  # Allow complete scale-down
 ---
 # Example: Predictive Auto-Scaler
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAutoScaler
 metadata:
   name: h100-predictive-autoscaler
@@ -111,7 +111,7 @@ spec:
     # Will scale up BEFORE jobs arrive based on patterns
 ---
 # Auto-Scaler Status Example
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAutoScaler
 metadata:
   name: a100-autoscaler

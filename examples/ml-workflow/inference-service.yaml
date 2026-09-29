@@ -1,7 +1,7 @@
 # GryviaInferenceService - Deploy an LLM with vLLM backend and canary rollout
 # Serves a model from the registry with autoscaling, health checks, and a 90/10
 # traffic split between the primary and canary versions.
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaInferenceService
 metadata:
   name: llama-70b-serving

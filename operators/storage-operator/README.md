@@ -50,7 +50,7 @@ kubectl get pods -n gryvia-system -l app=storage-operator
 ### VAST Data Example
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaStorage
 metadata:
   name: vast-production

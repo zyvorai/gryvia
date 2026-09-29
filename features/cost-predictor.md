@@ -17,7 +17,7 @@ GryviaCostPredictor analyzes historical job data to provide accurate estimates f
 ### Create a Cost Predictor
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaCostPredictor
 metadata:
   name: default-predictor
@@ -75,7 +75,7 @@ kubectl apply -f cost-predictor.yaml
 Submit a job with the dry-run annotation to get an estimate without running it:
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: llm-training-estimate

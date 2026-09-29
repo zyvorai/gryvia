@@ -7,7 +7,11 @@ use std::collections::{HashMap, HashSet};
 use crate::client::GryviaClient;
 
 pub async fn execute(client: &GryviaClient, namespace: &str, format: &str) -> Result<()> {
-    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("gryvia.io", "v1", "GryviaFlow"));
+    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
+        "gryvia.io",
+        "v1alpha1",
+        "GryviaFlow",
+    ));
     let api: Api<DynamicObject> = Api::namespaced_with(client.kube_client.clone(), namespace, &ar);
 
     let flows = match api.list(&ListParams::default()).await {

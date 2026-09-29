@@ -1,4 +1,4 @@
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaStorage
 metadata:
   name: ${storage_backend}-storage

@@ -109,7 +109,7 @@ with mlflow.start_run(run_name="run-001"):
 ### Using in AI Jobs
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: mlflow-training

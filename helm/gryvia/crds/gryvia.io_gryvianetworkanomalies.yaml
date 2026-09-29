@@ -14,7 +14,7 @@ spec:
     singular: gryvianetworkanomaly
   scope: Namespaced
   versions:
-  - name: v1
+  - name: v1alpha1
     schema:
       openAPIV3Schema:
         description: GryviaNetworkAnomaly is the Schema for the gryvianetworkanomalies

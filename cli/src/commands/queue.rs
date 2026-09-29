@@ -105,9 +105,9 @@ async fn show_queue(client: &GryviaClient, name: &Option<String>) -> Result<()> 
     let unknown = "<unknown>".to_string();
     for (i, job) in queued.iter().enumerate() {
         let name = job.metadata.name.as_ref().unwrap_or(&unknown);
-        let framework = &job.spec.framework;
-        let gpus = job.spec.resources.gpu_count.to_string();
-        let gpu_type = &job.spec.resources.gpu_type;
+        let framework = &job.spec.job_type;
+        let gpus = job.spec.gpus.to_string();
+        let gpu_type = &job.spec.gpu_type;
         let job_status = job.status.clone().unwrap_or_default();
         let status = display::colorize_status(&job_status.phase);
 
@@ -154,8 +154,8 @@ async fn show_queue(client: &GryviaClient, name: &Option<String>) -> Result<()> 
 
         for job in &running {
             let name = job.metadata.name.as_ref().unwrap_or(&unknown);
-            let gpus = job.spec.resources.gpu_count.to_string();
-            let gpu_type = &job.spec.resources.gpu_type;
+            let gpus = job.spec.gpus.to_string();
+            let gpu_type = &job.spec.gpu_type;
             let job_status = job.status.clone().unwrap_or_default();
 
             let running_for = if let Some(start) = job_status.start_time {
@@ -182,8 +182,8 @@ async fn show_queue(client: &GryviaClient, name: &Option<String>) -> Result<()> 
     }
 
     // GPU utilization
-    let total_queued_gpus: u32 = queued.iter().map(|j| j.spec.resources.gpu_count).sum();
-    let total_running_gpus: u32 = running.iter().map(|j| j.spec.resources.gpu_count).sum();
+    let total_queued_gpus: u32 = queued.iter().map(|j| j.spec.gpus).sum();
+    let total_running_gpus: u32 = running.iter().map(|j| j.spec.gpus).sum();
 
     println!("{}", "GPU Demand:".bold());
     println!(

@@ -2,7 +2,7 @@
 # attach to. networkType is one of rdma, sriov or standard.
 #
 # Example: InfiniBand (RDMA) network
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaNetwork
 metadata:
   name: infiniband-hdr200
@@ -19,7 +19,7 @@ spec:
     gryvia.io/rdma: "true"
 ---
 # Example: RoCE v2 (RDMA over Ethernet) network
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaNetwork
 metadata:
   name: roce-v2
@@ -35,7 +35,7 @@ spec:
     gryvia.io/roce: "true"
 ---
 # Example: SR-IOV virtual functions on a physical NIC
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaNetwork
 metadata:
   name: sriov-eth1
@@ -51,7 +51,7 @@ spec:
 
 ---
 # Example: Job with Network Requirements
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: distributed-training-ib

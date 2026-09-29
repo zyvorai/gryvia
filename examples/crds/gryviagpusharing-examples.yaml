@@ -1,5 +1,5 @@
 # Example: Time-Slicing for V100 GPUs
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaGPUSharingPolicy
 metadata:
   name: v100-time-slicing
@@ -22,7 +22,7 @@ spec:
     isolationLevel: memory
 ---
 # Example: Fractional T4 GPUs
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaGPUSharingPolicy
 metadata:
   name: t4-fractional
@@ -44,7 +44,7 @@ spec:
     isolationLevel: memory
 ---
 # Example: MIG Profiles for A100
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaGPUSharingPolicy
 metadata:
   name: a100-mig-mixed
@@ -64,7 +64,7 @@ spec:
       # Total: 6 instances per GPU (4+2)
 ---
 # Example: Priority-Based Sharing
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaGPUSharingPolicy
 metadata:
   name: priority-based-sharing
@@ -84,7 +84,7 @@ spec:
     preemptLowPriority: true
 ---
 # Example: Job Requesting Fractional GPU
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: inference-fractional
@@ -105,7 +105,7 @@ spec:
   command: ["python", "inference.py"]
 ---
 # Example: Job with Time-Sliced GPU
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: dev-environment
@@ -124,7 +124,7 @@ spec:
   image: jupyter/tensorflow-notebook:2024.10.0
 ---
 # GPU Sharing Status Example
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaGPUSharingPolicy
 metadata:
   name: t4-fractional
@@ -144,7 +144,7 @@ status:
     utilization: 0.625  # 62.5% average utilization
 ---
 # Multi-Tenant Sharing Example
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaGPUSharingPolicy
 metadata:
   name: multi-tenant-sharing

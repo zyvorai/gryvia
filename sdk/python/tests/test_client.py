@@ -21,7 +21,7 @@ STATS = {
     "totalJobs": 3, "runningJobs": 1, "pendingJobs": 1, "completedJobs": 1, "failedJobs": 0,
     "totalNodes": 2, "timestamp": "2026-01-01T00:00:00Z",
 }
-JOB = {"apiVersion": "gryvia.io/v1", "kind": "GryviaAIJob",
+JOB = {"apiVersion": "gryvia.io/v1alpha1", "kind": "GryviaAIJob",
        "metadata": {"name": "train", "namespace": "default"},
        "spec": {"gpus": 2, "image": "busybox", "type": "training"}, "status": {"phase": "Pending"}}
 
@@ -81,7 +81,7 @@ def test_jobs_list_get_create_delete():
         c = make_client(handler)
         listed = await c.jobs.list(limit=5, offset=10)
         job = await c.jobs.get("train")
-        created = await c.jobs.create({"apiVersion": "gryvia.io/v1", "kind": "GryviaAIJob",
+        created = await c.jobs.create({"apiVersion": "gryvia.io/v1alpha1", "kind": "GryviaAIJob",
                                        "metadata": {"name": "train"}, "spec": {"gpus": 2}})
         deleted = await c.jobs.delete("train")
         return listed, job, created, deleted

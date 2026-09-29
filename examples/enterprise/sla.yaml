@@ -1,7 +1,7 @@
 # GryviaSLA - Gold-tier service level agreement for ML research team
 # Guarantees max 5-minute queue time, 99.9% uptime, reserved H100 capacity,
 # auto-retry on failure, and weekly compliance reports.
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaSLA
 metadata:
   name: ml-research-gold

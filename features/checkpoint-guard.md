@@ -21,7 +21,7 @@ Key capabilities:
 Create a checkpoint guard that monitors all training jobs labeled `team: ml-research`:
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaCheckpointGuard
 metadata:
   name: training-guard
@@ -214,7 +214,7 @@ kubectl get fcg training-guard -o jsonpath='{.status.emergencyCheckpointsTaken}'
 ### Minimal Guard
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaCheckpointGuard
 metadata:
   name: simple-guard
@@ -229,7 +229,7 @@ spec:
 ### Full-Featured Guard for Production LLM Training
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaCheckpointGuard
 metadata:
   name: llm-production-guard
@@ -277,7 +277,7 @@ spec:
 ### Guard for Spot Instance Training
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaCheckpointGuard
 metadata:
   name: spot-training-guard

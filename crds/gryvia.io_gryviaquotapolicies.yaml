@@ -14,7 +14,7 @@ spec:
     singular: gryviaquotapolicy
   scope: Cluster
   versions:
-  - name: v1
+  - name: v1alpha1
     schema:
       openAPIV3Schema:
         description: GryviaQuotaPolicy is the Schema for the gryviaquotapolicies API

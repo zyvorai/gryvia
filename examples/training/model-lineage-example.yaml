@@ -1,6 +1,6 @@
 ---
 # Model Lineage: Track complete provenance for a fine-tuned LLM
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaModelLineage
 metadata:
   name: llama-70b-finetune-v1
@@ -115,7 +115,7 @@ spec:
 
 ---
 # The training job referenced by the lineage above
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: llama-70b-finetune-job

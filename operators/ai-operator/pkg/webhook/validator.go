@@ -5,10 +5,15 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-logr/logr"
+	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/runtime"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/util/validation"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -16,152 +21,173 @@ import (
 	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 )
 
+// ValidatePath is the URL path the validating handler is served on.
+const ValidatePath = "/validate-gryvia-io-v1alpha1-gryviaaijob"
+
+var (
+	webhookScheme = runtime.NewScheme()
+
+	validJobTypes = []string{"training", "inference", "fine-tuning", "evaluation"}
+	validNetworks = []string{"standard", "rdma", "sriov"}
+)
+
+func init() {
+	utilruntime.Must(gryviav1.AddToScheme(webhookScheme))
+}
+
 // GryviaAIJobValidator implements a ValidatingWebhook for GryviaAIJob.
-// It ensures that submitted jobs have valid GPU configurations, that
-// requested GPU types exist in the cluster, and that distributed configs
-// are consistent.
+//
+// Only rules that depend on the object itself are enforced (deny). Checks
+// that depend on live cluster state (node GPU capacity, GPU type labels) are
+// reported as admission warnings only, because nodes may be scaled up later
+// and a stale or unreachable view must never block job creation.
 type GryviaAIJobValidator struct {
 	Client  client.Client
 	decoder admission.Decoder
 	log     logr.Logger
 }
 
-// NewGryviaAIJobValidator creates a new validator.
+// NewGryviaAIJobValidator creates a new validator. Client may be nil, in which
+// case cluster-state warnings are skipped.
 func NewGryviaAIJobValidator(c client.Client) *GryviaAIJobValidator {
 	return &GryviaAIJobValidator{
-		Client: c,
-		log:    ctrl.Log.WithName("webhook").WithName("validator"),
+		Client:  c,
+		decoder: admission.NewDecoder(webhookScheme),
+		log:     ctrl.Log.WithName("webhook").WithName("validator"),
 	}
 }
 
 // Handle processes an admission request for GryviaAIJob validation.
 func (v *GryviaAIJobValidator) Handle(ctx context.Context, req admission.Request) admission.Response {
-	job := &gryviav1.GryviaAIJob{}
+	// Deletes carry no object to validate.
+	if req.Operation == admissionv1.Delete {
+		return admission.Allowed("delete is not validated")
+	}
 
+	job := &gryviav1.GryviaAIJob{}
 	if err := v.decoder.Decode(req, job); err != nil {
 		v.log.Error(err, "Failed to decode GryviaAIJob")
 		return admission.Errored(http.StatusBadRequest, fmt.Errorf("failed to decode request: %w", err))
 	}
-
-	v.log.Info("Validating GryviaAIJob", "name", job.Name, "namespace", job.Namespace)
-
-	// Run all validations.
-	if err := v.validateGPUCount(ctx, job); err != nil {
-		return admission.Denied(err.Error())
+	if job.Name == "" {
+		// generateName requests arrive without a name; the apiserver names them later.
+		job.Name = req.Name
 	}
 
-	if err := v.validateGPUType(ctx, job); err != nil {
-		return admission.Denied(err.Error())
+	if errs := ValidateJob(job); len(errs) > 0 {
+		return admission.Denied("invalid GryviaAIJob: " + strings.Join(errs, "; "))
 	}
 
-	if err := v.validateDistributedConfig(job); err != nil {
-		return admission.Denied(err.Error())
+	resp := admission.Allowed("GryviaAIJob is valid")
+	if warnings := v.clusterWarnings(ctx, job); len(warnings) > 0 {
+		resp = resp.WithWarnings(warnings...)
 	}
-
-	if err := v.validateResourceRequests(job); err != nil {
-		return admission.Denied(err.Error())
-	}
-
-	if err := v.validateImage(job); err != nil {
-		return admission.Denied(err.Error())
-	}
-
-	if err := v.validatePriority(job); err != nil {
-		return admission.Denied(err.Error())
-	}
-
-	return admission.Allowed("GryviaAIJob is valid")
+	return resp
 }
 
-// validateGPUCount checks that the requested GPU count does not exceed any
-// single node's capacity in the cluster.
-func (v *GryviaAIJobValidator) validateGPUCount(ctx context.Context, job *gryviav1.GryviaAIJob) error {
+// ValidateJob runs every static rule and returns all violations found.
+func ValidateJob(job *gryviav1.GryviaAIJob) []string {
+	var errs []string
+	add := func(err error) {
+		if err != nil {
+			errs = append(errs, err.Error())
+		}
+	}
+	if job.Name != "" {
+		if msgs := validation.IsDNS1123Subdomain(job.Name); len(msgs) > 0 {
+			errs = append(errs, fmt.Sprintf("metadata.name %q is invalid: %s", job.Name, strings.Join(msgs, ", ")))
+		}
+	}
+	add(validateType(job))
+	add(validateGPUCount(job))
+	add(validateNetwork(job))
+	add(validateImage(job))
+	add(validatePriority(job))
+	add(validateDistributedConfig(job))
+	add(validateResourceRequests(job))
+	return errs
+}
+
+func validateType(job *gryviav1.GryviaAIJob) error {
+	for _, t := range validJobTypes {
+		if job.Spec.Type == t {
+			return nil
+		}
+	}
+	if job.Spec.Type == "" {
+		return fmt.Errorf("spec.type is required; valid values: %s", strings.Join(validJobTypes, ", "))
+	}
+	return fmt.Errorf("spec.type %q is not supported; valid values: %s", job.Spec.Type, strings.Join(validJobTypes, ", "))
+}
+
+func validateGPUCount(job *gryviav1.GryviaAIJob) error {
 	if job.Spec.GPUs <= 0 {
 		return fmt.Errorf("spec.gpus must be greater than 0, got %d", job.Spec.GPUs)
 	}
+	return nil
+}
+
+func validateNetwork(job *gryviav1.GryviaAIJob) error {
+	if job.Spec.Network == "" {
+		return nil
+	}
+	for _, n := range validNetworks {
+		if job.Spec.Network == n {
+			return nil
+		}
+	}
+	return fmt.Errorf("spec.network %q is not supported; valid values: %s", job.Spec.Network, strings.Join(validNetworks, ", "))
+}
+
+// clusterWarnings compares the job with the nodes currently in the cluster.
+// It never denies and swallows all errors.
+func (v *GryviaAIJobValidator) clusterWarnings(ctx context.Context, job *gryviav1.GryviaAIJob) []string {
+	if v.Client == nil {
+		return nil
+	}
+	nodes := &corev1.NodeList{}
+	if err := v.Client.List(ctx, nodes); err != nil {
+		v.log.Error(err, "Failed to list nodes; skipping cluster warnings")
+		return nil
+	}
+	var warnings []string
 
 	gpusPerNode := job.Spec.GPUs
 	if job.Spec.Distributed != nil && job.Spec.Distributed.Enabled && job.Spec.Distributed.GpusPerNode > 0 {
 		gpusPerNode = job.Spec.Distributed.GpusPerNode
 	}
-
-	// Find the maximum GPU capacity across all nodes.
-	nodes := &corev1.NodeList{}
-	if err := v.Client.List(ctx, nodes); err != nil {
-		v.log.Error(err, "Failed to list nodes for GPU count validation")
-		// Don't block admission if we can't reach the API server.
-		return nil
-	}
-
 	maxNodeGPUs := int32(0)
+	types := map[string]bool{}
 	for _, node := range nodes.Items {
 		nodeGPUs := int32(0)
-
-		// Check allocatable GPU resource.
 		if gpuAlloc, ok := node.Status.Allocatable["nvidia.com/gpu"]; ok {
 			nodeGPUs = int32(gpuAlloc.Value())
 		}
-
-		// Also check the label.
 		if countStr, exists := node.Labels["gryvia.io/gpu-count"]; exists {
 			if count, err := strconv.ParseInt(countStr, 10, 32); err == nil && int32(count) > nodeGPUs {
 				nodeGPUs = int32(count)
 			}
 		}
-
 		if nodeGPUs > maxNodeGPUs {
 			maxNodeGPUs = nodeGPUs
 		}
-	}
-
-	if maxNodeGPUs > 0 && gpusPerNode > maxNodeGPUs {
-		return fmt.Errorf("requested %d GPUs per node exceeds maximum node capacity of %d GPUs; "+
-			"consider using distributed training across multiple nodes", gpusPerNode, maxNodeGPUs)
-	}
-
-	return nil
-}
-
-// validateGPUType checks that the requested GPU type exists on at least one
-// node in the cluster.
-func (v *GryviaAIJobValidator) validateGPUType(ctx context.Context, job *gryviav1.GryviaAIJob) error {
-	if job.Spec.GpuType == "" || job.Spec.GpuType == "any" {
-		return nil
-	}
-
-	nodes := &corev1.NodeList{}
-	if err := v.Client.List(ctx, nodes); err != nil {
-		v.log.Error(err, "Failed to list nodes for GPU type validation")
-		return nil // Don't block if API is unreachable.
-	}
-
-	// Collect available GPU types for the error message.
-	availableTypes := make(map[string]bool)
-	for _, node := range nodes.Items {
-		if gpuType, exists := node.Labels["gryvia.io/gpu"]; exists {
-			availableTypes[gpuType] = true
-			if gpuType == job.Spec.GpuType {
-				return nil // Found a matching node.
-			}
+		if t, ok := node.Labels["gryvia.io/gpu"]; ok {
+			types[t] = true
 		}
 	}
-
-	if len(availableTypes) == 0 {
-		return fmt.Errorf("requested GPU type %q, but no nodes have GPU type labels (gryvia.io/gpu); "+
-			"ensure nodes are labeled correctly", job.Spec.GpuType)
+	if maxNodeGPUs > 0 && gpusPerNode > maxNodeGPUs {
+		warnings = append(warnings, fmt.Sprintf("requested %d GPUs per node exceeds the largest current node (%d GPUs); "+
+			"the job stays pending until a larger node exists or you use distributed training", gpusPerNode, maxNodeGPUs))
 	}
-
-	available := make([]string, 0, len(availableTypes))
-	for t := range availableTypes {
-		available = append(available, t)
+	if t := job.Spec.GpuType; t != "" && t != "any" && len(types) > 0 && !types[t] {
+		warnings = append(warnings, fmt.Sprintf("no node currently carries GPU type %q (label gryvia.io/gpu)", t))
 	}
-
-	return fmt.Errorf("GPU type %q not found in cluster; available types: %v", job.Spec.GpuType, available)
+	return warnings
 }
 
 // validateDistributedConfig checks that the distributed training configuration
 // is internally consistent.
-func (v *GryviaAIJobValidator) validateDistributedConfig(job *gryviav1.GryviaAIJob) error {
+func validateDistributedConfig(job *gryviav1.GryviaAIJob) error {
 	dist := job.Spec.Distributed
 	if dist == nil || !dist.Enabled {
 		return nil
@@ -216,7 +242,7 @@ func (v *GryviaAIJobValidator) validateDistributedConfig(job *gryviav1.GryviaAIJ
 }
 
 // validateResourceRequests checks that resource requests are properly formed.
-func (v *GryviaAIJobValidator) validateResourceRequests(job *gryviav1.GryviaAIJob) error {
+func validateResourceRequests(job *gryviav1.GryviaAIJob) error {
 	// Validate CPU requests if specified.
 	if cpu, ok := job.Spec.Resources.Requests[corev1.ResourceCPU]; ok {
 		if cpu.Cmp(resource.MustParse("0")) <= 0 {
@@ -252,7 +278,7 @@ func (v *GryviaAIJobValidator) validateResourceRequests(job *gryviav1.GryviaAIJo
 }
 
 // validateImage checks that an image is specified.
-func (v *GryviaAIJobValidator) validateImage(job *gryviav1.GryviaAIJob) error {
+func validateImage(job *gryviav1.GryviaAIJob) error {
 	if job.Spec.Image == "" {
 		return fmt.Errorf("spec.image is required")
 	}
@@ -260,7 +286,7 @@ func (v *GryviaAIJobValidator) validateImage(job *gryviav1.GryviaAIJob) error {
 }
 
 // validatePriority checks that priority is within the valid range.
-func (v *GryviaAIJobValidator) validatePriority(job *gryviav1.GryviaAIJob) error {
+func validatePriority(job *gryviav1.GryviaAIJob) error {
 	if job.Spec.Priority < 0 || job.Spec.Priority > 100 {
 		return fmt.Errorf("spec.priority must be between 0 and 100, got %d", job.Spec.Priority)
 	}

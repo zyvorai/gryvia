@@ -175,7 +175,7 @@ kubectl get secret -n gryvia-system prometheus-grafana -o jsonpath="{.data.admin
 ### Submit a Training Job
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: llama-training

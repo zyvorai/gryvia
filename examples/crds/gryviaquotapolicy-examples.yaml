@@ -1,5 +1,5 @@
 # Example: Organization-Level Quota
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaQuotaPolicy
 metadata:
   name: org-quota
@@ -59,7 +59,7 @@ spec:
       - finance@company.com
 ---
 # Example: Division-Level Quota (Child of Organization)
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaQuotaPolicy
 metadata:
   name: ai-division-quota
@@ -97,7 +97,7 @@ spec:
 
 ---
 # Example: Team-Level Quota (Child of Division)
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaQuotaPolicy
 metadata:
   name: ml-research-quota
@@ -175,7 +175,7 @@ spec:
       - ml-research-lead@company.com
 ---
 # Example: User-Level Quota
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaQuotaPolicy
 metadata:
   name: alice-quota

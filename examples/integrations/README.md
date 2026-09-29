@@ -102,7 +102,7 @@ Browser-based VS Code with GPU access.
 ### Deployment
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: vscode-server
@@ -239,7 +239,7 @@ def gryvia_training_op(
     import subprocess
 
     job_yaml = f"""
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: kfp-training
@@ -325,7 +325,7 @@ R development environment with GPU support.
 ### Deployment
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: rstudio-server

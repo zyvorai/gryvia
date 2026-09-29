@@ -5,34 +5,61 @@ use serde::{Deserialize, Serialize};
 
 // GryviaAIJob CRD
 #[derive(CustomResource, Clone, Debug, Serialize, Deserialize, JsonSchema)]
-#[kube(group = "gryvia.io", version = "v1", kind = "GryviaAIJob", namespaced)]
+#[kube(
+    group = "gryvia.io",
+    version = "v1alpha1",
+    kind = "GryviaAIJob",
+    namespaced
+)]
 #[kube(status = "AIJobStatus")]
 pub struct AIJobSpec {
-    pub framework: String,
-    pub resources: ResourceSpec,
+    /// training, inference, fine-tuning or evaluation
+    #[serde(rename = "type", default)]
+    pub job_type: String,
     #[serde(default)]
-    pub distributed: DistributedConfig,
+    pub gpus: u32,
+    #[serde(rename = "gpuType", default)]
+    pub gpu_type: String,
+    #[serde(default)]
     pub image: String,
+    #[serde(default)]
     pub command: Vec<String>,
     #[serde(default)]
     pub env: Vec<EnvVar>,
+    #[serde(default)]
+    pub resources: ResourceRequirements,
+    #[serde(default)]
+    pub distributed: DistributedConfig,
 }
 
+/// Kubernetes-style resource requests and limits (`cpu`, `memory`, ... as strings or numbers).
 #[derive(Clone, Debug, Serialize, Deserialize, Default, JsonSchema)]
-pub struct ResourceSpec {
-    #[serde(rename = "gpuType")]
-    pub gpu_type: String,
-    #[serde(rename = "gpuCount")]
-    pub gpu_count: u32,
-    pub memory: String,
-    pub cpu: u32,
+pub struct ResourceRequirements {
+    #[serde(default)]
+    pub requests: std::collections::BTreeMap<String, serde_json::Value>,
+    #[serde(default)]
+    pub limits: std::collections::BTreeMap<String, serde_json::Value>,
+}
+
+impl ResourceRequirements {
+    /// Requested quantity of a resource (`cpu`, `memory`), or "-" when unset.
+    pub fn request(&self, name: &str) -> String {
+        match self.requests.get(name) {
+            Some(serde_json::Value::String(s)) => s.clone(),
+            Some(other) => other.to_string(),
+            None => "-".to_string(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default, JsonSchema)]
 pub struct DistributedConfig {
+    #[serde(default)]
     pub enabled: bool,
     #[serde(default)]
-    pub strategy: String,
+    pub framework: String,
+    #[serde(default)]
+    pub backend: String,
     #[serde(default)]
     pub nodes: u32,
     #[serde(rename = "gpusPerNode", default)]
@@ -42,6 +69,7 @@ pub struct DistributedConfig {
 #[derive(Clone, Debug, Serialize, Deserialize, Default, JsonSchema)]
 pub struct EnvVar {
     pub name: String,
+    #[serde(default)]
     pub value: String,
 }
 
@@ -59,7 +87,7 @@ pub struct AIJobStatus {
 
 // GryviaQuota CRD
 #[derive(CustomResource, Clone, Debug, Serialize, Deserialize, JsonSchema)]
-#[kube(group = "gryvia.io", version = "v1", kind = "GryviaQuota")]
+#[kube(group = "gryvia.io", version = "v1alpha1", kind = "GryviaQuota")]
 #[kube(status = "QuotaStatus")]
 pub struct QuotaSpec {
     pub team: String,
@@ -130,7 +158,7 @@ pub struct BudgetStatus {
 
 // GryviaGpuNode CRD
 #[derive(CustomResource, Clone, Debug, Serialize, Deserialize, JsonSchema)]
-#[kube(group = "gryvia.io", version = "v1", kind = "GryviaGpuNode")]
+#[kube(group = "gryvia.io", version = "v1alpha1", kind = "GryviaGpuNode")]
 #[kube(status = "GpuNodeStatus")]
 pub struct GpuNodeSpec {
     #[serde(rename = "nodeName")]
@@ -162,4 +190,43 @@ pub struct GPUInfo {
     pub memory_used: i64,
     #[serde(rename = "memoryTotal")]
     pub memory_total: i64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A job as the API returns it: the real CRD fields, no `framework` and no `resources.gpuCount`.
+    #[test]
+    fn parses_a_real_job() {
+        let job: GryviaAIJob = serde_json::from_value(serde_json::json!({
+            "apiVersion": "gryvia.io/v1alpha1",
+            "kind": "GryviaAIJob",
+            "metadata": {"name": "train", "namespace": "ml"},
+            "spec": {"type": "training", "gpus": 4, "gpuType": "H100", "image": "busybox:1.36",
+                     "resources": {"requests": {"cpu": "4", "memory": "16Gi"}},
+                     "distributed": {"enabled": true, "framework": "pytorch", "nodes": 2, "gpusPerNode": 2}},
+            "status": {"phase": "Running"}
+        }))
+        .unwrap();
+        assert_eq!(job.spec.gpus, 4);
+        assert_eq!(job.spec.gpu_type, "H100");
+        assert_eq!(job.spec.job_type, "training");
+        assert_eq!(job.spec.distributed.nodes, 2);
+        assert_eq!(job.spec.resources.request("memory"), "16Gi");
+        assert_eq!(job.spec.resources.request("cpu"), "4");
+        assert_eq!(job.spec.resources.request("ephemeral-storage"), "-");
+    }
+
+    #[test]
+    fn a_minimal_job_still_parses() {
+        let job: GryviaAIJob = serde_json::from_value(serde_json::json!({
+            "apiVersion": "gryvia.io/v1alpha1", "kind": "GryviaAIJob",
+            "metadata": {"name": "j"},
+            "spec": {"type": "training", "gpus": 1, "image": "x"}
+        }))
+        .unwrap();
+        assert_eq!(job.spec.gpus, 1);
+        assert!(job.spec.command.is_empty());
+    }
 }

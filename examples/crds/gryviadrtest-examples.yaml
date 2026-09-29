@@ -1,5 +1,5 @@
 # Example: Backup and Restore Test
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaDRTest
 metadata:
   name: monthly-backup-restore
@@ -40,7 +40,7 @@ spec:
   approvalRequired: false  # Automated monthly test
 ---
 # Example: Regional Failover Test
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaDRTest
 metadata:
   name: quarterly-failover-drill
@@ -83,7 +83,7 @@ spec:
   approvalRequired: true  # Require approval for failover test
 ---
 # Example: RPO/RTO Validation
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaDRTest
 metadata:
   name: rpo-rto-validation
@@ -124,7 +124,7 @@ spec:
     channels: [email]
 ---
 # Example: Full DR Drill
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaDRTest
 metadata:
   name: annual-dr-drill
@@ -200,7 +200,7 @@ spec:
   approvalRequired: true
 ---
 # Example: Chaos Engineering Test
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaDRTest
 metadata:
   name: weekly-chaos-test
@@ -256,7 +256,7 @@ spec:
     channels: [slack]
 ---
 # DR Test Report
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaDRTest
 metadata:
   name: q1-2024-failover-drill

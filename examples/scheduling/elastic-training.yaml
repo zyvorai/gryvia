@@ -1,7 +1,7 @@
 # GryviaAIJob - Elastic distributed training with dynamic scaling
 # Starts with 4 nodes but can elastically scale between 2 and 8 nodes based
 # on cluster availability. Annotations configure the elastic scheduler behavior.
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: llama-elastic-training

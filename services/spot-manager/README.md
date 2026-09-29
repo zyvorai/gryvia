@@ -34,7 +34,7 @@ Optimize costs with spot/preemptible GPU instances while maintaining reliability
 ### Enable Spot Instances
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: training-spot
@@ -93,7 +93,7 @@ data:
 ### Cost-Optimized Training
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: llama-training-spot
@@ -130,7 +130,7 @@ spec:
 Mix spot and on-demand for optimal cost/reliability:
 
 ```yaml
-apiVersion: gryvia.io/v1
+apiVersion: gryvia.io/v1alpha1
 kind: GryviaAIJob
 metadata:
   name: hybrid-training
