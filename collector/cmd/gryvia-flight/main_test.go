@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
@@ -196,5 +197,77 @@ func TestDiagnosisFlag(t *testing.T) {
 	ok := &http.Client{Transport: roundTrip(func(*http.Request) (*http.Response, error) { return response(200, complete), nil })}
 	if code, _, _ = runCLI(t, ok, tok, "", append(base, "-require-complete")...); code != 0 {
 		t.Fatalf("complete: %d", code)
+	}
+}
+
+const vllmInference = `{"namespace":"ml","job":"train","available":true,"engine":"vllm","updatedAt":"2026-01-01T00:00:00Z","ttftP99ms":475,"itlP99ms":72.2,"queueTimeP99ms":50,"e2eP99ms":2250,"requestsWaiting":3,"kvCacheUsage":0.42,"inferWaitP99ms":4}`
+const tritonInference = `{"namespace":"ml","job":"train","available":true,"engine":"triton","queueTimeMeanMs":0.86,"e2eMeanMs":7.4}`
+
+// routeClient answers the flight route and the inference route with different bodies.
+func routeClient(flightBody, inferenceBody string, inferenceCode int) *http.Client {
+	return &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
+		if strings.HasPrefix(r.URL.Path, "/api/flight/inference/") {
+			return response(inferenceCode, inferenceBody), nil
+		}
+		return response(200, flightBody), nil
+	})}
+}
+
+func TestInferenceFlag(t *testing.T) {
+	tok := map[string]string{tokenEnv: "secret-token"}
+	base := []string{"-gateway", "https://g.example", "-namespace", "ml", "-job", "train", "-inference"}
+
+	code, out, _ := runCLI(t, routeClient(completeBody, vllmInference, 200), tok, "", append(base, "-o", "text")...)
+	if code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	for _, want := range []string{`engine "vllm"`, "time to first token p99   475 ms", "inter-token latency p99   72.2 ms",
+		"engine queue time p99     50 ms", "end-to-end latency p99    2.25 s", "requests waiting          3", "KV cache usage            42%",
+		"network accept wait p99   4 ms", "not queue time"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("text output lacks %q:\n%s", want, out)
+		}
+	}
+
+	// Counter-only engine: means are labelled as means, unexported metrics read "not measured".
+	_, out, _ = runCLI(t, routeClient(completeBody, tritonInference, 200), tok, "", append(base, "-o", "text")...)
+	for _, want := range []string{"time to first token p99   not measured", "engine queue time MEAN    0.86 ms", "end-to-end latency MEAN   7.4 ms", "KV cache usage            not measured"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("triton output lacks %q:\n%s", want, out)
+		}
+	}
+
+	// JSON: a combined object, valid JSON.
+	_, out, _ = runCLI(t, routeClient(completeBody, vllmInference, 200), tok, "", base...)
+	var combined struct {
+		Flight    map[string]interface{} `json:"flight"`
+		Inference map[string]interface{} `json:"inference"`
+	}
+	if err := json.Unmarshal([]byte(out), &combined); err != nil || combined.Flight["job"] != "train" || combined.Inference["engine"] != "vllm" {
+		t.Errorf("combined json: %v %q", err, out)
+	}
+
+	// Not published: says so instead of printing zeros.
+	_, out, _ = runCLI(t, routeClient(completeBody, `{"namespace":"ml","job":"train","available":false}`, 200), tok, "", append(base, "-o", "text")...)
+	if !strings.Contains(out, "no engine metrics published") || strings.Contains(out, "475") {
+		t.Errorf("unavailable output: %s", out)
+	}
+
+	// A failing inference route is an error, not silence.
+	if code, _, errs := runCLI(t, routeClient(completeBody, `{"detail":"nope"}`, 403), tok, "", base...); code != 1 || !strings.Contains(errs, "inference") {
+		t.Errorf("inference failure: %d %q", code, errs)
+	}
+
+	// Without the flag the output is exactly the flight report.
+	_, out, _ = runCLI(t, routeClient(completeBody, vllmInference, 200), tok, "", base[:len(base)-1]...)
+	if strings.Contains(out, `"inference"`) || !strings.HasPrefix(out, `{"namespace"`) {
+		t.Errorf("default output changed: %s", out)
+	}
+
+	// Control characters in engine text are escaped.
+	evil := strings.Replace(vllmInference, `"engine":"vllm"`, `"engine":"a\u001b[31mb"`, 1)
+	_, out, _ = runCLI(t, routeClient(completeBody, evil, 200), tok, "", append(base, "-o", "text")...)
+	if strings.Contains(out, "\x1b") {
+		t.Error("escape sequence reached the terminal")
 	}
 }

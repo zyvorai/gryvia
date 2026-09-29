@@ -13,7 +13,7 @@ import re
 import ssl
 import statistics
 import time
-from typing import Any, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import urlencode
 
 import httpx
@@ -21,7 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from .collector import COLLECTOR_PORT, COLLECTOR_SELECTOR
 from .collector_transport import client_kwargs, collector_scheme, request_extensions
-from .common import Deps, run
+from .common import Deps, list_items, run
 from .uiutil import namespaces
 
 logger = logging.getLogger(__name__)
@@ -134,6 +134,21 @@ def token_usable(token: Any) -> bool:
     return isinstance(token, str) and len(token) >= MIN_TOKEN_LENGTH
 
 
+async def collect(deps: Deps, path: str, soft: Tuple[int, ...] = (404,)) -> Tuple[List[Tuple[bool, Any]], int]:
+    """Ask every collector for ``path``: ([(reachable, body)], number of discovered collectors).
+    ``soft`` lists statuses that mean "answered, nothing to report" (see _read_node)."""
+    if deps.collector_fetch is not None:
+        result = await deps.collector_fetch(path)
+        bodies, total = (list(result[0]), int(result[1])) if isinstance(result, tuple) else (list(result), len(result))
+        # The test hook models responsive collectors. None means a responsive node without events.
+        replies = [(True, body) for body in bodies]
+        return replies, max(total, len(replies))
+    urls = await flight_collector_urls(deps)
+    if not token_usable(deps.flight_token):
+        return [], len(urls)
+    return (await _fan_out(urls, path, deps.flight_token, soft) if urls else []), len(urls)
+
+
 async def gather(deps: Deps, namespace: str, job: str, path: str = "",
                  soft: Tuple[int, ...] = (404,)) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
     """Fan out one signed GET. With the default path this is the per-job flight report and bodies must
@@ -141,18 +156,7 @@ async def gather(deps: Deps, namespace: str, job: str, path: str = "",
     a node, and the collector already scopes them by the query string."""
     custom = bool(path)
     path = path or "/api/v1/flight/diagnose?" + urlencode({"namespace": namespace, "job": job})
-    if deps.collector_fetch is not None:
-        result = await deps.collector_fetch(path)
-        bodies, total = (list(result[0]), int(result[1])) if isinstance(result, tuple) else (list(result), len(result))
-        # The test hook models responsive collectors. None means a responsive node without events.
-        replies = [(True, body) for body in bodies]
-        total = max(total, len(replies))
-    else:
-        urls = await flight_collector_urls(deps)
-        total = len(urls)
-        if not token_usable(deps.flight_token):
-            return [], {"total": total, "reachable": 0, "reporting": 0}
-        replies = await _fan_out(urls, path, deps.flight_token, soft) if urls else []
+    replies, total = await collect(deps, path, soft)
     if custom:
         valid = [body for ok, body in replies if ok and isinstance(body, dict)
                  and isinstance(body.get("node"), str) and body.get("node")]
@@ -226,6 +230,123 @@ def merge(namespace: str, job: str, bodies: List[Dict[str, Any]], coverage: Dict
     }
 
 
+# ---- request tracing -------------------------------------------------------------------------
+# A trace id is user data. It is validated, never echoed into an error message and never logged;
+# the access log line of uvicorn would carry it in the path, so it is redacted below.
+
+TRACE_ID = re.compile(r"^[0-9a-fA-F]{32}$")
+TRACE_PATH = re.compile(r"(/api/flight/trace/)[0-9A-Za-z%-]{1,64}")
+MAX_TRACE_OBSERVATIONS = 100
+MAX_TRACE_EVENTS = 500
+TRACE_EVENT_KEYS = ("time", "source", "kind", "operation", "bytes", "retransmits", "duration_ns", "traceMatch")
+
+
+def valid_trace_id(value: str) -> bool:
+    return bool(TRACE_ID.fullmatch(value)) and int(value, 16) != 0
+
+
+class RedactTraceIds(logging.Filter):
+    """Replaces the trace id in access-log request lines (``GET /api/flight/trace/<id> HTTP/1.1``)."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.args, tuple):
+            record.args = tuple(TRACE_PATH.sub(r"\1<redacted>", a) if isinstance(a, str) else a for a in record.args)
+        if isinstance(record.msg, str):
+            record.msg = TRACE_PATH.sub(r"\1<redacted>", record.msg)
+        return True
+
+
+logging.getLogger("uvicorn.access").addFilter(RedactTraceIds())
+
+
+def _identity(item: Any) -> Optional[Dict[str, str]]:
+    ident = item.get("identity") if isinstance(item, dict) else None
+    if not isinstance(ident, dict) or not isinstance(ident.get("namespace"), str):
+        return None
+    return {k: ident[k][:253] for k in ("namespace", "job", "pod", "node", "rank")
+            if isinstance(ident.get(k), str) and ident[k]}
+
+
+def merge_trace(trace_id: str, bodies: List[Dict[str, Any]], coverage: Dict[str, int],
+                in_scope: Callable[[str], bool]) -> Dict[str, Any]:
+    """Merge node answers, keeping only what ``in_scope(namespace)`` allows.
+
+    Tenant scoping happens here, on the identity the collector attached to every observation and
+    event: anything without a namespace, or in another namespace, is dropped before it can be
+    counted or returned. Only known fields are copied out.
+    """
+    observations: List[Dict[str, Any]] = []
+    events: List[Dict[str, Any]] = []
+    nodes: List[str] = []
+    for body in bodies:
+        node = body.get("node")
+        if not isinstance(node, str) or not node or body.get("traceId") != trace_id:
+            continue
+        kept = False
+        raw_obs = body.get("observations")
+        for item in (raw_obs if isinstance(raw_obs, list) else [])[:MAX_TRACE_OBSERVATIONS]:
+            ident = _identity(item)
+            if ident is None or not in_scope(ident["namespace"]):
+                continue
+            kept = True
+            observations.append({"node": node, "identity": ident,
+                                 **{k: item[k][:64] for k in ("time", "spanId", "client", "server")
+                                    if isinstance(item.get(k), str)}})
+        raw_events = body.get("events")
+        for item in (raw_events if isinstance(raw_events, list) else [])[:NODE_EVENT_LIMIT]:
+            ident = _identity(item)
+            if ident is None or not in_scope(ident["namespace"]) or item.get("traceId") != trace_id:
+                continue
+            kept = True
+            events.append({"node": node, "identity": ident, "traceId": trace_id,
+                           **{k: item[k] for k in TRACE_EVENT_KEYS
+                              if isinstance(item.get(k), (str, int, float)) and not isinstance(item.get(k), bool)}})
+        if kept:
+            nodes.append(node)
+    observations.sort(key=lambda o: str(o.get("time") or ""))
+    events.sort(key=lambda e: str(e.get("time") or ""))
+    return {
+        "traceId": trace_id,
+        "scope": "cluster observations; node-local, plaintext HTTP/1.x with a traceparent header, IPv4; "
+                 "events joined by TCP 4-tuple or by pod, port and time (see traceMatch)",
+        "coverage": {**coverage, "reporting": len(set(nodes)),
+                     "complete": coverage["total"] > 0 and coverage["reachable"] == coverage["total"]},
+        "nodes": sorted(set(nodes)),
+        "observations": observations[:MAX_TRACE_OBSERVATIONS],
+        "events": events[-MAX_TRACE_EVENTS:],
+    }
+
+
+# ---- serving-engine latency (read from GryviaFabricSignal.status) ------------------------------
+
+INFERENCE_FIELDS = ("ttftP99ms", "itlP99ms", "queueTimeP99ms", "e2eP99ms", "queueTimeMeanMs", "e2eMeanMs",
+                    "requestsWaiting", "kvCacheUsage", "inferWaitP99ms")
+ENGINE = re.compile(r"^[a-z]{2,16}$")
+
+
+def inference_view(namespace: str, job: str, items: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """The newest engine figures among the job's GryviaFabricSignals. ``available`` is false unless
+    the collector's metrics scraper (-infer-metrics) has published an engine name."""
+    best: Optional[Dict[str, Any]] = None
+    for item in items:
+        spec, status = item.get("spec") or {}, item.get("status") or {}
+        engine = status.get("engine")
+        if spec.get("jobRef") != job or not isinstance(engine, str) or not ENGINE.fullmatch(engine):
+            continue
+        if best is None or str(status.get("updatedAt") or "") > str(best.get("updatedAt") or ""):
+            best = status
+    if best is None:
+        return {"namespace": namespace, "job": job, "available": False}
+    out: Dict[str, Any] = {"namespace": namespace, "job": job, "available": True, "engine": best["engine"]}
+    if isinstance(best.get("updatedAt"), str):
+        out["updatedAt"] = best["updatedAt"][:40]
+    for key in INFERENCE_FIELDS:
+        value = best.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            out[key] = value
+    return out
+
+
 def build_router(deps: Deps) -> APIRouter:
     router = APIRouter()
 
@@ -249,4 +370,54 @@ def build_router(deps: Deps) -> APIRouter:
 
     from . import flight_diagnosis  # noqa: E402  (imports this module's helpers)
     flight_diagnosis.add_routes(router, deps)
+
+    @router.get("/api/flight/trace/{trace_id}")
+    @deps.limiter.limit("30/minute")
+    async def trace(request: Request, trace_id: str, namespace: str = "", _=Depends(deps.verify_auth)):
+        """Node-local observations and Flight Recorder events correlated with one W3C trace id."""
+        if not valid_trace_id(trace_id):
+            raise HTTPException(status_code=400, detail="Invalid trace id")  # the id is not echoed
+        trace_id = trace_id.lower()
+        allowed = namespaces(request, deps)
+        admin = getattr(request.state, "role", None) == "admin"
+        if namespace and not valid_name(namespace):
+            raise HTTPException(status_code=400, detail="Invalid namespace")
+        if namespace and not admin and namespace not in allowed:
+            raise HTTPException(status_code=403, detail="Namespace is not available to this user")
+        if namespace:
+            def in_scope(ns: str) -> bool:
+                return ns == namespace
+        elif admin:
+            def in_scope(ns: str) -> bool:
+                return True
+        else:
+            def in_scope(ns: str) -> bool:
+                return ns in allowed
+        if not token_usable(deps.flight_token):
+            raise HTTPException(status_code=503, detail="Flight Recorder token is not configured")
+        replies, total = await collect(deps, "/api/v1/flight/trace?" + urlencode({"traceId": trace_id}))
+        reachable = sum(ok for ok, _ in replies)
+        if total == 0 or reachable == 0:
+            raise HTTPException(status_code=503, detail="No Flight Recorder collector is reachable")
+        bodies = [body for ok, body in replies if ok and isinstance(body, dict)]
+        result = merge_trace(trace_id, bodies, {"total": total, "reachable": reachable}, in_scope)
+        if not result["observations"]:
+            # Same answer whether the trace does not exist or belongs to someone else.
+            raise HTTPException(status_code=404, detail="Trace not observed in the namespaces you can read")
+        return result
+
+    @router.get("/api/flight/inference/{job}")
+    @deps.limiter.limit("60/minute")
+    async def inference(request: Request, job: str, namespace: str = "", _=Depends(deps.verify_auth)):
+        """Serving-engine latency of a job, from the status the collector publishes on its
+        GryviaFabricSignal. Reads the cluster API only (no collector fan-out)."""
+        allowed = namespaces(request, deps)
+        admin = getattr(request.state, "role", None) == "admin"
+        ns = namespace or (deps.job_namespace if admin else allowed[0])
+        if not valid_name(job) or not valid_name(ns):
+            raise HTTPException(status_code=400, detail="Invalid job or namespace")
+        if not admin and ns not in allowed:
+            raise HTTPException(status_code=403, detail="Namespace is not available to this user")
+        return inference_view(ns, job, await list_items(deps, "gryviafabricsignals", namespace=ns))
+
     return router

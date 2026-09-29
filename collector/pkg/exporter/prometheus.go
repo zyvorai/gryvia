@@ -54,6 +54,9 @@ type Metrics struct {
 	fabricPFCRate       *prometheus.GaugeVec
 	fabricExfilEvents   *prometheus.GaugeVec
 	fabricUCXSlowP99    *prometheus.GaugeVec
+	engineLatency       *prometheus.GaugeVec // gryvia_inference_latency_seconds{namespace,job,engine,metric}
+	engineRequests      *prometheus.GaugeVec // gryvia_inference_requests{namespace,job,engine,state}
+	engineKVCache       *prometheus.GaugeVec
 	pfcFrames           prometheus.Counter
 	pfcLegacyFrames     prometheus.Counter
 	pfcPriorityFrames   *prometheus.CounterVec
@@ -207,7 +210,7 @@ func NewMetrics() *Metrics {
 		}, fabricLabels),
 		fabricInferWaitP99: promauto.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "gryvia_fabric_infer_wait_p99_seconds",
-			Help: "p99 accept -> first recv wait on inference ports (vLLM/Triton).",
+			Help: "p99 NETWORK wait from accept to first recv on inference ports (vLLM/Triton). Not engine queue time, TTFT or ITL: see gryvia_inference_latency_seconds.",
 		}, fabricLabels),
 		fabricPFCRate: promauto.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "gryvia_fabric_pfc_rate",
@@ -221,6 +224,18 @@ func NewMetrics() *Metrics {
 			Name: "gryvia_fabric_ucx_slow_p99_seconds",
 			Help: "p99 duration of UCX tag-send calls that blocked for at least 5 ms.",
 		}, fabricLabels),
+		engineLatency: promauto.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "gryvia_inference_latency_seconds",
+			Help: "Latency read from the serving engine's own metrics (opt-in -infer-metrics). metric is ttft_p99, itl_p99, queue_time_p99, e2e_p99, prefill_p99, decode_p99 (quantiles over a 5 minute window of per-interval histogram deltas) or queue_time_mean, e2e_mean, compute_mean (engines that export only duration counters). Absent when not measured.",
+		}, []string{"namespace", "job", "engine", "metric"}),
+		engineRequests: promauto.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "gryvia_inference_requests",
+			Help: "Requests the serving engine reports as running or waiting (state label), summed over the job's scraped replicas on this node.",
+		}, []string{"namespace", "job", "engine", "state"}),
+		engineKVCache: promauto.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "gryvia_inference_kv_cache_usage_ratio",
+			Help: "KV cache usage in [0,1] reported by the engine (worst replica); absent when the engine does not export it.",
+		}, []string{"namespace", "job", "engine"}),
 		pfcFrames: promauto.NewCounter(prometheus.CounterOpts{
 			Name: "gryvia_pfc_pause_frames_total",
 			Help: "802.1Qbb priority flow control pause frames seen by the pfc_pause XDP program.",
@@ -382,7 +397,11 @@ func (m *Metrics) RecordFabric(jobs []fabric.JobStatus) {
 	m.fabricPFCRate.Reset()
 	m.fabricExfilEvents.Reset()
 	m.fabricUCXSlowP99.Reset()
+	m.engineLatency.Reset()
+	m.engineRequests.Reset()
+	m.engineKVCache.Reset()
 	for _, j := range jobs {
+		m.recordInference(j)
 		m.fabricScoreDelta.WithLabelValues(j.Namespace, j.Job).Set(j.ScoreDelta)
 		m.fabricStragglerRank.WithLabelValues(j.Namespace, j.Job).Set(float64(j.StragglerRank))
 		m.fabricNCCLP99.WithLabelValues(j.Namespace, j.Job).Set(j.NCCLP99MS / 1e3)
@@ -396,6 +415,37 @@ func (m *Metrics) RecordFabric(jobs []fabric.JobStatus) {
 		if j.GDSMeasured {
 			m.fabricGDSHitRatio.WithLabelValues(j.Namespace, j.Job).Set(j.GDSHitRatio)
 		}
+	}
+}
+
+// recordInference publishes the engine figures of one job. Unmeasured figures are simply absent.
+func (m *Metrics) recordInference(j fabric.JobStatus) {
+	in := j.Inference
+	if in == nil {
+		return
+	}
+	lat := func(metric string, ms *float64) {
+		if ms != nil {
+			m.engineLatency.WithLabelValues(j.Namespace, j.Job, in.Engine, metric).Set(*ms / 1e3)
+		}
+	}
+	lat("ttft_p99", in.TTFTP99MS)
+	lat("itl_p99", in.ITLP99MS)
+	lat("queue_time_p99", in.QueueP99MS)
+	lat("e2e_p99", in.E2EP99MS)
+	lat("prefill_p99", in.PrefillP99MS)
+	lat("decode_p99", in.DecodeP99MS)
+	lat("queue_time_mean", in.QueueMeanMS)
+	lat("e2e_mean", in.E2EMeanMS)
+	lat("compute_mean", in.ComputeMeanMS)
+	if in.RequestsRunning != nil {
+		m.engineRequests.WithLabelValues(j.Namespace, j.Job, in.Engine, "running").Set(*in.RequestsRunning)
+	}
+	if in.RequestsWaiting != nil {
+		m.engineRequests.WithLabelValues(j.Namespace, j.Job, in.Engine, "waiting").Set(*in.RequestsWaiting)
+	}
+	if in.KVCacheUsage != nil {
+		m.engineKVCache.WithLabelValues(j.Namespace, j.Job, in.Engine).Set(*in.KVCacheUsage)
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"regexp"
@@ -28,11 +29,13 @@ type podList struct {
 			Labels    map[string]string `json:"labels"`
 		} `json:"metadata"`
 		Spec struct {
-			NodeName string `json:"nodeName"`
+			NodeName    string `json:"nodeName"`
+			HostNetwork bool   `json:"hostNetwork"`
 		} `json:"spec"`
 		Status struct {
 			Phase    string `json:"phase"`
 			QOSClass string `json:"qosClass"`
+			PodIP    string `json:"podIP"`
 		} `json:"status"`
 	} `json:"items"`
 }
@@ -50,6 +53,7 @@ type Resolver struct {
 	mu      sync.RWMutex
 	byUID   map[string]Identity
 	byJob   map[string][]PodInfo
+	byIP    map[string]Identity // pod IP -> identity (pods with a job label, not on the host network)
 	proc    string
 	node    string
 	updated time.Time
@@ -77,6 +81,7 @@ func (r *Resolver) SetPods(raw []byte) error {
 	}
 	next := make(map[string]Identity, len(list.Items))
 	nextJobs := map[string][]PodInfo{}
+	nextIP := make(map[string]Identity, len(list.Items))
 	for _, p := range list.Items {
 		if p.Spec.NodeName != r.node {
 			continue
@@ -95,10 +100,15 @@ func (r *Resolver) SetPods(raw []byte) error {
 			k := key(id.Namespace, id.Job)
 			nextJobs[k] = append(nextJobs[k], PodInfo{Identity: id, UID: normalizeUID(p.Metadata.UID), QOS: p.Status.QOSClass})
 		}
+		// Host-network pods share the node's address: an IP would not identify them.
+		if ip := net.ParseIP(p.Status.PodIP); ip != nil && !p.Spec.HostNetwork {
+			nextIP[ip.String()] = id
+		}
 	}
 	r.mu.Lock()
 	r.byUID = next
 	r.byJob = nextJobs
+	r.byIP = nextIP
 	r.updated = time.Now()
 	r.mu.Unlock()
 	return nil
@@ -151,6 +161,18 @@ func (r *Resolver) Resolve(pid uint32) (Identity, bool) {
 	}
 	r.mu.RUnlock()
 	return id, ok
+}
+
+// ResolveIP identifies the job pod on this node that owns ip (dotted IPv4). It fails closed like
+// Resolve: an unknown address or a pod list older than a minute yields false.
+func (r *Resolver) ResolveIP(ip string) (Identity, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	id, ok := r.byIP[ip]
+	if !ok || time.Since(r.updated) > time.Minute {
+		return Identity{}, false
+	}
+	return id, true
 }
 
 // Run refreshes the node's pods every 15 seconds. The API server TLS CA and

@@ -60,9 +60,15 @@ type Status struct {
 	// CNPRate is RoCEv2 congestion notification packets per second averaged
 	// over the window (node-level, reported under job _node/cnp).
 	CNPRate float64 `json:"cnpRate"`
-	// InferWaitP99MS is the p99 accept -> first recv wait on inference ports.
-	// Informational: it does not feed ScoreDelta.
+	// InferWaitP99MS is the p99 NETWORK accept -> first recv wait on inference
+	// ports (infer_latency.c). It is not engine queue time, time to first token
+	// or inter-token latency; those come from the engine's own metrics (see
+	// Inference below). Informational: it does not feed ScoreDelta.
 	InferWaitP99MS float64 `json:"inferWaitP99ms"`
+	// Inference holds the serving engine's own latency figures. It is nil unless
+	// the opt-in metrics scraper (-infer-metrics) delivered a fresh reading; a nil
+	// field inside it means "not measured", never zero.
+	Inference *Inference `json:"inference,omitempty"`
 	// PFCRate is 802.1Qbb priority-flow-control pause frames per second
 	// averaged over the window (node-level, reported under job _node/pfc).
 	PFCRate float64 `json:"pfcRate"`
@@ -91,6 +97,7 @@ type Folder struct {
 	jobs      map[JobKey][]sample
 	pidToJob  map[uint32]JobKey
 	gdsDirect bool
+	inf       map[JobKey]map[string]infSample // job -> scrape target -> latest engine reading
 }
 
 // NewFolder creates a Folder. A non-positive window means DefaultWindow.
@@ -195,6 +202,7 @@ func (f *Folder) Snapshot() map[JobKey]Status {
 		f.jobs[k] = list
 		out[k] = fold(list, f.gdsDirect, f.window)
 	}
+	f.foldInferenceLocked(out, cutoff)
 	return out
 }
 

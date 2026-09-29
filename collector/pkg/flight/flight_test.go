@@ -136,3 +136,42 @@ func TestResolverPods(t *testing.T) {
 		t.Fatalf("%v", j)
 	}
 }
+
+func TestResolveIPFailsClosed(t *testing.T) {
+	r := NewResolver("gpu-1", t.TempDir())
+	pod := func(name, ip, job string, hostNet bool, node string) string {
+		lab := ""
+		if job != "" {
+			lab = `"gryvia.io/job":"` + job + `"`
+		}
+		hn := "false"
+		if hostNet {
+			hn = "true"
+		}
+		return `{"metadata":{"uid":"` + name + `","name":"` + name + `","namespace":"ml","labels":{` + lab + `}},"spec":{"nodeName":"` + node + `","hostNetwork":` + hn + `},"status":{"podIP":"` + ip + `"}}`
+	}
+	items := []string{
+		pod("serve-0", "10.1.2.3", "serve", false, "gpu-1"),
+		pod("nolabel", "10.1.2.4", "", false, "gpu-1"),
+		pod("hostnet", "192.168.0.1", "serve", true, "gpu-1"),
+		pod("elsewhere", "10.1.2.5", "serve", false, "gpu-2"),
+		pod("noip", "", "serve", false, "gpu-1"),
+	}
+	if err := r.SetPods([]byte(`{"items":[` + strings.Join(items, ",") + `]}`)); err != nil {
+		t.Fatal(err)
+	}
+	if id, ok := r.ResolveIP("10.1.2.3"); !ok || id.Pod != "serve-0" || id.Job != "serve" || id.Namespace != "ml" {
+		t.Errorf("job pod: %+v %v", id, ok)
+	}
+	for _, ip := range []string{"10.1.2.4", "192.168.0.1", "10.1.2.5", "10.9.9.9", ""} {
+		if _, ok := r.ResolveIP(ip); ok {
+			t.Errorf("%q must not resolve", ip)
+		}
+	}
+	r.mu.Lock()
+	r.updated = r.updated.Add(-2 * time.Minute)
+	r.mu.Unlock()
+	if _, ok := r.ResolveIP("10.1.2.3"); ok {
+		t.Error("a stale pod list must not resolve")
+	}
+}

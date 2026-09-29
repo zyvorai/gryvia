@@ -1,6 +1,7 @@
 package exporter
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -36,8 +37,10 @@ func gatherValue(t *testing.T, name string, labels map[string]string) (float64, 
 	return 0, false
 }
 
+var testMetrics = sync.OnceValue(NewMetrics) // promauto registers on the default registry: once per test binary
+
 func TestRecordPFCAndFabricGauges(t *testing.T) {
-	m := NewMetrics()
+	m := testMetrics()
 	var perPrio [fabric.PFCPriorities]uint64
 	perPrio[3], perPrio[5] = 7, 2
 	m.RecordPFC(9, 4, perPrio)
@@ -72,5 +75,50 @@ func TestRecordPFCAndFabricGauges(t *testing.T) {
 	m.RecordFabric(nil)
 	if _, ok := gatherValue(t, "gryvia_fabric_pfc_rate", labels); ok {
 		t.Error("jobs that aged out must disappear")
+	}
+}
+
+func TestRecordInferenceGauges(t *testing.T) {
+	m := testMetrics()
+	f := func(v float64) *float64 { return &v }
+	m.RecordFabric([]fabric.JobStatus{{
+		JobKey: fabric.JobKey{Namespace: "ml", Job: "serve"},
+		Status: fabric.Status{InferWaitP99MS: 4, Inference: &fabric.Inference{
+			Engine: "vllm", TTFTP99MS: f(475), QueueP99MS: f(50), RequestsWaiting: f(3), KVCacheUsage: f(0.42),
+		}},
+	}})
+	base := map[string]string{"namespace": "ml", "job": "serve", "engine": "vllm"}
+	with := func(k, v string) map[string]string {
+		out := map[string]string{k: v}
+		for a, b := range base {
+			out[a] = b
+		}
+		return out
+	}
+	for _, c := range []struct {
+		name   string
+		labels map[string]string
+		want   float64
+	}{
+		{"gryvia_inference_latency_seconds", with("metric", "ttft_p99"), 0.475},
+		{"gryvia_inference_latency_seconds", with("metric", "queue_time_p99"), 0.05},
+		{"gryvia_inference_requests", with("state", "waiting"), 3},
+		{"gryvia_inference_kv_cache_usage_ratio", base, 0.42},
+		{"gryvia_fabric_infer_wait_p99_seconds", map[string]string{"namespace": "ml", "job": "serve"}, 0.004},
+	} {
+		if got, ok := gatherValue(t, c.name, c.labels); !ok || got != c.want {
+			t.Errorf("%s %v = %v ok=%v, want %v", c.name, c.labels, got, ok, c.want)
+		}
+	}
+	// Not measured means no series, not a zero.
+	if _, ok := gatherValue(t, "gryvia_inference_latency_seconds", with("metric", "itl_p99")); ok {
+		t.Error("an unmeasured ITL must have no series")
+	}
+	if _, ok := gatherValue(t, "gryvia_inference_requests", with("state", "running")); ok {
+		t.Error("unreported running count must have no series")
+	}
+	m.RecordFabric(nil)
+	if _, ok := gatherValue(t, "gryvia_inference_kv_cache_usage_ratio", base); ok {
+		t.Error("aged-out jobs must disappear")
 	}
 }

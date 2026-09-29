@@ -15,11 +15,13 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -79,11 +81,12 @@ func statusError(code int, detail string) error {
 
 // fetch returns the raw report body after validating it is a JSON object.
 func fetch(ctx context.Context, client *http.Client, gateway, namespace, job, token string) ([]byte, error) {
-	return fetchPath(ctx, client, gateway, namespace, job, token, "")
+	return fetchPath(ctx, client, gateway, "/api/flight/jobs/", namespace, job, token, "")
 }
 
-// fetchPath is fetch for a sub-resource of the job (for example "/diagnosis").
-func fetchPath(ctx context.Context, client *http.Client, gateway, namespace, job, token, suffix string) ([]byte, error) {
+// fetchPath is fetch for any gateway route of the form <prefix><job><suffix>?namespace=<namespace>, for example
+// "/api/flight/jobs/" + job + "/diagnosis" or "/api/flight/inference/" + job.
+func fetchPath(ctx context.Context, client *http.Client, gateway, prefix, namespace, job, token, suffix string) ([]byte, error) {
 	u, err := url.Parse(gateway)
 	if err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 		return nil, errors.New("gateway must be an HTTP(S) URL without credentials, query or fragment")
@@ -99,7 +102,7 @@ func fetchPath(ctx context.Context, client *http.Client, gateway, namespace, job
 	if len(job) > 63 || len(namespace) > 63 || !dnsLabel.MatchString(job) || !dnsLabel.MatchString(namespace) {
 		return nil, errors.New("namespace and job must be DNS-1123 labels")
 	}
-	u.Path = strings.TrimRight(u.Path, "/") + "/api/flight/jobs/" + job + suffix
+	u.Path = strings.TrimRight(u.Path, "/") + prefix + job + suffix
 	u.RawPath = ""
 	q := url.Values{}
 	q.Set("namespace", namespace)
@@ -263,6 +266,65 @@ func printDiagnosis(out io.Writer, d *diagnosisReport) {
 	}
 }
 
+// inference holds the serving-engine figures the gateway reads from GryviaFabricSignal.status. A nil
+// pointer means "not measured" (the engine does not export it, or no request finished in the window).
+type inference struct {
+	Available       bool     `json:"available"`
+	Engine          string   `json:"engine"`
+	UpdatedAt       string   `json:"updatedAt"`
+	TTFTP99         *float64 `json:"ttftP99ms"`
+	ITLP99          *float64 `json:"itlP99ms"`
+	QueueP99        *float64 `json:"queueTimeP99ms"`
+	E2EP99          *float64 `json:"e2eP99ms"`
+	QueueMean       *float64 `json:"queueTimeMeanMs"`
+	E2EMean         *float64 `json:"e2eMeanMs"`
+	RequestsWaiting *float64 `json:"requestsWaiting"`
+	KVCacheUsage    *float64 `json:"kvCacheUsage"`
+	InferWaitP99    *float64 `json:"inferWaitP99ms"`
+}
+
+func ms(v *float64) string {
+	switch {
+	case v == nil || *v < 0:
+		return "not measured"
+	case *v < 1:
+		return fmt.Sprintf("%.2f ms", *v)
+	case *v < 1000:
+		return strconv.FormatFloat(math.Round(*v*10)/10, 'f', -1, 64) + " ms"
+	}
+	return fmt.Sprintf("%.2f s", *v/1000)
+}
+
+// printInference writes the -inference section. Untrusted strings are printed with %q.
+func printInference(out io.Writer, in *inference) {
+	if !in.Available {
+		fmt.Fprintln(out, "Inference: no engine metrics published for this job (the collector's -infer-metrics scraper is off, or no GryviaFabricSignal with this jobRef reports an engine)")
+		return
+	}
+	fmt.Fprintf(out, "Inference: engine %q, updated %q. Reported by the engine itself, not measured by the network probes.\n", in.Engine, in.UpdatedAt)
+	fmt.Fprintf(out, "  time to first token p99   %s\n", ms(in.TTFTP99))
+	fmt.Fprintf(out, "  inter-token latency p99   %s\n", ms(in.ITLP99))
+	fmt.Fprintf(out, "  engine queue time p99     %s\n", ms(in.QueueP99))
+	fmt.Fprintf(out, "  end-to-end latency p99    %s\n", ms(in.E2EP99))
+	if in.QueueP99 == nil && in.QueueMean != nil {
+		fmt.Fprintf(out, "  engine queue time MEAN    %s (this engine exports only cumulative durations)\n", ms(in.QueueMean))
+	}
+	if in.E2EP99 == nil && in.E2EMean != nil {
+		fmt.Fprintf(out, "  end-to-end latency MEAN   %s (this engine exports only cumulative durations)\n", ms(in.E2EMean))
+	}
+	if in.RequestsWaiting != nil {
+		fmt.Fprintf(out, "  requests waiting          %.0f\n", *in.RequestsWaiting)
+	} else {
+		fmt.Fprintln(out, "  requests waiting          not measured")
+	}
+	if in.KVCacheUsage != nil {
+		fmt.Fprintf(out, "  KV cache usage            %.0f%%\n", 100**in.KVCacheUsage)
+	} else {
+		fmt.Fprintln(out, "  KV cache usage            not measured")
+	}
+	fmt.Fprintf(out, "  network accept wait p99   %s (accept to first read on the socket; not queue time)\n", ms(in.InferWaitP99))
+}
+
 func readToken(file string, stdin io.Reader, getenv func(string) string) (string, error) {
 	var raw []byte
 	var err error
@@ -309,6 +371,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv func(s
 	timeout := fs.Duration("timeout", 30*time.Second, "request timeout (the gateway's fan-out may take up to 10s)")
 	requireComplete := fs.Bool("require-complete", false, "exit 3 when the report is partial or truncated (with -diagnosis: when the measurement is incomplete)")
 	diag := fs.Bool("diagnosis", false, "fetch the unified bottleneck diagnosis (ranked findings with evidence, unavailable telemetry and measurement completeness) instead of the event report")
+	withInference := fs.Bool("inference", false, "also fetch the serving engine's own latency (TTFT, ITL, queue time; needs the collector's -infer-metrics). With -o json the output becomes {\"flight\": ..., \"inference\": ...}")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
@@ -328,6 +391,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv func(s
 	if *timeout <= 0 {
 		return usage("-timeout must be positive")
 	}
+	if *diag && *withInference {
+		return usage("-diagnosis and -inference cannot be combined")
+	}
 	token, err := readToken(*tokenFile, stdin, getenv)
 	if err != nil {
 		return usage(err.Error())
@@ -335,7 +401,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv func(s
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 	defer cancel()
 	if *diag {
-		body, err := fetchPath(ctx, client, *gateway, *namespace, *job, token, "/diagnosis")
+		body, err := fetchPath(ctx, client, *gateway, "/api/flight/jobs/", *namespace, *job, token, "/diagnosis")
 		if err != nil {
 			fmt.Fprintln(stderr, "gryvia-flight:", err)
 			return 1
@@ -368,10 +434,30 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv func(s
 		fmt.Fprintln(stderr, "gryvia-flight: gateway returned an unexpected report shape")
 		return 1
 	}
+	var inferenceBody []byte
+	var inf inference
+	if *withInference {
+		inferenceBody, err = fetchPath(ctx, client, *gateway, "/api/flight/inference/", *namespace, *job, token, "")
+		if err == nil && json.Unmarshal(inferenceBody, &inf) != nil {
+			err = errors.New("gateway returned an unexpected inference shape")
+		}
+		if err != nil {
+			fmt.Fprintln(stderr, "gryvia-flight: inference:", err)
+			return 1
+		}
+	}
 	if *output == "text" {
 		printText(stdout, &r)
+		if *withInference {
+			printInference(stdout, &inf)
+		}
 	} else {
-		fmt.Fprintln(stdout, strings.TrimRight(string(body), "\r\n"))
+		flightJSON := strings.TrimRight(string(body), "\r\n")
+		if *withInference {
+			fmt.Fprintf(stdout, "{\"flight\":%s,\"inference\":%s}\n", flightJSON, strings.TrimRight(string(inferenceBody), "\r\n"))
+		} else {
+			fmt.Fprintln(stdout, flightJSON)
+		}
 		if r.partial() {
 			fmt.Fprintln(stderr, "gryvia-flight: warning: partial or truncated view (see coverage and truncated)")
 		}
