@@ -67,6 +67,8 @@ struct {
     __uint(max_entries, 128 * 1024);
 } trace_events SEC(".maps");
 
+GRYVIA_DECLARE_DROPS();
+
 /* ---- helpers ---------------------------------------------------------- */
 
 /* Convert a single hex character to its numeric value */
@@ -260,8 +262,10 @@ int trace_correlator_ingress(struct __sk_buff *skb)
     /* Emit event to ring buffer */
     struct trace_context *ev;
     ev = bpf_ringbuf_reserve(&trace_events, sizeof(*ev), 0);
-    if (!ev)
+    if (!ev) {
+        GRYVIA_COUNT_DROP(GRYVIA_DROP_RINGBUF);
         return TC_ACT_OK;
+    }
 
     *ev = tctx;
     bpf_ringbuf_submit(ev, 0);

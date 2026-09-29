@@ -84,6 +84,24 @@ type GryviaFabricSignalStatus struct {
 	// address from the same process in the window (observe only, never part of scoreDelta)
 	ExfilEvents int64 `json:"exfilEvents,omitempty"`
 
+	// CollectiveMaxSkewMs is the largest slowest-minus-fastest host-side NCCL call duration in
+	// milliseconds among collectives matched by (communicator ordinal, sequence, op) across the
+	// job's ranks on the publishing node (0 = none matched; informational, never part of scoreDelta)
+	CollectiveMaxSkewMs float64 `json:"collectiveMaxSkewMs,omitempty"`
+
+	// GPUIdleDuringCommRatio is the fraction of NCCL communication time (covered by DCGM samples)
+	// during which SM_ACTIVE (else GPU_UTIL) was below the idle threshold. Set only when the
+	// collector runs with -dcgm-correlate and measured it; informational, never part of scoreDelta
+	GPUIdleDuringCommRatio float64 `json:"gpuIdleDuringCommRatio,omitempty"`
+
+	// SMActiveDuringCompute is the mean DCGM SM activity (0-1) outside the NCCL call windows,
+	// between the job's first and last observed collective (set only when measured)
+	SMActiveDuringCompute float64 `json:"smActiveDuringCompute,omitempty"`
+
+	// GPUCorrelationCoverage is the fraction of NCCL communication time covered by a DCGM sample;
+	// a low value means the dcgm-exporter collect interval is too coarse for the ratios above
+	GPUCorrelationCoverage float64 `json:"gpuCorrelationCoverage,omitempty"`
+
 	// ScoreDelta is the penalty in [0,1] for the topology scorer (0 = healthy fabric)
 	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:validation:Maximum=1

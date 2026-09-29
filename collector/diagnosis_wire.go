@@ -23,7 +23,7 @@ import (
 var dropObjects = map[string]uint32{
 	"tcp_trace.o": 1, "nccl_trace.o": 0, "gpu_mem_trace.o": 0, "datapipe_bottleneck.o": 0,
 	"straggler.o": 0, "rdma_health.o": 0, "gds_trace.o": 0, "overlap.o": 0,
-	"infer_latency.o": 0, "ucx_gloo.o": 0, "weight_exfil.o": 0,
+	"infer_latency.o": 0, "ucx_gloo.o": 0, "weight_exfil.o": 0, "trace_correlator.o": 0,
 }
 
 // probeSource is the part of loader.Manager the diagnosis reads.

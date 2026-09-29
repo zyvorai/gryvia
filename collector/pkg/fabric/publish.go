@@ -77,8 +77,14 @@ type signalStatusPatch struct {
 		InferWaitP99Ms   float64  `json:"inferWaitP99ms"`
 		PFCRate          float64  `json:"pfcRate"`
 		ExfilEvents      int64    `json:"exfilEvents"`
-		ScoreDelta       float64  `json:"scoreDelta"`
-		UpdatedAt        string   `json:"updatedAt"`
+		// CollectiveMaxSkewMs is always sent (0 = none matched); the GPU fields
+		// are null (field removed) unless the DCGM correlation measured them.
+		CollectiveMaxSkewMs    float64  `json:"collectiveMaxSkewMs"`
+		GPUIdleDuringCommRatio *float64 `json:"gpuIdleDuringCommRatio"`
+		SMActiveDuringCompute  *float64 `json:"smActiveDuringCompute"`
+		GPUCorrelationCoverage *float64 `json:"gpuCorrelationCoverage"`
+		ScoreDelta             float64  `json:"scoreDelta"`
+		UpdatedAt              string   `json:"updatedAt"`
 		*InferencePatch
 	} `json:"status"`
 }
@@ -89,6 +95,8 @@ func finite(v float64) float64 {
 	}
 	return v
 }
+
+func clamp01(v float64) float64 { return math.Max(0, math.Min(1, v)) }
 
 // StatusPatchBody renders the merge-patch for one job's status (without the engine fields).
 func StatusPatchBody(st Status) ([]byte, error) { return statusPatchBody(st, false) }
@@ -149,6 +157,15 @@ func statusPatchBody(st Status, withInference bool) ([]byte, error) {
 		s.ExfilEvents = math.MaxInt64
 	} else {
 		s.ExfilEvents = int64(st.ExfilEvents)
+	}
+	s.CollectiveMaxSkewMs = finite(st.CollectiveMaxSkewMS)
+	if st.GPUCorrelationMeasured {
+		idle, cov := clamp01(finite(st.GPUIdleDuringCommRatio)), clamp01(finite(st.GPUCorrelationCoverage))
+		s.GPUIdleDuringCommRatio, s.GPUCorrelationCoverage = &idle, &cov
+		if st.GPUComputeMeasured {
+			v := clamp01(finite(st.SMActiveDuringCompute))
+			s.SMActiveDuringCompute = &v
+		}
 	}
 	s.ScoreDelta = math.Max(0, math.Min(1, finite(st.ScoreDelta)))
 	s.UpdatedAt = st.UpdatedAt.UTC().Format(time.RFC3339)

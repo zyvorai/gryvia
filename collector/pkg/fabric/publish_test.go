@@ -205,3 +205,34 @@ func TestPublishNilSafe(t *testing.T) {
 		t.Fatal()
 	}
 }
+
+func TestStatusPatchBodyGPUFieldsNullUnlessMeasured(t *testing.T) {
+	get := func(st Status) map[string]interface{} {
+		b, err := StatusPatchBody(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var m struct {
+			Status map[string]interface{} `json:"status"`
+		}
+		_ = json.Unmarshal(b, &m)
+		return m.Status
+	}
+	s := get(Status{CollectiveMaxSkewMS: 12.5})
+	for _, k := range []string{"gpuIdleDuringCommRatio", "smActiveDuringCompute", "gpuCorrelationCoverage"} {
+		if v, ok := s[k]; !ok || v != nil {
+			t.Errorf("%s = %v (present=%v), want explicit null so a stale value is removed", k, v, ok)
+		}
+	}
+	if s["collectiveMaxSkewMs"].(float64) != 12.5 {
+		t.Errorf("collectiveMaxSkewMs = %v", s["collectiveMaxSkewMs"])
+	}
+	s = get(Status{GPUCorrelationMeasured: true, GPUIdleDuringCommRatio: 1.7, GPUCorrelationCoverage: 0.4})
+	if s["gpuIdleDuringCommRatio"].(float64) != 1 || s["gpuCorrelationCoverage"].(float64) != 0.4 || s["smActiveDuringCompute"] != nil {
+		t.Errorf("measured, compute unmeasured: %v", s)
+	}
+	s = get(Status{GPUCorrelationMeasured: true, GPUComputeMeasured: true, SMActiveDuringCompute: 0.8})
+	if s["smActiveDuringCompute"].(float64) != 0.8 {
+		t.Errorf("%v", s)
+	}
+}

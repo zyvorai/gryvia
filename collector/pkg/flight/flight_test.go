@@ -175,3 +175,57 @@ func TestResolveIPFailsClosed(t *testing.T) {
 		t.Error("a stale pod list must not resolve")
 	}
 }
+
+func TestRecordCollectiveKeepsIdentityAndDoesNotEvictEvents(t *testing.T) {
+	r := New("node-a")
+	id := Identity{Namespace: "ml", Job: "train", Pod: "train-0", Node: "node-a"}
+	r.Record(Event{Identity: id, Kind: "tcp_retransmit", Retransmits: 2})
+	rank := uint32(3)
+	for i := 1; i <= 3*maxEvents; i++ { // far more than the event ring holds
+		r.RecordCollective(Event{Identity: id, Operation: "allreduce", Bytes: 4096, DurationNs: 10,
+			CommOrdinal: 1, CommSeq: uint64(i), CommRank: &rank, CommWorld: 8})
+	}
+	// ignored: no identity, no ordinal, no seq
+	r.RecordCollective(Event{Identity: Identity{}, CommOrdinal: 1, CommSeq: 1})
+	r.RecordCollective(Event{Identity: id, CommOrdinal: 0, CommSeq: 1})
+	r.RecordCollective(Event{Identity: id, CommOrdinal: 1, CommSeq: 0})
+	rep, ok := r.Report("ml", "train", 500)
+	if !ok || len(rep.Events) != 1 || rep.Events[0].Kind != "tcp_retransmit" {
+		t.Fatalf("collective flood evicted or polluted events: %+v", rep.Events)
+	}
+	if len(rep.Collectives) != 200 || rep.Collectives[0].Kind != "nccl_collective_seq" {
+		t.Fatalf("collectives = %d", len(rep.Collectives))
+	}
+	last := rep.Collectives[len(rep.Collectives)-1]
+	if last.CommSeq != uint64(3*maxEvents) || last.CommRank == nil || *last.CommRank != 3 || last.CommWorld != 8 {
+		t.Errorf("newest collective = %+v", last)
+	}
+	b, _ := json.Marshal(last)
+	if !strings.Contains(string(b), `"comm_ordinal":1`) || !strings.Contains(string(b), `"comm_seq"`) {
+		t.Errorf("json %s", b)
+	}
+	// a job with only collectives still has a report
+	r2 := New("n")
+	r2.RecordCollective(Event{Identity: id, CommOrdinal: 1, CommSeq: 1})
+	if rep, ok := r2.Report("ml", "train", 10); !ok || len(rep.Events) != 0 || len(rep.Collectives) != 1 {
+		t.Errorf("collectives-only report: ok=%v %+v", ok, rep)
+	}
+}
+
+func TestJobOfPod(t *testing.T) {
+	r := NewResolver("node-a", t.TempDir())
+	raw := `{"items":[{"metadata":{"uid":"11111111-2222-3333-4444-555555555555","name":"train-0","namespace":"ml","labels":{"gryvia.io/job":"train"}},"spec":{"nodeName":"node-a"}},
+	{"metadata":{"uid":"aaaaaaaa-2222-3333-4444-555555555555","name":"other","namespace":"ml"},"spec":{"nodeName":"node-a"}}]}`
+	if err := r.SetPods([]byte(raw)); err != nil {
+		t.Fatal(err)
+	}
+	if j, ok := r.JobOfPod("ml", "train-0"); !ok || j != "train" {
+		t.Errorf("got %q %v", j, ok)
+	}
+	if _, ok := r.JobOfPod("ml", "other"); ok {
+		t.Error("pod without a job label must not resolve")
+	}
+	if _, ok := r.JobOfPod("kube-system", "train-0"); ok {
+		t.Error("namespace must match")
+	}
+}

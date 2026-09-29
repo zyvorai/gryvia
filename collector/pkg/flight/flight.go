@@ -42,6 +42,16 @@ type Event struct {
 	// timeline does not expose remote addresses).
 	Tuple     *Tuple `json:"-"`
 	LocalPort uint16 `json:"-"`
+	// Collective identity (kind "nccl_collective_seq", ebpf/straggler.c). The
+	// ordinal is 1-based and job-scoped (order in which the process created or
+	// first used communicators); the ncclComm_t pointer is deliberately not
+	// carried because it is not comparable across processes or nodes. CommRank
+	// is nil when the probes never learned the rank.
+	CommOrdinal uint32  `json:"comm_ordinal,omitempty"`
+	CommSeq     uint64  `json:"comm_seq,omitempty"`
+	CommRank    *uint32 `json:"comm_rank,omitempty"`
+	CommWorld   uint32  `json:"comm_world,omitempty"`
+	CommLate    bool    `json:"comm_late,omitempty"`
 	// Observations are deliberately not interpreted as GPU utilization or wire bytes.
 }
 
@@ -75,28 +85,44 @@ type Report struct {
 	Events    []Event        `json:"events"`
 	Findings  []Finding      `json:"findings"`
 	Counts    map[string]int `json:"counts"`
+	// Collectives are the newest identified collective spans of this node's
+	// ranks (kind "nccl_collective_seq"), kept apart from Events so a burst of
+	// collectives cannot evict other observations. The gateway compares them
+	// across nodes by (comm_ordinal, comm_seq, operation).
+	Collectives []Event `json:"collectives,omitempty"`
 }
 
 // ring is a fixed-capacity circular timeline; appends never shift memory.
 type ring struct {
 	buf   []Event
 	start int // index of the oldest event once full
+	cap   int // 0 = maxEvents
+}
+
+func (g *ring) capacity() int {
+	if g.cap > 0 {
+		return g.cap
+	}
+	return maxEvents
 }
 
 func (g *ring) add(e Event) {
-	if len(g.buf) < maxEvents {
+	if len(g.buf) < g.capacity() {
 		g.buf = append(g.buf, e)
 		return
 	}
 	g.buf[g.start] = e
-	g.start = (g.start + 1) % maxEvents
+	g.start = (g.start + 1) % g.capacity()
 }
 
 func (g *ring) last() time.Time {
-	if len(g.buf) < maxEvents {
+	if len(g.buf) == 0 {
+		return time.Time{}
+	}
+	if len(g.buf) < g.capacity() {
 		return g.buf[len(g.buf)-1].Time
 	}
-	return g.buf[(g.start+maxEvents-1)%maxEvents].Time
+	return g.buf[(g.start+g.capacity()-1)%g.capacity()].Time
 }
 
 // tail returns up to n newest events, oldest first.
@@ -113,10 +139,11 @@ func (g *ring) tail(n int) []Event {
 }
 
 type Recorder struct {
-	mu   sync.RWMutex
-	jobs map[string]*ring
-	node string
-	corr Correlator
+	mu    sync.RWMutex
+	jobs  map[string]*ring
+	colls map[string]*ring
+	node  string
+	corr  Correlator
 }
 
 // SetCorrelator enables trace id annotation of reports. nil (the default) disables it.
@@ -180,7 +207,43 @@ func (r *Recorder) TraceEvents(traceID string, jobs []Identity, limit int) []Eve
 	return out
 }
 
-func New(node string) *Recorder { return &Recorder{jobs: make(map[string]*ring), node: node} }
+// maxCollectives bounds the identified collective spans kept per job.
+const maxCollectives = 4096
+
+func New(node string) *Recorder {
+	return &Recorder{jobs: make(map[string]*ring), colls: make(map[string]*ring), node: node}
+}
+
+// RecordCollective stores one identified collective span (kind is forced to
+// "nccl_collective_seq") in the per-job collective ring; unattributed events
+// and events without a communicator ordinal and sequence are ignored.
+func (r *Recorder) RecordCollective(e Event) {
+	if e.Identity.Job == "" || e.Identity.Namespace == "" || e.CommOrdinal == 0 || e.CommSeq == 0 {
+		return
+	}
+	e.Kind = "nccl_collective_seq"
+	if e.Time.IsZero() {
+		e.Time = time.Now().UTC()
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	k := key(e.Identity.Namespace, e.Identity.Job)
+	if _, exists := r.colls[k]; !exists && len(r.colls) >= maxJobs {
+		oldest, when := "", time.Time{}
+		for name, g := range r.colls {
+			if oldest == "" || g.last().Before(when) {
+				oldest, when = name, g.last()
+			}
+		}
+		delete(r.colls, oldest)
+	}
+	g, ok := r.colls[k]
+	if !ok {
+		g = &ring{cap: maxCollectives}
+		r.colls[k] = g
+	}
+	g.add(e)
+}
 func key(ns, job string) string { return ns + "/" + job }
 
 // Record ignores unattributed events. Eviction bounds memory independent of job count.
@@ -219,20 +282,28 @@ func (r *Recorder) Report(ns, job string, limit int) (Report, bool) {
 	}
 	r.mu.RLock()
 	g, ok := r.jobs[key(ns, job)]
-	var copyEvents []Event
+	var copyEvents, colls []Event
 	corr := r.corr
 	if ok {
 		copyEvents = g.tail(limit)
 	}
+	cg, cok := r.colls[key(ns, job)]
+	if cok {
+		colls = cg.tail(limit)
+	}
 	r.mu.RUnlock()
-	if !ok {
+	if !ok && !cok {
 		return Report{}, false
 	}
 	for i := range copyEvents {
 		annotate(corr, &copyEvents[i])
 	}
 	sort.SliceStable(copyEvents, func(i, j int) bool { return copyEvents[i].Time.Before(copyEvents[j].Time) })
-	rep := Report{Namespace: ns, Job: job, Node: r.node, Scope: "node-local; observed events only", Events: copyEvents, Counts: map[string]int{}, Findings: []Finding{}}
+	sort.SliceStable(colls, func(i, j int) bool { return colls[i].Time.Before(colls[j].Time) })
+	if copyEvents == nil {
+		copyEvents = []Event{}
+	}
+	rep := Report{Namespace: ns, Job: job, Node: r.node, Scope: "node-local; observed events only", Events: copyEvents, Counts: map[string]int{}, Findings: []Finding{}, Collectives: colls}
 	for _, e := range copyEvents {
 		if e.Kind == "tcp_retransmit" {
 			rep.Counts[e.Kind] += int(e.Retransmits)

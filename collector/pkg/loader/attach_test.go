@@ -343,3 +343,27 @@ func TestQuotaPaceObjectShape(t *testing.T) {
 		t.Errorf("quota_pace.c must have exactly one program, found %d", n)
 	}
 }
+
+func TestIBVerbsProbesAreOptIn(t *testing.T) {
+	spec := AttachSpec{Kind: KindUprobe, Symbol: "ibv_create_qp"}
+	if SkipReason(spec, Config{NCCLLib: "/x"}) == "" {
+		t.Error("ibv uprobe must be skipped without libibverbs")
+	}
+	if SkipReason(spec, Config{IBVerbsLib: "/x"}) != "" {
+		t.Error("ibv uprobe with libibverbs should attach")
+	}
+	if IBVerbsSkipReason(Config{IBVerbsLib: "/x"}) == "" {
+		t.Error("ibv_verbs must not attach unless -ibverbs-probes is set")
+	}
+	if IBVerbsSkipReason(Config{IBVerbs: true}) != "" {
+		t.Error("-ibverbs-probes enables it")
+	}
+}
+
+func TestNCCLIdentitySymbolsUseNCCLLib(t *testing.T) {
+	for _, sym := range []string{"ncclCommInitRank", "ncclCommUserRank", "ncclCommCount", "ncclCommDestroy", "ncclAllGather", "ncclAlltoAll"} {
+		if LibraryFor(sym, Config{NCCLLib: "/n"}) != "/n" {
+			t.Errorf("%s not resolved to libnccl", sym)
+		}
+	}
+}
