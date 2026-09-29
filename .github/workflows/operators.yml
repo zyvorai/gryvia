@@ -56,7 +56,7 @@ jobs:
           go tool cover -html=coverage.out -o coverage.html
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v7
         with:
           files: operators/${{ matrix.operator }}/coverage.out
           flags: ${{ matrix.operator }}
