@@ -37,7 +37,7 @@
 - name: Install Gryvia core via Helm
   kubernetes.core.helm:
     name: gryvia
-    chart_ref: ../../../helm/gryvia-core
+    chart_ref: ../../../helm/gryvia
     release_namespace: gryvia-system
     create_namespace: yes
     values:

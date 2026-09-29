@@ -84,7 +84,7 @@ kubectl get nodes -o json | jq '.items[].status.capacity'
 #### Option A: Helm Installation (Recommended)
 
 ```bash
-cd helm/gryvia-core
+cd helm/gryvia
 
 # Install all operators at once
 helm install gryvia . \
@@ -373,7 +373,7 @@ kubectl port-forward -n monitoring svc/prometheus-server 9090:80
 
 ```bash
 # Update Helm values
-helm upgrade gryvia ./helm/gryvia-core \
+helm upgrade gryvia ./helm/gryvia \
   --namespace gryvia-system \
   --set ha.enabled=true \
   --set gpuOperator.replicas=3 \

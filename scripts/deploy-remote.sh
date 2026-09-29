@@ -6,7 +6,7 @@
 #   1. rsync the repo to ~/.deployments/gryvia on the host
 #   2. build the gpu-operator, ai-operator, api-gateway and ui images with podman
 #      and import them into k3s's containerd
-#   3. install the CRDs, then the gryvia-core Helm chart (operators)
+#   3. install the CRDs, then the gryvia Helm chart (operators, API gateway, dashboard)
 #   4. deploy the API gateway and web UI (both HTTPS, self-signed certificates minted by
 #      an init container in each pod), expose the UI on NodePort 32443
 #   5. wait for every rollout, then smoke-test the UI, the API and a custom resource
@@ -73,8 +73,8 @@ else
   exit 2
 fi
 
-VERSION="$(sed -n 's/^appVersion: *"\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' "${ROOT}/helm/gryvia-core/Chart.yaml")"
-[[ -n "$VERSION" ]] || { echo "cannot read appVersion from helm/gryvia-core/Chart.yaml" >&2; exit 1; }
+VERSION="$(sed -n 's/^appVersion: *"\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' "${ROOT}/helm/gryvia/Chart.yaml")"
+[[ -n "$VERSION" ]] || { echo "cannot read appVersion from helm/gryvia/Chart.yaml" >&2; exit 1; }
 UI_NODEPORT="${GRYVIA_UI_NODEPORT:-32443}"
 TARGET_HOST="${TARGET#*@}"
 if [[ "$TARGET_HOST" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then TARGET_SAN="IP:${TARGET_HOST}"; else TARGET_SAN="DNS:${TARGET_HOST}"; fi
@@ -101,6 +101,7 @@ if [[ "$MODE" == "uninstall" ]]; then
   remote_script=$(cat <<EOF
 set -uo pipefail
 $(preamble)
+helm -n gryvia-system uninstall gryvia 2>/dev/null || true
 helm -n gryvia-system uninstall gryvia-core 2>/dev/null || true
 kubectl -n gryvia-system delete deployment gryvia-api-gateway gryvia-ui --ignore-not-found
 kubectl -n gryvia-system delete service gryvia-api-gateway gryvia-ui --ignore-not-found
@@ -131,7 +132,7 @@ unauth_rejected() { local c; c="\$(curl -sk -o /dev/null -w '%{http_code}' "\$BA
 echo "Gryvia smoke test"
 check "namespace exists" kubectl get ns gryvia-system
 check "CRD gryviaaijobs.gryvia.io established" kubectl wait --for=condition=Established crd/gryviaaijobs.gryvia.io --timeout=30s
-for d in gryvia-core-gpu-operator gryvia-core-ai-operator gryvia-api-gateway gryvia-ui; do
+for d in gryvia-gpu-operator gryvia-ai-operator gryvia-quota-operator gryvia-api-gateway gryvia-ui; do
   check "deployment \$d available" kubectl -n gryvia-system wait --for=condition=Available deployment/\$d --timeout=60s
 done
 check "UI serves index" curl -sfk "\$BASE/"
@@ -208,6 +209,7 @@ else RT=""; fi
 IMAGES=(
   "gpu-operator:operators/gpu-operator:operators/gpu-operator/Dockerfile"
   "ai-operator:operators/ai-operator:operators/ai-operator/Dockerfile"
+  "quota-operator:operators/quota-operator:operators/quota-operator/Dockerfile"
   "api-gateway:services/api-gateway:services/api-gateway/Dockerfile"
   "ui:.:docker/Dockerfile.ui"
 )
@@ -258,44 +260,52 @@ for legacy in \$(kubectl get crd -o name 2>/dev/null | sed -n 's#^customresource
 done
 kubectl apply --server-side --force-conflicts -f crds/
 
-echo "Installing gryvia-core (operators) ..."
-helm upgrade --install gryvia-core ./helm/gryvia-core \\
+echo "Installing gryvia (operators, API gateway, dashboard) ..."
+# Earlier deployments used a gryvia-core release plus kubectl-applied gateway/UI manifests.
+# Remove those so the single gryvia release owns everything; adopt the TLS and API-key Secrets.
+if helm -n gryvia-system status gryvia-core >/dev/null 2>&1; then
+  echo "Removing legacy gryvia-core release"
+  helm -n gryvia-system uninstall gryvia-core
+fi
+managed() { [[ "\$(kubectl -n gryvia-system get "\$1" "\$2" -o jsonpath='{.metadata.labels.app\.kubernetes\.io/managed-by}' 2>/dev/null)" == "Helm" ]]; }
+for res in deployment/gryvia-api-gateway deployment/gryvia-ui service/gryvia-api-gateway service/gryvia-ui \\
+           serviceaccount/gryvia-api-gateway serviceaccount/gryvia-ui; do
+  if kubectl -n gryvia-system get "\$res" >/dev/null 2>&1 && ! managed "\${res%%/*}" "\${res##*/}"; then
+    echo "Replacing unmanaged \$res"
+    kubectl -n gryvia-system delete "\$res"
+  fi
+done
+for res in clusterrole/gryvia-api-gateway clusterrolebinding/gryvia-api-gateway clusterrole/gryvia-ui clusterrolebinding/gryvia-ui; do
+  if kubectl get "\$res" >/dev/null 2>&1 && [[ "\$(kubectl get "\$res" -o jsonpath='{.metadata.labels.app\.kubernetes\.io/managed-by}')" != "Helm" ]]; then
+    kubectl delete "\$res"
+  fi
+done
+for sec in gryvia-tls gryvia-api-key; do
+  if kubectl -n gryvia-system get secret "\$sec" >/dev/null 2>&1 && ! managed secret "\$sec"; then
+    kubectl -n gryvia-system label secret "\$sec" app.kubernetes.io/managed-by=Helm --overwrite
+    kubectl -n gryvia-system annotate secret "\$sec" meta.helm.sh/release-name=gryvia meta.helm.sh/release-namespace=gryvia-system --overwrite
+  fi
+done
+HOST_IP="\$(hostname -I | awk '{print \$1}')"
+helm upgrade --install gryvia ./helm/gryvia \\
   --namespace gryvia-system --create-namespace \\
   --set namespace.create=false \\
   --set crds.install=false \\
   --set monitoring.enabled=false \\
   --set nvidiaDevicePlugin.enabled=false \\
   --set dcgmExporter.enabled=false \\
-  --set gpuOperator.image.repository="\$REG/gryvia-gpu-operator" --set gpuOperator.image.tag="\$VERSION" \\
-  --set aiOperator.image.repository="\$REG/gryvia-ai-operator" --set aiOperator.image.tag="\$VERSION" \\
+  --set global.imageRegistry="\$REG" --set global.imageTag="\$VERSION" \\
+  --set auth.apiKey="\$API_KEY" \\
+  --set ui.service.type=NodePort --set ui.service.nodePort="\$UI_NODEPORT" \\
+  --set "tls.extraSANs={\$HOST_IP,${TARGET_HOST}}" \\
   --wait --timeout 300s
-
-echo "Deploying API gateway and web UI ..."
-# One self-signed certificate for the UI and the gateway, shared by every pod through a Secret so
-# restarts and replicas serve the same certificate (a browser exception then keeps working).
-# Created once; delete the gryvia-tls Secret to rotate it.
-if ! kubectl -n gryvia-system get secret gryvia-tls >/dev/null 2>&1; then
-  TLS_DIR="\$(mktemp -d)"
-  HOST_IP="\$(hostname -I | awk '{print \$1}')"
-  openssl req -x509 -nodes -days 3650 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \\
-    -keyout "\$TLS_DIR/tls.key" -out "\$TLS_DIR/tls.crt" -subj "/CN=gryvia/O=Gryvia" \\
-    -addext "subjectAltName=DNS:gryvia,DNS:gryvia-ui,DNS:gryvia-ui.gryvia-system.svc,DNS:gryvia-api-gateway,DNS:gryvia-api-gateway.gryvia-system.svc,DNS:localhost,IP:127.0.0.1,IP:\$HOST_IP,${TARGET_SAN}"
-  kubectl -n gryvia-system create secret tls gryvia-tls --cert="\$TLS_DIR/tls.crt" --key="\$TLS_DIR/tls.key"
-  rm -rf "\$TLS_DIR"
-fi
-kubectl -n gryvia-system create secret generic gryvia-api-key \\
-  --from-literal=GRYVIA_API_KEY="\$API_KEY" --dry-run=client -o yaml | kubectl apply -f -
-sed "s#image: gryvia/api-gateway:.*#image: \$REG/gryvia-api-gateway:\$VERSION#" manifests/deploy/api-gateway-deployment.yaml | kubectl apply -f -
-sed "s#image: gryvia/ui:.*#image: \$REG/gryvia-ui:\$VERSION#" manifests/deploy/ui-deployment.yaml | kubectl apply -f -
-kubectl -n gryvia-system set env deployment/gryvia-api-gateway --from=secret/gryvia-api-key
-kubectl -n gryvia-system patch svc gryvia-ui --type merge \\
-  -p "{\"spec\":{\"type\":\"NodePort\",\"ports\":[{\"name\":\"https\",\"port\":443,\"targetPort\":\"https\",\"protocol\":\"TCP\",\"nodePort\":\$UI_NODEPORT}]}}"
 
 # A fixed tag never changes the pod template, so restart to pick up freshly imported images.
 # image-name:deployment:label selector
 WORKLOADS=(
-  "gpu-operator:gryvia-core-gpu-operator:app.kubernetes.io/component=gpu-operator"
-  "ai-operator:gryvia-core-ai-operator:app.kubernetes.io/component=ai-operator"
+  "gpu-operator:gryvia-gpu-operator:app.kubernetes.io/component=gpu-operator"
+  "ai-operator:gryvia-ai-operator:app.kubernetes.io/component=ai-operator"
+  "quota-operator:gryvia-quota-operator:app.kubernetes.io/component=quota-operator"
   "api-gateway:gryvia-api-gateway:app=gryvia-api-gateway"
   "ui:gryvia-ui:app=gryvia-ui"
 )

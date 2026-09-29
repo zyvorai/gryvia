@@ -2,7 +2,7 @@
 # Regenerate every CRD from the operators' Go types with controller-gen.
 #
 # The Go types under operators/*/api/v1 are the source of truth. Output goes to
-# crds/ (canonical) and is copied to helm/gryvia-core/crds/, which Helm installs.
+# crds/ (canonical) and is copied to helm/gryvia/crds/, which Helm installs.
 # Two kinds are defined in more than one operator; the owning operator wins:
 #   GryviaAIJob   -> ai-operator   (quota-operator holds a read-only subset)
 #   GryviaGpuNode -> gpu-operator  (ai-operator holds an identical copy)
@@ -29,8 +29,8 @@ done
 # GryviaGpuNode: gpu-operator owns it (copied before ai-operator above), restore it.
 cp "$stage/gpu-operator/gryvia.io_gryviagpunodes.yaml" "$stage/all/"
 
-rm -f crds/*.yaml helm/gryvia-core/crds/*.yaml
-mkdir -p crds helm/gryvia-core/crds
+rm -f crds/*.yaml helm/gryvia/crds/*.yaml
+mkdir -p crds helm/gryvia/crds
 cp "$stage/all"/*.yaml crds/
-cp "$stage/all"/*.yaml helm/gryvia-core/crds/
-echo "generated $(ls crds | wc -l | tr -d ' ') CRDs into crds/ and helm/gryvia-core/crds/"
+cp "$stage/all"/*.yaml helm/gryvia/crds/
+echo "generated $(ls crds | wc -l | tr -d ' ') CRDs into crds/ and helm/gryvia/crds/"

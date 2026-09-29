@@ -1,0 +1,53 @@
+name: Kind end-to-end
+
+# Builds the images from the checkout, installs the chart on a kind cluster with the demo data and
+# checks that the API answers with the demo objects. Proves the install path works without GPUs.
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'helm/**'
+      - 'crds/**'
+      - 'operators/**'
+      - 'services/api-gateway/**'
+      - 'web-ui/**'
+      - 'docker/**'
+      - 'scripts/kind-demo.sh'
+      - 'examples/demo/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - uses: helm/kind-action@v1
+        with:
+          install_only: true
+      - name: Install with demo data (local images)
+        run: GRYVIA_LOCAL_IMAGES=1 ./scripts/kind-demo.sh
+      - name: Check the API serves the demo data
+        run: |
+          kubectl -n gryvia-system port-forward svc/gryvia-ui 8443:443 &
+          sleep 5
+          key='Admin@321'
+          curl -sfk -H "Authorization: Bearer $key" https://localhost:8443/api/auth/me
+          curl -sfk -H "Authorization: Bearer $key" https://localhost:8443/api/nodes | grep -q demo-h100-1
+          curl -sfk -H "Authorization: Bearer $key" https://localhost:8443/api/jobs | grep -q demo-train
+          test "$(curl -sk -o /dev/null -w '%{http_code}' https://localhost:8443/api/jobs)" = "401" -o "$(curl -sk -o /dev/null -w '%{http_code}' https://localhost:8443/api/jobs)" = "403"
+      - name: Dump state on failure
+        if: failure()
+        run: |
+          kubectl get pods -A
+          kubectl -n gryvia-system describe pods | tail -80
+          kubectl -n gryvia-system logs -l app=gryvia-api-gateway --tail=50 || true

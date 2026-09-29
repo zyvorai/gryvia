@@ -1,381 +1,62 @@
-# Gryvia Helm Chart
+# Gryvia Helm chart
 
-Official Helm chart for deploying Gryvia GPU compute platform.
+Installs Gryvia: the operators, the API gateway and the web dashboard.
 
-## TL;DR
-
-```bash
-helm repo add gryvia https://zyvorai.github.io/gryvia/charts
-helm install gryvia gryvia/gryvia --namespace gryvia-system --create-namespace
-```
-
-## Introduction
-
-This chart bootstraps a complete Gryvia deployment on a Kubernetes cluster using the Helm package manager.
-
-## Prerequisites
-
-- Kubernetes 1.28+
-- Helm 3.8+
-- GPU nodes with NVIDIA drivers installed
-- cert-manager (if webhooks enabled)
-- Prometheus Operator (if monitoring enabled)
-
-## Installing the Chart
-
-### Basic Installation
+## Install
 
 ```bash
-helm install gryvia gryvia/gryvia \
-  --namespace gryvia-system \
-  --create-namespace
+helm install gryvia oci://ghcr.io/zyvorai/charts/gryvia \
+  --namespace gryvia-system --create-namespace
 ```
 
-### Production Installation
+or run `./scripts/install.sh` (checks prerequisites and prints how to open the dashboard).
+Trying it without GPUs: `./scripts/kind-demo.sh`.
+
+Open the dashboard:
 
 ```bash
-helm install gryvia gryvia/gryvia \
-  --namespace gryvia-system \
-  --create-namespace \
-  --set highAvailability.enabled=true \
-  --set prometheus.enabled=true \
-  --set grafana.enabled=true \
-  --set networkPolicy.enabled=true \
-  --set webUI.ingress.enabled=true \
-  --set webUI.ingress.hosts[0].host=gryvia.example.com
+kubectl -n gryvia-system port-forward svc/gryvia-ui 8443:443   # https://localhost:8443
 ```
 
-### Custom Values
+Sign in as `admin` with the API key. **The default key is the well-known lab value `Admin@321`.**
+Set your own for anything reachable from an untrusted network:
 
 ```bash
-helm install gryvia gryvia/gryvia \
-  --namespace gryvia-system \
-  --create-namespace \
-  --values custom-values.yaml
+helm upgrade --install gryvia oci://ghcr.io/zyvorai/charts/gryvia -n gryvia-system \
+  --set auth.apiKey='a-long-random-secret'
+# or keep it in your own Secret (key: GRYVIA_API_KEY)
+  --set auth.existingSecret=my-gryvia-key
 ```
 
-## Uninstalling the Chart
-
-```bash
-helm uninstall gryvia --namespace gryvia-system
-```
-
-This removes all Kubernetes components but keeps CRDs by default.
-
-To remove CRDs:
-
-```bash
-kubectl delete crds \
-  gryviagpunodes.gryvia.io \
-  gryviaaijobs.gryvia.io \
-  gryviastorages.gryvia.io \
-  gryvianetworks.gryvia.io \
-  gryviaquotas.gryvia.io
-```
-
-## Configuration
-
-The following table lists the configurable parameters and their default values.
-
-### Global Parameters
-
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `global.imageRegistry` | Global Docker image registry | `ghcr.io` |
-| `global.imagePullSecrets` | Global image pull secrets | `[]` |
-| `namespace` | Namespace to deploy to | `gryvia` |
-
-### Operator Parameters
-
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `gpuOperator.enabled` | Enable GPU Operator | `true` |
-| `gpuOperator.replicaCount` | Number of replicas | `2` |
-| `gpuOperator.image.repository` | Image repository | `zyvorai/gryvia-gpu-operator` |
-| `gpuOperator.image.tag` | Image tag | `latest` |
-| `aiOperator.enabled` | Enable AI Workload Operator | `true` |
-| `aiOperator.replicaCount` | Number of replicas | `2` |
-| `storageOperator.enabled` | Enable Storage Operator | `true` |
-| `networkOperator.enabled` | Enable Network Operator | `true` |
-| `quotaOperator.enabled` | Enable Quota Operator | `true` |
-
-### Web UI Parameters
-
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `webUI.enabled` | Enable Web UI | `true` |
-| `webUI.replicaCount` | Number of replicas | `2` |
-| `webUI.service.type` | Service type | `ClusterIP` |
-| `webUI.ingress.enabled` | Enable ingress | `false` |
-| `webUI.ingress.className` | Ingress class | `nginx` |
-| `webUI.ingress.hosts` | Ingress hosts | `[]` |
-
-### Monitoring Parameters
-
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `prometheus.enabled` | Enable Prometheus | `true` |
-| `grafana.enabled` | Enable Grafana | `true` |
-| `dcgmExporter.enabled` | Enable DCGM Exporter | `true` |
-| `metrics.enabled` | Enable metrics collection | `true` |
-
-### Security Parameters
-
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `rbac.create` | Create RBAC resources | `true` |
-| `networkPolicy.enabled` | Enable network policies | `true` |
-| `podSecurityPolicy.enabled` | Enable PSP (deprecated) | `false` |
-
-### CRD and Security Defaults
-
-- All CRDs enforce `required: ["spec"]` at the top level for validation.
-- `GryviaStorage` StorageClass `reclaimPolicy` defaults to `Retain` (not `Delete`).
-- `GryviaQuota` `gpuQuota.maxGPUs` minimum is `1` (cannot be `0`).
-- DCGM exporter security is hardened: drops ALL capabilities, adds only `SYS_ADMIN`, and sets `readOnlyRootFilesystem: true`.
-- nvidia-device-plugin liveness probe changed from `nvidia-smi` to an HTTP health check endpoint.
-- gpu-operator deployment includes `seccompProfile: RuntimeDefault`.
-
-### High Availability
-
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `highAvailability.enabled` | Enable HA with leader election | `true` |
-
-## Examples
-
-### Minimal Installation (Single Node Testing)
-
-```yaml
-# values-minimal.yaml
-gpuOperator:
-  replicaCount: 1
-aiOperator:
-  replicaCount: 1
-storageOperator:
-  enabled: false
-networkOperator:
-  enabled: false
-quotaOperator:
-  replicaCount: 1
-webUI:
-  replicaCount: 1
-apiGateway:
-  replicaCount: 1
-prometheus:
-  enabled: false
-grafana:
-  enabled: false
-highAvailability:
-  enabled: false
-```
-
-```bash
-helm install gryvia gryvia/gryvia -f values-minimal.yaml
-```
-
-### Production Installation
-
-```yaml
-# values-production.yaml
-global:
-  imageRegistry: ghcr.io
-  imagePullSecrets:
-    - name: ghcr-credentials
-
-gpuOperator:
-  replicaCount: 3
-  resources:
-    limits:
-      cpu: 1000m
-      memory: 1Gi
-    requests:
-      cpu: 500m
-      memory: 512Mi
-
-aiOperator:
-  replicaCount: 3
-  webhook:
-    enabled: true
-
-highAvailability:
-  enabled: true
-
-webUI:
-  replicaCount: 3
-  ingress:
-    enabled: true
-    className: nginx
-    hosts:
-      - host: gryvia.example.com
-        paths:
-          - path: /
-            pathType: Prefix
-    tls:
-      - secretName: gryvia-ui-tls
-        hosts:
-          - gryvia.example.com
-
-prometheus:
-  enabled: true
-  server:
-    persistentVolume:
-      enabled: true
-      size: 100Gi
-      storageClass: fast-ssd
-
-grafana:
-  enabled: true
-  persistence:
-    enabled: true
-    size: 20Gi
-  adminPassword: <secure-password>
-
-networkPolicy:
-  enabled: true
-
-defaultQuotas:
-  enabled: true
-  quotas:
-    - name: ml-research-quota
-      team: ml-research
-      namespaces:
-        - ml-research
-      gpuQuota:
-        maxGPUs: 32
-        maxGPUsPerJob: 8
-        allowedGPUTypes:
-          - H100
-          - A100-80G
-        maxRunningJobs: 20
-      priority: 100
-```
-
-```bash
-helm install gryvia gryvia/gryvia -f values-production.yaml
-```
-
-### Air-Gapped Installation
-
-```yaml
-# values-airgap.yaml
-global:
-  imageRegistry: registry.internal.company.com
-  imagePullSecrets:
-    - name: internal-registry
-
-gpuOperator:
-  image:
-    repository: gryvia/gpu-operator
-    tag: 1.0.0
-
-aiOperator:
-  image:
-    repository: gryvia/ai-operator
-    tag: 1.0.0
-
-# ... repeat for all components
-
-prometheus:
-  enabled: false  # Use existing Prometheus
-
-grafana:
-  enabled: false  # Use existing Grafana
-```
-
-## Upgrading
-
-### Upgrade to Latest Version
-
-```bash
-helm repo update
-helm upgrade gryvia gryvia/gryvia --namespace gryvia-system
-```
-
-### Upgrade with Custom Values
-
-```bash
-helm upgrade gryvia gryvia/gryvia \
-  --namespace gryvia-system \
-  --values custom-values.yaml \
-  --reuse-values
-```
-
-## Troubleshooting
-
-### Check Deployment Status
-
-```bash
-helm status gryvia --namespace gryvia-system
-```
-
-### View Release Values
-
-```bash
-helm get values gryvia --namespace gryvia-system
-```
-
-### Debug Installation
-
-```bash
-helm install gryvia gryvia/gryvia \
-  --namespace gryvia-system \
-  --dry-run \
-  --debug
-```
-
-### Common Issues
-
-#### Operators Not Starting
-
-```bash
-kubectl get pods -n gryvia-system
-kubectl describe pod <pod-name> -n gryvia-system
-kubectl logs <pod-name> -n gryvia-system
-```
-
-#### CRDs Not Installing
-
-```bash
-# Manually install CRDs
-kubectl apply -f https://raw.githubusercontent.com/zyvorai/gryvia/main/crds/
-```
-
-#### Webhook Issues
-
-```bash
-# Check cert-manager
-kubectl get certificates -n gryvia-system
-kubectl describe certificate <cert-name> -n gryvia-system
-```
-
-## Dependencies
-
-This chart has the following optional dependencies:
-
-- **prometheus**: Monitoring and alerting
-- **grafana**: Metrics visualization
-
-Install with all dependencies:
-
-```bash
-helm install gryvia gryvia/gryvia \
-  --namespace gryvia-system \
-  --create-namespace \
-  --set prometheus.enabled=true \
-  --set grafana.enabled=true
-```
-
-## Contributing
-
-Contributions are welcome! Please read the [contributing guidelines](https://github.com/zyvorai/gryvia/blob/main/CONTRIBUTING.md).
-
-## License
-
-Apache 2.0 - See [LICENSE](https://github.com/zyvorai/gryvia/blob/main/LICENSE)
-
-## Support
-
-- Documentation: https://github.com/zyvorai/gryvia/docs
-- Issues: https://github.com/zyvorai/gryvia/issues
-- Discussions: https://github.com/zyvorai/gryvia/discussions
+The certificate is self-signed by default; your browser shows a warning once.
+
+## What is installed
+
+| Component | Values key | Default |
+|-----------|-----------|---------|
+| GPU operator | `gpuOperator` | on |
+| AI workload operator | `aiOperator` | on |
+| Quota operator | `quotaOperator` | on |
+| Storage operator | `storageOperator` | off |
+| Network operator | `networkOperator` | off |
+| API gateway (HTTPS, 2 replicas) | `apiGateway` | on |
+| Web dashboard (HTTPS, 2 replicas) | `ui` | on |
+| NVIDIA device plugin, DCGM exporter | `nvidiaDevicePlugin`, `dcgmExporter` | on (need NVIDIA GPU nodes) |
+
+CRDs are installed from `crds/` on first install. Helm does not upgrade CRDs; apply new versions with
+`kubectl apply --server-side -f crds/` before `helm upgrade`.
+
+## Common settings
+
+| Value | Purpose |
+|-------|---------|
+| `global.imageRegistry` / `global.imageTag` | Registry prefix (`ghcr.io/zyvorai`, mirrored as `docker.io/zyvorai`) and tag (default: appVersion) |
+| `ui.service.type` / `ui.service.nodePort` | Expose the dashboard (`NodePort`, `LoadBalancer`) |
+| `ui.ingress.*` | Ingress with optional TLS secret; add `nginx.ingress.kubernetes.io/backend-protocol: HTTPS` for ingress-nginx |
+| `tls.mode` | `selfSigned` (default), `certManager` (needs `tls.certManager.issuerName`), or `existingSecret` |
+| `tls.extraSANs` | Extra DNS names or IPs for the self-signed certificate |
+| `podDisruptionBudget.enabled`, `networkPolicy.enabled` | Optional hardening |
+| `apiGateway.prometheusUrl` | Prometheus for cost and metric history |
+
+See `values.yaml` for every option. Uninstall with `helm uninstall gryvia -n gryvia-system`; CRDs and the
+`gryvia-tls` Secret are kept.

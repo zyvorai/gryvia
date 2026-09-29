@@ -127,7 +127,7 @@ deploy-monitoring: ## Deploy monitoring stack
 
 install: ## Install using Helm
 	@echo "${GREEN}Installing Gryvia with Helm...${RESET}"
-	helm install gryvia helm/gryvia-core -n gryvia-system --create-namespace
+	helm install gryvia helm/gryvia -n gryvia-system --create-namespace
 
 uninstall: ## Uninstall using Helm
 	@echo "${GREEN}Uninstalling Gryvia...${RESET}"
