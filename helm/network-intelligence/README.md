@@ -15,11 +15,9 @@ independent: neither requires the other.
   `collector/Dockerfile` and set `collector.image.repository`/`tag`. It was verified on Linux 7.0 x86_64 only; GPU, RDMA,
   arm64 and the gated attachments are unverified on hardware. See [collector/README.md](../../collector/README.md) and
   [ebpf/README.md](../../ebpf/README.md).
-- Known issue found by reading the code, not yet run against a cluster: the operator Deployment passes
-  `--security-enabled` and `--security-auto-block` (from `security.enabled` and `security.autoBlock`), but
-  `operators/network-intelligence/main.go` defines no such flags, so Go's flag parser rejects them and the operator
-  container exits at start-up. Until the chart and the operator agree, treat `security.*` as non-functional and expect
-  to remove those two arguments from `templates/operator-deployment.yaml` (or add the flags to the operator).
+- `security.enabled` and `security.autoBlock` are **reserved and not read**: the operator has no such flags and no
+  auto-blocking exists. Earlier versions of this chart passed them as `--security-*` arguments, which Go's flag parser
+  rejects, so the operator exited at start-up; the chart no longer passes them.
 - Known issue (code reading, not run): the operator's controllers call the collector at the hard-coded
   `http://gryvia-collector.gryvia-system.svc.cluster.local:9090`, but this chart creates no Service with that name (the
   collector is in `gryvia-network`), and the operator asks for some paths the collector does not serve. Treat the
@@ -62,7 +60,7 @@ name is `gryvia-network-intelligence`.
 | `ebpf.ncclLib`, `ebpf.cudaLib` | Library paths for the GPU uprobes; empty means auto-discover | `""` |
 | `ebpf.flightTokenSecret`, `ebpf.flightTokenKey` | Secret holding the Flight Recorder token (`-flight-token-file`); empty disables that endpoint | `""`, `token` |
 | `prometheus.serviceMonitor.enabled` | Create ServiceMonitors (only when the Prometheus Operator CRD exists) | `true` |
-| `security.enabled`, `security.autoBlock` | See the known issue above | `true`, `false` |
+| `security.enabled`, `security.autoBlock` | Reserved, not read by anything | `true`, `false` |
 | `namespace.name`, `namespace.create` | Target namespace | `gryvia-network`, `true` |
 | `ha.leaderElection` | Operator leader election | `true` |
 
