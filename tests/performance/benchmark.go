@@ -205,7 +205,7 @@ func benchmarkLargeScale(count, parallelism int) BenchmarkResult {
 func submitAndTrackJob(ctx context.Context, namespace, jobName string) JobMetrics {
 	gvr := schema.GroupVersionResource{
 		Group:    "gryvia.io",
-		Version:  "v1",
+		Version:  "v1alpha1",
 		Resource: "gryviaaijobs",
 	}
 

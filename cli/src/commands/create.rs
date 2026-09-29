@@ -126,13 +126,6 @@ async fn create_job(client: &GryviaClient) -> Result<()> {
 
     let mut dist_config = json!({ "enabled": false });
     if distributed {
-        let strategies = vec!["ddp", "fsdp", "deepspeed", "horovod"];
-        let strategy_idx = Select::new()
-            .with_prompt("Distribution strategy")
-            .items(&strategies)
-            .default(0)
-            .interact()?;
-
         let num_nodes: u32 = Input::new()
             .with_prompt("Number of nodes")
             .default(1)
@@ -149,7 +142,7 @@ async fn create_job(client: &GryviaClient) -> Result<()> {
 
         dist_config = json!({
             "enabled": true,
-            "strategy": strategies[strategy_idx],
+            "framework": framework,
             "nodes": num_nodes,
             "gpusPerNode": gpus_per_node,
         });
@@ -158,26 +151,18 @@ async fn create_job(client: &GryviaClient) -> Result<()> {
     // Parse command into parts
     let cmd_parts: Vec<&str> = command.split_whitespace().collect();
 
-    let job_spec = json!({
-        "apiVersion": "gryvia.io/v1alpha1",
-        "kind": "GryviaAIJob",
-        "metadata": {
-            "name": name,
-            "namespace": client.namespace(),
-        },
-        "spec": {
-            "framework": framework,
-            "image": image,
-            "command": cmd_parts,
-            "resources": {
-                "gpuType": gpu_type,
-                "gpuCount": gpu_count,
-                "memory": memory,
-                "cpu": cpu,
-            },
-            "distributed": dist_config,
-        }
-    });
+    let job_spec = build_job_spec(
+        &name,
+        client.namespace(),
+        &framework,
+        &image,
+        &cmd_parts,
+        &gpu_type,
+        gpu_count,
+        &memory,
+        cpu,
+        dist_config,
+    );
 
     println!();
     display::print_info("Job configuration:");
@@ -196,7 +181,7 @@ async fn create_job(client: &GryviaClient) -> Result<()> {
 
     let ar = kube::api::ApiResource::from_gvk(&kube::api::GroupVersionKind::gvk(
         "gryvia.io",
-        "v1",
+        "v1alpha1",
         "GryviaAIJob",
     ));
     let api: Api<kube::core::DynamicObject> =
@@ -330,7 +315,7 @@ async fn create_quota(client: &GryviaClient) -> Result<()> {
 
     let ar = kube::api::ApiResource::from_gvk(&kube::api::GroupVersionKind::gvk(
         "gryvia.io",
-        "v1",
+        "v1alpha1",
         "GryviaQuota",
     ));
     let api: Api<kube::core::DynamicObject> = Api::all_with(client.kube_client.clone(), &ar);
@@ -345,4 +330,93 @@ async fn create_quota(client: &GryviaClient) -> Result<()> {
     display::print_success(&format!("Quota '{}' created successfully", quota_name));
 
     Ok(())
+}
+
+/// The GryviaAIJob the wizard submits. Field names follow the CRD (`type`, `gpus`, `gpuType`,
+/// `resources.requests`); the framework is recorded as a label, as the dashboard and examples do.
+#[allow(clippy::too_many_arguments)]
+fn build_job_spec(
+    name: &str,
+    namespace: &str,
+    framework: &str,
+    image: &str,
+    command: &[&str],
+    gpu_type: &str,
+    gpu_count: u32,
+    memory: &str,
+    cpu: u32,
+    distributed: serde_json::Value,
+) -> serde_json::Value {
+    json!({
+        "apiVersion": "gryvia.io/v1alpha1",
+        "kind": "GryviaAIJob",
+        "metadata": {
+            "name": name,
+            "namespace": namespace,
+            "labels": { "gryvia.io/framework": framework },
+        },
+        "spec": {
+            "type": "training",
+            "image": image,
+            "command": command,
+            "gpus": gpu_count,
+            "gpuType": gpu_type,
+            "resources": { "requests": { "cpu": cpu.to_string(), "memory": memory } },
+            "distributed": distributed,
+        }
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The wizard's output must only use fields the CRD defines, and include the ones it requires.
+    #[test]
+    fn wizard_job_matches_the_crd() {
+        let crd: serde_yaml::Value =
+            serde_yaml::from_str(include_str!("../../../crds/gryvia.io_gryviaaijobs.yaml"))
+                .unwrap();
+        let spec_schema =
+            &crd["spec"]["versions"][0]["schema"]["openAPIV3Schema"]["properties"]["spec"];
+        let props = spec_schema["properties"].as_mapping().unwrap();
+        let required: Vec<&str> = spec_schema["required"]
+            .as_sequence()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect();
+
+        let job = build_job_spec(
+            "train",
+            "ml",
+            "pytorch",
+            "busybox:1.36",
+            &["python", "train.py"],
+            "H100",
+            2,
+            "32Gi",
+            8,
+            json!({"enabled": true, "framework": "pytorch", "nodes": 2, "gpusPerNode": 1}),
+        );
+        let spec = job["spec"].as_object().unwrap();
+        for key in spec.keys() {
+            assert!(
+                props.contains_key(key.as_str()),
+                "spec.{key} is not in the CRD"
+            );
+        }
+        for key in required {
+            assert!(spec.contains_key(key), "required spec.{key} is missing");
+        }
+        assert_eq!(job["apiVersion"], "gryvia.io/v1alpha1");
+        let dist = spec["distributed"].as_object().unwrap();
+        let dist_props = props["distributed"]["properties"].as_mapping().unwrap();
+        for key in dist.keys() {
+            assert!(
+                dist_props.contains_key(key.as_str()),
+                "spec.distributed.{key} is not in the CRD"
+            );
+        }
+    }
 }

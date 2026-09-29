@@ -187,13 +187,13 @@ fn show_detailed_jobs(jobs: &[GryviaAIJob]) -> Result<()> {
     let unknown = "<unknown>".to_string();
     for job in running {
         let name = job.metadata.name.as_ref().unwrap_or(&unknown);
-        let framework = &job.spec.framework;
-        let gpus = job.spec.resources.gpu_count.to_string();
-        let gpu_type = &job.spec.resources.gpu_type;
+        let framework = &job.spec.job_type;
+        let gpus = job.spec.gpus.to_string();
+        let gpu_type = &job.spec.gpu_type;
         let distributed = if job.spec.distributed.enabled {
             format!(
                 "{} ({}x{})",
-                job.spec.distributed.strategy,
+                job.spec.distributed.framework,
                 job.spec.distributed.nodes,
                 job.spec.distributed.gpus_per_node
             )

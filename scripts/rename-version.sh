@@ -18,10 +18,13 @@ for f in operators/*/api/v1/groupversion_info.go; do
   grep -q '+versionName=v1alpha1' "$f" || perl -pi -e 's{^(// \+groupName=gryvia\.io)$}{$1\n// +versionName=v1alpha1}' "$f"
 done
 
-# 3. Clients that pass the version separately (multi-line aware; the group string anchors each match).
-files | xargs -0 grep -lIE '"gryvia\.io",\s*"v1"|group="gryvia\.io", *version="v1"|group = "gryvia\.io", version = "v1"' 2>/dev/null \
-  | xargs perl -0pi -e 's/("gryvia\.io",\s*)"v1"/$1"v1alpha1"/g; s/(group="gryvia\.io", *version=)"v1"/$1"v1alpha1"/g; s/(group = "gryvia\.io", version = )"v1"/$1"v1alpha1"/g' || true
+# 3. Clients that pass the version separately. The group and version are often on different lines
+#    (Rust gvk(...), Go GroupVersionKind{...}, Python keyword arguments), so match across lines.
+git ls-files -z '*.rs' '*.go' '*.py' | grep -zv '^scripts/rename-' \
+  | xargs -0 perl -0pi -e 's/("gryvia\.io",\s*)"v1"(?![a-z0-9])/$1"v1alpha1"/g;
+      s/(Group:\s*"gryvia\.io",\s*Version:\s*)"v1"(?![a-z0-9])/$1"v1alpha1"/g;
+      s/(group\s*=\s*["\x27]gryvia\.io["\x27],(?:[^()]{0,200}?))version\s*=\s*"v1"/$1version="v1alpha1"/gs;
+      s/version\s*=\s*"v1"(,(?:[^()]{0,200}?)group\s*=\s*["\x27]gryvia\.io["\x27])/version="v1alpha1"$1/gs;
+      s/(group = "gryvia\.io", version = )"v1"/$1"v1alpha1"/g' || true
 perl -pi -e 's/^VERSION = "v1"$/VERSION = "v1alpha1"/' services/api-gateway/routers/common.py
-# main.py keeps the version on the line after group= in several calls.
-perl -0pi -e 's/(group="gryvia\.io",\s*\n?\s*)version="v1"/$1version="v1alpha1"/g; s/(\n\s+)version="v1",(\n\s+(?:namespace=[^\n]*\n\s+)?plural="gryvia)/$1version="v1alpha1",$2/g' services/api-gateway/main.py
 echo "Done. Regenerate CRDs: ./scripts/gen-crds.sh"

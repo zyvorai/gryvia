@@ -130,7 +130,11 @@ struct FlowEntry {
 }
 
 async fn fetch_flows(client: &GryviaClient, namespace: &str, service: &str) -> Vec<FlowEntry> {
-    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("gryvia.io", "v1alpha1", "GryviaFlow"));
+    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
+        "gryvia.io",
+        "v1alpha1",
+        "GryviaFlow",
+    ));
     let api: Api<DynamicObject> = Api::namespaced_with(client.kube_client.clone(), namespace, &ar);
 
     let label_selector = format!("gryvia.io/service={}", service);

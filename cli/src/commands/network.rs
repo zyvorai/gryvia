@@ -11,7 +11,11 @@ pub async fn execute_status(client: &GryviaClient, namespace: &str) -> Result<()
     println!();
 
     // Query flows
-    let flow_ar = ApiResource::from_gvk(&GroupVersionKind::gvk("gryvia.io", "v1alpha1", "GryviaFlow"));
+    let flow_ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
+        "gryvia.io",
+        "v1alpha1",
+        "GryviaFlow",
+    ));
     let flow_api: Api<DynamicObject> =
         Api::namespaced_with(client.kube_client.clone(), namespace, &flow_ar);
 

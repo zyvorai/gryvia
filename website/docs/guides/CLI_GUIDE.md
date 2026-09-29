@@ -401,6 +401,60 @@ Validates the YAML file structure and checks that `apiVersion` and `kind` match 
 gryvia validate job.yaml
 ```
 
+### GPU Capacity
+
+`gryvia capacity` is a read-only snapshot computed from cluster objects. Supply is the sum of
+`GryviaGpuNode` `spec.gpuCount` per `spec.gpuType`; allocation is the GPUs held by Running jobs; demand is the
+GPUs requested by Pending, Queued and Scheduling jobs (the same phase grouping the gateway uses, where
+Succeeded and Completed both mean completed). Per type it reports free GPUs, the pending shortfall (demand
+that free GPUs of that type cannot cover) and the headroom left after pending demand.
+
+```bash
+# Capacity per GPU type
+gryvia capacity
+
+# One GPU type only (case-insensitive)
+gryvia capacity --gpu-type H100
+
+# Machine-readable
+gryvia capacity --output json
+```
+
+Notes on what the numbers mean:
+
+- Jobs that do not name a GPU type (or set it to `any`) cannot be attributed to one type. They are counted only
+  in the cluster-wide totals, shortfall and headroom, and are excluded when `--gpu-type` is set.
+- A job type that no node registers appears as its own row with 0 total GPUs.
+- If running jobs hold more GPUs than nodes provide (for example after a node was removed), free is shown as 0
+  and the row is flagged with the excess.
+- It does not forecast growth or estimate purchases; it counts GPUs as they are right now.
+
+### Node Maintenance
+
+`gryvia maintenance` wraps the cordon workflow. It marks nodes with two annotations,
+`gryvia.io/maintenance` (RFC 3339 start time) and `gryvia.io/maintenance-reason`, so that `list` can show who is
+out of service and for how long. The node names are Kubernetes node names.
+
+```bash
+# Cordon a node and record why
+gryvia maintenance start gpu-node-05 --reason "replace failed PSU"
+
+# Cordon and also evict the pods on it (asks for confirmation; add --yes to skip)
+gryvia maintenance start gpu-node-05 --reason "firmware update" --drain
+
+# Show nodes currently marked, with age and reason
+gryvia maintenance list
+
+# Uncordon and remove both annotations
+gryvia maintenance end gpu-node-05
+```
+
+`--drain` only uses the Kubernetes Eviction API, so PodDisruptionBudgets are honoured. It skips DaemonSet pods,
+mirror (static) pods and pods that already finished or are terminating. A pod whose eviction is refused (HTTP 429,
+usually a PodDisruptionBudget) is reported as blocked and left running; the command then exits with an error and
+the node stays cordoned. Pods are never deleted directly. Running `start` again on a node that is already marked
+keeps the original start time, which makes retrying a blocked drain safe.
+
 ## Network Intelligence Commands
 
 ### Network Overview
@@ -799,6 +853,8 @@ jobs:
 - [x] Status follow mode (`gryvia status --follow`)
 - [x] Submit with log following (`gryvia submit --logs`)
 - [x] Cost detailed breakdown (`gryvia cost --detailed`)
+- [x] GPU capacity report (`gryvia capacity`)
+- [x] Node maintenance marking and draining (`gryvia maintenance start/end/list`)
 
 ## Future Features
 

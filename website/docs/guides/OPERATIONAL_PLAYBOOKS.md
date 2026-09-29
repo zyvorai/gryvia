@@ -31,15 +31,16 @@ Standard operating procedures and runbooks for Gryvia operations.
 gryvia health gpu
 gryvia list nodes
 
-# 2. Cordon node immediately
-kubectl cordon gpu-node-05
+# 2. Cordon node immediately and record why
+gryvia maintenance start gpu-node-05 --reason "GPU hardware failure"
 
 # 3. List affected jobs (job pods carry the label gryvia.io/job=<name>)
 kubectl get pods -A -o wide | grep gpu-node-05
 
-# 4. Drain node gracefully (evicted job pods are rescheduled on other nodes
-#    if the job allows it; otherwise cancel and resubmit the job)
-kubectl drain gpu-node-05 --ignore-daemonsets --delete-emptydir-data
+# 4. Drain node gracefully through the Eviction API (respects PodDisruptionBudgets;
+#    blocked pods are reported and left running). Evicted job pods are rescheduled
+#    on other nodes if the job allows it; otherwise cancel and resubmit the job.
+gryvia maintenance start gpu-node-05 --drain
 
 # 5. Inspect the node and its events
 kubectl describe node gpu-node-05
@@ -56,8 +57,8 @@ gryvia get node gpu-node-05
 
 ```bash
 # After hardware replacement:
-# 1. Uncordon node
-kubectl uncordon gpu-node-05
+# 1. Uncordon node and clear the maintenance marker
+gryvia maintenance end gpu-node-05
 
 # 2. Verify health
 gryvia health gpu
@@ -82,7 +83,8 @@ gryvia submit -f test-job.yaml --wait
 **Response Steps:**
 
 ```bash
-# 1. Check current capacity
+# 1. Check current capacity, per GPU type, including pending demand and shortfall
+gryvia capacity
 gryvia cluster --detailed
 
 # 2. View queue
@@ -281,6 +283,7 @@ kubectl edit gryviaquota <quota-name>
 
 ```bash
 # 1. Review current cluster capacity and node details
+gryvia capacity
 gryvia cluster --detailed
 
 # 2. Review quota usage per team
@@ -332,20 +335,26 @@ gryvia health gpu
 # 3. Review the jobs running on the affected nodes
 gryvia list jobs -a
 kubectl get pods -A -o wide --field-selector spec.nodeName=gpu-node-01
+
+# 4. Check that the remaining nodes can absorb the pending work
+gryvia capacity
 ```
 
 **During Maintenance:**
 
 ```bash
-# 1. Cordon nodes
+# 1. Cordon and mark the nodes
 for node in gpu-node-01 gpu-node-02 gpu-node-03 gpu-node-04; do
-  kubectl cordon $node
+  gryvia maintenance start $node --reason "quarterly firmware update"
 done
 
-# 2. Drain gracefully
+# 2. Drain gracefully (Eviction API; blocked pods are reported, not deleted)
 for node in gpu-node-01 gpu-node-02 gpu-node-03 gpu-node-04; do
-  kubectl drain $node --ignore-daemonsets --delete-emptydir-data --timeout=30m
+  gryvia maintenance start $node --drain --yes
 done
+
+# 2b. See which nodes are marked and for how long
+gryvia maintenance list
 
 # 3. Perform maintenance
 # - Update firmware
@@ -359,7 +368,7 @@ gryvia get node gpu-node-01
 
 # 5. Uncordon nodes
 for node in gpu-node-01 gpu-node-02 gpu-node-03 gpu-node-04; do
-  kubectl uncordon $node
+  gryvia maintenance end $node
 done
 ```
 
@@ -560,6 +569,7 @@ gryvia cost <team> --detailed
 gryvia quota <team> --budget
 
 # Capacity
+gryvia capacity
 gryvia cluster --detailed
 gryvia queue
 
@@ -567,10 +577,10 @@ gryvia queue
 gryvia list jobs -a
 gryvia cancel <job-name>
 
-# Maintenance (kubectl)
-# kubectl cordon <node>
-# kubectl drain <node> --ignore-daemonsets --delete-emptydir-data
-# kubectl uncordon <node>
+# Maintenance
+gryvia maintenance start <node> --reason "<why>" --drain
+gryvia maintenance list
+gryvia maintenance end <node>
 ```
 
 ---

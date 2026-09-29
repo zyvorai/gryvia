@@ -196,7 +196,11 @@ async fn execute_memory(client: &GryviaClient, node: &str, _namespace: &str) -> 
     println!();
 
     // Query node GPU metrics
-    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("gryvia.io", "v1alpha1", "GryviaGpuNode"));
+    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
+        "gryvia.io",
+        "v1alpha1",
+        "GryviaGpuNode",
+    ));
     let api: Api<DynamicObject> = Api::all_with(client.kube_client.clone(), &ar);
 
     match api.get(node).await {

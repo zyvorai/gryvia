@@ -71,7 +71,7 @@ async fn execute_alerts(
 
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
         "gryvia.io",
-        "v1",
+        "v1alpha1",
         "GryviaSecurityPolicy",
     ));
     let api: Api<DynamicObject> = Api::namespaced_with(client.kube_client.clone(), namespace, &ar);
@@ -208,7 +208,7 @@ async fn execute_status(client: &GryviaClient, namespace: &str) -> Result<()> {
 
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
         "gryvia.io",
-        "v1",
+        "v1alpha1",
         "GryviaSecurityPolicy",
     ));
     let api: Api<DynamicObject> = Api::namespaced_with(client.kube_client.clone(), namespace, &ar);
@@ -293,7 +293,7 @@ async fn execute_policy_list(client: &GryviaClient, namespace: &str, output: &st
 
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
         "gryvia.io",
-        "v1",
+        "v1alpha1",
         "GryviaSecurityPolicy",
     ));
     let api: Api<DynamicObject> = Api::namespaced_with(client.kube_client.clone(), namespace, &ar);
@@ -413,7 +413,7 @@ async fn execute_policy_create(
 
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
         "gryvia.io",
-        "v1",
+        "v1alpha1",
         "GryviaSecurityPolicy",
     ));
     let api: Api<DynamicObject> = Api::namespaced_with(client.kube_client.clone(), namespace, &ar);

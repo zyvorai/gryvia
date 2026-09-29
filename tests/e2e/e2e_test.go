@@ -75,7 +75,7 @@ func TestE2E_AIJobLifecycle(t *testing.T) {
 	// Define GryviaAIJob resource
 	gvr := schema.GroupVersionResource{
 		Group:    "gryvia.io",
-		Version:  "v1",
+		Version:  "v1alpha1",
 		Resource: "gryviaaijobs",
 	}
 
@@ -169,7 +169,7 @@ func TestE2E_QuotaEnforcement(t *testing.T) {
 
 	quotaGVR := schema.GroupVersionResource{
 		Group:    "gryvia.io",
-		Version:  "v1",
+		Version:  "v1alpha1",
 		Resource: "gryviaquotas",
 	}
 
@@ -256,7 +256,7 @@ func TestE2E_NodeRegistration(t *testing.T) {
 
 	nodeGVR := schema.GroupVersionResource{
 		Group:    "gryvia.io",
-		Version:  "v1",
+		Version:  "v1alpha1",
 		Resource: "gryviagpunodes",
 	}
 
@@ -289,7 +289,7 @@ func TestE2E_StorageProvisioning(t *testing.T) {
 
 	storageGVR := schema.GroupVersionResource{
 		Group:    "gryvia.io",
-		Version:  "v1",
+		Version:  "v1alpha1",
 		Resource: "gryviastorages",
 	}
 
