@@ -291,9 +291,15 @@ def _extract_tenant_namespaces(claims: Dict[str, Any]) -> Optional[List[str]]:
 # old behaviour (claim values used as namespaces) still applies, so existing OIDC installs keep working
 # until tenants are created. Off by default.
 OIDC_ADMIN_GROUPS = {
-    g.strip() for g in os.environ.get("GRYVIA_OIDC_ADMIN_GROUPS", "").split(",") if g.strip()
+    g.strip()
+    for g in os.environ.get("GRYVIA_OIDC_ADMIN_GROUPS", "").split(",")
+    if g.strip()
 }
-OIDC_LEGACY_NAMESPACES = os.environ.get("GRYVIA_OIDC_LEGACY_NAMESPACES", "") in ("1", "true", "yes")
+OIDC_LEGACY_NAMESPACES = os.environ.get("GRYVIA_OIDC_LEGACY_NAMESPACES", "") in (
+    "1",
+    "true",
+    "yes",
+)
 
 
 def _set_admin_state(request: Optional[Request]) -> None:
@@ -311,8 +317,10 @@ async def _resolve_oidc_identity(request: Request, claims: Dict[str, Any]) -> No
     request.state.user_claims = claims
     request.state.auth_method = "oidc"
     groups = claims.get("groups")
-    if OIDC_ADMIN_GROUPS and isinstance(groups, list) and OIDC_ADMIN_GROUPS.intersection(
-        g for g in groups if isinstance(g, str)
+    if (
+        OIDC_ADMIN_GROUPS
+        and isinstance(groups, list)
+        and OIDC_ADMIN_GROUPS.intersection(g for g in groups if isinstance(g, str))
     ):
         request.state.role = "admin"
         request.state.tenant = None
@@ -689,7 +697,9 @@ async def get_cost_metrics(request: Request, _=Depends(verify_auth)):
             records = await fetch_records(
                 k8s_custom, None if is_admin else _query_namespaces(request)
             )
-        except Exception:  # noqa: BLE001 - CRD not installed / not readable: compute from jobs
+        except (
+            Exception
+        ):  # noqa: BLE001 - CRD not installed / not readable: compute from jobs
             records = []
 
         if records:
@@ -731,7 +741,9 @@ async def get_cost_metrics(request: Request, _=Depends(verify_auth)):
                             start = datetime.fromisoformat(
                                 start_time.replace("Z", "+00:00")
                             )
-                            end = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
+                            end = datetime.fromisoformat(
+                                end_time.replace("Z", "+00:00")
+                            )
                         except (ValueError, TypeError):
                             continue
                         hours = (end - start).total_seconds() / 3600
@@ -1040,9 +1052,7 @@ async def list_quotas(
             ),
         )
 
-        all_items = [
-            q for q in quotas.get("items", []) if _quota_visible(request, q)
-        ]
+        all_items = [q for q in quotas.get("items", []) if _quota_visible(request, q)]
         total = len(all_items)
         items = all_items[offset : offset + limit]
 
@@ -1287,7 +1297,6 @@ async def get_quota_usage(
     except Exception as e:
         logger.error("Error getting quota usage: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to retrieve quota usage")
-
 
 
 @app.get("/api/auth/config")
