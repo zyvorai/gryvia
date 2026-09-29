@@ -2,7 +2,7 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "network-intelligence.fullname" . }}-operator-metrics
+  name: {{ printf "%s-operator-metrics" (include "network-intelligence.fullname" . | trunc 45 | trimSuffix "-") }}
   namespace: {{ .Values.namespace.name }}
   labels:
     {{- include "network-intelligence.labels" . | nindent 4 }}
@@ -21,7 +21,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "network-intelligence.fullname" . }}-collector-metrics
+  name: {{ printf "%s-collector-metrics" (include "network-intelligence.fullname" . | trunc 45 | trimSuffix "-") }}
   namespace: {{ .Values.namespace.name }}
   labels:
     {{- include "network-intelligence.labels" . | nindent 4 }}
