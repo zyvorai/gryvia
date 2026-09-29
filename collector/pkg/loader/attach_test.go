@@ -1,11 +1,14 @@
 package loader
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/cilium/ebpf"
+	"github.com/cilium/ebpf/link"
 )
 
 func TestParseSection(t *testing.T) {
@@ -73,6 +76,13 @@ func TestSkipReasonGating(t *testing.T) {
 	if SkipReason(AttachSpec{Kind: KindUretprobe, Symbol: "cudaMalloc"}, Config{CUDALib: "/x"}) != "" {
 		t.Error("cuda uretprobe with lib should attach")
 	}
+	cufile := AttachSpec{Kind: KindUprobe, Symbol: "cuFileRead"}
+	if SkipReason(cufile, Config{NCCLLib: "/x", CUDALib: "/x"}) == "" {
+		t.Error("cuFile uprobe needs libcufile")
+	}
+	if SkipReason(cufile, Config{CuFileLib: "/x"}) != "" {
+		t.Error("cuFile uprobe with lib should attach")
+	}
 }
 
 func TestClassifyMap(t *testing.T) {
@@ -87,6 +97,8 @@ func TestClassifyMap(t *testing.T) {
 		{"nccl_events", ebpf.RingBuf, ClassGPU},
 		{"cuda_events", ebpf.RingBuf, ClassGPU},
 		{"nccl_events", ebpf.PerfEventArray, ClassNone},
+		{"fabric_events", ebpf.RingBuf, ClassFabric},
+		{"fabric_events", ebpf.PerfEventArray, ClassNone}, // wrong reader type
 		{"privesc_events", ebpf.RingBuf, ClassSecurity},
 		{"fim_events", ebpf.RingBuf, ClassSecurity},
 		{"syscall_events", ebpf.PerfEventArray, ClassNone},
@@ -99,15 +111,38 @@ func TestClassifyMap(t *testing.T) {
 	}
 }
 
+func TestIsMissingSymbol(t *testing.T) {
+	wrapped := func(e error) error { return fmt.Errorf("attach: %w", e) }
+	cases := []struct {
+		kind AttachKind
+		err  error
+		want bool
+	}{
+		{KindKprobe, wrapped(os.ErrNotExist), true},
+		{KindKretprobe, wrapped(os.ErrNotExist), true},
+		{KindKprobe, errors.New("permission denied"), false},
+		{KindUprobe, wrapped(link.ErrNoSymbol), true},
+		{KindUretprobe, wrapped(link.ErrNoSymbol), true},
+		{KindUprobe, wrapped(os.ErrNotExist), false}, // missing library file
+		{KindTracepoint, wrapped(os.ErrNotExist), false},
+	}
+	for _, c := range cases {
+		if got := IsMissingSymbol(c.kind, c.err); got != c.want {
+			t.Errorf("%s %v: got %v want %v", c.kind, c.err, got, c.want)
+		}
+	}
+}
+
 func TestResolveLibraries(t *testing.T) {
 	dir := t.TempDir()
-	for _, n := range []string{"libnccl.so.2", "libnccl.so", "libcudart.so.12"} {
+	for _, n := range []string{"libnccl.so.2", "libnccl.so", "libcudart.so.12", "libcufile.so.0"} {
 		if err := os.WriteFile(filepath.Join(dir, n), nil, 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
 	cfg := ResolveLibraries(Config{}, nil, []string{dir})
-	if filepath.Base(cfg.NCCLLib) != "libnccl.so" || filepath.Base(cfg.CUDALib) != "libcudart.so.12" {
+	if filepath.Base(cfg.NCCLLib) != "libnccl.so" || filepath.Base(cfg.CUDALib) != "libcudart.so.12" ||
+		filepath.Base(cfg.CuFileLib) != "libcufile.so.0" {
 		t.Errorf("unexpected: %+v", cfg)
 	}
 	// Explicit config wins.
@@ -117,7 +152,7 @@ func TestResolveLibraries(t *testing.T) {
 	}
 	// Nothing found.
 	cfg = ResolveLibraries(Config{}, nil, []string{t.TempDir()})
-	if cfg.NCCLLib != "" || cfg.CUDALib != "" {
+	if cfg.NCCLLib != "" || cfg.CUDALib != "" || cfg.CuFileLib != "" {
 		t.Errorf("expected empty, got %+v", cfg)
 	}
 }

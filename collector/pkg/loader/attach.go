@@ -1,6 +1,7 @@
 package loader
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -8,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/cilium/ebpf"
+	"github.com/cilium/ebpf/link"
 )
 
 // AttachKind identifies which link.* call is used for a program.
@@ -95,6 +97,7 @@ type Config struct {
 	CgroupPath string // cgroup v2 path for sockops/sk_msg; empty disables them
 	NCCLLib    string // path to libnccl.so; empty = auto-discover
 	CUDALib    string // path to libcudart.so; empty = auto-discover
+	CuFileLib  string // path to libcufile.so (GPUDirect Storage); empty = auto-discover
 	UprobePID  int    // if >0, find libraries via /proc/<pid>/maps
 }
 
@@ -112,7 +115,7 @@ func SkipReason(spec AttachSpec, cfg Config) string {
 		}
 	case KindUprobe, KindUretprobe:
 		if LibraryFor(spec.Symbol, cfg) == "" {
-			return "no library found for symbol " + spec.Symbol + " (set -nccl-lib/-cuda-lib or -uprobe-pid)"
+			return "no library found for symbol " + spec.Symbol + " (set -nccl-lib/-cuda-lib/-cufile-lib or -uprobe-pid)"
 		}
 	}
 	return ""
@@ -125,6 +128,8 @@ func LibraryFor(symbol string, cfg Config) string {
 		return cfg.NCCLLib
 	case strings.HasPrefix(symbol, "cuda"):
 		return cfg.CUDALib
+	case strings.HasPrefix(symbol, "cuFile"):
+		return cfg.CuFileLib
 	}
 	return ""
 }
@@ -151,7 +156,7 @@ func findLibInDirs(dirs []string, prefix string) string {
 	return ""
 }
 
-// ResolveLibraries fills NCCLLib/CUDALib when unset, first from the process
+// ResolveLibraries fills NCCLLib/CUDALib/CuFileLib when unset, first from the process
 // given by UprobePID, then from standard library directories.
 func ResolveLibraries(cfg Config, res *UprobeResolver, dirs []string) Config {
 	if dirs == nil {
@@ -167,11 +172,19 @@ func ResolveLibraries(cfg Config, res *UprobeResolver, dirs []string) Config {
 			cfg.CUDALib = p
 		}
 	}
+	if cfg.CuFileLib == "" && cfg.UprobePID > 0 && res != nil {
+		if p, err := res.FindCuFileLibrary(cfg.UprobePID); err == nil {
+			cfg.CuFileLib = p
+		}
+	}
 	if cfg.NCCLLib == "" {
 		cfg.NCCLLib = findLibInDirs(dirs, "libnccl.so")
 	}
 	if cfg.CUDALib == "" {
 		cfg.CUDALib = findLibInDirs(dirs, "libcudart.so")
+	}
+	if cfg.CuFileLib == "" {
+		cfg.CuFileLib = findLibInDirs(dirs, "libcufile.so")
 	}
 	return cfg
 }
@@ -183,6 +196,7 @@ const (
 	ClassFlow     MapClass = "flow"
 	ClassGPU      MapClass = "gpu"
 	ClassSecurity MapClass = "security"
+	ClassFabric   MapClass = "fabric"
 	ClassNone     MapClass = ""
 )
 
@@ -197,6 +211,8 @@ var mapClasses = map[string]MapClass{
 	"pattern_events":  ClassGPU,
 	"pipeline_events": ClassGPU,
 	"grad_events":     ClassGPU,
+	// ring buffers carrying struct fabric_signal (straggler, rdma_health, gds_trace)
+	"fabric_events": ClassFabric,
 	// ring buffers carrying struct security_event
 	"escape_events":  ClassSecurity,
 	"mining_events":  ClassSecurity,
@@ -206,8 +222,8 @@ var mapClasses = map[string]MapClass{
 }
 
 // ClassifyMap returns the decoder class for an event map and whether a
-// reader should be opened for it. Flow maps must be perf arrays; GPU and
-// security maps must be ring buffers. Maps with no decoder yet
+// reader should be opened for it. Flow maps must be perf arrays; GPU, fabric
+// and security maps must be ring buffers. Maps with no decoder yet
 // (syscall_events, dns_events, connpool_events, ...) return ClassNone.
 func ClassifyMap(name string, t ebpf.MapType) MapClass {
 	c, ok := mapClasses[name]
@@ -217,8 +233,23 @@ func ClassifyMap(name string, t ebpf.MapType) MapClass {
 	switch {
 	case c == ClassFlow && t == ebpf.PerfEventArray:
 		return c
-	case (c == ClassGPU || c == ClassSecurity) && t == ebpf.RingBuf:
+	case (c == ClassGPU || c == ClassSecurity || c == ClassFabric) && t == ebpf.RingBuf:
 		return c
 	}
 	return ClassNone
+}
+
+// IsMissingSymbol reports whether an attach error for the given kind means the
+// target symbol does not exist: a kprobe on a function this kernel (or a
+// not-loaded module) does not have, or a uprobe on a symbol the library does
+// not export. Optional hooks such as mlx5_ib_post_send or nvidia_fs_read are
+// skipped, not failed. A missing library file is a real error, not a skip.
+func IsMissingSymbol(kind AttachKind, err error) bool {
+	switch kind {
+	case KindKprobe, KindKretprobe:
+		return errors.Is(err, os.ErrNotExist)
+	case KindUprobe, KindUretprobe:
+		return errors.Is(err, link.ErrNoSymbol)
+	}
+	return false
 }

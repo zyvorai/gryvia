@@ -76,7 +76,7 @@ func (m *Manager) LoadAndAttach() error {
 		return fmt.Errorf("reading ebpf dir: %w", err)
 	}
 	m.cfg = ResolveLibraries(m.cfg, NewUprobeResolver(""), nil)
-	m.log.Infow("uprobe libraries", "nccl", m.cfg.NCCLLib, "cuda", m.cfg.CUDALib)
+	m.log.Infow("uprobe libraries", "nccl", m.cfg.NCCLLib, "cuda", m.cfg.CUDALib, "cufile", m.cfg.CuFileLib)
 
 	for _, entry := range entries {
 		if entry.IsDir() || filepath.Ext(entry.Name()) != ".o" {
@@ -145,6 +145,14 @@ func (m *Manager) loadObject(file, path string) error {
 			continue
 		}
 		l, err := m.attach(as, coll.Programs[name], coll)
+		if err != nil && IsMissingSymbol(as.Kind, err) {
+			// Optional hook (e.g. mlx5_ib_post_send, nvidia_fs_read): not an error.
+			st.Reason = "skipped: symbol not found (" + as.Symbol + ")"
+			m.log.Infow("skipping program: symbol not found", "object", file, "program", name,
+				"section", ps.SectionName, "symbol", as.Symbol)
+			m.addStatus(st)
+			continue
+		}
 		if err != nil {
 			st.Reason = err.Error()
 			m.log.Warnw("failed to attach program", "object", file, "program", name,

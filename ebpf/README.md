@@ -19,6 +19,9 @@ structured events to the userspace flow collector.
 | `training_pattern.c` | uprobe (`ncclAllReduce`), kprobe (`tcp_sendmsg`, `tcp_recvmsg`) | AI training communication pattern detection -- rank communication matrix and compute/comm cycle analysis |
 | `datapipe_bottleneck.c` | tracepoint (`block/block_rq_complete`), kprobe (`tcp_recvmsg`), uprobe (`cudaLaunchKernel`, `cudaDeviceSynchronize`) | Data pipeline bottleneck detection -- correlates storage I/O, network ingestion, and GPU busy/idle phases |
 | `gradient_compress.c` | uprobe (`ncclAllReduce`) | Gradient compression analysis -- compares expected vs actual bytes per collective to detect compression ratios |
+| `straggler.c` | uprobe (`ncclAllReduce`) | Per-rank NCCL skew -- emits a `fabric_signal` when a collective takes >2x the fastest recent span of the same size (and >5 ms) |
+| `rdma_health.c` | kprobe (`ib_post_send`, `mlx5_ib_post_send`, `ib_poll_cq`, `mlx5_ib_poll_cq`) | Per-QP send counts and retry-exceeded / RNR-exceeded completions; emits a `fabric_signal` above operator-set thresholds (all four probes optional) |
+| `gds_trace.c` | uprobe (`cuFileRead`, `cuFileWrite`), kprobe (`nvidia_fs_read`, optional) | GPU Direct Storage vs bounce-buffer reads -- byte counters, and a `fabric_signal` for slow (>2 ms) calls |
 
 ## Portability (CO-RE)
 
@@ -32,9 +35,12 @@ syscall numbers are `GRYVIA_NR_*` in the same header.
 Requirements on the node: a kernel with BTF (`CONFIG_DEBUG_INFO_BTF=y`, standard on Ubuntu 22.04+, RHEL 9, Debian 12+);
 `tcx/*` programs (`cost_tracker`, `trace_correlator`) need Linux 6.6+.
 
-Verified: all 24 programs compile with `-Wall -Werror` (clang 18 and 21) and pass the kernel verifier on Linux 7.0
-x86_64; the same sources cross-compile for arm64 but have not been loaded on an arm64 kernel. Runtime behaviour of the
-GPU/NCCL/RDMA programs has not been exercised on GPU or RDMA hardware.
+Verified: all 27 programs compile with `-Wall -Werror` (clang 21; the original 24 also with clang 18) and pass the
+kernel verifier on Linux 7.0 x86_64; the same sources cross-compile for arm64 (clang 21) but have not been loaded on
+an arm64 kernel. Runtime behaviour of the GPU/NCCL/RDMA/GDS programs (including `straggler`, `rdma_health` and
+`gds_trace`) has not been exercised on GPU, RDMA or GPUDirect Storage hardware; the kprobe symbols they use
+(`ib_post_send`, `ib_poll_cq`, `mlx5_ib_*`, `nvidia_fs_read`) are absent on the test host and are skipped by the
+collector when missing.
 
 ## Prerequisites
 
@@ -74,6 +80,15 @@ for GPU/AI workload tracing:
 - `struct cuda_mem_inflight` -- in-flight CUDA memory operation tracking
 - `struct rdma_qp_info` -- per-RDMA queue pair statistics (bytes sent/received, retransmits, completions)
 - Enums: `gpu_event_type`, `mem_direction`, `nccl_op_type`
+
+`headers/fabric_signal.h` defines the side channel used by `straggler.c`, `rdma_health.c` and `gds_trace.c`
+(`gpu_event` is frozen at 72 bytes and is not extended):
+
+- `struct fabric_signal` -- 80-byte scheduler-facing signal emitted on each program's own `fabric_events` ring buffer
+  (straggler, RDMA retry/RNR, GDS). Mirrored by `collector/pkg/fabric/signal.go`; both sides are checked against the same
+  offsets (`_Static_assert` in C, a unit test in Go)
+- `struct rank_span`, `struct rdma_health_val`, `struct gds_inflight` -- per-program map values
+- Enum: `fabric_signal_type`
 
 ## How It Works
 

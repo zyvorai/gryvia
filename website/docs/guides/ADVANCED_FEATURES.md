@@ -560,7 +560,7 @@ For full documentation, examples, and CLI usage, see the **[ML Workflows Guide](
 
 eBPF-powered network observability, security, and performance optimization for GPU clusters.
 
-- **24 eBPF programs** covering GPU communication (NCCL, RDMA), security (container escape, crypto mining, exfiltration), performance (TCP tuning, NUMA path optimization), and AI-specific analysis (training patterns, data pipeline bottlenecks, gradient compression).
+- **27 eBPF programs** covering GPU communication (NCCL, RDMA, GPUDirect Storage), security (container escape, crypto mining, exfiltration), performance (TCP tuning, NUMA path optimization), and AI-specific analysis (training patterns, data pipeline bottlenecks, gradient compression).
 - **Intent-based network policies** (GryviaFlowPolicy) for high-level traffic control.
 - **Self-healing firewall** (GryviaAutoPolicy) that learns traffic patterns and generates policies automatically.
 - **Anomaly detection** (GryviaNetworkAnomaly) with baseline-driven alerting.
