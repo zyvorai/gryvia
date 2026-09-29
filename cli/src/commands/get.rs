@@ -4,11 +4,19 @@ use kube::api::Api;
 use crate::client::GryviaClient;
 use crate::types::*;
 
-pub async fn execute(client: &GryviaClient, resource: &str, name: &str, output: &str) -> Result<()> {
+pub async fn execute(
+    client: &GryviaClient,
+    resource: &str,
+    name: &str,
+    output: &str,
+) -> Result<()> {
     // Validate output format
     match output {
         "json" | "yaml" => {}
-        _ => anyhow::bail!("Invalid output format: '{}'. Valid formats: json, yaml", output),
+        _ => anyhow::bail!(
+            "Invalid output format: '{}'. Valid formats: json, yaml",
+            output
+        ),
     }
 
     match resource {
@@ -16,7 +24,10 @@ pub async fn execute(client: &GryviaClient, resource: &str, name: &str, output: 
         "quota" => get_quota(client, name, output).await?,
         "node" => get_node(client, name, output).await?,
         _ => {
-            anyhow::bail!("Unknown resource type: {}. Valid types: job, quota, node", resource);
+            anyhow::bail!(
+                "Unknown resource type: {}. Valid types: job, quota, node",
+                resource
+            );
         }
     }
 
@@ -24,13 +35,9 @@ pub async fn execute(client: &GryviaClient, resource: &str, name: &str, output: 
 }
 
 async fn get_job(client: &GryviaClient, name: &str, output: &str) -> Result<()> {
-    let api: Api<GryviaAIJob> = Api::namespaced(
-        client.kube_client.clone(),
-        client.namespace(),
-    );
+    let api: Api<GryviaAIJob> = Api::namespaced(client.kube_client.clone(), client.namespace());
 
-    let job = api.get(name).await
-        .context("Failed to get job")?;
+    let job = api.get(name).await.context("Failed to get job")?;
 
     match output {
         "json" => {
@@ -50,8 +57,7 @@ async fn get_job(client: &GryviaClient, name: &str, output: &str) -> Result<()> 
 async fn get_quota(client: &GryviaClient, name: &str, output: &str) -> Result<()> {
     let api: Api<GryviaQuota> = Api::all(client.kube_client.clone());
 
-    let quota = api.get(name).await
-        .context("Failed to get quota")?;
+    let quota = api.get(name).await.context("Failed to get quota")?;
 
     match output {
         "json" => {
@@ -71,8 +77,7 @@ async fn get_quota(client: &GryviaClient, name: &str, output: &str) -> Result<()
 async fn get_node(client: &GryviaClient, name: &str, output: &str) -> Result<()> {
     let api: Api<GryviaGpuNode> = Api::all(client.kube_client.clone());
 
-    let node = api.get(name).await
-        .context("Failed to get GPU node")?;
+    let node = api.get(name).await.context("Failed to get GPU node")?;
 
     match output {
         "json" => {

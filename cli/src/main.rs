@@ -1,10 +1,10 @@
-mod commands;
 mod client;
+mod commands;
 mod display;
 mod types;
 
-use clap::{Parser, Subcommand};
 use anyhow::Result;
+use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(name = "gryvia")]
@@ -447,9 +447,7 @@ async fn main() -> Result<()> {
 
     // Setup logging
     let log_level = if cli.verbose { "debug" } else { "info" };
-    tracing_subscriber::fmt()
-        .with_env_filter(log_level)
-        .init();
+    tracing_subscriber::fmt().with_env_filter(log_level).init();
 
     // Save namespace flag before passing ownership to client
     let namespace_flag = cli.namespace.clone();
@@ -462,19 +460,36 @@ async fn main() -> Result<()> {
         Commands::Submit { file, wait, logs } => {
             commands::submit::execute(&client, &file, wait, logs).await?;
         }
-        Commands::List { resource, all_namespaces, output } => {
+        Commands::List {
+            resource,
+            all_namespaces,
+            output,
+        } => {
             commands::list::execute(&client, &resource, all_namespaces, &output).await?;
         }
-        Commands::Get { resource, name, output } => {
+        Commands::Get {
+            resource,
+            name,
+            output,
+        } => {
             commands::get::execute(&client, &resource, &name, &output).await?;
         }
-        Commands::Delete { resource, name, yes } => {
+        Commands::Delete {
+            resource,
+            name,
+            yes,
+        } => {
             commands::delete::execute(&client, &resource, &name, yes).await?;
         }
         Commands::Status { job, follow } => {
             commands::status::execute(&client, &job, follow).await?;
         }
-        Commands::Logs { job, follow, tail, replica } => {
+        Commands::Logs {
+            job,
+            follow,
+            tail,
+            replica,
+        } => {
             commands::logs::execute(&client, &job, follow, tail, replica).await?;
         }
         Commands::Cancel { jobs, yes } => {
@@ -486,7 +501,11 @@ async fn main() -> Result<()> {
         Commands::Quota { team, budget } => {
             commands::quota::execute(&client, team, budget).await?;
         }
-        Commands::Cost { team, period, detailed } => {
+        Commands::Cost {
+            team,
+            period,
+            detailed,
+        } => {
             commands::cost::execute(&client, team, &period, detailed).await?;
         }
         Commands::Queue { name, watch } => {
@@ -512,8 +531,20 @@ async fn main() -> Result<()> {
                     trace_namespace,
                     follow,
                 } => {
-                    let effective_ns = if has_ns_flag { &ns_default } else { &trace_namespace };
-                    commands::trace::execute(&client, &service, &duration, &level, effective_ns, follow).await?;
+                    let effective_ns = if has_ns_flag {
+                        &ns_default
+                    } else {
+                        &trace_namespace
+                    };
+                    commands::trace::execute(
+                        &client,
+                        &service,
+                        &duration,
+                        &level,
+                        effective_ns,
+                        follow,
+                    )
+                    .await?;
                 }
                 NetworkCommands::Flows {
                     service,
@@ -521,60 +552,91 @@ async fn main() -> Result<()> {
                     last,
                     output,
                 } => {
-                    let effective_ns = if has_ns_flag { &ns_default } else { &flow_namespace };
-                    commands::flows::execute(&client, service.as_deref(), effective_ns, &last, &output).await?;
+                    let effective_ns = if has_ns_flag {
+                        &ns_default
+                    } else {
+                        &flow_namespace
+                    };
+                    commands::flows::execute(
+                        &client,
+                        service.as_deref(),
+                        effective_ns,
+                        &last,
+                        &output,
+                    )
+                    .await?;
                 }
                 NetworkCommands::Graph {
                     graph_namespace,
                     format,
                 } => {
-                    let effective_ns = if has_ns_flag { &ns_default } else { &graph_namespace };
+                    let effective_ns = if has_ns_flag {
+                        &ns_default
+                    } else {
+                        &graph_namespace
+                    };
                     commands::graph::execute(&client, effective_ns, &format).await?;
                 }
-                NetworkCommands::Policy { action: policy_action } => {
-                    match policy_action {
-                        PolicyCommands::Suggest { policy_namespace } => {
-                            let effective_ns = if has_ns_flag { &ns_default } else { &policy_namespace };
-                            commands::policy::execute(
-                                &client,
-                                commands::policy::PolicyAction::Suggest {
-                                    namespace: effective_ns.to_string(),
-                                },
-                            )
-                            .await?;
-                        }
-                        PolicyCommands::Apply {
-                            policy_name,
-                            policy_namespace,
-                        } => {
-                            let effective_ns = if has_ns_flag { &ns_default } else { &policy_namespace };
-                            commands::policy::execute(
-                                &client,
-                                commands::policy::PolicyAction::Apply {
-                                    policy_name,
-                                    namespace: effective_ns.to_string(),
-                                },
-                            )
-                            .await?;
-                        }
-                        PolicyCommands::List {
-                            policy_namespace,
-                            output,
-                        } => {
-                            let effective_ns = if has_ns_flag { &ns_default } else { &policy_namespace };
-                            commands::policy::execute(
-                                &client,
-                                commands::policy::PolicyAction::List {
-                                    namespace: effective_ns.to_string(),
-                                    output,
-                                },
-                            )
-                            .await?;
-                        }
+                NetworkCommands::Policy {
+                    action: policy_action,
+                } => match policy_action {
+                    PolicyCommands::Suggest { policy_namespace } => {
+                        let effective_ns = if has_ns_flag {
+                            &ns_default
+                        } else {
+                            &policy_namespace
+                        };
+                        commands::policy::execute(
+                            &client,
+                            commands::policy::PolicyAction::Suggest {
+                                namespace: effective_ns.to_string(),
+                            },
+                        )
+                        .await?;
                     }
-                }
+                    PolicyCommands::Apply {
+                        policy_name,
+                        policy_namespace,
+                    } => {
+                        let effective_ns = if has_ns_flag {
+                            &ns_default
+                        } else {
+                            &policy_namespace
+                        };
+                        commands::policy::execute(
+                            &client,
+                            commands::policy::PolicyAction::Apply {
+                                policy_name,
+                                namespace: effective_ns.to_string(),
+                            },
+                        )
+                        .await?;
+                    }
+                    PolicyCommands::List {
+                        policy_namespace,
+                        output,
+                    } => {
+                        let effective_ns = if has_ns_flag {
+                            &ns_default
+                        } else {
+                            &policy_namespace
+                        };
+                        commands::policy::execute(
+                            &client,
+                            commands::policy::PolicyAction::List {
+                                namespace: effective_ns.to_string(),
+                                output,
+                            },
+                        )
+                        .await?;
+                    }
+                },
                 NetworkCommands::Status { status_namespace } => {
-                    let effective_ns = if has_ns_flag { &ns_default } else { &status_namespace };
+                    let effective_ns = if has_ns_flag {
+                        &ns_default
+                    } else {
+                        &status_namespace
+                    };
                     commands::network::execute_status(&client, effective_ns).await?;
                 }
                 NetworkCommands::Anomalies {
@@ -583,7 +645,11 @@ async fn main() -> Result<()> {
                     anomaly_namespace,
                     output,
                 } => {
-                    let effective_ns = if has_ns_flag { &ns_default } else { &anomaly_namespace };
+                    let effective_ns = if has_ns_flag {
+                        &ns_default
+                    } else {
+                        &anomaly_namespace
+                    };
                     commands::network::execute_anomalies(
                         &client,
                         effective_ns,
@@ -604,7 +670,11 @@ async fn main() -> Result<()> {
                     alert_type,
                     security_namespace,
                 } => {
-                    let effective_ns = if has_ns_flag { &ns_default } else { &security_namespace };
+                    let effective_ns = if has_ns_flag {
+                        &ns_default
+                    } else {
+                        &security_namespace
+                    };
                     commands::security::execute(
                         &client,
                         commands::security::SecurityAction::Alerts {
@@ -616,7 +686,11 @@ async fn main() -> Result<()> {
                     .await?;
                 }
                 SecurityCommands::Status { security_namespace } => {
-                    let effective_ns = if has_ns_flag { &ns_default } else { &security_namespace };
+                    let effective_ns = if has_ns_flag {
+                        &ns_default
+                    } else {
+                        &security_namespace
+                    };
                     commands::security::execute(
                         &client,
                         commands::security::SecurityAction::Status {
@@ -625,46 +699,58 @@ async fn main() -> Result<()> {
                     )
                     .await?;
                 }
-                SecurityCommands::Policy { action: policy_action } => {
-                    match policy_action {
-                        SecurityPolicyCommands::List {
-                            security_namespace,
-                            output,
-                        } => {
-                            let effective_ns = if has_ns_flag { &ns_default } else { &security_namespace };
-                            commands::security::execute(
-                                &client,
-                                commands::security::SecurityAction::PolicyList {
-                                    namespace: effective_ns.to_string(),
-                                    output,
-                                },
-                            )
-                            .await?;
-                        }
-                        SecurityPolicyCommands::Create {
-                            name,
-                            namespaces,
-                            rules,
-                            auto_block,
-                            security_namespace,
-                        } => {
-                            let effective_ns = if has_ns_flag { &ns_default } else { &security_namespace };
-                            let ns_list: Vec<String> = namespaces.split(',').map(|s| s.trim().to_string()).collect();
-                            let rule_list: Vec<String> = rules.split(',').map(|s| s.trim().to_string()).collect();
-                            commands::security::execute(
-                                &client,
-                                commands::security::SecurityAction::PolicyCreate {
-                                    name,
-                                    namespaces: ns_list,
-                                    rules: rule_list,
-                                    auto_block,
-                                    namespace: effective_ns.to_string(),
-                                },
-                            )
-                            .await?;
-                        }
+                SecurityCommands::Policy {
+                    action: policy_action,
+                } => match policy_action {
+                    SecurityPolicyCommands::List {
+                        security_namespace,
+                        output,
+                    } => {
+                        let effective_ns = if has_ns_flag {
+                            &ns_default
+                        } else {
+                            &security_namespace
+                        };
+                        commands::security::execute(
+                            &client,
+                            commands::security::SecurityAction::PolicyList {
+                                namespace: effective_ns.to_string(),
+                                output,
+                            },
+                        )
+                        .await?;
                     }
-                }
+                    SecurityPolicyCommands::Create {
+                        name,
+                        namespaces,
+                        rules,
+                        auto_block,
+                        security_namespace,
+                    } => {
+                        let effective_ns = if has_ns_flag {
+                            &ns_default
+                        } else {
+                            &security_namespace
+                        };
+                        let ns_list: Vec<String> = namespaces
+                            .split(',')
+                            .map(|s| s.trim().to_string())
+                            .collect();
+                        let rule_list: Vec<String> =
+                            rules.split(',').map(|s| s.trim().to_string()).collect();
+                        commands::security::execute(
+                            &client,
+                            commands::security::SecurityAction::PolicyCreate {
+                                name,
+                                namespaces: ns_list,
+                                rules: rule_list,
+                                auto_block,
+                                namespace: effective_ns.to_string(),
+                            },
+                        )
+                        .await?;
+                    }
+                },
             }
         }
         Commands::Gpu { action } => {
@@ -676,7 +762,11 @@ async fn main() -> Result<()> {
                     follow,
                     gpu_namespace,
                 } => {
-                    let effective_ns = if has_ns_flag { &ns_default } else { &gpu_namespace };
+                    let effective_ns = if has_ns_flag {
+                        &ns_default
+                    } else {
+                        &gpu_namespace
+                    };
                     commands::gpu_trace::execute(
                         &client,
                         commands::gpu_trace::GpuAction::Nccl {
@@ -691,7 +781,11 @@ async fn main() -> Result<()> {
                     node,
                     gpu_namespace,
                 } => {
-                    let effective_ns = if has_ns_flag { &ns_default } else { &gpu_namespace };
+                    let effective_ns = if has_ns_flag {
+                        &ns_default
+                    } else {
+                        &gpu_namespace
+                    };
                     commands::gpu_trace::execute(
                         &client,
                         commands::gpu_trace::GpuAction::Memory {
@@ -705,7 +799,11 @@ async fn main() -> Result<()> {
                     node,
                     gpu_namespace,
                 } => {
-                    let effective_ns = if has_ns_flag { &ns_default } else { &gpu_namespace };
+                    let effective_ns = if has_ns_flag {
+                        &ns_default
+                    } else {
+                        &gpu_namespace
+                    };
                     commands::gpu_trace::execute(
                         &client,
                         commands::gpu_trace::GpuAction::Rdma {
@@ -715,11 +813,12 @@ async fn main() -> Result<()> {
                     )
                     .await?;
                 }
-                GpuCommands::Training {
-                    job,
-                    gpu_namespace,
-                } => {
-                    let effective_ns = if has_ns_flag { &ns_default } else { &gpu_namespace };
+                GpuCommands::Training { job, gpu_namespace } => {
+                    let effective_ns = if has_ns_flag {
+                        &ns_default
+                    } else {
+                        &gpu_namespace
+                    };
                     commands::gpu_trace::execute(
                         &client,
                         commands::gpu_trace::GpuAction::Training {

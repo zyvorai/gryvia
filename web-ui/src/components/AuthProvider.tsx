@@ -54,37 +54,19 @@ export default function AuthProvider({ children }: AuthProviderProps) {
       .finally(() => setIsLoading(false))
   }, [])
 
-  const loginWithApiKey = useCallback(async (apiKey: string) => {
+  // Both sign-in forms exchange their secret for a short-lived session token at the gateway; the
+  // API key itself is never kept in the browser.
+  const signIn = useCallback(async (username: string, secret: string) => {
     setError(null)
-    try {
-      const userInfo = await fetchUserInfo(apiKey)
-      storeToken(apiKey, 'api_key')
-      setUser(userInfo)
-      setIsAuthenticated(true)
-    } catch (err) {
-      const status = (err as { response?: { status?: number } })?.response?.status
-      const message =
-        status === 403
-          ? 'Invalid API key'
-          : status === 401
-            ? 'Authentication failed'
-            : 'Connection error. Check that the API gateway is running.'
-      setError(message)
-      throw new Error(message, { cause: err })
-    }
-  }, [])
-
-  const loginWithPassword = useCallback(async (username: string, password: string) => {
-    setError(null)
-    if (username.trim() === '' || password === '') {
+    if (username.trim() === '' || secret === '') {
       const message = 'Wrong username or password.'
       setError(message)
       throw new Error(message)
     }
     try {
-      const bearer = await loginWithCredentials(username.trim(), password)
-      const userInfo = await fetchUserInfo(bearer)
-      storeToken(bearer, 'api_key')
+      const sessionToken = await loginWithCredentials(username.trim(), secret)
+      const userInfo = await fetchUserInfo(sessionToken)
+      storeToken(sessionToken, 'api_key')
       setUser(userInfo)
       setIsAuthenticated(true)
     } catch (err) {
@@ -93,6 +75,13 @@ export default function AuthProvider({ children }: AuthProviderProps) {
       throw new Error(message, { cause: err })
     }
   }, [])
+
+  const loginWithApiKey = useCallback((apiKey: string) => signIn('admin', apiKey), [signIn])
+
+  const loginWithPassword = useCallback(
+    (username: string, password: string) => signIn(username, password),
+    [signIn],
+  )
 
   const loginWithSSO = useCallback(async () => {
     if (!authConfig?.oidcEnabled || !authConfig.authorizationEndpoint) {

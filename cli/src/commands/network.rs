@@ -1,8 +1,8 @@
 use anyhow::Result;
+use colored::*;
 use kube::api::{Api, ApiResource, GroupVersionKind, ListParams};
 use kube::core::DynamicObject;
-use prettytable::{Table, Row, Cell, format};
-use colored::*;
+use prettytable::{format, Cell, Row, Table};
 
 use crate::client::GryviaClient;
 
@@ -11,16 +11,9 @@ pub async fn execute_status(client: &GryviaClient, namespace: &str) -> Result<()
     println!();
 
     // Query flows
-    let flow_ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
-        "gryvia.io",
-        "v1",
-        "GryviaFlow",
-    ));
-    let flow_api: Api<DynamicObject> = Api::namespaced_with(
-        client.kube_client.clone(),
-        namespace,
-        &flow_ar,
-    );
+    let flow_ar = ApiResource::from_gvk(&GroupVersionKind::gvk("gryvia.io", "v1", "GryviaFlow"));
+    let flow_api: Api<DynamicObject> =
+        Api::namespaced_with(client.kube_client.clone(), namespace, &flow_ar);
 
     let active_flows = match flow_api.list(&ListParams::default()).await {
         Ok(list) => list.items.len(),
@@ -33,11 +26,8 @@ pub async fn execute_status(client: &GryviaClient, namespace: &str) -> Result<()
         "v1",
         "GryviaFlowPolicy",
     ));
-    let policy_api: Api<DynamicObject> = Api::namespaced_with(
-        client.kube_client.clone(),
-        namespace,
-        &policy_ar,
-    );
+    let policy_api: Api<DynamicObject> =
+        Api::namespaced_with(client.kube_client.clone(), namespace, &policy_ar);
 
     let (total_policies, enforced_policies) = match policy_api.list(&ListParams::default()).await {
         Ok(list) => {
@@ -64,31 +54,28 @@ pub async fn execute_status(client: &GryviaClient, namespace: &str) -> Result<()
         "v1",
         "GryviaNetworkAnomaly",
     ));
-    let anomaly_api: Api<DynamicObject> = Api::namespaced_with(
-        client.kube_client.clone(),
-        namespace,
-        &anomaly_ar,
-    );
+    let anomaly_api: Api<DynamicObject> =
+        Api::namespaced_with(client.kube_client.clone(), namespace, &anomaly_ar);
 
-    let (total_anomalies, critical_anomalies) =
-        match anomaly_api.list(&ListParams::default()).await {
-            Ok(list) => {
-                let critical = list
-                    .items
-                    .iter()
-                    .filter(|a| {
-                        a.data
-                            .get("spec")
-                            .and_then(|s| s.get("severity"))
-                            .and_then(|v| v.as_str())
-                            .map(|sev| sev == "critical")
-                            .unwrap_or(false)
-                    })
-                    .count();
-                (list.items.len(), critical)
-            }
-            Err(_) => (0, 0),
-        };
+    let (total_anomalies, critical_anomalies) = match anomaly_api.list(&ListParams::default()).await
+    {
+        Ok(list) => {
+            let critical = list
+                .items
+                .iter()
+                .filter(|a| {
+                    a.data
+                        .get("spec")
+                        .and_then(|s| s.get("severity"))
+                        .and_then(|v| v.as_str())
+                        .map(|sev| sev == "critical")
+                        .unwrap_or(false)
+                })
+                .count();
+            (list.items.len(), critical)
+        }
+        Err(_) => (0, 0),
+    };
 
     // Query trace sessions
     let trace_ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
@@ -96,11 +83,8 @@ pub async fn execute_status(client: &GryviaClient, namespace: &str) -> Result<()
         "v1",
         "GryviaTraceSession",
     ));
-    let trace_api: Api<DynamicObject> = Api::namespaced_with(
-        client.kube_client.clone(),
-        namespace,
-        &trace_ar,
-    );
+    let trace_api: Api<DynamicObject> =
+        Api::namespaced_with(client.kube_client.clone(), namespace, &trace_ar);
 
     let active_traces = match trace_api.list(&ListParams::default()).await {
         Ok(list) => list
@@ -177,11 +161,7 @@ pub async fn execute_anomalies(
         "v1",
         "GryviaNetworkAnomaly",
     ));
-    let api: Api<DynamicObject> = Api::namespaced_with(
-        client.kube_client.clone(),
-        namespace,
-        &ar,
-    );
+    let api: Api<DynamicObject> = Api::namespaced_with(client.kube_client.clone(), namespace, &ar);
 
     let mut params = ListParams::default();
     if let Some(svc) = service {
@@ -192,11 +172,7 @@ pub async fn execute_anomalies(
     let anomalies = match api.list(&params).await {
         Ok(list) => list,
         Err(e) => {
-            println!(
-                "  {} Could not query anomalies: {}",
-                "⚠".yellow().bold(),
-                e
-            );
+            println!("  {} Could not query anomalies: {}", "⚠".yellow().bold(), e);
             println!();
             return Ok(());
         }
@@ -228,8 +204,7 @@ pub async fn execute_anomalies(
 
     match output {
         "json" => {
-            let items: Vec<&serde_json::Value> =
-                filtered.iter().map(|a| &a.data).collect();
+            let items: Vec<&serde_json::Value> = filtered.iter().map(|a| &a.data).collect();
             println!("{}", serde_json::to_string_pretty(&items)?);
         }
         _ => {

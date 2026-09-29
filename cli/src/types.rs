@@ -1,7 +1,7 @@
-use serde::{Deserialize, Serialize};
+use chrono::{DateTime, Utc};
 use kube::CustomResource;
 use schemars::JsonSchema;
-use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 // GryviaAIJob CRD
 #[derive(CustomResource, Clone, Debug, Serialize, Deserialize, JsonSchema)]
@@ -17,7 +17,6 @@ pub struct AIJobSpec {
     #[serde(default)]
     pub env: Vec<EnvVar>,
 }
-
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default, JsonSchema)]
 pub struct ResourceSpec {

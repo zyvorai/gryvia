@@ -4,9 +4,13 @@ Provides REST API for Web UI with aggregated metrics and cluster data
 """
 
 import asyncio
+import base64
+import hashlib
 import hmac
 import ipaddress
+import json
 import os
+import time
 import urllib.parse
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -79,6 +83,61 @@ DEFAULT_LAB_KEY = "Admin@321"
 LOGIN_USERNAME = "admin"
 
 
+# Browser sessions. Login exchanges the API key for a signed, expiring token so the long-lived key is
+# never kept in the browser. Tokens are stateless (HMAC-SHA256), tied to the API key (rotating the key
+# ends every session), and end at expiry.
+SESSION_PREFIX = "gs1."
+SESSION_TTL_SECONDS = int(os.environ.get("GRYVIA_SESSION_TTL_SECONDS", "28800"))
+
+
+def _b64url(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+
+def _b64url_decode(text: str) -> bytes:
+    return base64.urlsafe_b64decode(text + "=" * (-len(text) % 4))
+
+
+def _session_key() -> bytes:
+    material = os.environ.get("GRYVIA_SESSION_SECRET", "").strip() or API_KEY
+    return hashlib.sha256(b"gryvia-session-v1:" + material.encode()).digest()
+
+
+def issue_session_token(
+    subject: str = "admin", ttl: Optional[int] = None
+) -> Dict[str, Any]:
+    now = int(time.time())
+    exp = now + (SESSION_TTL_SECONDS if ttl is None else ttl)
+    payload = _b64url(
+        json.dumps(
+            {"sub": subject, "iat": now, "exp": exp}, separators=(",", ":")
+        ).encode()
+    )
+    sig = _b64url(hmac.new(_session_key(), payload.encode(), hashlib.sha256).digest())
+    return {"token": f"{SESSION_PREFIX}{payload}.{sig}", "expiresAt": exp}
+
+
+def verify_session_token(token: str) -> Optional[Dict[str, Any]]:
+    """Return the claims of a valid, unexpired session token, else None."""
+    if not token.startswith(SESSION_PREFIX) or not API_KEY:
+        return None
+    try:
+        payload, sig = token[len(SESSION_PREFIX) :].split(".", 1)
+        expected = _b64url(
+            hmac.new(_session_key(), payload.encode(), hashlib.sha256).digest()
+        )
+        if not hmac.compare_digest(sig.encode(), expected.encode()):
+            return None
+        claims = json.loads(_b64url_decode(payload))
+        if not isinstance(claims, dict) or int(claims.get("exp", 0)) <= int(
+            time.time()
+        ):
+            return None
+        return claims
+    except (ValueError, TypeError, UnicodeError, json.JSONDecodeError):
+        return None
+
+
 def using_default_key() -> bool:
     return bool(API_KEY) and hmac.compare_digest(
         API_KEY.encode(), DEFAULT_LAB_KEY.encode()
@@ -113,8 +172,6 @@ async def _fetch_oidc_discovery() -> Dict[str, Any]:
 
 async def _get_jwks() -> Dict[str, Any]:
     """Fetch and cache JWKS from the OIDC provider."""
-    import time
-
     global _jwks_cache, _jwks_cache_time
 
     now = time.monotonic()
@@ -217,6 +274,16 @@ async def verify_auth(
 
     if not token:
         raise HTTPException(status_code=401, detail="Authorization token required")
+
+    # Signed browser session issued by /api/auth/login
+    if token.startswith(SESSION_PREFIX):
+        if verify_session_token(token) is None:
+            raise HTTPException(status_code=401, detail="Session expired or invalid")
+        if request is not None:
+            request.state.user_claims = None
+            request.state.auth_method = "api_key"
+            request.state.tenant_namespaces = None
+        return
 
     # Try OIDC validation first when enabled
     if OIDC_ENABLED and OIDC_ISSUER_URL:
@@ -1120,10 +1187,11 @@ class LoginRequest(BaseModel):
 @app.post("/api/auth/login")
 @limiter.limit("10/minute")
 async def login(request: Request, body: LoginRequest):
-    """Exchange the dashboard credentials (admin / the API key) for the bearer token.
+    """Exchange the dashboard credentials (admin / the API key) for a short-lived session token.
 
-    The shared API key is the bearer, so the password is validated here, on the server, and the
-    web UI carries no credential of its own. Failed attempts are slowed down and rate limited.
+    The password is validated here, on the server, so the web UI carries no credential of its own and
+    never stores the API key: it keeps only the expiring signed token. Failed attempts are slowed down
+    and rate limited. Scripts can still send the API key itself as the bearer.
     """
     if not API_KEY:
         raise HTTPException(status_code=401, detail="Authentication is not configured")
@@ -1133,8 +1201,10 @@ async def login(request: Request, body: LoginRequest):
     if not (user_ok and pass_ok):
         await asyncio.sleep(0.5)
         raise HTTPException(status_code=401, detail="Wrong username or password.")
+    session = issue_session_token(LOGIN_USERNAME)
     return {
-        "token": API_KEY,
+        "token": session["token"],
+        "expiresAt": session["expiresAt"],
         "method": "api_key",
         "name": LOGIN_USERNAME,
         "usingDefaultKey": using_default_key(),

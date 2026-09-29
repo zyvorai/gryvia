@@ -1,6 +1,6 @@
-use colored::*;
-use prettytable::{Table, Row, Cell, format};
 use crate::types::*;
+use colored::*;
+use prettytable::{format, Cell, Row, Table};
 
 pub fn print_jobs_table(jobs: &[GryviaAIJob]) {
     let mut table = Table::new();
@@ -62,7 +62,16 @@ pub fn print_quotas_table(quotas: &[GryviaQuota]) {
         let queued = quota_status.current_usage.queued_jobs.to_string();
 
         let budget = if let Some(ref budget_status) = quota_status.budget_status {
-            format!("${:.0}/{:.0}", budget_status.spent_this_month, quota.spec.budget.as_ref().map(|b| b.monthly_budget).unwrap_or(0.0))
+            format!(
+                "${:.0}/{:.0}",
+                budget_status.spent_this_month,
+                quota
+                    .spec
+                    .budget
+                    .as_ref()
+                    .map(|b| b.monthly_budget)
+                    .unwrap_or(0.0)
+            )
         } else {
             "N/A".to_string()
         };
@@ -141,8 +150,17 @@ pub fn print_cluster_overview(nodes: &[GryviaGpuNode], jobs: &[GryviaAIJob]) {
 
     println!("  {} Nodes", nodes.len().to_string().bold());
     println!("  {} Total GPUs", total_gpus.to_string().bold());
-    println!("  {} Allocated GPUs", allocated_gpus.to_string().green().bold());
-    println!("  {} Available GPUs", (total_gpus.saturating_sub(allocated_gpus)).to_string().yellow().bold());
+    println!(
+        "  {} Allocated GPUs",
+        allocated_gpus.to_string().green().bold()
+    );
+    println!(
+        "  {} Available GPUs",
+        (total_gpus.saturating_sub(allocated_gpus))
+            .to_string()
+            .yellow()
+            .bold()
+    );
     println!();
 
     println!("{}", "GPU Distribution:".bold());
@@ -152,10 +170,26 @@ pub fn print_cluster_overview(nodes: &[GryviaGpuNode], jobs: &[GryviaAIJob]) {
     println!();
 
     // Job stats
-    let running = jobs.iter().filter(|j| j.status.as_ref().map_or(false, |s| s.phase == "Running")).count();
-    let pending = jobs.iter().filter(|j| j.status.as_ref().map_or(false, |s| s.phase == "Pending" || s.phase == "Queued")).count();
-    let completed = jobs.iter().filter(|j| j.status.as_ref().map_or(false, |s| s.phase == "Completed")).count();
-    let failed = jobs.iter().filter(|j| j.status.as_ref().map_or(false, |s| s.phase == "Failed")).count();
+    let running = jobs
+        .iter()
+        .filter(|j| j.status.as_ref().is_some_and(|s| s.phase == "Running"))
+        .count();
+    let pending = jobs
+        .iter()
+        .filter(|j| {
+            j.status
+                .as_ref()
+                .is_some_and(|s| s.phase == "Pending" || s.phase == "Queued")
+        })
+        .count();
+    let completed = jobs
+        .iter()
+        .filter(|j| j.status.as_ref().is_some_and(|s| s.phase == "Completed"))
+        .count();
+    let failed = jobs
+        .iter()
+        .filter(|j| j.status.as_ref().is_some_and(|s| s.phase == "Failed"))
+        .count();
 
     println!("{}", "Jobs:".bold());
     println!("  • Running: {}", running.to_string().green());

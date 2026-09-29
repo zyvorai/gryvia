@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
-use kube::api::Api;
 use colored::*;
+use kube::api::Api;
 use tokio::time::{sleep, Duration};
 
 use crate::client::GryviaClient;
@@ -13,13 +13,10 @@ pub async fn execute(client: &GryviaClient, job: &str, follow: bool) -> Result<(
             // terminals but may render as garbage on non-ANSI terminals (e.g. Windows cmd.exe
             // without virtual terminal processing enabled).
             print!("\x1B[2J\x1B[1;1H");
-            let api: Api<GryviaAIJob> = Api::namespaced(
-                client.kube_client.clone(),
-                client.namespace(),
-            );
+            let api: Api<GryviaAIJob> =
+                Api::namespaced(client.kube_client.clone(), client.namespace());
 
-            let job_obj = api.get(job).await
-                .context("Failed to get job")?;
+            let job_obj = api.get(job).await.context("Failed to get job")?;
 
             print_job_status(&job_obj);
 
@@ -34,13 +31,9 @@ pub async fn execute(client: &GryviaClient, job: &str, follow: bool) -> Result<(
             sleep(Duration::from_secs(5)).await;
         }
     } else {
-        let api: Api<GryviaAIJob> = Api::namespaced(
-            client.kube_client.clone(),
-            client.namespace(),
-        );
+        let api: Api<GryviaAIJob> = Api::namespaced(client.kube_client.clone(), client.namespace());
 
-        let job_obj = api.get(job).await
-            .context("Failed to get job")?;
+        let job_obj = api.get(job).await.context("Failed to get job")?;
 
         print_job_status(&job_obj);
     }
@@ -97,14 +90,16 @@ fn print_job_status(job: &GryviaAIJob) {
         if let Some(completion) = status.completion_time {
             println!("  Completed: {}", completion);
             let duration = completion.signed_duration_since(start);
-            println!("  Duration: {}h {}m {}s",
+            println!(
+                "  Duration: {}h {}m {}s",
                 duration.num_hours(),
                 duration.num_minutes() % 60,
                 duration.num_seconds() % 60
             );
         } else if phase == "Running" {
             let duration = chrono::Utc::now().signed_duration_since(start);
-            println!("  Running for: {}h {}m {}s",
+            println!(
+                "  Running for: {}h {}m {}s",
                 duration.num_hours(),
                 duration.num_minutes() % 60,
                 duration.num_seconds() % 60

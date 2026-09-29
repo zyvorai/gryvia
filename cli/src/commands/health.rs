@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
+use colored::*;
 use kube::api::{Api, ApiResource, GroupVersionKind, ListParams};
 use kube::core::DynamicObject;
-use prettytable::{Table, Row, Cell, format};
-use colored::*;
+use prettytable::{format, Cell, Row, Table};
 
 use crate::client::GryviaClient;
 use crate::types::*;
@@ -21,7 +21,10 @@ pub async fn execute(client: &GryviaClient, component: &str) -> Result<()> {
         "storage" => check_storage_health(client).await?,
         "network" => check_network_health(client).await?,
         _ => {
-            anyhow::bail!("Unknown component: {}. Valid components: all, gpu, storage, network", component);
+            anyhow::bail!(
+                "Unknown component: {}. Valid components: all, gpu, storage, network",
+                component
+            );
         }
     }
 
@@ -32,7 +35,9 @@ async fn check_gpu_health(client: &GryviaClient) -> Result<()> {
     println!("{}", "GPU Nodes:".bold().underline());
 
     let api: Api<GryviaGpuNode> = Api::all(client.kube_client.clone());
-    let nodes = api.list(&ListParams::default()).await
+    let nodes = api
+        .list(&ListParams::default())
+        .await
         .context("Failed to list GPU nodes")?;
 
     if nodes.items.is_empty() {
@@ -77,10 +82,7 @@ async fn check_storage_health(client: &GryviaClient) -> Result<()> {
     println!("{}", "Storage:".bold().underline());
 
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("gryvia.io", "v1", "GryviaStorage"));
-    let api: Api<DynamicObject> = Api::all_with(
-        client.kube_client.clone(),
-        &ar,
-    );
+    let api: Api<DynamicObject> = Api::all_with(client.kube_client.clone(), &ar);
 
     let storages = match api.list(&ListParams::default()).await {
         Ok(list) => list,
@@ -115,15 +117,38 @@ async fn check_storage_health(client: &GryviaClient) -> Result<()> {
         let spec = storage.data.get("spec");
         let status = storage.data.get("status");
 
-        let backend = spec.and_then(|s| s.get("backend")).and_then(|v| v.as_str()).unwrap_or("-");
-        let capacity = spec.and_then(|s| s.get("capacity")).and_then(|v| v.as_str()).unwrap_or("-");
-        let rdma = spec.and_then(|s| s.get("rdma")).and_then(|v| v.as_bool()).unwrap_or(false);
-        let rdma_str = if rdma { "yes".green().to_string() } else { "no".normal().to_string() };
+        let backend = spec
+            .and_then(|s| s.get("backend"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("-");
+        let capacity = spec
+            .and_then(|s| s.get("capacity"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("-");
+        let rdma = spec
+            .and_then(|s| s.get("rdma"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let rdma_str = if rdma {
+            "yes".green().to_string()
+        } else {
+            "no".normal().to_string()
+        };
 
-        let csi_installed = status.and_then(|s| s.get("csiDriverInstalled")).and_then(|v| v.as_bool()).unwrap_or(false);
-        let csi_str = if csi_installed { "installed".green().to_string() } else { "missing".red().to_string() };
+        let csi_installed = status
+            .and_then(|s| s.get("csiDriverInstalled"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let csi_str = if csi_installed {
+            "installed".green().to_string()
+        } else {
+            "missing".red().to_string()
+        };
 
-        let phase = status.and_then(|s| s.get("phase")).and_then(|v| v.as_str()).unwrap_or("Unknown");
+        let phase = status
+            .and_then(|s| s.get("phase"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("Unknown");
         let phase_colored = match phase {
             "Ready" => phase.green().to_string(),
             "Configuring" | "Pending" => phase.yellow().to_string(),
@@ -151,10 +176,7 @@ async fn check_network_health(client: &GryviaClient) -> Result<()> {
     println!("{}", "Network:".bold().underline());
 
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("gryvia.io", "v1", "GryviaNetwork"));
-    let api: Api<DynamicObject> = Api::all_with(
-        client.kube_client.clone(),
-        &ar,
-    );
+    let api: Api<DynamicObject> = Api::all_with(client.kube_client.clone(), &ar);
 
     let networks = match api.list(&ListParams::default()).await {
         Ok(list) => list,
@@ -186,13 +208,25 @@ async fn check_network_health(client: &GryviaClient) -> Result<()> {
         let spec = network.data.get("spec");
         let status = network.data.get("status");
 
-        let network_type = spec.and_then(|s| s.get("networkType")).and_then(|v| v.as_str()).unwrap_or("-");
+        let network_type = spec
+            .and_then(|s| s.get("networkType"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("-");
 
-        let configured_nodes = status.and_then(|s| s.get("configuredNodes")).and_then(|v| v.as_i64()).unwrap_or(0);
-        let total_nodes = status.and_then(|s| s.get("totalNodes")).and_then(|v| v.as_i64()).unwrap_or(0);
+        let configured_nodes = status
+            .and_then(|s| s.get("configuredNodes"))
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+        let total_nodes = status
+            .and_then(|s| s.get("totalNodes"))
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
         let nodes_str = format!("{}/{}", configured_nodes, total_nodes);
 
-        let phase = status.and_then(|s| s.get("phase")).and_then(|v| v.as_str()).unwrap_or("Unknown");
+        let phase = status
+            .and_then(|s| s.get("phase"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("Unknown");
         let phase_colored = match phase {
             "Ready" | "Configured" => phase.green().to_string(),
             "Configuring" | "Pending" => phase.yellow().to_string(),

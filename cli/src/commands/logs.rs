@@ -2,8 +2,8 @@ use anyhow::{Context, Result};
 use futures::{AsyncBufReadExt, StreamExt};
 use k8s_openapi::api::core::v1::Pod;
 use kube::api::{Api, ListParams, LogParams};
-use kube::core::DynamicObject;
 use kube::api::{ApiResource, GroupVersionKind};
+use kube::core::DynamicObject;
 
 use crate::client::GryviaClient;
 use crate::display;
@@ -17,37 +17,42 @@ pub async fn execute(
 ) -> Result<()> {
     // Validate job name to prevent label selector injection
     if job.contains('=') || job.contains(',') || job.contains('!') {
-        anyhow::bail!("Invalid job name '{}': contains reserved label selector characters", job);
+        anyhow::bail!(
+            "Invalid job name '{}': contains reserved label selector characters",
+            job
+        );
     }
 
-    let pods_api: Api<Pod> = Api::namespaced(
-        client.kube_client.clone(),
-        client.namespace(),
-    );
+    let pods_api: Api<Pod> = Api::namespaced(client.kube_client.clone(), client.namespace());
 
     let label_selector = format!("gryvia.io/job={}", job);
     let lp = ListParams::default().labels(&label_selector);
 
-    let pods = pods_api.list(&lp).await
+    let pods = pods_api
+        .list(&lp)
+        .await
         .context("Failed to list pods for job")?;
 
     if pods.items.is_empty() {
         let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("gryvia.io", "v1", "GryviaAIJob"));
-        let jobs_api: Api<DynamicObject> = Api::namespaced_with(
-            client.kube_client.clone(),
-            client.namespace(),
-            &ar,
-        );
-        let _ = jobs_api.get(job).await
+        let jobs_api: Api<DynamicObject> =
+            Api::namespaced_with(client.kube_client.clone(), client.namespace(), &ar);
+        let _ = jobs_api
+            .get(job)
+            .await
             .with_context(|| format!("Job '{}' not found", job))?;
 
-        display::print_warning(&format!("No pods found for job '{}' - job may still be scheduling", job));
+        display::print_warning(&format!(
+            "No pods found for job '{}' - job may still be scheduling",
+            job
+        ));
         return Ok(());
     }
 
     let target_pod = if let Some(idx) = replica {
         let pod_name = format!("{}-training-{}", job, idx);
-        pods.items.iter()
+        pods.items
+            .iter()
             .find(|p| p.metadata.name.as_deref() == Some(&pod_name))
             .with_context(|| format!("Replica {} not found for job '{}'", idx, job))?
     } else {
@@ -73,7 +78,9 @@ pub async fn execute(
     };
 
     if follow {
-        let stream = pods_api.log_stream(pod_name, &log_params).await
+        let stream = pods_api
+            .log_stream(pod_name, &log_params)
+            .await
             .context("Failed to start log stream")?;
 
         let mut lines = stream.lines();
@@ -87,7 +94,9 @@ pub async fn execute(
             }
         }
     } else {
-        let logs = pods_api.logs(pod_name, &log_params).await
+        let logs = pods_api
+            .logs(pod_name, &log_params)
+            .await
             .context("Failed to get pod logs")?;
         print!("{}", logs);
     }

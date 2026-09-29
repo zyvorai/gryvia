@@ -1,12 +1,12 @@
 use anyhow::{Context, Result};
 use colored::*;
 use kube::api::{Api, ListParams};
-use prettytable::{Table, Row, Cell, format};
+use prettytable::{format, Cell, Row, Table};
 use tokio::time::{sleep, Duration};
 
 use crate::client::GryviaClient;
-use crate::types::*;
 use crate::display;
+use crate::types::*;
 
 pub async fn execute(client: &GryviaClient, detailed: bool, watch: Option<u64>) -> Result<()> {
     if let Some(interval) = watch {
@@ -34,10 +34,14 @@ async fn show_cluster_overview(client: &GryviaClient, detailed: bool) -> Result<
     let nodes_api: Api<GryviaGpuNode> = Api::all(client.kube_client.clone());
     let jobs_api: Api<GryviaAIJob> = Api::all(client.kube_client.clone());
 
-    let nodes = nodes_api.list(&ListParams::default()).await
+    let nodes = nodes_api
+        .list(&ListParams::default())
+        .await
         .context("Failed to list GPU nodes")?;
 
-    let jobs = jobs_api.list(&ListParams::default()).await
+    let jobs = jobs_api
+        .list(&ListParams::default())
+        .await
         .context("Failed to list jobs")?;
 
     display::print_cluster_overview(&nodes.items, &jobs.items);
@@ -76,7 +80,11 @@ fn show_detailed_nodes(nodes: &[GryviaGpuNode]) -> Result<()> {
         let gpu_type = &node.spec.gpu_type;
         let gpu_count = node.spec.gpu_count.to_string();
         let memory = &node.spec.memory;
-        let rdma = if node.spec.rdma_enabled { "yes".green().to_string() } else { "no".normal().to_string() };
+        let rdma = if node.spec.rdma_enabled {
+            "yes".green().to_string()
+        } else {
+            "no".normal().to_string()
+        };
         let node_status = node.status.clone().unwrap_or_default();
         let status = display::colorize_status(&node_status.phase);
 
@@ -154,7 +162,8 @@ fn show_detailed_jobs(jobs: &[GryviaAIJob]) -> Result<()> {
     println!("{}", "━━━ Job Details ━━━".bold().cyan());
     println!();
 
-    let running: Vec<_> = jobs.iter()
+    let running: Vec<_> = jobs
+        .iter()
         .filter(|j| j.status.as_ref().map(|s| s.phase.as_str()) == Some("Running"))
         .collect();
 
@@ -182,7 +191,12 @@ fn show_detailed_jobs(jobs: &[GryviaAIJob]) -> Result<()> {
         let gpus = job.spec.resources.gpu_count.to_string();
         let gpu_type = &job.spec.resources.gpu_type;
         let distributed = if job.spec.distributed.enabled {
-            format!("{} ({}x{})", job.spec.distributed.strategy, job.spec.distributed.nodes, job.spec.distributed.gpus_per_node)
+            format!(
+                "{} ({}x{})",
+                job.spec.distributed.strategy,
+                job.spec.distributed.nodes,
+                job.spec.distributed.gpus_per_node
+            )
         } else {
             "no".to_string()
         };

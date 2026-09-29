@@ -1,9 +1,9 @@
 use anyhow::{Context, Result};
+use colored::*;
 use kube::api::{Api, ApiResource, GroupVersionKind, ListParams, PostParams};
 use kube::core::DynamicObject;
-use colored::*;
-use tokio::time::{sleep, Duration};
 use serde_json::json;
+use tokio::time::{sleep, Duration};
 
 use crate::client::GryviaClient;
 
@@ -15,16 +15,9 @@ pub async fn execute(
     namespace: &str,
     follow: bool,
 ) -> Result<()> {
-    println!(
-        "{}",
-        format!("━━━ Trace: {} ━━━", service).bold().cyan()
-    );
+    println!("{}", format!("━━━ Trace: {} ━━━", service).bold().cyan());
     println!();
-    println!(
-        "  {} {}",
-        "Service:".bold(),
-        service.bright_white()
-    );
+    println!("  {} {}", "Service:".bold(), service.bright_white());
     println!("  {} {}", "Duration:".bold(), duration);
     println!("  {} {}", "Level:".bold(), level);
     println!("  {} {}", "Namespace:".bold(), namespace);
@@ -36,11 +29,7 @@ pub async fn execute(
         "v1",
         "GryviaTraceSession",
     ));
-    let api: Api<DynamicObject> = Api::namespaced_with(
-        client.kube_client.clone(),
-        namespace,
-        &ar,
-    );
+    let api: Api<DynamicObject> = Api::namespaced_with(client.kube_client.clone(), namespace, &ar);
 
     let session_name = format!("trace-{}-{}", service, chrono::Utc::now().timestamp());
     let trace_obj = serde_json::from_value(json!({
@@ -117,7 +106,10 @@ pub async fn execute(
         // One-shot: fetch current flows
         let flows = fetch_flows(client, namespace, service).await;
         if flows.is_empty() {
-            println!("  {}", "No flows captured yet. Use --follow to stream live.".dimmed());
+            println!(
+                "  {}",
+                "No flows captured yet. Use --follow to stream live.".dimmed()
+            );
         } else {
             print_flows(&flows);
         }
@@ -137,76 +129,62 @@ struct FlowEntry {
     policy: Option<String>,
 }
 
-async fn fetch_flows(
-    client: &GryviaClient,
-    namespace: &str,
-    service: &str,
-) -> Vec<FlowEntry> {
-    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
-        "gryvia.io",
-        "v1",
-        "GryviaFlow",
-    ));
-    let api: Api<DynamicObject> = Api::namespaced_with(
-        client.kube_client.clone(),
-        namespace,
-        &ar,
-    );
+async fn fetch_flows(client: &GryviaClient, namespace: &str, service: &str) -> Vec<FlowEntry> {
+    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk("gryvia.io", "v1", "GryviaFlow"));
+    let api: Api<DynamicObject> = Api::namespaced_with(client.kube_client.clone(), namespace, &ar);
 
     let label_selector = format!("gryvia.io/service={}", service);
     let params = ListParams::default().labels(&label_selector);
 
     match api.list(&params).await {
-        Ok(flows) => {
-            flows
-                .items
-                .iter()
-                .map(|flow| {
-                    let spec = flow.data.get("spec");
-                    FlowEntry {
-                        timestamp: spec
-                            .and_then(|s| s.get("timestamp"))
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("-")
-                            .to_string(),
-                        source: spec
-                            .and_then(|s| s.get("source"))
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("unknown")
-                            .to_string(),
-                        destination: spec
-                            .and_then(|s| s.get("destination"))
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("unknown")
-                            .to_string(),
-                        protocol: spec
-                            .and_then(|s| s.get("protocol"))
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("TCP")
-                            .to_string(),
-                        bytes: spec
-                            .and_then(|s| s.get("bytes"))
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("0B")
-                            .to_string(),
-                        latency: spec
-                            .and_then(|s| s.get("latency"))
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("-")
-                            .to_string(),
-                        verdict: spec
-                            .and_then(|s| s.get("verdict"))
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("FORWARDED")
-                            .to_string(),
-                        policy: spec
-                            .and_then(|s| s.get("policy"))
-                            .and_then(|v| v.as_str())
-                            .map(|s| s.to_string()),
-                    }
-                })
-                .collect()
-        }
+        Ok(flows) => flows
+            .items
+            .iter()
+            .map(|flow| {
+                let spec = flow.data.get("spec");
+                FlowEntry {
+                    timestamp: spec
+                        .and_then(|s| s.get("timestamp"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("-")
+                        .to_string(),
+                    source: spec
+                        .and_then(|s| s.get("source"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown")
+                        .to_string(),
+                    destination: spec
+                        .and_then(|s| s.get("destination"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown")
+                        .to_string(),
+                    protocol: spec
+                        .and_then(|s| s.get("protocol"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("TCP")
+                        .to_string(),
+                    bytes: spec
+                        .and_then(|s| s.get("bytes"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("0B")
+                        .to_string(),
+                    latency: spec
+                        .and_then(|s| s.get("latency"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("-")
+                        .to_string(),
+                    verdict: spec
+                        .and_then(|s| s.get("verdict"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("FORWARDED")
+                        .to_string(),
+                    policy: spec
+                        .and_then(|s| s.get("policy"))
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                }
+            })
+            .collect(),
         Err(_) => Vec::new(),
     }
 }
