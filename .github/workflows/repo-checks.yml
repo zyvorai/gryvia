@@ -165,6 +165,8 @@ jobs:
           ./promtool check rules monitoring/prometheus-rules.yaml
       - name: Helm renders the monitoring resources (on) and nothing extra (off)
         run: |
+          # the chart's NVIDIA sub-chart lives in a classic repo (the Kueue one is OCI and needs no repo add)
+          helm repo add nvidia https://helm.ngc.nvidia.com/nvidia
           helm dependency build helm/gryvia
           helm template rel helm/gryvia --api-versions monitoring.coreos.com/v1 \
             --set monitoring.enabled=true --set apiGateway.metrics.enabled=true --set apiGateway.metrics.tokenSecret=gw-metrics > /tmp/on.yaml

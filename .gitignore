@@ -71,7 +71,6 @@ _output/
 secrets/
 .env
 # self-signed throwaway fixtures for the CLI gateway TLS tests (no real secret)
-!cli/src/testdata/*
 
 website/.docusaurus/
 website/build/

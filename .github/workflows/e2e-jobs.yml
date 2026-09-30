@@ -37,6 +37,11 @@ jobs:
           install_only: true
       - name: Install Gryvia with locally built images
         run: GRYVIA_LOCAL_IMAGES=1 ./scripts/kind-demo.sh
+      - name: Enable the admission gate
+        # Without the gate the quota operator rejects a job only if it sees the job still Pending, and the
+        # ai-operator can create the workload first. The gate checks the quota before anything is created.
+        run: |
+          helm upgrade gryvia ./helm/gryvia -n gryvia-system --reuse-values --set aiOperator.admissionGate=true --wait
       - name: Operators are running
         run: |
           kubectl -n gryvia-system rollout status deploy -l app.kubernetes.io/component=ai-operator --timeout=180s

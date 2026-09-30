@@ -438,20 +438,41 @@ mod tests {
         assert!(err.to_string().contains("not reachable"), "{err}");
     }
 
-    // TLS: a server with a self-signed test certificate (src/testdata, valid for 127.0.0.1 and localhost).
-    async fn tls_server() -> String {
+    // TLS: a server with a throwaway CA and a certificate for 127.0.0.1/localhost, generated per test run (no key
+    // material is committed). Returns the server URL and the path of the CA certificate file.
+    async fn tls_server() -> (String, String) {
         use std::sync::Arc;
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         use tokio_rustls::TlsAcceptor;
 
+        let ca_key = rcgen::KeyPair::generate().unwrap();
+        let mut ca_params = rcgen::CertificateParams::new(Vec::<String>::new()).unwrap();
+        ca_params.is_ca = rcgen::IsCa::Ca(rcgen::BasicConstraints::Unconstrained);
+        ca_params
+            .distinguished_name
+            .push(rcgen::DnType::CommonName, "gryvia test CA");
+        let ca = ca_params.self_signed(&ca_key).unwrap();
+        let ee_key = rcgen::KeyPair::generate().unwrap();
+        let mut ee_params = rcgen::CertificateParams::new(vec!["localhost".to_string()]).unwrap();
+        ee_params
+            .subject_alt_names
+            .push(rcgen::SanType::IpAddress("127.0.0.1".parse().unwrap()));
+        let ee = ee_params.signed_by(&ee_key, &ca, &ca_key).unwrap();
+        static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let ca_path = std::env::temp_dir().join(format!(
+            "gryvia-test-ca-{}-{}.pem",
+            std::process::id(),
+            N.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+        ));
+        std::fs::write(&ca_path, ca.pem()).unwrap();
+
         let certs: Vec<CertificateDer<'static>> =
-            CertificateDer::pem_slice_iter(include_bytes!("testdata/gw-test.crt"))
+            CertificateDer::pem_slice_iter(ee.pem().as_bytes())
                 .collect::<Result<_, _>>()
                 .unwrap();
-        let key = rustls::pki_types::PrivateKeyDer::from_pem_slice(include_bytes!(
-            "testdata/gw-test.key"
-        ))
-        .unwrap();
+        let key =
+            rustls::pki_types::PrivateKeyDer::from_pem_slice(ee_key.serialize_pem().as_bytes())
+                .unwrap();
         let cfg = rustls::ServerConfig::builder_with_provider(Arc::new(
             rustls::crypto::ring::default_provider(),
         ))
@@ -485,7 +506,7 @@ mod tests {
                 });
             }
         });
-        url
+        (url, ca_path.to_string_lossy().into_owned())
     }
 
     fn tls_client(url: String, insecure: bool, ca: Option<&str>) -> GatewayClient {
@@ -500,8 +521,8 @@ mod tests {
 
     #[tokio::test]
     async fn tls_is_verified_against_ca_file_and_rejected_otherwise() {
-        let url = tls_server().await;
-        let ca = concat!(env!("CARGO_MANIFEST_DIR"), "/src/testdata/gw-test-ca.crt");
+        let (url, ca_path) = tls_server().await;
+        let ca = ca_path.as_str();
         // pinned CA: verifies (the certificate carries the IP as a SAN)
         let v = tls_client(url.clone(), false, Some(ca))
             .get_json("/x")
