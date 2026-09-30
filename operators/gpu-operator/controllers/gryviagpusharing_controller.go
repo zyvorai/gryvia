@@ -238,9 +238,10 @@ func (r *GryviaGPUSharingPolicyReconciler) configureTimeSlicing(ctx context.Cont
 			k8sNode.Labels = make(map[string]string)
 		}
 
-		// Apply time-slicing labels
+		// Apply time-slicing labels. The NVIDIA device plugin reads nvidia.com/device-plugin.config.
 		k8sNode.Labels["gryvia.io/gpu-sharing"] = "time-slicing"
 		k8sNode.Labels["gryvia.io/max-pods-per-gpu"] = fmt.Sprintf("%d", policy.Spec.TimeSlicing.MaxPodsPerGPU)
+		k8sNode.Labels["nvidia.com/device-plugin.config"] = "gryvia-time-slicing"
 
 		if err := r.Update(ctx, k8sNode); err != nil {
 			log.Error(err, "Failed to label node for time-slicing", "node", node.Spec.NodeName)
@@ -271,14 +272,17 @@ func (r *GryviaGPUSharingPolicyReconciler) configureMIG(ctx context.Context, pol
 			k8sNode.Labels = make(map[string]string)
 		}
 
-		// Apply MIG labels
+		// Apply MIG labels. nvidia.com/mig.config is what the GPU Operator MIG manager acts on.
+		// The first profile name must be a mig-parted config (for example all-1g.10gb).
 		k8sNode.Labels["gryvia.io/gpu-sharing"] = "mig"
 		k8sNode.Labels["gryvia.io/mig-enabled"] = "true"
 
-		// Encode MIG profiles in labels
-		for _, profile := range policy.Spec.MIG.Profiles {
+		for i, profile := range policy.Spec.MIG.Profiles {
 			labelKey := fmt.Sprintf("gryvia.io/mig-%s", profile.Name)
 			k8sNode.Labels[labelKey] = fmt.Sprintf("%d", profile.Count)
+			if i == 0 && profile.Name != "" {
+				k8sNode.Labels["nvidia.com/mig.config"] = profile.Name
+			}
 		}
 
 		if err := r.Update(ctx, k8sNode); err != nil {

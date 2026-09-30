@@ -25,6 +25,14 @@ dependencies:
     version: v26.7.1
     repository: https://helm.ngc.nvidia.com/nvidia
     condition: nvidia.enabled
+  # NVIDIA Network Operator: DOCA/OFED, SR-IOV and RDMA device plugins, Multus, IPAM.
+  # Off unless nvidiaNetwork.enabled=true. Same NGC repo as the GPU Operator.
+  # Not validated on InfiniBand hardware; see website/docs/guides/NVIDIA_ONE_CLICK.md.
+  - name: network-operator
+    alias: nvidiaNetwork
+    version: 26.7.0
+    repository: https://helm.ngc.nvidia.com/nvidia
+    condition: nvidiaNetwork.enabled
   # Kueue (kubernetes-sigs/kueue): job queueing, gang admission, quotas, fair sharing and preemption for GryviaAIJobs.
   # Disabled unless `kueue.enabled=true`; the operators use it only with aiOperator.kueueIntegration and
   # quotaOperator.kueueIntegration (see docs/kueue-integration.md). Like the NVIDIA chart it must be downloaded

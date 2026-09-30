@@ -83,3 +83,7 @@ Manager, RHEL-family hosts. The Terraform and Ansible directories are experiment
 | Pods cannot see the GPU on k3s | toolkit env for k3s set; `nvidia` runtime class present |
 | No `GryviaGpuNode` appears | node lacks `nvidia.com/gpu.present=true` (NFD/GFD not running?); `gpuOperator.autoRegister` is on |
 | `gryvia status` shows no GPU metrics | DCGM exporter pod on the node; network policy to port 9400 |
+
+## NVIDIA one-click extras
+
+RDMA, GDS, MIG, time-slicing and the Network Operator are opt-in flags. See [NVIDIA one-click](NVIDIA_ONE_CLICK.md).

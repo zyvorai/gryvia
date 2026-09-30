@@ -1,0 +1,55 @@
+{{- if and .Values.nvidia.enabled .Values.nvidiaPlatform.timeSlicing.enabled }}
+# Device-plugin time-slicing config. The NVIDIA device plugin picks the data key named by the node label
+# nvidia.com/device-plugin.config, which the gpu-operator sets to "gryvia-time-slicing" for a time-slicing
+# GryviaGPUSharingPolicy, so the key below must keep that name. The GPU Operator reads this ConfigMap once
+# `--set nvidia.devicePlugin.config.name=<configName>` points its ClusterPolicy at it.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.nvidiaPlatform.timeSlicing.configName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: gryvia
+    app.kubernetes.io/component: nvidia-time-slicing
+data:
+  gryvia-time-slicing: |
+    version: v1
+    flags:
+      migStrategy: none
+    sharing:
+      timeSlicing:
+        renameByDefault: false
+        resources:
+          - name: nvidia.com/gpu
+            replicas: {{ .Values.nvidiaPlatform.timeSlicing.replicas }}
+{{- end }}
+---
+{{- if and .Values.nvidia.enabled .Values.nvidiaPlatform.validate.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: gryvia-nvidia-validate
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: gryvia
+    app.kubernetes.io/component: nvidia-validate
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+    helm.sh/hook-weight: "10"
+    # Runs after the install; with --wait it blocks until a GPU is schedulable, so on a cold node (driver still
+    # compiling) raise --timeout or run it after the GPU Operator is Ready.
+spec:
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: nvidia-smi
+          image: {{ .Values.nvidiaPlatform.validate.image }}
+          command: ["nvidia-smi"]
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+{{- end }}
