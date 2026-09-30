@@ -17,6 +17,9 @@ concurrency:
   group: k3s-bootstrap-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   dry-run:
     name: Installer dry-run tests

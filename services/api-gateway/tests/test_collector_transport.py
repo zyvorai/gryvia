@@ -123,6 +123,7 @@ class Server:
                 pass
 
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.minimum_version = ssl.TLSVersion.TLSv1_2
         ctx.load_cert_chain(server_cert, server_key)
         if client_ca:
             ctx.verify_mode = ssl.CERT_REQUIRED
