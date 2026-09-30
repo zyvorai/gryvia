@@ -1,14 +1,17 @@
 name: Build and Test CLI
 
 on:
+  workflow_dispatch:
   push:
     branches: [ main, develop ]
     paths:
       - 'cli/**'
+      - '.github/workflows/cli.yml'
   pull_request:
     branches: [ main ]
     paths:
       - 'cli/**'
+      - '.github/workflows/cli.yml'
 
 permissions:
   contents: write
