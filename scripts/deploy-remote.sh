@@ -246,7 +246,7 @@ for f in crds/*.yaml; do
   have="\$(kubectl get crd "\$crd" -o jsonpath='{.spec.scope}' 2>/dev/null || true)"
   # The API moved from v1 to v1alpha1. A CRD that still stores v1 cannot be updated in place, so recreate
   # it, but only when it has no objects (deleting a CRD deletes them).
-  wantv="\$(grep -m1 -E '^    name: v1' "\$f" | sed 's/.*name: //')"
+  wantv="\$(grep -m1 -E '^ +(- )?name: v1' "\$f" | sed 's/.*name: //' || true)"
   havev="\$(kubectl get crd "\$crd" -o jsonpath='{.status.storedVersions[*]}' 2>/dev/null || true)"
   if [[ -n "\$havev" && " \$havev " != *" \$wantv "* ]]; then
     n="\$(kubectl get "\$crd" -A --no-headers 2>/dev/null | wc -l | tr -d ' ')"
