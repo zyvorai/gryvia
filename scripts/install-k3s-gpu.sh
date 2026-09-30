@@ -130,7 +130,7 @@ resolve_gpu() {
 # The `helm upgrade --install` arguments for the current settings, one per line (so tests can read them).
 helm_args() {
   local ip="${1:-127.0.0.1}"
-  printf '%s\n' upgrade --install gryvia "$CHART" --namespace "$NAMESPACE" --create-namespace
+  printf '%s\n' upgrade --install gryvia "$CHART" --namespace "$NAMESPACE" --create-namespace --set namespace.create=false
   [[ -n "$CHART_VERSION" && ! -d "$CHART" ]] && printf '%s\n' --version "$CHART_VERSION"
   printf '%s\n' --set "auth.apiKey=$API_KEY"
   printf '%s\n' --set ui.service.type=NodePort --set "ui.service.nodePort=$NODEPORT"
@@ -226,6 +226,8 @@ install_helm() {
 
 wait_for_node() {
   info "Waiting for the node to become Ready"
+  # `kubectl wait --all` fails with "no matching resources found" while the node has not registered yet.
+  run_sh "for i in \$(seq 1 100); do KUBECONFIG=$KUBECONFIG_K3S k3s kubectl get nodes --no-headers 2>/dev/null | grep -q . && break; sleep 3; done"
   run env KUBECONFIG="$KUBECONFIG_K3S" k3s kubectl wait --for=condition=Ready node --all --timeout=300s
 }
 
@@ -235,6 +237,12 @@ host_ip() {
 
 install_gryvia() {
   info "Installing Gryvia"
+  if $HAS_GPU; then
+    # NVIDIA's driver and toolkit pods are privileged: create the namespace with the Pod Security label first, so the
+    # label is there before any pod is admitted (helm's --create-namespace would create it without).
+    run_sh "KUBECONFIG=$KUBECONFIG_K3S k3s kubectl create namespace $NAMESPACE --dry-run=client -o yaml | KUBECONFIG=$KUBECONFIG_K3S k3s kubectl apply -f -"
+    run env KUBECONFIG="$KUBECONFIG_K3S" k3s kubectl label namespace "$NAMESPACE" pod-security.kubernetes.io/enforce=privileged --overwrite
+  fi
   local ip; ip="$(host_ip)"; ip="${ip:-127.0.0.1}"
   if [[ -d "$CHART" ]]; then
     # A chart from a checkout needs its NVIDIA GPU Operator dependency downloaded first.

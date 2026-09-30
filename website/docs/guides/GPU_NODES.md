@@ -42,14 +42,19 @@ The node is labelled by the GPU Operator and appears in Gryvia by itself.
 ## Path 2: an existing cluster
 
 ```bash
+# NVIDIA's driver and toolkit pods are privileged: create the namespace with the Pod Security label first
+# (needed on clusters that enforce Pod Security Admission; harmless elsewhere).
+kubectl create namespace gryvia-system
+kubectl label namespace gryvia-system pod-security.kubernetes.io/enforce=privileged
+
 helm install gryvia oci://ghcr.io/zyvorai/charts/gryvia \
-  --namespace gryvia-system --create-namespace \
+  --namespace gryvia-system \
   --set nvidia.enabled=true
 ```
 
 Add `--set nvidia.driver.enabled=false` when the drivers are already on the hosts. On k3s also set the toolkit
-environment (`nvidia.toolkit.env`, see `helm/gryvia/values.yaml`). The namespace is labelled `privileged` because the
-driver container needs it. Helm does not upgrade the GPU Operator's CRDs; apply them from its chart on upgrades.
+environment (`nvidia.toolkit.env`, see `helm/gryvia/values.yaml`). The namespace needs the `privileged` label because the
+driver container needs it (the chart cannot label a namespace that Helm's `--create-namespace` created). Helm does not upgrade the GPU Operator's CRDs; apply them from its chart on upgrades.
 
 Without `nvidia.enabled`, Gryvia's own device plugin and DCGM exporter run only on nodes labelled
 `nvidia.com/gpu.present=true` and assume a host that already has driver, toolkit and the nvidia runtime.

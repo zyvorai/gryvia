@@ -104,6 +104,9 @@ jobs:
 
       - name: Build binary
         working-directory: cli
+        env:
+          # Without this, rustc links the aarch64 binary with the host `cc` ("--fix-cortex-a53-843419 is only supported on AArch64").
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
         run: cargo build --release --target ${{ matrix.target }}
 
       - name: Rename binary

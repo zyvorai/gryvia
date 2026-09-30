@@ -117,9 +117,17 @@ jobs:
         with:
           go-version: '1.27'
 
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@aaa42aa0628b4ae2578232a66b541047968fac86 # v6
-        with:
-          version: v1.57.2
-          working-directory: operators
-          args: --timeout=5m
+      # Every operator is its own Go module, so lint runs per module. (golangci-lint v1.57.2 was pointed at
+      # `operators/`, which has no go.mod, and could not load go 1.27 modules: the job never ran.)
+      - name: gofmt
+        run: |
+          out=$(gofmt -l operators)
+          test -z "$out" || { echo "$out"; echo "::error::gofmt needed"; exit 1; }
+
+      - name: go vet
+        run: |
+          for d in operators/*/; do
+            test -f "$d/go.mod" || continue
+            echo "== $d"
+            (cd "$d" && go vet ./...)
+          done

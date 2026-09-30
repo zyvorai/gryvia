@@ -35,6 +35,7 @@ has "installs the chart" "helm upgrade --install gryvia oci://ghcr.io/zyvorai/ch
 has "waits for the deployments" "rollout status deployment/gryvia-ui"
 has "says there is no GPU" "none (installing without GPU support)"
 lacks "does not enable NVIDIA" "nvidia.enabled=true"
+lacks "does not label the namespace without a GPU" "pod-security.kubernetes.io/enforce"
 lacks "does not touch nouveau" "blacklist"
 
 echo "server with a GPU and no host driver"
@@ -46,6 +47,8 @@ has "points the toolkit at the k3s socket" "/run/k3s/containerd/containerd.sock"
 has "makes nvidia the default runtime" "nvidia.toolkit.env[3].value=true"
 lacks "lets the operator install the driver" "nvidia.driver.enabled=false"
 has "explains the driver container" "will run in a container"
+has "labels the namespace privileged for the driver pods" "pod-security.kubernetes.io/enforce=privileged"
+has "chart does not also create the namespace" "namespace.create=false"
 
 echo "server with a GPU and a host driver"
 run "${UBUNTU[@]}" GRYVIA_FAKE_HAS_GPU=1 GRYVIA_FAKE_HOST_DRIVER=1 -- server --dry-run
