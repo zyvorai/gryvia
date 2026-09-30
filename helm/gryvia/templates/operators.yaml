@@ -2,8 +2,14 @@
 {{- $ops := dict "gpu-operator" .Values.gpuOperator "ai-operator" .Values.aiOperator "quota-operator" .Values.quotaOperator "storage-operator" .Values.storageOperator "network-operator" .Values.networkOperator -}}
 {{- range $name, $op := $ops }}
 {{- if $op.enabled }}
-{{- /* Only the ai-operator serves the GryviaAIJob admission webhook. */ -}}
-{{- $webhook := and (eq $name "ai-operator") $.Values.webhook.enabled }}
+{{- /* The ai-operator serves the GryviaAIJob admission webhook, the quota-operator the GryviaUsageRecord one. */ -}}
+{{- $webhookSecret := "" }}
+{{- if and (eq $name "ai-operator") $.Values.webhook.enabled }}
+{{- $webhookSecret = include "gryvia.webhookSecretName" $ }}
+{{- else if and (eq $name "quota-operator") $.Values.webhook.enabled $.Values.quotaOperator.usageRecordWebhook.enabled }}
+{{- $webhookSecret = include "gryvia.usageWebhookSecretName" $ }}
+{{- end }}
+{{- $webhook := ne $webhookSecret "" }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -117,7 +123,7 @@ spec:
       volumes:
         - name: webhook-certs
           secret:
-            secretName: {{ include "gryvia.webhookSecretName" $ }}
+            secretName: {{ $webhookSecret }}
             defaultMode: 0440
       {{- end }}
       {{- with $op.nodeSelector }}

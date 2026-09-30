@@ -83,6 +83,12 @@ quotaOperator:
     requests: {cpu: 100m, memory: 128Mi}
   nodeSelector: {}
   tolerations: []
+  # Validating webhook that rejects spec changes to a GryviaUsageRecord once spec.final is true (the chargeback
+  # record is immutable after the job finishes). failurePolicy is Fail on purpose: while the quota-operator is
+  # unreachable, writes to gryviausagerecords are rejected instead of letting a sealed record be edited.
+  # Own certificate and Service; independent of the GryviaAIJob webhook. Needs webhook.enabled too.
+  usageRecordWebhook:
+    enabled: true
   # Kueue objects per GryviaTenant (--kueue-integration, off by default): LocalQueue tenant-<name>/gryvia, ClusterQueue
   # gryvia-<tenant> (cohort gryvia; nominal quota from spec.quotas.concurrentGPUs) and ResourceFlavors. Turn it on
   # together with aiOperator.kueueIntegration. Adds create/update/delete on kueue.x-k8s.io clusterqueues,

@@ -88,3 +88,15 @@ Names for the GryviaAIJob admission webhook (Service and serving-cert Secret).
 {{- define "gryvia.webhookSecretName" -}}
 {{- printf "%s-webhook-tls" (include "gryvia.fullname" .) | trunc 63 | trimSuffix "-" -}}
 {{- end }}
+
+{{/*
+Names for the GryviaUsageRecord admission webhook (Service and serving-cert Secret). Separate from the
+GryviaAIJob webhook so its failurePolicy and certificate are independent.
+*/}}
+{{- define "gryvia.usageWebhookServiceName" -}}
+{{- printf "%s-usage-webhook" (include "gryvia.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end }}
+
+{{- define "gryvia.usageWebhookSecretName" -}}
+{{- printf "%s-usage-webhook-tls" (include "gryvia.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end }}

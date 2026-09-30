@@ -12,11 +12,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	gryviav1 "github.com/zyvorai/gryvia/operators/quota-operator/api/v1"
 	"github.com/zyvorai/gryvia/operators/quota-operator/controllers"
+	usageadmission "github.com/zyvorai/gryvia/operators/quota-operator/pkg/admission"
 	quotametrics "github.com/zyvorai/gryvia/operators/quota-operator/pkg/metrics"
 )
 
@@ -37,6 +40,8 @@ func main() {
 	var kueueIntegration, kueueGPUTypeFlavors bool
 	var kueueQuotaResources string
 	var tenantRBAC, enableReservations bool
+	var enableWebhooks bool
+	var webhookCertDir string
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -54,6 +59,11 @@ func main() {
 	flag.BoolVar(&enableReservations, "enable-reservations", false,
 		"Run the GryviaReservation controller, which taints and labels reserved nodes (gryvia.io/reserved:NoSchedule). Off by default: an existing GryviaReservation object starts reserving nodes as soon as this is on.")
 
+	flag.BoolVar(&enableWebhooks, "enable-webhooks", false,
+		"Serve the GryviaUsageRecord validating webhook that rejects spec changes once spec.final is true (needs TLS certs in --webhook-cert-dir).")
+	flag.StringVar(&webhookCertDir, "webhook-cert-dir", "/tmp/k8s-webhook-server/serving-certs",
+		"Directory holding tls.crt and tls.key for the webhook server.")
+
 	opts := zap.Options{
 		Development: false,
 	}
@@ -62,13 +72,17 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	mgrOpts := ctrl.Options{
 		Scheme:                 scheme,
 		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "quota-operator.gryvia.io",
-	})
+	}
+	if enableWebhooks {
+		mgrOpts.WebhookServer = webhook.NewServer(webhook.Options{Port: 9443, CertDir: webhookCertDir})
+	}
+	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), mgrOpts)
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
@@ -146,6 +160,12 @@ func main() {
 	if err := quotametrics.Register(mgr.GetClient()); err != nil { // scrape-time quota/usage/tenant gauges
 		setupLog.Error(err, "unable to register quota metrics")
 		os.Exit(1)
+	}
+
+	if enableWebhooks {
+		mgr.GetWebhookServer().Register(usageadmission.UsageRecordPath,
+			&admission.Webhook{Handler: usageadmission.NewUsageRecordHandler(mgr.GetScheme())})
+		setupLog.Info("registered validating webhook", "path", usageadmission.UsageRecordPath, "certDir", webhookCertDir)
 	}
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
