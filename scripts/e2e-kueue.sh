@@ -38,6 +38,11 @@ is_phase() { [[ "$(phase "$1")" == "$2" ]]; }
 message() { kubectl -n "$NS" get gryviaaijob "$1" -o jsonpath='{.status.message}' 2>/dev/null; }
 pod_count() { kubectl -n "$NS" get pods -l "gryvia.io/job=$1" -o name 2>/dev/null | wc -l | tr -d ' '; }
 no_pods() { [[ "$(pod_count "$1")" == "0" ]]; }
+# Finished pods may remain for logs; only non-terminal pods still hold resources.
+no_active_pods() {
+  kubectl -n "$NS" get pods -l "gryvia.io/job=$1" -o json |
+    jq -e 'all(.items[]; .status.phase == "Succeeded" or .status.phase == "Failed")' >/dev/null
+}
 job_suspended() { [[ "$(kubectl -n "$NS" get job "$1" -o jsonpath='{.spec.suspend}' 2>/dev/null)" == "true" ]]; }
 job_unsuspended() { [[ "$(kubectl -n "$NS" get job "$1" -o jsonpath='{.spec.suspend}' 2>/dev/null)" == "false" ]]; }
 gone() { ! kubectl -n "$NS" get "$1" "$2" >/dev/null 2>&1; }
@@ -110,6 +115,25 @@ YAML
   [[ "$(kubectl -n "$NS" get localqueue gryvia -o jsonpath='{.spec.clusterQueue}')" == "$CQ" ]] || fail "LocalQueue points elsewhere"
 }
 
+scenario_strict() {
+  # A namespace with no LocalQueue must never bypass strict admission.
+  kubectl create namespace tenant-no-queue --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  cat <<YAML | kubectl apply -f - >/dev/null
+apiVersion: $API
+kind: GryviaAIJob
+metadata: {name: blocked, namespace: tenant-no-queue}
+spec:
+  type: training
+  image: busybox:1.36
+  gpus: 0
+  command: ["sh", "-c", "echo should-not-run"]
+YAML
+  wait_for 120 "missing queue leaves job suspended" bash -c '[[ "$(kubectl -n tenant-no-queue get job blocked -o jsonpath="{.spec.suspend}")" == true ]]'
+  [[ "$(kubectl -n tenant-no-queue get pods -l gryvia.io/job=blocked -o name)" == "" ]] || fail "missing queue created pods"
+  [[ "$(kubectl -n tenant-no-queue get job blocked -o jsonpath='{.metadata.labels.kueue\.x-k8s\.io/queue-name}')" == gryvia ]] || fail "missing default queue label"
+  kubectl delete namespace tenant-no-queue --wait=true --timeout=120s >/dev/null
+}
+
 scenario_queue() {
   # Two 2-slot jobs against a 2-slot quota. No spec.queueName: the default LocalQueue of the tenant namespace is used.
   kq_job qa 2 0 75
@@ -166,7 +190,7 @@ scenario_gang() {
 scenario_preempt() {
   kq_job low 2 10 600
   wait_for 300 "low reaches Running" is_phase low Running
-  kq_job high 2 90 20
+  kq_job high 2 90 90
 
   # Priority classes: spec.priority 10 -> gryvia-priority-10, 90 -> gryvia-priority-90 (created by the ai-operator).
   wait_for 60 "WorkloadPriorityClass gryvia-priority-90 exists" kubectl get workloadpriorityclass gryvia-priority-90
@@ -177,7 +201,7 @@ scenario_preempt() {
   # ASSUMPTION: the operator turns "was admitted, is suspended again" into this message whatever Kueue's conditions say.
   wait_for 30 "low message says it was evicted" msg_matches low '^Evicted by Kueue'
   echo "low message: $(message low)"
-  wait_for 120 "low has no pods left" no_pods low
+  wait_for 60 "low has no non-terminal pods" no_active_pods low
   job_suspended low || fail "low: Job must be suspended after eviction"
   [[ "$(wl_field high '.spec.priority')" == "90" ]] || fail "high workload priority = $(wl_field high '.spec.priority'), want 90"
   [[ "$(wl_field low '.spec.priority')" == "10" ]] || fail "low workload priority = $(wl_field low '.spec.priority'), want 10"
@@ -194,9 +218,10 @@ scenario_preempt() {
 
 case "${1:-}" in
   setup)   scenario_setup ;;
+  strict)  scenario_strict ;;
   queue)   scenario_queue ;;
   gang)    scenario_gang ;;
   preempt) scenario_preempt ;;
-  *) echo "usage: $0 setup|queue|gang|preempt" >&2; exit 2 ;;
+  *) echo "usage: $0 setup|strict|queue|gang|preempt" >&2; exit 2 ;;
 esac
 echo "E2E OK: ${1}"

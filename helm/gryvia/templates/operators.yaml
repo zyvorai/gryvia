@@ -1,3 +1,6 @@
+{{- if and .Values.aiOperator.kueueStrictAdmission (not .Values.aiOperator.kueueIntegration) }}
+{{- fail "aiOperator.kueueStrictAdmission requires aiOperator.kueueIntegration" }}
+{{- end }}
 {{- /* One Deployment per enabled operator; they differ only in name, image and resources. */ -}}
 {{- $ops := dict "gpu-operator" .Values.gpuOperator "ai-operator" .Values.aiOperator "quota-operator" .Values.quotaOperator "storage-operator" .Values.storageOperator "network-operator" .Values.networkOperator -}}
 {{- range $name, $op := $ops }}
@@ -57,6 +60,7 @@ spec:
             {{- if and (eq $name "ai-operator") $.Values.aiOperator.kueueIntegration }}
             - --kueue-integration=true
             - --kueue-default-queue={{ $.Values.aiOperator.kueueDefaultQueue }}
+            - --kueue-strict-admission={{ $.Values.aiOperator.kueueStrictAdmission }}
             {{- end }}
             {{- if and (eq $name "quota-operator") $.Values.quotaOperator.kueueIntegration }}
             - --kueue-integration=true

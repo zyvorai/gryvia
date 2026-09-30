@@ -263,6 +263,11 @@ topology optimizer in `scheduler/` are not called by the running operator. `Fabr
 
 ---
 
+## Admission and recovery
+
+Optional strict tenant Kueue admission, distributed worker spreading and cooperative checkpoint hooks are described in
+[docs/admission-recovery.md](docs/admission-recovery.md). Checkpoint hooks require a compatible trainer and persistent storage; they do not guarantee a save before eviction or node failure.
+
 ## Performance Metrics
 
 The only measured numbers are the eBPF collector's overhead on one shared x86 host with loopback traffic

@@ -54,7 +54,7 @@ jobs:
             --set nvidiaDevicePlugin.enabled=false --set dcgmExporter.enabled=false --set monitoring.enabled=false \
             --set global.imageTag=dev --set global.imagePullPolicy=Never \
             --set kueue.enabled=true \
-            --set aiOperator.kueueIntegration=true \
+            --set aiOperator.kueueIntegration=true --set aiOperator.kueueStrictAdmission=true \
             --set quotaOperator.kueueIntegration=true \
             --set quotaOperator.kueueQuotaResources=example.com/slot \
             --wait --timeout 600s
@@ -76,6 +76,8 @@ jobs:
           done
       - name: Tenant q1 gets a ClusterQueue, LocalQueue and flavors; the node advertises fake slots
         run: ./scripts/e2e-kueue.sh setup
+      - name: Missing tenant queue never bypasses admission
+        run: ./scripts/e2e-kueue.sh strict
       - name: Two jobs that do not fit together - one runs, one is Queued, then it runs after the first finishes
         run: ./scripts/e2e-kueue.sh queue
       - name: A gang bigger than the quota never starts partially (zero pods) and starts whole once it fits

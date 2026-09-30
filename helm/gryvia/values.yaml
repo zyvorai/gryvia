@@ -46,6 +46,8 @@ aiOperator:
   kueueIntegration: false
   # LocalQueue used by jobs in tenant-* namespaces that name no queue (only when that LocalQueue exists).
   kueueDefaultQueue: gryvia
+  # Fail closed for tenant batch jobs when the default queue/controller is missing.
+  kueueStrictAdmission: false
   # Admission gate (--admission-gate): before creating a job's PVC/Service/workload, check the GryviaQuota limits
   # (allowed GPU types and SKUs, max GPUs per job, concurrent GPUs) and hard budgets (GryviaQuota budget.hardLimit,
   # GryviaBudget enforcement block) against the metered spend plus a cost forecast for the job, and reject it

@@ -31,6 +31,11 @@ has   "workloads read rule" '- workloadpriorityclasses'
 lacks "no clusterqueue rule (quota operator switch is off)" '- clusterqueues'
 lacks "sub-chart still off" 'name: kueue-controller-manager'
 
+echo "strict admission"
+OUT="$(render --set aiOperator.kueueIntegration=true --set aiOperator.kueueStrictAdmission=true)"
+has "strict flag" '--kueue-strict-admission=true'
+if render --set aiOperator.kueueStrictAdmission=true >/dev/null; then fail "strict without integration rejected"; else ok "strict without integration rejected"; fi
+
 echo "quotaOperator.kueueIntegration"
 OUT="$(render --set quotaOperator.kueueIntegration=true --set quotaOperator.kueueQuotaResources=cpu --set quotaOperator.kueueGpuTypeFlavors=true)"
 has   "quota flag" '--kueue-quota-resources=cpu'

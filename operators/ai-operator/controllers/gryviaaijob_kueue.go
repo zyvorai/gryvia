@@ -123,6 +123,10 @@ func (r *GryviaAIJobReconciler) resolveKueueQueue(ctx context.Context, job *gryv
 	if def == "" {
 		def = DefaultKueueQueue
 	}
+	if r.KueueStrictAdmission {
+		// A missing CRD, queue or controller must leave the Job suspended, never bypass admission.
+		return def, "", nil
+	}
 	ok, err := r.localQueueExists(ctx, job.Namespace, def)
 	if err != nil {
 		return "", "", err
@@ -323,6 +327,7 @@ func (r *GryviaAIJobReconciler) applyKueueStatus(ctx context.Context, job *gryvi
 		return
 	}
 	if !out.Suspended {
+		job.Status.GpusAllocated = job.Spec.GPUs
 		r.updateCondition(job, ConditionKueue, metav1.ConditionTrue, "Admitted", "Admitted by Kueue")
 		return
 	}
@@ -342,6 +347,7 @@ func (r *GryviaAIJobReconciler) applyKueueStatus(ctx context.Context, job *gryvi
 		}
 	}
 	job.Status.Phase = PhaseQueued
+	job.Status.GpusAllocated = 0
 	job.Status.Message = msg
 	r.updateCondition(job, ConditionKueue, metav1.ConditionFalse, reason, msg)
 	r.updateCondition(job, ConditionReady, metav1.ConditionFalse, "Queued", msg)

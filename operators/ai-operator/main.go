@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"os"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -41,6 +42,7 @@ func main() {
 	var fabricAware bool
 	var fabricMaxPenalty float64
 	var kueueIntegration bool
+	var kueueStrictAdmission bool
 	var kueueDefaultQueue string
 	var admissionGate bool
 	var admissionDefaultHours float64
@@ -63,6 +65,7 @@ func main() {
 
 	flag.BoolVar(&kueueIntegration, "kueue-integration", false,
 		"Create the batch Job of a job with a queue suspended and labelled kueue.x-k8s.io/queue-name so Kueue admits all its pods together, and report Kueue's admission state as phase Queued. Needs Kueue installed. Off by default: nothing changes without it.")
+	flag.BoolVar(&kueueStrictAdmission, "kueue-strict-admission", false, "Require Kueue admission for tenant batch jobs even if the default LocalQueue is missing. Requires --kueue-integration.")
 	flag.StringVar(&kueueDefaultQueue, "kueue-default-queue", "gryvia",
 		"With --kueue-integration: LocalQueue used by jobs in tenant-* namespaces that name no queue (only if that LocalQueue exists).")
 	flag.BoolVar(&admissionGate, "admission-gate", false,
@@ -78,6 +81,10 @@ func main() {
 	}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
+	if kueueStrictAdmission && !kueueIntegration {
+		fmt.Fprintln(os.Stderr, "--kueue-strict-admission requires --kueue-integration")
+		os.Exit(1)
+	}
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
@@ -107,11 +114,12 @@ func main() {
 		Scheme: mgr.GetScheme(),
 		Log:    ctrl.Log.WithName("controllers").WithName("GryviaAIJob"),
 
-		FabricAware:       fabricAware,
-		FabricMaxPenalty:  fabricMaxPenalty,
-		KueueIntegration:  kueueIntegration,
-		KueueDefaultQueue: kueueDefaultQueue,
-		Recorder:          mgr.GetEventRecorderFor("gryviaaijob-controller"),
+		FabricAware:          fabricAware,
+		FabricMaxPenalty:     fabricMaxPenalty,
+		KueueIntegration:     kueueIntegration,
+		KueueStrictAdmission: kueueStrictAdmission,
+		KueueDefaultQueue:    kueueDefaultQueue,
+		Recorder:             mgr.GetEventRecorderFor("gryviaaijob-controller"),
 
 		AdmissionGate:         admissionGate,
 		AdmissionDefaultHours: admissionDefaultHours,
