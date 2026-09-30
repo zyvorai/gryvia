@@ -190,11 +190,11 @@ spec:
   enforcement: {enabled: true, action: block}
 YAML
 
-  # Affordable: 2 nodes x 2 GPUs x 10m x 10 = 6.67 USD forecast < 50. It must run to Succeeded.
-  gpu_job afford "$NS_A" 2 2 10m 20
+  # Affordable (kind has one GPU worker): 1 node x 4 GPUs x 10m x 10 = 6.67 USD forecast < 50. It must run to Succeeded.
+  gpu_job afford "$NS_A" 1 4 10m 20
   wait_for 300 "afford reaches Succeeded" is_phase "$NS_A" afford Succeeded
   wait_for 120 "usage record of afford is final" usage_final "$NS_A" afford
-  [[ "$(rec "$NS_A" afford gpus)" == 4 ]] || fail "usage record gpus = $(rec "$NS_A" afford gpus), want 2 nodes x 2 GPUs = 4"
+  [[ "$(rec "$NS_A" afford gpus)" == 4 ]] || fail "usage record gpus = $(rec "$NS_A" afford gpus), want 1 node x 4 GPUs = 4"
   [[ "$(rec "$NS_A" afford rate)" == 10 ]] || fail "usage record rate = $(rec "$NS_A" afford rate), want 10"
   local hours cost
   hours="$(rec "$NS_A" afford gpuHours)"; cost="$(rec "$NS_A" afford cost)"
