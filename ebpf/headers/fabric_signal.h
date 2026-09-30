@@ -36,6 +36,18 @@ enum fabric_signal_type {
 	 * (communicator ordinal, sequence number, op).  Emitted by straggler.c;
 	 * the cross-rank comparison is done in userspace. */
 	FABRIC_SIG_COLLECTIVE  = 10,
+	/* ncclCommInitRank finished.  retry_count = NCCL_XPORT_* hint
+	 * (0 unknown).  rank/world_size from the init arguments.
+	 * latency_ns = init call duration.  comm = process name. */
+	FABRIC_SIG_NCCL_XPORT  = 11,
+	/* cudaDeviceEnablePeerAccess failed, then a large D2D memcpy ran
+	 * in the same process within 30s.  bytes = copy size,
+	 * retry_count = peer-enable failures, peer_latency_ns = age of the
+	 * failure.  Not proof of a bounce buffer. */
+	FABRIC_SIG_P2P_FALLBACK = 12,
+	/* Reserved: collector synthesises from capture_lease / gate_hits.
+	 * Not emitted on a ring buffer. */
+	FABRIC_SIG_CAPTURE_ARMED = 13,
 };
 
 /* FABRIC_SIG_COLLECTIVE retry_count bits. */
