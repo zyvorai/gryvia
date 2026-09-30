@@ -270,7 +270,7 @@ SKUs, a built-in default table is used. The old `gpu-pricing` ConfigMap is not r
 ### Backup
 
 Gryvia keeps its state in custom resources; see [Operations](./OPERATIONS.md) for export, restore, upgrade and
-uninstall, and `tools/backup-restore.sh`. A cluster-level tool such as Velero can also back up the namespaces; that is
+uninstall, and `scripts/backup-crs.sh`. A cluster-level tool such as Velero can also back up the namespaces; that is
 independent of Gryvia and not tested with it.
 
 ## Troubleshooting

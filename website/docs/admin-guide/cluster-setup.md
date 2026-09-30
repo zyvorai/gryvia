@@ -200,7 +200,7 @@ gryvia logs gpu-test
 ## Backup and upgrade
 
 State lives in custom resources: see [Operations](../guides/OPERATIONS.md) for backup, restore, upgrade and uninstall.
-`tools/backup-restore.sh` is a helper for exporting Gryvia resources.
+`scripts/backup-crs.sh` exports and restores Gryvia resources.
 
 ## Maintenance
 

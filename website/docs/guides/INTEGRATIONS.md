@@ -212,7 +212,7 @@ provider have not been exercised end to end.
 
 ## Backup and DR
 
-State lives in custom resources; see [Operations](./OPERATIONS.md) for export, restore and `tools/backup-restore.sh`.
+State lives in custom resources; see [Operations](./OPERATIONS.md) for export, restore (`scripts/backup-crs.sh`) and upgrade.
 A generic Velero schedule is a possible addition (not tested with Gryvia). Many Gryvia kinds are cluster-scoped, so
 include cluster resources:
 

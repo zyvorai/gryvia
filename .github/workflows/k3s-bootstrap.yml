@@ -7,6 +7,7 @@ on:
   pull_request:
     paths:
       - "scripts/install-k3s-gpu.sh"
+      - "scripts/validate-gpu.sh"
       - "scripts/tests/**"
       - "helm/gryvia/**"
       - ".github/workflows/k3s-bootstrap.yml"
@@ -22,8 +23,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: shellcheck -S warning scripts/install-k3s-gpu.sh scripts/tests/install-k3s-gpu.test.sh
+      - run: shellcheck -S warning scripts/install-k3s-gpu.sh scripts/tests/install-k3s-gpu.test.sh scripts/validate-gpu.sh scripts/tests/validate-gpu.test.sh
       - run: bash scripts/tests/install-k3s-gpu.test.sh
+      - run: bash scripts/tests/validate-gpu.test.sh
 
   k3s:
     name: k3s + Gryvia on Ubuntu

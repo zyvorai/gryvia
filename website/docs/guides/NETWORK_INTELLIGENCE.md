@@ -70,7 +70,12 @@ source the network graph, flows and security pages stay empty.
 ```
 
 **eBPF programs** run in the kernel on every node and capture socket, syscall, packet and GPU-library events. Their
-overhead has not been measured.
+overhead was measured once, on one shared x86 server with loopback traffic only (no NIC, GPU, RDMA or NCCL uprobes):
+roughly 3x on a no-op syscall (145 to about 500 ns for `getpid`), about 8-22 us more on 64-byte request/response
+latency, no cost distinguishable from noise for bulk TCP with the default program set, and about 41% of one core for
+the collector process while the load generator triggered millions of program runs per second (2% idle). Method, noise floor and caveats:
+[eBPF overhead](https://github.com/zyvorai/gryvia/blob/main/docs/ebpf-overhead.md). Real NIC, GPU and multi-node
+overhead is not measured.
 
 **Collector** (`collector/`) is a per-node DaemonSet that loads the compiled objects with cilium/ebpf, attaches them by
 section name, reads the maps and ring buffers, and serves metrics and JSON on `:9090`.

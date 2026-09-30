@@ -10,8 +10,7 @@ Collection of diagnostic and utility tools for Gryvia platform.
 > `status.metrics` fields (`avgGPUUtilization`, ...) from the job, which nothing in this repo
 > populates, so its numbers are only meaningful if you supply them (compare the in-cluster
 > `GryviaTrainingProfiler`, which has the same input gap; see `features/training-profiler.md`);
-> `backup-restore.sh` does not back up Secrets; `upgrade.sh` has no automatic rollback (it exits on a
-> failed step after taking a backup); there is no `tools/Dockerfile`, `gryvia-tools` image or
+> there is no `tools/Dockerfile`, `gryvia-tools` image or
 > `gryvia-tools` ServiceAccount, so the container and Kubernetes-integration snippets are templates
 > you must build yourself. Also present but not described below: `audit-tool.py` (compliance-style
 > report from `GryviaAIJob`s), `migration-tool.py` (export/import between kube contexts; it also lists
@@ -104,78 +103,13 @@ computer-vision               $12,345.60         98     $126.00
 nlp                           $7,456.80          88     $84.74
 ```
 
-### 3. Backup and Restore (backup-restore.sh)
+### 3. and 4. Backup, restore and upgrade (removed)
 
-Complete backup and restore solution for Gryvia resources.
-
-**Usage:**
-```bash
-# Create backup
-./tools/backup-restore.sh backup
-
-# Create backup in custom location
-./tools/backup-restore.sh backup --dir /backups
-
-# List backups
-./tools/backup-restore.sh list
-
-# Verify backup
-./tools/backup-restore.sh verify --file /backups/gryvia-20240101-120000.tar.gz
-
-# Restore from backup
-./tools/backup-restore.sh restore --file /backups/gryvia-20240101-120000.tar.gz
-```
-
-**What Gets Backed Up** (Secrets are deliberately skipped; the script writes a note pointing to sealed-secrets):
-- All CRDs
-- GPU Nodes configuration
-- AI Jobs
-- Quotas
-- Storage configurations
-- Network configurations
-- ConfigMaps
-- RBAC policies
-
-**Backup Format:**
-- Compressed tarball (.tar.gz)
-- SHA256 checksum
-- Metadata (timestamp, version, etc.)
-
-### 4. Upgrade Tool (upgrade.sh)
-
-Safe Gryvia version upgrades with automatic backup.
-
-**Usage:**
-```bash
-# Upgrade to latest version
-./tools/upgrade.sh
-
-# Upgrade to specific version
-./tools/upgrade.sh --version 1.1.0
-
-# Upgrade specific namespace
-./tools/upgrade.sh --version 1.1.0 --namespace production
-
-# Skip backup (not recommended)
-./tools/upgrade.sh --skip-backup
-
-# Dry run (show what would be upgraded)
-./tools/upgrade.sh --dry-run
-```
-
-**Upgrade Process:**
-1. Pre-upgrade checks (running jobs, pod health)
-2. Automatic backup
-3. CRD upgrades
-4. Operator upgrades (rolling deployment)
-5. Web UI/API Gateway upgrades
-6. Post-upgrade verification
-
-**Supports:**
-- Helm deployments (`helm upgrade gryvia gryvia/gryvia`)
-- Manual deployments (applies CRDs from the repo, updates operator/UI deployments)
-- Rolling deployment updates (zero downtime is not verified)
-- No automatic rollback: restore from the pre-upgrade backup manually
+`backup-restore.sh` and `upgrade.sh` were removed: they targeted a namespace and a Helm repository that do not
+exist and updated deployments with `kubectl set image`, so they did not implement the supported procedure. Use
+[`scripts/backup-crs.sh`](../scripts/backup-crs.sh) (`export` / `restore` of every `gryvia.io` object) and the
+upgrade steps in [Operations](../website/docs/guides/OPERATIONS.md). The procedure is tested by
+`scripts/upgrade-test.sh` (upgrade, rollback, backup/restore round trip on kind; CI workflow `upgrade.yml`).
 
 ### 5. GPU Profiler (profiler.py)
 

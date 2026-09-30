@@ -48,6 +48,11 @@ hardware. Nothing in the rest of the platform depends on them, and the collector
 | `weight_exfil.c` | kprobe (`vfs_read`, `tcp_v4_connect`) | Observe only. A read request >= 8 MiB from a file named `*.safetensors/.gguf/.ckpt/.onnx/.pt/.pth/.bin/.h5`, then a `tcp_v4_connect` by the same process within 30 s to a destination that is not loopback, RFC1918, link-local or 0.0.0.0/8, emits one `FABRIC_SIG_EXFIL`. A read alone never fires. IPv4 only, `read()` only (not mmap), name-based |
 | `quota_pace.c` | sockops (cgroup v2) | **The only mutating program. Off by default.** Lowers `SO_MAX_PACING_RATE` of an outbound TCP connection (`TCP_CONNECT_CB`) when `pace_rate[<full 64-bit cgroup id>]` has an entry; no entry means the socket is untouched. Rate clamped up to 1 Mbit/s, never raised, fail open. Attached only with `-quota-pace` **and** `-cgroup-path`; entries are lease-gated by `collector/pkg/fabric` (`Pacer`); the only writer is the opt-in `-quota-pace-sync` reconcile of `GryviaQuota` `spec.network.maxEgressMbps` (see `docs/fabric-status.md`) |
 
+## Overhead
+
+Measured on one Linux host (loopback only): [`docs/ebpf-overhead.md`](../docs/ebpf-overhead.md) has the method, the
+numbers, the noise floor and what was not measured. Re-run it with `scripts/bench-ebpf-overhead.sh`.
+
 ## Portability (CO-RE)
 
 The programs are **CO-RE** (compile once, run everywhere): they are built without a generated `vmlinux.h`.
