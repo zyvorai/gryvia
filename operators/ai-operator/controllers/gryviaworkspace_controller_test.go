@@ -113,7 +113,7 @@ func TestWorkspace_JupyterDefaultsAndSpecImage(t *testing.T) {
 	if len(j.Spec.Volumes) != 0 {
 		t.Errorf("no storage requested, yet volumes = %v", j.Spec.Volumes)
 	}
-	if exists(c, "ns", "j-workspace", &corev1.PersistentVolumeClaim{}) {
+	if mlObjectExists(c, "ns", "j-workspace", &corev1.PersistentVolumeClaim{}) {
 		t.Error("a PVC was created without spec.storage")
 	}
 	cu := &corev1.Pod{}
@@ -200,14 +200,14 @@ func TestWorkspace_PauseAndResumeKeepsStorage(t *testing.T) {
 	}
 	reconcileOnce(t, r, "ns", "dev")
 	reconcileOnce(t, r, "ns", "dev") // idempotent
-	if exists(c, "ns", "dev-workspace", &corev1.Pod{}) {
+	if mlObjectExists(c, "ns", "dev-workspace", &corev1.Pod{}) {
 		t.Fatal("pause must delete the pod")
 	}
 	ws = getWS(t, c, "dev")
 	if ws.Status.Phase != "Paused" || ws.Status.PodName != "" || ws.Status.StartTime != nil {
 		t.Errorf("paused status: %+v", ws.Status)
 	}
-	if !exists(c, "ns", "dev-workspace", &corev1.PersistentVolumeClaim{}) || !exists(c, "ns", "dev-workspace", &corev1.Service{}) {
+	if !mlObjectExists(c, "ns", "dev-workspace", &corev1.PersistentVolumeClaim{}) || !mlObjectExists(c, "ns", "dev-workspace", &corev1.Service{}) {
 		t.Fatal("pause must keep the PVC and the service")
 	}
 
@@ -269,7 +269,7 @@ func TestWorkspace_IdleTimeout(t *testing.T) {
 	if ws.Status.Phase != "Idle" || !strings.Contains(ws.Status.Message, "No activity") {
 		t.Errorf("idle: phase %s message %q", ws.Status.Phase, ws.Status.Message)
 	}
-	if !exists(c, "ns", "dev-workspace", &corev1.Pod{}) {
+	if !mlObjectExists(c, "ns", "dev-workspace", &corev1.Pod{}) {
 		t.Error("Idle is informational: the pod must keep running")
 	}
 
@@ -305,7 +305,7 @@ func TestWorkspace_IdleActionPause(t *testing.T) {
 	if ws.Status.Phase != "Paused" || !strings.HasPrefix(ws.Status.Message, "Paused after being idle") {
 		t.Errorf("phase %s message %q", ws.Status.Phase, ws.Status.Message)
 	}
-	if exists(c, "ns", "dev-workspace", &corev1.Pod{}) {
+	if mlObjectExists(c, "ns", "dev-workspace", &corev1.Pod{}) {
 		t.Error("the pod must be gone")
 	}
 }
@@ -338,14 +338,14 @@ func TestWorkspace_EvictedPodIsReplaced(t *testing.T) {
 		t.Fatal(err)
 	}
 	reconcileOnce(t, r, "ns", "dev")
-	if exists(c, "ns", "dev-workspace", &corev1.Pod{}) {
+	if mlObjectExists(c, "ns", "dev-workspace", &corev1.Pod{}) {
 		t.Error("the failed pod must be deleted")
 	}
 	if ws := getWS(t, c, "dev"); ws.Status.Phase != "Pending" || !strings.Contains(ws.Status.Message, "Evicted") {
 		t.Errorf("status: %+v", ws.Status)
 	}
 	reconcileOnce(t, r, "ns", "dev")
-	if !exists(c, "ns", "dev-workspace", &corev1.Pod{}) {
+	if !mlObjectExists(c, "ns", "dev-workspace", &corev1.Pod{}) {
 		t.Error("the pod must be recreated")
 	}
 }
@@ -386,7 +386,7 @@ func TestWorkspace_LongNamesStayValid(t *testing.T) {
 	if len(ws.Status.ServiceName) > 63 || ws.Status.ServiceName == "" {
 		t.Errorf("service name %q (%d)", ws.Status.ServiceName, len(ws.Status.ServiceName))
 	}
-	if !exists(c, "ns", ws.Status.ServiceName, &corev1.Service{}) {
+	if !mlObjectExists(c, "ns", ws.Status.ServiceName, &corev1.Service{}) {
 		t.Error("the service is missing")
 	}
 }
@@ -403,7 +403,7 @@ func TestWorkspace_NotFoundAndDeleted(t *testing.T) {
 	c = mlClient(ws)
 	r = newWSReconciler(c, newClock())
 	reconcileOnce(t, r, "ns", "dying")
-	if exists(c, "ns", "dying-workspace", &corev1.Pod{}) {
+	if mlObjectExists(c, "ns", "dying-workspace", &corev1.Pod{}) {
 		t.Error("nothing must be created for an object being deleted")
 	}
 }

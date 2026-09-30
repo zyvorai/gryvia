@@ -74,7 +74,7 @@ func mustGet(t *testing.T, c client.Client, ns, name string, obj client.Object) 
 	}
 }
 
-func exists(c client.Client, ns, name string, obj client.Object) bool {
+func mlObjectExists(c client.Client, ns, name string, obj client.Object) bool {
 	return c.Get(context.Background(), key(ns, name), obj) == nil
 }
 

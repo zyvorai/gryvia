@@ -15,7 +15,7 @@ An alpha, Kubernetes-native platform for GPU workloads. What runs today:
 - Storage and network operators, and network intelligence (eBPF collector, off by default)
 - A REST API gateway, a dashboard and a Rust CLI, plus Python and Go SDKs
 
-Many other kinds (workflows, tuners, budgets, auto-scaling, reservations, inference services and so on) have a CRD but no controller yet.
+Workflows, tuners, workspaces, inference services and the model registry have controllers in the ai-operator (unit-tested; the kind e2e is authored and not yet run; nothing on GPUs), budgets and reservations have controllers in the quota-operator (reservations are opt-in), and Kueue-based queueing is opt-in. Many other kinds (auto-scaling, chargeback, SLA, templates and so on) have a CRD but no controller yet.
 
 ### Who should use it?
 
@@ -88,7 +88,7 @@ There is no request workflow. A platform admin edits the `GryviaQuota` or `Gryvi
 
 ### What happens if I exceed my budget?
 
-Nothing, because budgets are not enforced. `GryviaBudget` has a CRD but no controller; there are no alerts, blocks or throttling. `gryvia cost` and `gryvia usage` show estimated spend from metered usage and the SKU catalog prices; they are estimates, and Gryvia does no billing or payment processing.
+By default nothing blocks you: `GryviaBudget` and the `GryviaQuota` budget are computed and shown in status, but jobs are only rejected when the opt-in admission gate is on (`aiOperator.admissionGate`), and then only on estimated spend and only for jobs not yet started; the gate fails open when it cannot look up spend, and there are no notifications or throttling. `gryvia cost` and `gryvia usage` show estimated spend from metered usage and the SKU catalog prices; they are estimates, and Gryvia does no billing or payment processing.
 
 ---
 

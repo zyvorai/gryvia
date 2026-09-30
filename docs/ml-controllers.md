@@ -20,7 +20,7 @@ these), the flags that set default images and limits, and what is **not** verifi
 | GPU scheduling (`nvidia.com/gpu` limits, `gryvia.io/gpu` node selectors, `/dev/shm` for GPU pods) | No GPU |
 | An HPA scaling on real metrics | kind has no metrics-server in the e2e; the HPA object is only checked to exist with the right range |
 | Weighted canary routing | The canary split is by pod count, see below |
-| `GryviaAutoTuner` and job-type `GryviaWorkflow` steps end to end | They create `GryviaAIJob`s and need the AIJob controller to run them to completion (workstream W1). The e2e steps for them are marked `requires W1` and are `continue-on-error` until W1 is merged |
+| `GryviaAutoTuner` and job-type `GryviaWorkflow` steps end to end on a real cluster | They create `GryviaAIJob`s that the AIJob controller runs as batch Jobs (docs/aijob-lifecycle.md); the e2e steps for them are authored but have not been run |
 
 ## GryviaWorkspace
 
@@ -183,7 +183,7 @@ were already covered. The gateway's ClusterRole already had read on the five kin
 them (pause and resume are a patch of `spec.paused`, promote a patch of `spec.stage`, `POST /api/models` a create).
 Job steps and tuner trials use the existing `gryviaaijobs` permissions. `GryviaTemplate` and `GryviaPriority`
 controllers stay unregistered: templates only matter once something instantiates them, and the priority controller
-evaluates preemption of jobs, which depends on the AIJob semantics that W1 is changing.
+evaluates preemption of jobs, which is done by the opt-in Kueue integration instead (docs/kueue-integration.md).
 
 ## End-to-end test
 
@@ -199,5 +199,5 @@ the ai-operator with the tiny-image flags above and checks, on the cluster and t
   Deployment and `canaryStatus`, auto-promotion (annotation, `MODEL_VERSION` on the stable pods, canary removed and not
   recreated); a service created and deleted through the gateway. Canary rollback is covered by unit tests only.
 * Workflow: two script steps run in order (timestamps compared) and succeed; a failing step skips its dependent; the gateway
-  shows the phases, steps and order. A two-step DAG of CPU **jobs** is marked `requires W1`.
-* AutoTuner: 3 trials with parallelism 2, best trial and gateway fields; marked `requires W1`.
+  shows the phases, steps and order. A two-step DAG of CPU **jobs** runs through the AIJob controller's batch Jobs.
+* AutoTuner: 3 trials with parallelism 2, best trial and gateway fields (trials are batch-Job-backed `GryviaAIJob`s).

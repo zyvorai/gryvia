@@ -143,6 +143,23 @@ decides whether the NCCL tuning variables are set. TensorFlow (`TF_CONFIG`), Hor
 The chart's manager ClusterRole gains `batch/jobs` (get, list, watch, create, update, patch, delete) and `batch/jobs/status`
 (get). The controller watches Jobs it owns (`Owns(&batchv1.Job{})`).
 
+## Order of the gates in `reconcileAIJob`
+
+The reconciler runs these steps in order; each one only ever short-circuits, so a later feature cannot undo an earlier
+decision (documented at `reconcileAIJob` in `gryviaaijob_controller.go`):
+
+1. **Cancel annotation**, then the **phase gate**: `Succeeded`/`Failed` are sticky; `Cancelled`/`Preempted` tear the
+   workload down (PVC kept); `Rejected` is sticky and also removes anything created before the rejection landed.
+2. **`Queued`**: a job held by the quota operator (no `KueueAdmitted` condition) creates nothing; a job waiting for Kueue
+   (condition `KueueAdmitted=False`) falls through so its suspended Job keeps being reconciled.
+3. **Spec validation** (an invalid `spec.timeout` marks the job `Failed`).
+4. **Admission gate** (`--admission-gate`): runs only in phase `Pending`, so it can never act on a job that is `Queued` for
+   Kueue or already running; on rejection it sets the sticky `Rejected` phase and creates nothing. It fails open.
+5. **Scheduling advice** (`Pending`/`Scheduling`), PVC, headless Service.
+6. **Workload**: `buildPodTemplate` applies the reservation toleration and node selector (`gryvia.io/reservation`); the batch
+   Job is created suspended with the Kueue queue and priority labels when `--kueue-integration` is on; the phase (including
+   `Queued` from Kueue's admission state) is then derived from the workload.
+
 ## Unverified
 
 - Everything on GPU and RDMA nodes, and multi-node NCCL rendezvous over the Job pod DNS names.

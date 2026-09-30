@@ -177,7 +177,7 @@ func TestInference_UnknownBackendWithoutImageFails(t *testing.T) {
 	if s.Status.Phase != "Failed" || !strings.Contains(s.Status.Message, "mystery") {
 		t.Errorf("status: %+v", s.Status)
 	}
-	if exists(c, "ns", "bad-inference", &appsv1.Deployment{}) {
+	if mlObjectExists(c, "ns", "bad-inference", &appsv1.Deployment{}) {
 		t.Error("no deployment for an invalid service")
 	}
 }
@@ -263,7 +263,7 @@ func TestInference_HPA(t *testing.T) {
 		t.Fatal(err)
 	}
 	reconcileOnce(t, r, "ns", "chat")
-	if exists(c, "ns", "chat-inference-hpa", &autoscalingv2.HorizontalPodAutoscaler{}) {
+	if mlObjectExists(c, "ns", "chat-inference-hpa", &autoscalingv2.HorizontalPodAutoscaler{}) {
 		t.Error("the HPA must be removed when autoscaling is disabled")
 	}
 }
@@ -274,7 +274,7 @@ func TestInference_HPAInvalidRange(t *testing.T) {
 	}))
 	r := newInferReconciler(c, newClock())
 	reconcileOnce(t, r, "ns", "chat")
-	if exists(c, "ns", "chat-inference-hpa", &autoscalingv2.HorizontalPodAutoscaler{}) {
+	if mlObjectExists(c, "ns", "chat-inference-hpa", &autoscalingv2.HorizontalPodAutoscaler{}) {
 		t.Error("an invalid range must not create an HPA")
 	}
 	s := getInfer(t, c, "chat")
@@ -285,7 +285,7 @@ func TestInference_HPAInvalidRange(t *testing.T) {
 	if s.Status.Phase == "Failed" {
 		t.Error("a bad HPA range must not take the service down")
 	}
-	if !exists(c, "ns", "chat-inference", &appsv1.Deployment{}) {
+	if !mlObjectExists(c, "ns", "chat-inference", &appsv1.Deployment{}) {
 		t.Error("the deployment must still exist")
 	}
 }
@@ -340,7 +340,7 @@ func TestInference_CanaryCreatedAndRemoved(t *testing.T) {
 		t.Fatal(err)
 	}
 	reconcileOnce(t, r, "ns", "chat")
-	if exists(c, "ns", "chat-canary", &appsv1.Deployment{}) {
+	if mlObjectExists(c, "ns", "chat-canary", &appsv1.Deployment{}) {
 		t.Error("the canary deployment must be removed")
 	}
 	if getInfer(t, c, "chat").Status.CanaryStatus != nil {
@@ -360,7 +360,7 @@ func TestInference_CanaryAutoPromote(t *testing.T) {
 
 	clk.Add(30 * time.Second)
 	reconcileOnce(t, r, "ns", "chat")
-	if !exists(c, "ns", "chat-canary", &appsv1.Deployment{}) {
+	if !mlObjectExists(c, "ns", "chat-canary", &appsv1.Deployment{}) {
 		t.Fatal("promoted too early")
 	}
 	if h := getInfer(t, c, "chat").Status.CanaryStatus.Health; h != canaryHealthHealthy {
@@ -369,7 +369,7 @@ func TestInference_CanaryAutoPromote(t *testing.T) {
 
 	clk.Add(40 * time.Second)
 	reconcileOnce(t, r, "ns", "chat")
-	if exists(c, "ns", "chat-canary", &appsv1.Deployment{}) {
+	if mlObjectExists(c, "ns", "chat-canary", &appsv1.Deployment{}) {
 		t.Fatal("the canary deployment must be removed on promotion")
 	}
 	primary := &appsv1.Deployment{}
@@ -394,7 +394,7 @@ func TestInference_CanaryAutoPromote(t *testing.T) {
 	if !found {
 		t.Errorf("stable pods do not serve the promoted version: %v", primary.Spec.Template.Spec.Containers[0].Env)
 	}
-	if exists(c, "ns", "chat-canary", &appsv1.Deployment{}) {
+	if mlObjectExists(c, "ns", "chat-canary", &appsv1.Deployment{}) {
 		t.Error("a promoted canary must not be recreated")
 	}
 }
@@ -423,14 +423,14 @@ func TestInference_CanaryAutoRollback(t *testing.T) {
 	if s := getInfer(t, c, "chat"); s.Status.ConsecutiveFailures != 1 || s.Status.CanaryStatus.Health != canaryHealthUnhealthy {
 		t.Fatalf("after first failure: failures %d %+v", s.Status.ConsecutiveFailures, s.Status.CanaryStatus)
 	}
-	if !exists(c, "ns", "chat-canary", &appsv1.Deployment{}) {
+	if !mlObjectExists(c, "ns", "chat-canary", &appsv1.Deployment{}) {
 		t.Fatal("rolled back too early")
 	}
 
 	// Second failed check reaches the threshold.
 	clk.Add(31 * time.Second)
 	reconcileOnce(t, r, "ns", "chat")
-	if exists(c, "ns", "chat-canary", &appsv1.Deployment{}) {
+	if mlObjectExists(c, "ns", "chat-canary", &appsv1.Deployment{}) {
 		t.Fatal("the canary must be removed by the rollback")
 	}
 	primary := &appsv1.Deployment{}
@@ -448,7 +448,7 @@ func TestInference_CanaryAutoRollback(t *testing.T) {
 
 	// Stays rolled back until the user picks another version.
 	reconcileOnce(t, r, "ns", "chat")
-	if exists(c, "ns", "chat-canary", &appsv1.Deployment{}) {
+	if mlObjectExists(c, "ns", "chat-canary", &appsv1.Deployment{}) {
 		t.Fatal("a rolled-back canary must not be recreated")
 	}
 	s = getInfer(t, c, "chat")
@@ -476,7 +476,7 @@ func TestInference_NoRollbackWithoutAutoRollback(t *testing.T) {
 		clk.Add(time.Minute)
 		reconcileOnce(t, r, "ns", "chat")
 	}
-	if !exists(c, "ns", "chat-canary", &appsv1.Deployment{}) {
+	if !mlObjectExists(c, "ns", "chat-canary", &appsv1.Deployment{}) {
 		t.Error("without autoRollback the canary stays")
 	}
 }

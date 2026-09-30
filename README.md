@@ -44,8 +44,10 @@ running containers. It is early: see [What works today](#what-works-today) befor
 
 **GPU-aware admission of jobs**<br>
 Jobs are checked and scored against GPU type, RDMA/SR-IOV labels, NVLink/NVSwitch interconnect and free GPUs, then run
-as a StatefulSet pinned by node selector. Gang scheduling, DRF fair-share and preemption exist as library code but are
-not wired in yet.<br>
+as an Indexed batch Job (training, fine-tuning, evaluation: they complete) or a StatefulSet (inference), pinned by node
+selector. Gang admission, quota borrowing and priority preemption come from the opt-in Kueue integration (off by default;
+kind e2e authored, not yet run, nothing on GPUs); the operator's own gang, DRF and preemption library code is still not
+called.<br>
 [Scheduling guide](website/docs/guides/SCHEDULING.md)
 
 </td>
@@ -71,7 +73,7 @@ NVIDIA feature-discovery labels. Not yet validated on real GPUs.<br>
 
 **Six Kubernetes operators**<br>
 GPU, AI workload and quota operators (plus optional storage and network operators for RDMA/SR-IOV and
-parallel-filesystem CSI backends) in the main chart; network intelligence in its own. 24 of the 49 CRDs have a
+parallel-filesystem CSI backends) in the main chart; network intelligence in its own. 32 of the 52 CRDs have a
 controller.<br>
 [Core components](#core-components)
 
@@ -102,11 +104,11 @@ for the custom resources.<br>
 
 | State | What |
 |---|---|
-| **Implemented and tested in CI** (unit tests, chart rendering, a kind install with demo data read back through the API and CLI) | The Helm chart; GPU, AI workload and quota operators; `GryviaAIJob` placement, StatefulSet creation and the admission webhook; per-namespace quotas and budgets; tenants, SKU catalog, usage metering and estimate invoices; the API gateway with API-key, session and OIDC roles; the dashboard; the CLI |
-| **Implemented, unverified on real hardware or services** | NVIDIA GPU Operator sub-chart, `install-k3s-gpu.sh` and node auto-registration (GPU-less k3s in CI only); storage and network operators (off by default); OIDC against a real identity provider; anything that needs GPUs, RDMA or a parallel filesystem |
+| **Implemented and tested in CI** (unit tests, chart rendering, a kind install with demo data read back through the API and CLI) | The Helm chart; GPU, AI workload and quota operators; `GryviaAIJob` placement, run-to-completion Job and StatefulSet creation and the admission webhook; per-namespace quotas and budgets; tenants, SKU catalog, usage metering and estimate invoices; the API gateway with API-key, session and OIDC roles; the dashboard; the CLI |
+| **Implemented, tests are unit-level or a kind e2e that is authored but not yet run in CI; unverified on real clusters, GPUs and services** | The ML controllers for workspaces, inference services, the model registry, workflows and the auto tuner (on by default in the ai-operator, `--enable-ml-controllers`; only unit tests with a fake client and `e2e-ml.yml`, tiny CPU images, no GPU or real model server); opt-in Kueue integration (`kueue.enabled`, `aiOperator.kueueIntegration`, `quotaOperator.kueueIntegration`); opt-in admission gate for quotas and hard budgets (`aiOperator.admissionGate`), node reservations (`quotaOperator.reservations`), per-tenant Kubernetes RBAC (`quotaOperator.tenantRbac`) and the signed invoice webhook; opt-in gateway and quota-operator Prometheus metrics with dashboards, alerts and runbooks (`monitoring.enabled`, `apiGateway.metrics.*`; never rendered against a live Prometheus or Grafana); the network-intelligence operator's real collector and Netra sources (`operator.sources.*`; e2e against a fake collector only); opt-in per-node fabric status merge (`aiOperator.mergeFabricSignals`); NVIDIA GPU Operator sub-chart, `install-k3s-gpu.sh` and node auto-registration (GPU-less k3s in CI only); storage and network operators (off by default); OIDC against a real identity provider; anything that needs GPUs, RDMA or a parallel filesystem |
 | **Experimental** | The eBPF collector, the 35 eBPF programs, fabric signals and the Flight Recorder (verified on Linux 7.0 x86_64 only); the network-intelligence operator |
-| **CRD and API only, no controller wired** | Workflows, auto tuner, workspaces, inference services, model registry, budgets (the `GryviaBudget` kind), chargeback, SLA, audit, priority classes, auto-scaler, federation, DR tests, benchmarks, templates and others. The gateway and dashboard can create and list them, but nothing acts on them. Gang scheduling, DRF queues, preemption and elastic scaling are library code that no controller calls |
-| **Not implemented** | Payments or tax invoices, multi-cluster federation, per-tenant Kubernetes RBAC, a mutating quota-pacing eBPF program |
+| **CRD and API only, no controller wired** | Chargeback, SLA, audit, priority classes, auto-scaler, federation, DR tests, benchmarks, templates and others (the CRD reference lists them). The gateway and dashboard can create and list them, but nothing acts on them. The operator's own gang scheduling, DRF queues, preemption and elastic scaling are library code that no controller calls (Kueue provides gang admission and preemption when its integration is switched on) |
+| **Not implemented** | Payments or tax invoices, multi-cluster federation, a mutating quota-pacing eBPF program |
 
 The [CRD reference](website/docs/reference/crds.md) lists every kind with the operator that reconciles it (or `none`).
 
@@ -116,13 +118,13 @@ The [CRD reference](website/docs/reference/crds.md) lists every kind with the op
 
 | Capability | Vanilla K8s + GPU Operator | Gryvia today |
 |---|---|---|
-| Job spec | Pods, Jobs and StatefulSets you write | One `GryviaAIJob` (type, gpus, gpuType, distributed); the operator creates the StatefulSet, headless Service and PVC |
-| Job placement | Default scheduler (first-fit) | The operator filters and scores nodes (GPU type, RDMA/SR-IOV, NVLink, free GPUs, memory) and records the choice in the job status; pods are pinned by node selector and placed by the default scheduler. Gang scheduling is design only |
+| Job spec | Pods, Jobs and StatefulSets you write | One `GryviaAIJob` (type, gpus, gpuType, distributed); the operator creates an Indexed Job (or a StatefulSet for inference), the headless Service and the PVC |
+| Job placement | Default scheduler (first-fit) | The operator filters and scores nodes (GPU type, RDMA/SR-IOV, NVLink, free GPUs, memory) and records the choice in the job status; pods are pinned by node selector and placed by the default scheduler. Gang admission needs the opt-in Kueue integration (not yet run on a cluster); the operator's own gang scheduler is library code |
 | RDMA/NVLink setup | Manual | Network operator (optional) creates device plugins and Multus attachments; unverified on hardware |
 | Storage for training | Standard CSI | Storage operator (optional) for VAST, Weka, DDN, Lustre and CephFS backends; unverified on real storage |
 | GPU failure handling | Manual intervention | Node readiness and per-GPU health on `GryviaGpuNode` (DCGM); no automated remediation |
-| Cost tracking | Not built in | GPU-hour metering, SKU catalog, estimate invoices, per-team `GryviaQuota` budgets; no payments, no chargeback controller |
-| Multi-tenancy | Namespaces and your own RBAC | `GryviaTenant` namespaces with quota and NetworkPolicy; isolation is enforced by the gateway, not Kubernetes RBAC |
+| Cost tracking | Not built in | GPU-hour metering, SKU catalog, estimate invoices, per-team `GryviaQuota` and `GryviaBudget` budgets (opt-in admission gate that rejects on estimated spend; estimates only); no payments, no chargeback controller |
+| Multi-tenancy | Namespaces and your own RBAC | `GryviaTenant` namespaces with quota and NetworkPolicy; isolation is enforced by the gateway, plus opt-in per-tenant RoleBindings (`quotaOperator.tenantRbac`, unverified against a real identity provider) |
 
 ## Try it in five minutes (no GPUs)
 
@@ -219,30 +221,33 @@ operator's node selection (filter, score, select), not a separate scheduler.
 ## Core Components
 
 <details>
-<summary><b>49 CRDs, 24 of them with a controller (the CRD reference has the full table)</b></summary>
+<summary><b>52 CRDs, 32 of them with a controller (the CRD reference has the full table)</b></summary>
 
-**Reconciled by a controller (24).**
+**Reconciled by a controller (32).**
 GPU operator: `GryviaGpuNode` (also auto-created from GPU feature-discovery labels), `GryviaGpuMemoryOptimizer` ·
 AI operator: `GryviaAIJob`, `GryviaCheckpointGuard`, `GryviaLiveExperiment`, `GryviaModelLineage`,
-`GryviaTrainingProfiler`, `GryviaTrainingTimeMachine` · Quota operator: `GryviaQuota`, `GryviaTenant`,
-`GryviaUsageRecord`, `GryviaCostPredictor` · Storage operator: `GryviaStorage` · Network operator: `GryviaNetwork` ·
+`GryviaTrainingProfiler`, `GryviaTrainingTimeMachine`, and the ML kinds `GryviaWorkspace`, `GryviaInferenceService`,
+`GryviaModelRegistry`, `GryviaWorkflow`, `GryviaAutoTuner` (on by default, `--enable-ml-controllers`), plus
+`GryviaFabricSignal` (only with `--merge-fabric-signals`) · Quota operator: `GryviaQuota`, `GryviaTenant`,
+`GryviaUsageRecord`, `GryviaCostPredictor`, `GryviaBudget`, `GryviaReservation` (only with `--enable-reservations`) · Storage operator: `GryviaStorage` · Network operator: `GryviaNetwork` ·
 Network-intelligence operator: `GryviaFlowPolicy`, `GryviaTrafficInsight`, `GryviaAutoPolicy`, `GryviaTraceSession`,
 `GryviaServiceGraph`, `GryviaNetworkAnomaly`, `GryviaSecurityPolicy`, `GryviaNetworkCost`, `GryviaTrainingInsight`,
 `GryviaInferenceInsight`.
 
-**Data or API only, no controller registered (25).** `GryviaGpuSku` (the price catalog, read by the gateway and quota
-operator), `GryviaDataset`, `GryviaFabricSignal`, and, with reconciler code that `main.go` never registers or none at
-all: `GryviaAutoTuner`, `GryviaWorkflow`, `GryviaWorkspace`, `GryviaInferenceService`, `GryviaModelRegistry`,
-`GryviaTemplate`, `GryviaAutoScaler`, `GryviaFederation`, `GryviaJobHook`, `GryviaPriority`, `GryviaRetryPolicy`,
-`GryviaBudget`, `GryviaChargeback`, `GryviaSLA`, `GryviaAudit`, `GryviaReservation`, `GryviaQuotaPolicy`,
-`GryviaGPUSharingPolicy`, `GryviaHealthCheck`, `GryviaMetric`, `GryviaBenchmark`, `GryviaDRTest`.
+**Data or API only, no controller registered (20).** `GryviaGpuSku` (the price catalog, read by the gateway and quota
+operator), `GryviaDataset`, `GryviaNetworkRate`, `GryviaNetworkUsageRecord`, `GryviaNodeFabric` (data written or read by
+other components) and, with reconciler code that `main.go` never registers or none at all: `GryviaTemplate`,
+`GryviaAutoScaler`, `GryviaFederation`, `GryviaJobHook`, `GryviaPriority`, `GryviaRetryPolicy`, `GryviaChargeback`,
+`GryviaSLA`, `GryviaAudit`, `GryviaQuotaPolicy`, `GryviaGPUSharingPolicy`, `GryviaHealthCheck`, `GryviaMetric`,
+`GryviaBenchmark`, `GryviaDRTest`.
 
 </details>
 
 **Six operators:** GPU (registers `GryviaGpuNode`s and reports readiness, driver/CUDA versions and DCGM health; it does
-not install drivers, NVIDIA's GPU Operator does) · AI workload (`GryviaAIJob` placement and StatefulSets, the admission
-webhook, and the profiler, checkpoint-guard, live-experiment, lineage and time-machine CRDs) · Quota (quotas and
-per-namespace budgets, tenants, usage metering) · Storage and Network (optional; parallel-filesystem CSI backends, and
+not install drivers, NVIDIA's GPU Operator does) · AI workload (`GryviaAIJob` placement and Job/StatefulSet workloads, the admission
+webhook, the ML controllers, an opt-in quota/budget admission gate and Kueue integration, and the profiler,
+checkpoint-guard, live-experiment, lineage and time-machine CRDs) · Quota (quotas and
+per-namespace budgets, `GryviaBudget`, tenants, usage metering, opt-in node reservations, tenant RBAC and per-tenant Kueue queues) · Storage and Network (optional; parallel-filesystem CSI backends, and
 RDMA/SR-IOV device plugins with Multus attachments; hardware-unverified) · Network Intelligence (Cilium policy actions
 and insights; its own chart, experimental).
 
@@ -250,9 +255,9 @@ and insights; its own chart, experimental).
 ready, have the wrong `gryvia.io/gpu` type, lack the requested RDMA/SR-IOV label or the free GPUs, then scores the rest
 (GPU type match +50, RDMA +30, NVSwitch +40 or NVLink +30 for multi-GPU jobs, +5 per free GPU, +1 per 10 GB of GPU
 memory, plus CPU/memory) and takes the top `distributed.nodes`. It records that choice in `status.nodesAllocated` (and
-keeps the job Pending, retrying every 30 s, when no node qualifies); the StatefulSet's pods are constrained by node
+keeps the job Pending, retrying every 30 s, when no node qualifies); the workload's pods (Job or StatefulSet) are constrained by node
 selector (`gryvia.io/gpu`, `gryvia.io/rdma`, `spec.nodeSelector`) and placed by the default Kubernetes scheduler. The
-gang scheduler, DRF queues, preemption and elastic scaling in `operators/ai-operator/pkg/` and the standalone NVLink/NUMA
+gang scheduler, DRF queues, preemption and elastic scaling in `operators/ai-operator/pkg/` (Kueue, when its integration is on, does gang admission, borrowing and priority preemption instead; unverified on a cluster) and the standalone NVLink/NUMA
 topology optimizer in `scheduler/` are not called by the running operator. `FabricPenalty` (eBPF fabric signals) is a helper that nothing calls yet. Detail:
 [Scheduling guide](website/docs/guides/SCHEDULING.md).
 
@@ -260,8 +265,10 @@ topology optimizer in `scheduler/` are not called by the running operator. `Fabr
 
 ## Performance Metrics
 
-No benchmark results are published yet. The figures below are **design targets**, to be validated
-with `benchmarks/suite.yaml` on real hardware before they are quoted as results.
+The only measured numbers are the eBPF collector's overhead on one shared x86 host with loopback traffic
+([docs/ebpf-overhead.md](docs/ebpf-overhead.md); a CPU host, nothing about GPU training or inference throughput). No
+scheduling, recovery or queue-depth benchmark results are published: the figures below are **design targets**, to be
+validated with `benchmarks/suite.yaml` on real hardware before they are quoted as results.
 
 | Metric | Target |
 |---|---|
@@ -305,8 +312,8 @@ guarantee yet; see the [changelog](CHANGELOG.md). What exists today:
 
 - Two roles in the API gateway: the API key and dashboard sessions are the provider **admin**; OIDC users (JWT
   validation, PKCE in the dashboard) are **tenant** users limited to the namespaces of the `GryviaTenant` they match
-  (`GRYVIA_OIDC_ADMIN_GROUPS` promotes a group). Isolation is enforced by the gateway, not by per-tenant Kubernetes
-  RBAC, and OIDC has only been tested against a fake identity provider. There is one shared admin identity, so no
+  (`GRYVIA_OIDC_ADMIN_GROUPS` promotes a group). Isolation is enforced by the gateway; per-tenant Kubernetes RBAC
+  (RoleBindings from `GryviaTenant` members and OIDC groups) is opt-in (`quotaOperator.tenantRbac`) and unverified, and OIDC has only been tested against a fake identity provider. There is one shared admin identity, so no
   per-user audit trail for key-based sessions.
 - A shared-key login (constant-time compare, rate limited) issuing signed, expiring session tokens.
 - HTTPS for the dashboard and gateway (self-signed by default; cert-manager or your own certificate supported).
@@ -321,7 +328,7 @@ guarantee yet; see the [changelog](CHANGELOG.md). What exists today:
 only place they have been verified (arm64 is compile-only); there the collector attached the supported
 kprobe/tracepoint subset and decoded TCP flows. GPU, NCCL, RDMA and GPUDirect Storage runtime behavior and the gated
 XDP/TCX/sockops attachments have not been validated on hardware. The collector is disabled by default, privileged and
-`hostNetwork` (its image is not part of the release), and most of its endpoints are unauthenticated; see
+`hostNetwork` (its image is built by the release workflow, which has not yet run with it), and most of its endpoints are unauthenticated; see
 [Flight Recorder](docs/flight-recorder.md) for its node-local, job-attributed diagnostic preview (the gateway's
 cluster view, `GET /api/flight/jobs/{job}`, is token-authenticated but has not run on a real cluster). Real network
 flows can instead come from [Netra](https://github.com/zyvorai/netra) (`apiGateway.netra.url`). The rest of the platform
@@ -336,7 +343,8 @@ vulnerabilities privately as described there.
 What the code supports today: large-model training and inference-style jobs as `GryviaAIJob`s (with
 `distributed.nodes`/`gpusPerNode` for multi-node), per-team quotas and budgets (`GryviaQuota`), and multi-tenant GPU
 service with metering (`GryviaTenant`, `GryviaGpuSku`). Model serving, workflows, hyperparameter tuning and workspaces
-have CRDs and dashboard pages but no controller yet. Worked examples are in [examples/](examples/) and the
+now have controllers that are unit-tested and covered by a kind e2e (tiny CPU images), but nothing has run on GPUs or with a
+real model server. Worked examples are in [examples/](examples/) and the
 [user guide](website/docs/user-guide/jobs.md).
 
 ---

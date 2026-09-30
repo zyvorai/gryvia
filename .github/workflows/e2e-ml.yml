@@ -7,9 +7,8 @@ name: ML controllers end-to-end
 # NOT proven here (no GPU, no real model server, no metrics-server on kind): the real Jupyter, code-server, vLLM,
 # Triton, TensorRT-LLM and TorchServe images, GPU scheduling, and an HPA scaling on real metrics.
 #
-# The workflow-with-jobs and auto-tuner steps run GryviaAIJob children, which need the AIJob controller to run them
-# to completion (workstream W1: indexed batch/v1 Job with run-to-completion semantics). They are marked
-# "requires W1" and are continue-on-error until W1 is merged: then delete the continue-on-error lines.
+# The workflow-with-jobs and auto-tuner steps run GryviaAIJob children, which the AIJob controller runs to completion
+# (indexed batch/v1 Job workload, docs/aijob-lifecycle.md), so a failure of those steps fails the run.
 # This file was written without being able to run it (no docker/kind on the authoring machine): the first CI run is
 # its first execution.
 
@@ -22,6 +21,7 @@ on:
       - 'crds/**'
       - 'services/api-gateway/**'
       - 'scripts/e2e-ml-lib.sh'
+      - 'scripts/kind-demo.sh'
       - '.github/workflows/e2e-ml.yml'
   workflow_dispatch:
 
@@ -278,10 +278,8 @@ jobs:
           assert_nonempty "gateway startedAt" "$(gw /api/workflows/e2e-wf-script .status.startedAt)"
           assert_eq "gateway failed phase" "$(gw /api/workflows/e2e-wf-fail .status.phase)" Failed
 
-      # requires W1 (Job workload): job steps create GryviaAIJobs that the AIJob controller must run to completion.
-      # continue-on-error until W1 is merged; then remove it so a regression fails the run.
-      - name: Workflow - two-step DAG of CPU jobs (requires W1)
-        continue-on-error: true
+      # Job steps create GryviaAIJobs that the AIJob controller runs to completion (batch/v1 Job workload).
+      - name: Workflow - two-step DAG of CPU jobs
         run: |
           source scripts/e2e-ml-lib.sh
           cat <<EOF | kubectl apply -f -
@@ -312,10 +310,9 @@ jobs:
           assert_eq "gateway jobRef" "$(gw /api/workflows/e2e-wf-jobs '.status.steps[0].jobRef')" e2e-wf-jobs-prep
 
       # ------------------------------------------------------------------ AutoTuner
-      # requires W1 (Job workload): trials are GryviaAIJobs. The trial "training" only sleeps; the metric a real trial
+      # Trials are GryviaAIJobs (batch/v1 Job workload). The trial "training" only sleeps; the metric a real trial
       # would report is set here on each trial job with the annotation the tuner reads (gryvia.io/metric-<name>).
-      - name: AutoTuner - 3 trials, best trial selected (requires W1)
-        continue-on-error: true
+      - name: AutoTuner - 3 trials, best trial selected
         run: |
           source scripts/e2e-ml-lib.sh
           cat <<EOF | kubectl apply -f -

@@ -8,13 +8,13 @@ Overview of Gryvia's advanced capability areas, with what is implemented and wha
 |------|---------|-------|
 | GPU health monitoring | `GryviaHealthCheck` | CRD only, no controller registered. `gryvia health` is separate and reads `GryviaGpuNode`, `GryviaStorage` and `GryviaNetwork` status |
 | Retry policies | `GryviaRetryPolicy` | CRD only, no controller |
-| Reservations | `GryviaReservation` | CRD only, no controller |
-| Multi-tenancy | `GryviaTenant`, `GryviaQuota` | Running: quota-operator creates the `tenant-<name>` namespace, ResourceQuota, LimitRange and an optional NetworkPolicy |
+| Reservations | `GryviaReservation` | Opt-in (`quotaOperator.reservations`, off by default): the quota-operator taints and labels the reserved nodes; jobs annotated `gryvia.io/reservation` tolerate the taint. Unit-tested, kind e2e authored and not yet run, never run on GPUs; see [GPUaaS completion](https://github.com/zyvorai/gryvia/blob/main/docs/gpuaas-completion.md) |
+| Multi-tenancy | `GryviaTenant`, `GryviaQuota` | Running: quota-operator creates the `tenant-<name>` namespace, ResourceQuota, LimitRange and an optional NetworkPolicy; opt-in per-tenant RoleBindings (`quotaOperator.tenantRbac`) |
 | Job templates | `GryviaTemplate` | CRD only, no controller |
 | Auto-scaling | `GryviaAutoScaler` | CRD only, no controller; no node provisioning exists |
-| Budgets | `GryviaBudget` | CRD only, no controller; nothing enforces or alerts |
+| Budgets | `GryviaBudget` | Controller registered: spend from `GryviaUsageRecord`s sets a `status.state`; blocking new jobs needs the opt-in admission gate (`aiOperator.admissionGate`). Estimates only; unit-tested, kind e2e authored and not yet run |
 | Priority and preemption | `GryviaAIJob.spec.priority`, Kueue | Opt-in via the Kueue integration (`--kueue-integration`): priority maps to a WorkloadPriorityClass and preempts within a queue, victims are requeued; unit-tested, e2e unverified ([details](https://github.com/zyvorai/gryvia/blob/main/docs/kueue-integration.md)). Without it `spec.priority` is validated but not acted on. `GryviaPriority` is CRD only |
-| ML workflows | AutoTuner, Workflow, ModelRegistry, InferenceService, Workspace | CRD and gateway/dashboard CRUD only; see [ML Workflows](ML_WORKFLOWS.md) |
+| ML workflows | AutoTuner, Workflow, ModelRegistry, InferenceService, Workspace | Controllers registered in the ai-operator (on by default); unit-tested, kind e2e with tiny CPU images authored and not yet run, nothing on GPUs; see [ML Workflows](ML_WORKFLOWS.md) |
 | Network intelligence | 10 kinds | Running via the network-intelligence operator (own chart); eBPF collector off by default; see [Network Intelligence](NETWORK_INTELLIGENCE.md) |
 | Advanced scheduling | | Mostly library code; see [Scheduling](SCHEDULING.md) |
 | OIDC/SSO | gateway | Implemented in the gateway; not verified against a real identity provider |
@@ -129,9 +129,9 @@ spec:
 
 ## Resource Reservations
 
-Status: CRD only. Nothing reserves capacity, blocks other teams or bills for a reservation. The schema has `owner`, `resources`, `schedule`, `guarantees`, `billing` and `notifications`.
+Status: opt-in, off by default (`quotaOperator.reservations` / `--enable-reservations`; turning it on makes existing `GryviaReservation` objects start tainting nodes). The controller reserves nodes matching `resources` with the taint `gryvia.io/reserved:NoSchedule` plus labels, so only jobs annotated `gryvia.io/reservation` (which get the toleration and node selector) land there; recurring `schedule` windows are supported. It does not bill for a reservation. Unit-tested; the kind workflow `e2e-gpuaas.yml` is authored and not yet run; never run on GPUs. Details and limits: [GPUaaS completion](https://github.com/zyvorai/gryvia/blob/main/docs/gpuaas-completion.md).
 
-### Schema examples (not acted on today)
+### Schema examples
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
@@ -333,9 +333,9 @@ spec:
 
 ## Budget Management
 
-Status: CRD only. `GryviaBudget` has `scope`, `period`, `limits`, `alerts`, `enforcement`, `rollover` and `priority`, but no controller evaluates it: nothing sends alerts, blocks jobs or forecasts exhaustion. The admission webhook does not check budgets. For real numbers today use `gryvia cost` and `gryvia usage` (estimates from metered GPU usage and the SKU catalog) and the quota limits in `GryviaQuota`.
+Status: the quota-operator's `GryviaBudget` controller computes spend for the budget's scope and period from `GryviaUsageRecord`s (open records included) and sets `status.state` (`blocked`, and the lower states from utilisation and alert thresholds). With the opt-in admission gate (`aiOperator.admissionGate`, off by default) new jobs whose quota or hard budget would be exceeded by the metered spend plus a forecast are rejected (`Rejected`, fails open on lookup errors); without the gate the webhook does not check budgets and nothing blocks jobs. Everything is an estimate from metered usage and SKU prices in one currency (mixed currencies are reported, not enforced); no billing or payments, no notification delivery. Unit-tested; the kind workflow is authored and not yet run. Details: [GPUaaS completion](https://github.com/zyvorai/gryvia/blob/main/docs/gpuaas-completion.md).
 
-### Schema example (not acted on today)
+### Schema example
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
@@ -377,13 +377,13 @@ See [Scheduling](SCHEDULING.md#priority-preemption) for the details.
 
 ## ML Workflows
 
-The ML workflow kinds have CRDs and gateway/dashboard CRUD, but no controller is registered for any of them (no trials, DAG execution, model serving or workspace pods).
+The ML workflow kinds have CRDs, gateway/dashboard CRUD and a controller each in the ai-operator (on by default): trials as child jobs, DAG execution, model serving with a pod-count canary, workspace pods. Unit-tested with fake clients; the kind e2e (tiny CPU images) is authored and not yet run; nothing has run on GPUs or with real Jupyter/vLLM/Triton images. See [docs/ml-controllers.md](https://github.com/zyvorai/gryvia/blob/main/docs/ml-controllers.md).
 
 - **GryviaAutoTuner**: hyperparameter study spec (grid, random, bayesian, asha).
 - **GryviaWorkflow**: DAG step spec with `dependsOn`.
-- **GryviaModelRegistry**: model version records with a `stage` field (the gateway can patch it; nothing deploys).
-- **GryviaInferenceService**: serving spec with canary and autoscaling fields; no rollout runs.
-- **GryviaWorkspace**: notebook environment spec; no pod is created.
+- **GryviaModelRegistry**: model version records with a `stage` field; `autoServe` at stage `production` creates an inference service.
+- **GryviaInferenceService**: Deployment, Service, CPU-based HPA and a pod-count canary with auto-promote and auto-rollback.
+- **GryviaWorkspace**: notebook or VS Code Pod, Service and optional PVC (cluster-internal only).
 
 For full documentation, examples, and CLI usage, see the **[ML Workflows Guide](ML_WORKFLOWS.md)**.
 
@@ -399,7 +399,7 @@ eBPF-powered network observability, security, and performance optimization for G
 - **Anomaly detection** (GryviaNetworkAnomaly) with baseline-driven alerting.
 - **Service dependency graphs** (GryviaServiceGraph) generated from observed traffic.
 - **Cost attribution** (GryviaNetworkCost) per team, job, and service.
-- **Training insights** (GryviaTrainingInsight) and a fabric-signal CRD (`gryviafabricsignals`) for straggler and fabric health signals (the fabric signal kind has a CRD but no controller yet).
+- **Training insights** (GryviaTrainingInsight) and a fabric-signal CRD (`gryviafabricsignals`) for straggler and fabric health signals (the fabric signal kind has an opt-in controller, `--merge-fabric-signals`, that folds per-node entries into its status; the collector side is `-fabric-status-per-node`).
 
 For full documentation, CRD examples, and CLI commands, see the **[Network Intelligence Guide](NETWORK_INTELLIGENCE.md)**.
 

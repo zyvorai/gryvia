@@ -163,7 +163,7 @@ func TestModel_ArchivingStopsServing(t *testing.T) {
 		t.Fatal(err)
 	}
 	reconcileOnce(t, r, "ns", "m")
-	if exists(c, "ns", "m-serving", &gryviav1.GryviaInferenceService{}) {
+	if mlObjectExists(c, "ns", "m-serving", &gryviav1.GryviaInferenceService{}) {
 		t.Error("archiving must remove the serving service")
 	}
 	m = getModel(t, c, "m")
