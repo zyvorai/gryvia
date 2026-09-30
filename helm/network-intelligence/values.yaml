@@ -99,6 +99,12 @@ ebpf:
   # ClusterRole additionally gets list on gryviafabricsignals and patch on gryviafabricsignals/status; it creates
   # nothing. Jobs are attributed through the Flight Recorder's pod resolver (needs NODE_NAME, set by this chart).
   publishFabricStatus: false
+  # With publishFabricStatus: write this node's measurements as its own entry in status.nodes[] (server-side apply,
+  # field manager gryvia-collector-<node>, ttl 5 min) instead of merge-patching the top-level status, so collectors
+  # of one job's nodes stop overwriting each other. Needs the ai-operator with aiOperator.mergeFabricSignals (in the
+  # gryvia chart) to fold the entries into the top-level status; without it only status.nodes[] is filled.
+  # No extra RBAC. Off by default (flag -fabric-status-per-node). See docs/fabric-status.md.
+  fabricStatusPerNode: false
   # Publish this node's fabric health (worst scoreDelta + top reasons, ttl 5 min) into the cluster-scoped
   # GryviaNodeFabric named after the node, every 30 s (flag -publish-node-fabric). Off by default. When on, the
   # collector ClusterRole additionally gets create and patch on gryvianodefabrics (Kubernetes RBAC cannot limit
@@ -255,12 +261,6 @@ prometheus:
   dashboards:
     enabled: false
 
-# Reserved and currently NOT read by any template or by the operator (no auto-blocking exists). The operator
-# binary has no --security-* flags; passing them made it exit at start-up, so the chart no longer passes them.
-security:
-  enabled: true
-  autoBlock: false
-
 # Namespace configuration
 namespace:
   create: true
@@ -282,7 +282,6 @@ serviceAccount:
 
 # High availability
 ha:
-  enabled: false
   leaderElection: true
 
 # Container-level security context for the operator
@@ -310,8 +309,3 @@ fullnameOverride: ""
 # Image pull secrets
 imagePullSecrets: []
 
-# Global labels
-labels: {}
-
-# Global annotations
-annotations: {}

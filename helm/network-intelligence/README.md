@@ -15,9 +15,9 @@ independent: neither requires the other.
   `collector/Dockerfile` and set `collector.image.repository`/`tag`. It was verified on Linux 7.0 x86_64 only; GPU, RDMA,
   arm64 and the gated attachments are unverified on hardware. See [collector/README.md](../../collector/README.md) and
   [ebpf/README.md](../../ebpf/README.md).
-- `security.enabled` and `security.autoBlock` are **reserved and not read**: the operator has no such flags and no
-  auto-blocking exists. Earlier versions of this chart passed them as `--security-*` arguments, which Go's flag parser
-  rejects, so the operator exited at start-up; the chart no longer passes them.
+- The keys `security.enabled`, `security.autoBlock`, `ha.enabled` and the top-level `labels` and `annotations` were
+  removed from `values.yaml`: no template read them (the operator has no `--security-*` flags and no auto-blocking
+  exists; earlier chart versions passed them as arguments Go's flag parser rejects). Setting them was already a no-op.
 - The operator no longer uses a fixed collector URL: it finds the collector pods by label
   (`app.kubernetes.io/component=collector`) in its own namespace (or `operator.sources.collector.namespace`; without the chart wiring the built-in default is `gryvia-network`), signs its
   requests with the API token from a mounted Secret and merges the answers of all pods. Without that wiring
@@ -70,6 +70,7 @@ name is `gryvia-network-intelligence`.
 | `ebpf.diagnosis.cgroupSignals` | Let the unified diagnosis read the pods' cgroup counters and pressure files from the host cgroup mount (`-flight-diagnosis-cgroup`, read-only); otherwise those signals are reported unavailable | `false` |
 | `ebpf.diagnosis.thresholds` | Overrides for the diagnosis thresholds (rendered to a ConfigMap, `-flight-diagnosis-thresholds`) | `{}` |
 | `ebpf.flightStore.enabled` | Persist incident history on the node (`-flight-store-dir`); `.volume` is `emptyDir` or `hostPath`, plus `.hostPath`, `.sizeLimit`, `.retention`, `.maxBytes`, `.fsync`, `.incidentMinDuration` | `false` |
+| `ebpf.fabricStatusPerNode` | With `publishFabricStatus`: write this node's own `status.nodes[]` entry by server-side apply instead of merge-patching the top level (`-fabric-status-per-node`); needs the ai-operator's `aiOperator.mergeFabricSignals`; no extra RBAC | `false` |
 | `ebpf.publishFabricStatus` | Patch the status of existing `GryviaFabricSignal` objects every 30 s (`-publish-fabric-status`); adds `list` on `gryviafabricsignals` and `patch` on `gryviafabricsignals/status` to the collector ClusterRole | `false` |
 | `ebpf.publishNodeFabric` | Write this node's fabric health to the cluster-scoped `GryviaNodeFabric` named after the node every 30 s (`-publish-node-fabric`); adds `create`, `patch` on `gryvianodefabrics` to the collector ClusterRole | `false` |
 | `ebpf.inferMetrics.targets`, `.discover`, `.ports`, `.interval` | Read serving-engine latency (TTFT, ITL, queue time) from vLLM / Triton / TGI metrics endpoints (`-infer-metrics`, `-infer-metrics-discover`); read-only GETs, no new RBAC; see [docs/inference-latency.md](../../docs/inference-latency.md) | `[]`, `false`, `8000,8002,8080`, `15s` |
@@ -78,7 +79,6 @@ name is `gryvia-network-intelligence`.
 | `ebpf.quotaPace.sync` | **Mutating.** Grant pace leases from `GryviaQuota` `spec.network.maxEgressMbps` (`-quota-pace-sync`); needs `ebpf.quotaPace.enabled`; adds `list` on `gryviaquotas` to the collector ClusterRole | `false` |
 | `ebpf.quotaPace.dryRun` | Log what `sync` would do and write nothing (`-quota-pace-dry-run`); needs `ebpf.quotaPace.sync` | `false` |
 | `prometheus.serviceMonitor.enabled` | Create ServiceMonitors (only when the Prometheus Operator CRD exists) | `true` |
-| `security.enabled`, `security.autoBlock` | Reserved, not read by anything | `true`, `false` |
 | `namespace.name`, `namespace.create` | Target namespace | `gryvia-network`, `true` |
 | `ha.leaderElection` | Operator leader election | `true` |
 

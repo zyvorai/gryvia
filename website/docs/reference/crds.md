@@ -22,7 +22,7 @@ Gryvia defines 52 custom resources in the `gryvia.io` API group (version `v1alph
 | `GryviaCostPredictor` | `gryviacostpredictors` | Cluster | quota-operator | none | `alternatives`, `historicalData`, `integration`, `models`, `pricing` |
 | `GryviaDRTest` | `gryviadrtests` | Cluster | none | `type` | `approvalRequired`, `backupRestore`, `chaosEngineering`, `dataIntegrity`, `failover`, `fullDrill`, `notifications`, `rpoRto`, … |
 | `GryviaDataset` | `gryviadatasets` | Cluster | none | `source` | `access`, `cache`, `description`, `license`, `statistics`, `tags`, `type`, `version`, … |
-| `GryviaFabricSignal` | `gryviafabricsignals` | Namespaced | none | none | `jobRef`, `observeOnly` |
+| `GryviaFabricSignal` | `gryviafabricsignals` | Namespaced | ai-operator | none | `jobRef`, `observeOnly` |
 | `GryviaFederation` | `gryviafederations` | Cluster | none | none | `clusters`, `costManagement`, `distribution`, `failover`, `loadBalancing`, `resourceSharing` |
 | `GryviaFlowPolicy` | `gryviaflowpolicies` | Namespaced | network-intelligence | none | `action`, `destination`, `intent`, `priority`, `protocol`, `source` |
 | `GryviaGPUSharingPolicy` | `gryviagpusharingpolicies` | Cluster | none | `strategy` | `fractionalGPU`, `mig`, `nodeSelector`, `priority`, `qos`, `tenantQuotas`, `timeSlicing` |

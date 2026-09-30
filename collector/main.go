@@ -59,6 +59,7 @@ func main() {
 		quotaPace       = flag.Bool("quota-pace", false, "attach quota_pace (the only program that changes sockets: caps SO_MAX_PACING_RATE of cgroups that hold a lease). Off by default; needs -cgroup-path. Without -quota-pace-sync nothing grants leases and pacing stays inert")
 		quotaPaceSync   = flag.Bool("quota-pace-sync", false, "MUTATING, off by default: every 30 s grant a pace lease to the cgroups of pods on this node whose namespace is listed by a GryviaQuota with spec.network.maxEgressMbps (needs -quota-pace, -cgroup-path, running in a cluster and NODE_NAME). Fails open: an API error changes nothing and leases expire after 2 minutes")
 		quotaPaceDry    = flag.Bool("quota-pace-dry-run", false, "with -quota-pace-sync: log what would be granted or revoked and write nothing to the pace map")
+		fabricPerNode   = flag.Bool("fabric-status-per-node", false, "with -publish-fabric-status: instead of merge-patching the job's top-level status (last writer wins across nodes), server-side-apply this node's own status.nodes[] entry under field manager gryvia-collector-<NODE_NAME>; needs NODE_NAME and the ai-operator's --merge-fabric-signals to fold the entries into the top-level status (chart value ebpf.fabricStatusPerNode)")
 		publishNodeFab  = flag.Bool("publish-node-fabric", false, "every 30 s write this node's fabric health (worst scoreDelta + top reasons, ttl 5 min) to the cluster-scoped GryviaNodeFabric named after NODE_NAME, for the ai-operator's opt-in fabric-aware scheduling; creates only that one object; needs a cluster, NODE_NAME and RBAC (chart value ebpf.publishNodeFabric)")
 		ibverbsLib      = flag.String("ibverbs-lib", "", "path to libibverbs.so for the ibv_verbs uprobes (empty = auto-discover)")
 		ibverbsProbes   = flag.Bool("ibverbs-probes", false, "attach ibv_verbs (uprobes on libibverbs ibv_create_qp/ibv_destroy_qp/ibv_reg_mr: QP and registered-memory counters). Off by default")
@@ -315,8 +316,13 @@ func main() {
 		if err != nil {
 			log.Warnw("-publish-fabric-status ignored", "error", err)
 		} else {
-			go (&fabric.Publisher{API: client, Folder: fabricFolder, Log: log, Inference: scraper != nil}).Run(ctx)
-			log.Infow("publishing fabric status to GryviaFabricSignal (existing objects only)", "interval", fabric.PublishInterval.String())
+			perNode := *fabricPerNode
+			if perNode && node == "" {
+				log.Warnw("-fabric-status-per-node ignored: NODE_NAME is not set; merge-patching the top-level status")
+				perNode = false
+			}
+			go (&fabric.Publisher{API: client, Folder: fabricFolder, Log: log, Inference: scraper != nil, PerNode: perNode, Node: node}).Run(ctx)
+			log.Infow("publishing fabric status to GryviaFabricSignal (existing objects only)", "interval", fabric.PublishInterval.String(), "per_node", perNode)
 		}
 	}
 
@@ -767,7 +773,7 @@ func startNetworkAttribution(ctx context.Context, log *zap.SugaredLogger, mgr *l
 	dir := netcost.NewDirectory()
 	meter := netcost.NewMeter(dir, node)
 	go dir.Run(ctx, client, func(err error) { log.Warnw("network attribution: directory refresh failed", "error", err) })
-	go netcost.RunScan(ctx, m, meter, func(err error) { log.Warnw("network attribution: reading traffic_costs failed", "error", err) })
+	go netcost.RunScan(ctx, m, mgr.Map("cost_tracker.o", "traffic_costs6"), meter, func(err error) { log.Warnw("network attribution: reading traffic_costs failed", "error", err) })
 	prometheus.MustRegister(prometheus.NewCounterFunc(prometheus.CounterOpts{
 		Name: "gryvia_netcost_unattributed_bytes_total",
 		Help: "Bytes seen by cost_tracker that were not attributed to a tenant (unknown, non-tenant, hostNetwork, loopback, same-node).",

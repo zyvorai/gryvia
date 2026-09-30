@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"sync"
@@ -86,8 +87,9 @@ func (d *Directory) Set(podsRaw, nodesRaw, nsRaw []byte) error {
 	zones := make(map[string]string, len(nodes.Items))
 	byIP := map[string]Endpoint{}
 	ambig := map[string]bool{}
-	add := func(ip string, e Endpoint) {
-		if ip == "" {
+	add := func(raw string, e Endpoint) {
+		ip, ok := canonicalIP(raw)
+		if !ok {
 			return
 		}
 		if _, dup := byIP[ip]; dup {
@@ -113,10 +115,13 @@ func (d *Directory) Set(podsRaw, nodesRaw, nsRaw []byte) error {
 		}
 		e := Endpoint{Kind: "pod", Namespace: p.Metadata.Namespace, Node: p.Spec.NodeName,
 			Tenant: tenant[p.Metadata.Namespace], Zone: zones[p.Spec.NodeName]}
-		add(p.Status.PodIP, e)
-		for _, ip := range p.Status.PodIPs {
-			if ip.IP != p.Status.PodIP {
-				add(ip.IP, e)
+		// podIP and podIPs (dual-stack: one IPv4 and one IPv6) name the same pod; an address is added
+		// once per pod so a pod is never ambiguous with itself.
+		own := map[string]bool{}
+		for _, raw := range append([]string{p.Status.PodIP}, podIPList(p.Status.PodIPs)...) {
+			if c, ok := canonicalIP(raw); ok && !own[c] {
+				own[c] = true
+				add(c, e)
 			}
 		}
 	}
@@ -126,8 +131,32 @@ func (d *Directory) Set(podsRaw, nodesRaw, nsRaw []byte) error {
 	return nil
 }
 
-// Lookup implements Resolver.
+func podIPList(l []struct {
+	IP string `json:"ip"`
+}) []string {
+	out := make([]string, 0, len(l))
+	for _, x := range l {
+		out = append(out, x.IP)
+	}
+	return out
+}
+
+// canonicalIP renders an address in the form the Meter looks it up with: dotted quad for IPv4, the compressed
+// lower-case form for IPv6 (so "2001:DB8:0::1" and "2001:db8::1" are the same key). An IPv4-mapped IPv6 address
+// becomes its IPv4 form; anything unparsable is refused.
+func canonicalIP(s string) (string, bool) {
+	a, err := netip.ParseAddr(s)
+	if err != nil || a.Zone() != "" {
+		return "", false
+	}
+	return a.Unmap().String(), true
+}
+
+// Lookup implements Resolver. An IPv6 address is matched in canonical form.
 func (d *Directory) Lookup(ip string) (Endpoint, bool) {
+	if c, ok := canonicalIP(ip); ok {
+		ip = c
+	}
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 	if d.updated.IsZero() || d.now().Sub(d.updated) > d.MaxAge || d.ambig[ip] {

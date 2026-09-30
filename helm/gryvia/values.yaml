@@ -20,9 +20,6 @@ gpuOperator:
   resources:
     limits: {cpu: 500m, memory: 512Mi}
     requests: {cpu: 100m, memory: 128Mi}
-  healthCheck:
-    enabled: true
-    intervalSeconds: 60
   nodeSelector: {}
   tolerations: []
 
@@ -63,6 +60,10 @@ aiOperator:
   # "--inference-health-path=/", "--autoserve-default-gpu-count=0", "--workflow-allow-webhooks=true"].
   # See docs/ml-controllers.md for the full list. Empty by default.
   extraArgs: []
+  # Fold the per-node entries collectors write into GryviaFabricSignal status.nodes[] (network-intelligence
+  # ebpf.fabricStatusPerNode) into the top-level status: max for degradation metrics, sample-weighted means for ratios,
+  # entries older than their ttl ignored (--merge-fabric-signals). Off by default; needs no extra RBAC.
+  mergeFabricSignals: false
 
 # Admission webhook served by the ai-operator: validates GryviaAIJob on CREATE/UPDATE.
 # It uses its own self-signed certificate (independent of tls.mode), reused on upgrades.
@@ -99,15 +100,6 @@ quotaOperator:
   # plus labels for the owner's jobs. Off by default: turning it on makes existing GryviaReservation objects start
   # tainting nodes.
   reservations: false
-  # Default GPU pricing (USD per hour)
-  pricing:
-    H100: 8.00
-    A100-80G: 4.00
-    A100-40G: 3.00
-    L40: 2.50
-    A10: 1.50
-    V100: 2.00
-    T4: 0.75
 
 storageOperator:
   enabled: false
@@ -358,10 +350,6 @@ namespace:
   create: false
   name: gryvia-system
 
-crds:
-  install: true
-  keep: true
-
 # Observability wiring (docs/observability.md). OFF by default. When on, the chart can install, from the copies in
 # monitoring-assets/ (kept in sync with monitoring/ by scripts/sync-monitoring-assets.sh):
 #   - a PodMonitor for the operators' :8080/metrics and a ServiceMonitor for the gateway (only when apiGateway.metrics.enabled),
@@ -387,7 +375,6 @@ monitoring:
       enabled: true
 
 ha:
-  enabled: false
   leaderElection: true
 
 # Container-level security context (operators)
@@ -411,5 +398,3 @@ podSecurityContext:
 nameOverride: ""
 fullnameOverride: ""
 imagePullSecrets: []
-labels: {}
-annotations: {}

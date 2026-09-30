@@ -85,7 +85,7 @@ lists the common ones. Highlights:
 | Hardening | `podDisruptionBudget.enabled`, `networkPolicy.enabled`, `webhook.failurePolicy` |
 | GPU components | `nvidia.enabled`, `nvidia.driver.enabled`, `nvidiaDevicePlugin.*`, `dcgmExporter.*`, `gpuOperator.autoRegister` |
 
-`ha.enabled`, `monitoring.*`, `crds.install`/`crds.keep`, `gpuOperator.healthCheck.*` and `quotaOperator.pricing.*` exist in `values.yaml` but no template reads them today; enable metrics
+`monitoring.*` exists in `values.yaml` but no template reads it today (`ha.enabled`, `crds.install`/`crds.keep`, `gpuOperator.healthCheck.*`, `quotaOperator.pricing.*`, `labels` and `annotations` were removed for the same reason); enable metrics
 scraping and dashboards through the [observability chart](https://github.com/zyvorai/gryvia/tree/main/helm/observability)
 and `monitoring/` instead. The chart does not deploy PostgreSQL or any other database: Gryvia keeps its state in
 custom resources.

@@ -45,6 +45,7 @@ func main() {
 	var admissionGate bool
 	var admissionDefaultHours float64
 	var ml mlOptions
+	var mergeFabricSignals bool
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -69,6 +70,8 @@ func main() {
 	flag.Float64Var(&admissionDefaultHours, "admission-default-hours", 1,
 		"Hours a job without spec.timeout is assumed to run for the admission gate's cost forecast.")
 	ml.bind(flag.CommandLine)
+	flag.BoolVar(&mergeFabricSignals, "merge-fabric-signals", false,
+		"Fold the per-node entries collectors write into GryviaFabricSignal status.nodes[] into the top-level status (max for degradation metrics, sample-weighted means for ratios, stale entries ignored). Off by default.")
 
 	opts := zap.Options{
 		Development: false,
@@ -115,6 +118,16 @@ func main() {
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "GryviaAIJob")
 		os.Exit(1)
+	}
+
+	if mergeFabricSignals {
+		if err = (&controllers.GryviaFabricSignalReconciler{
+			Client: mgr.GetClient(),
+			Scheme: mgr.GetScheme(),
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "GryviaFabricSignal")
+			os.Exit(1)
+		}
 	}
 
 	// Create kubernetes clientset for pod log access

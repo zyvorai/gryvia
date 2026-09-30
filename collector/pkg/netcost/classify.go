@@ -11,7 +11,7 @@
 package netcost
 
 import (
-	"net"
+	"net/netip"
 	"strings"
 )
 
@@ -73,8 +73,11 @@ const (
 // unattributed; pod-to-pod on the same node is excluded unless the peer belongs to another tenant (then it is
 // kept with zone class same-node, so a provider may still meter tenant-to-tenant traffic).
 func Classify(r Resolver, node, local, remote string) (Verdict, bool, string) {
-	lip, rip := net.ParseIP(local), net.ParseIP(remote)
-	if lip == nil || rip == nil || lip.To4() == nil || rip.To4() == nil {
+	lip, err1 := netip.ParseAddr(local)
+	rip, err2 := netip.ParseAddr(remote)
+	// Both ends must be valid, plain (no zone, not IPv4-mapped IPv6) and of the same family.
+	if err1 != nil || err2 != nil || lip.Zone() != "" || rip.Zone() != "" ||
+		lip.Is4In6() || rip.Is4In6() || lip.Is4() != rip.Is4() {
 		return Verdict{}, false, SkipInvalid
 	}
 	if lip.IsLoopback() || rip.IsLoopback() {
@@ -128,11 +131,15 @@ func Classify(r Resolver, node, local, remote string) (Verdict, bool, string) {
 
 // isPrivate is true for RFC 1918, CGNAT, link-local and other non-public unicast IPv4 ranges: an address
 // there that is neither a pod nor a node may be another VPC or a service VIP, so it is never called "internet".
-func isPrivate(ip net.IP) bool {
+//
+// IPv6: fc00::/7 (ULA), fe80::/10 (link-local), multicast and the unspecified address are private; every
+// other address is treated as global unicast (external) unless it is a known pod or node.
+func isPrivate(ip netip.Addr) bool {
 	if ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsUnspecified() || ip.IsMulticast() {
 		return true
 	}
-	if v4 := ip.To4(); v4 != nil {
+	if ip.Is4() {
+		v4 := ip.As4()
 		return v4[0] == 100 && v4[1]&0xC0 == 64 // 100.64.0.0/10
 	}
 	return false

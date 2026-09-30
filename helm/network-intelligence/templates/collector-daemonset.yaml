@@ -108,6 +108,9 @@ spec:
             {{- end }}
             {{- if .Values.ebpf.publishFabricStatus }}
             - -publish-fabric-status
+            {{- if .Values.ebpf.fabricStatusPerNode }}
+            - -fabric-status-per-node
+            {{- end }}
             {{- end }}
             {{- if .Values.ebpf.publishNodeFabric }}
             - -publish-node-fabric

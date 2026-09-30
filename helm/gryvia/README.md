@@ -71,6 +71,7 @@ hosts already have drivers; `nvidia.toolkit.env` for k3s). The Gryvia GPU operat
 | `apiGateway.oidc.legacyNamespaces` | Only while no `GryviaTenant` exists: trust the token claim as a namespace (old behaviour) |
 | `apiGateway.netra.url`, `.tokenSecret`, `.tokenKey`, `.insecureTLS` | Take `/api/network/flows` from [Netra](https://github.com/zyvorai/netra) |
 | `apiGateway.flightTokenSecret`, `.flightTokenKey`, `.flightCollectorNamespace` | Flight Recorder cluster view (needs the same token on the collector; see [docs/flight-recorder.md](../../docs/flight-recorder.md)) |
+| `aiOperator.mergeFabricSignals` | Fold per-node entries of `GryviaFabricSignal` `status.nodes[]` into the top-level status (`--merge-fabric-signals`; default `false`; see `docs/fabric-status.md`) |
 | `apiGateway.prometheusUrl` | Prometheus for cost and metric history |
 | `apiGateway.metrics.enabled`, `.tokenSecret`, `.tokenKey` | Serve the gateway `/metrics` (off by default; needs an existing Secret with a token of at least 32 characters; never served unauthenticated) |
 | `monitoring.enabled` (default `false`) | Install a PodMonitor for the operators, a ServiceMonitor for the gateway (only with `apiGateway.metrics.enabled`), a PrometheusRule and a Grafana dashboards ConfigMap. The monitors and the rule are skipped without the Prometheus Operator CRDs; see `monitoring.prometheus.*`, `monitoring.grafana.*` and [docs/observability.md](../../docs/observability.md) |
@@ -116,10 +117,10 @@ ai-operator.
 | `podDisruptionBudget.enabled`, `networkPolicy.enabled` | Optional hardening |
 | `apiGateway.prometheusUrl` | Prometheus for cost and metric history |
 
-These values are present in `values.yaml` but no template reads them, so setting them changes nothing:
-`ha.enabled` (only `ha.leaderElection` has an effect), `crds.install` and `crds.keep`,
-`gpuOperator.healthCheck.*` and `quotaOperator.pricing.*` (GPU prices come from `GryviaGpuSku` objects, or a table built
-into the operator when there are none). The chart deploys no database and no Prometheus (use `helm/observability`).
+The keys `ha.enabled`, `crds.install`, `crds.keep`, `gpuOperator.healthCheck.*`, `quotaOperator.pricing.*` and the
+top-level `labels` and `annotations` were removed because no template read them (GPU prices come from `GryviaGpuSku`
+objects, or a table built into the operator when there are none); setting them was already a no-op. The chart deploys no
+database and no Prometheus (use `helm/observability`). `scripts/check-chart-values.py` fails CI when a value is not read.
 
 See `values.yaml` for every option. Uninstall with `helm uninstall gryvia -n gryvia-system`; CRDs and the
 `gryvia-tls` Secret are kept.

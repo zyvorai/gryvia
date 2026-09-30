@@ -72,6 +72,9 @@ spec:
             {{- range $op.extraArgs }}
             - {{ . | quote }}
             {{- end }}
+            {{- if and (eq $name "ai-operator") $.Values.aiOperator.mergeFabricSignals }}
+            - --merge-fabric-signals=true
+            {{- end }}
             {{- if $webhook }}
             - --enable-webhooks=true
             - --webhook-cert-dir=/tmp/k8s-webhook-server/serving-certs

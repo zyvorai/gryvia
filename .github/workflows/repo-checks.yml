@@ -57,6 +57,18 @@ jobs:
           git diff --exit-code -- crds helm/gryvia/crds website/docs/reference/crds.md \
             || { echo "::error::Generated files are stale. Run scripts/gen-crds.sh and scripts/gen-crd-docs.py and commit the result."; exit 1; }
 
+  chart-values:
+    name: Every chart value is read by a template
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pyyaml
+      - name: Fail on values.yaml keys no template reads
+        run: python3 scripts/check-chart-values.py
+
   shellcheck:
     name: Shell scripts
     runs-on: ubuntu-latest
