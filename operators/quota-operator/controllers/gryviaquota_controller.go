@@ -255,15 +255,13 @@ func (r *GryviaQuotaReconciler) enforceQuota(ctx context.Context, quota *gryviav
 		}
 
 		if reason != "" {
-			job.Status.Phase = "Rejected"
-			meta.SetStatusCondition(&job.Status.Conditions, metav1.Condition{
+			if err := patchJobPhase(ctx, r.Client, &job, "Rejected", reason, &metav1.Condition{
 				Type:               "Rejected",
 				Status:             metav1.ConditionTrue,
 				Reason:             reasonCode,
 				Message:            reason,
 				LastTransitionTime: metav1.Now(),
-			})
-			if err := r.Status().Update(ctx, &job); err != nil {
+			}); err != nil {
 				return fmt.Errorf("failed to reject job %s: %w", job.Name, err)
 			}
 			logger.Info("Rejected job", "job", job.Name, "reason", reason)

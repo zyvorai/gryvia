@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -137,7 +136,7 @@ func (r *GryviaCheckpointGuardReconciler) reconcileCheckpointGuard(ctx context.C
 			continue
 		}
 
-		// Step 3: Check StatefulSet pods for the job
+		// Step 3: Check the job's pods (Job or StatefulSet)
 		podHealthy, podReason := r.checkJobPodHealth(ctx, &job)
 		if !podHealthy {
 			log.Info("Pod health issue detected", "job", job.Name, "reason", podReason)
@@ -246,23 +245,11 @@ func (r *GryviaCheckpointGuardReconciler) findMatchingJobs(ctx context.Context, 
 	return jobList.Items, nil
 }
 
-// checkJobPodHealth checks the health of pods belonging to a job's StatefulSet
+// checkJobPodHealth checks the health of the pods of a job. Pods are found by the
+// gryvia.io/job label, so it works for both workload kinds (batch Job and StatefulSet).
+// Pods that already finished (Succeeded/Failed) are skipped: a completed Job pod is
+// not Ready and a failed one is replaced by the Job controller.
 func (r *GryviaCheckpointGuardReconciler) checkJobPodHealth(ctx context.Context, job *gryviav1.GryviaAIJob) (bool, string) {
-	// Look up the StatefulSet for this job
-	stsName := fmt.Sprintf("%s-training", job.Name)
-	sts := &appsv1.StatefulSet{}
-	err := r.Get(ctx, types.NamespacedName{
-		Namespace: job.Namespace,
-		Name:      stsName,
-	}, sts)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return true, "" // No StatefulSet yet, nothing to check
-		}
-		return false, fmt.Sprintf("failed to get StatefulSet %s: %v", stsName, err)
-	}
-
-	// List pods for the StatefulSet
 	pods := &corev1.PodList{}
 	if err := r.List(ctx, pods, client.InNamespace(job.Namespace), client.MatchingLabels{
 		"gryvia.io/job": job.Name,
@@ -271,6 +258,9 @@ func (r *GryviaCheckpointGuardReconciler) checkJobPodHealth(ctx context.Context,
 	}
 
 	for _, pod := range pods.Items {
+		if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
+			continue
+		}
 		// Check for memory pressure via pod conditions
 		for _, condition := range pod.Status.Conditions {
 			if condition.Type == corev1.PodReady && condition.Status == corev1.ConditionFalse {

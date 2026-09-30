@@ -115,6 +115,7 @@ func ValidateJob(job *gryviav1.GryviaAIJob) []string {
 	add(validateType(job))
 	add(validateGPUCount(job))
 	add(validateNetwork(job))
+	add(validateWorkload(job))
 	add(validateImage(job))
 	add(validatePriority(job))
 	add(validateDistributedConfig(job))
@@ -135,8 +136,9 @@ func validateType(job *gryviav1.GryviaAIJob) error {
 }
 
 func validateGPUCount(job *gryviav1.GryviaAIJob) error {
-	if job.Spec.GPUs <= 0 {
-		return fmt.Errorf("spec.gpus must be greater than 0, got %d", job.Spec.GPUs)
+	// 0 is allowed: a CPU-only job (no nvidia.com/gpu limit, no GPU node selector).
+	if job.Spec.GPUs < 0 {
+		return fmt.Errorf("spec.gpus must not be negative, got %d", job.Spec.GPUs)
 	}
 	return nil
 }
@@ -151,6 +153,21 @@ func validateNetwork(job *gryviav1.GryviaAIJob) error {
 		}
 	}
 	return fmt.Errorf("spec.network %q is not supported; valid values: %s", job.Spec.Network, strings.Join(validNetworks, ", "))
+}
+
+func validateWorkload(job *gryviav1.GryviaAIJob) error {
+	switch job.Spec.WorkloadKind {
+	case "", gryviav1.WorkloadKindJob, gryviav1.WorkloadKindStatefulSet:
+	default:
+		return fmt.Errorf("spec.workloadKind %q is not supported; valid values: job, statefulset", job.Spec.WorkloadKind)
+	}
+	if _, err := job.Spec.TimeoutSeconds(); err != nil {
+		return fmt.Errorf("spec.timeout: %w", err)
+	}
+	if job.Spec.RetryLimit < 0 {
+		return fmt.Errorf("spec.retryLimit must not be negative, got %d", job.Spec.RetryLimit)
+	}
+	return nil
 }
 
 // clusterWarnings compares the job with the nodes currently in the cluster.

@@ -239,9 +239,12 @@ func (r *GryviaPriorityReconciler) evaluatePreemption(ctx context.Context, prior
 
 			// Mark the candidate as preempted (in practice, this would
 			// signal the job to checkpoint and then terminate it)
-			candidate.Status.Phase = "Preempted"
+			// Merge patch: only phase and message change, so status fields owned by
+			// the AIJob controller (and a newer resourceVersion) are never overwritten.
+			base := candidate.DeepCopy()
+			candidate.Status.Phase = PhasePreempted
 			candidate.Status.Message = fmt.Sprintf("Preempted by higher priority job %s", pendingJob.Name)
-			if err := r.Status().Update(ctx, candidate); err != nil {
+			if err := r.Status().Patch(ctx, candidate, client.MergeFrom(base)); err != nil {
 				log.Error(err, "Failed to preempt job", "job", candidate.Name)
 				continue
 			}

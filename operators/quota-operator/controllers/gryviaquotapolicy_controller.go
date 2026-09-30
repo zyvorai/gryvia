@@ -365,24 +365,22 @@ func (r *GryviaQuotaPolicyReconciler) enforcePolicy(ctx context.Context, policy 
 
 			switch policy.Spec.Enforcement.OnExceeded {
 			case "block":
-				job.Status.Phase = "Rejected"
+				msg := fmt.Sprintf("Quota policy %s exceeded for %s", policy.Name, policy.Spec.Scope.Name)
 				condition := metav1.Condition{
 					Type:               "Rejected",
 					Status:             metav1.ConditionTrue,
 					Reason:             "QuotaPolicyExceeded",
-					Message:            fmt.Sprintf("Quota policy %s exceeded for %s", policy.Name, policy.Spec.Scope.Name),
+					Message:            msg,
 					LastTransitionTime: metav1.Now(),
 				}
-				meta.SetStatusCondition(&job.Status.Conditions, condition)
-				if err := r.Status().Update(ctx, job); err != nil {
+				if err := patchJobPhase(ctx, r.Client, job, "Rejected", msg, &condition); err != nil {
 					logger.Error(err, "Failed to reject job", "job", job.Name)
 				}
 
 			case "queue":
 				// Keep job in Queued state
 				if job.Status.Phase != "Queued" {
-					job.Status.Phase = "Queued"
-					if err := r.Status().Update(ctx, job); err != nil {
+					if err := patchJobPhase(ctx, r.Client, job, "Queued", "", nil); err != nil {
 						logger.Error(err, "Failed to queue job", "job", job.Name)
 					}
 				}

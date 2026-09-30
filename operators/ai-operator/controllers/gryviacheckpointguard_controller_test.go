@@ -292,3 +292,34 @@ func TestCheckpointGuard_UpdateGuardCondition(t *testing.T) {
 		t.Fatalf("expected 2 conditions, got %d", len(guard.Status.Conditions))
 	}
 }
+
+func TestCheckJobPodHealth_ByLabelForBothWorkloadKinds(t *testing.T) {
+	pod := func(name string, phase corev1.PodPhase, ready corev1.ConditionStatus) *corev1.Pod {
+		return &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default", Labels: map[string]string{"gryvia.io/job": "j"}},
+			Status: corev1.PodStatus{Phase: phase,
+				Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: ready, Message: "m"}}},
+		}
+	}
+	job := newTestAIJob("j", "default")
+	cases := []struct {
+		name string
+		pods []client.Object
+		want bool
+	}{
+		{"no pods and no StatefulSet", nil, true},
+		{"Job pods ready (no StatefulSet exists)", []client.Object{pod("j-0-abc", corev1.PodRunning, corev1.ConditionTrue)}, true},
+		{"an unready pod is reported", []client.Object{pod("j-0-abc", corev1.PodRunning, corev1.ConditionFalse)}, false},
+		{"completed Job pods are not unhealthy", []client.Object{pod("j-0-abc", corev1.PodSucceeded, corev1.ConditionFalse)}, true},
+		{"failed pods replaced by the Job controller are skipped", []client.Object{pod("j-0-abc", corev1.PodFailed, corev1.ConditionFalse)}, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r, _ := newCheckpointGuardReconciler(c.pods...)
+			ok, reason := r.checkJobPodHealth(context.Background(), job)
+			if ok != c.want {
+				t.Errorf("healthy = %v (%s), want %v", ok, reason, c.want)
+			}
+		})
+	}
+}
