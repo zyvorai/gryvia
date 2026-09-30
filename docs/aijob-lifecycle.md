@@ -7,6 +7,12 @@ and by the kind end-to-end workflow `.github/workflows/e2e-jobs.yml`. **Nothing 
 hardware**, and Kubernetes behaviour that only a real cluster shows (Job controller, garbage collection, DNS) is
 verified only by that workflow.
 
+> **Quota rejection is not race-free by default.** The quota operator rejects a job only while its phase is `Pending` or
+> `Queued`. Without the admission gate the ai-operator can create the PVC, Service and workload in the same second, so a job
+> that violates a quota (for example an `allowedGPUTypes` mismatch) may already be running when the quota operator looks.
+> Turn on `aiOperator.admissionGate` (see below) to check quotas and budgets before anything is created; the kind e2e
+> (`e2e-jobs.yml`) enables it for that reason.
+
 ## Workload kinds
 
 | `spec.workloadKind` | Workload | Default for | Completes? |

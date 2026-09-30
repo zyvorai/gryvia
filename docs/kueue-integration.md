@@ -9,6 +9,9 @@ changes.
 `scripts/e2e-kueue.sh`) is written but had not been run when this document was written. Nothing has run on GPUs.**
 Treat every statement about Kueue's runtime behaviour as unverified until that workflow has passed.
 
+> The pinned Kueue (0.19) serves `ClusterQueue` as `v1beta2`, where the cohort field is `spec.cohortName` (`v1beta1` calls it
+> `spec.cohort`). The operator's objects join the `gryvia` cohort either way; use the field name of the version you query.
+
 ## How it works
 
 ```
