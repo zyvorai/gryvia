@@ -29,6 +29,7 @@ from routers.phases import count_phases, is_billable, normalize as normalize_pha
 from routers.pricing import load_rates
 from routers.common import require_admin
 from routers.usage import fetch_records
+from routers import observability
 
 import httpx
 from jose import jwt, JWTError
@@ -67,6 +68,8 @@ app = FastAPI(
 )
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+# Request metrics; /metrics itself exists only when GRYVIA_METRICS_TOKEN is set (routers/observability.py).
+observability.install(app)
 
 # CORS middleware - restrict origins via environment variable
 ALLOWED_ORIGINS = os.environ.get("CORS_ALLOWED_ORIGINS", "").split(",")
@@ -353,6 +356,19 @@ async def _resolve_oidc_identity(request: Request, claims: Dict[str, Any]) -> No
 async def verify_auth(
     authorization: Optional[str] = Header(None), request: Request = None
 ):
+    """Authenticate, counting the outcome by method (never by identity) for /metrics."""
+    method = ["none"]
+    try:
+        await _verify_auth(authorization, request, method)
+    except HTTPException:
+        observability.record_auth(method[0], False)
+        raise
+    observability.record_auth(method[0], True)
+
+
+async def _verify_auth(
+    authorization: Optional[str], request: Optional[Request], method: List[str]
+):
     """Verify API key or OIDC JWT token for all protected endpoints.
 
     Authentication priority:
@@ -371,6 +387,7 @@ async def verify_auth(
 
     # Signed browser session issued by /api/auth/login
     if token.startswith(SESSION_PREFIX):
+        method[0] = "session"
         if verify_session_token(token) is None:
             raise HTTPException(status_code=401, detail="Session expired or invalid")
         _set_admin_state(request)
@@ -381,6 +398,7 @@ async def verify_auth(
         # Heuristic: JWTs have 3 dot-separated parts
         if token.count(".") == 2:
             claims = None
+            method[0] = "oidc"
             try:
                 claims = await _validate_jwt_token(token)
             except HTTPException:
@@ -393,6 +411,7 @@ async def verify_auth(
                 return
 
     # Fall back to API key authentication
+    method[0] = "api_key"
     if not API_KEY:
         raise HTTPException(status_code=401, detail="Authentication required")
     if not hmac.compare_digest(token, API_KEY):
@@ -1351,13 +1370,16 @@ async def login(request: Request, body: LoginRequest):
     and rate limited. Scripts can still send the API key itself as the bearer.
     """
     if not API_KEY:
+        observability.record_auth("login", False)
         raise HTTPException(status_code=401, detail="Authentication is not configured")
     # Evaluate both comparisons before branching so timing does not reveal which one failed.
     user_ok = hmac.compare_digest(body.username.encode(), LOGIN_USERNAME.encode())
     pass_ok = hmac.compare_digest(body.password.encode(), API_KEY.encode())
     if not (user_ok and pass_ok):
+        observability.record_auth("login", False)
         await asyncio.sleep(0.5)
         raise HTTPException(status_code=401, detail="Wrong username or password.")
+    observability.record_auth("login", True)
     session = issue_session_token(LOGIN_USERNAME)
     return {
         "token": session["token"],

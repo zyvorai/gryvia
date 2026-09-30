@@ -141,6 +141,18 @@ apiGateway:
   flightTokenSecret: ""
   flightTokenKey: token
   flightCollectorNamespace: gryvia-network
+  # Prometheus /metrics of the gateway (request counts and latency by route template, auth results, rate-limit hits,
+  # collector reachability). OFF by default and never unauthenticated: the gateway serves /metrics only when it is given
+  # a token of >= 32 characters (GRYVIA_METRICS_TOKEN) and then requires `Authorization: Bearer <token>`; without one
+  # the route does not exist. Create the Secret yourself in this namespace, for example:
+  #   kubectl -n gryvia-system create secret generic gryvia-gateway-metrics --from-literal=token="$(openssl rand -hex 24)"
+  # Scrapers use the existing https port; with monitoring.enabled the chart adds a ServiceMonitor that sends this token.
+  metrics:
+    enabled: false
+    tokenSecret: ""
+    tokenKey: token
+    # The default gateway certificate is self-signed; set false and give the ServiceMonitor a CA only if you replaced it.
+    insecureSkipVerify: true
   # Talking to collectors (network-intelligence chart ebpf.security). All optional; unset keeps plain http and
   # unsigned requests. See docs/collector-security.md.
   collector:
@@ -350,13 +362,25 @@ crds:
   install: true
   keep: true
 
+# Observability wiring (docs/observability.md). OFF by default. When on, the chart can install, from the copies in
+# monitoring-assets/ (kept in sync with monitoring/ by scripts/sync-monitoring-assets.sh):
+#   - a PodMonitor for the operators' :8080/metrics and a ServiceMonitor for the gateway (only when apiGateway.metrics.enabled),
+#   - a PrometheusRule with the alerts,
+#   - a ConfigMap with the Grafana dashboards (label grafana_dashboard: "1" for the grafana sidecar).
+# The monitors and the rule need the Prometheus Operator CRDs (monitoring.coreos.com/v1) and are skipped without them.
 monitoring:
-  enabled: true
+  enabled: false
   prometheus:
     enabled: true
     serviceMonitor:
       enabled: true
       interval: 30s
+      # Namespace for the monitors and the rule (default: the release namespace).
+      namespace: ""
+      # Labels your Prometheus selects on (for kube-prometheus-stack: release: <its release name>).
+      additionalLabels: {}
+    rules:
+      enabled: true
   grafana:
     enabled: true
     dashboards:

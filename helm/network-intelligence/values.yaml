@@ -247,6 +247,13 @@ prometheus:
     interval: 15s
     namespace: ""
     additionalLabels: {}
+  # Optional, OFF by default: also install the Gryvia alert rules (PrometheusRule, needs the Prometheus Operator CRD) and the
+  # Grafana dashboards ConfigMap (label grafana_dashboard: "1"), from monitoring-assets/ (a copy of monitoring/ kept in sync by
+  # scripts/sync-monitoring-assets.sh). Enable them in ONE chart only: the gryvia chart's monitoring.* installs the same assets.
+  rules:
+    enabled: false
+  dashboards:
+    enabled: false
 
 # Reserved and currently NOT read by any template or by the operator (no auto-blocking exists). The operator
 # binary has no --security-* flags; passing them made it exit at start-up, so the chart no longer passes them.

@@ -14,6 +14,7 @@ import httpx
 
 from .collector_transport import client_kwargs, collector_scheme, request_extensions, signed_headers
 from .common import Deps, run
+from .observability import record_fanout
 
 logger = logging.getLogger(__name__)
 
@@ -65,15 +66,18 @@ async def fetch_all_with_stats(deps: Deps, path: str) -> Tuple[List[Any], Dict[s
         return bodies, {"reachable": len(bodies), "total": max(total, len(bodies))}
     urls = await collector_urls(deps)
     if not urls:
+        record_fanout(0, 0)
         return [], {"reachable": 0, "total": 0}
     try:
         kwargs = client_kwargs()
     except (OSError, ssl.SSLError) as exc:  # unreadable CA/client cert: fail closed, never fall back to http/unverified
         logger.error("collector TLS configuration unusable: %s", type(exc).__name__)
+        record_fanout(0, len(urls))
         return [], {"reachable": 0, "total": len(urls)}
     async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS, **kwargs) as client:
         results = await asyncio.gather(*[_get(client, u + path, path) for u in urls])
     bodies = [b for b in results if b is not None]
+    record_fanout(len(bodies), len(urls))
     return bodies, {"reachable": len(bodies), "total": len(urls)}
 
 

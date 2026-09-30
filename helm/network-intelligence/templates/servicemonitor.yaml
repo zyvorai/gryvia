@@ -86,6 +86,9 @@ spec:
     - port: metrics
       interval: {{ .Values.prometheus.serviceMonitor.interval }}
       path: /metrics
+      # gryvia_fabric_*, gryvia_training_* and gryvia_inference_* carry their own `job` label (the Gryvia job); without this
+      # Prometheus would rename it to exported_job and the dashboards and alerts would not match.
+      honorLabels: true
       {{- $sec := .Values.ebpf.security }}
       {{- if $sec.tls.enabled }}
       scheme: https

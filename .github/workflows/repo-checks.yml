@@ -64,7 +64,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: shellcheck
         run: |
-          shellcheck -S warning scripts/install.sh scripts/kind-demo.sh scripts/rename-kinds.sh scripts/install-k3s-gpu.sh scripts/tests/install-k3s-gpu.test.sh scripts/tests/kueue-chart.test.sh scripts/e2e-kueue.sh
+          shellcheck -S warning scripts/install.sh scripts/kind-demo.sh scripts/rename-kinds.sh scripts/install-k3s-gpu.sh scripts/tests/install-k3s-gpu.test.sh scripts/tests/kueue-chart.test.sh scripts/e2e-kueue.sh scripts/sync-monitoring-assets.sh
           bash -n scripts/deploy-remote.sh
 
   docs-accuracy:
@@ -111,3 +111,56 @@ jobs:
           go-version: '1.27'
       - run: go vet ./... && go test ./...
         working-directory: sdk/go
+
+  monitoring:
+    name: Dashboards, alert rules and runbooks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pyyaml pytest
+      - name: Dashboards match their generator
+        run: |
+          python3 scripts/gen-dashboards.py
+          git diff --exit-code -- monitoring/grafana-dashboards \
+            || { echo "::error::Edit scripts/gen-dashboards.py, run it, and commit the regenerated JSON."; exit 1; }
+      - name: Every referenced metric is exported or allow-listed
+        run: python3 scripts/check-metrics-refs.py
+      - name: Rule and dashboard structure, runbooks exist
+        run: python3 scripts/check-monitoring-assets.py
+      - name: Checker tests (including a deliberately bad fixture)
+        run: python3 -m pytest -q scripts/tests/test_monitoring_checks.py
+      - name: Helm chart copies of the assets are current
+        run: scripts/sync-monitoring-assets.sh --check
+      - name: promtool check rules
+        run: |
+          ver=3.5.0
+          base="https://github.com/prometheus/prometheus/releases/download/v${ver}"
+          tar_name="prometheus-${ver}.linux-amd64.tar.gz"
+          curl -fsSLO "${base}/${tar_name}"
+          curl -fsSL "${base}/sha256sums.txt" | grep " ${tar_name}\$" | sha256sum -c -
+          tar -xzf "${tar_name}" --strip-components=1 "prometheus-${ver}.linux-amd64/promtool"
+          ./promtool check rules monitoring/prometheus-rules.yaml
+      - name: Helm renders the monitoring resources (on) and nothing extra (off)
+        run: |
+          helm dependency build helm/gryvia
+          helm template rel helm/gryvia --api-versions monitoring.coreos.com/v1 \
+            --set monitoring.enabled=true --set apiGateway.metrics.enabled=true --set apiGateway.metrics.tokenSecret=gw-metrics > /tmp/on.yaml
+          python3 - <<'PY'
+          import collections, yaml
+          kinds = collections.Counter(d["kind"] for d in yaml.safe_load_all(open("/tmp/on.yaml")) if d)
+          for k in ("PodMonitor", "ServiceMonitor", "PrometheusRule"):
+              assert kinds[k] == 1, (k, kinds)
+          assert any(d and d["kind"] == "ConfigMap" and d["metadata"]["labels"].get("grafana_dashboard") == "1"
+                     for d in yaml.safe_load_all(open("/tmp/on.yaml")))
+          PY
+          helm template rel helm/gryvia --api-versions monitoring.coreos.com/v1 > /tmp/off.yaml
+          if grep -E 'kind: (PodMonitor|ServiceMonitor|PrometheusRule)|grafana_dashboard' /tmp/off.yaml; then
+            echo "::error::monitoring resources rendered with monitoring.enabled=false"; exit 1
+          fi
+          # the gateway refuses to serve /metrics without a token
+          if helm template rel helm/gryvia --set apiGateway.metrics.enabled=true >/dev/null 2>&1; then
+            echo "::error::apiGateway.metrics.enabled rendered without a tokenSecret"; exit 1
+          fi

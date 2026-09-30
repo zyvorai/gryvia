@@ -72,6 +72,8 @@ hosts already have drivers; `nvidia.toolkit.env` for k3s). The Gryvia GPU operat
 | `apiGateway.netra.url`, `.tokenSecret`, `.tokenKey`, `.insecureTLS` | Take `/api/network/flows` from [Netra](https://github.com/zyvorai/netra) |
 | `apiGateway.flightTokenSecret`, `.flightTokenKey`, `.flightCollectorNamespace` | Flight Recorder cluster view (needs the same token on the collector; see [docs/flight-recorder.md](../../docs/flight-recorder.md)) |
 | `apiGateway.prometheusUrl` | Prometheus for cost and metric history |
+| `apiGateway.metrics.enabled`, `.tokenSecret`, `.tokenKey` | Serve the gateway `/metrics` (off by default; needs an existing Secret with a token of at least 32 characters; never served unauthenticated) |
+| `monitoring.enabled` (default `false`) | Install a PodMonitor for the operators, a ServiceMonitor for the gateway (only with `apiGateway.metrics.enabled`), a PrometheusRule and a Grafana dashboards ConfigMap. The monitors and the rule are skipped without the Prometheus Operator CRDs; see `monitoring.prometheus.*`, `monitoring.grafana.*` and [docs/observability.md](../../docs/observability.md) |
 
 OIDC itself is switched on with the gateway's `OIDC_*` environment variables; see
 [Authentication and TLS](../../website/docs/guides/AUTH_AND_TLS.md). Route-by-route access rules:
@@ -115,7 +117,7 @@ ai-operator.
 | `apiGateway.prometheusUrl` | Prometheus for cost and metric history |
 
 These values are present in `values.yaml` but no template reads them, so setting them changes nothing:
-`ha.enabled` (only `ha.leaderElection` has an effect), `monitoring.*`, `crds.install` and `crds.keep`,
+`ha.enabled` (only `ha.leaderElection` has an effect), `crds.install` and `crds.keep`,
 `gpuOperator.healthCheck.*` and `quotaOperator.pricing.*` (GPU prices come from `GryviaGpuSku` objects, or a table built
 into the operator when there are none). The chart deploys no database and no Prometheus (use `helm/observability`).
 

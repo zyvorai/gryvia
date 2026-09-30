@@ -107,5 +107,6 @@ The CRDs come from `helm/gryvia` (or `crds/`), not from this chart, and are kept
 ## Monitoring
 
 With `prometheus.serviceMonitor.enabled=true` and the Prometheus Operator installed, ServiceMonitors are created for the
-operator (`:8080/metrics`) and the collector (`:9090/metrics`). `monitoring/grafana-dashboards/` holds dashboard
-templates; most metric names they query are not produced by any Gryvia component yet (see `monitoring/README.md`).
+operator (`:8080/metrics`) and the collector (`:9090/metrics`). `prometheus.rules.enabled` and `prometheus.dashboards.enabled`
+(both off by default) also install the alert rules and Grafana dashboards from `monitoring/` (enable them in one chart only;
+the gryvia chart's `monitoring.*` installs the same assets). See [docs/observability.md](../../docs/observability.md).

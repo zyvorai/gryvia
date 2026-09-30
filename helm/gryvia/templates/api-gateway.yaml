@@ -45,6 +45,16 @@ spec:
               name: {{ .Values.apiGateway.flightTokenSecret | quote }}
               key: {{ .Values.apiGateway.flightTokenKey | quote }}
         {{- end }}
+        {{- if .Values.apiGateway.metrics.enabled }}
+        {{- if not .Values.apiGateway.metrics.tokenSecret }}
+        {{- fail "apiGateway.metrics.enabled requires apiGateway.metrics.tokenSecret (an existing Secret with a token of at least 32 characters): /metrics is never served unauthenticated" }}
+        {{- end }}
+        - name: GRYVIA_METRICS_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.apiGateway.metrics.tokenSecret | quote }}
+              key: {{ .Values.apiGateway.metrics.tokenKey | quote }}
+        {{- end }}
         {{- with .Values.apiGateway.collector }}
         {{- if .tlsSecret }}
         - name: GRYVIA_COLLECTOR_CA_FILE

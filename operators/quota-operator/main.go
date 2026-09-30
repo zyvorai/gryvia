@@ -17,6 +17,7 @@ import (
 
 	gryviav1 "github.com/zyvorai/gryvia/operators/quota-operator/api/v1"
 	"github.com/zyvorai/gryvia/operators/quota-operator/controllers"
+	quotametrics "github.com/zyvorai/gryvia/operators/quota-operator/pkg/metrics"
 )
 
 var (
@@ -140,6 +141,11 @@ func main() {
 			setupLog.Error(err, "unable to create controller", "controller", "GryviaReservation")
 			os.Exit(1)
 		}
+	}
+
+	if err := quotametrics.Register(mgr.GetClient()); err != nil { // scrape-time quota/usage/tenant gauges
+		setupLog.Error(err, "unable to register quota metrics")
+		os.Exit(1)
 	}
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
