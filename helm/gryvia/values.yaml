@@ -284,6 +284,20 @@ nvidiaNetwork:
   enabled: false
   nfd:
     enabled: false
+  # When true, Gryvia renders a minimal, cluster-scoped NicClusterPolicy (nic-cluster-policy).
+  # Edit examples/nvidia/nic-cluster-policy.yaml if you need SR-IOV PF lists or a specific OFED version.
+  nicClusterPolicy:
+    enabled: false
+    ofedDriver: true
+    rdmaSharedDevicePlugin: true
+    sriovDevicePlugin: false
+    secondaryNetwork: true
+
+# NVIDIA NIM Operator sub-chart. Off by default. Needs an NGC API key in
+# nvidiaNim.ngcApiKey (or create secret ngc-api). Not a model catalog.
+nvidiaNim:
+  enabled: false
+  ngcApiKey: ""
 
 # --- Kueue (job queueing, gang admission, quotas, preemption) -------------------------------------------------
 # Off by default. `kueue.enabled=true` installs the Kueue controller from its own chart (registry.k8s.io/kueue/charts,

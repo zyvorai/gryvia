@@ -5,8 +5,11 @@ dependencies:
 - name: network-operator
   repository: https://helm.ngc.nvidia.com/nvidia
   version: 26.7.0
+- name: k8s-nim-operator
+  repository: https://helm.ngc.nvidia.com/nvidia
+  version: 2.0.1
 - name: kueue
   repository: oci://registry.k8s.io/kueue/charts
   version: 0.19.6
-digest: sha256:485d76a3cb1b1b538e1aefa634720ca67287589ba63cb4fe877a7292acdfbe64
-generated: "2026-09-30T23:19:58.406334+05:30"
+digest: sha256:881aabd242c065677c51f5e7aa79916623c3d875b91346f7ffb9a2e54898f563
+generated: "2026-09-30T23:31:27.562579+05:30"
