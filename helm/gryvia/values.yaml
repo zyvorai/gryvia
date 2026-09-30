@@ -63,6 +63,8 @@ aiOperator:
   # See docs/ml-controllers.md for the full list. Empty by default.
   # Optional Gateway API v1 routing; requires an installed Gateway controller.
   inferenceGatewayRouting: false
+  # Optional administrator-configured Prometheus base URL for canary SLO evaluation.
+  inferencePrometheusURL: ""
   extraArgs: []
   # Fold the per-node entries collectors write into GryviaFabricSignal status.nodes[] (network-intelligence
   # ebpf.fabricStatusPerNode) into the top-level status: max for degradation metrics, sample-weighted means for ratios,

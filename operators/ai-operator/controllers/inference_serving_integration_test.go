@@ -6,6 +6,7 @@ import (
 	"context"
 	"os"
 	"testing"
+	"time"
 
 	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 	appsv1 "k8s.io/api/apps/v1"
@@ -109,4 +110,44 @@ func TestInferenceServingAPIServer(t *testing.T) {
 	if cond := findCond(getInfer(t, c, "chat").Status.Conditions, ConditionAutoscalingReady); cond == nil || cond.Status != metav1.ConditionFalse {
 		t.Fatalf("HPA condition %+v", cond)
 	}
+	// SLO decisions persist through the real status subresource and Deployment patches.
+	// Telemetry is an HTTP fixture, not a running Prometheus server or model workload.
+	clk := newClock()
+	r.Clock = clk.Now
+	f := newAnalysisFixture(t)
+	r.PrometheusURL = f.server.URL
+	svc = getInfer(t, c, "chat")
+	svc.Annotations[analysisErrorKey] = "0.01"
+	svc.Annotations[analysisLatencyKey] = "0.5"
+	svc.Spec.Canary.AutoPromote = false
+	svc.Spec.HealthCheck = &gryviav1.HealthCheckConfig{AutoRollback: true, IntervalSeconds: 10, FailureThreshold: 2}
+	if err := c.Update(ctx, svc); err != nil {
+		t.Fatal(err)
+	}
+	step := func() { f.unix.Store(clk.Now().Unix()); reconcileOnce(t, r, "ns", "chat") }
+	step()
+	mustGet(t, c, "ns", "chat-canary", canary)
+	canary.Status.ObservedGeneration = canary.Generation
+	canary.Status.Replicas = *canary.Spec.Replicas
+	canary.Status.UpdatedReplicas = *canary.Spec.Replicas
+	canary.Status.ReadyReplicas = *canary.Spec.Replicas
+	if err := c.Status().Update(ctx, canary); err != nil {
+		t.Fatal(err)
+	}
+	step()
+	clk.Add(60 * time.Second)
+	f.mode.Store(1)
+	step()
+	if cond := findCond(getInfer(t, c, "chat").Status.Conditions, ConditionCanaryAnalysis); cond == nil || cond.Reason != "SLOBreached" {
+		t.Fatalf("SLO condition %+v", cond)
+	}
+	clk.Add(10 * time.Second)
+	step()
+	if s := getInfer(t, c, "chat"); s.Status.CanaryStatus.Health != canaryHealthRolledBack {
+		t.Fatalf("API rollback failed %+v", s.Status)
+	}
+	if backendWeights(t, getRoute(t, c))["chat-route-stable"] != 100 {
+		t.Fatal("SLO rollback retained canary traffic")
+	}
+
 }

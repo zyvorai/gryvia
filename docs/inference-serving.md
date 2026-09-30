@@ -82,8 +82,8 @@ route rejection, weight/parent/version or pod-template changes reset the hold pe
 at reconcile intervals, not continuously monitored. Deployment creation time alone is insufficient.
 
 Promotion and the existing readiness-based rollback return the generated route to stable-only.
-Latency/error-rate SLO evaluation is not implemented by this patch; a healthy readiness probe does not
-prove model quality. Promotion still uses the existing Deployment rollout; there may be a period when
+Opt-in error-rate and latency evaluation is described below. A healthy readiness probe does not prove
+model quality. Promotion still uses the existing Deployment rollout; there may be a period when
 the stable endpoint serves the previous model during rollout. Client streaming/draining behavior depends
 on the Gateway, server and pod termination settings.
 
@@ -92,6 +92,60 @@ owned HTTPRoute first, then the track Services once the route is gone. Name coll
 To disable the operator capability globally, first remove per-service routes; switching the flag off stops
 management and does not remove already-created routes. Deleting the inference resource garbage-collects
 its owned route and Services.
+
+## Measured canary SLO evaluation
+
+Configure the operator's Prometheus base URL with `aiOperator.inferencePrometheusURL` in Helm or
+`--inference-prometheus-url=http://prometheus.monitoring:9090`. The default is empty. The administrator
+chooses this endpoint; services cannot supply endpoints or arbitrary PromQL. Use a trusted Prometheus
+or query proxy reachable by the operator. URL credentials, query parameters and redirects are rejected;
+authentication headers and custom CA configuration are not provided by this feature.
+
+Add both `gryvia.io/canary-max-error-rate` (a fraction from 0 to 1) and
+`gryvia.io/canary-max-p95-seconds` (positive seconds) to the inference service. Optional
+`gryvia.io/canary-min-requests` defaults to 100 requests. Invalid or partial policies fail configuration
+validation. `examples/inference/slo-canary.yaml` includes a complete service example.
+
+Instrumentation must provide these normalized metrics, with **all** of the following labels:
+`namespace`, `inference` (service name), `track="canary"`, `model_version`, `deployment_uid` (canary
+Deployment UID), and `revision` (the Deployment's `gryvia.io/spec-hash` annotation). The histogram also
+needs `le`. A serving proxy/exporter can obtain these values from Kubernetes metadata. No backend
+instrumentation or automatic label enrichment is installed by Gryvia.
+
+| Metric | Required meaning |
+|---|---|
+| `gryvia_inference_requests_total` | Counter of completed requests, including failed requests |
+| `gryvia_inference_errors_total` | Counter of failed requests; export zero before the first failure |
+| `gryvia_inference_request_duration_seconds_bucket` | Cumulative classic histogram of completed request durations in seconds |
+
+Every serving replica must be represented; duplicate scrapes or incomplete series distort analysis.
+Use the same request population for all three metrics and define which responses count as errors in
+your instrumentation. The operator sums `increase` of request/error counters over 60 seconds and
+computes p95 from summed histogram bucket rates. Counter resets are handled by Prometheus. Counts
+are extrapolated estimates and can be fractional. A zero-traffic window has no usable error ratio;
+missing errors or histogram data must stay missing, rather than being filled with synthetic success.
+This is completed-request latency, not token latency or time to first token.
+
+`CanaryAnalysisReady` reports `SLOPassed`, `SLOBreached`, `WarmingUp`, `InsufficientTraffic`,
+`NotConfigured` or `TelemetryUnavailable`. After a ready canary is observed, Gryvia waits a full
+60-second window for its current policy and template revision. Samples and underlying raw metric
+timestamps must be no more than 30 seconds old. Each evaluation has a four-second total timeout;
+responses are limited to 64 KiB. Missing, malformed, partial, stale or non-finite results block promotion
+and clear the consecutive SLO breach count. They do not trigger an SLO rollback. Readiness failures
+continue to follow the existing startup grace and rollback policy.
+
+A measured threshold breach counts once per `healthCheck.intervalSeconds` (default 30). With
+`healthCheck.autoRollback` enabled, `failureThreshold` consecutive breaches reject the version and
+remove the canary, returning its Gateway route to stable-only. A ready canary continues receiving its
+configured traffic share while awaiting analysis or a rollback threshold, allowing telemetry to accrue.
+If automatic rollback is disabled, failures block promotion and require operator intervention.
+
+Promotion requires sampled passing evaluations for `promoteAfterSeconds`; the persisted success
+hold resets on missing data, breaches, readiness loss, policy/version/template changes or a changed
+Prometheus endpoint. A requested Gateway must independently pass its existing routing hold.
+The hold survives short operator restarts. Gaps between successful evaluations longer than twice the
+health interval (at least 60 seconds) reset the hold. These are checks at reconcile intervals, not proof of continuous
+health between samples. The feature evaluates serving reliability; it does not assess output quality.
 
 ## Validation and limits
 
@@ -103,3 +157,5 @@ A CI workflow installs the pinned test dependencies and runs the same checks.
 
 Real-cluster acceptance requires observing HPA replica changes under load, request distributions through
 your chosen Gateway, canary rollback and streaming/drain behavior with actual serving images.
+
+Prometheus query semantics and response formats: [functions](https://prometheus.io/docs/prometheus/latest/querying/functions/) and [HTTP API](https://prometheus.io/docs/prometheus/latest/querying/api/).

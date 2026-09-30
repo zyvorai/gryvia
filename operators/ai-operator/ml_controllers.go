@@ -24,6 +24,7 @@ type mlOptions struct {
 	inferenceHealthPath      string
 	canaryStartupGrace       time.Duration
 	inferenceGatewayRouting  bool
+	inferencePrometheusURL   string
 	autoServeGPUCount        int
 
 	workflowMaxParallelSteps int
@@ -51,6 +52,7 @@ func (o *mlOptions) bind(fs *flag.FlagSet) {
 	fs.StringVar(&o.inferenceHealthPath, "inference-health-path", "",
 		"HTTP path of the inference readiness/liveness probes for every backend (default: per backend, e.g. /health for vllm). spec.healthCheck.path still wins.")
 	fs.BoolVar(&o.inferenceGatewayRouting, "inference-gateway-routing", false, "Manage opt-in Gateway API HTTPRoutes for inference canaries. Requires Gateway API v1 and a Gateway controller.")
+	fs.StringVar(&o.inferencePrometheusURL, "inference-prometheus-url", "", "Administrator-configured Prometheus base URL for opt-in canary SLO analysis.")
 	fs.DurationVar(&o.canaryStartupGrace, "inference-canary-startup-grace", 5*time.Minute,
 		"How long a new canary may take to become ready before health checks count it as failing.")
 	fs.IntVar(&o.autoServeGPUCount, "autoserve-default-gpu-count", 1,

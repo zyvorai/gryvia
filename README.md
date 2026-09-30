@@ -270,7 +270,7 @@ Optional strict tenant Kueue admission, distributed worker spreading and coopera
 
 ## Inference serving
 
-Explicit GPU/RPS autoscaling targets use custom per-pod HPA metrics, and opt-in Gateway API routing adds weighted canary traffic and accepted-route promotion gating. Both require external components; see [docs/inference-serving.md](docs/inference-serving.md) for configuration and validation limits.
+Explicit GPU/RPS autoscaling targets use custom per-pod HPA metrics, and opt-in Gateway API routing adds weighted canary traffic and accepted-route promotion gating. Opt-in Prometheus SLO analysis blocks promotion on missing telemetry and rolls back measured error-rate/p95 breaches. These features require external components; see [docs/inference-serving.md](docs/inference-serving.md) for configuration and validation limits.
 
 ## Performance Metrics
 
