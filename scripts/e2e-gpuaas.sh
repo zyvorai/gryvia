@@ -138,9 +138,10 @@ scenario_rbac() {
   can_i yes create gryviaaijobs.gryvia.io -n "$NS_A" --as bob
   can_i yes delete gryviaaijobs.gryvia.io -n "$NS_A" --as bob
   can_i yes list pods -n "$NS_A" --as bob
-  can_i yes get pods/log -n "$NS_A" --as bob
-  can_i yes create pods/portforward -n "$NS_A" --as bob
-  can_i no create pods/exec -n "$NS_A" --as bob          # no exec, by design
+  # subresources need --subresource: "pods/log" would be read as a pod named "log"
+  can_i yes get pods --subresource=log -n "$NS_A" --as bob
+  can_i yes create pods --subresource=portforward -n "$NS_A" --as bob
+  can_i no create pods --subresource=exec -n "$NS_A" --as bob          # no exec, by design
   can_i no get secrets -n "$NS_A" --as bob
   can_i no delete resourcequotas -n "$NS_A" --as bob
   can_i no create rolebindings.rbac.authorization.k8s.io -n "$NS_A" --as bob

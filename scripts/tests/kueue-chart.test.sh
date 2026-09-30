@@ -10,7 +10,8 @@ FAILED=0
 PASSED=0
 ok()   { PASSED=$((PASSED + 1)); printf '  ok   %s\n' "$1"; }
 fail() { FAILED=$((FAILED + 1)); printf '  FAIL %s\n' "$1"; }
-render() { helm template gryvia "$CHART" -n gryvia-system "$@" 2>&1; }
+# helm 3.14 (CI) renders for Kubernetes 1.29 unless told otherwise, and the Kueue sub-chart requires >= 1.30
+render() { helm template gryvia "$CHART" -n gryvia-system --kube-version 1.31.0 "$@" 2>&1; }
 has()   { if grep -qE -e "$2" <<<"$OUT"; then ok "$1"; else fail "$1 (expected: $2)"; fi; }
 lacks() { if grep -qE -e "$2" <<<"$OUT"; then fail "$1 (unexpected: $2)"; else ok "$1"; fi; }
 
