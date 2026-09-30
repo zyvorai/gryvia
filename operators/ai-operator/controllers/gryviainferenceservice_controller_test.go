@@ -229,7 +229,7 @@ func TestInference_HPA(t *testing.T) {
 	}
 	s := getInfer(t, c, "chat")
 	cond := findCond(s.Status.Conditions, ConditionAutoscalingValid)
-	if cond == nil || cond.Status != metav1.ConditionTrue || !strings.Contains(cond.Message, "not wired") {
+	if cond == nil || cond.Status != metav1.ConditionTrue || !strings.Contains(cond.Message, "custom GPU/RPS metrics") {
 		t.Errorf("autoscaling condition: %+v", cond)
 	}
 

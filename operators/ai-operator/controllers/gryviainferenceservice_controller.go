@@ -88,6 +88,8 @@ type GryviaInferenceServiceReconciler struct {
 	CanaryStartupGrace time.Duration
 	// Clock returns the current time (time.Now when nil); tests move it.
 	Clock func() time.Time
+	// GatewayRouting allows opt-in HTTPRoute reconciliation; off by default.
+	GatewayRouting bool
 }
 
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviainferenceservices,verbs=get;list;watch;create;update;patch;delete
@@ -189,6 +191,10 @@ func (r *GryviaInferenceServiceReconciler) reconcileService(ctx context.Context,
 		return ctrl.Result{}, nil
 	}
 
+	if err := validateRoutingOptions(svc); err != nil {
+		r.failSvc(svc, err)
+		return ctrl.Result{}, nil
+	}
 	model := r.lookupModel(ctx, svc)
 
 	primary, err := r.ensureDeployment(ctx, svc, model)
@@ -217,6 +223,10 @@ func (r *GryviaInferenceServiceReconciler) reconcileService(ctx context.Context,
 	}
 	if canaryWait > 0 {
 		next = minDuration(next, canaryWait)
+	}
+
+	if err := r.reconcileRouting(ctx, svc); err != nil {
+		return ctrl.Result{RequeueAfter: 15 * time.Second}, err
 	}
 
 	// Re-read the primary: a promotion may just have changed it.
@@ -503,9 +513,8 @@ func autoscalingRange(svc *gryviav1.GryviaInferenceService) (lo, hi int32, ok bo
 	return lo, hi, hi >= 1 && lo <= hi
 }
 
-// reconcileHPA creates, updates or removes the HorizontalPodAutoscaler. It scales on CPU utilisation only:
-// spec.autoscaling.targetGPUUtilization and targetRequestsPerSecond would need a custom metrics adapter
-// (DCGM/Prometheus) that this controller does not configure, and the status says so instead of pretending.
+// reconcileHPA creates, updates or removes the HPA. Explicit GPU/RPS targets
+// use custom per-pod metrics; otherwise CPU utilisation remains the default.
 func (r *GryviaInferenceServiceReconciler) reconcileHPA(ctx context.Context, svc *gryviav1.GryviaInferenceService) error {
 	name := inferHPAName(svc)
 	existing := &autoscalingv2.HorizontalPodAutoscaler{}
@@ -527,14 +536,21 @@ func (r *GryviaInferenceServiceReconciler) reconcileHPA(ctx context.Context, svc
 			}
 		}
 		removeCondition(&svc.Status.Conditions, ConditionAutoscalingValid)
+		removeCondition(&svc.Status.Conditions, ConditionAutoscalingReady)
 		return nil
 	}
 
 	lo, hi, ok := autoscalingRange(svc)
-	if !ok {
+	metricSpecs, metricErr := inferenceHPAMetrics(svc.Spec.Autoscaling)
+	if !ok || metricErr != nil {
 		msg := fmt.Sprintf("invalid autoscaling: need maxReplicas >= 1 and minReplicas <= maxReplicas (min %d, max %d); no HPA created",
 			svc.Spec.Autoscaling.MinReplicas, svc.Spec.Autoscaling.MaxReplicas)
-		setCondition(&svc.Status.Conditions, svc.Generation, ConditionAutoscalingValid, metav1.ConditionFalse, "InvalidRange", msg)
+		reason := "InvalidRange"
+		if metricErr != nil {
+			reason, msg = "InvalidMetrics", metricErr.Error()
+		}
+		setCondition(&svc.Status.Conditions, svc.Generation, ConditionAutoscalingValid, metav1.ConditionFalse, reason, msg)
+		setCondition(&svc.Status.Conditions, svc.Generation, ConditionAutoscalingReady, metav1.ConditionFalse, reason, msg)
 		if exists {
 			if err := r.Delete(ctx, existing); err != nil && !errors.IsNotFound(err) {
 				return err
@@ -544,22 +560,18 @@ func (r *GryviaInferenceServiceReconciler) reconcileHPA(ctx context.Context, svc
 	}
 	msg := "HPA scales on CPU utilisation (80%)"
 	if svc.Spec.Autoscaling.TargetGPUUtilization > 0 || svc.Spec.Autoscaling.TargetRequestsPerSecond > 0 {
-		msg += "; targetGPUUtilization and targetRequestsPerSecond are not wired to metrics"
+		msg = "HPA uses per-pod custom GPU/RPS metrics; a custom.metrics.k8s.io adapter is required"
 	}
 	setCondition(&svc.Status.Conditions, svc.Generation, ConditionAutoscalingValid, metav1.ConditionTrue, "Valid", msg)
-
-	targetCPU := int32(80)
+	reportHPAMetricStatus(svc, existing, exists)
 	spec := autoscalingv2.HorizontalPodAutoscalerSpec{
 		ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{APIVersion: "apps/v1", Kind: "Deployment", Name: inferPrimaryName(svc)},
 		MinReplicas:    &lo,
 		MaxReplicas:    hi,
-		Metrics: []autoscalingv2.MetricSpec{{
-			Type: autoscalingv2.ResourceMetricSourceType,
-			Resource: &autoscalingv2.ResourceMetricSource{
-				Name:   corev1.ResourceCPU,
-				Target: autoscalingv2.MetricTarget{Type: autoscalingv2.UtilizationMetricType, AverageUtilization: &targetCPU},
-			},
-		}},
+		Metrics:        metricSpecs,
+		Behavior: &autoscalingv2.HorizontalPodAutoscalerBehavior{
+			ScaleDown: &autoscalingv2.HPAScalingRules{StabilizationWindowSeconds: int32Ptr(300)},
+		},
 	}
 	if !exists {
 		hpa := &autoscalingv2.HorizontalPodAutoscaler{
@@ -586,6 +598,7 @@ func (r *GryviaInferenceServiceReconciler) reconcileHPA(ctx context.Context, svc
 			existing.Annotations = map[string]string{}
 		}
 		existing.Annotations[annotationSpecHash] = specHash(spec)
+		setCondition(&svc.Status.Conditions, svc.Generation, ConditionAutoscalingReady, metav1.ConditionUnknown, "Reconciling", "Waiting for the HPA controller to evaluate updated scaling metrics")
 		return r.Patch(ctx, existing, client.MergeFrom(base))
 	}
 	return nil
@@ -631,7 +644,9 @@ func (r *GryviaInferenceServiceReconciler) reconcileCanary(ctx context.Context, 
 	}
 	exists := err == nil
 	if exists && !metav1.IsControlledBy(existing, svc) {
-		return 0, nil // not ours: leave it alone
+		svc.Status.CanaryStatus = &gryviav1.CanaryStatus{Active: false, Health: "Unknown"}
+		setCondition(&svc.Status.Conditions, svc.Generation, ConditionCanaryActive, metav1.ConditionFalse, "NameCollision", "Canary Deployment is owned by another resource; it was left untouched")
+		return 0, nil
 	}
 	deleteCanary := func() error {
 		if !exists {
@@ -712,6 +727,10 @@ func (r *GryviaInferenceServiceReconciler) reconcileCanary(ctx context.Context, 
 	cs.Weight = c.Weight
 	cs.DeploymentName = name
 	cs.ReadyReplicas = existing.Status.ReadyReplicas
+	// An old Deployment status must not authorize traffic to a newly rolled version.
+	if existing.Status.ObservedGeneration < existing.Generation || (existing.Generation > 0 && (existing.Status.UpdatedReplicas < *existing.Spec.Replicas || existing.Status.Replicas != *existing.Spec.Replicas)) {
+		cs.ReadyReplicas = 0
+	}
 	svc.Status.CanaryStatus = cs
 	setCondition(&svc.Status.Conditions, svc.Generation, ConditionCanaryActive, metav1.ConditionTrue, "CanaryDeployed",
 		fmt.Sprintf("Canary %s at about %d%% of the pods", version, c.Weight))
@@ -760,8 +779,16 @@ func (r *GryviaInferenceServiceReconciler) reconcileCanary(ctx context.Context, 
 		}
 	}
 
+	promotionReady := true
+	if routingRequested(svc) {
+		promotionReady, err = r.routePromotionReady(ctx, svc, existing, now)
+		if err != nil {
+			return 0, err
+		}
+	}
+
 	// Automatic promotion: the canary has been healthy for promoteAfterSeconds (0 = as soon as it is ready).
-	if c.AutoPromote && cs.Health == canaryHealthHealthy && age >= time.Duration(c.PromoteAfterSeconds)*time.Second {
+	if c.AutoPromote && cs.Health == canaryHealthHealthy && age >= time.Duration(c.PromoteAfterSeconds)*time.Second && promotionReady {
 		if err := r.annotatePrimary(ctx, primary, annotationPromoted, version); err != nil {
 			return 0, err
 		}
@@ -774,7 +801,7 @@ func (r *GryviaInferenceServiceReconciler) reconcileCanary(ctx context.Context, 
 		return time.Second, nil // the next pass rolls the promoted version out to the stable Deployment
 	}
 
-	if cs.Health == canaryHealthHealthy && c.AutoPromote {
+	if cs.Health == canaryHealthHealthy && c.AutoPromote && !routingRequested(svc) {
 		if left := time.Duration(c.PromoteAfterSeconds)*time.Second - age; left > 0 {
 			return left + time.Second, nil
 		}
