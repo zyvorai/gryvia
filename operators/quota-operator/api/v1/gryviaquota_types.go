@@ -164,7 +164,9 @@ type GryviaAIJobDistributedSpec struct {
 }
 
 // GryviaAIJobStatus is a minimal struct for quota tracking and cost prediction.
-// Go JSON unmarshaling ignores unknown fields by default.
+// Go JSON unmarshaling ignores unknown fields by default. NEVER write it back with
+// Status().Update: that drops every field it does not declare (gpusAllocated, replicasReady,
+// placementExplanation, metrics, ...). Use patchJobPhase (a merge patch) instead.
 type GryviaAIJobStatus struct {
 	Phase          string             `json:"phase,omitempty"`
 	StartTime      *metav1.Time       `json:"startTime,omitempty"`
@@ -172,6 +174,7 @@ type GryviaAIJobStatus struct {
 	Conditions     []metav1.Condition `json:"conditions,omitempty"`
 	NodesAllocated []string           `json:"nodesAllocated,omitempty"`
 	Retries        int32              `json:"retries,omitempty"`
+	Message        string             `json:"message,omitempty"`
 }
 
 //+kubebuilder:object:root=true

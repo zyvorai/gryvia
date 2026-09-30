@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -32,6 +33,13 @@ const (
 	PhaseFailed     = "Failed"
 	PhaseUnknown    = "Unknown"
 
+	// Phases set by other controllers (quota operator, priority controller) or by
+	// the cancel annotation; see docs/aijob-lifecycle.md.
+	PhaseQueued    = "Queued"
+	PhaseRejected  = "Rejected"
+	PhasePreempted = "Preempted"
+	PhaseCancelled = "Cancelled"
+
 	// Condition types
 	ConditionScheduled = "Scheduled"
 	ConditionReady     = "Ready"
@@ -50,6 +58,8 @@ type GryviaAIJobReconciler struct {
 	FabricAware bool
 	// FabricMaxPenalty lowers the per-node penalty cap (points); 0 = the default 25.
 	FabricMaxPenalty float64
+	// ClusterDomain is the cluster DNS suffix used in MASTER_ADDR (default "cluster.local").
+	ClusterDomain string
 	// Recorder emits the placement Event (optional).
 	Recorder record.EventRecorder
 }
@@ -59,6 +69,8 @@ type GryviaAIJobReconciler struct {
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs/finalizers,verbs=update
 //+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=batch,resources=jobs/status,verbs=get
 //+kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryvianodefabrics,verbs=get;list;watch
@@ -109,46 +121,88 @@ func (r *GryviaAIJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 func (r *GryviaAIJobReconciler) reconcileAIJob(ctx context.Context, job *gryviav1.GryviaAIJob) (ctrl.Result, error) {
 	log := r.Log.WithValues("gryviaaijob", job.Name)
 
-	// Phase 1: Scheduling - Find suitable GPU nodes
-	if job.Status.Phase == PhasePending || (job.Status.Phase == PhaseScheduling && len(job.Status.NodesAllocated) == 0) {
+	// Cancel request (annotation gryvia.io/cancel=true): honoured until the job is terminal.
+	if job.Annotations[AnnotationCancel] == "true" && !isTerminalPhase(job.Status.Phase) {
+		return r.cancelJob(ctx, job)
+	}
+
+	// Phase gate: phases owned by other controllers or terminal states never create anything.
+	switch job.Status.Phase {
+	case PhaseSucceeded, PhaseFailed:
+		return ctrl.Result{}, nil // sticky
+	case PhaseCancelled, PhasePreempted:
+		// The workload goes, the PVC stays. Usage metering needs a completion time.
+		if err := r.teardown(ctx, job, false); err != nil {
+			return ctrl.Result{}, err
+		}
+		if job.Status.CompletionTime == nil {
+			now := metav1.Now()
+			job.Status.CompletionTime = &now
+			return ctrl.Result{}, r.Status().Update(ctx, job)
+		}
+		return ctrl.Result{}, nil
+	case PhaseRejected:
+		// Rejected means "never ran": also remove anything created before the rejection landed.
+		return ctrl.Result{}, r.teardown(ctx, job, true)
+	case PhaseQueued:
+		return ctrl.Result{}, nil // held by the quota operator: no PVC, Service or workload
+	}
+
+	if _, err := job.Spec.TimeoutSeconds(); err != nil {
+		return ctrl.Result{}, r.failJob(ctx, job, "InvalidSpec", err.Error())
+	}
+
+	gpusPerPod := r.getGPUsPerPod(job)
+
+	// Phase 1: Scheduling - find suitable GPU nodes (advisory; kept in status.nodesAllocated).
+	if job.Status.Phase == PhasePending || (job.Status.Phase == PhaseScheduling && !conditionTrue(job, ConditionScheduled)) {
 		log.Info("Scheduling AI job")
 		job.Status.Phase = PhaseScheduling
 
-		// Use GPU-aware scheduler to find optimal nodes
-		var nodes []string
-		var err error
-		if scheduler.FabricEnabled(job, r.FabricAware) {
-			var p scheduler.Placement
-			p, err = scheduler.FindOptimalNodesFabric(ctx, r.Client, job, scheduler.FabricOptions{
-				MaxPenalty: r.FabricMaxPenalty,
-				OnError: func(e error) {
-					log.Info("fabric-aware scheduling: node signals unavailable, ranking unchanged", "reason", e.Error())
-				},
-			})
-			nodes = p.Nodes
-			if err == nil {
-				job.Status.PlacementExplanation = p.Explanation
-				r.recordFabricPlacement(job, p)
+		if gpusPerPod == 0 {
+			// CPU-only job: there is no GPU placement to advise on.
+			job.Status.GpusAllocated = 0
+			r.updateCondition(job, ConditionScheduled, metav1.ConditionTrue, "CPUOnly", "CPU-only job: no GPU placement needed")
+			if err := r.Status().Update(ctx, job); err != nil {
+				return ctrl.Result{}, err
 			}
 		} else {
-			nodes, err = scheduler.FindOptimalNodes(ctx, r.Client, job)
-		}
-		if err != nil {
-			log.Error(err, "Failed to schedule job")
-			r.updateCondition(job, ConditionScheduled, metav1.ConditionFalse, "SchedulingFailed", err.Error())
-			job.Status.Phase = PhasePending
-			if updateErr := r.Status().Update(ctx, job); updateErr != nil {
-				log.Error(updateErr, "Failed to update status after scheduling failure")
+			// Use GPU-aware scheduler to find optimal nodes
+			var nodes []string
+			var err error
+			if scheduler.FabricEnabled(job, r.FabricAware) {
+				var p scheduler.Placement
+				p, err = scheduler.FindOptimalNodesFabric(ctx, r.Client, job, scheduler.FabricOptions{
+					MaxPenalty: r.FabricMaxPenalty,
+					OnError: func(e error) {
+						log.Info("fabric-aware scheduling: node signals unavailable, ranking unchanged", "reason", e.Error())
+					},
+				})
+				nodes = p.Nodes
+				if err == nil {
+					job.Status.PlacementExplanation = p.Explanation
+					r.recordFabricPlacement(job, p)
+				}
+			} else {
+				nodes, err = scheduler.FindOptimalNodes(ctx, r.Client, job)
 			}
-			return ctrl.Result{RequeueAfter: 30 * time.Second}, err
-		}
+			if err != nil {
+				log.Error(err, "Failed to schedule job")
+				r.updateCondition(job, ConditionScheduled, metav1.ConditionFalse, "SchedulingFailed", err.Error())
+				job.Status.Phase = PhasePending
+				if updateErr := r.Status().Update(ctx, job); updateErr != nil {
+					log.Error(updateErr, "Failed to update status after scheduling failure")
+				}
+				return ctrl.Result{RequeueAfter: 30 * time.Second}, err
+			}
 
-		job.Status.NodesAllocated = nodes
-		job.Status.GpusAllocated = job.Spec.GPUs
-		r.updateCondition(job, ConditionScheduled, metav1.ConditionTrue, "Scheduled", "Job scheduled successfully")
+			job.Status.NodesAllocated = nodes
+			job.Status.GpusAllocated = job.Spec.GPUs
+			r.updateCondition(job, ConditionScheduled, metav1.ConditionTrue, "Scheduled", "Job scheduled successfully")
 
-		if err := r.Status().Update(ctx, job); err != nil {
-			return ctrl.Result{}, err
+			if err := r.Status().Update(ctx, job); err != nil {
+				return ctrl.Result{}, err
+			}
 		}
 	}
 
@@ -160,26 +214,57 @@ func (r *GryviaAIJobReconciler) reconcileAIJob(ctx context.Context, job *gryviav
 		}
 	}
 
-	// Phase 3: Create headless service (required by StatefulSet's ServiceName field)
+	// Phase 3: Create headless service (pod DNS for both workload kinds)
 	if err := r.ensureHeadlessService(ctx, job); err != nil {
 		log.Error(err, "Failed to create headless service")
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, err
 	}
 
-	// Phase 4: Create StatefulSet for the training workload
-	if err := r.ensureStatefulSet(ctx, job); err != nil {
-		log.Error(err, "Failed to create StatefulSet")
-		return ctrl.Result{RequeueAfter: 10 * time.Second}, err
-	}
-
-	// Phase 5: Update status based on StatefulSet status
-	sts := &appsv1.StatefulSet{}
-	err := r.Get(ctx, types.NamespacedName{
-		Namespace: job.Namespace,
-		Name:      r.getStatefulSetName(job),
-	}, sts)
+	// Phase 4+5: create the workload and derive status from it.
+	kind, err := r.resolveWorkloadKind(ctx, job)
 	if err != nil {
 		return ctrl.Result{}, err
+	}
+	if kind == gryviav1.WorkloadKindJob {
+		if err := r.reconcileBatchJob(ctx, job); err != nil {
+			log.Error(err, "Failed to reconcile batch Job")
+			return ctrl.Result{RequeueAfter: 10 * time.Second}, err
+		}
+	} else {
+		if err := r.reconcileStatefulSetWorkload(ctx, job); err != nil {
+			log.Error(err, "Failed to reconcile StatefulSet")
+			return ctrl.Result{RequeueAfter: 10 * time.Second}, err
+		}
+	}
+
+	// Set CompletionTime when job transitions to terminal state
+	if (job.Status.Phase == PhaseSucceeded || job.Status.Phase == PhaseFailed) && job.Status.CompletionTime == nil {
+		now := metav1.Now()
+		job.Status.CompletionTime = &now
+	}
+
+	if err := r.Status().Update(ctx, job); err != nil {
+		log.Error(err, "Failed to update status")
+		return ctrl.Result{}, err
+	}
+
+	// Only requeue if job is still active (not completed or failed)
+	if job.Status.Phase == PhaseSucceeded || job.Status.Phase == PhaseFailed {
+		return ctrl.Result{}, nil
+	}
+
+	return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+}
+
+// reconcileStatefulSetWorkload is the StatefulSet path: pods restart forever (restartPolicy
+// Always), so completion is only detected if the pods themselves reach Succeeded/Failed.
+func (r *GryviaAIJobReconciler) reconcileStatefulSetWorkload(ctx context.Context, job *gryviav1.GryviaAIJob) error {
+	if err := r.ensureStatefulSet(ctx, job); err != nil {
+		return err
+	}
+	sts := &appsv1.StatefulSet{}
+	if err := r.Get(ctx, types.NamespacedName{Namespace: job.Namespace, Name: r.getStatefulSetName(job)}, sts); err != nil {
+		return err
 	}
 
 	job.Status.ReplicasReady = sts.Status.ReadyReplicas
@@ -225,24 +310,7 @@ func (r *GryviaAIJobReconciler) reconcileAIJob(ctx context.Context, job *gryviav
 			}
 		}
 	}
-
-	// Set CompletionTime when job transitions to terminal state
-	if (job.Status.Phase == PhaseSucceeded || job.Status.Phase == PhaseFailed) && job.Status.CompletionTime == nil {
-		now := metav1.Now()
-		job.Status.CompletionTime = &now
-	}
-
-	if err := r.Status().Update(ctx, job); err != nil {
-		log.Error(err, "Failed to update status")
-		return ctrl.Result{}, err
-	}
-
-	// Only requeue if job is still active (not completed or failed)
-	if job.Status.Phase == PhaseSucceeded || job.Status.Phase == PhaseFailed {
-		return ctrl.Result{}, nil
-	}
-
-	return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	return nil
 }
 
 func (r *GryviaAIJobReconciler) ensurePVC(ctx context.Context, job *gryviav1.GryviaAIJob) error {
@@ -294,7 +362,7 @@ func (r *GryviaAIJobReconciler) ensurePVC(ctx context.Context, job *gryviav1.Gry
 }
 
 func (r *GryviaAIJobReconciler) ensureHeadlessService(ctx context.Context, job *gryviav1.GryviaAIJob) error {
-	svcName := fmt.Sprintf("%s-headless", job.Name)
+	svcName := headlessServiceName(job)
 
 	svc := &corev1.Service{}
 	err := r.Get(ctx, types.NamespacedName{
@@ -314,6 +382,8 @@ func (r *GryviaAIJobReconciler) ensureHeadlessService(ctx context.Context, job *
 			},
 			Spec: corev1.ServiceSpec{
 				ClusterIP: "None",
+				// Peers must resolve each other before they are Ready (rendezvous).
+				PublishNotReadyAddresses: true,
 				Selector: map[string]string{
 					"gryvia.io/job": job.Name,
 				},
@@ -359,8 +429,10 @@ func (r *GryviaAIJobReconciler) ensureStatefulSet(ctx context.Context, job *gryv
 		return err
 	}
 
-	// Update StatefulSet if the job spec has changed
-	desired := r.buildStatefulSet(job)
+	// Update StatefulSet if the job spec has changed. A StatefulSet created before the
+	// v2 environment (RANK, qualified MASTER_ADDR) keeps its v1 environment so that an
+	// operator upgrade never restarts running pods.
+	desired := r.buildStatefulSetVersion(job, statefulSetEnvVersion(sts))
 	needsUpdate := false
 
 	// Check replica count
@@ -426,6 +498,10 @@ func (r *GryviaAIJobReconciler) ensureStatefulSet(ctx context.Context, job *gryv
 }
 
 func (r *GryviaAIJobReconciler) buildStatefulSet(job *gryviav1.GryviaAIJob) *appsv1.StatefulSet {
+	return r.buildStatefulSetVersion(job, envVersionCurrent)
+}
+
+func (r *GryviaAIJobReconciler) buildStatefulSetVersion(job *gryviav1.GryviaAIJob, envVersion int) *appsv1.StatefulSet {
 	labels := map[string]string{
 		"gryvia.io/job":  job.Name,
 		"gryvia.io/type": job.Spec.Type,
@@ -435,7 +511,7 @@ func (r *GryviaAIJobReconciler) buildStatefulSet(job *gryviav1.GryviaAIJob) *app
 	gpusPerPod := r.getGPUsPerPod(job)
 
 	// Build pod template
-	podTemplate := r.buildPodTemplate(job, labels, gpusPerPod)
+	podTemplate := r.buildPodTemplate(job, labels, gpusPerPod, gryviav1.WorkloadKindStatefulSet, envVersion)
 
 	sts := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
@@ -445,7 +521,7 @@ func (r *GryviaAIJobReconciler) buildStatefulSet(job *gryviav1.GryviaAIJob) *app
 		},
 		Spec: appsv1.StatefulSetSpec{
 			Replicas:    &replicas,
-			ServiceName: fmt.Sprintf("%s-headless", job.Name),
+			ServiceName: headlessServiceName(job),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels,
 			},
@@ -456,8 +532,11 @@ func (r *GryviaAIJobReconciler) buildStatefulSet(job *gryviav1.GryviaAIJob) *app
 	return sts
 }
 
-func (r *GryviaAIJobReconciler) buildPodTemplate(job *gryviav1.GryviaAIJob, labels map[string]string, gpusPerPod int32) corev1.PodTemplateSpec {
+func (r *GryviaAIJobReconciler) buildPodTemplate(job *gryviav1.GryviaAIJob, labels map[string]string, gpusPerPod int32, kind string, envVersion int) corev1.PodTemplateSpec {
 	annotations := make(map[string]string)
+	if kind == gryviav1.WorkloadKindStatefulSet && envVersion >= envVersionCurrent {
+		annotations[AnnotationEnvVersion] = fmt.Sprintf("%d", envVersion)
+	}
 
 	// Add RDMA annotation if network mode is RDMA
 	if job.Spec.Network == "rdma" {
@@ -478,7 +557,7 @@ func (r *GryviaAIJobReconciler) buildPodTemplate(job *gryviav1.GryviaAIJob, labe
 		ImagePullPolicy: job.Spec.ImagePullPolicy,
 		Command:         job.Spec.Command,
 		Args:            job.Spec.Args,
-		Env:             r.buildEnvVars(job),
+		Env:             r.buildEnvVarsFor(job, kind, envVersion),
 		WorkingDir:      job.Spec.WorkingDir,
 		VolumeMounts:    r.buildVolumeMounts(job),
 		Resources:       r.buildResources(job, gpusPerPod),
@@ -491,8 +570,8 @@ func (r *GryviaAIJobReconciler) buildPodTemplate(job *gryviav1.GryviaAIJob, labe
 		NodeSelector: r.buildNodeSelector(job),
 		Tolerations:  job.Spec.Tolerations,
 		Affinity:     r.buildAffinity(job),
-		// StatefulSets only support RestartPolicyAlways; use a Job or custom
-		// completion detection for run-to-completion semantics.
+		// StatefulSets only support RestartPolicyAlways, so they never complete;
+		// run-to-completion jobs use a batch/v1 Job (see buildJob).
 		RestartPolicy: corev1.RestartPolicyAlways,
 	}
 
@@ -547,21 +626,83 @@ func (r *GryviaAIJobReconciler) recordFabricPlacement(job *gryviav1.GryviaAIJob,
 		"fabric health lowered node scores: %s; selected %v", strings.Join(parts, ", "), p.Nodes)
 }
 
+// buildEnvVars returns the environment of a current-version batch Job pod.
 func (r *GryviaAIJobReconciler) buildEnvVars(job *gryviav1.GryviaAIJob) []corev1.EnvVar {
+	return r.buildEnvVarsFor(job, gryviav1.WorkloadKindJob, envVersionCurrent)
+}
+
+// buildEnvVarsFor returns the container environment. The exact variables per kind and
+// framework are documented in docs/aijob-lifecycle.md.
+func (r *GryviaAIJobReconciler) buildEnvVarsFor(job *gryviav1.GryviaAIJob, kind string, envVersion int) []corev1.EnvVar {
 	// Copy to avoid mutating the spec
 	envVars := make([]corev1.EnvVar, len(job.Spec.Env))
 	copy(envVars, job.Spec.Env)
 
-	// Add distributed training env vars if enabled
-	if job.Spec.Distributed != nil && job.Spec.Distributed.Enabled {
-		worldSize := r.getReplicaCount(job) * r.getGPUsPerPod(job)
+	if job.Spec.Distributed == nil || !job.Spec.Distributed.Enabled {
+		return envVars
+	}
+	dist := job.Spec.Distributed
+	nodes := r.getReplicaCount(job)
+	gpusPerNode := r.getGPUsPerPod(job)
+	procsPerNode := gpusPerNode
+	if procsPerNode == 0 {
+		procsPerNode = 1 // CPU-only: one process per node
+	}
+	worldSize := nodes * procsPerNode
+	nccl := dist.Backend != "gloo" // gloo is the CPU/TCP backend: NCCL tuning does not apply
+
+	if envVersion < envVersionCurrent {
+		// v1 (StatefulSets created by earlier operator versions): unchanged.
 		envVars = append(envVars,
 			corev1.EnvVar{Name: "MASTER_ADDR", Value: fmt.Sprintf("%s-training-0.%s-headless", job.Name, job.Name)},
 			corev1.EnvVar{Name: "MASTER_PORT", Value: "29500"},
 			corev1.EnvVar{Name: "WORLD_SIZE", Value: fmt.Sprintf("%d", worldSize)},
 			corev1.EnvVar{Name: "NCCL_DEBUG", Value: "INFO"},
 		)
+		if job.Spec.Network == "rdma" {
+			envVars = append(envVars,
+				corev1.EnvVar{Name: "NCCL_IB_DISABLE", Value: "0"},
+				corev1.EnvVar{Name: "NCCL_NET_GDR_LEVEL", Value: "5"},
+			)
+		}
+		return envVars
+	}
 
+	domain := r.ClusterDomain
+	if domain == "" {
+		domain = "cluster.local"
+	}
+	svc := headlessServiceName(job)
+	// Pod 0 of the workload is the rendezvous host. Job pods are named <job>-<index>
+	// (Indexed Job with spec.subdomain), StatefulSet pods <job>-training-<ordinal>.
+	master := fmt.Sprintf("%s-0", job.Name)
+	rankFrom := "metadata.annotations['batch.kubernetes.io/job-completion-index']"
+	if kind == gryviav1.WorkloadKindStatefulSet {
+		master = fmt.Sprintf("%s-0", r.getStatefulSetName(job))
+		// Label set by the StatefulSet controller (beta in Kubernetes 1.28, GA in 1.32);
+		// on older clusters it is missing and RANK is empty.
+		rankFrom = "metadata.labels['apps.kubernetes.io/pod-index']"
+	}
+	rank := corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{APIVersion: "v1", FieldPath: rankFrom}}
+	envVars = append(envVars,
+		corev1.EnvVar{Name: "MASTER_ADDR", Value: fmt.Sprintf("%s.%s.%s.svc.%s", master, svc, job.Namespace, domain)},
+		corev1.EnvVar{Name: "MASTER_PORT", Value: "29500"},
+		corev1.EnvVar{Name: "WORLD_SIZE", Value: fmt.Sprintf("%d", worldSize)},
+		// RANK and NODE_RANK are the node (pod) index. With gpusPerNode > 1 the launcher
+		// (torchrun, deepspeed) derives the per-process RANK from NODE_RANK itself.
+		corev1.EnvVar{Name: "RANK", ValueFrom: &rank},
+		corev1.EnvVar{Name: "NODE_RANK", ValueFrom: &rank},
+		corev1.EnvVar{Name: "NNODES", Value: fmt.Sprintf("%d", nodes)},
+		corev1.EnvVar{Name: "NPROC_PER_NODE", Value: fmt.Sprintf("%d", procsPerNode)},
+	)
+	if dist.Framework != "" {
+		envVars = append(envVars, corev1.EnvVar{Name: "GRYVIA_DIST_FRAMEWORK", Value: dist.Framework})
+	}
+	if dist.Backend != "" {
+		envVars = append(envVars, corev1.EnvVar{Name: "GRYVIA_DIST_BACKEND", Value: dist.Backend})
+	}
+	if nccl {
+		envVars = append(envVars, corev1.EnvVar{Name: "NCCL_DEBUG", Value: "INFO"})
 		if job.Spec.Network == "rdma" {
 			envVars = append(envVars,
 				corev1.EnvVar{Name: "NCCL_IB_DISABLE", Value: "0"},
@@ -569,7 +710,6 @@ func (r *GryviaAIJobReconciler) buildEnvVars(job *gryviav1.GryviaAIJob) []corev1
 			)
 		}
 	}
-
 	return envVars
 }
 
@@ -630,13 +770,15 @@ func (r *GryviaAIJobReconciler) buildVolumes(job *gryviav1.GryviaAIJob) []corev1
 }
 
 func (r *GryviaAIJobReconciler) buildResources(job *gryviav1.GryviaAIJob, gpusPerPod int32) corev1.ResourceRequirements {
-	resources := job.Spec.Resources
+	resources := *job.Spec.Resources.DeepCopy() // never mutate the spec's maps
 
-	// Add GPU resource limits
-	if resources.Limits == nil {
-		resources.Limits = corev1.ResourceList{}
+	// Add GPU resource limits (none for CPU-only jobs)
+	if gpusPerPod > 0 {
+		if resources.Limits == nil {
+			resources.Limits = corev1.ResourceList{}
+		}
+		resources.Limits["nvidia.com/gpu"] = *resource.NewQuantity(int64(gpusPerPod), resource.DecimalSI)
 	}
-	resources.Limits["nvidia.com/gpu"] = *resource.NewQuantity(int64(gpusPerPod), resource.DecimalSI)
 
 	return resources
 }
@@ -648,8 +790,8 @@ func (r *GryviaAIJobReconciler) buildNodeSelector(job *gryviav1.GryviaAIJob) map
 		nodeSelector[k] = v
 	}
 
-	// Add GPU type selector if specified
-	if job.Spec.GpuType != "" && job.Spec.GpuType != "any" {
+	// Add GPU type selector if specified (not for CPU-only jobs)
+	if r.getGPUsPerPod(job) > 0 && job.Spec.GpuType != "" && job.Spec.GpuType != "any" {
 		nodeSelector["gryvia.io/gpu"] = job.Spec.GpuType
 	}
 
@@ -680,12 +822,15 @@ func (r *GryviaAIJobReconciler) getGPUsPerPod(job *gryviav1.GryviaAIJob) int32 {
 		if job.Spec.Distributed.GpusPerNode > 0 {
 			return job.Spec.Distributed.GpusPerNode
 		}
+		if job.Spec.GPUs == 0 {
+			return 0 // CPU-only
+		}
 		return 1
 	}
-	if job.Spec.GPUs > 0 {
-		return job.Spec.GPUs
+	if job.Spec.GPUs < 0 {
+		return 1
 	}
-	return 1
+	return job.Spec.GPUs // 0 = CPU-only
 }
 
 func (r *GryviaAIJobReconciler) updateCondition(job *gryviav1.GryviaAIJob, condType string, status metav1.ConditionStatus, reason, message string) {
@@ -765,6 +910,7 @@ func (r *GryviaAIJobReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&gryviav1.GryviaAIJob{}).
 		Owns(&appsv1.StatefulSet{}).
+		Owns(&batchv1.Job{}).
 		Owns(&corev1.Service{}).
 		Owns(&corev1.PersistentVolumeClaim{}).
 		Complete(r)

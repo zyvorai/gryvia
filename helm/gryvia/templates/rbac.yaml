@@ -184,6 +184,26 @@ rules:
       - update
       - delete
 
+  # Manage batch Jobs (run-to-completion GryviaAIJob workloads)
+  - apiGroups:
+      - batch
+    resources:
+      - jobs
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+  - apiGroups:
+      - batch
+    resources:
+      - jobs/status
+    verbs:
+      - get
+
   # Manage Services
   - apiGroups:
       - ""

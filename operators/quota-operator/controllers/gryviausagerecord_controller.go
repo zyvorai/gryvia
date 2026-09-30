@@ -36,7 +36,7 @@ const (
 // GryviaUsageRecordReconciler meters GryviaAIJobs into GryviaUsageRecords.
 //
 // One record per job UID: while the job runs the record is refreshed every minute
-// (final=false, end=nil); once the job reaches Succeeded, Failed or Cancelled it is
+// (final=false, end=nil); once the job reaches Succeeded, Failed, Cancelled or Preempted (its workload is gone) it is
 // finalized from status.completionTime and never modified again. Hours are wall-clock
 // time multiplied by GPUs, so costs are metered estimates, not invoices.
 type GryviaUsageRecordReconciler struct {
@@ -62,7 +62,7 @@ func (r *GryviaUsageRecordReconciler) now() time.Time {
 
 func isTerminalPhase(phase string) bool {
 	switch phase {
-	case "Succeeded", "Failed", "Cancelled":
+	case "Succeeded", "Failed", "Cancelled", "Preempted":
 		return true
 	}
 	return false

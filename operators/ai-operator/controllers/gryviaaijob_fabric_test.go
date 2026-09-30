@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -36,7 +36,7 @@ func fabTestSignal(node string, delta float64, age time.Duration) *gryviav1.Gryv
 }
 
 // runFabricJob reconciles a fresh job on 3 equal nodes where n1 has the given signal.
-func runFabricJob(t *testing.T, operatorOn bool, ann string, sig *gryviav1.GryviaNodeFabric) (*gryviav1.GryviaAIJob, *appsv1.StatefulSet, *record.FakeRecorder) {
+func runFabricJob(t *testing.T, operatorOn bool, ann string, sig *gryviav1.GryviaNodeFabric) (*gryviav1.GryviaAIJob, *batchv1.Job, *record.FakeRecorder) {
 	t.Helper()
 	job := newTestAIJob("fj", "default")
 	job.Spec.GPUs = 1
@@ -62,21 +62,21 @@ func runFabricJob(t *testing.T, operatorOn bool, ann string, sig *gryviav1.Gryvi
 	if err := c.Get(context.Background(), req.NamespacedName, got); err != nil {
 		t.Fatal(err)
 	}
-	sts := &appsv1.StatefulSet{}
-	if err := c.Get(context.Background(), types.NamespacedName{Name: "fj-training", Namespace: "default"}, sts); err != nil {
-		t.Fatalf("statefulset: %v", err)
+	bj := &batchv1.Job{}
+	if err := c.Get(context.Background(), types.NamespacedName{Name: "fj", Namespace: "default"}, bj); err != nil {
+		t.Fatalf("batch job: %v", err)
 	}
-	return got, sts, rec
+	return got, bj, rec
 }
 
 func TestAIJob_FabricAware_OffByDefault(t *testing.T) {
-	job, sts, rec := runFabricJob(t, false, "", fabTestSignal("n1", 1, time.Minute))
+	job, bj, rec := runFabricJob(t, false, "", fabTestSignal("n1", 1, time.Minute))
 	if len(job.Status.NodesAllocated) != 1 {
 		t.Fatalf("nodes = %v", job.Status.NodesAllocated)
 	}
-	if job.Status.PlacementExplanation != nil || sts.Spec.Template.Spec.Affinity != nil || len(rec.Events) != 0 {
+	if job.Status.PlacementExplanation != nil || bj.Spec.Template.Spec.Affinity != nil || len(rec.Events) != 0 {
 		t.Errorf("feature off must change nothing: expl=%v aff=%v events=%d",
-			job.Status.PlacementExplanation, sts.Spec.Template.Spec.Affinity, len(rec.Events))
+			job.Status.PlacementExplanation, bj.Spec.Template.Spec.Affinity, len(rec.Events))
 	}
 }
 
@@ -96,11 +96,11 @@ func TestAIJob_FabricAware_ExplainsAndPrefers(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			job, sts, rec := runFabricJob(t, c.operatorOn, c.ann, c.sig)
+			job, bj, rec := runFabricJob(t, c.operatorOn, c.ann, c.sig)
 			if len(job.Status.NodesAllocated) != 1 {
 				t.Fatalf("nodes = %v", job.Status.NodesAllocated)
 			}
-			aff := sts.Spec.Template.Spec.Affinity
+			aff := bj.Spec.Template.Spec.Affinity
 			if !c.wantApply {
 				if job.Status.PlacementExplanation != nil || aff != nil || len(rec.Events) != 0 {
 					t.Fatalf("expected no effect: expl=%v aff=%v", job.Status.PlacementExplanation, aff)

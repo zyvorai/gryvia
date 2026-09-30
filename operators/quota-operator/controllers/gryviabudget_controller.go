@@ -398,16 +398,15 @@ func (r *GryviaBudgetReconciler) enforceBudget(ctx context.Context, fb *gryviav1
 	for i := range jobs {
 		job := &jobs[i]
 		if job.Status.Phase == "Pending" || job.Status.Phase == "Queued" {
-			job.Status.Phase = "Rejected"
+			msg := fmt.Sprintf("Budget exceeded for %s %s", fb.Spec.Scope.Type, fb.Spec.Scope.Name)
 			condition := metav1.Condition{
 				Type:               "Rejected",
 				Status:             metav1.ConditionTrue,
 				Reason:             "BudgetExceeded",
-				Message:            fmt.Sprintf("Budget exceeded for %s %s", fb.Spec.Scope.Type, fb.Spec.Scope.Name),
+				Message:            msg,
 				LastTransitionTime: metav1.Now(),
 			}
-			meta.SetStatusCondition(&job.Status.Conditions, condition)
-			if err := r.Status().Update(ctx, job); err != nil {
+			if err := patchJobPhase(ctx, r.Client, job, "Rejected", msg, &condition); err != nil {
 				logger.Error(err, "Failed to reject job", "job", job.Name)
 				continue
 			}

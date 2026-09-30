@@ -10,6 +10,7 @@ import (
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -236,6 +237,10 @@ func (es *ElasticScaler) ScaleDown(ctx context.Context, job *gryviav1.GryviaAIJo
 
 // applyScale updates the StatefulSet replica count and relevant environment
 // variables to match the new node count.
+//
+// StatefulSet workloads only: an Indexed batch/v1 Job (the default workload of training,
+// fine-tuning and evaluation jobs) has an immutable pod template and a fixed completion
+// count, so elastic scaling of a Job workload is not supported and returns an error.
 func (es *ElasticScaler) applyScale(ctx context.Context, job *gryviav1.GryviaAIJob, newNodeCount int32) error {
 	stsName := fmt.Sprintf("%s-training", job.Name)
 
@@ -244,6 +249,9 @@ func (es *ElasticScaler) applyScale(ctx context.Context, job *gryviav1.GryviaAIJ
 		Namespace: job.Namespace,
 		Name:      stsName,
 	}, sts); err != nil {
+		if apierrors.IsNotFound(err) {
+			return fmt.Errorf("elastic scaling supports StatefulSet workloads only; %s has no StatefulSet %s (set spec.workloadKind: statefulset)", job.Name, stsName)
+		}
 		return fmt.Errorf("failed to get StatefulSet %s: %w", stsName, err)
 	}
 
