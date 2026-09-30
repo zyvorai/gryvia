@@ -4,8 +4,9 @@ Kernel-space eBPF programs that form the data-plane of the Gryvia
 network intelligence layer.  They run inside the Linux kernel and feed
 structured events to the userspace flow collector (`../collector/`).
 
-**Status: experimental.** There are 35 programs (`ls *.c`). All build and load through the kernel verifier on
-Linux 7.0 x86_64; the collector attached the kprobe/tracepoint subset there and decoded real TCP flows. GPU, NCCL,
+**Status: experimental.** There are 39 programs (`ls *.c`). The first 35 build and load through the kernel verifier on
+Linux 7.0 x86_64 (the last four, `xdp_mux`, `nccl_transport`, `p2p_fallback` and `capture_gate`, build for x86_64 and arm64
+with `-Wall -Werror` but have not been through the verifier or run on hardware, and the collector does not load them yet); the collector attached the kprobe/tracepoint subset there and decoded real TCP flows. GPU, NCCL,
 RDMA and GPUDirect Storage behaviour, arm64 loading and the gated XDP/TCX/sockops attachments have not been verified on
 hardware. Nothing in the rest of the platform depends on them, and the collector is off by default.
 
@@ -47,6 +48,10 @@ hardware. Nothing in the rest of the platform depends on them, and the collector
 | `pfc_pause.c` | XDP | 802.1Qbb PFC pause frames (EtherType 0x8808, opcode 0x0101; per-priority counts from the enable vector and quanta) and 802.3x pause frames in per-CPU counters (`pause_count`); always `XDP_PASS`, attached only with `-iface`. **One XDP program per interface**: conflicts with `roce_cnp`, `packet_filter` and `dns_tracker`; the collector attaches the first and skips the rest with a logged reason. Many NICs consume pause frames in the MAC and never show them to XDP |
 | `weight_exfil.c` | kprobe (`vfs_read`, `tcp_v4_connect`) | Observe only. A read request >= 8 MiB from a file named `*.safetensors/.gguf/.ckpt/.onnx/.pt/.pth/.bin/.h5`, then a `tcp_v4_connect` by the same process within 30 s to a destination that is not loopback, RFC1918, link-local or 0.0.0.0/8, emits one `FABRIC_SIG_EXFIL`. A read alone never fires. IPv4 only, `read()` only (not mmap), name-based |
 | `quota_pace.c` | sockops (cgroup v2) | **The only mutating program. Off by default.** Lowers `SO_MAX_PACING_RATE` of an outbound TCP connection (`TCP_CONNECT_CB`) when `pace_rate[<full 64-bit cgroup id>]` has an entry; no entry means the socket is untouched. Rate clamped up to 1 Mbit/s, never raised, fail open. Attached only with `-quota-pace` **and** `-cgroup-path`; entries are lease-gated by `collector/pkg/fabric` (`Pacer`); the only writer is the opt-in `-quota-pace-sync` reconcile of `GryviaQuota` `spec.network.maxEgressMbps` (see `docs/fabric-status.md`) |
+| `xdp_mux.c` | XDP | One XDP owner for an interface: tail-calls the first populated slot of `xdp_features` (0 roce_cnp, 1 pfc_pause, 2 dns_tracker, 3 packet_filter) and returns `XDP_PASS` when none is loaded. A successful tail call does not return, so it runs **one** feature program, not several. Not loaded by the collector yet |
+| `nccl_transport.c` | uprobe/uretprobe (`ncclCommInitRank`, `ncclCommInitRankConfig`, `ncclGetUniqueId`) | `FABRIC_SIG_NCCL_XPORT` (11) per successful communicator init (rank, world size, init duration; `retry_count` = transport hint read from `transport_hint[pid]`, which the collector would fill from `NCCL_P2P_DISABLE` / `NCCL_SHM_DISABLE` / `NCCL_NET`; 0 = unknown). Not loaded by the collector yet |
+| `p2p_fallback.c` | uprobe/uretprobe (`cudaDeviceEnablePeerAccess`, `cudaMemcpyAsync`) | `FABRIC_SIG_P2P_FALLBACK` (12): a failed peer-access enable (not "already enabled") followed within 30 s by a device-to-device copy of >= 8 MiB from the same process. A heuristic, not proof of a host bounce buffer. Not loaded by the collector yet |
+| `capture_gate.c` | kprobe (`tcp_sendmsg`) | Observe only. `capture_lease[cgroup_id]` holds an expiry; a missing or expired lease means "not armed" (fail open). Counts consultations in `gate_hits`; captures nothing itself. Not loaded by the collector yet |
 
 ## Overhead
 
