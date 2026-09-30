@@ -312,8 +312,8 @@ helm repo add nvidia https://helm.ngc.nvidia.com/nvidia --force-update >/dev/nul
 helm dependency build ./helm/gryvia >/dev/null
 NETRA_ARGS=()
 if [[ -n "${GRYVIA_NETRA_URL:-}" ]]; then
-  NETRA_ARGS+=(--set "apiGateway.netra.url=${GRYVIA_NETRA_URL}")
-  [[ -n "${GRYVIA_NETRA_TOKEN_SECRET:-}" ]] && NETRA_ARGS+=(--set "apiGateway.netra.tokenSecret=${GRYVIA_NETRA_TOKEN_SECRET}")
+  NETRA_ARGS+=(--set "apiGateway.netra.url=${GRYVIA_NETRA_URL:-}")
+  [[ -n "${GRYVIA_NETRA_TOKEN_SECRET:-}" ]] && NETRA_ARGS+=(--set "apiGateway.netra.tokenSecret=${GRYVIA_NETRA_TOKEN_SECRET:-}")
   [[ "${GRYVIA_NETRA_INSECURE:-}" == "1" ]] && NETRA_ARGS+=(--set apiGateway.netra.insecureTLS=true)
 fi
 helm upgrade --install gryvia ./helm/gryvia \\
