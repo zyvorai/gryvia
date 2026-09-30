@@ -3,6 +3,8 @@ import toast from 'react-hot-toast'
 import { notifyUnauthorized } from '@/lib/authEvents'
 import type { GryviaAIJob, GryviaQuota, GryviaGpuNode } from '@/types'
 import { getStoredToken, clearToken } from '@/lib/auth'
+import type { Reservation, ReservationBody } from '@/lib/reservations'
+import type { Budget } from '@/lib/budgets'
 import type { Sku, SkuBody, TenantResource, CreateTenantBody, UsageReport } from '@/lib/cloud'
 import type { InvoiceReport } from '@/lib/invoices'
 
@@ -777,6 +779,25 @@ export const api = {
   exportUsage: async (format: 'csv' | 'json', params: Record<string, string>): Promise<Blob> => {
     const { data } = await apiClient.get('/usage/export', { params: { ...params, format }, responseType: 'blob' })
     return data as Blob
+  },
+
+  getReservations: async (): Promise<Reservation[]> => {
+    const { data } = await apiClient.get('/reservations')
+    return data.items || []
+  },
+
+  createReservation: async (body: ReservationBody): Promise<Reservation> => {
+    const { data } = await apiClient.post('/reservations', body)
+    return data
+  },
+
+  cancelReservation: async (name: string): Promise<void> => {
+    await apiClient.delete(`/reservations/${encodeURIComponent(name)}`)
+  },
+
+  getBudgets: async (): Promise<Budget[]> => {
+    const { data } = await apiClient.get('/budgets')
+    return data.items || []
   },
 
   getFlightReport: async (job: string, namespace: string): Promise<FlightReport> => {

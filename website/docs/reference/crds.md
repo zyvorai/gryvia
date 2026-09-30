@@ -16,7 +16,7 @@ Gryvia defines 52 custom resources in the `gryvia.io` API group (version `v1alph
 | `GryviaAutoScaler` | `gryviaautoscalers` | Cluster | none | `gpuType`, `maxNodes`, `queueRef` | `advanced`, `costControls`, `minNodes`, `nodeProvider`, `scaleDownPolicy`, `scaleUpPolicy` |
 | `GryviaAutoTuner` | `gryviaautotuners` | Namespaced | none | `jobTemplate`, `maxTrials`, `objective`, `parameterSpace`, `searchAlgorithm` | `ashaConfig`, `earlyStoppingRounds`, `parallelism` |
 | `GryviaBenchmark` | `gryviabenchmarks` | Namespaced | none | `target`, `type` | `baseline`, `custom`, `gpuMemory`, `ioThroughput`, `mlperf`, `nccl`, `schedule` |
-| `GryviaBudget` | `gryviabudgets` | Cluster | none | `period`, `scope` | `alerts`, `enforcement`, `limits`, `priority`, `rollover` |
+| `GryviaBudget` | `gryviabudgets` | Cluster | quota-operator | `period`, `scope` | `alerts`, `enforcement`, `limits`, `priority`, `rollover` |
 | `GryviaChargeback` | `gryviachargebacks` | Cluster | none | none | `allocationModel`, `costCenters`, `mode`, `period`, `pricing`, `reports` |
 | `GryviaCheckpointGuard` | `gryviacheckpointguards` | Namespaced | ai-operator | `checkpointPolicy`, `jobSelector` | `monitoring`, `restore`, `validation` |
 | `GryviaCostPredictor` | `gryviacostpredictors` | Cluster | quota-operator | none | `alternatives`, `historicalData`, `integration`, `models`, `pricing` |
@@ -46,7 +46,7 @@ Gryvia defines 52 custom resources in the `gryvia.io` API group (version `v1alph
 | `GryviaPriority` | `gryviapriorities` | Cluster | none | `value` | `description`, `preemptionPolicy`, `quotaOverride`, `sla` |
 | `GryviaQuota` | `gryviaquotas` | Cluster | quota-operator | `gpuQuota`, `namespaces`, `team` | `budget`, `network`, `priority` |
 | `GryviaQuotaPolicy` | `gryviaquotapolicies` | Cluster | none | none | `alerts`, `allocation`, `enforcement`, `hierarchy`, `limits`, `scope`, `timeBased` |
-| `GryviaReservation` | `gryviareservations` | Cluster | none | `owner`, `resources`, `schedule` | `billing`, `guarantees`, `notifications` |
+| `GryviaReservation` | `gryviareservations` | Cluster | quota-operator | `owner`, `resources`, `schedule` | `billing`, `guarantees`, `notifications` |
 | `GryviaRetryPolicy` | `gryviaretrypolicies` | Cluster | none | none | `backoff`, `budget`, `circuitBreaker`, `maxRetries`, `noRetryOn`, `resourceAdjustment`, `retryOn` |
 | `GryviaSLA` | `gryviaslas` | Cluster | none | `scope`, `tier` | `availability`, `failureHandling`, `monitoring`, `performance`, `resources`, `support` |
 | `GryviaSecurityPolicy` | `gryviasecuritypolicies` | Namespaced | network-intelligence | none | `alertWebhook`, `autoBlock`, `detectionRules`, `targetNamespaces` |

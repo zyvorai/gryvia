@@ -11,7 +11,7 @@ import (
 
 	gryviav1 "github.com/zyvorai/gryvia/operators/quota-operator/api/v1"
 	"github.com/zyvorai/gryvia/operators/quota-operator/pkg/pricing"
-	"github.com/zyvorai/gryvia/operators/quota-operator/pkg/usage"
+	"github.com/zyvorai/gryvia/operators/quota-operator/pkg/spend"
 )
 
 // gpuPricingMu protects concurrent access to gpuPricing
@@ -27,74 +27,49 @@ var gpuPricing = func() map[string]float64 {
 	return m
 }()
 
-// CalculateBudget calculates budget status for a quota
+// CalculateBudget computes GryviaQuota.status.budgetStatus from the metered usage records of
+// the quota's namespaces in the current calendar month: spentThisMonth is the sum of
+// GryviaUsageRecord.spec.cost (open records included, each priced with its own SKU rate),
+// projectedSpend extrapolates the month-to-date burn linearly. When the records are not all
+// in USD the spend is still reported but percentUsed stays 0 (a USD limit cannot be compared).
 func CalculateBudget(ctx context.Context, k8sClient client.Client, quota *gryviav1.GryviaQuota, currentUsage *gryviav1.QuotaUsage) (*gryviav1.BudgetStatus, error) {
-	budgetStatus := &gryviav1.BudgetStatus{}
+	return calculateBudgetAt(ctx, k8sClient, quota, time.Now())
+}
 
+func calculateBudgetAt(ctx context.Context, k8sClient client.Client, quota *gryviav1.GryviaQuota, now time.Time) (*gryviav1.BudgetStatus, error) {
+	budgetStatus := &gryviav1.BudgetStatus{}
 	if quota.Spec.Budget == nil {
 		return budgetStatus, nil
 	}
-
-	// Get total GPU hours this month
-	monthlyGPUHours, err := usage.GetMonthlyGPUHours(ctx, k8sClient, quota)
-	if err != nil {
+	recs := &gryviav1.GryviaUsageRecordList{}
+	if err := k8sClient.List(ctx, recs); err != nil {
 		return nil, err
 	}
+	period, _ := spend.PeriodFor("monthly", "", "", now)
+	total := spend.Sum(recs.Items, spend.Scope{Namespaces: quota.Spec.Namespaces}, period, now)
 
-	// Calculate cost based on GPU types used
-	avgRate := calculateAverageRate(quota)
-	spentThisMonth := monthlyGPUHours * avgRate
-
-	budgetStatus.SpentThisMonth = spentThisMonth
-	budgetStatus.RemainingBudget = quota.Spec.Budget.MonthlyBudget - spentThisMonth
-	if quota.Spec.Budget.MonthlyBudget > 0 {
-		budgetStatus.PercentUsed = (spentThisMonth / quota.Spec.Budget.MonthlyBudget) * 100
+	limit := quota.Spec.Budget.MonthlyBudget
+	budgetStatus.SpentThisMonth = total.Cost
+	budgetStatus.RemainingBudget = limit - total.Cost
+	if ok, _ := total.Comparable(); ok && limit > 0 {
+		budgetStatus.PercentUsed = total.Cost / limit * 100
 	}
-
-	// Project end-of-month spending
-	now := time.Now()
-	daysInMonth := float64(daysInCurrentMonth())
-	dayOfMonth := float64(now.Day())
-	dailyBurn := 0.0
-	if dayOfMonth > 0 {
-		dailyBurn = spentThisMonth / dayOfMonth
-	}
-	budgetStatus.ProjectedSpend = dailyBurn * daysInMonth
-
+	budgetStatus.ProjectedSpend = Project(total.Cost, period, now)
 	return budgetStatus, nil
 }
 
-func calculateAverageRate(quota *gryviav1.GryviaQuota) float64 {
-	gpuPricingMu.RLock()
-	defer gpuPricingMu.RUnlock()
-
-	if len(quota.Spec.GPUQuota.AllowedGPUTypes) == 0 {
-		return gpuPricing["default"]
+// Project extrapolates spend to the end of the period from the burn so far (linear). Before
+// any time has elapsed it returns the spend itself.
+func Project(spent float64, p spend.Period, now time.Time) float64 {
+	elapsed := now.Sub(p.Start)
+	total := p.End.Sub(p.Start)
+	if elapsed <= 0 || total <= 0 {
+		return spent
 	}
-
-	totalRate := 0.0
-	count := 0
-	for _, gpuType := range quota.Spec.GPUQuota.AllowedGPUTypes {
-		if rate, exists := gpuPricing[gpuType]; exists {
-			totalRate += rate
-			count++
-		}
+	if elapsed > total {
+		return spent
 	}
-
-	if count == 0 {
-		return gpuPricing["default"]
-	}
-
-	return totalRate / float64(count)
-}
-
-func daysInCurrentMonth() int {
-	now := time.Now()
-	// Get last day of month by going to first day of next month and subtracting 1 day
-	firstOfNextMonth := now.AddDate(0, 1, -now.Day()+1)
-	firstOfNextMonth = time.Date(firstOfNextMonth.Year(), firstOfNextMonth.Month(), 1, 0, 0, 0, 0, now.Location())
-	lastOfThisMonth := firstOfNextMonth.Add(-24 * time.Hour)
-	return lastOfThisMonth.Day()
+	return spent / float64(elapsed) * float64(total)
 }
 
 // GetGPURate returns the hourly rate for a GPU type

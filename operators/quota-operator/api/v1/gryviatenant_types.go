@@ -44,6 +44,15 @@ type GryviaTenantSpec struct {
 
 	// AllowedSkus lists the GryviaGpuSku names this tenant may use; empty means all enabled SKUs
 	AllowedSkus []string `json:"allowedSkus,omitempty"`
+
+	// OIDCGroups lists identity-provider groups that get Kubernetes access to the tenant
+	// namespace with the role oidcGroupRole (default member). Requires the API server to
+	// accept the group claim (--oidc-groups-claim); the gateway resolves tenants separately.
+	OIDCGroups []string `json:"oidcGroups,omitempty"`
+
+	// OIDCGroupRole is the tenant role given to oidcGroups: viewer, member or admin
+	// +kubebuilder:validation:Enum=viewer;member;admin
+	OIDCGroupRole string `json:"oidcGroupRole,omitempty"`
 }
 
 // TenantMember defines a tenant member

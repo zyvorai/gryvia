@@ -48,7 +48,9 @@ type ReservationResources struct {
 
 // ReservationSchedule defines when the reservation is active
 type ReservationSchedule struct {
-	// Type is the schedule type (immediate, scheduled, recurring)
+	// Type is the schedule type: immediate (active now until endTime, if set), scheduled
+	// (active from startTime until endTime) or recurring (active during each window that
+	// starts at a recurrence.cron fire time and lasts recurrence.duration, until endTime)
 	Type string `json:"type"`
 
 	// StartTime is the scheduled start time
@@ -66,10 +68,11 @@ type ReservationSchedule struct {
 
 // ReservationRecurrence defines a recurring schedule
 type ReservationRecurrence struct {
-	// Cron is the cron expression
+	// Cron is a five-field cron expression (minute hour day-of-month month day-of-week,
+	// UTC): each fire time opens a reservation window. Names and macros are not supported.
 	Cron string `json:"cron,omitempty"`
 
-	// Duration is how long each reservation lasts
+	// Duration is how long each window lasts, e.g. 8h, 90m or 2d
 	Duration string `json:"duration,omitempty"`
 }
 
@@ -167,6 +170,9 @@ type GryviaReservationStatus struct {
 
 	// Cost holds cost information
 	Cost *ReservationCost `json:"cost,omitempty"`
+
+	// Message explains why a reservation is pending or only partly allocated
+	Message string `json:"message,omitempty"`
 }
 
 //+kubebuilder:object:root=true

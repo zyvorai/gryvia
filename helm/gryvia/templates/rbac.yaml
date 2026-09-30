@@ -449,6 +449,33 @@ rules:
       - patch
       - delete
   {{- end }}
+  {{- if .Values.quotaOperator.tenantRbac }}
+  # quotaOperator.tenantRbac: the tenant controller manages RoleBindings in tenant namespaces. RBAC escalation rules:
+  # the operator may only grant permissions it holds or is allowed to `bind`, so it gets `bind` on exactly the three
+  # tenant ClusterRoles (resourceNames, never a wildcard) and can grant nothing else.
+  - apiGroups:
+      - rbac.authorization.k8s.io
+    resources:
+      - rolebindings
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+  - apiGroups:
+      - rbac.authorization.k8s.io
+    resources:
+      - clusterroles
+    verbs:
+      - bind
+    resourceNames:
+      - gryvia-tenant-viewer
+      - gryvia-tenant-member
+      - gryvia-tenant-admin
+  {{- end }}
 
   # Manage Namespaces, ResourceQuotas and LimitRanges (tenant namespaces)
   - apiGroups:

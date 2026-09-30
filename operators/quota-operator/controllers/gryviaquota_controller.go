@@ -211,7 +211,7 @@ func (r *GryviaQuotaReconciler) enforceQuota(ctx context.Context, quota *gryviav
 
 	// Reject jobs that violate the quota
 	for _, job := range pendingJobs {
-		if job.Spec.GPUs <= 0 {
+		if job.Spec.TotalGPUs() <= 0 {
 			continue // skip invalid job specs
 		}
 
@@ -222,8 +222,8 @@ func (r *GryviaQuotaReconciler) enforceQuota(ctx context.Context, quota *gryviav
 			reason = fmt.Sprintf("Budget exceeded for team %s", quota.Spec.Team)
 		}
 
-		if exceeded && quota.Spec.GPUQuota.MaxGPUsPerJob > 0 && int(job.Spec.GPUs) > quota.Spec.GPUQuota.MaxGPUsPerJob {
-			reason = fmt.Sprintf("Job requests %d GPUs, exceeds max %d per job", job.Spec.GPUs, quota.Spec.GPUQuota.MaxGPUsPerJob)
+		if exceeded && quota.Spec.GPUQuota.MaxGPUsPerJob > 0 && int(job.Spec.TotalGPUs()) > quota.Spec.GPUQuota.MaxGPUsPerJob {
+			reason = fmt.Sprintf("Job requests %d GPUs, exceeds max %d per job", job.Spec.TotalGPUs(), quota.Spec.GPUQuota.MaxGPUsPerJob)
 		}
 
 		// GPU type must be in the quota's allowed list

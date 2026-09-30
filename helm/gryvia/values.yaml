@@ -49,6 +49,14 @@ aiOperator:
   kueueIntegration: false
   # LocalQueue used by jobs in tenant-* namespaces that name no queue (only when that LocalQueue exists).
   kueueDefaultQueue: gryvia
+  # Admission gate (--admission-gate): before creating a job's PVC/Service/workload, check the GryviaQuota limits
+  # (allowed GPU types and SKUs, max GPUs per job, concurrent GPUs) and hard budgets (GryviaQuota budget.hardLimit,
+  # GryviaBudget enforcement block) against the metered spend plus a cost forecast for the job, and reject it
+  # instead. Estimates only; fails OPEN on lookup errors. Off by default; the operators ClusterRole already
+  # grants the reads it needs. See docs/gpuaas-completion.md.
+  admissionGate: false
+  # Hours assumed for a job without spec.timeout in the gate's cost forecast (--admission-default-hours).
+  admissionDefaultHours: 1
 
 # Admission webhook served by the ai-operator: validates GryviaAIJob on CREATE/UPDATE.
 # It uses its own self-signed certificate (independent of tls.mode), reused on upgrades.
@@ -77,6 +85,14 @@ quotaOperator:
   kueueQuotaResources: nvidia.com/gpu
   # One ResourceFlavor per enabled GryviaGpuSku gpuType in each ClusterQueue (see the doc for the caveat).
   kueueGpuTypeFlavors: false
+  # Per-tenant Kubernetes RBAC (--tenant-rbac): ships the ClusterRoles gryvia-tenant-viewer|member|admin and lets the
+  # tenant controller create RoleBindings in tenant-<name> namespaces from GryviaTenant spec.members and spec.oidcGroups
+  # (adds rolebindings verbs and `bind` on those three ClusterRoles to the operators ClusterRole). Off by default.
+  tenantRbac: false
+  # GryviaReservation controller (--enable-reservations): reserves nodes with the gryvia.io/reserved:NoSchedule taint
+  # plus labels for the owner's jobs. Off by default: turning it on makes existing GryviaReservation objects start
+  # tainting nodes.
+  reservations: false
   # Default GPU pricing (USD per hour)
   pricing:
     H100: 8.00

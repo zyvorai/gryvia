@@ -212,7 +212,7 @@ func (r *GryviaChargebackReconciler) calculateCostCenterCosts(ctx context.Contex
 		}
 
 		hours := duration.Hours()
-		gpuHours := hours * float64(job.Spec.GPUs)
+		gpuHours := hours * float64(job.Spec.TotalGPUs())
 
 		// Get GPU rate from pricing config or default
 		rate := r.getGPURate(cb, job.Spec.GpuType)

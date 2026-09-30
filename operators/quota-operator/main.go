@@ -35,6 +35,7 @@ func main() {
 	var probeAddr string
 	var kueueIntegration, kueueGPUTypeFlavors bool
 	var kueueQuotaResources string
+	var tenantRBAC, enableReservations bool
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -47,6 +48,11 @@ func main() {
 		"With --kueue-integration: comma-separated resources the tenant's nominal quota (concurrentGPUs, else the GryviaQuota maxGPUs) is applied to. The kind e2e sets cpu.")
 	flag.BoolVar(&kueueGPUTypeFlavors, "kueue-gpu-type-flavors", false,
 		"With --kueue-integration: one ResourceFlavor per enabled GryviaGpuSku gpuType (node label gryvia.io/gpu=<type>) in every ClusterQueue. Each flavor gets the full nominal quota; see docs/kueue-integration.md.")
+	flag.BoolVar(&tenantRBAC, "tenant-rbac", false,
+		"Create RoleBindings in tenant namespaces from GryviaTenant spec.members and spec.oidcGroups, bound to the ClusterRoles gryvia-tenant-viewer|member|admin (shipped by the Helm chart when quotaOperator.tenantRbac is set). Off by default.")
+	flag.BoolVar(&enableReservations, "enable-reservations", false,
+		"Run the GryviaReservation controller, which taints and labels reserved nodes (gryvia.io/reserved:NoSchedule). Off by default: an existing GryviaReservation object starts reserving nodes as soon as this is on.")
+
 	opts := zap.Options{
 		Development: false,
 	}
@@ -84,8 +90,9 @@ func main() {
 	}
 
 	if err = (&controllers.GryviaTenantReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:     mgr.GetClient(),
+		Scheme:     mgr.GetScheme(),
+		TenantRBAC: tenantRBAC,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "GryviaTenant")
 		os.Exit(1)
@@ -113,6 +120,24 @@ func main() {
 			GPUTypeFlavors: kueueGPUTypeFlavors,
 		}).SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "GryviaKueue")
+			os.Exit(1)
+		}
+	}
+
+	if err = (&controllers.GryviaBudgetReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "GryviaBudget")
+		os.Exit(1)
+	}
+
+	if enableReservations {
+		if err = (&controllers.GryviaReservationReconciler{
+			Client: mgr.GetClient(),
+			Scheme: mgr.GetScheme(),
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "GryviaReservation")
 			os.Exit(1)
 		}
 	}

@@ -42,6 +42,8 @@ func main() {
 	var fabricMaxPenalty float64
 	var kueueIntegration bool
 	var kueueDefaultQueue string
+	var admissionGate bool
+	var admissionDefaultHours float64
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -61,6 +63,10 @@ func main() {
 		"Create the batch Job of a job with a queue suspended and labelled kueue.x-k8s.io/queue-name so Kueue admits all its pods together, and report Kueue's admission state as phase Queued. Needs Kueue installed. Off by default: nothing changes without it.")
 	flag.StringVar(&kueueDefaultQueue, "kueue-default-queue", "gryvia",
 		"With --kueue-integration: LocalQueue used by jobs in tenant-* namespaces that name no queue (only if that LocalQueue exists).")
+	flag.BoolVar(&admissionGate, "admission-gate", false,
+		"Before creating a job's workload, check the quotas and hard budgets covering its namespace (spend from usage records plus a forecast for the job) and reject it instead of creating it. Fails open on lookup errors. Off by default.")
+	flag.Float64Var(&admissionDefaultHours, "admission-default-hours", 1,
+		"Hours a job without spec.timeout is assumed to run for the admission gate's cost forecast.")
 
 	opts := zap.Options{
 		Development: false,
@@ -101,6 +107,9 @@ func main() {
 		KueueIntegration:  kueueIntegration,
 		KueueDefaultQueue: kueueDefaultQueue,
 		Recorder:          mgr.GetEventRecorderFor("gryviaaijob-controller"),
+
+		AdmissionGate:         admissionGate,
+		AdmissionDefaultHours: admissionDefaultHours,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "GryviaAIJob")
 		os.Exit(1)

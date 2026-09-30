@@ -71,6 +71,11 @@ type GryviaAIJobReconciler struct {
 	KueueDefaultQueue string
 	// priorityClasses caches the WorkloadPriorityClasses already ensured.
 	priorityClasses sync.Map
+	// AdmissionGate enables the quota and budget gate before a job's workload is created
+	// (operator flag --admission-gate, default false). See gryviaaijob_admission.go.
+	AdmissionGate bool
+	// AdmissionDefaultHours is the forecast duration of a job without spec.timeout (0 = 1h).
+	AdmissionDefaultHours float64
 }
 
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs,verbs=get;list;watch;create;update;patch;delete
@@ -127,6 +132,22 @@ func (r *GryviaAIJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	return result, nil
 }
 
+// reconcileAIJob runs these steps in order; each one only ever short-circuits, so no later step
+// can undo an earlier decision:
+//
+//  1. cancel annotation (until terminal), then the phase gate: Succeeded/Failed are sticky,
+//     Cancelled/Preempted tear the workload down, Rejected is sticky and removes anything created
+//     before the rejection landed.
+//  2. Queued: a job held by the quota operator (not a Kueue wait) creates nothing; a job waiting
+//     for Kueue (condition KueueAdmitted=False) falls through so its suspended Job keeps reconciling.
+//  3. spec validation (invalid timeout -> Failed).
+//  4. admission gate (--admission-gate): runs only in phase Pending, so it can never touch a job
+//     that is Queued for Kueue or already running; on rejection it sets the sticky Rejected phase
+//     and creates nothing.
+//  5. scheduling advice (Pending/Scheduling), PVC, headless Service.
+//  6. workload: buildPodTemplate applies the reservation toleration/selector, the batch Job is
+//     created with the Kueue queue label and suspended (--kueue-integration), then status
+//     (including the Queued phase from Kueue's admission state) is derived from it.
 func (r *GryviaAIJobReconciler) reconcileAIJob(ctx context.Context, job *gryviav1.GryviaAIJob) (ctrl.Result, error) {
 	log := r.Log.WithValues("gryviaaijob", job.Name)
 
@@ -162,6 +183,10 @@ func (r *GryviaAIJobReconciler) reconcileAIJob(ctx context.Context, job *gryviav
 
 	if _, err := job.Spec.TimeoutSeconds(); err != nil {
 		return ctrl.Result{}, r.failJob(ctx, job, "InvalidSpec", err.Error())
+	}
+
+	if done, res, err := r.admissionGate(ctx, job); done { // opt-in quota/budget gate: creates nothing when it rejects
+		return res, err
 	}
 
 	gpusPerPod := r.getGPUsPerPod(job)
@@ -589,6 +614,8 @@ func (r *GryviaAIJobReconciler) buildPodTemplate(job *gryviav1.GryviaAIJob, labe
 		// run-to-completion jobs use a batch/v1 Job (see buildJob).
 		RestartPolicy: corev1.RestartPolicyAlways,
 	}
+
+	r.applyReservation(job, &podSpec) // gryvia.io/reservation: toleration + nodeSelector (gryviaaijob_reservation.go)
 
 	return corev1.PodTemplateSpec{
 		ObjectMeta: metav1.ObjectMeta{

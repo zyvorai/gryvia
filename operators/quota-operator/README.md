@@ -2,7 +2,7 @@
 
 The Quota Operator manages GPU quotas and budgets for teams in Gryvia. It enforces resource limits, tracks spending, and ensures fair resource allocation across teams.
 
-> **Status.** This operator registers four controllers in `main.go`: `GryviaQuota` (quota and budget evaluation, namespace labelling, rejection of pending jobs), `GryviaTenant` (creates namespace `tenant-<name>`, a ResourceQuota, a LimitRange and, when isolation is requested, a NetworkPolicy), `GryviaUsageRecord` (metering from job wall-clock time, refreshed every minute while a job runs and finalised when it ends) and `GryviaCostPredictor`. GPU prices come from the `GryviaGpuSku` catalog, with a built-in default table used only when no SKU exists. The `GryviaBudget`, `GryviaChargeback`, `GryviaSLA`, `GryviaAudit`, `GryviaQuotaPolicy`, `GryviaReservation`, `GryviaPriority` and `GryviaRetryPolicy` kinds have CRDs, and some have reconciler code under `controllers/`, but **no controller for them is registered**, so their specs are not acted on today. The ai-operator admission webhook (chart `webhook.enabled`, default on, `failurePolicy: Ignore`) also denies jobs whose GPU type is not allowed by the namespace quota or tenant SKUs, or that exceed the per-job GPU limit, and fails open when quotas cannot be read. Enforcement has not been exercised on a large multi-team cluster.
+> **Status.** This operator registers these controllers in `main.go`: `GryviaQuota` (quota and budget evaluation, namespace labelling, rejection of pending jobs), `GryviaTenant` (creates namespace `tenant-<name>`, a ResourceQuota, a LimitRange and, when isolation is requested, a NetworkPolicy), `GryviaUsageRecord` (metering from job wall-clock time, refreshed every minute while a job runs and finalised when it ends) and `GryviaCostPredictor`. GPU prices come from the `GryviaGpuSku` catalog, with a built-in default table used only when no SKU exists. `GryviaBudget` (status computed from usage records, see `docs/gpuaas-completion.md`) is registered too, and `GryviaReservation` (node taints and labels) behind `--enable-reservations`; `GryviaTenant` also creates per-role RoleBindings behind `--tenant-rbac`. The `GryviaChargeback`, `GryviaSLA`, `GryviaAudit`, `GryviaQuotaPolicy`, `GryviaPriority` and `GryviaRetryPolicy` kinds have CRDs, and some have reconciler code under `controllers/`, but **no controller for them is registered**, so their specs are not acted on today. The ai-operator admission webhook (chart `webhook.enabled`, default on, `failurePolicy: Ignore`) also denies jobs whose GPU type is not allowed by the namespace quota or tenant SKUs, or that exceed the per-job GPU limit, and fails open when quotas cannot be read. Enforcement has not been exercised on a large multi-team cluster.
 
 ## Features
 
@@ -120,12 +120,15 @@ status:
 
 ### Budget Management
 
-**Budget Calculator** (`pkg/budget/budget.go`)
-- Configurable GPU pricing by type
-- Monthly cost calculation
+**Budget Calculator** (`pkg/budget`, on `pkg/spend`)
+- Spend = sum of `GryviaUsageRecord.spec.cost` (open records included, each priced with its own SKU rate and currency), per scope and period
+- Distributed jobs count `nodes x gpusPerNode` GPUs
 - Projected spending based on burn rate
-- Alert threshold notifications
-- Hard limit enforcement
+- `GryviaBudget` states `active|warning|exceeded|blocked` derived from `spec.alerts` and `spec.enforcement`
+- Hard limit enforcement: reactive here, and before creation by the ai-operator admission gate (`--admission-gate`)
+- Mixed or non-USD currencies are reported, not enforced
+
+Semantics and limits: `docs/gpuaas-completion.md`.
 
 **Default Pricing:**
 ```go

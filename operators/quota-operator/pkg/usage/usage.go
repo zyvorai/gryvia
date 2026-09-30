@@ -28,14 +28,14 @@ func CalculateUsage(ctx context.Context, k8sClient client.Client, quota *gryviav
 		for _, job := range jobs.Items {
 			switch job.Status.Phase {
 			case "Running":
-				totalGPUs += job.Spec.GPUs
+				totalGPUs += job.Spec.TotalGPUs()
 				runningJobs++
 
 				// Calculate GPU hours
 				if job.Status.StartTime != nil && !job.Status.StartTime.IsZero() {
 					duration := time.Since(job.Status.StartTime.Time)
 					hours := duration.Hours()
-					gpuHours += hours * float64(job.Spec.GPUs)
+					gpuHours += hours * float64(job.Spec.TotalGPUs())
 				}
 
 			case "Pending", "Queued":
@@ -89,7 +89,7 @@ func GetMonthlyGPUHours(ctx context.Context, k8sClient client.Client, quota *gry
 			}
 
 			hours := duration.Hours()
-			totalHours += hours * float64(job.Spec.GPUs)
+			totalHours += hours * float64(job.Spec.TotalGPUs())
 		}
 	}
 

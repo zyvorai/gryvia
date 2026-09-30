@@ -32,6 +32,8 @@ export const NAVIGATION: NavItem[] = [
     children: [
       { name: 'Catalog', href: '/catalog', blurb: 'GPU SKUs and hourly rates' },
       { name: 'Usage', href: '/usage', blurb: 'GPU hours and estimated cost' },
+      { name: 'Reservations', href: '/reservations', blurb: 'Reserve GPU nodes for a team' },
+      { name: 'Budgets', href: '/budgets', blurb: 'Spend against limits' },
       { name: 'Invoices', href: '/invoices', blurb: 'Monthly estimated invoices' },
       { name: 'Tenants', href: '/tenants', blurb: 'Tenant accounts and allowed SKUs' },
     ],

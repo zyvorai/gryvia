@@ -112,7 +112,7 @@ func EstimateJobCost(
 		rate := getGPURate(predictor, job.Spec.GpuType)
 		// Default estimate: 1 hour per GPU
 		estimate.EstimatedDuration = time.Hour
-		estimate.EstimatedCost = rate * float64(job.Spec.GPUs)
+		estimate.EstimatedCost = rate * float64(job.Spec.TotalGPUs())
 		return estimate, nil
 	}
 
@@ -121,7 +121,7 @@ func EstimateJobCost(
 
 	// Estimate GPU cost
 	rate := getGPURate(predictor, job.Spec.GpuType)
-	gpuCost := rate * estimate.EstimatedDuration.Hours() * float64(job.Spec.GPUs)
+	gpuCost := rate * estimate.EstimatedDuration.Hours() * float64(job.Spec.TotalGPUs())
 	estimate.EstimatedCost = gpuCost
 
 	// Add storage cost if configured
@@ -134,7 +134,7 @@ func EstimateJobCost(
 	// Add network cost if configured
 	if predictor.Spec.Models.CostEstimation.IncludeNetworkCost {
 		// Estimate network usage from similar jobs (approximate)
-		estimatedEgressGB := float64(job.Spec.GPUs) * 10.0 // rough heuristic
+		estimatedEgressGB := float64(job.Spec.TotalGPUs()) * 10.0 // rough heuristic
 		estimate.NetworkCost = estimatedEgressGB * networkCostPerGB
 		estimate.EstimatedCost += estimate.NetworkCost
 	}
@@ -554,7 +554,7 @@ func findBestAlternative(
 
 		// Estimate cost with this config
 		rate := getGPURate(predictor, gpuType)
-		altCost := rate * altDuration.Hours() * float64(job.Spec.GPUs)
+		altCost := rate * altDuration.Hours() * float64(job.Spec.TotalGPUs())
 
 		// Estimate queue wait
 		altQueueWait := QueueWaitEstimate(ctx, k8sClient, predictor, altJob, allJobs)
@@ -562,7 +562,7 @@ func findBestAlternative(
 		alt := &AlternativeConfig{
 			Name:               strategy.Name,
 			GPUType:            gpuType,
-			GPUCount:           job.Spec.GPUs,
+			GPUCount:           job.Spec.TotalGPUs(),
 			EstimatedCost:      altCost,
 			EstimatedDuration:  altDuration,
 			EstimatedQueueWait: altQueueWait,
