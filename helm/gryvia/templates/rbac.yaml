@@ -401,6 +401,77 @@ rules:
       - update
       - watch
 
+  # ML controllers (GryviaWorkspace, GryviaInferenceService, GryviaModelRegistry, GryviaWorkflow, GryviaAutoTuner)
+  - apiGroups:
+      - gryvia.io
+    resources:
+      - gryviaworkspaces
+      - gryviainferenceservices
+      - gryviamodelregistries
+      - gryviaworkflows
+      - gryviaautotuners
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - gryvia.io
+    resources:
+      - gryviaworkspaces/status
+      - gryviainferenceservices/status
+      - gryviamodelregistries/status
+      - gryviaworkflows/status
+      - gryviaautotuners/status
+    verbs:
+      - get
+      - patch
+      - update
+  - apiGroups:
+      - gryvia.io
+    resources:
+      - gryviaworkspaces/finalizers
+      - gryviainferenceservices/finalizers
+      - gryviamodelregistries/finalizers
+      - gryviaworkflows/finalizers
+      - gryviaautotuners/finalizers
+    verbs:
+      - update
+  # Inference services: a Deployment per service (and per canary), scaled by an HPA
+  - apiGroups:
+      - apps
+    resources:
+      - deployments
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - watch
+  - apiGroups:
+      - autoscaling
+    resources:
+      - horizontalpodautoscalers
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - watch
+  # The inference controller patches its Service (port changes); the pods, PVCs and Services it and the workspace
+  # controller create are covered by the pod/service/PVC rules above
+  - apiGroups:
+      - ""
+    resources:
+      - services
+    verbs:
+      - patch
+
   {{- if .Values.aiOperator.fabricAwareScheduling }}
   # aiOperator.fabricAwareScheduling: read the per-node fabric health published by the collector
   - apiGroups:

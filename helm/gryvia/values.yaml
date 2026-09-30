@@ -57,6 +57,12 @@ aiOperator:
   admissionGate: false
   # Hours assumed for a job without spec.timeout in the gate's cost forecast (--admission-default-hours).
   admissionDefaultHours: 1
+  # Extra command-line flags for the ai-operator manager, one string each. The ML controllers (GryviaWorkspace,
+  # GryviaInferenceService, GryviaModelRegistry, GryviaWorkflow, GryviaAutoTuner) take their default images and limits
+  # here, e.g. ["--workspace-code-image=nginxinc/nginx-unprivileged:stable-alpine", "--inference-image-vllm=...",
+  # "--inference-health-path=/", "--autoserve-default-gpu-count=0", "--workflow-allow-webhooks=true"].
+  # See docs/ml-controllers.md for the full list. Empty by default.
+  extraArgs: []
 
 # Admission webhook served by the ai-operator: validates GryviaAIJob on CREATE/UPDATE.
 # It uses its own self-signed certificate (independent of tls.mode), reused on upgrades.

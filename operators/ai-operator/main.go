@@ -44,6 +44,7 @@ func main() {
 	var kueueDefaultQueue string
 	var admissionGate bool
 	var admissionDefaultHours float64
+	var ml mlOptions
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -67,6 +68,7 @@ func main() {
 		"Before creating a job's workload, check the quotas and hard budgets covering its namespace (spend from usage records plus a forecast for the job) and reject it instead of creating it. Fails open on lookup errors. Off by default.")
 	flag.Float64Var(&admissionDefaultHours, "admission-default-hours", 1,
 		"Hours a job without spec.timeout is assumed to run for the admission gate's cost forecast.")
+	ml.bind(flag.CommandLine)
 
 	opts := zap.Options{
 		Development: false,
@@ -167,6 +169,73 @@ func main() {
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "GryviaTrainingTimeMachine")
 		os.Exit(1)
+	}
+
+	// The ML controllers: their flags and defaults are in ml_controllers.go, docs/ml-controllers.md explains them.
+	if ml.enabled {
+		if ml.autoServeGPUCount < 0 {
+			setupLog.Error(nil, "--autoserve-default-gpu-count must not be negative")
+			os.Exit(1)
+		}
+		if err = (&controllers.GryviaWorkspaceReconciler{
+			Client:       mgr.GetClient(),
+			Scheme:       mgr.GetScheme(),
+			Log:          ctrl.Log.WithName("controllers").WithName("GryviaWorkspace"),
+			JupyterImage: ml.workspaceJupyterImage,
+			CodeImage:    ml.workspaceCodeImage,
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "GryviaWorkspace")
+			os.Exit(1)
+		}
+
+		if err = (&controllers.GryviaInferenceServiceReconciler{
+			Client: mgr.GetClient(),
+			Scheme: mgr.GetScheme(),
+			Log:    ctrl.Log.WithName("controllers").WithName("GryviaInferenceService"),
+			Images: map[gryviav1.InferenceBackend]string{
+				gryviav1.BackendVLLM:        ml.inferenceImageVLLM,
+				gryviav1.BackendTriton:      ml.inferenceImageTriton,
+				gryviav1.BackendTensorRTLLM: ml.inferenceImageTensorRT,
+				gryviav1.BackendTorchServe:  ml.inferenceImageTorchServe,
+			},
+			HealthPath:         ml.inferenceHealthPath,
+			CanaryStartupGrace: ml.canaryStartupGrace,
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "GryviaInferenceService")
+			os.Exit(1)
+		}
+
+		if err = (&controllers.GryviaModelRegistryReconciler{
+			Client:            mgr.GetClient(),
+			Scheme:            mgr.GetScheme(),
+			Log:               ctrl.Log.WithName("controllers").WithName("GryviaModelRegistry"),
+			AutoServeGPUCount: int32(ml.autoServeGPUCount),
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "GryviaModelRegistry")
+			os.Exit(1)
+		}
+
+		if err = (&controllers.GryviaWorkflowReconciler{
+			Client:           mgr.GetClient(),
+			Scheme:           mgr.GetScheme(),
+			Log:              ctrl.Log.WithName("controllers").WithName("GryviaWorkflow"),
+			MaxParallelSteps: ml.workflowMaxParallelSteps,
+			AllowWebhooks:    ml.workflowAllowWebhooks,
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "GryviaWorkflow")
+			os.Exit(1)
+		}
+
+		if err = (&controllers.GryviaAutoTunerReconciler{
+			Client:            mgr.GetClient(),
+			Scheme:            mgr.GetScheme(),
+			Log:               ctrl.Log.WithName("controllers").WithName("GryviaAutoTuner"),
+			MaxTrialsCap:      int32(ml.tunerMaxTrials),
+			MaxParallelismCap: int32(ml.tunerMaxParallelism),
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "GryviaAutoTuner")
+			os.Exit(1)
+		}
 	}
 
 	if enableWebhooks {

@@ -3,6 +3,8 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -25,16 +27,30 @@ const (
 	ConditionWorkspaceReady = "WorkspaceReady"
 	ConditionWorkspaceIdle  = "WorkspaceIdle"
 
-	// Default images
-	defaultJupyterImage = "jupyter/gpu-notebook:latest"
-	defaultVSCodeImage  = "codercom/code-server:latest"
+	// Default images, overridable per operator (flags) and per object (spec.image).
+	DefaultJupyterImage = "jupyter/gpu-notebook:latest"
+	DefaultVSCodeImage  = "codercom/code-server:latest"
+
+	defaultWorkspaceStorage = "50Gi"
 )
 
-// GryviaWorkspaceReconciler reconciles a GryviaWorkspace object
+// GryviaWorkspaceReconciler reconciles a GryviaWorkspace object.
+//
+// A workspace is a PVC (when spec.storage is set), one bare Pod and a ClusterIP Service, all named
+// "<workspace>-workspace" and owned by the GryviaWorkspace. Pausing deletes the Pod and keeps the PVC and Service;
+// resuming creates a fresh Pod that mounts the same PVC. Deleting the GryviaWorkspace garbage-collects all three
+// (the PVC and its data with them).
 type GryviaWorkspaceReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Log    logr.Logger
+
+	// JupyterImage and CodeImage are the images used when spec.image is empty (defaults above when empty).
+	JupyterImage string
+	CodeImage    string
+
+	// Clock returns the current time (time.Now when nil); tests move it.
+	Clock func() time.Time
 }
 
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviaworkspaces,verbs=get;list;watch;create;update;patch;delete
@@ -44,275 +60,247 @@ type GryviaWorkspaceReconciler struct {
 //+kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
 
-// Reconcile is part of the main kubernetes reconciliation loop
+func workspaceChildName(ws *gryviav1.GryviaWorkspace) string { return childName(ws.Name, "workspace") }
+
+func workspacePort(ws *gryviav1.GryviaWorkspace) int32 {
+	if ws.Spec.Type == gryviav1.WorkspaceTypeVSCode {
+		return 8080
+	}
+	return 8888
+}
+
+// Reconcile drives one GryviaWorkspace towards its spec.
 func (r *GryviaWorkspaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("gryviaworkspace", req.NamespacedName)
 
-	// Fetch the GryviaWorkspace instance
 	ws := &gryviav1.GryviaWorkspace{}
-	err := r.Get(ctx, req.NamespacedName, ws)
-	if err != nil {
+	if err := r.Get(ctx, req.NamespacedName, ws); err != nil {
 		if errors.IsNotFound(err) {
-			log.Info("GryviaWorkspace resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		log.Error(err, "Failed to get GryviaWorkspace")
 		return ctrl.Result{}, err
 	}
-
-	// Handle deletion
-	if !ws.ObjectMeta.DeletionTimestamp.IsZero() {
+	// Children carry an owner reference, so the garbage collector removes them; nothing to clean up here.
+	if !ws.DeletionTimestamp.IsZero() {
 		return ctrl.Result{}, nil
 	}
 
-	// Initialize status
-	if ws.Status.Phase == "" {
-		ws.Status.Phase = string(gryviav1.WorkspacePhasePending)
-		if err := r.Status().Update(ctx, ws); err != nil {
-			log.Error(err, "Failed to initialize workspace status")
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{Requeue: true}, nil
-	}
-
-	// If paused, scale down
+	orig := ws.DeepCopy()
+	var res ctrl.Result
+	var err error
 	if ws.Spec.Paused {
-		return r.reconcilePaused(ctx, ws)
+		res, err = r.reconcilePaused(ctx, ws)
+	} else {
+		res, err = r.reconcileRunning(ctx, ws)
 	}
-
-	// Reconcile the workspace
-	result, err := r.reconcileWorkspace(ctx, ws)
-	if err != nil {
-		log.Error(err, "Failed to reconcile workspace")
-		return result, err
+	if perr := patchStatus(ctx, r.Client, ws, orig); perr != nil {
+		log.Error(perr, "Failed to patch workspace status")
+		if err == nil {
+			err = perr
+		}
 	}
-
-	return result, nil
+	return res, err
 }
 
-func (r *GryviaWorkspaceReconciler) reconcileWorkspace(ctx context.Context, ws *gryviav1.GryviaWorkspace) (ctrl.Result, error) {
-	log := r.Log.WithValues("gryviaworkspace", ws.Name)
+func (r *GryviaWorkspaceReconciler) fail(ws *gryviav1.GryviaWorkspace, reason string, err error) {
+	ws.Status.Phase = string(gryviav1.WorkspacePhaseFailed)
+	ws.Status.Message = fmt.Sprintf("%s: %v", reason, err)
+	setCondition(&ws.Status.Conditions, ws.Generation, ConditionWorkspaceReady, metav1.ConditionFalse, "Failed", ws.Status.Message)
+}
 
-	// Phase 1: Ensure PVC for persistent workspace data
+func (r *GryviaWorkspaceReconciler) reconcileRunning(ctx context.Context, ws *gryviav1.GryviaWorkspace) (ctrl.Result, error) {
+	name := workspaceChildName(ws)
+
 	if ws.Spec.Storage != "" {
-		if err := r.ensureWorkspacePVC(ctx, ws); err != nil {
-			log.Error(err, "Failed to ensure workspace PVC")
+		if err := r.ensurePVC(ctx, ws, name); err != nil {
+			if isConfigError(err) {
+				r.fail(ws, "Invalid workspace storage", err)
+				return ctrl.Result{}, nil
+			}
 			return ctrl.Result{RequeueAfter: 15 * time.Second}, err
 		}
 	}
 
-	// Phase 2: Ensure workspace pod
-	if err := r.ensureWorkspacePod(ctx, ws); err != nil {
-		log.Error(err, "Failed to ensure workspace pod")
-		return ctrl.Result{RequeueAfter: 15 * time.Second}, err
-	}
-
-	// Phase 3: Ensure service for workspace access
-	if err := r.ensureWorkspaceService(ctx, ws); err != nil {
-		log.Error(err, "Failed to ensure workspace service")
-		return ctrl.Result{RequeueAfter: 15 * time.Second}, err
-	}
-
-	// Phase 4: Check pod status
-	r.syncPodStatus(ctx, ws)
-
-	// Phase 5: Check idle timeout
-	if ws.Spec.IdleTimeoutMinutes > 0 {
-		r.checkIdleTimeout(ws)
-	}
-
-	// Phase 6: Check max lifetime
-	if ws.Spec.MaxLifetimeHours > 0 {
-		if exceeded, err := r.checkMaxLifetime(ctx, ws); exceeded || err != nil {
-			if exceeded {
-				return ctrl.Result{}, nil // Workspace terminated
-			}
-			return ctrl.Result{RequeueAfter: 30 * time.Second}, err
+	pod, err := r.ensurePod(ctx, ws, name)
+	if err != nil {
+		if isConfigError(err) {
+			r.fail(ws, "Invalid workspace", err)
+			return ctrl.Result{}, nil
 		}
+		return ctrl.Result{RequeueAfter: 15 * time.Second}, err
 	}
 
-	if err := r.Status().Update(ctx, ws); err != nil {
-		log.Error(err, "Failed to update workspace status")
-		return ctrl.Result{}, err
+	if err := r.ensureService(ctx, ws, name); err != nil {
+		if isConfigError(err) {
+			r.fail(ws, "Cannot create the workspace service", err)
+			return ctrl.Result{}, nil
+		}
+		return ctrl.Result{RequeueAfter: 15 * time.Second}, err
 	}
 
-	return ctrl.Result{RequeueAfter: 60 * time.Second}, nil
+	return r.syncPodStatus(ctx, ws, pod)
 }
 
-// ensureWorkspacePVC creates a PVC for persistent workspace storage.
-func (r *GryviaWorkspaceReconciler) ensureWorkspacePVC(ctx context.Context, ws *gryviav1.GryviaWorkspace) error {
-	pvcName := fmt.Sprintf("%s-workspace", ws.Name)
+// configError marks a problem the user has to fix (as opposed to a transient API error worth retrying).
+type configError struct{ error }
 
+func isConfigError(err error) bool {
+	_, ok := err.(configError)
+	return ok
+}
+
+// ensurePVC creates the workspace PVC once. An existing PVC is reused (this is how a resumed workspace keeps its
+// data) but only when this workspace owns it.
+func (r *GryviaWorkspaceReconciler) ensurePVC(ctx context.Context, ws *gryviav1.GryviaWorkspace, name string) error {
 	pvc := &corev1.PersistentVolumeClaim{}
-	err := r.Get(ctx, types.NamespacedName{Namespace: ws.Namespace, Name: pvcName}, pvc)
+	err := r.Get(ctx, types.NamespacedName{Namespace: ws.Namespace, Name: name}, pvc)
 	if err == nil {
-		ws.Status.PVCName = pvcName
+		if !metav1.IsControlledBy(pvc, ws) {
+			return configError{fmt.Errorf("PVC %q already exists and is not owned by this workspace", name)}
+		}
+		ws.Status.PVCName = name
 		return nil
 	}
 	if !errors.IsNotFound(err) {
 		return err
 	}
 
-	storageSize := ws.Spec.Storage
-	if storageSize == "" {
-		storageSize = "50Gi"
+	size, perr := resource.ParseQuantity(ws.Spec.Storage)
+	if perr != nil {
+		return configError{fmt.Errorf("invalid storage size %q: %w", ws.Spec.Storage, perr)}
 	}
-	storageQuantity, parseErr := resource.ParseQuantity(storageSize)
-	if parseErr != nil {
-		return fmt.Errorf("invalid storage size %q: %w", storageSize, parseErr)
-	}
-
 	pvc = &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      pvcName,
+			Name:      name,
 			Namespace: ws.Namespace,
-			Labels: map[string]string{
-				"gryvia.io/workspace": ws.Name,
-				"gryvia.io/component": "workspace-data",
-			},
+			Labels:    map[string]string{"gryvia.io/workspace": ws.Name, "gryvia.io/component": "workspace-data"},
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
-			AccessModes: []corev1.PersistentVolumeAccessMode{
-				corev1.ReadWriteOnce,
-			},
+			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 			Resources: corev1.VolumeResourceRequirements{
-				Requests: corev1.ResourceList{
-					corev1.ResourceStorage: storageQuantity,
-				},
+				Requests: corev1.ResourceList{corev1.ResourceStorage: size},
 			},
 		},
 	}
-
 	if ws.Spec.StorageClassName != "" {
-		pvc.Spec.StorageClassName = &ws.Spec.StorageClassName
+		sc := ws.Spec.StorageClassName
+		pvc.Spec.StorageClassName = &sc
 	}
-
 	if err := controllerutil.SetControllerReference(ws, pvc, r.Scheme); err != nil {
 		return err
 	}
-
-	ws.Status.PVCName = pvcName
-	return r.Create(ctx, pvc)
-}
-
-// ensureWorkspacePod creates or manages the workspace pod.
-func (r *GryviaWorkspaceReconciler) ensureWorkspacePod(ctx context.Context, ws *gryviav1.GryviaWorkspace) error {
-	podName := fmt.Sprintf("%s-workspace", ws.Name)
-
-	pod := &corev1.Pod{}
-	err := r.Get(ctx, types.NamespacedName{Namespace: ws.Namespace, Name: podName}, pod)
-	if err == nil {
-		ws.Status.PodName = podName
-		return nil
-	}
-	if !errors.IsNotFound(err) {
+	if err := r.Create(ctx, pvc); err != nil && !errors.IsAlreadyExists(err) {
 		return err
 	}
+	ws.Status.PVCName = name
+	return nil
+}
 
-	// Build the workspace pod
-	image := r.getWorkspaceImage(ws)
-
-	port := int32(8888) // JupyterLab
-	if ws.Spec.Type == gryviav1.WorkspaceTypeVSCode {
-		port = 8080
+// ensurePod returns the workspace Pod, creating it when missing. A Pod that is being deleted is returned as is so
+// the caller waits for it to disappear before a new one (same name) is created.
+func (r *GryviaWorkspaceReconciler) ensurePod(ctx context.Context, ws *gryviav1.GryviaWorkspace, name string) (*corev1.Pod, error) {
+	pod := &corev1.Pod{}
+	err := r.Get(ctx, types.NamespacedName{Namespace: ws.Namespace, Name: name}, pod)
+	if err == nil {
+		if !metav1.IsControlledBy(pod, ws) {
+			return nil, configError{fmt.Errorf("pod %q already exists and is not owned by this workspace", name)}
+		}
+		ws.Status.PodName = name
+		return pod, nil
+	}
+	if !errors.IsNotFound(err) {
+		return nil, err
 	}
 
+	pod, err = r.buildPod(ws, name)
+	if err != nil {
+		return nil, configError{err}
+	}
+	if err := controllerutil.SetControllerReference(ws, pod, r.Scheme); err != nil {
+		return nil, err
+	}
+	if err := r.Create(ctx, pod); err != nil {
+		return nil, err
+	}
+	ws.Status.PodName = name
+	return pod, nil
+}
+
+func (r *GryviaWorkspaceReconciler) buildPod(ws *gryviav1.GryviaWorkspace, name string) (*corev1.Pod, error) {
+	port := workspacePort(ws)
 	container := corev1.Container{
 		Name:  "workspace",
-		Image: image,
-		Ports: []corev1.ContainerPort{
-			{
-				Name:          "http",
-				ContainerPort: port,
-				Protocol:      corev1.ProtocolTCP,
-			},
-		},
+		Image: r.image(ws),
+		Ports: []corev1.ContainerPort{{Name: "http", ContainerPort: port, Protocol: corev1.ProtocolTCP}},
 		ReadinessProbe: &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				HTTPGet: &corev1.HTTPGetAction{
-					Path: "/",
-					Port: intstr.FromInt32(port),
-				},
-			},
-			InitialDelaySeconds: 15,
+			ProbeHandler:        corev1.ProbeHandler{HTTPGet: &corev1.HTTPGetAction{Path: "/", Port: intstr.FromInt32(port)}},
+			InitialDelaySeconds: 5,
 			PeriodSeconds:       10,
 		},
+		SecurityContext: &corev1.SecurityContext{
+			AllowPrivilegeEscalation: boolPtr(false),
+			SeccompProfile:           &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
+		},
 	}
 
-	// Add resource requests/limits
-	resources := corev1.ResourceRequirements{
-		Requests: corev1.ResourceList{},
-		Limits:   corev1.ResourceList{},
+	res := corev1.ResourceRequirements{Requests: corev1.ResourceList{}, Limits: corev1.ResourceList{}}
+	for _, q := range []struct {
+		field string
+		val   string
+		dst   corev1.ResourceList
+		name  corev1.ResourceName
+	}{
+		{"cpuRequest", ws.Spec.CPURequest, res.Requests, corev1.ResourceCPU},
+		{"memRequest", ws.Spec.MemRequest, res.Requests, corev1.ResourceMemory},
+		{"cpuLimit", ws.Spec.CPULimit, res.Limits, corev1.ResourceCPU},
+		{"memLimit", ws.Spec.MemLimit, res.Limits, corev1.ResourceMemory},
+	} {
+		if q.val == "" {
+			continue
+		}
+		v, err := resource.ParseQuantity(q.val)
+		if err != nil {
+			return nil, fmt.Errorf("invalid %s %q: %w", q.field, q.val, err)
+		}
+		q.dst[q.name] = v
 	}
-	if ws.Spec.CPURequest != "" {
-		resources.Requests[corev1.ResourceCPU] = resource.MustParse(ws.Spec.CPURequest)
-	}
-	if ws.Spec.MemRequest != "" {
-		resources.Requests[corev1.ResourceMemory] = resource.MustParse(ws.Spec.MemRequest)
-	}
-	if ws.Spec.CPULimit != "" {
-		resources.Limits[corev1.ResourceCPU] = resource.MustParse(ws.Spec.CPULimit)
-	}
-	if ws.Spec.MemLimit != "" {
-		resources.Limits[corev1.ResourceMemory] = resource.MustParse(ws.Spec.MemLimit)
-	}
+	// gpuCount 0 (or unset) means a CPU workspace: no GPU limit and no GPU node selector.
 	if ws.Spec.GPUCount > 0 {
-		resources.Limits["nvidia.com/gpu"] = *resource.NewQuantity(int64(ws.Spec.GPUCount), resource.DecimalSI)
+		res.Limits["nvidia.com/gpu"] = *resource.NewQuantity(int64(ws.Spec.GPUCount), resource.DecimalSI)
 	}
-	container.Resources = resources
+	container.Resources = res
 
-	// Add environment variables
-	for k, v := range ws.Spec.Env {
-		container.Env = append(container.Env, corev1.EnvVar{Name: k, Value: v})
+	keys := make([]string, 0, len(ws.Spec.Env))
+	for k := range ws.Spec.Env {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		container.Env = append(container.Env, corev1.EnvVar{Name: k, Value: ws.Spec.Env[k]})
 	}
 
-	// Add volume mounts
-	var volumeMounts []corev1.VolumeMount
 	var volumes []corev1.Volume
-
 	if ws.Spec.Storage != "" {
-		pvcName := fmt.Sprintf("%s-workspace", ws.Name)
-		volumeMounts = append(volumeMounts, corev1.VolumeMount{
-			Name:      "workspace-data",
-			MountPath: "/workspace",
-		})
-		volumes = append(volumes, corev1.Volume{
-			Name: "workspace-data",
-			VolumeSource: corev1.VolumeSource{
-				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-					ClaimName: pvcName,
-				},
-			},
-		})
+		container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{Name: "workspace-data", MountPath: "/workspace"})
+		volumes = append(volumes, corev1.Volume{Name: "workspace-data", VolumeSource: corev1.VolumeSource{
+			PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: name},
+		}})
 	}
-
-	// Add shared memory volume for GPU workloads
 	if ws.Spec.GPUCount > 0 {
-		volumeMounts = append(volumeMounts, corev1.VolumeMount{
-			Name:      "shm",
-			MountPath: "/dev/shm",
-		})
-		volumes = append(volumes, corev1.Volume{
-			Name: "shm",
-			VolumeSource: corev1.VolumeSource{
-				EmptyDir: &corev1.EmptyDirVolumeSource{
-					Medium: corev1.StorageMediumMemory,
-				},
-			},
-		})
+		container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{Name: "shm", MountPath: "/dev/shm"})
+		volumes = append(volumes, corev1.Volume{Name: "shm", VolumeSource: corev1.VolumeSource{
+			EmptyDir: &corev1.EmptyDirVolumeSource{Medium: corev1.StorageMediumMemory},
+		}})
 	}
 
-	container.VolumeMounts = volumeMounts
-
-	// Build node selector
-	nodeSelector := map[string]string{}
+	var nodeSelector map[string]string
 	if ws.Spec.GPUType != "" && ws.Spec.GPUType != "any" {
-		nodeSelector["gryvia.io/gpu"] = ws.Spec.GPUType
+		nodeSelector = map[string]string{"gryvia.io/gpu": ws.Spec.GPUType}
 	}
 
-	pod = &corev1.Pod{
+	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      podName,
+			Name:      name,
 			Namespace: ws.Namespace,
 			Labels: map[string]string{
 				"gryvia.io/workspace": ws.Name,
@@ -321,241 +309,229 @@ func (r *GryviaWorkspaceReconciler) ensureWorkspacePod(ctx context.Context, ws *
 			},
 		},
 		Spec: corev1.PodSpec{
-			Containers:    []corev1.Container{container},
-			Volumes:       volumes,
-			NodeSelector:  nodeSelector,
-			RestartPolicy: corev1.RestartPolicyAlways,
+			Containers:                   []corev1.Container{container},
+			Volumes:                      volumes,
+			NodeSelector:                 nodeSelector,
+			RestartPolicy:                corev1.RestartPolicyAlways,
+			AutomountServiceAccountToken: boolPtr(false),
 		},
-	}
-
-	if err := controllerutil.SetControllerReference(ws, pod, r.Scheme); err != nil {
-		return err
-	}
-
-	ws.Status.PodName = podName
-	return r.Create(ctx, pod)
+	}, nil
 }
 
-// ensureWorkspaceService creates a Service to expose the workspace.
-func (r *GryviaWorkspaceReconciler) ensureWorkspaceService(ctx context.Context, ws *gryviav1.GryviaWorkspace) error {
-	svcName := fmt.Sprintf("%s-workspace", ws.Name)
-
+// ensureService creates the ClusterIP Service once and always records the in-cluster URL.
+func (r *GryviaWorkspaceReconciler) ensureService(ctx context.Context, ws *gryviav1.GryviaWorkspace, name string) error {
+	port := workspacePort(ws)
 	svc := &corev1.Service{}
-	err := r.Get(ctx, types.NamespacedName{Namespace: ws.Namespace, Name: svcName}, svc)
-	if err == nil {
-		ws.Status.ServiceName = svcName
-		return nil
-	}
-	if !errors.IsNotFound(err) {
+	err := r.Get(ctx, types.NamespacedName{Namespace: ws.Namespace, Name: name}, svc)
+	if errors.IsNotFound(err) {
+		svc = &corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: ws.Namespace,
+				Labels:    map[string]string{"gryvia.io/workspace": ws.Name, "gryvia.io/component": "workspace-service"},
+			},
+			Spec: corev1.ServiceSpec{
+				Selector: map[string]string{"gryvia.io/workspace": ws.Name, "gryvia.io/component": "workspace-pod"},
+				Ports: []corev1.ServicePort{{
+					Name: "http", Port: port, TargetPort: intstr.FromString("http"), Protocol: corev1.ProtocolTCP,
+				}},
+				Type: corev1.ServiceTypeClusterIP,
+			},
+		}
+		if err := controllerutil.SetControllerReference(ws, svc, r.Scheme); err != nil {
+			return err
+		}
+		if err := r.Create(ctx, svc); err != nil {
+			if errors.IsInvalid(err) {
+				return configError{err}
+			}
+			if !errors.IsAlreadyExists(err) {
+				return err
+			}
+		}
+	} else if err != nil {
 		return err
+	} else if !metav1.IsControlledBy(svc, ws) {
+		return configError{fmt.Errorf("service %q already exists and is not owned by this workspace", name)}
 	}
-
-	port := int32(8888)
-	if ws.Spec.Type == gryviav1.WorkspaceTypeVSCode {
-		port = 8080
-	}
-
-	svc = &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      svcName,
-			Namespace: ws.Namespace,
-			Labels: map[string]string{
-				"gryvia.io/workspace": ws.Name,
-				"gryvia.io/component": "workspace-service",
-			},
-		},
-		Spec: corev1.ServiceSpec{
-			Selector: map[string]string{
-				"gryvia.io/workspace": ws.Name,
-				"gryvia.io/component": "workspace-pod",
-			},
-			Ports: []corev1.ServicePort{
-				{
-					Name:       "http",
-					Port:       port,
-					TargetPort: intstr.FromString("http"),
-					Protocol:   corev1.ProtocolTCP,
-				},
-			},
-			Type: corev1.ServiceTypeClusterIP,
-		},
-	}
-
-	if err := controllerutil.SetControllerReference(ws, svc, r.Scheme); err != nil {
-		return err
-	}
-
-	ws.Status.ServiceName = svcName
-	ws.Status.URL = fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", svcName, ws.Namespace, port)
-	return r.Create(ctx, svc)
+	ws.Status.ServiceName = name
+	ws.Status.URL = fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", name, ws.Namespace, port)
+	return nil
 }
 
-// syncPodStatus updates workspace status based on the pod state.
-func (r *GryviaWorkspaceReconciler) syncPodStatus(ctx context.Context, ws *gryviav1.GryviaWorkspace) {
-	if ws.Status.PodName == "" {
-		return
-	}
+// syncPodStatus turns the Pod state into the phase the gateway and dashboard show, applies the idle timeout
+// and the maximum lifetime.
+func (r *GryviaWorkspaceReconciler) syncPodStatus(ctx context.Context, ws *gryviav1.GryviaWorkspace, pod *corev1.Pod) (ctrl.Result, error) {
+	now := clock(r.Clock)
 
-	pod := &corev1.Pod{}
-	err := r.Get(ctx, types.NamespacedName{Namespace: ws.Namespace, Name: ws.Status.PodName}, pod)
-	if err != nil {
+	// Re-read: ensurePod returns the Pod it just created without a status.
+	live := &corev1.Pod{}
+	if err := r.Get(ctx, types.NamespacedName{Namespace: ws.Namespace, Name: pod.Name}, live); err != nil {
 		if errors.IsNotFound(err) {
 			ws.Status.Phase = string(gryviav1.WorkspacePhasePending)
-			ws.Status.PodName = ""
+			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 		}
-		return
+		return ctrl.Result{}, err
+	}
+	pod = live
+
+	if !pod.DeletionTimestamp.IsZero() {
+		ws.Status.Phase = string(gryviav1.WorkspacePhasePending)
+		ws.Status.Message = "Waiting for the previous workspace pod to terminate"
+		return ctrl.Result{RequeueAfter: 3 * time.Second}, nil
 	}
 
 	switch pod.Status.Phase {
-	case corev1.PodRunning:
-		ws.Status.Phase = string(gryviav1.WorkspacePhaseRunning)
-		if ws.Status.StartTime == nil {
-			now := metav1.Now()
-			ws.Status.StartTime = &now
-		}
-		// Assume activity when running; a real implementation would check proxy logs
-		now := metav1.Now()
-		ws.Status.LastActivity = &now
-		r.updateWSCondition(ws, ConditionWorkspaceReady, metav1.ConditionTrue, "Running", "Workspace pod is running")
-
-	case corev1.PodPending:
-		ws.Status.Phase = string(gryviav1.WorkspacePhasePending)
-
-	case corev1.PodFailed:
-		ws.Status.Phase = string(gryviav1.WorkspacePhaseFailed)
-		ws.Status.Message = "Workspace pod failed"
-		r.updateWSCondition(ws, ConditionWorkspaceReady, metav1.ConditionFalse, "Failed", "Workspace pod failed")
-	}
-}
-
-// checkIdleTimeout checks if the workspace has been idle for too long.
-func (r *GryviaWorkspaceReconciler) checkIdleTimeout(ws *gryviav1.GryviaWorkspace) {
-	if ws.Status.LastActivity == nil || ws.Status.Phase != string(gryviav1.WorkspacePhaseRunning) {
-		return
-	}
-
-	idleDuration := time.Since(ws.Status.LastActivity.Time)
-	timeout := time.Duration(ws.Spec.IdleTimeoutMinutes) * time.Minute
-
-	if idleDuration > timeout {
-		ws.Status.Phase = string(gryviav1.WorkspacePhaseIdle)
-		ws.Status.Message = fmt.Sprintf("Workspace idle for %s (timeout: %s)", idleDuration.Truncate(time.Minute), timeout)
-		r.updateWSCondition(ws, ConditionWorkspaceIdle, metav1.ConditionTrue, "Idle",
-			fmt.Sprintf("No activity for %d minutes", ws.Spec.IdleTimeoutMinutes))
-	}
-}
-
-// checkMaxLifetime checks if the workspace has exceeded its maximum lifetime.
-func (r *GryviaWorkspaceReconciler) checkMaxLifetime(ctx context.Context, ws *gryviav1.GryviaWorkspace) (bool, error) {
-	if ws.Status.StartTime == nil {
-		return false, nil
-	}
-
-	lifetime := time.Since(ws.Status.StartTime.Time)
-	maxLifetime := time.Duration(ws.Spec.MaxLifetimeHours) * time.Hour
-
-	if lifetime > maxLifetime {
-		// Terminate workspace by deleting the pod
-		if ws.Status.PodName != "" {
-			pod := &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      ws.Status.PodName,
-					Namespace: ws.Namespace,
-				},
-			}
-			if err := r.Delete(ctx, pod); err != nil && !errors.IsNotFound(err) {
-				return false, err
-			}
-		}
-
-		ws.Status.Phase = string(gryviav1.WorkspacePhaseTerminating)
-		ws.Status.Message = fmt.Sprintf("Workspace exceeded max lifetime of %d hours", ws.Spec.MaxLifetimeHours)
-		ws.Status.PodName = ""
-
-		if err := r.Status().Update(ctx, ws); err != nil {
-			return true, err
-		}
-		return true, nil
-	}
-
-	return false, nil
-}
-
-// reconcilePaused handles pausing a workspace by deleting its pod (PVC persists for resume).
-func (r *GryviaWorkspaceReconciler) reconcilePaused(ctx context.Context, ws *gryviav1.GryviaWorkspace) (ctrl.Result, error) {
-	if ws.Status.Phase == string(gryviav1.WorkspacePhasePaused) {
-		return ctrl.Result{}, nil
-	}
-
-	// Delete the pod to free resources
-	if ws.Status.PodName != "" {
-		pod := &corev1.Pod{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      ws.Status.PodName,
-				Namespace: ws.Namespace,
-			},
+	case corev1.PodFailed, corev1.PodSucceeded:
+		// RestartPolicy Always never ends a healthy pod: this is an eviction or a node problem. Replace it.
+		reason := pod.Status.Reason
+		if reason == "" {
+			reason = string(pod.Status.Phase)
 		}
 		if err := r.Delete(ctx, pod); err != nil && !errors.IsNotFound(err) {
-			return ctrl.Result{RequeueAfter: 15 * time.Second}, err
+			return ctrl.Result{}, err
 		}
-		ws.Status.PodName = ""
+		ws.Status.Phase = string(gryviav1.WorkspacePhasePending)
+		ws.Status.Message = fmt.Sprintf("Workspace pod ended (%s); recreating", reason)
+		setCondition(&ws.Status.Conditions, ws.Generation, ConditionWorkspaceReady, metav1.ConditionFalse, "PodFailed", ws.Status.Message)
+		return ctrl.Result{RequeueAfter: 3 * time.Second}, nil
+	case corev1.PodRunning:
+		if !podReady(pod) {
+			ws.Status.Phase = string(gryviav1.WorkspacePhasePending)
+			ws.Status.Message = "Waiting for the workspace to become ready"
+			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		}
+	default:
+		ws.Status.Phase = string(gryviav1.WorkspacePhasePending)
+		ws.Status.Message = ""
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
-	ws.Status.Phase = string(gryviav1.WorkspacePhasePaused)
-	ws.Status.Message = "Workspace paused - PVC retained for resume"
-	r.updateWSCondition(ws, ConditionWorkspaceReady, metav1.ConditionFalse, "Paused", "Workspace paused by user")
+	// The pod is running and ready.
+	if ws.Status.StartTime == nil {
+		t := metav1.NewTime(now)
+		ws.Status.StartTime = &t
+	}
+	ws.Status.Phase = string(gryviav1.WorkspacePhaseRunning)
+	ws.Status.Message = ""
+	setCondition(&ws.Status.Conditions, ws.Generation, ConditionWorkspaceReady, metav1.ConditionTrue, "Running", "Workspace pod is running")
 
-	if err := r.Status().Update(ctx, ws); err != nil {
+	// Activity: the newest of the session start and the RFC3339 time in the gryvia.io/last-activity annotation
+	// (whatever fronts the workspace, or a user, can touch it). Nothing in the cluster observes Jupyter/VS Code
+	// traffic by itself.
+	last := ws.Status.StartTime.Time
+	if v, ok := ws.Annotations[annotationLastActivity]; ok {
+		if t, err := time.Parse(time.RFC3339, v); err == nil && t.After(last) {
+			last = t
+		}
+	}
+	lt := metav1.NewTime(last)
+	ws.Status.LastActivity = &lt
+
+	next := 60 * time.Second
+	if ws.Spec.IdleTimeoutMinutes > 0 {
+		timeout := time.Duration(ws.Spec.IdleTimeoutMinutes) * time.Minute
+		if idle := now.Sub(last); idle > timeout {
+			ws.Status.Phase = string(gryviav1.WorkspacePhaseIdle)
+			ws.Status.Message = fmt.Sprintf("No activity for %s (idle timeout %s)", idle.Truncate(time.Minute), timeout)
+			setCondition(&ws.Status.Conditions, ws.Generation, ConditionWorkspaceIdle, metav1.ConditionTrue, "Idle", ws.Status.Message)
+			if ws.Annotations[annotationIdleAction] == "pause" {
+				return r.autoPause(ctx, ws, "Paused after being idle")
+			}
+		} else {
+			setCondition(&ws.Status.Conditions, ws.Generation, ConditionWorkspaceIdle, metav1.ConditionFalse, "Active", "Workspace is active")
+			next = minDuration(next, timeout-idle+time.Second)
+		}
+	}
+
+	if ws.Spec.MaxLifetimeHours > 0 {
+		maxLife := time.Duration(ws.Spec.MaxLifetimeHours) * time.Hour
+		life := now.Sub(ws.Status.StartTime.Time)
+		if life > maxLife {
+			return r.autoPause(ctx, ws, fmt.Sprintf("Paused: exceeded the maximum lifetime of %d hours", ws.Spec.MaxLifetimeHours))
+		}
+		next = minDuration(next, maxLife-life+time.Second)
+	}
+	return ctrl.Result{RequeueAfter: next}, nil
+}
+
+// autoPause pauses the workspace by setting spec.paused, exactly what the pause API does: the next reconcile
+// deletes the Pod and keeps the PVC, and the user resumes it the usual way.
+func (r *GryviaWorkspaceReconciler) autoPause(ctx context.Context, ws *gryviav1.GryviaWorkspace, why string) (ctrl.Result, error) {
+	// Patch a copy: the response would overwrite the status changes made on ws so far.
+	base := ws.DeepCopy()
+	tmp := ws.DeepCopy()
+	tmp.Spec.Paused = true
+	if err := r.Patch(ctx, tmp, client.MergeFrom(base)); err != nil {
+		return ctrl.Result{}, err
+	}
+	ws.Status.Message = why
+	return ctrl.Result{RequeueAfter: time.Second}, nil
+}
+
+// reconcilePaused deletes the Pod (the PVC and the Service stay) and reports Paused. It is idempotent.
+func (r *GryviaWorkspaceReconciler) reconcilePaused(ctx context.Context, ws *gryviav1.GryviaWorkspace) (ctrl.Result, error) {
+	name := workspaceChildName(ws)
+	pod := &corev1.Pod{}
+	err := r.Get(ctx, types.NamespacedName{Namespace: ws.Namespace, Name: name}, pod)
+	switch {
+	case err == nil:
+		if pod.DeletionTimestamp.IsZero() && metav1.IsControlledBy(pod, ws) {
+			if derr := r.Delete(ctx, pod); derr != nil && !errors.IsNotFound(derr) {
+				return ctrl.Result{RequeueAfter: 15 * time.Second}, derr
+			}
+		}
+	case !errors.IsNotFound(err):
 		return ctrl.Result{}, err
 	}
 
+	// Keep the reason recorded by an automatic pause ("Paused ..."); otherwise use the generic text.
+	msg := ws.Status.Message
+	if !strings.HasPrefix(msg, "Paused") {
+		msg = "Workspace paused; storage is kept for resume"
+	}
+	ws.Status.Phase = string(gryviav1.WorkspacePhasePaused)
+	ws.Status.Message = msg
+	ws.Status.PodName = ""
+	ws.Status.StartTime = nil
+	setCondition(&ws.Status.Conditions, ws.Generation, ConditionWorkspaceReady, metav1.ConditionFalse, "Paused", "Workspace paused")
+	setCondition(&ws.Status.Conditions, ws.Generation, ConditionWorkspaceIdle, metav1.ConditionFalse, "Paused", "Workspace paused")
 	return ctrl.Result{}, nil
 }
 
-// getWorkspaceImage returns the container image for the workspace type.
-func (r *GryviaWorkspaceReconciler) getWorkspaceImage(ws *gryviav1.GryviaWorkspace) string {
+// image returns spec.image, else the operator default for the workspace type.
+func (r *GryviaWorkspaceReconciler) image(ws *gryviav1.GryviaWorkspace) string {
 	if ws.Spec.Image != "" {
 		return ws.Spec.Image
 	}
-
-	switch ws.Spec.Type {
-	case gryviav1.WorkspaceTypeJupyter:
-		return defaultJupyterImage
-	case gryviav1.WorkspaceTypeVSCode:
-		return defaultVSCodeImage
-	default:
-		return defaultJupyterImage
+	if ws.Spec.Type == gryviav1.WorkspaceTypeVSCode {
+		if r.CodeImage != "" {
+			return r.CodeImage
+		}
+		return DefaultVSCodeImage
 	}
+	if r.JupyterImage != "" {
+		return r.JupyterImage
+	}
+	return DefaultJupyterImage
 }
 
-func (r *GryviaWorkspaceReconciler) updateWSCondition(ws *gryviav1.GryviaWorkspace, condType string, status metav1.ConditionStatus, reason, message string) {
-	condition := metav1.Condition{
-		Type:               condType,
-		Status:             status,
-		Reason:             reason,
-		Message:            message,
-		ObservedGeneration: ws.Generation,
-		LastTransitionTime: metav1.Now(),
-	}
-
-	for _, cond := range ws.Status.Conditions {
-		if cond.Type == condType && cond.Status == status {
-			condition.LastTransitionTime = cond.LastTransitionTime
-			break
+func podReady(pod *corev1.Pod) bool {
+	for _, c := range pod.Status.Conditions {
+		if c.Type == corev1.PodReady {
+			return c.Status == corev1.ConditionTrue
 		}
 	}
+	return false
+}
 
-	found := false
-	for i, cond := range ws.Status.Conditions {
-		if cond.Type == condType {
-			ws.Status.Conditions[i] = condition
-			found = true
-			break
-		}
+func boolPtr(b bool) *bool { return &b }
+
+func minDuration(a, b time.Duration) time.Duration {
+	if b < a {
+		return b
 	}
-	if !found {
-		ws.Status.Conditions = append(ws.Status.Conditions, condition)
-	}
+	return a
 }
 
 // SetupWithManager sets up the controller with the Manager.

@@ -69,6 +69,9 @@ spec:
             {{- if and (eq $name "quota-operator") $.Values.quotaOperator.reservations }}
             - --enable-reservations=true
             {{- end }}
+            {{- range $op.extraArgs }}
+            - {{ . | quote }}
+            {{- end }}
             {{- if $webhook }}
             - --enable-webhooks=true
             - --webhook-cert-dir=/tmp/k8s-webhook-server/serving-certs

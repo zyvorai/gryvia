@@ -14,7 +14,7 @@ Gryvia defines 52 custom resources in the `gryvia.io` API group (version `v1alph
 | `GryviaAudit` | `gryviaaudits` | Cluster | none | none | `anomalyDetection`, `compliance`, `events`, `reporting`, `retention`, `scope` |
 | `GryviaAutoPolicy` | `gryviaautopolicies` | Namespaced | network-intelligence | none | `approvalRequired`, `excludeServices`, `learningWindow`, `mode`, `targetNamespaces` |
 | `GryviaAutoScaler` | `gryviaautoscalers` | Cluster | none | `gpuType`, `maxNodes`, `queueRef` | `advanced`, `costControls`, `minNodes`, `nodeProvider`, `scaleDownPolicy`, `scaleUpPolicy` |
-| `GryviaAutoTuner` | `gryviaautotuners` | Namespaced | none | `jobTemplate`, `maxTrials`, `objective`, `parameterSpace`, `searchAlgorithm` | `ashaConfig`, `earlyStoppingRounds`, `parallelism` |
+| `GryviaAutoTuner` | `gryviaautotuners` | Namespaced | ai-operator | `jobTemplate`, `maxTrials`, `objective`, `parameterSpace`, `searchAlgorithm` | `ashaConfig`, `earlyStoppingRounds`, `parallelism` |
 | `GryviaBenchmark` | `gryviabenchmarks` | Namespaced | none | `target`, `type` | `baseline`, `custom`, `gpuMemory`, `ioThroughput`, `mlperf`, `nccl`, `schedule` |
 | `GryviaBudget` | `gryviabudgets` | Cluster | quota-operator | `period`, `scope` | `alerts`, `enforcement`, `limits`, `priority`, `rollover` |
 | `GryviaChargeback` | `gryviachargebacks` | Cluster | none | none | `allocationModel`, `costCenters`, `mode`, `period`, `pricing`, `reports` |
@@ -31,12 +31,12 @@ Gryvia defines 52 custom resources in the `gryvia.io` API group (version `v1alph
 | `GryviaGpuSku` | `gryviagpuskus` | Cluster | none | `gpuType`, `hourlyRate` | `currency`, `description`, `enabled`, `gpusPerUnit`, `spotDiscount` |
 | `GryviaHealthCheck` | `gryviahealthchecks` | Cluster | none | `target` | `checks`, `onFailure`, `remediation`, `schedule` |
 | `GryviaInferenceInsight` | `gryviainferenceinsights` | Namespaced | network-intelligence | none | `analysisWindow`, `targetService` |
-| `GryviaInferenceService` | `gryviainferenceservices` | Namespaced | none | `backend`, `modelRef` | `args`, `autoscaling`, `canary`, `gpuCount`, `gpuType`, `healthCheck`, `image`, `replicas`, … |
+| `GryviaInferenceService` | `gryviainferenceservices` | Namespaced | ai-operator | `backend`, `modelRef` | `args`, `autoscaling`, `canary`, `gpuCount`, `gpuType`, `healthCheck`, `image`, `replicas`, … |
 | `GryviaJobHook` | `gryviajobhooks` | Cluster | none | `action`, `trigger` | `condition`, `failurePolicy`, `retry`, `selector` |
 | `GryviaLiveExperiment` | `gryvialiveexperiments` | Namespaced | ai-operator | `comparison`, `jobs` | `description`, `notifications`, `strategy` |
 | `GryviaMetric` | `gryviametrics` | Cluster | none | `name`, `source` | `description`, `labels`, `retention`, `thresholds`, `type`, `unit`, `visualization` |
 | `GryviaModelLineage` | `gryviamodellineages` | Namespaced | ai-operator | `model` | `compliance`, `provenance` |
-| `GryviaModelRegistry` | `gryviamodelregistries` | Namespaced | none | `artifacts`, `modelName`, `version` | `autoServe`, `description`, `metadata`, `servingConfig`, `source`, `stage` |
+| `GryviaModelRegistry` | `gryviamodelregistries` | Namespaced | ai-operator | `artifacts`, `modelName`, `version` | `autoServe`, `description`, `metadata`, `servingConfig`, `source`, `stage` |
 | `GryviaNetwork` | `gryvianetworks` | Cluster | network-operator | `networkType` | `mtu`, `nodeSelector`, `rdma`, `sriov`, `targetNamespace` |
 | `GryviaNetworkAnomaly` | `gryvianetworkanomalies` | Namespaced | network-intelligence | none | `alertWebhook`, `autoMitigate`, `detectionRules`, `targetService` |
 | `GryviaNetworkCost` | `gryvianetworkcosts` | Namespaced | network-intelligence | none | `costCenters`, `costPerGB`, `reportingInterval`, `targetNamespaces` |
@@ -60,5 +60,5 @@ Gryvia defines 52 custom resources in the `gryvia.io` API group (version `v1alph
 | `GryviaTrainingProfiler` | `gryviatrainingprofilers` | Namespaced | ai-operator | `target` | `analysis`, `metrics`, `output` |
 | `GryviaTrainingTimeMachine` | `gryviatrainingtimemachines` | Namespaced | ai-operator | `sourceJob` | `forks`, `retention`, `timeline` |
 | `GryviaUsageRecord` | `gryviausagerecords` | Namespaced | quota-operator | `cost`, `final`, `gpuHours`, `gpus`, `job`, `jobUID`, `rate`, `start`, `tenant` | `currency`, `end`, `gpuType`, `sku` |
-| `GryviaWorkflow` | `gryviaworkflows` | Namespaced | none | `steps` | `parameters` |
-| `GryviaWorkspace` | `gryviaworkspaces` | Namespaced | none | `type` | `cpuLimit`, `cpuRequest`, `env`, `gpuCount`, `gpuType`, `idleTimeoutMinutes`, `image`, `maxLifetimeHours`, … |
+| `GryviaWorkflow` | `gryviaworkflows` | Namespaced | ai-operator | `steps` | `parameters` |
+| `GryviaWorkspace` | `gryviaworkspaces` | Namespaced | ai-operator | `type` | `cpuLimit`, `cpuRequest`, `env`, `gpuCount`, `gpuType`, `idleTimeoutMinutes`, `image`, `maxLifetimeHours`, … |

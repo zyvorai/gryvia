@@ -318,7 +318,6 @@ export interface InferenceService {
     phase?: string
     readyReplicas?: number
     endpoint?: string
-    latencyMs?: number
   }
 }
 

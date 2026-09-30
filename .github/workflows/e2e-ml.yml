@@ -1,0 +1,365 @@
+name: ML controllers end-to-end
+
+# Runs the ML controllers (GryviaWorkspace, GryviaInferenceService, GryviaModelRegistry, GryviaWorkflow,
+# GryviaAutoTuner) against a real API server on kind, with tiny CPU images (nginx-unprivileged, busybox) in place of
+# Jupyter/vLLM/Triton, and checks the objects, the status the controllers write and what the API gateway shows.
+#
+# NOT proven here (no GPU, no real model server, no metrics-server on kind): the real Jupyter, code-server, vLLM,
+# Triton, TensorRT-LLM and TorchServe images, GPU scheduling, and an HPA scaling on real metrics.
+#
+# The workflow-with-jobs and auto-tuner steps run GryviaAIJob children, which need the AIJob controller to run them
+# to completion (workstream W1: indexed batch/v1 Job with run-to-completion semantics). They are marked
+# "requires W1" and are continue-on-error until W1 is merged: then delete the continue-on-error lines.
+# This file was written without being able to run it (no docker/kind on the authoring machine): the first CI run is
+# its first execution.
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'operators/ai-operator/**'
+      - 'helm/**'
+      - 'crds/**'
+      - 'services/api-gateway/**'
+      - 'scripts/e2e-ml-lib.sh'
+      - '.github/workflows/e2e-ml.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TINY_HTTP_IMAGE: nginxinc/nginx-unprivileged:1.27-alpine
+  TINY_JOB_IMAGE: busybox:1.36
+  KIND_CLUSTER: gryvia-demo
+
+jobs:
+  ml:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v5
+      - uses: helm/kind-action@v1
+        with:
+          install_only: true
+
+      - name: Install Gryvia on kind (local images)
+        run: GRYVIA_LOCAL_IMAGES=1 ./scripts/kind-demo.sh
+
+      - name: Load the tiny images into kind
+        run: |
+          for img in "$TINY_HTTP_IMAGE" "$TINY_JOB_IMAGE"; do
+            docker pull "$img"
+            kind load docker-image --name "$KIND_CLUSTER" "$img"
+          done
+
+      - name: Point the ai-operator at the tiny images
+        run: |
+          # nginx-unprivileged listens on 8080 and answers / with 200. torchserve's default port is 8080, so every
+          # inference service below uses the torchserve backend; --inference-health-path=/ replaces its /ping probe.
+          helm upgrade gryvia ./helm/gryvia --namespace gryvia-system --reuse-values --wait --timeout 300s \
+            --set-json "aiOperator.extraArgs=[\"--workspace-code-image=${TINY_HTTP_IMAGE}\",\"--workspace-jupyter-image=${TINY_HTTP_IMAGE}\",\"--inference-image-torchserve=${TINY_HTTP_IMAGE}\",\"--inference-health-path=/\",\"--autoserve-default-gpu-count=0\",\"--inference-canary-startup-grace=30s\"]"
+          kubectl -n gryvia-system rollout status deploy -l app.kubernetes.io/component=ai-operator --timeout=180s
+
+      - name: The ai-operator started the five ML controllers
+        run: |
+          source scripts/e2e-ml-lib.sh
+          check() { kubectl -n "$NS" logs -l app.kubernetes.io/component=ai-operator --tail=-1 | grep -q "\"controllerKind\":\"$1\""; }
+          for kind in GryviaWorkspace GryviaInferenceService GryviaModelRegistry GryviaWorkflow GryviaAutoTuner; do
+            wait_for "controller $kind started" 90 check "$kind"
+          done
+
+      - name: Open the API
+        run: |
+          kubectl -n gryvia-system port-forward svc/gryvia-ui 8443:443 &
+          sleep 5
+          source scripts/e2e-ml-lib.sh
+          api /api/auth/me >/dev/null
+
+      # ------------------------------------------------------------------ Workspace
+      - name: Workspace - Pod, Service and PVC, phase Running, pause, resume
+        run: |
+          source scripts/e2e-ml-lib.sh
+          cat <<EOF | kubectl apply -f -
+          apiVersion: gryvia.io/v1alpha1
+          kind: GryviaWorkspace
+          metadata: {name: e2e-ws, namespace: gryvia-system}
+          spec: {type: vscode, storage: 1Gi, idleTimeoutMinutes: 30}
+          EOF
+          wait_for "workspace Running" 240 field_is gryviaworkspace/e2e-ws '{.status.phase}' Running
+          kubectl -n "$NS" get pod/e2e-ws-workspace svc/e2e-ws-workspace pvc/e2e-ws-workspace
+          assert_eq "no GPU requested" "$(jp pod/e2e-ws-workspace '{.spec.containers[0].resources.limits}')" ""
+          assert_eq "pod image" "$(jp pod/e2e-ws-workspace '{.spec.containers[0].image}')" "$TINY_HTTP_IMAGE"
+          assert_eq "pod owner" "$(jp pod/e2e-ws-workspace '{.metadata.ownerReferences[0].kind}')" GryviaWorkspace
+          assert_nonempty "status.url" "$(jp gryviaworkspace/e2e-ws '{.status.url}')"
+          assert_nonempty "status.startTime" "$(jp gryviaworkspace/e2e-ws '{.status.startTime}')"
+          assert_nonempty "status.lastActivity" "$(jp gryviaworkspace/e2e-ws '{.status.lastActivity}')"
+
+          # The gateway shows the same.
+          assert_eq "gateway phase" "$(gw /api/workspaces/e2e-ws .status.phase)" Running
+          assert_nonempty "gateway url" "$(gw /api/workspaces/e2e-ws .status.url)"
+          assert_nonempty "gateway uptime" "$(gw /api/workspaces/e2e-ws .status.uptime)"
+
+          # Pause through the gateway: the pod goes, the PVC stays.
+          pvc_uid="$(jp pvc/e2e-ws-workspace '{.metadata.uid}')"
+          api /api/workspaces/e2e-ws/pause -X POST >/dev/null
+          wait_for "pod deleted" 120 gone pod/e2e-ws-workspace
+          wait_for "workspace Paused" 60 field_is gryviaworkspace/e2e-ws '{.status.phase}' Paused
+          assert_eq "PVC kept while paused" "$(jp pvc/e2e-ws-workspace '{.metadata.uid}')" "$pvc_uid"
+          assert_eq "gateway phase when paused" "$(gw /api/workspaces/e2e-ws .status.phase)" Paused
+
+          # Resume: a new pod mounts the same PVC.
+          api /api/workspaces/e2e-ws/resume -X POST >/dev/null
+          wait_for "workspace Running again" 240 field_is gryviaworkspace/e2e-ws '{.status.phase}' Running
+          assert_eq "same PVC after resume" "$(jp pvc/e2e-ws-workspace '{.metadata.uid}')" "$pvc_uid"
+          assert_eq "resumed pod mounts the PVC" "$(jp pod/e2e-ws-workspace '{.spec.volumes[?(@.name=="workspace-data")].persistentVolumeClaim.claimName}')" e2e-ws-workspace
+
+      - name: Workspace - create and delete through the gateway
+        run: |
+          source scripts/e2e-ml-lib.sh
+          api /api/workspaces -X POST -d '{"name":"e2e-ws-api","type":"vscode","idleTimeout":"30m"}' | jq -e '.metadata.name == "e2e-ws-api"'
+          wait_for "gateway-created workspace Running" 240 field_is gryviaworkspace/e2e-ws-api '{.status.phase}' Running
+          gone pvc/e2e-ws-api-workspace
+          echo "ok: no PVC without spec.storage"
+          api /api/workspaces/e2e-ws-api -X DELETE >/dev/null
+          wait_for "owned pod garbage-collected" 120 gone pod/e2e-ws-api-workspace
+          wait_for "owned service garbage-collected" 60 gone svc/e2e-ws-api-workspace
+
+      # ------------------------------------------------------------------ Model registry (needed by inference)
+      - name: ModelRegistry - create through the gateway, promote, autoServe creates a service
+        run: |
+          source scripts/e2e-ml-lib.sh
+          # POST /api/models (added with the ML controllers)
+          api /api/models -X POST -d '{"name":"e2e-model","version":"v1","artifacts":{"s3Path":"s3://bucket/e2e/v1"}}' \
+            | jq -e '.spec.stage == "dev"'
+          api /api/models/e2e-model/promote -X POST -d '{"targetStage":"staging"}' | jq -e '.spec.stage == "staging"'
+          assert_eq "duplicate create is a conflict" "$(api_status /api/models -X POST -d '{"name":"e2e-model","version":"v1","artifacts":{"s3Path":"s3://b/x"}}')" 409
+
+          # autoServe on a production entry: the controller creates <name>-serving and mirrors its endpoint.
+          api /api/models -X POST -d '{"name":"e2e-auto","version":"v1","stage":"production","autoServe":true,"artifacts":{"s3Path":"s3://bucket/e2e/auto"},"servingConfig":{"backend":"torchserve","replicas":1}}' >/dev/null
+          wait_for "serving GryviaInferenceService created" 60 kubectl -n "$NS" get gryviainferenceservice/e2e-auto-serving
+          assert_eq "serving service owner" "$(jp gryviainferenceservice/e2e-auto-serving '{.metadata.ownerReferences[0].kind}')" GryviaModelRegistry
+          assert_eq "serving modelRef" "$(jp gryviainferenceservice/e2e-auto-serving '{.spec.modelRef}')" e2e-auto
+          wait_for "model servingEndpoint set" 240 field_set gryviamodelregistry/e2e-auto '{.status.servingEndpoint}'
+          assert_eq "model phase" "$(jp gryviamodelregistry/e2e-auto '{.status.phase}')" Serving
+          assert_eq "gateway servingEndpoint" "$(gw /api/models/e2e-auto .status.servingEndpoint)" "$(jp gryviamodelregistry/e2e-auto '{.status.servingEndpoint}')"
+          # The endpoint really answers from inside the cluster.
+          kubectl -n "$NS" run e2e-probe-model --image="$TINY_JOB_IMAGE" --restart=Never --rm -i --image-pull-policy=IfNotPresent -- \
+            wget -q -O- -T 10 "$(jp gryviamodelregistry/e2e-auto '{.status.servingEndpoint}')" | grep -qi nginx
+          # Archiving stops serving.
+          api /api/models/e2e-auto/promote -X POST -d '{"targetStage":"archived"}' | jq -e '.spec.stage == "archived"'
+          wait_for "serving service removed" 90 gone gryviainferenceservice/e2e-auto-serving
+          wait_for "servingEndpoint cleared" 60 field_empty gryviamodelregistry/e2e-auto '{.status.servingEndpoint}'
+
+      # ------------------------------------------------------------------ InferenceService
+      - name: InferenceService - Deployment, Service, HPA, readyReplicas, canary promotion
+        run: |
+          source scripts/e2e-ml-lib.sh
+          cat <<EOF | kubectl apply -f -
+          apiVersion: gryvia.io/v1alpha1
+          kind: GryviaInferenceService
+          metadata: {name: e2e-infer, namespace: gryvia-system}
+          spec:
+            modelRef: e2e-model
+            backend: torchserve
+            replicas: 1
+            autoscaling: {enabled: true, minReplicas: 1, maxReplicas: 2, targetGPUUtilization: 70}
+            canary: {enabled: true, weight: 50, modelVersion: v2}
+          EOF
+          wait_for "primary Deployment available" 240 kubectl -n "$NS" wait --for=condition=Available deploy/e2e-infer-inference --timeout=5s
+          wait_for "inference Ready" 120 field_is gryviainferenceservice/e2e-infer '{.status.phase}' Ready
+          assert_eq "readyReplicas" "$(jp gryviainferenceservice/e2e-infer '{.status.readyReplicas}')" 1
+          assert_eq "no GPU limit for gpuCount 0" "$(jp deploy/e2e-infer-inference '{.spec.template.spec.containers[0].resources.limits}')" ""
+          kubectl -n "$NS" get svc/e2e-infer-inference
+          assert_eq "endpoint" "$(jp gryviainferenceservice/e2e-infer '{.status.endpoint}')" "http://e2e-infer-inference.gryvia-system.svc.cluster.local:8080"
+          kubectl -n "$NS" run e2e-probe-infer --image="$TINY_JOB_IMAGE" --restart=Never --rm -i --image-pull-policy=IfNotPresent -- \
+            wget -q -O- -T 10 "$(jp gryviainferenceservice/e2e-infer '{.status.endpoint}')" | grep -qi nginx
+
+          # HPA exists with the requested range.
+          assert_eq "HPA min" "$(jp hpa/e2e-infer-inference-hpa '{.spec.minReplicas}')" 1
+          assert_eq "HPA max" "$(jp hpa/e2e-infer-inference-hpa '{.spec.maxReplicas}')" 2
+          assert_eq "HPA target" "$(jp hpa/e2e-infer-inference-hpa '{.spec.scaleTargetRef.name}')" e2e-infer-inference
+
+          # Canary: its own Deployment, status.canaryStatus active.
+          wait_for "canary Deployment available" 240 kubectl -n "$NS" wait --for=condition=Available deploy/e2e-infer-canary --timeout=5s
+          assert_eq "canaryStatus.active" "$(jp gryviainferenceservice/e2e-infer '{.status.canaryStatus.active}')" true
+          assert_eq "canary weight" "$(jp gryviainferenceservice/e2e-infer '{.status.canaryStatus.weight}')" 50
+          wait_for "canary healthy" 120 field_is gryviainferenceservice/e2e-infer '{.status.canaryStatus.health}' Healthy
+
+          # Gateway view.
+          assert_eq "gateway phase" "$(gw /api/inference/e2e-infer .status.phase)" Ready
+          assert_eq "gateway readyReplicas" "$(gw /api/inference/e2e-infer .status.readyReplicas)" 1
+          assert_nonempty "gateway endpoint" "$(gw /api/inference/e2e-infer .status.endpoint)"
+          assert_eq "gateway canary" "$(gw /api/inference/e2e-infer .spec.canary.trafficPercent)" 50
+          assert_eq "gateway hpa max" "$(gw /api/inference/e2e-infer .spec.autoscaling.maxReplicas)" 2
+
+          # Auto-promote: the canary version is rolled out to the stable pods and the canary Deployment goes.
+          kubectl -n "$NS" patch gryviainferenceservice/e2e-infer --type merge -p '{"spec":{"canary":{"autoPromote":true,"promoteAfterSeconds":1}}}'
+          wait_for "canary promoted" 120 field_is gryviainferenceservice/e2e-infer '{.status.canaryStatus.health}' Promoted
+          wait_for "canary Deployment removed" 60 gone deploy/e2e-infer-canary
+          assert_eq "promotion recorded" "$(jp deploy/e2e-infer-inference '{.metadata.annotations.gryvia\.io/promoted-version}')" v2
+          wait_for "stable pods serve v2" 120 field_is deploy/e2e-infer-inference '{.spec.template.spec.containers[0].env[?(@.name=="MODEL_VERSION")].value}' v2
+          wait_for "still Ready after the rollout" 240 field_is gryviainferenceservice/e2e-infer '{.status.phase}' Ready
+          sleep 10
+          gone deploy/e2e-infer-canary
+          echo "ok: the promoted canary is not recreated"
+
+      - name: InferenceService - create and delete through the gateway
+        run: |
+          source scripts/e2e-ml-lib.sh
+          api /api/inference -X POST -d '{"name":"e2e-infer-api","modelRef":"e2e-model","backend":"torchserve","replicas":1,"minReplicas":1,"maxReplicas":2,"targetUtilization":70}' \
+            | jq -e '.metadata.name == "e2e-infer-api"'
+          wait_for "gateway-created service Ready" 240 field_is gryviainferenceservice/e2e-infer-api '{.status.phase}' Ready
+          assert_eq "gateway phase" "$(gw /api/inference/e2e-infer-api .status.phase)" Ready
+          kubectl -n "$NS" get hpa/e2e-infer-api-inference-hpa
+          api /api/inference/e2e-infer-api -X DELETE >/dev/null
+          wait_for "Deployment garbage-collected" 120 gone deploy/e2e-infer-api-inference
+          wait_for "HPA garbage-collected" 60 gone hpa/e2e-infer-api-inference-hpa
+
+      # ------------------------------------------------------------------ Workflow
+      - name: Workflow - script steps run in order, failure skips dependents
+        run: |
+          source scripts/e2e-ml-lib.sh
+          # Script steps run as hardened Pods owned by the controller: no AIJob controller needed.
+          cat <<EOF | kubectl apply -f -
+          apiVersion: gryvia.io/v1alpha1
+          kind: GryviaWorkflow
+          metadata: {name: e2e-wf-script, namespace: gryvia-system}
+          spec:
+            parameters: {GREETING: hello}
+            steps:
+              - name: first
+                type: script
+                script: {image: busybox:1.36, command: [sh, -c], args: ["echo \$GREETING; sleep 3"]}
+              - name: second
+                type: script
+                dependsOn: [first]
+                script: {image: busybox:1.36, command: [sh, -c], args: ["echo done"]}
+          ---
+          apiVersion: gryvia.io/v1alpha1
+          kind: GryviaWorkflow
+          metadata: {name: e2e-wf-fail, namespace: gryvia-system}
+          spec:
+            steps:
+              - name: broken
+                type: script
+                script: {image: busybox:1.36, command: [sh, -c], args: ["exit 3"]}
+              - name: after
+                type: script
+                dependsOn: [broken]
+                script: {image: busybox:1.36, command: [sh, -c], args: ["echo never"]}
+          EOF
+          wait_for "workflow Succeeded" 240 field_is gryviaworkflow/e2e-wf-script '{.status.phase}' Succeeded
+          first_done="$(jp gryviaworkflow/e2e-wf-script '{.status.stepStatuses[?(@.name=="first")].completionTime}')"
+          second_start="$(jp gryviaworkflow/e2e-wf-script '{.status.stepStatuses[?(@.name=="second")].startTime}')"
+          assert_nonempty "first.completionTime" "$first_done"
+          assert_nonempty "second.startTime" "$second_start"
+          # RFC3339 timestamps in UTC sort lexicographically: the second step starts after the first finished.
+          if [[ "$second_start" < "$first_done" ]]; then echo "second started ($second_start) before first finished ($first_done)" >&2; exit 1; fi
+          assert_nonempty "workflow startTime" "$(jp gryviaworkflow/e2e-wf-script '{.status.startTime}')"
+          assert_nonempty "workflow completionTime" "$(jp gryviaworkflow/e2e-wf-script '{.status.completionTime}')"
+          assert_eq "script pod is non-root" "$(jp pod/e2e-wf-script-first '{.spec.securityContext.runAsNonRoot}')" true
+          assert_eq "script pod drops capabilities" "$(jp pod/e2e-wf-script-first '{.spec.containers[0].securityContext.capabilities.drop[0]}')" ALL
+          kubectl -n "$NS" logs pod/e2e-wf-script-first | grep -q hello
+
+          wait_for "failing workflow Failed" 180 field_is gryviaworkflow/e2e-wf-fail '{.status.phase}' Failed
+          assert_eq "failed step" "$(jp gryviaworkflow/e2e-wf-fail '{.status.stepStatuses[?(@.name=="broken")].phase}')" Failed
+          assert_eq "dependent step skipped" "$(jp gryviaworkflow/e2e-wf-fail '{.status.stepStatuses[?(@.name=="after")].phase}')" Skipped
+
+          # Gateway view of the finished workflow.
+          assert_eq "gateway phase" "$(gw /api/workflows/e2e-wf-script .status.phase)" Succeeded
+          assert_eq "gateway steps" "$(gw /api/workflows/e2e-wf-script '[.status.steps[].status] | join(",")')" "Succeeded,Succeeded"
+          assert_eq "gateway step order" "$(gw /api/workflows/e2e-wf-script '[.status.steps[].name] | join(",")')" "first,second"
+          assert_nonempty "gateway startedAt" "$(gw /api/workflows/e2e-wf-script .status.startedAt)"
+          assert_eq "gateway failed phase" "$(gw /api/workflows/e2e-wf-fail .status.phase)" Failed
+
+      # requires W1 (Job workload): job steps create GryviaAIJobs that the AIJob controller must run to completion.
+      # continue-on-error until W1 is merged; then remove it so a regression fails the run.
+      - name: Workflow - two-step DAG of CPU jobs (requires W1)
+        continue-on-error: true
+        run: |
+          source scripts/e2e-ml-lib.sh
+          cat <<EOF | kubectl apply -f -
+          apiVersion: gryvia.io/v1alpha1
+          kind: GryviaWorkflow
+          metadata: {name: e2e-wf-jobs, namespace: gryvia-system}
+          spec:
+            steps:
+              - name: prep
+                type: job
+                jobTemplate: {type: training, image: busybox:1.36, gpus: 0, command: [sh, -c], args: ["sleep 5"]}
+              - name: train
+                type: job
+                dependsOn: [prep]
+                jobTemplate: {type: training, image: busybox:1.36, gpus: 0, command: [sh, -c], args: ["sleep 5"]}
+          EOF
+          wait_for "first job step created" 60 kubectl -n "$NS" get gryviaaijob/e2e-wf-jobs-prep
+          # Order: the second job does not exist until the first has succeeded.
+          if kubectl -n "$NS" get gryviaaijob/e2e-wf-jobs-train >/dev/null 2>&1 && ! field_is gryviaaijob/e2e-wf-jobs-prep '{.status.phase}' Succeeded; then
+            echo "train job exists before prep succeeded" >&2; exit 1
+          fi
+          wait_for "workflow Succeeded" 300 field_is gryviaworkflow/e2e-wf-jobs '{.status.phase}' Succeeded
+          assert_eq "prep jobName" "$(jp gryviaworkflow/e2e-wf-jobs '{.status.stepStatuses[?(@.name=="prep")].jobName}')" e2e-wf-jobs-prep
+          prep_done="$(jp gryviaworkflow/e2e-wf-jobs '{.status.stepStatuses[?(@.name=="prep")].completionTime}')"
+          train_start="$(jp gryviaworkflow/e2e-wf-jobs '{.status.stepStatuses[?(@.name=="train")].startTime}')"
+          if [[ "$train_start" < "$prep_done" ]]; then echo "train started before prep finished" >&2; exit 1; fi
+          assert_eq "gateway phase" "$(gw /api/workflows/e2e-wf-jobs .status.phase)" Succeeded
+          assert_eq "gateway jobRef" "$(gw /api/workflows/e2e-wf-jobs '.status.steps[0].jobRef')" e2e-wf-jobs-prep
+
+      # ------------------------------------------------------------------ AutoTuner
+      # requires W1 (Job workload): trials are GryviaAIJobs. The trial "training" only sleeps; the metric a real trial
+      # would report is set here on each trial job with the annotation the tuner reads (gryvia.io/metric-<name>).
+      - name: AutoTuner - 3 trials, best trial selected (requires W1)
+        continue-on-error: true
+        run: |
+          source scripts/e2e-ml-lib.sh
+          cat <<EOF | kubectl apply -f -
+          apiVersion: gryvia.io/v1alpha1
+          kind: GryviaAutoTuner
+          metadata: {name: e2e-tuner, namespace: gryvia-system}
+          spec:
+            searchAlgorithm: random
+            maxTrials: 3
+            parallelism: 2
+            objective: {metricName: accuracy, direction: maximize}
+            parameterSpace:
+              - {name: lr, type: float, min: 0.001, max: 0.1}
+              - {name: opt, type: categorical, values: [adam, sgd]}
+            jobTemplate: {type: training, image: busybox:1.36, gpus: 0, command: [sh, -c], args: ["sleep 20"]}
+          EOF
+          # Report a metric on each trial job while it runs: trial N gets 0.5 + N/10, so trial 2 is the best.
+          (
+            end=$((SECONDS + 240))
+            while [ $SECONDS -lt $end ]; do
+              for i in 0 1 2; do
+                kubectl -n gryvia-system annotate "gryviaaijob/e2e-tuner-trial-$i" "gryvia.io/metric-accuracy=0.$((5 + i))" --overwrite >/dev/null 2>&1 || true
+              done
+              sleep 2
+            done
+          ) &
+          wait_for "first trials created" 90 kubectl -n "$NS" get gryviaaijob/e2e-tuner-trial-1
+          # parallelism is 2: the third trial waits until one of the first two has finished (they sleep 20s).
+          assert_eq "trials running at first" "$(kubectl -n "$NS" get gryviaaijob -l gryvia.io/tuner=e2e-tuner --no-headers | wc -l | tr -d ' ')" 2
+          wait_for "tuner Succeeded" 360 field_is gryviaautotuner/e2e-tuner '{.status.phase}' Succeeded
+          assert_eq "trialsCompleted" "$(jp gryviaautotuner/e2e-tuner '{.status.trialsCompleted}')" 3
+          assert_eq "trials total" "$(jp gryviaautotuner/e2e-tuner '{.status.trials[*].name}' | wc -w | tr -d ' ')" 3
+          assert_eq "bestTrial" "$(jp gryviaautotuner/e2e-tuner '{.status.bestTrial.name}')" e2e-tuner-trial-2
+          assert_eq "bestTrial metric" "$(jp gryviaautotuner/e2e-tuner '{.status.bestTrial.metricValue}')" 0.7
+          assert_eq "gateway phase" "$(gw /api/tuners/e2e-tuner .status.phase)" Succeeded
+          assert_eq "gateway trialsCompleted" "$(gw /api/tuners/e2e-tuner .status.trialsCompleted)" 3
+          assert_eq "gateway bestTrialId" "$(gw /api/tuners/e2e-tuner .status.bestTrialId)" e2e-tuner-trial-2
+          assert_eq "gateway trials" "$(gw /api/tuners/e2e-tuner/trials '.items | length')" 3
+
+      - name: Dump state on failure
+        if: failure()
+        run: |
+          kubectl get pods -A
+          kubectl -n gryvia-system get gryviaworkspaces,gryviainferenceservices,gryviamodelregistries,gryviaworkflows,gryviaautotuners,gryviaaijobs -o wide || true
+          kubectl -n gryvia-system get gryviaworkspaces,gryviainferenceservices,gryviamodelregistries,gryviaworkflows,gryviaautotuners -o yaml | tail -300 || true
+          kubectl -n gryvia-system logs -l app.kubernetes.io/component=ai-operator --tail=200 || true
+          kubectl -n gryvia-system logs -l app=gryvia-api-gateway --tail=50 || true
