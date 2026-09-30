@@ -5,6 +5,7 @@ Provides REST API for Web UI with aggregated metrics and cluster data
 
 import asyncio
 import base64
+import functools
 import hashlib
 import hmac
 import ipaddress
@@ -106,9 +107,17 @@ def _b64url_decode(text: str) -> bytes:
     return base64.urlsafe_b64decode(text + "=" * (-len(text) % 4))
 
 
+@functools.lru_cache(maxsize=4)
+def _derive_session_key(material: str) -> bytes:
+    # The signing key is derived from the API key with a slow KDF; cached so each request does not pay for it.
+    return hashlib.pbkdf2_hmac(
+        "sha256", material.encode(), b"gryvia-session-v1", 200_000
+    )
+
+
 def _session_key() -> bytes:
     material = os.environ.get("GRYVIA_SESSION_SECRET", "").strip() or API_KEY
-    return hashlib.sha256(b"gryvia-session-v1:" + material.encode()).digest()
+    return _derive_session_key(material)
 
 
 def issue_session_token(

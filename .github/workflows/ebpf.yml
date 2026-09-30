@@ -10,6 +10,9 @@ on:
       - '.github/workflows/ebpf.yml'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   group: ebpf-${{ github.ref }}
   cancel-in-progress: true

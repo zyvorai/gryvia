@@ -358,7 +358,7 @@ func nodeGPUs(n *corev1.Node) int32 {
 	if q, ok := n.Status.Allocatable[GPUResource]; ok && q.Value() > 0 {
 		return int32(q.Value())
 	}
-	if v, err := strconv.Atoi(n.Labels[LabelGPUCount]); err == nil && v > 0 {
+	if v, err := strconv.ParseInt(n.Labels[LabelGPUCount], 10, 32); err == nil && v > 0 {
 		return int32(v)
 	}
 	return 0
