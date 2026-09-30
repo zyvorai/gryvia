@@ -50,8 +50,10 @@ jobs with `gpus <= 0`.
 
 `spec.suspend: true` creates the Job suspended and keeps it suspended; clearing it unsuspends. If the GryviaAIJob carries
 the label `kueue.x-k8s.io/queue-name`, the label is copied to the Job, the Job is created suspended and the controller
-stops touching `spec.suspend` afterwards (Kueue admits it). A `spec.queueName` field and the operator flag are left to
-the Kueue workstream; only this label passthrough exists. Kueue itself is not installed or tested here.
+stops touching `spec.suspend` afterwards (Kueue admits it), whatever `spec.suspend` says later. With the ai-operator flag
+`--kueue-integration` (default off) the queue also comes from `spec.queueName`, the annotation `gryvia.io/queue-name` or
+the tenant default LocalQueue, and the Kueue Workload state is reflected in the phase (`Queued` while Kueue holds the job,
+`Queued` again after a Kueue eviction). All of that is in [Kueue integration](kueue-integration.md).
 
 ## Phase state machine
 
@@ -74,6 +76,7 @@ the Kueue workstream; only this label passthrough exists. Kueue itself is not in
 | `Succeeded` | ai-operator | Job condition `Complete` (StatefulSet: all pods reached `Succeeded`, which never happens with `restartPolicy: Always`) | nothing, no requeue |
 | `Failed` | ai-operator | Job condition `Failed` (`BackoffLimitExceeded`, `DeadlineExceeded`, ...) with the reason in `status.message`; also an invalid spec | nothing, no requeue |
 | `Queued` | quota operator (quota policy `onExceeded: queue`) | held | **creates nothing** (no PVC, Service or workload); returns |
+| `Queued` | ai-operator, only with `--kueue-integration` and only for a Job created with a Kueue queue label | Kueue has not admitted the job (or evicted it again) | the Job exists **suspended**, no pods; the controller keeps reconciling (marked by the condition `KueueAdmitted`) and polls every 10 s. See [Kueue integration](kueue-integration.md) |
 | `Rejected` | quota operator (quota, budget, quota policy) | refused | creates nothing; deletes a workload, Service and PVC that raced ahead (only objects the job controls); terminal |
 | `Preempted` | priority controller | evicted for a higher-priority job | deletes the workload, **keeps the PVC**, sets `completionTime`; the job stays parked (it is not resumed automatically; delete and resubmit) |
 | `Cancelled` | `gryvia cancel` (patches `status.phase`), or annotation `gryvia.io/cancel: "true"` (the controller sets the phase) | user stopped it | deletes the workload, **keeps the PVC**, sets `completionTime`; terminal |
@@ -86,7 +89,7 @@ Notes:
   it can still overwrite a finished job's phase with `Cancelled`; usage records that are already final are immutable.)
 - **Who sets `Rejected`/`Queued`**: the quota operator (`gryviaquota_controller.go`, `gryviabudget_controller.go`,
   `gryviaquotapolicy_controller.go`), and only for jobs it sees in `Pending` or `Queued`. Nothing moves a job out of
-  `Queued` today: it is a hold, not a queue with admission. That is a known gap.
+  `Queued` when the quota operator set it: it is a hold, not a queue with admission (known gap). Queueing with real admission exists only through the opt-in Kueue integration.
 - **Race**: the quota operator can see a job in `Pending` while the ai-operator has already moved on. Its patch is not
   optimistic-locked, so `Rejected` wins, and the ai-operator then tears down whatever it had created.
 - **Preemption** is marked by the priority controller; nothing checkpoints first (see the code comment there).
@@ -144,5 +147,5 @@ The chart's manager ClusterRole gains `batch/jobs` (get, list, watch, create, up
 
 - Everything on GPU and RDMA nodes, and multi-node NCCL rendezvous over the Job pod DNS names.
 - `podFailurePolicy` on clusters older than 1.26 and `RANK` from the StatefulSet label before 1.28.
-- Kueue interaction (label passthrough only).
+- Kueue interaction: unit-tested with fake clients; the kind workflow `.github/workflows/e2e-kueue.yml` is written but was not run when this was written. Never run on GPUs.
 - Operator behaviour under concurrent writers beyond what optimistic locking and the fake-client tests show.

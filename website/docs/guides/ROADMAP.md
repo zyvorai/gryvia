@@ -27,7 +27,7 @@ The project is alpha: the API is `gryvia.io/v1alpha1` and can change. For what e
 - **eBPF collector.** 35 CO-RE programs. Compile and pass the kernel verifier on Linux 7.0 x86_64; arm64 is compile-only. Off by default, runs privileged with host networking, and its image is not part of the release images. GPU, NCCL, RDMA and GPUDirect Storage behaviour is unverified on hardware. Flight Recorder and fabric signals are node-local previews.
 - **Fabric signal CRD (`gryviafabricsignals`).** CRD and collector endpoint exist; no controller fills the CRD, and the penalty function in the scheduler package is not called.
 - **Terraform and Ansible automation** under the repository's infrastructure directories: marked experimental and incomplete; they do not install Kubernetes, a CNI or GPU drivers.
-- **Scheduling library code.** Gang scheduling, DRF fair share and queue ordering, and elastic scaling exist as Go packages with tests, but the running job controller does not call them.
+- **Scheduling library code.** The in-tree gang scheduler (`pkg/scheduler/gang.go`), the DRF queue (`pkg/queue`) and elastic scaling exist as Go packages, but nothing calls them. Gang admission, queueing and preemption are done by Kueue instead, opt-in ([Kueue integration](https://github.com/zyvorai/gryvia/blob/main/docs/kueue-integration.md)): unit-tested with fake clients, kind workflow written but not yet run, never run on GPUs.
 
 ### CRDs and API only, no controller yet
 
@@ -35,8 +35,8 @@ These have CRDs, and some are creatable from the gateway and dashboard, but no o
 
 ### Not implemented
 
-- Job retries, checkpoint-aware restarts and preemption in the job controller
-- Priority queues, backfill, hierarchical fair share, Kueue integration
+- Checkpoint-aware restarts and checkpoint-before-preemption in the job controller (job retries exist for batch Jobs; preemption exists only through the opt-in Kueue integration and does not checkpoint)
+- Backfill, hierarchical fair share, DRF and Kueue's fair-sharing modes (the Kueue integration provides queues, quota, cohort borrowing and priority preemption only, opt-in and unverified on a real cluster until its e2e passes), Kueue topology-aware scheduling and MultiKueue
 - Cilium as the default CNI or any cluster-wide CNI replacement
 - Multi-cluster control plane and global scheduler
 - Inference serving (Triton, vLLM, TensorRT-LLM) managed by Gryvia, with canary rollouts
@@ -49,7 +49,7 @@ These have CRDs, and some are creatable from the gateway and dashboard, but no o
 Listed roughly in the order they would make the platform more useful; no dates.
 
 1. **Verify on real hardware.** Run the operators, the eBPF collector and the RDMA paths on GPU and InfiniBand or RoCE nodes and record measured results. Until then storage, NCCL and training performance are unknown: the earlier targets (for example 20 GB/s storage, 30 percent faster training, 99.9 percent uptime) were goals, never measurements.
-2. **Wire the scheduling library code** into the job controller (gang placement, fair share, the fabric penalty) and decide between building in-tree and integrating an existing queueing system.
+2. **Prove the Kueue integration** (run the kind workflow, then a GPU cluster) and wire what is still library code (the fabric penalty; topology-aware placement; elastic training). The decision to integrate Kueue rather than build queueing in-tree is made.
 3. **Reconcile the ML kinds**: register controllers for the tuner, workflow, model registry, inference service and workspace kinds, or remove the kinds that will not be built.
 4. **Reliability of jobs**: retries, checkpoint resume, and handling of `Cancelled` and node failure in the job controller.
 5. **Enforce cost controls**: budgets and alerts on top of the existing metering and estimates.

@@ -95,6 +95,15 @@ type GryviaAIJobSpec struct {
 	// The label kueue.x-k8s.io/queue-name on the GryviaAIJob is copied to the Job
 	// and, when present, the controller leaves spec.suspend to Kueue after creation.
 	Suspend bool `json:"suspend,omitempty"`
+
+	// QueueName is the Kueue LocalQueue (same namespace) that admits this job. Only used
+	// when the ai-operator runs with --kueue-integration; the annotation gryvia.io/queue-name
+	// is accepted as an alternative. When set, the batch Job is created suspended with the
+	// label kueue.x-k8s.io/queue-name and Kueue unsuspends it once ALL its pods fit the
+	// queue's quota (gang admission). Empty in a tenant-* namespace means the default queue
+	// ("gryvia") if that LocalQueue exists. Only applies to workloadKind "job".
+	// See docs/kueue-integration.md.
+	QueueName string `json:"queueName,omitempty"`
 }
 
 // DistributedConfig defines distributed training configuration

@@ -164,6 +164,9 @@ func (r *GryviaAIJobReconciler) reconcileBatchJob(ctx context.Context, job *gryv
 		if err := controllerutil.SetControllerReference(job, bj, r.Scheme); err != nil {
 			return err
 		}
+		if err := r.applyKueueToJob(ctx, job, bj); err != nil {
+			return err
+		}
 		if err := r.Create(ctx, bj); err != nil {
 			return err
 		}
@@ -173,8 +176,8 @@ func (r *GryviaAIJobReconciler) reconcileBatchJob(ctx context.Context, job *gryv
 		if !metav1.IsControlledBy(bj, job) {
 			return fmt.Errorf("batch Job %s/%s already exists and is not owned by this GryviaAIJob", bj.Namespace, bj.Name)
 		}
-		// With a Kueue queue label Kueue owns spec.suspend after creation.
-		if job.Labels[LabelKueueQueue] == "" && (bj.Spec.Suspend == nil || *bj.Spec.Suspend != job.Spec.Suspend) {
+		// With a Kueue queue label on the Job, Kueue owns spec.suspend after creation.
+		if bj.Labels[LabelKueueQueue] == "" && (bj.Spec.Suspend == nil || *bj.Spec.Suspend != job.Spec.Suspend) {
 			want := job.Spec.Suspend
 			bj.Spec.Suspend = &want
 			if err := r.Update(ctx, bj); err != nil {
@@ -183,6 +186,7 @@ func (r *GryviaAIJobReconciler) reconcileBatchJob(ctx context.Context, job *gryv
 		}
 	}
 	r.applyJobStatus(job, bj)
+	r.applyKueueStatus(ctx, job, bj)
 	return nil
 }
 

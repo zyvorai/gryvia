@@ -45,6 +45,11 @@ jobs:
       - name: Run chart-testing (lint)
         run: ct lint --config .github/ct.yaml --all
 
+      - name: Kueue chart switches (default render has no Kueue, each switch adds only its own flag and RBAC)
+        run: |
+          helm dependency build helm/gryvia
+          bash scripts/tests/kueue-chart.test.sh
+
       - name: Create kind cluster
         uses: helm/kind-action@0025e74a8c7512023d06dc019c617aa3cf561fde # v1.10.0
         with:

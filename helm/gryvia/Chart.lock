@@ -2,5 +2,8 @@ dependencies:
 - name: gpu-operator
   repository: https://helm.ngc.nvidia.com/nvidia
   version: v26.7.1
-digest: sha256:228836af2f9ab4afe8363db8fc41899b0ec27a73fe9f80f24373556622026c99
-generated: "2026-09-29T20:43:36.536698+05:30"
+- name: kueue
+  repository: oci://registry.k8s.io/kueue/charts
+  version: 0.19.6
+digest: sha256:24ca69d574e901806efaa600ae3aade928ae3399131b59b914a13f3e61b1d543
+generated: "2026-09-30T10:06:31.38852+05:30"

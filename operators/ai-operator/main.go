@@ -40,6 +40,8 @@ func main() {
 	var webhookCertDir string
 	var fabricAware bool
 	var fabricMaxPenalty float64
+	var kueueIntegration bool
+	var kueueDefaultQueue string
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -54,6 +56,11 @@ func main() {
 		"Rank nodes with the fresh per-node fabric health published by the collector (GryviaNodeFabric). Per-job override: annotation gryvia.io/fabric-aware=true|false. Off by default.")
 	flag.Float64Var(&fabricMaxPenalty, "fabric-max-penalty", 25,
 		"Most points fabric health may subtract from a node score (0 or above 25 means 25).")
+
+	flag.BoolVar(&kueueIntegration, "kueue-integration", false,
+		"Create the batch Job of a job with a queue suspended and labelled kueue.x-k8s.io/queue-name so Kueue admits all its pods together, and report Kueue's admission state as phase Queued. Needs Kueue installed. Off by default: nothing changes without it.")
+	flag.StringVar(&kueueDefaultQueue, "kueue-default-queue", "gryvia",
+		"With --kueue-integration: LocalQueue used by jobs in tenant-* namespaces that name no queue (only if that LocalQueue exists).")
 
 	opts := zap.Options{
 		Development: false,
@@ -89,9 +96,11 @@ func main() {
 		Scheme: mgr.GetScheme(),
 		Log:    ctrl.Log.WithName("controllers").WithName("GryviaAIJob"),
 
-		FabricAware:      fabricAware,
-		FabricMaxPenalty: fabricMaxPenalty,
-		Recorder:         mgr.GetEventRecorderFor("gryviaaijob-controller"),
+		FabricAware:       fabricAware,
+		FabricMaxPenalty:  fabricMaxPenalty,
+		KueueIntegration:  kueueIntegration,
+		KueueDefaultQueue: kueueDefaultQueue,
+		Recorder:          mgr.GetEventRecorderFor("gryviaaijob-controller"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "GryviaAIJob")
 		os.Exit(1)

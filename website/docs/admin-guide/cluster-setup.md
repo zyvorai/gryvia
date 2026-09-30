@@ -135,8 +135,9 @@ selection reads those labels: a job with `spec.gpuType: H100` only lands on node
 `A10`, `T4`, `V100`) and leaves unknown products unchanged, so check `kubectl get gryviagpunodes` for the exact
 string to use in jobs and SKUs. The operator's node selection is a filter, score and select over those labels and the nodes' free
 `nvidia.com/gpu`, recorded in the job status; the job's pods are then pinned by node selector and placed by the default
-Kubernetes scheduler. Gang scheduling, fair-share queues and preemption exist as library code but are not wired into the
-running operator (see the [Scheduling guide](../guides/SCHEDULING.md)).
+Kubernetes scheduler. Gang admission, per-tenant queues and priority preemption are available only through the opt-in Kueue integration
+(`kueue.enabled`, `aiOperator.kueueIntegration`, `quotaOperator.kueueIntegration`; see [Kueue integration](https://github.com/zyvorai/gryvia/blob/main/docs/kueue-integration.md) and the
+[Scheduling guide](../guides/SCHEDULING.md)), unit-tested but not yet verified on a real cluster.
 
 Tainting GPU nodes and other scheduling policy are your cluster's business; Gryvia does not add taints.
 

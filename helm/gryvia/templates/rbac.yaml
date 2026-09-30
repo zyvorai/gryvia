@@ -413,6 +413,43 @@ rules:
       - watch
   {{- end }}
 
+  {{- if .Values.aiOperator.kueueIntegration }}
+  # aiOperator.kueueIntegration: read Kueue's Workloads and LocalQueues, create the WorkloadPriorityClasses
+  - apiGroups:
+      - kueue.x-k8s.io
+    resources:
+      - workloads
+      - localqueues
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - kueue.x-k8s.io
+    resources:
+      - workloadpriorityclasses
+    verbs:
+      - get
+      - create
+  {{- end }}
+  {{- if .Values.quotaOperator.kueueIntegration }}
+  # quotaOperator.kueueIntegration: per-tenant ClusterQueue, LocalQueue and ResourceFlavors
+  - apiGroups:
+      - kueue.x-k8s.io
+    resources:
+      - clusterqueues
+      - resourceflavors
+      - localqueues
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+  {{- end }}
+
   # Manage Namespaces, ResourceQuotas and LimitRanges (tenant namespaces)
   - apiGroups:
       - ""

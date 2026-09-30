@@ -110,7 +110,7 @@ jobs:
       - name: Package
         run: |
           v="${TAG#v}"
-          # helm/gryvia depends on NVIDIA's GPU Operator chart; fetch it so the package is self-contained.
+          # helm/gryvia depends on NVIDIA's GPU Operator chart and the Kueue chart (oci://registry.k8s.io, no repo add); fetch them so the package is self-contained.
           helm repo add nvidia https://helm.ngc.nvidia.com/nvidia
           helm dependency build helm/gryvia
           for c in helm/gryvia helm/network-intelligence; do

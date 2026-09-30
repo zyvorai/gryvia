@@ -40,6 +40,15 @@ aiOperator:
   # fabric, and record why in status.placementExplanation. Off by default; adds get/list/watch on
   # gryvianodefabrics to the operators ClusterRole. Per-job override: annotation gryvia.io/fabric-aware.
   fabricAwareScheduling: false
+  # Kueue integration (--kueue-integration, off by default): a job with a queue (spec.queueName, annotation
+  # gryvia.io/queue-name, or the default LocalQueue in tenant-* namespaces) gets its batch Job created suspended with
+  # the label kueue.x-k8s.io/queue-name; Kueue admits all its pods together (gang) against the queue's quota and
+  # unsuspends it, and the job shows phase Queued while it waits. Needs Kueue installed (`kueue.enabled=true` below or
+  # your own) and adds get/list/watch on kueue.x-k8s.io workloads and localqueues and get/create on
+  # workloadpriorityclasses to the operators ClusterRole. See docs/kueue-integration.md.
+  kueueIntegration: false
+  # LocalQueue used by jobs in tenant-* namespaces that name no queue (only when that LocalQueue exists).
+  kueueDefaultQueue: gryvia
 
 # Admission webhook served by the ai-operator: validates GryviaAIJob on CREATE/UPDATE.
 # It uses its own self-signed certificate (independent of tls.mode), reused on upgrades.
@@ -59,6 +68,15 @@ quotaOperator:
     requests: {cpu: 100m, memory: 128Mi}
   nodeSelector: {}
   tolerations: []
+  # Kueue objects per GryviaTenant (--kueue-integration, off by default): LocalQueue tenant-<name>/gryvia, ClusterQueue
+  # gryvia-<tenant> (cohort gryvia; nominal quota from spec.quotas.concurrentGPUs) and ResourceFlavors. Turn it on
+  # together with aiOperator.kueueIntegration. Adds create/update/delete on kueue.x-k8s.io clusterqueues,
+  # resourceflavors and localqueues to the operators ClusterRole. See docs/kueue-integration.md.
+  kueueIntegration: false
+  # Resource(s) the tenant's nominal quota is applied to. nvidia.com/gpu on GPU clusters; the kind e2e uses cpu.
+  kueueQuotaResources: nvidia.com/gpu
+  # One ResourceFlavor per enabled GryviaGpuSku gpuType in each ClusterQueue (see the doc for the caveat).
+  kueueGpuTypeFlavors: false
   # Default GPU pricing (USD per hour)
   pricing:
     H100: 8.00
@@ -209,6 +227,57 @@ nvidia:
     #   - {name: CONTAINERD_RUNTIME_CLASS, value: nvidia}
     #   - {name: CONTAINERD_SET_AS_DEFAULT, value: "true"}
     env: []
+
+# --- Kueue (job queueing, gang admission, quotas, preemption) -------------------------------------------------
+# Off by default. `kueue.enabled=true` installs the Kueue controller from its own chart (registry.k8s.io/kueue/charts,
+# version pinned in Chart.yaml) into the release namespace; Gryvia only uses it with aiOperator.kueueIntegration and
+# quotaOperator.kueueIntegration. Every other key under `kueue:` is passed through to the Kueue chart.
+# Enable all three together:
+#   --set kueue.enabled=true --set aiOperator.kueueIntegration=true --set quotaOperator.kueueIntegration=true
+kueue:
+  enabled: false
+  # Makes the controller Deployment `kueue-controller-manager` regardless of the Helm release name.
+  fullnameOverride: kueue
+  managerConfig:
+    # Kueue's Configuration (config.kueue.x-k8s.io/v1beta2, the API of the pinned chart version). This REPLACES the
+    # chart's default; it differs from it in two ways: waitForPodsReady is on, and only the batch/job integration is
+    # registered (no pod/deployment/statefulset webhooks in every namespace). Jobs without a queue label are never
+    # managed (manageJobsWithoutQueueName is false), so nothing outside Gryvia's queues is affected.
+    #   waitForPodsReady: an admitted workload whose pods are not all Ready within `timeout` is evicted and requeued
+    #     (with backoff), and with blockAdmission: true no other workload is admitted meanwhile, so two gangs can
+    #     never each hold half of the nodes. (The v1beta2 API has no `enable` field: the block enables it.)
+    controllerManagerConfigYaml: |-
+      apiVersion: config.kueue.x-k8s.io/v1beta2
+      kind: Configuration
+      health:
+        healthProbeBindAddress: :8081
+      metrics:
+        bindAddress: :8443
+      webhook:
+        port: 9443
+      leaderElection:
+        leaderElect: true
+        resourceName: c1f6bfd2.kueue.x-k8s.io
+      controller:
+        groupKindConcurrency:
+          Job.batch: 5
+          Workload.kueue.x-k8s.io: 10
+          LocalQueue.kueue.x-k8s.io: 5
+          ClusterQueue.kueue.x-k8s.io: 5
+          ResourceFlavor.kueue.x-k8s.io: 1
+      clientConnection:
+        qps: 300
+        burst: 500
+      waitForPodsReady:
+        timeout: 10m
+        blockAdmission: true
+        requeuingStrategy:
+          timestamp: Eviction
+          backoffBaseSeconds: 60
+          backoffMaxSeconds: 3600
+      integrations:
+        frameworks:
+          - "batch/job"
 
 # --- Gryvia's own GPU add-ons: used only when nvidia.enabled=false ---------------------------------------------
 # They assume the host already has the NVIDIA driver, the container toolkit and nvidia as the default (or

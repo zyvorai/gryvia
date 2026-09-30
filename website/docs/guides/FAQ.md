@@ -147,7 +147,7 @@ spec:
   args: ["--nproc_per_node=8", "--nnodes=4", "--master_addr=$(MASTER_ADDR)", "--master_port=$(MASTER_PORT)", "train.py"]
 ```
 
-The controller creates an Indexed Job with 4 pods of 8 GPUs each and sets `MASTER_ADDR`, `MASTER_PORT`, `WORLD_SIZE` (`nodes * gpusPerNode`), `RANK`/`NODE_RANK` (the pod index) and `NCCL_DEBUG`; with `network: rdma` it adds `NCCL_IB_DISABLE=0`, `NCCL_NET_GDR_LEVEL=5` and RDMA annotations. Pods are placed by the Kubernetes scheduler, without gang scheduling. See [Scheduling](SCHEDULING.md).
+The controller creates an Indexed Job with 4 pods of 8 GPUs each and sets `MASTER_ADDR`, `MASTER_PORT`, `WORLD_SIZE` (`nodes * gpusPerNode`), `RANK`/`NODE_RANK` (the pod index) and `NCCL_DEBUG`; with `network: rdma` it adds `NCCL_IB_DISABLE=0`, `NCCL_NET_GDR_LEVEL=5` and RDMA annotations. Pods are placed by the Kubernetes scheduler, without gang scheduling unless the opt-in Kueue integration is on (then Kueue admits all pods together; see [Kueue integration](https://github.com/zyvorai/gryvia/blob/main/docs/kueue-integration.md)). See [Scheduling](SCHEDULING.md).
 
 ---
 

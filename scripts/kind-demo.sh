@@ -47,7 +47,8 @@ fi
 echo "Installing Gryvia ..."
 kubectl create namespace gryvia-system --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 # The GPU add-ons need real NVIDIA GPUs, so they are off in the demo.
-# The chart bundles NVIDIA's GPU Operator as an optional dependency; fetch it (it stays disabled here).
+# The chart bundles NVIDIA's GPU Operator and Kueue as optional dependencies; fetch them (both stay disabled here).
+# Kueue is an oci:// dependency: it needs no `helm repo add`.
 helm repo add nvidia https://helm.ngc.nvidia.com/nvidia --force-update >/dev/null
 helm dependency build ./helm/gryvia >/dev/null
 helm upgrade --install gryvia ./helm/gryvia --namespace gryvia-system --set namespace.create=false \

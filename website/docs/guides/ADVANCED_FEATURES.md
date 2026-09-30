@@ -13,7 +13,7 @@ Overview of Gryvia's advanced capability areas, with what is implemented and wha
 | Job templates | `GryviaTemplate` | CRD only, no controller |
 | Auto-scaling | `GryviaAutoScaler` | CRD only, no controller; no node provisioning exists |
 | Budgets | `GryviaBudget` | CRD only, no controller; nothing enforces or alerts |
-| Priority and preemption | `GryviaPriority` | CRD only; no preemption. `GryviaAIJob.spec.priority` (0 to 100) is validated but not acted on |
+| Priority and preemption | `GryviaAIJob.spec.priority`, Kueue | Opt-in via the Kueue integration (`--kueue-integration`): priority maps to a WorkloadPriorityClass and preempts within a queue, victims are requeued; unit-tested, e2e unverified ([details](https://github.com/zyvorai/gryvia/blob/main/docs/kueue-integration.md)). Without it `spec.priority` is validated but not acted on. `GryviaPriority` is CRD only |
 | ML workflows | AutoTuner, Workflow, ModelRegistry, InferenceService, Workspace | CRD and gateway/dashboard CRUD only; see [ML Workflows](ML_WORKFLOWS.md) |
 | Network intelligence | 10 kinds | Running via the network-intelligence operator (own chart); eBPF collector off by default; see [Network Intelligence](NETWORK_INTELLIGENCE.md) |
 | Advanced scheduling | | Mostly library code; see [Scheduling](SCHEDULING.md) |
@@ -369,7 +369,7 @@ spec:
 
 ## Priority & Preemption
 
-Status: not implemented. A `GryviaPriority` CRD (`value` required, plus `preemptionPolicy`, `quotaOverride`, `sla`) exists but no controller is registered for it. `GryviaAIJob.spec.priority` is an integer from 0 to 100 that the admission webhook range-checks; the scheduler and controller do not order or preempt by it, and there is no `priorityClassName` on the job. The seven-tier table with quota override percentages that earlier versions showed was a proposal.
+Status: opt-in through Kueue (`--kueue-integration`, see [Kueue integration](https://github.com/zyvorai/gryvia/blob/main/docs/kueue-integration.md); unit-tested, kind e2e written but unverified), otherwise not implemented. A `GryviaPriority` CRD (`value` required, plus `preemptionPolicy`, `quotaOverride`, `sla`) exists but no controller is registered for it. `GryviaAIJob.spec.priority` is an integer from 0 to 100 that the admission webhook range-checks; without the Kueue integration the scheduler and controller do not order or preempt by it, and there is no `priorityClassName` on the job. The seven-tier table with quota override percentages that earlier versions showed was a proposal.
 
 See [Scheduling](SCHEDULING.md#priority-preemption) for the details.
 
@@ -407,7 +407,7 @@ For full documentation, CRD examples, and CLI commands, see the **[Network Intel
 
 ## Advanced Scheduling
 
-What runs: GPU-aware node selection and a validating admission webhook (quota and SKU policy, fails open). What is library code only, not called by the controller: gang scheduling, DRF fair-share queues, elastic scaling and the mutating NCCL-injection webhook. Backfill and preemption are not implemented.
+What runs: GPU-aware node selection and a validating admission webhook (quota and SKU policy, fails open). Opt-in and Kueue-backed (`--kueue-integration`; unit-tested, kind e2e written but unverified): gang admission, per-tenant queues and quota with borrowing, priority preemption ([Kueue integration](https://github.com/zyvorai/gryvia/blob/main/docs/kueue-integration.md)). Library code only, not called by anything: the in-tree gang scheduler, the DRF queue, elastic scaling and the mutating NCCL-injection webhook. Backfill is not implemented.
 
 For details, see the **[Scheduling Guide](SCHEDULING.md)**.
 

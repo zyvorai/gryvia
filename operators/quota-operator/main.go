@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"os"
+	"strings"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -32,12 +33,20 @@ func main() {
 	var metricsAddr string
 	var enableLeaderElection bool
 	var probeAddr string
+	var kueueIntegration, kueueGPUTypeFlavors bool
+	var kueueQuotaResources string
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", true,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
+	flag.BoolVar(&kueueIntegration, "kueue-integration", false,
+		"Create a Kueue LocalQueue (tenant-<name>/gryvia), ClusterQueue (gryvia-<tenant>, cohort gryvia) and ResourceFlavors for every GryviaTenant. Needs Kueue installed. Off by default.")
+	flag.StringVar(&kueueQuotaResources, "kueue-quota-resources", controllers.DefaultKueueQuotaResources,
+		"With --kueue-integration: comma-separated resources the tenant's nominal quota (concurrentGPUs, else the GryviaQuota maxGPUs) is applied to. The kind e2e sets cpu.")
+	flag.BoolVar(&kueueGPUTypeFlavors, "kueue-gpu-type-flavors", false,
+		"With --kueue-integration: one ResourceFlavor per enabled GryviaGpuSku gpuType (node label gryvia.io/gpu=<type>) in every ClusterQueue. Each flavor gets the full nominal quota; see docs/kueue-integration.md.")
 	opts := zap.Options{
 		Development: false,
 	}
@@ -88,6 +97,24 @@ func main() {
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "GryviaUsageRecord")
 		os.Exit(1)
+	}
+
+	if kueueIntegration {
+		var resources []string
+		for _, n := range strings.Split(kueueQuotaResources, ",") {
+			if n = strings.TrimSpace(n); n != "" {
+				resources = append(resources, n)
+			}
+		}
+		if err = (&controllers.GryviaKueueReconciler{
+			Client:         mgr.GetClient(),
+			Scheme:         mgr.GetScheme(),
+			QuotaResources: resources,
+			GPUTypeFlavors: kueueGPUTypeFlavors,
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "GryviaKueue")
+			os.Exit(1)
+		}
 	}
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

@@ -245,7 +245,7 @@ install_gryvia() {
   fi
   local ip; ip="$(host_ip)"; ip="${ip:-127.0.0.1}"
   if [[ -d "$CHART" ]]; then
-    # A chart from a checkout needs its NVIDIA GPU Operator dependency downloaded first.
+    # A chart from a checkout needs its NVIDIA GPU Operator and Kueue (oci://, no repo add) dependencies downloaded first.
     run helm repo add nvidia https://helm.ngc.nvidia.com/nvidia --force-update
     run helm dependency build "$CHART"
   fi

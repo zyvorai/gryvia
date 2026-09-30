@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -62,6 +63,14 @@ type GryviaAIJobReconciler struct {
 	ClusterDomain string
 	// Recorder emits the placement Event (optional).
 	Recorder record.EventRecorder
+
+	// KueueIntegration (flag --kueue-integration, default false) creates the batch Job suspended with a
+	// Kueue queue label and maps Kueue's admission state to the job phase. See gryviaaijob_kueue.go.
+	KueueIntegration bool
+	// KueueDefaultQueue is the LocalQueue used in tenant-* namespaces (flag --kueue-default-queue).
+	KueueDefaultQueue string
+	// priorityClasses caches the WorkloadPriorityClasses already ensured.
+	priorityClasses sync.Map
 }
 
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs,verbs=get;list;watch;create;update;patch;delete
@@ -145,7 +154,10 @@ func (r *GryviaAIJobReconciler) reconcileAIJob(ctx context.Context, job *gryviav
 		// Rejected means "never ran": also remove anything created before the rejection landed.
 		return ctrl.Result{}, r.teardown(ctx, job, true)
 	case PhaseQueued:
-		return ctrl.Result{}, nil // held by the quota operator: no PVC, Service or workload
+		if !isKueueQueued(job) {
+			return ctrl.Result{}, nil // held by the quota operator: no PVC, Service or workload
+		}
+		// waiting for Kueue: the workload exists (suspended), keep reconciling it
 	}
 
 	if _, err := job.Spec.TimeoutSeconds(); err != nil {
@@ -253,6 +265,9 @@ func (r *GryviaAIJobReconciler) reconcileAIJob(ctx context.Context, job *gryviav
 		return ctrl.Result{}, nil
 	}
 
+	if job.Status.Phase == PhaseQueued {
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil // Workload changes do not trigger this controller
+	}
 	return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 }
 
