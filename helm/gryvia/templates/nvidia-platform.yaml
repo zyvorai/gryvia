@@ -53,3 +53,85 @@ spec:
             limits:
               nvidia.com/gpu: 1
 {{- end }}
+---
+{{- if and .Values.nvidiaNetwork.enabled .Values.nvidiaNetwork.nicClusterPolicy.enabled }}
+apiVersion: mellanox.com/v1alpha1
+kind: NicClusterPolicy
+metadata:
+  name: nic-cluster-policy
+  labels:
+    app.kubernetes.io/name: gryvia
+    app.kubernetes.io/component: nvidia-network
+spec:
+  {{- if .Values.nvidiaNetwork.nicClusterPolicy.ofedDriver }}
+  ofedDriver:
+    image: doca-driver
+    repository: nvcr.io/nvidia/mellanox
+    version: doca3.5.0-26.07-0.7.7.0-0
+    startupProbe:
+      initialDelaySeconds: 10
+      periodSeconds: 10
+    livenessProbe:
+      initialDelaySeconds: 30
+      periodSeconds: 30
+    readinessProbe:
+      initialDelaySeconds: 10
+      periodSeconds: 30
+  {{- end }}
+  {{- if .Values.nvidiaNetwork.nicClusterPolicy.rdmaSharedDevicePlugin }}
+  rdmaSharedDevicePlugin:
+    image: k8s-rdma-shared-dev-plugin
+    repository: ghcr.io/mellanox
+    version: v1.5.4
+    config: |
+      {
+        "configList": [
+          {
+            "resourceName": "rdma_shared_device_a",
+            "rdmaHcaMax": 63,
+            "selectors": { "vendors": ["15b3"] }
+          }
+        ]
+      }
+  {{- end }}
+  {{- if .Values.nvidiaNetwork.nicClusterPolicy.sriovDevicePlugin }}
+  sriovDevicePlugin:
+    image: sriov-network-device-plugin
+    repository: ghcr.io/k8snetworkplumbingwg
+    version: v3.11.0
+    config: |
+      {
+        "resourceList": [
+          {
+            "resourceName": "sriov_rdma",
+            "selectors": { "vendors": ["15b3"], "isRdma": true }
+          }
+        ]
+      }
+  {{- end }}
+  {{- if .Values.nvidiaNetwork.nicClusterPolicy.secondaryNetwork }}
+  secondaryNetwork:
+    cniPlugins:
+      image: plugins
+      repository: ghcr.io/k8snetworkplumbingwg
+      version: v1.6.2
+    multus:
+      image: multus-cni
+      repository: ghcr.io/k8snetworkplumbingwg
+      version: v3.9.3
+  {{- end }}
+{{- end }}
+---
+{{- if and .Values.nvidiaNim.enabled .Values.nvidiaNim.ngcApiKey }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ngc-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: gryvia
+    app.kubernetes.io/component: nvidia-nim
+type: Opaque
+stringData:
+  NGC_API_KEY: {{ .Values.nvidiaNim.ngcApiKey | quote }}
+{{- end }}

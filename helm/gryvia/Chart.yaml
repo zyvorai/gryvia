@@ -33,6 +33,13 @@ dependencies:
     version: 26.7.0
     repository: https://helm.ngc.nvidia.com/nvidia
     condition: nvidiaNetwork.enabled
+  # NVIDIA NIM Operator. Off unless nvidiaNim.enabled=true. NGC publishes it as 2.0.1 (no v).
+  # Does not pull models until you apply a NIMService (see examples/nvidia/nim-service.yaml).
+  - name: k8s-nim-operator
+    alias: nvidiaNim
+    version: 2.0.1
+    repository: https://helm.ngc.nvidia.com/nvidia
+    condition: nvidiaNim.enabled
   # Kueue (kubernetes-sigs/kueue): job queueing, gang admission, quotas, fair sharing and preemption for GryviaAIJobs.
   # Disabled unless `kueue.enabled=true`; the operators use it only with aiOperator.kueueIntegration and
   # quotaOperator.kueueIntegration (see docs/kueue-integration.md). Like the NVIDIA chart it must be downloaded
