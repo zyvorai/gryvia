@@ -38,8 +38,13 @@ func TestValidateJob(t *testing.T) {
 		wantErr string // empty means valid
 	}{
 		{"valid", func(j *gryviav1.GryviaAIJob) {}, ""},
-		{"zero gpus", func(j *gryviav1.GryviaAIJob) { j.Spec.GPUs = 0 }, "spec.gpus must be greater than 0"},
-		{"negative gpus", func(j *gryviav1.GryviaAIJob) { j.Spec.GPUs = -2 }, "spec.gpus must be greater than 0, got -2"},
+		{"zero gpus is a CPU-only job", func(j *gryviav1.GryviaAIJob) { j.Spec.GPUs = 0 }, ""},
+		{"negative gpus", func(j *gryviav1.GryviaAIJob) { j.Spec.GPUs = -2 }, "spec.gpus must not be negative, got -2"},
+		{"workload kind job", func(j *gryviav1.GryviaAIJob) { j.Spec.WorkloadKind = "job" }, ""},
+		{"bad workload kind", func(j *gryviav1.GryviaAIJob) { j.Spec.WorkloadKind = "deployment" }, "spec.workloadKind \"deployment\""},
+		{"timeout days", func(j *gryviav1.GryviaAIJob) { j.Spec.Timeout = "7d" }, ""},
+		{"bad timeout", func(j *gryviav1.GryviaAIJob) { j.Spec.Timeout = "soon" }, "spec.timeout"},
+		{"negative retry limit", func(j *gryviav1.GryviaAIJob) { j.Spec.RetryLimit = -1 }, "spec.retryLimit must not be negative"},
 		{"empty image", func(j *gryviav1.GryviaAIJob) { j.Spec.Image = "" }, "spec.image is required"},
 		{"bad name", func(j *gryviav1.GryviaAIJob) { j.Name = "Bad_Name" }, "metadata.name \"Bad_Name\" is invalid"},
 		{"bad type", func(j *gryviav1.GryviaAIJob) { j.Spec.Type = "mining" }, "spec.type \"mining\" is not supported; valid values: training"},
@@ -79,7 +84,7 @@ func TestValidateJob(t *testing.T) {
 
 func TestValidateJobReportsAllErrors(t *testing.T) {
 	j := validJob()
-	j.Spec.GPUs = 0
+	j.Spec.GPUs = -1
 	j.Spec.Image = ""
 	if errs := ValidateJob(j); len(errs) != 2 {
 		t.Fatalf("expected 2 errors, got %v", errs)
@@ -133,14 +138,14 @@ func TestAdmissionReviewOverHTTP(t *testing.T) {
 	}
 
 	bad := validJob()
-	bad.Spec.GPUs = 0
+	bad.Spec.GPUs = -1
 	bad.Spec.Image = ""
 	denied := post(t, h, review(t, admissionv1.Create, bad))
 	if denied.Response == nil || denied.Response.Allowed {
 		t.Fatalf("invalid job should be denied: %+v", denied.Response)
 	}
 	msg := denied.Response.Result.Message
-	if !strings.Contains(msg, "spec.gpus must be greater than 0") || !strings.Contains(msg, "spec.image is required") {
+	if !strings.Contains(msg, "spec.gpus must not be negative") || !strings.Contains(msg, "spec.image is required") {
 		t.Fatalf("unhelpful message: %q", msg)
 	}
 

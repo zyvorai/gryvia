@@ -43,7 +43,7 @@ the penalty as a nudge, not a health verdict.
 - Preferred affinity is a scoring hint: it can never make a pod unschedulable. If no selected node fits, the kube-scheduler
   places it elsewhere exactly as before.
 - Required terms, `nodeSelector` and tolerations are untouched, so no eligibility rule is loosened or tightened.
-- It is applied only at StatefulSet **creation**. Reconcile of an existing StatefulSet does not compare affinity, so
+- It is applied only at workload **creation** (Job or StatefulSet). Reconcile of an existing workload does not compare affinity, so
   toggling the feature or a changing signal never edits a running job's pod template (which would roll its pods).
 - It is applied only when a penalty actually changed something, so unaffected jobs are byte-identical.
 

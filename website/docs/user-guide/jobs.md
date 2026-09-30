@@ -2,7 +2,7 @@
 
 Guide to submitting and managing AI workloads with Gryvia.
 
-> **Status.** What the ai-operator actually does with a `GryviaAIJob` is described in the [Scheduling guide](../guides/SCHEDULING.md#what-runs-today): it picks nodes, then creates a StatefulSet, a headless Service and an optional PVC. Many features that appear in older versions of this page (checkpointing and restart policy fields, spot, preemption, budget alerts) are not fields of the job schema; this page now says so where relevant. Nothing here has been verified on real GPU hardware.
+> **Status.** What the ai-operator actually does with a `GryviaAIJob` is described in the [Scheduling guide](../guides/SCHEDULING.md#what-runs-today): it picks nodes, then creates an Indexed batch Job (training, fine-tuning, evaluation) or a StatefulSet (inference), a headless Service and an optional PVC. Many features that appear in older versions of this page (checkpointing and restart policy fields, spot, preemption, budget alerts) are not fields of the job schema; this page now says so where relevant. Nothing here has been verified on real GPU hardware.
 
 Required spec fields are `type` (`training`, `inference`, `fine-tuning` or `evaluation`), `gpus` and `image`. The full schema is in `crds/gryvia.io_gryviaaijobs.yaml` and the [CRD reference](../reference/crds.md).
 
@@ -62,12 +62,14 @@ gryvia validate job.yaml
 Set by the ai-operator (`status.phase`):
 
 1. **Pending**: new job, or no node currently qualifies (retried every 30 seconds)
-2. **Scheduling**: nodes are being selected
+2. **Scheduling**: nodes selected, workload created, pods not ready yet (or the Job is suspended)
 3. **Running**: at least one replica is ready
-4. **Succeeded**: all pods have succeeded
-5. **Failed**: all pods have terminated and at least one failed
+4. **Succeeded**: the batch Job completed (every index exited 0)
+5. **Failed**: the batch Job failed (retry limit or timeout reached), with the reason in `status.message`
 
-`gryvia cancel` writes `Cancelled` into `status.phase`, but the controller has no handling for that value (it will keep reconciling the StatefulSet and can overwrite the phase while pods are ready). To actually stop a job's pods, delete it (see below).
+Set by other components: **Queued** and **Rejected** (quota operator; nothing is created for them), **Preempted** (priority controller) and **Cancelled** (`gryvia cancel`, or the annotation `gryvia.io/cancel: "true"`). Cancelling or preempting deletes the Job (pods stop) and keeps the PVC. Succeeded, Failed, Cancelled and Rejected are final. Details: [AIJob lifecycle](https://github.com/zyvorai/gryvia/blob/main/docs/aijob-lifecycle.md).
+
+Workload kind: `spec.workloadKind` is `job` (default for training, fine-tuning, evaluation) or `statefulset` (default for inference; pods restart forever and the job never completes). A job that already runs on a StatefulSet keeps it. `spec.suspend: true` creates the Job suspended. `gpus: 0` runs a CPU-only job.
 
 ### Monitoring Jobs
 
@@ -151,7 +153,7 @@ spec:
     enabled: true
     framework: pytorch
     backend: nccl
-    nodes: 4               # 4 pods (StatefulSet replicas)
+    nodes: 4               # 4 pods (Job completions / StatefulSet replicas)
     gpusPerNode: 8         # 8 GPUs per pod = 32 total
   command: ["torchrun"]
   args:
@@ -162,7 +164,7 @@ spec:
     - train.py
 ```
 
-For distributed jobs the controller sets `MASTER_ADDR` (`<job>-training-0.<job>-headless`), `MASTER_PORT=29500`, `WORLD_SIZE` (`nodes * gpusPerNode`, 32 above) and `NCCL_DEBUG=INFO`, plus `NCCL_IB_DISABLE=0` and `NCCL_NET_GDR_LEVEL=5` when `network: rdma`. It also mounts a memory-backed `/dev/shm`. It does not set `NODE_RANK`; each pod's rank must be derived from its StatefulSet ordinal (the pod hostname suffix) by your entrypoint, or by torchrun's rendezvous (`--rdzv_backend=c10d`). Use `$(VAR)` syntax in `args` for Kubernetes to expand variables; `$VAR` inside a `command` list is not expanded. Total GPUs are capped at 1024 by the admission webhook.
+For distributed jobs the controller sets `MASTER_ADDR` (`<job>-0.<job>-headless.<namespace>.svc.cluster.local` for Jobs), `MASTER_PORT=29500`, `WORLD_SIZE` (`nodes * gpusPerNode`, 32 above), `RANK` and `NODE_RANK` (the pod's index, from the Job completion index), `NNODES`, `NPROC_PER_NODE`, and `NCCL_DEBUG=INFO` (not for `backend: gloo`), plus `NCCL_IB_DISABLE=0` and `NCCL_NET_GDR_LEVEL=5` when `network: rdma`. It also mounts a memory-backed `/dev/shm`. With `gpusPerNode > 1`, `RANK` is the node index, not the per-GPU process rank: pass `--node_rank=$(NODE_RANK)` to torchrun and let it compute the process ranks. The full variable table is in [AIJob lifecycle](https://github.com/zyvorai/gryvia/blob/main/docs/aijob-lifecycle.md#environment-variables). Use `$(VAR)` syntax in `args` for Kubernetes to expand variables; `$VAR` inside a `command` list is not expanded. Total GPUs are capped at 1024 by the admission webhook.
 
 ### DeepSpeed
 
@@ -275,7 +277,7 @@ Copy the defaults you want from a template into your `GryviaAIJob` manifest and 
 Older versions of this page showed `checkpointing`, `restartPolicy`/`backoffLimit`, `priority: high`, `preemptible` and `spot` blocks on the job. None of those exist in the `GryviaAIJob` schema, so `kubectl apply` rejects them. What exists:
 
 - **Checkpointing**: write checkpoints to a mounted volume from your own training code. The separate `GryviaCheckpointGuard` kind (reconciled by the ai-operator) manages checkpoint policies; see the [ML workflows guide](../guides/ML_WORKFLOWS.md).
-- **Retries**: `spec.retryLimit` is in the schema and `status.retries` exists, but the controller does not implement retries today. Pods of the StatefulSet restart in place.
+- **Retries**: for the batch Job workload `spec.retryLimit` is the Job's `backoffLimit` (0 fails the job on the first failed pod; a failed pod is replaced by a new pod with the same index and rank) and `status.retries` counts failed pods. `spec.timeout` (`90m`, `24h`, `7d`) is the Job's `activeDeadlineSeconds`. Neither applies to the StatefulSet workload, whose pods restart in place.
 - **Priority**: `spec.priority` is an integer 0 to 100 that the admission webhook range-checks; nothing schedules or preempts by it yet. See [Scheduling](../guides/SCHEDULING.md#priority-preemption).
 - **Spot**: no spot field or controller. Spot-related services in `services/` are separate and not part of the job API.
 

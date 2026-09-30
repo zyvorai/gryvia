@@ -114,7 +114,7 @@ MIG (Multi-Instance GPU) partitions A100/H100-class GPUs into isolated instances
 
 ### How do I retry failed jobs?
 
-The job controller does not retry. `spec.retryLimit` and `status.retries` exist in the schema but are not acted on, and there is no `retryPolicy` field on the job (a `GryviaRetryPolicy` CRD exists without a controller). The job's pods are a StatefulSet, so a crashed container restarts in place. To rerun, delete and resubmit:
+Training, fine-tuning and evaluation jobs run as a batch Job: `spec.retryLimit` is its `backoffLimit` (default 0, so the first failed pod fails the job) and `status.retries` counts failed pods. There is no `retryPolicy` field on the job (a `GryviaRetryPolicy` CRD exists without a controller). Inference jobs (StatefulSet) restart a crashed container in place. A `Failed` job stays failed; to rerun, delete and resubmit:
 
 ```bash
 gryvia delete job my-job --yes
@@ -147,7 +147,7 @@ spec:
   args: ["--nproc_per_node=8", "--nnodes=4", "--master_addr=$(MASTER_ADDR)", "--master_port=$(MASTER_PORT)", "train.py"]
 ```
 
-The controller creates 4 StatefulSet replicas with 8 GPUs each and sets `MASTER_ADDR`, `MASTER_PORT`, `WORLD_SIZE` (`nodes * gpusPerNode`) and `NCCL_DEBUG`; with `network: rdma` it adds `NCCL_IB_DISABLE=0`, `NCCL_NET_GDR_LEVEL=5` and RDMA annotations. Node ranks come from your launcher or the pod ordinal. Pods are placed by the Kubernetes scheduler, without gang scheduling. See [Scheduling](SCHEDULING.md).
+The controller creates an Indexed Job with 4 pods of 8 GPUs each and sets `MASTER_ADDR`, `MASTER_PORT`, `WORLD_SIZE` (`nodes * gpusPerNode`), `RANK`/`NODE_RANK` (the pod index) and `NCCL_DEBUG`; with `network: rdma` it adds `NCCL_IB_DISABLE=0`, `NCCL_NET_GDR_LEVEL=5` and RDMA annotations. Pods are placed by the Kubernetes scheduler, without gang scheduling. See [Scheduling](SCHEDULING.md).
 
 ---
 

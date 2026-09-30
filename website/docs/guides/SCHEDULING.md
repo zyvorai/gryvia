@@ -7,7 +7,7 @@ What Gryvia does today when a `GryviaAIJob` is submitted, and which of the more 
 | Capability | Status |
 |------------|--------|
 | GPU-aware node selection (filter and score nodes, recorded in `status.nodesAllocated`) | Implemented and run by the GryviaAIJob controller. Advisory: see [What runs today](#what-runs-today) |
-| StatefulSet, headless Service and PVC creation, NCCL/`MASTER_ADDR`/`WORLD_SIZE` env for distributed jobs | Implemented |
+| Indexed batch Job (training, fine-tuning, evaluation) or StatefulSet (inference), headless Service and PVC creation, NCCL/`MASTER_ADDR`/`WORLD_SIZE`/`RANK` env for distributed jobs | Implemented; unit-tested against fake clients, kind end-to-end in CI, not run on GPUs. See [AIJob lifecycle](https://github.com/zyvorai/gryvia/blob/main/docs/aijob-lifecycle.md) |
 | Validating admission webhook (job sanity, quota and SKU policy) | Implemented, served by the ai-operator when enabled; fails open by default |
 | Gang scheduling | Library code in `operators/ai-operator/pkg/scheduler/gang.go`, not called by the controller |
 | DRF fair share and queue ordering | Library code in `operators/ai-operator/pkg/queue`, not called by the controller |
@@ -28,15 +28,18 @@ The GryviaAIJob controller (`operators/ai-operator/controllers/gryviaaijob_contr
    - Filters: node is Ready; `gryvia.io/gpu` label matches `spec.gpuType` (unless empty or `any`); `gryvia.io/rdma=true` when `spec.network: rdma`; `gryvia.io/sriov=true` when `spec.network: sriov`; `spec.nodeSelector` matches; enough free GPUs (from the `gryvia.io/gpu-count` label or `nvidia.com/gpu` allocatable, minus GPUs requested by running pods).
    - Score: +50 for a GPU-type match, +30 for RDMA when requested, +40 (NVSwitch) or +30 (NVLink) from the `gryvia.io/interconnect` label for multi-GPU jobs, +5 per free GPU, +1 per 10 GB of `gryvia.io/gpu-memory`, plus a small general node-resource term.
    - The top `distributed.nodes` nodes (1 when not distributed) are written to `status.nodesAllocated`. If no node qualifies, the `Scheduled` condition is set to false with the reason and the job is retried after 30 seconds.
-3. Creates a PVC when `spec.storage` is set, a headless Service, and a StatefulSet named `<job>-training` with one `trainer` container.
-4. Derives status from the StatefulSet and pods: `Running` once a replica is ready, `Succeeded` when all pods have succeeded, `Failed` when all pods have terminated and at least one failed.
+3. Creates a PVC when `spec.storage` is set, a headless Service, and the workload with one `trainer` container. Training, fine-tuning and evaluation jobs get an **Indexed `batch/v1` Job** named `<job>` (parallelism = completions = `distributed.nodes`, `restartPolicy: Never`, `backoffLimit` = `spec.retryLimit`, `activeDeadlineSeconds` from `spec.timeout`); inference jobs get a StatefulSet named `<job>-training`. `spec.workloadKind` (`job` or `statefulset`) overrides the default, and a job that already has a StatefulSet keeps it.
+4. Derives status from the workload. For a Job: `Scheduling` until a pod is ready, `Running`, then `Succeeded` when the Job is Complete or `Failed` (with a message such as `BackoffLimitExceeded` or `DeadlineExceeded`) when the Job fails. Terminal phases are final. For a StatefulSet: `Running` once a replica is ready; pods restart forever, so it never completes.
+
+`Queued`, `Rejected`, `Preempted` and `Cancelled` are honoured: nothing is created while a job is `Queued` or `Rejected`, and `Cancelled`/`Preempted` delete the workload (the PVC is kept). Full state machine: [AIJob lifecycle](https://github.com/zyvorai/gryvia/blob/main/docs/aijob-lifecycle.md).
 
 Important limits of the current implementation:
 
-- `status.nodesAllocated` is **not** turned into a node binding. The StatefulSet's pod template carries `nodeSelector` (`gryvia.io/gpu`, `gryvia.io/rdma`, plus your own), tolerations and affinity, and the Kubernetes scheduler places the pods. The operator's node choice is recorded, not enforced. In effect the operator's step is a feasibility check plus advisory status: it fails (job stays Pending, retried every 30 seconds) when no node qualifies, but it does not decide where pods run. The `gryvia.io/gpu`, `gryvia.io/gpu-count`, `gryvia.io/rdma`, `gryvia.io/sriov` and `gryvia.io/interconnect` node labels it relies on are set by the `GryviaGpuNode` controller (from the resource's spec and GPU feature discovery data).
+- `status.nodesAllocated` is **not** turned into a node binding. The pod template carries `nodeSelector` (`gryvia.io/gpu`, `gryvia.io/rdma`, plus your own), tolerations and affinity, and the Kubernetes scheduler places the pods. The operator's node choice is recorded, not enforced. In effect the operator's step is a feasibility check plus advisory status: it fails (job stays Pending, retried every 30 seconds) when no node qualifies, but it does not decide where pods run. The `gryvia.io/gpu`, `gryvia.io/gpu-count`, `gryvia.io/rdma`, `gryvia.io/sriov` and `gryvia.io/interconnect` node labels it relies on are set by the `GryviaGpuNode` controller (from the resource's spec and GPU feature discovery data).
 - Pods request `nvidia.com/gpu` (per pod: `distributed.gpusPerNode` when distributed, otherwise `spec.gpus`), so the NVIDIA device plugin is required.
-- `spec.priority`, `spec.retryLimit`, `spec.timeout` and `spec.model` are accepted by the schema (priority is range-checked 0 to 100 by the webhook) but the controller does not act on them today.
-- A StatefulSet is used, so pods restart in place (`restartPolicy: Always` is the only choice for StatefulSets); run-to-completion semantics are approximated by inspecting pod phases.
+- `spec.priority` and `spec.model` are accepted by the schema (priority is range-checked 0 to 100 by the webhook) but the controller does not act on them today. `spec.retryLimit` and `spec.timeout` apply to the batch Job workload only.
+- `spec.gpus: 0` is a CPU-only job: no `nvidia.com/gpu` limit, no GPU node selector and no GPU placement step (used for CI on clusters without GPUs).
+- A Job's pod template is immutable once created, so later edits of the image, command or env do not reach a running Job (`spec.suspend` is the exception). A StatefulSet is updated in place for image, command, args, env, GPU count and node selector.
 
 ### A distributed job that validates against the CRD
 
@@ -68,7 +71,7 @@ For a distributed job the controller creates 4 replicas with 8 GPUs each and inj
 
 Status: library code only. `GangScheduler` in `operators/ai-operator/pkg/scheduler/gang.go` implements a `PodGroup` with all-or-nothing reservation of GPUs across nodes, a hold timeout (a constant of 2 minutes in the code) that releases reserved GPUs to break deadlocks, and a deadlock detector. Nothing in the running controller calls it, and there is no `spec.scheduling` field on `GryviaAIJob`.
 
-What that means today: a multi-node job becomes one StatefulSet (default `OrderedReady` pod management, so pods start one after another) and the Kubernetes scheduler places each pod independently. Nothing reserves the whole set of GPUs up front, so two large jobs can each end up holding part of the cluster. If you need real gang semantics now, use a gang-aware scheduler such as Kueue or Volcano in front of the cluster; Gryvia does not integrate with them.
+What that means today: a multi-node job becomes one Indexed Job (all pods are created at once) or, for inference and `workloadKind: statefulset`, one StatefulSet (default `OrderedReady` pod management, so pods start one after another) and the Kubernetes scheduler places each pod independently. Nothing reserves the whole set of GPUs up front, so two large jobs can each end up holding part of the cluster. If you need real gang semantics now, use a gang-aware scheduler such as Kueue or Volcano in front of the cluster; Gryvia does not integrate with them.
 
 ### Design sketch
 

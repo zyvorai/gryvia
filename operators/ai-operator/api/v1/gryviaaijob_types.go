@@ -13,7 +13,9 @@ type GryviaAIJobSpec struct {
 	// Model name (llama-70b, gpt-4, stable-diffusion, etc.)
 	Model string `json:"model,omitempty"`
 
-	// Number of GPUs required
+	// Number of GPUs required per pod. 0 is allowed and means a CPU-only job: no
+	// nvidia.com/gpu limit and no GPU node selector are added (used for CI on
+	// clusters without GPUs).
 	GPUs int32 `json:"gpus"`
 
 	// Preferred GPU type (H100, A100, L40, V100, T4, any)
@@ -61,10 +63,13 @@ type GryviaAIJobSpec struct {
 	// Job priority (0-100, higher = more important)
 	Priority int32 `json:"priority,omitempty"`
 
-	// Number of retries on failure
+	// Number of retries on failure. For a batch Job this is backoffLimit: 0 fails the job
+	// on the first failed pod. Not used by the StatefulSet workload.
 	RetryLimit int32 `json:"retryLimit,omitempty"`
 
-	// Job timeout (e.g., 24h, 7d)
+	// Job timeout (e.g., 90m, 24h, 7d). For a batch Job this is activeDeadlineSeconds: the
+	// job is Failed (DeadlineExceeded) once it has been active this long. Not used by the
+	// StatefulSet workload.
 	Timeout string `json:"timeout,omitempty"`
 
 	// Node selector
@@ -75,6 +80,21 @@ type GryviaAIJobSpec struct {
 
 	// Affinity
 	Affinity *corev1.Affinity `json:"affinity,omitempty"`
+
+	// WorkloadKind selects the Kubernetes workload that runs the job: "job" (an
+	// Indexed batch/v1 Job that runs to completion, so Succeeded and Failed are
+	// reachable) or "statefulset" (pods restart forever and never complete).
+	// Default: "job" for training, fine-tuning and evaluation, "statefulset" for
+	// inference. A job that already has a "<name>-training" StatefulSet or a Job
+	// keeps that workload whatever this says (workloads are never migrated).
+	// +kubebuilder:validation:Enum=job;statefulset
+	WorkloadKind string `json:"workloadKind,omitempty"`
+
+	// Suspend creates the batch Job suspended (no pods run) and keeps it
+	// suspended while true. Only applies to workloadKind "job". Default false.
+	// The label kueue.x-k8s.io/queue-name on the GryviaAIJob is copied to the Job
+	// and, when present, the controller leaves spec.suspend to Kueue after creation.
+	Suspend bool `json:"suspend,omitempty"`
 }
 
 // DistributedConfig defines distributed training configuration
@@ -97,7 +117,8 @@ type DistributedConfig struct {
 
 // GryviaAIJobStatus defines the observed state of GryviaAIJob
 type GryviaAIJobStatus struct {
-	// Current phase (Pending, Scheduling, Running, Succeeded, Failed, Unknown)
+	// Current phase (Pending, Queued, Scheduling, Running, Succeeded, Failed, Rejected, Preempted, Cancelled, Unknown).
+	// See docs/aijob-lifecycle.md for the state machine.
 	Phase string `json:"phase,omitempty"`
 
 	// Conditions represent the latest available observations

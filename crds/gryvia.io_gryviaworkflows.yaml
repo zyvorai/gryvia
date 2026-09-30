@@ -1197,7 +1197,10 @@ spec:
                             T4, any)
                           type: string
                         gpus:
-                          description: Number of GPUs required
+                          description: |-
+                            Number of GPUs required per pod. 0 is allowed and means a CPU-only job: no
+                            nvidia.com/gpu limit and no GPU node selector are added (used for CI on
+                            clusters without GPUs).
                           format: int32
                           type: integer
                         image:
@@ -1283,7 +1286,9 @@ spec:
                               type: object
                           type: object
                         retryLimit:
-                          description: Number of retries on failure
+                          description: |-
+                            Number of retries on failure. For a batch Job this is backoffLimit: 0 fails the job
+                            on the first failed pod. Not used by the StatefulSet workload.
                           format: int32
                           type: integer
                         storage:
@@ -1293,8 +1298,18 @@ spec:
                           description: StorageRequest is the PVC size to request (e.g.,
                             "100Gi")
                           type: string
+                        suspend:
+                          description: |-
+                            Suspend creates the batch Job suspended (no pods run) and keeps it
+                            suspended while true. Only applies to workloadKind "job". Default false.
+                            The label kueue.x-k8s.io/queue-name on the GryviaAIJob is copied to the Job
+                            and, when present, the controller leaves spec.suspend to Kueue after creation.
+                          type: boolean
                         timeout:
-                          description: Job timeout (e.g., 24h, 7d)
+                          description: |-
+                            Job timeout (e.g., 90m, 24h, 7d). For a batch Job this is activeDeadlineSeconds: the
+                            job is Failed (DeadlineExceeded) once it has been active this long. Not used by the
+                            StatefulSet workload.
                           type: string
                         tolerations:
                           description: Tolerations
@@ -3449,6 +3464,18 @@ spec:
                           type: array
                         workingDir:
                           description: Working directory
+                          type: string
+                        workloadKind:
+                          description: |-
+                            WorkloadKind selects the Kubernetes workload that runs the job: "job" (an
+                            Indexed batch/v1 Job that runs to completion, so Succeeded and Failed are
+                            reachable) or "statefulset" (pods restart forever and never complete).
+                            Default: "job" for training, fine-tuning and evaluation, "statefulset" for
+                            inference. A job that already has a "<name>-training" StatefulSet or a Job
+                            keeps that workload whatever this says (workloads are never migrated).
+                          enum:
+                          - job
+                          - statefulset
                           type: string
                       required:
                       - gpus

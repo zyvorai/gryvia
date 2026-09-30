@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -21,6 +22,7 @@ func newAIJobTestScheme() *runtime.Scheme {
 	_ = gryviav1.AddToScheme(s)
 	_ = corev1.AddToScheme(s)
 	_ = appsv1.AddToScheme(s)
+	_ = batchv1.AddToScheme(s)
 	return s
 }
 
@@ -29,7 +31,7 @@ func newAIJobReconciler(objs ...client.Object) (*GryviaAIJobReconciler, client.C
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(objs...).
-		WithStatusSubresource(&gryviav1.GryviaAIJob{}, &appsv1.StatefulSet{}).
+		WithStatusSubresource(&gryviav1.GryviaAIJob{}, &appsv1.StatefulSet{}, &batchv1.Job{}).
 		Build()
 	r := &GryviaAIJobReconciler{
 		Client: fakeClient,
@@ -181,8 +183,13 @@ func TestAIJob_GetGPUsPerPod(t *testing.T) {
 			expected: 4,
 		},
 		{
-			name:     "non-distributed zero GPUs defaults to 1",
+			name:     "non-distributed zero GPUs is CPU-only",
 			job:      &gryviav1.GryviaAIJob{Spec: gryviav1.GryviaAIJobSpec{GPUs: 0}},
+			expected: 0,
+		},
+		{
+			name:     "negative GPUs falls back to 1",
+			job:      &gryviav1.GryviaAIJob{Spec: gryviav1.GryviaAIJobSpec{GPUs: -1}},
 			expected: 1,
 		},
 		{
