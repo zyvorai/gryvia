@@ -43,6 +43,9 @@ jobs:
       - name: Vet operator
         run: cd operators/network-intelligence && go vet ./...
 
+      - name: Test operator (controllers against a fake client and fake sources, collector client against httptest servers)
+        run: cd operators/network-intelligence && go test -race ./...
+
   build-collector:
     runs-on: ubuntu-latest
     steps:

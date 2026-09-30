@@ -6,6 +6,7 @@ use serde_json::json;
 use crate::client::GryviaClient;
 use crate::commands::network::severity_marker;
 use crate::display;
+use crate::gateway::GatewayClient;
 use crate::ui::{self, Cell2, Marker};
 
 pub enum SecurityAction {
@@ -59,6 +60,101 @@ pub async fn execute(client: &GryviaClient, action: SecurityAction) -> Result<()
             execute_policy_create(client, &namespace, &name, &namespaces, &rules, auto_block).await
         }
     }
+}
+
+/// `security alerts` through the gateway (`/api/security/alerts`). Returns `true` when it printed alerts and
+/// `false` when the gateway has no per-event source (or no alert), in which case the caller falls back to the
+/// counters of the GryviaSecurityPolicy objects. The item keys are read leniently (`severity`, `type` or
+/// `eventType`, `description`/`message`/`details`, `process`/`processName`, `detectedAt`/`timestamp`), on
+/// either the item or its `spec`; not verified against a gateway that serves per-event alerts.
+pub async fn alerts_via_gateway(
+    gw: &GatewayClient,
+    severity: Option<&str>,
+    alert_type: Option<&str>,
+) -> Result<bool> {
+    let body = gw
+        .get_json("/api/security/alerts")
+        .await
+        .context("could not read security alerts from the gateway")?;
+    let rows = gateway_alert_rows(&body, severity, alert_type);
+    if rows.is_empty() {
+        if body.get("eventSource").and_then(|v| v.as_bool()) == Some(false) {
+            display::print_info(
+                "The gateway has no per-event alert source; showing the GryviaSecurityPolicy counters instead.",
+            );
+        }
+        return Ok(false);
+    }
+    let color = ui::color_enabled();
+    println!("{}", ui::header("Security Alerts", color));
+    println!();
+    for line in event_lines(&rows, color) {
+        println!("{line}");
+    }
+    println!();
+    display::print_info(&format!("Total alerts: {}", rows.len()));
+    println!();
+    Ok(true)
+}
+
+/// (severity, type, process, details, detected) per gateway alert item, after the filters.
+pub fn gateway_alert_rows(
+    body: &serde_json::Value,
+    severity: Option<&str>,
+    alert_type: Option<&str>,
+) -> Vec<[String; 5]> {
+    let mut rows = Vec::new();
+    for item in body
+        .get("items")
+        .and_then(|v| v.as_array())
+        .into_iter()
+        .flatten()
+    {
+        let src = item.get("spec").unwrap_or(item);
+        let pick = |keys: &[&str]| -> String {
+            keys.iter()
+                .find_map(|k| {
+                    src.get(*k)
+                        .and_then(|v| v.as_str())
+                        .filter(|v| !v.is_empty())
+                })
+                .unwrap_or("-")
+                .to_string()
+        };
+        let row = [
+            pick(&["severity"]).to_ascii_lowercase(),
+            pick(&["type", "eventType"]),
+            pick(&["process", "processName"]),
+            pick(&["description", "message", "details"]),
+            pick(&["detectedAt", "timestamp"]),
+        ];
+        if severity.is_some_and(|s| row[0] != s) || alert_type.is_some_and(|t| row[1] != t) {
+            continue;
+        }
+        rows.push(row);
+    }
+    rows
+}
+
+/// Lines of the per-event alerts table.
+pub fn event_lines(rows: &[[String; 5]], color: bool) -> Vec<String> {
+    let cells: Vec<Vec<Cell2>> = rows
+        .iter()
+        .map(|r| {
+            vec![
+                (r[0].clone(), Some(severity_marker(&r[0]))),
+                (r[1].clone(), None),
+                (r[2].clone(), None),
+                (r[3].clone(), None),
+                (r[4].clone(), None),
+            ]
+        })
+        .collect();
+    ui::grid(
+        &["SEVERITY", "TYPE", "PROCESS", "DETAILS", "DETECTED AT"],
+        &cells,
+        color,
+    )
 }
 
 async fn execute_alerts(
@@ -513,6 +609,33 @@ fn policy_created_lines(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gateway_alerts_are_filtered_and_rendered() {
+        let body = serde_json::json!({"items": [
+            {"spec": {"severity": "HIGH", "type": "crypto_mining", "process": "xmrig", "description": "pool connect", "detectedAt": "2026-01-01T00:00:00Z"}},
+            {"severity": "low", "eventType": "suspicious_exec", "processName": "sh", "message": "m", "timestamp": "t"}
+        ], "eventSource": true});
+        let all = gateway_alert_rows(&body, None, None);
+        assert_eq!(all.len(), 2);
+        assert_eq!(
+            event_lines(&all, false),
+            vec![
+                "SEVERITY  TYPE             PROCESS  DETAILS       DETECTED AT",
+                "high      crypto_mining    xmrig    pool connect  2026-01-01T00:00:00Z",
+                "low       suspicious_exec  sh       m             t",
+            ]
+        );
+        assert_eq!(gateway_alert_rows(&body, Some("high"), None).len(), 1);
+        assert_eq!(gateway_alert_rows(&body, None, Some("nope")).len(), 0);
+        assert!(gateway_alert_rows(
+            &serde_json::json!({"items": [], "eventSource": false}),
+            None,
+            None
+        )
+        .is_empty());
+    }
+
     use crate::commands::network::strip_ansi;
     use serde_json::json;
 

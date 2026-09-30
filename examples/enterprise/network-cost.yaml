@@ -1,18 +1,18 @@
 # GryviaNetworkCost - Track and report network costs per team and zone
-# Monitors network traffic across production namespaces, applies zone-based
-# pricing, and generates hourly cost reports attributed to specific teams.
+# Builds cost reports from the GryviaNetworkUsageRecord objects the collector writes into the tenant-<name>
+# namespaces (collector flags -attribute-network and -publish-network-usage; helm ebpf.attributeNetwork and
+# ebpf.publishNetworkUsage), priced per GB. One report per namespace and UTC day. Prices: costPerGB below, or when
+# all zero the cluster's GryviaNetworkRate. Estimates from byte counters, not invoices.
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaNetworkCost
 metadata:
   name: production-network-costs
   namespace: gryvia-system
 spec:
-  # Namespaces to track network costs for
+  # Namespaces holding the usage records (tenant namespaces); empty means all
   targetNamespaces:
-    - ml-training
-    - ml-inference
-    - ml-serving
-    - data-pipeline
+    - tenant-ml-research
+    - tenant-data-platform
 
   # Cost rates per GB by traffic zone
   costPerGB:
@@ -25,18 +25,14 @@ spec:
 
   # Map namespaces to teams and cost centers for chargeback
   costCenters:
-    - namespace: ml-training
+    - namespace: tenant-ml-research
       team: ml-research
       costCenter: "CC-4001"
 
-    - namespace: ml-inference
+    - namespace: tenant-ml-platform
       team: ml-platform
       costCenter: "CC-4002"
 
-    - namespace: ml-serving
-      team: ml-platform
-      costCenter: "CC-4002"
-
-    - namespace: data-pipeline
+    - namespace: tenant-data-platform
       team: data-engineering
       costCenter: "CC-3001"

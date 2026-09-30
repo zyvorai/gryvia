@@ -2,16 +2,11 @@ package controllers
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"net/http"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -24,150 +19,100 @@ const (
 	inferenceInsightInterval = 60 * time.Second
 )
 
-// GryviaInferenceInsightReconciler reconciles a GryviaInferenceInsight object
+// GryviaInferenceInsightReconciler reconciles a GryviaInferenceInsight object.
+//
+// The source is the status of a GryviaFabricSignal with spec.jobRef == spec.targetService (same namespace;
+// the serving engine's pods carry the gryvia.io/job label of that job), filled by the collector's opt-in
+// engine-metrics scraper (helm ebpf.inferMetrics + ebpf.publishFabricStatus): time to first token,
+// inter-token latency, engine queue time, end-to-end latency (p99), queued requests and KV-cache usage
+// as the ENGINE reports them, plus the eBPF network wait. A field the engine does not export stays unset
+// (never zero). The old per-phase breakdown (dns, tcp connect, tls, gpu exec, postprocess) and the
+// p50/p95 totals have no source and stay unset; gpuQueueNs is the engine queue p99 and totalNs/p99TotalNs
+// the engine end-to-end p99. spec.analysisWindow is not used.
 type GryviaInferenceInsightReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+	now    func() time.Time
 }
 
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviainferenceinsights,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviainferenceinsights/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviainferenceinsights/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviafabricsignals,verbs=get;list;watch
+
+func (r *GryviaInferenceInsightReconciler) clock() time.Time {
+	if r.now != nil {
+		return r.now()
+	}
+	return time.Now()
+}
 
 func (r *GryviaInferenceInsightReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// Fetch the GryviaInferenceInsight instance
 	insight := &gryviav1.GryviaInferenceInsight{}
 	if err := r.Get(ctx, req.NamespacedName, insight); err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("GryviaInferenceInsight resource not found, ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		logger.Error(err, "Failed to get GryviaInferenceInsight")
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("Reconciling GryviaInferenceInsight",
-		"name", insight.Name,
-		"targetService", insight.Spec.TargetService,
-	)
+	sig, serr := lookupFabricSignal(ctx, r.Client, insight.Namespace, insight.Spec.TargetService)
+	now := r.clock()
+	haveData := serr == nil && sig != nil && sig.Status.UpdatedAt != nil && !sig.Status.UpdatedAt.IsZero()
 
-	// Query collector for latency breakdown data
-	latencyData := r.queryLatencyBreakdown(ctx, insight)
+	uerr := updateStatus(ctx, r.Client, req.NamespacedName, func() *gryviav1.GryviaInferenceInsight { return &gryviav1.GryviaInferenceInsight{} },
+		func(t *gryviav1.GryviaInferenceInsight) {
+			signalCondition(&t.Status.Conditions, t.Generation, sig, serr, now, insight.Spec.TargetService)
+			if !haveData {
+				t.Status.Phase = "AwaitingData"
+				return
+			}
+			st := sig.Status
+			t.Status.Phase = "Active"
+			t.Status.SignalRef = sig.Name
+			t.Status.Engine = st.Engine
+			t.Status.TTFTP99Ms, t.Status.ITLP99Ms = st.TTFTP99Ms, st.ITLP99Ms
+			t.Status.QueueTimeP99Ms, t.Status.E2EP99Ms = st.QueueTimeP99Ms, st.E2EP99Ms
+			t.Status.InferWaitP99Ms = st.InferWaitP99Ms
+			t.Status.RequestsWaiting, t.Status.KVCacheUsage = st.RequestsWaiting, st.KVCacheUsage
 
-	// Populate latency breakdown
-	breakdown := gryviav1.LatencyBreakdown{
-		DNSNs:          latencyData.DNSNs,
-		TCPConnectNs:   latencyData.TCPConnectNs,
-		TLSHandshakeNs: latencyData.TLSHandshakeNs,
-		GPUQueueNs:     latencyData.GPUQueueNs,
-		GPUExecNs:      latencyData.GPUExecNs,
-		PostprocessNs:  latencyData.PostprocessNs,
-		TotalNs:        latencyData.TotalNs,
+			t.Status.LatencyBreakdown = gryviav1.LatencyBreakdown{}
+			t.Status.P50TotalNs, t.Status.P95TotalNs, t.Status.P99TotalNs = 0, 0, 0
+			if st.QueueTimeP99Ms != nil {
+				t.Status.LatencyBreakdown.GPUQueueNs = msToNs(*st.QueueTimeP99Ms)
+			}
+			if st.E2EP99Ms != nil {
+				t.Status.LatencyBreakdown.TotalNs = msToNs(*st.E2EP99Ms)
+				t.Status.P99TotalNs = msToNs(*st.E2EP99Ms)
+			}
+			t.Status.Bottleneck = inferenceBottleneck(st)
+			t.Status.LastAnalysis = metav1.NewTime(st.UpdatedAt.Time)
+		})
+	if uerr != nil && !errors.IsNotFound(uerr) {
+		return ctrl.Result{}, uerr
 	}
-
-	// Identify bottleneck phase
-	bottleneck := r.identifyLatencyBottleneck(breakdown)
-
-	// Update status
-	r.updateInferenceInsightStatus(ctx, req.NamespacedName, "Active", breakdown,
-		latencyData.P50TotalNs, latencyData.P95TotalNs, latencyData.P99TotalNs, bottleneck)
-
-	logger.Info("GryviaInferenceInsight analysis complete",
-		"bottleneck", bottleneck,
-		"p50Ns", latencyData.P50TotalNs,
-		"p99Ns", latencyData.P99TotalNs,
-	)
-
+	logger.Info("GryviaInferenceInsight updated", "service", insight.Spec.TargetService, "haveData", haveData)
 	return ctrl.Result{RequeueAfter: inferenceInsightInterval}, nil
 }
 
-// collectorLatencyResponse represents the response from the collector latency API
-type collectorLatencyResponse struct {
-	DNSNs          int64 `json:"dnsNs"`
-	TCPConnectNs   int64 `json:"tcpConnectNs"`
-	TLSHandshakeNs int64 `json:"tlsHandshakeNs"`
-	GPUQueueNs     int64 `json:"gpuQueueNs"`
-	GPUExecNs      int64 `json:"gpuExecNs"`
-	PostprocessNs  int64 `json:"postprocessNs"`
-	TotalNs        int64 `json:"totalNs"`
-	P50TotalNs     int64 `json:"p50TotalNs"`
-	P95TotalNs     int64 `json:"p95TotalNs"`
-	P99TotalNs     int64 `json:"p99TotalNs"`
-}
-
-// queryLatencyBreakdown fetches latency breakdown data from the collector API
-func (r *GryviaInferenceInsightReconciler) queryLatencyBreakdown(ctx context.Context, insight *gryviav1.GryviaInferenceInsight) collectorLatencyResponse {
-	logger := log.FromContext(ctx)
-
-	httpClient := &http.Client{Timeout: 10 * time.Second}
-	url := fmt.Sprintf("%s/api/v1/inference/latency?service=%s", collectorBaseURL, insight.Spec.TargetService)
-	if insight.Spec.AnalysisWindow != "" {
-		url += fmt.Sprintf("&window=%s", insight.Spec.AnalysisWindow)
+// inferenceBottleneck names the largest share of the engine end-to-end p99 among the measured parts:
+// "queue" (engine queue p99 >= half of e2e), "network_wait" (eBPF accept-to-read p99 >= half), else
+// "engine" when an end-to-end figure exists, "unknown" otherwise. p99s are not additive, so this is a
+// heuristic pointing at where to look, not an attribution.
+func inferenceBottleneck(st fabricStatus) string {
+	if st.E2EP99Ms == nil || *st.E2EP99Ms <= 0 {
+		return "unknown"
 	}
-
-	resp, err := httpClient.Get(url)
-	if err != nil {
-		logger.V(1).Info("Failed to query latency breakdown from collector", "error", err)
-		return collectorLatencyResponse{}
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		logger.V(1).Info("Collector returned non-OK for latency breakdown", "statusCode", resp.StatusCode)
-		return collectorLatencyResponse{}
-	}
-
-	var latencyData collectorLatencyResponse
-	if err := json.NewDecoder(resp.Body).Decode(&latencyData); err != nil {
-		logger.Error(err, "Failed to decode latency breakdown response")
-		return collectorLatencyResponse{}
-	}
-
-	return latencyData
-}
-
-// identifyLatencyBottleneck determines which phase contributes the most latency
-func (r *GryviaInferenceInsightReconciler) identifyLatencyBottleneck(breakdown gryviav1.LatencyBreakdown) string {
-	phases := map[string]int64{
-		"dns":           breakdown.DNSNs,
-		"tcp_connect":   breakdown.TCPConnectNs,
-		"tls_handshake": breakdown.TLSHandshakeNs,
-		"gpu_queue":     breakdown.GPUQueueNs,
-		"gpu_exec":      breakdown.GPUExecNs,
-		"postprocess":   breakdown.PostprocessNs,
-	}
-
-	maxPhase := "gpu_exec"
-	var maxLatency int64
-	for phase, latency := range phases {
-		if latency > maxLatency {
-			maxLatency = latency
-			maxPhase = phase
-		}
-	}
-
-	return maxPhase
-}
-
-// updateInferenceInsightStatus updates the GryviaInferenceInsight status subresource
-func (r *GryviaInferenceInsightReconciler) updateInferenceInsightStatus(ctx context.Context, namespacedName types.NamespacedName, phase string, breakdown gryviav1.LatencyBreakdown, p50, p95, p99 int64, bottleneck string) {
-	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		insight := &gryviav1.GryviaInferenceInsight{}
-		if err := r.Get(ctx, namespacedName, insight); err != nil {
-			return err
-		}
-		insight.Status.Phase = phase
-		insight.Status.LatencyBreakdown = breakdown
-		insight.Status.P50TotalNs = p50
-		insight.Status.P95TotalNs = p95
-		insight.Status.P99TotalNs = p99
-		insight.Status.Bottleneck = bottleneck
-		insight.Status.LastAnalysis = metav1.Now()
-		return r.Status().Update(ctx, insight)
-	}); err != nil {
-		log.FromContext(ctx).Error(err, "Failed to update GryviaInferenceInsight status")
+	e2e := *st.E2EP99Ms
+	switch {
+	case st.QueueTimeP99Ms != nil && *st.QueueTimeP99Ms >= e2e/2:
+		return "queue"
+	case st.InferWaitP99Ms >= e2e/2:
+		return "network_wait"
+	default:
+		return "engine"
 	}
 }
 

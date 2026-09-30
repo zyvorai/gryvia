@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
-use kube::api::{Api, ApiResource, GroupVersionKind, ListParams, PostParams};
+use k8s_openapi::api::core::v1::ConfigMap;
+use kube::api::{Api, ApiResource, GroupVersionKind, PostParams};
 use kube::core::DynamicObject;
 use serde_json::json;
 use tokio::time::{sleep, Duration};
@@ -39,9 +40,9 @@ pub async fn execute(
             "namespace": namespace,
         },
         "spec": {
-            "targetService": service,
+            "service": service,
             "duration": duration,
-            "captureLevel": level,
+            "level": level,
             "namespace": namespace,
         }
     }))
@@ -56,12 +57,12 @@ pub async fn execute(
             );
         }
         Err(e) => {
-            display::print_warning(&format!("Could not create trace session: {}", e));
-            println!(
-                "  {}",
-                Marker::Disabled
-                    .paint_with("Displaying mock flow data for demonstration...", color)
-            );
+            display::print_warning(&format!(
+                "Could not create trace session: {}",
+                display::cluster_error_text(&e.to_string())
+            ));
+            println!();
+            return Ok(());
         }
     }
 
@@ -72,7 +73,7 @@ pub async fn execute(
     if follow {
         // Poll for results in follow mode
         loop {
-            let flows = fetch_flows(client, namespace, service).await;
+            let flows = fetch_flows(client, namespace, &session_name).await;
             print_flows(&flows, color);
 
             // Check if trace session has completed
@@ -82,9 +83,9 @@ pub async fn execute(
                     .get("status")
                     .and_then(|s| s.get("phase"))
                     .and_then(|v| v.as_str())
-                    .unwrap_or("Running");
+                    .unwrap_or("active");
 
-                if phase == "Completed" || phase == "Failed" {
+                if phase == "completed" || phase == "expired" {
                     println!();
                     display::print_info(&format!(
                         "Trace session {} ({})",
@@ -99,12 +100,14 @@ pub async fn execute(
         }
     } else {
         // One-shot: fetch current flows
-        let flows = fetch_flows(client, namespace, service).await;
+        let flows = fetch_flows(client, namespace, &session_name).await;
         if flows.is_empty() {
             println!(
                 "{}",
-                Marker::Disabled
-                    .paint_with("No flows captured yet. Use --follow to stream live.", color)
+                Marker::Disabled.paint_with(
+                    "No flows captured yet. The operator captures from Netra (GRYVIA_NETRA_URL on the operator); check `kubectl get gryviatracesession -o yaml` for the SourceAvailable condition. Use --follow to keep polling.",
+                    color,
+                )
             );
         } else {
             print_flows(&flows, color);
@@ -114,7 +117,7 @@ pub async fn execute(
     Ok(())
 }
 
-struct FlowEntry {
+pub struct FlowEntry {
     timestamp: String,
     source: String,
     destination: String,
@@ -125,68 +128,52 @@ struct FlowEntry {
     policy: Option<String>,
 }
 
-async fn fetch_flows(client: &GryviaClient, namespace: &str, service: &str) -> Vec<FlowEntry> {
-    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
-        "gryvia.io",
-        "v1alpha1",
-        "GryviaFlow",
-    ));
-    let api: Api<DynamicObject> = Api::namespaced_with(client.kube_client.clone(), namespace, &ar);
-
-    let label_selector = format!("gryvia.io/service={}", service);
-    let params = ListParams::default().labels(&label_selector);
-
-    match api.list(&params).await {
-        Ok(flows) => flows
-            .items
-            .iter()
-            .map(|flow| {
-                let spec = flow.data.get("spec");
-                FlowEntry {
-                    timestamp: spec
-                        .and_then(|s| s.get("timestamp"))
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("-")
-                        .to_string(),
-                    source: spec
-                        .and_then(|s| s.get("source"))
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("unknown")
-                        .to_string(),
-                    destination: spec
-                        .and_then(|s| s.get("destination"))
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("unknown")
-                        .to_string(),
-                    protocol: spec
-                        .and_then(|s| s.get("protocol"))
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("TCP")
-                        .to_string(),
-                    bytes: spec
-                        .and_then(|s| s.get("bytes"))
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("0B")
-                        .to_string(),
-                    latency: spec
-                        .and_then(|s| s.get("latency"))
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("-")
-                        .to_string(),
-                    verdict: spec
-                        .and_then(|s| s.get("verdict"))
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("FORWARDED")
-                        .to_string(),
-                    policy: spec
-                        .and_then(|s| s.get("policy"))
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string()),
-                }
-            })
-            .collect(),
+/// The flows the operator wrote to the session's result ConfigMap (`trace-<session>`, key `flows`).
+async fn fetch_flows(client: &GryviaClient, namespace: &str, session: &str) -> Vec<FlowEntry> {
+    let api: Api<ConfigMap> = Api::namespaced(client.kube_client.clone(), namespace);
+    match api.get(&format!("trace-{session}")).await {
+        Ok(cm) => cm
+            .data
+            .and_then(|d| d.get("flows").cloned())
+            .map(|raw| parse_flows(&raw))
+            .unwrap_or_default(),
         Err(_) => Vec::new(),
     }
+}
+
+/// Parse the operator's captured-flow JSON (`timestamp, source, destination, port, protocol, verdict, bytes`).
+pub fn parse_flows(raw: &str) -> Vec<FlowEntry> {
+    let values: Vec<serde_json::Value> = serde_json::from_str(raw).unwrap_or_default();
+    values
+        .iter()
+        .map(|f| {
+            let text = |k: &str, d: &str| {
+                f.get(k)
+                    .and_then(|v| v.as_str())
+                    .filter(|v| !v.is_empty())
+                    .unwrap_or(d)
+                    .to_string()
+            };
+            let protocol = match f.get("port").and_then(|v| v.as_u64()) {
+                Some(p) if p > 0 => format!("{}/{p}", text("protocol", "TCP")),
+                _ => text("protocol", "TCP"),
+            };
+            FlowEntry {
+                timestamp: text("timestamp", "-"),
+                source: text("source", "unknown"),
+                destination: text("destination", "unknown"),
+                protocol,
+                bytes: f
+                    .get("bytes")
+                    .and_then(|v| v.as_i64())
+                    .map(|b| format!("{b}B"))
+                    .unwrap_or_else(|| "0B".to_string()),
+                latency: "-".to_string(),
+                verdict: text("verdict", "-"),
+                policy: None,
+            }
+        })
+        .collect()
 }
 
 fn print_flows(flows: &[FlowEntry], color: bool) {
@@ -290,6 +277,20 @@ mod tests {
                 "10:00:02   web     db           TCP       0B     -        DROP (policy: deny-db)",
             ]
         );
+    }
+
+    #[test]
+    fn operator_flows_parse() {
+        let raw = r#"[{"timestamp":"2026-01-01T00:00:00Z","source":"shop/web-1","destination":"api","port":8080,
+            "protocol":"TCP","verdict":"DROP","bytes":42}]"#;
+        assert_eq!(
+            flow_lines(&parse_flows(raw), false),
+            vec![
+                "TIMESTAMP             SOURCE      DESTINATION  PROTOCOL  BYTES  LATENCY  VERDICT",
+                "2026-01-01T00:00:00Z  shop/web-1  api          TCP/8080  42B    -        DROP",
+            ]
+        );
+        assert!(parse_flows("not json").is_empty());
     }
 
     #[test]

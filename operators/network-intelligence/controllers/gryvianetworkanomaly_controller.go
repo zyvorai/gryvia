@@ -8,19 +8,18 @@ import (
 	"net/http"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	gryviav1 "github.com/zyvorai/gryvia/operators/network-intelligence/api/v1"
+	"github.com/zyvorai/gryvia/operators/network-intelligence/pkg/sources"
 )
 
 const (
@@ -31,216 +30,138 @@ const (
 	webhookTimeout = 10 * time.Second
 )
 
-// GryviaNetworkAnomalyReconciler reconciles a GryviaNetworkAnomaly object
+// ruleAnomalyType maps a detection rule metric to the collector anomaly type it corresponds to.
+// The metrics "errors" and "drops" have no collector anomaly (see docs/network-intelligence-sources.md).
+var ruleAnomalyType = map[string]string{
+	"latency":     "latency_spike",
+	"throughput":  "traffic_burst",
+	"connections": "new_connection",
+}
+
+// GryviaNetworkAnomalyReconciler reconciles a GryviaNetworkAnomaly object.
+//
+// The anomalies are the collector's own (/api/v1/anomalies, merged over all nodes): a statistical
+// baseline per service that the collector maintains. spec.detectionRules only select WHICH collector
+// anomaly types to keep (latency -> latency_spike, throughput -> traffic_burst, connections ->
+// new_connection; no rules keeps every type); their thresholds and operators are not evaluated here.
 type GryviaNetworkAnomalyReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme    *runtime.Scheme
+	Collector sources.Collector
 }
 
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryvianetworkanomalies,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryvianetworkanomalies/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryvianetworkanomalies/finalizers,verbs=update
 //+kubebuilder:rbac:groups=cilium.io,resources=ciliumnetworkpolicies,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 func (r *GryviaNetworkAnomalyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// Fetch the GryviaNetworkAnomaly instance
-	anomalyDetector := &gryviav1.GryviaNetworkAnomaly{}
-	if err := r.Get(ctx, req.NamespacedName, anomalyDetector); err != nil {
+	detector := &gryviav1.GryviaNetworkAnomaly{}
+	if err := r.Get(ctx, req.NamespacedName, detector); err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("GryviaNetworkAnomaly resource not found, ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		logger.Error(err, "Failed to get GryviaNetworkAnomaly")
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("Reconciling GryviaNetworkAnomaly",
-		"name", anomalyDetector.Name,
-		"targetService", anomalyDetector.Spec.TargetService,
-		"rules", len(anomalyDetector.Spec.DetectionRules),
-	)
+	checkInterval := r.getCheckInterval(detector)
 
-	// Determine check interval from the shortest rule window
-	checkInterval := r.getCheckInterval(anomalyDetector)
-
-	// Evaluate detection rules against current metrics
-	detectedAnomalies := r.evaluateRules(ctx, anomalyDetector)
-
-	// Merge with existing anomalies (keep history)
-	allAnomalies := r.mergeAnomalies(anomalyDetector.Status.Anomalies, detectedAnomalies)
-
-	// Auto-mitigate if enabled
-	if anomalyDetector.Spec.AutoMitigate {
-		r.autoMitigate(ctx, anomalyDetector, detectedAnomalies)
+	var raw []sources.Anomaly
+	var stats sources.Stats
+	var err error
+	if r.Collector == nil {
+		err = errNoCollector
+	} else {
+		raw, stats, err = r.Collector.Anomalies(ctx)
 	}
 
-	// Send webhook alerts for new anomalies
-	if anomalyDetector.Spec.AlertWebhook != "" && len(detectedAnomalies) > 0 {
-		r.sendWebhookAlert(ctx, anomalyDetector, detectedAnomalies)
+	var fresh []gryviav1.NetworkAnomalyEvent
+	all := detector.Status.Anomalies
+	if err == nil {
+		fresh = newAnomalies(detector, raw, detector.Status.Anomalies)
+		if detector.Spec.AutoMitigate {
+			r.autoMitigate(ctx, detector, fresh)
+		}
+		if detector.Spec.AlertWebhook != "" && len(fresh) > 0 {
+			r.sendWebhookAlert(ctx, detector, fresh)
+		}
+		all = r.mergeAnomalies(detector.Status.Anomalies, fresh)
 	}
 
-	// Update status
-	r.updateStatus(ctx, req.NamespacedName, allAnomalies)
-
-	logger.Info("GryviaNetworkAnomaly check complete",
-		"newAnomalies", len(detectedAnomalies),
-		"totalAnomalies", len(allAnomalies),
-	)
-
+	uerr := updateStatus(ctx, r.Client, req.NamespacedName, func() *gryviav1.GryviaNetworkAnomaly { return &gryviav1.GryviaNetworkAnomaly{} },
+		func(d *gryviav1.GryviaNetworkAnomaly) {
+			if err == nil {
+				d.Status.Anomalies = all
+				d.Status.LastCheck = metav1.Now()
+			}
+			setSource(&d.Status.Conditions, d.Generation, err, stats,
+				"anomalies are the collector's statistical detections; detectionRules only select types")
+		})
+	if uerr != nil && !errors.IsNotFound(uerr) {
+		return ctrl.Result{}, uerr
+	}
+	logger.Info("GryviaNetworkAnomaly check complete", "new", len(fresh), "total", len(all), "collectorError", err != nil)
 	return ctrl.Result{RequeueAfter: checkInterval}, nil
 }
 
 // getCheckInterval determines the reconciliation interval based on the shortest rule window
 func (r *GryviaNetworkAnomalyReconciler) getCheckInterval(detector *gryviav1.GryviaNetworkAnomaly) time.Duration {
 	shortest := 1 * time.Minute
-
 	for _, rule := range detector.Spec.DetectionRules {
 		if rule.Window != "" {
-			if parsed, err := time.ParseDuration(rule.Window); err == nil && parsed > 0 {
-				if parsed < shortest {
-					shortest = parsed
-				}
+			if parsed, err := time.ParseDuration(rule.Window); err == nil && parsed > 0 && parsed < shortest {
+				shortest = parsed
 			}
 		}
 	}
-
 	return shortest
 }
 
-// currentMetrics holds the current metric values for a service
-type currentMetrics struct {
-	latencyMs   float64
-	throughput  float64
-	connections float64
-	errorRate   float64
-	dropRate    float64
-}
-
-// evaluateRules checks each detection rule against current metrics
-func (r *GryviaNetworkAnomalyReconciler) evaluateRules(ctx context.Context, detector *gryviav1.GryviaNetworkAnomaly) []gryviav1.NetworkAnomalyEvent {
-	logger := log.FromContext(ctx)
-	var anomalies []gryviav1.NetworkAnomalyEvent
-
-	// Query current metrics from Prometheus/Hubble
-	metrics := r.queryCurrentMetrics(ctx, detector)
-
+// newAnomalies converts the collector anomalies of the target service (all when empty) that pass the
+// rule type filter and are not already in existing (same type and detection time).
+func newAnomalies(detector *gryviav1.GryviaNetworkAnomaly, raw []sources.Anomaly, existing []gryviav1.NetworkAnomalyEvent) []gryviav1.NetworkAnomalyEvent {
+	types := map[string]bool{}
 	for _, rule := range detector.Spec.DetectionRules {
-		var metricValue float64
-		switch rule.Metric {
-		case "latency":
-			metricValue = metrics.latencyMs
-		case "throughput":
-			metricValue = metrics.throughput
-		case "connections":
-			metricValue = metrics.connections
-		case "errors":
-			metricValue = metrics.errorRate
-		case "drops":
-			metricValue = metrics.dropRate
-		default:
-			logger.V(1).Info("Unknown metric type", "metric", rule.Metric)
+		if t, ok := ruleAnomalyType[rule.Metric]; ok {
+			types[t] = true
+		}
+	}
+	type key struct {
+		t  string
+		at int64
+	}
+	seen := map[key]bool{}
+	for _, e := range existing {
+		seen[key{e.Type, e.Detected.Unix()}] = true
+	}
+	var out []gryviav1.NetworkAnomalyEvent
+	for _, a := range raw {
+		if detector.Spec.TargetService != "" && a.Service != detector.Spec.TargetService {
 			continue
 		}
-
-		// Evaluate the threshold condition
-		triggered := false
-		switch rule.Operator {
-		case "gt":
-			triggered = metricValue > rule.Threshold
-		case "lt":
-			triggered = metricValue < rule.Threshold
-		case "gte":
-			triggered = metricValue >= rule.Threshold
-		case "lte":
-			triggered = metricValue <= rule.Threshold
-		case "eq":
-			triggered = metricValue == rule.Threshold
+		if len(types) > 0 && !types[a.Type] {
+			continue
 		}
-
-		if triggered {
-			severity := r.classifySeverity(rule, metricValue)
-			anomaly := gryviav1.NetworkAnomalyEvent{
-				Type:     fmt.Sprintf("%s_%s_threshold", rule.Metric, rule.Operator),
-				Severity: severity,
-				Detected: metav1.Now(),
-				Description: fmt.Sprintf(
-					"Service %s: %s metric value %.2f %s threshold %.2f (window: %s)",
-					detector.Spec.TargetService,
-					rule.Metric,
-					metricValue,
-					rule.Operator,
-					rule.Threshold,
-					rule.Window,
-				),
-				Mitigated: false,
-			}
-			anomalies = append(anomalies, anomaly)
-
-			logger.Info("Anomaly detected",
-				"type", anomaly.Type,
-				"severity", severity,
-				"metric", rule.Metric,
-				"value", metricValue,
-				"threshold", rule.Threshold,
-			)
+		k := key{a.Type, a.DetectedAt.Unix()}
+		if seen[k] {
+			continue
 		}
+		seen[k] = true
+		desc := a.Message
+		if desc == "" {
+			desc = fmt.Sprintf("%s on %s: value %.2f, baseline %.2f", a.Type, a.Service, a.Value, a.Baseline)
+		}
+		out = append(out, gryviav1.NetworkAnomalyEvent{Type: a.Type, Severity: anomalySeverity(a),
+			Detected: metav1.NewTime(a.DetectedAt), Description: desc})
 	}
-
-	return anomalies
-}
-
-// queryCurrentMetrics retrieves current network metrics for the target service.
-// In production, this queries Prometheus for Hubble and Cilium metrics.
-func (r *GryviaNetworkAnomalyReconciler) queryCurrentMetrics(ctx context.Context, detector *gryviav1.GryviaNetworkAnomaly) currentMetrics {
-	logger := log.FromContext(ctx)
-
-	// Look for Prometheus service
-	promSvc := &corev1.Service{}
-	err := r.Get(ctx, types.NamespacedName{
-		Name:      "prometheus-server",
-		Namespace: "monitoring",
-	}, promSvc)
-	if err != nil {
-		logger.V(1).Info("Prometheus not available for metrics query")
-	}
-
-	// In production, this would execute PromQL queries:
-	// - latency: histogram_quantile(0.99, rate(hubble_http_request_duration_seconds_bucket{destination=<svc>}[<window>]))
-	// - throughput: rate(hubble_flows_processed_bytes_total{destination=<svc>}[<window>])
-	// - connections: rate(hubble_tcp_connect_total{destination=<svc>}[<window>])
-	// - errors: rate(hubble_http_responses_total{destination=<svc>,status=~"5.."}[<window>])
-	// - drops: rate(hubble_drop_total{destination=<svc>}[<window>])
-
-	return currentMetrics{}
-}
-
-// classifySeverity determines the anomaly severity based on how far the metric
-// exceeds the threshold
-func (r *GryviaNetworkAnomalyReconciler) classifySeverity(rule gryviav1.DetectionRule, value float64) string {
-	if rule.Threshold == 0 {
-		return "medium"
-	}
-
-	ratio := value / rule.Threshold
-	switch {
-	case ratio > 5.0:
-		return "critical"
-	case ratio > 3.0:
-		return "high"
-	case ratio > 1.5:
-		return "medium"
-	default:
-		return "low"
-	}
+	return out
 }
 
 // mergeAnomalies combines existing and new anomalies, keeping only recent entries
 func (r *GryviaNetworkAnomalyReconciler) mergeAnomalies(existing, newAnomalies []gryviav1.NetworkAnomalyEvent) []gryviav1.NetworkAnomalyEvent {
-	// Filter existing anomalies to keep only those from the last 24 hours
 	var recent []gryviav1.NetworkAnomalyEvent
 	cutoff := time.Now().Add(-24 * time.Hour)
 	for _, a := range existing {
@@ -248,15 +169,10 @@ func (r *GryviaNetworkAnomalyReconciler) mergeAnomalies(existing, newAnomalies [
 			recent = append(recent, a)
 		}
 	}
-
-	// Append new anomalies
 	recent = append(recent, newAnomalies...)
-
-	// Limit to maxAnomalyHistory entries
 	if len(recent) > maxAnomalyHistory {
 		recent = recent[len(recent)-maxAnomalyHistory:]
 	}
-
 	return recent
 }
 
@@ -270,7 +186,7 @@ func (r *GryviaNetworkAnomalyReconciler) autoMitigate(ctx context.Context, detec
 		}
 
 		// Create a temporary deny policy for the target service
-		policyName := fmt.Sprintf("fna-mitigate-%s-%d", detector.Name, time.Now().Unix())
+		policyName := fmt.Sprintf("fna-mitigate-%s-%d", detector.Name, anomaly.Detected.Unix())
 
 		mitigationPolicy := &unstructured.Unstructured{
 			Object: map[string]interface{}{
@@ -421,21 +337,6 @@ func (r *GryviaNetworkAnomalyReconciler) sendWebhookAlert(ctx context.Context, d
 			"url", detector.Spec.AlertWebhook,
 			"anomalies", len(anomalies),
 		)
-	}
-}
-
-// updateStatus updates the GryviaNetworkAnomaly status subresource
-func (r *GryviaNetworkAnomalyReconciler) updateStatus(ctx context.Context, namespacedName types.NamespacedName, anomalies []gryviav1.NetworkAnomalyEvent) {
-	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		detector := &gryviav1.GryviaNetworkAnomaly{}
-		if err := r.Get(ctx, namespacedName, detector); err != nil {
-			return err
-		}
-		detector.Status.Anomalies = anomalies
-		detector.Status.LastCheck = metav1.Now()
-		return r.Status().Update(ctx, detector)
-	}); err != nil {
-		log.FromContext(ctx).Error(err, "Failed to update GryviaNetworkAnomaly status")
 	}
 }
 

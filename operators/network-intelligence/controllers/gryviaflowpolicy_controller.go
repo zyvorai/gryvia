@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -12,25 +13,45 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+
 	gryviav1 "github.com/zyvorai/gryvia/operators/network-intelligence/api/v1"
+	"github.com/zyvorai/gryvia/operators/network-intelligence/pkg/sources"
 )
 
 // GryviaFlowPolicyReconciler reconciles a GryviaFlowPolicy object
+//
+// A policy labelled gryvia.io/suggested=true is a SUGGESTION (written by the GryviaAutoPolicy controller):
+// it is never translated to a CiliumNetworkPolicy until the label is removed (gryvia policy apply). A Service
+// endpoint without labels is resolved to the Service's pod selector; when it cannot be resolved the policy
+// is reported Failed instead of becoming a selector-less (namespace-wide) policy. matchedFlows is the count
+// of Netra flow records of the source pods in the last 15 minutes and is left unset when Netra is not configured.
 type GryviaFlowPolicyReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+	// Netra is optional; nil or unconfigured leaves matchedFlows unset.
+	Netra sources.FlowHistory
 }
+
+const (
+	// LabelSuggested marks a GryviaFlowPolicy that is only a suggestion.
+	LabelSuggested = "gryvia.io/suggested"
+	// matchedFlowsWindow is the Netra history window behind status.matchedFlows.
+	matchedFlowsWindow = 15 * time.Minute
+	matchedFlowsLimit  = 5000
+	namespaceLabel     = "k8s:io.kubernetes.pod.namespace"
+)
 
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviaflowpolicies,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviaflowpolicies/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviaflowpolicies/finalizers,verbs=update
 //+kubebuilder:rbac:groups=cilium.io,resources=ciliumnetworkpolicies,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch
+//+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 func (r *GryviaFlowPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -53,69 +74,202 @@ func (r *GryviaFlowPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		"intent", policy.Spec.Intent,
 	)
 
-	// Translate GryviaFlowPolicy to CiliumNetworkPolicy
-	ciliumPolicy, err := r.buildCiliumNetworkPolicy(policy)
-	if err != nil {
-		r.updateStatus(ctx, req.NamespacedName, "Failed", "", false, 0)
-		return ctrl.Result{}, fmt.Errorf("failed to build CiliumNetworkPolicy: %w", err)
+	if policy.Labels[LabelSuggested] == "true" {
+		_ = r.setStatus(ctx, req.NamespacedName, func(p *gryviav1.GryviaFlowPolicy) {
+			p.Status.Phase = "Suggested"
+			p.Status.Enforced = false
+			setCondition(&p.Status.Conditions, p.Generation, "Enforceable", metav1.ConditionFalse, "Suggested",
+				"this policy is a suggestion; no CiliumNetworkPolicy exists until the "+LabelSuggested+" label is removed (gryvia network policy apply)")
+		})
+		return ctrl.Result{}, nil
 	}
 
-	// Apply the CiliumNetworkPolicy
-	ciliumPolicyName := fmt.Sprintf("ffp-%s", policy.Name)
+	srcLabels, srcErr := r.resolveLabels(ctx, policy.Spec.Source, policy.Namespace)
+	dstLabels, dstErr := r.resolveLabels(ctx, policy.Spec.Destination, policy.Namespace)
+	if err := firstErr(srcErr, dstErr); err != nil {
+		_ = r.setStatus(ctx, req.NamespacedName, func(p *gryviav1.GryviaFlowPolicy) {
+			p.Status.Phase = "Failed"
+			p.Status.Enforced = false
+			setCondition(&p.Status.Conditions, p.Generation, "Enforceable", metav1.ConditionFalse, "UnresolvedEndpoint", err.Error())
+		})
+		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
+	}
+
+	// Translate GryviaFlowPolicy to CiliumNetworkPolicy
+	ciliumPolicy, err := r.buildCiliumNetworkPolicy(policy, srcLabels, dstLabels)
+	if err != nil {
+		_ = r.setStatus(ctx, req.NamespacedName, func(p *gryviav1.GryviaFlowPolicy) { p.Status.Phase = "Failed" })
+		return ctrl.Result{}, fmt.Errorf("failed to build CiliumNetworkPolicy: %w", err)
+	}
+	if err := controllerutil.SetControllerReference(policy, ciliumPolicy, r.Scheme); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to set owner reference: %w", err)
+	}
+
+	ciliumPolicyName := ciliumPolicy.GetName()
 	existingPolicy := &unstructured.Unstructured{}
-	existingPolicy.SetGroupVersionKind(schema.GroupVersionKind{
-		Group:   "cilium.io",
-		Version: "v2",
-		Kind:    "CiliumNetworkPolicy",
-	})
+	existingPolicy.SetGroupVersionKind(schema.GroupVersionKind{Group: "cilium.io", Version: "v2", Kind: "CiliumNetworkPolicy"})
 
-	err = r.Get(ctx, types.NamespacedName{
-		Name:      ciliumPolicyName,
-		Namespace: policy.Namespace,
-	}, existingPolicy)
-
-	if errors.IsNotFound(err) {
-		// Create new CiliumNetworkPolicy
+	err = r.Get(ctx, types.NamespacedName{Name: ciliumPolicyName, Namespace: policy.Namespace}, existingPolicy)
+	switch {
+	case errors.IsNotFound(err):
 		logger.Info("Creating CiliumNetworkPolicy", "name", ciliumPolicyName)
 		if createErr := r.Create(ctx, ciliumPolicy); createErr != nil {
-			r.updateStatus(ctx, req.NamespacedName, "Failed", ciliumPolicyName, false, 0)
+			_ = r.setStatus(ctx, req.NamespacedName, func(p *gryviav1.GryviaFlowPolicy) {
+				p.Status.Phase, p.Status.CiliumPolicyRef, p.Status.Enforced = "Failed", ciliumPolicyName, false
+			})
 			return ctrl.Result{}, fmt.Errorf("failed to create CiliumNetworkPolicy: %w", createErr)
 		}
-	} else if err != nil {
+	case err != nil:
 		return ctrl.Result{}, fmt.Errorf("failed to check existing CiliumNetworkPolicy: %w", err)
-	} else {
-		// Update existing CiliumNetworkPolicy
+	default:
 		logger.Info("Updating CiliumNetworkPolicy", "name", ciliumPolicyName)
 		ciliumPolicy.SetResourceVersion(existingPolicy.GetResourceVersion())
 		if updateErr := r.Update(ctx, ciliumPolicy); updateErr != nil {
-			r.updateStatus(ctx, req.NamespacedName, "Failed", ciliumPolicyName, false, 0)
+			_ = r.setStatus(ctx, req.NamespacedName, func(p *gryviav1.GryviaFlowPolicy) {
+				p.Status.Phase, p.Status.CiliumPolicyRef, p.Status.Enforced = "Failed", ciliumPolicyName, false
+			})
 			return ctrl.Result{}, fmt.Errorf("failed to update CiliumNetworkPolicy: %w", updateErr)
 		}
 	}
 
-	// Query flow count from Hubble (best-effort via service endpoint)
-	matchedFlows := r.queryMatchedFlows(ctx, policy)
+	matched, mset, merr := r.matchedFlows(ctx, policy, srcLabels)
 
-	// Update status to enforced
-	r.updateStatus(ctx, req.NamespacedName, "Enforced", ciliumPolicyName, true, matchedFlows)
-
-	logger.Info("GryviaFlowPolicy reconciled successfully",
-		"ciliumPolicy", ciliumPolicyName,
-		"matchedFlows", matchedFlows,
-	)
-
+	uerr := r.setStatus(ctx, req.NamespacedName, func(p *gryviav1.GryviaFlowPolicy) {
+		p.Status.Phase = "Enforced"
+		p.Status.CiliumPolicyRef = ciliumPolicyName
+		p.Status.Enforced = true
+		p.Status.LastApplied = metav1.Now()
+		setCondition(&p.Status.Conditions, p.Generation, "Enforceable", metav1.ConditionTrue, "Applied", "CiliumNetworkPolicy "+ciliumPolicyName+" applied")
+		if mset {
+			p.Status.MatchedFlows = matched
+		} else {
+			p.Status.MatchedFlows = 0
+		}
+		setSource(&p.Status.Conditions, p.Generation, merr, sources.Stats{},
+			"matchedFlows = Netra flow records of the source pods (to the port, if set) in the last 15 minutes")
+	})
+	if uerr != nil && !errors.IsNotFound(uerr) {
+		return ctrl.Result{}, uerr
+	}
+	logger.Info("GryviaFlowPolicy reconciled", "ciliumPolicy", ciliumPolicyName, "matchedFlows", matched, "matchedFlowsKnown", mset)
 	return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 }
 
+func (r *GryviaFlowPolicyReconciler) setStatus(ctx context.Context, key types.NamespacedName, mutate func(*gryviav1.GryviaFlowPolicy)) error {
+	return updateStatus(ctx, r.Client, key, func() *gryviav1.GryviaFlowPolicy { return &gryviav1.GryviaFlowPolicy{} }, mutate)
+}
+
+func firstErr(errs ...error) error {
+	for _, e := range errs {
+		if e != nil {
+			return e
+		}
+	}
+	return nil
+}
+
+// resolveLabels returns the pod labels selecting an endpoint: its own labels, else the selector of its
+// Service (in the endpoint's namespace, default the policy's). An endpoint with neither is nil (all pods).
+// Cross-namespace endpoints also select the namespace.
+func (r *GryviaFlowPolicyReconciler) resolveLabels(ctx context.Context, ep *gryviav1.FlowEndpoint, policyNS string) (map[string]string, error) {
+	if ep == nil {
+		return nil, nil
+	}
+	labels := map[string]string{}
+	for k, v := range ep.Labels {
+		labels[k] = v
+	}
+	ns := ep.Namespace
+	if ns == "" {
+		ns = policyNS
+	}
+	if len(labels) == 0 && ep.Service != "" {
+		svc := &corev1.Service{}
+		if err := r.Get(ctx, types.NamespacedName{Name: ep.Service, Namespace: ns}, svc); err != nil {
+			return nil, fmt.Errorf("service %s/%s cannot be resolved: %w", ns, ep.Service, err)
+		}
+		if len(svc.Spec.Selector) == 0 {
+			return nil, fmt.Errorf("service %s/%s has no pod selector; set labels on the endpoint", ns, ep.Service)
+		}
+		for k, v := range svc.Spec.Selector {
+			labels[k] = v
+		}
+	}
+	if len(labels) == 0 {
+		return nil, nil
+	}
+	if ns != policyNS {
+		labels[namespaceLabel] = ns
+	}
+	return labels, nil
+}
+
+// matchedFlows counts the Netra records of the source pods in the last 15 minutes. known=false (with an
+// error explaining why) when Netra is not configured/reachable or the source pods cannot be identified.
+func (r *GryviaFlowPolicyReconciler) matchedFlows(ctx context.Context, policy *gryviav1.GryviaFlowPolicy, srcLabels map[string]string) (int64, bool, error) {
+	if r.Netra == nil || !r.Netra.Configured() {
+		return 0, false, &sources.SourceError{Source: "netra", Reason: sources.ReasonNotConfigured,
+			Message: "matchedFlows needs Netra (set GRYVIA_NETRA_URL on the operator); it is left unset"}
+	}
+	if len(srcLabels) == 0 {
+		return 0, false, &sources.SourceError{Source: "netra", Reason: sources.ReasonNoData,
+			Message: "the policy has no source labels or Service, so its flows cannot be identified; matchedFlows is left unset"}
+	}
+	srcNS := policy.Namespace
+	if policy.Spec.Source != nil && policy.Spec.Source.Namespace != "" {
+		srcNS = policy.Spec.Source.Namespace
+	}
+	pods, err := r.podNames(ctx, srcNS, srcLabels)
+	if err != nil {
+		return 0, false, err
+	}
+	recs, err := r.Netra.History(ctx, matchedFlowsWindow, matchedFlowsLimit)
+	if err != nil {
+		return 0, false, err
+	}
+	var n int64
+	for _, rec := range recs {
+		if rec.Namespace != srcNS || !pods[rec.Pod] {
+			continue
+		}
+		if policy.Spec.Destination != nil && policy.Spec.Destination.Port > 0 && rec.Port != policy.Spec.Destination.Port {
+			continue
+		}
+		if p := strings.ToLower(policy.Spec.Protocol); p != "" && p != "any" && rec.Protocol != "" && !strings.EqualFold(rec.Protocol, p) {
+			continue
+		}
+		n++
+	}
+	return n, true, nil
+}
+
+func (r *GryviaFlowPolicyReconciler) podNames(ctx context.Context, ns string, labels map[string]string) (map[string]bool, error) {
+	sel := map[string]string{}
+	for k, v := range labels {
+		if k != namespaceLabel {
+			sel[k] = v
+		}
+	}
+	pods := &corev1.PodList{}
+	if err := r.List(ctx, pods, client.InNamespace(ns), client.MatchingLabels(sel)); err != nil {
+		return nil, err
+	}
+	out := map[string]bool{}
+	for _, p := range pods.Items {
+		out[p.Name] = true
+	}
+	return out, nil
+}
+
 // buildCiliumNetworkPolicy translates a GryviaFlowPolicy into an unstructured CiliumNetworkPolicy
-func (r *GryviaFlowPolicyReconciler) buildCiliumNetworkPolicy(policy *gryviav1.GryviaFlowPolicy) (*unstructured.Unstructured, error) {
+func (r *GryviaFlowPolicyReconciler) buildCiliumNetworkPolicy(policy *gryviav1.GryviaFlowPolicy, srcLabels, dstLabels map[string]string) (*unstructured.Unstructured, error) {
 	ciliumPolicyName := fmt.Sprintf("ffp-%s", policy.Name)
 
 	// Build endpoint selector from source labels
 	endpointSelector := map[string]interface{}{}
-	if policy.Spec.Source != nil && len(policy.Spec.Source.Labels) > 0 {
+	if len(srcLabels) > 0 {
 		matchLabels := make(map[string]interface{})
-		for k, v := range policy.Spec.Source.Labels {
+		for k, v := range srcLabels {
 			matchLabels[k] = v
 		}
 		endpointSelector["matchLabels"] = matchLabels
@@ -142,14 +296,12 @@ func (r *GryviaFlowPolicyReconciler) buildCiliumNetworkPolicy(policy *gryviav1.G
 
 	// Build destination selector
 	destSelector := map[string]interface{}{}
-	if policy.Spec.Destination != nil {
-		if len(policy.Spec.Destination.Labels) > 0 {
-			matchLabels := make(map[string]interface{})
-			for k, v := range policy.Spec.Destination.Labels {
-				matchLabels[k] = v
-			}
-			destSelector["matchLabels"] = matchLabels
+	if len(dstLabels) > 0 {
+		matchLabels := make(map[string]interface{})
+		for k, v := range dstLabels {
+			matchLabels[k] = v
 		}
+		destSelector["matchLabels"] = matchLabels
 	}
 
 	switch policy.Spec.Action {
@@ -238,46 +390,6 @@ func mapProtocol(protocol string) string {
 		return "ICMP"
 	default:
 		return "TCP"
-	}
-}
-
-// queryMatchedFlows queries Hubble for the number of flows matching this policy.
-// This is a best-effort operation; if Hubble is unavailable, returns 0.
-func (r *GryviaFlowPolicyReconciler) queryMatchedFlows(ctx context.Context, policy *gryviav1.GryviaFlowPolicy) int64 {
-	logger := log.FromContext(ctx)
-
-	// Look for the Hubble relay service to query flow counts
-	hubbleSvc := &corev1.Service{}
-	err := r.Get(ctx, types.NamespacedName{
-		Name:      "hubble-relay",
-		Namespace: "kube-system",
-	}, hubbleSvc)
-	if err != nil {
-		logger.V(1).Info("Hubble relay service not found, skipping flow count query")
-		return 0
-	}
-
-	// In a production implementation, this would connect to the Hubble gRPC API
-	// and query for flows matching the policy's source/destination selectors.
-	// For now, return the existing count from status to avoid resetting it.
-	return policy.Status.MatchedFlows
-}
-
-// updateStatus updates the GryviaFlowPolicy status subresource
-func (r *GryviaFlowPolicyReconciler) updateStatus(ctx context.Context, namespacedName types.NamespacedName, phase, ciliumPolicyRef string, enforced bool, matchedFlows int64) {
-	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		policy := &gryviav1.GryviaFlowPolicy{}
-		if err := r.Get(ctx, namespacedName, policy); err != nil {
-			return err
-		}
-		policy.Status.Phase = phase
-		policy.Status.CiliumPolicyRef = ciliumPolicyRef
-		policy.Status.Enforced = enforced
-		policy.Status.LastApplied = metav1.Now()
-		policy.Status.MatchedFlows = matchedFlows
-		return r.Status().Update(ctx, policy)
-	}); err != nil {
-		log.FromContext(ctx).Error(err, "Failed to update GryviaFlowPolicy status")
 	}
 }
 

@@ -18,10 +18,13 @@ independent: neither requires the other.
 - `security.enabled` and `security.autoBlock` are **reserved and not read**: the operator has no such flags and no
   auto-blocking exists. Earlier versions of this chart passed them as `--security-*` arguments, which Go's flag parser
   rejects, so the operator exited at start-up; the chart no longer passes them.
-- Known issue (code reading, not run): the operator's controllers call the collector at the hard-coded
-  `http://gryvia-collector.gryvia-system.svc.cluster.local:9090`, but this chart creates no Service with that name (the
-  collector is in `gryvia-network`), and the operator asks for some paths the collector does not serve. Treat the
-  operator-to-collector data path as not working.
+- The operator no longer uses a fixed collector URL: it finds the collector pods by label
+  (`app.kubernetes.io/component=collector`) in its own namespace (or `operator.sources.collector.namespace`; without the chart wiring the built-in default is `gryvia-network`), signs its
+  requests with the API token from a mounted Secret and merges the answers of all pods. Without that wiring
+  (`operator.sources.enabled=false`, the default) it looks in `gryvia-network` and sends unsigned requests; a status then says `SourceAvailable=False` with the reason. See
+  [docs/network-intelligence-sources.md](../../docs/network-intelligence-sources.md). Not yet run against the real collector
+  on a cluster (the e2e workflow uses a fake collector). The default chart also lacks RBAC for the operator's own ten
+  kinds; `operator.sources.enabled=true` adds it.
 - Flow data can also come from [Netra](https://github.com/zyvorai/netra) through the gateway
   (`apiGateway.netra.url` in the main chart), which needs neither this collector nor its privileges.
 
@@ -52,6 +55,11 @@ name is `gryvia-network-intelligence`.
 |-----------|-------------|---------|
 | `operator.image.repository` / `.tag` | Operator image | `ghcr.io/zyvorai/gryvia-network-intelligence-operator`, chart appVersion |
 | `operator.replicas`, `operator.resources` | Operator size | `1`, 100m/128Mi requests, 500m/512Mi limits |
+| `operator.sources.enabled` | Wire the operator to its data sources: flags, token/TLS Secret mounts and the RBAC of its ten kinds (fabric signals, usage records and rates read-only, CiliumNetworkPolicy) | `false` |
+| `operator.sources.collector.namespace`, `.port`, `.timeout` | Where the collector pods are (default: the release namespace), their port and the per-request timeout | `""`, `9090`, `5s` |
+| `operator.sources.collector.tokenSecret`, `.tokenKey` | Secret with the collector API token (defaults to `ebpf.security.apiTokenSecret`); read on every request, requests are HMAC-signed | `""`, `token` |
+| `operator.sources.collector.tls`, `.caSecret`, `.caKey`, `.serverName`, `.clientCertSecret` | https to the collectors, CA bundle, certificate name to verify, mTLS client certificate | `false`, `""`, `ca.crt`, `gryvia-collector`, `""` |
+| `operator.sources.netra.url`, `.tokenSecret`, `.tokenKey`, `.caSecret`, `.caKey` | Netra flow history for `GryviaTraceSession` and `matchedFlows` (env `GRYVIA_NETRA_URL` etc.) | `""` |
 | `ebpf.enabled` | Run the eBPF collector DaemonSet | `false` |
 | `collector.image.repository` / `.tag` | Collector image (not published; build your own) | `ghcr.io/zyvorai/gryvia-ebpf-collector` |
 | `collector.hostNetwork` | Host networking for the collector; the pod's port 9090 is then bound on the node | `true` |

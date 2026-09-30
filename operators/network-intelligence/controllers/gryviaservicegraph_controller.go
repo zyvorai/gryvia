@@ -2,7 +2,9 @@ package controllers
 
 import (
 	"context"
-	"fmt"
+	"net"
+	"sort"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -10,18 +12,26 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	gryviav1 "github.com/zyvorai/gryvia/operators/network-intelligence/api/v1"
+	"github.com/zyvorai/gryvia/operators/network-intelligence/pkg/sources"
 )
 
-// GryviaServiceGraphReconciler reconciles a GryviaServiceGraph object
+// maxGraphEdges bounds status.edges (the busiest edges by bytes are kept).
+const maxGraphEdges = 500
+
+// GryviaServiceGraphReconciler reconciles a GryviaServiceGraph object.
+//
+// Nodes come from the Services of the target namespaces; edges from the merged collector graph
+// (/api/v1/graph of every collector node). The collector graph is cumulative counters of live edges
+// (an edge expires 10 minutes after its last flow), not a time-windowed rate.
 type GryviaServiceGraphReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme    *runtime.Scheme
+	Collector sources.Collector
 }
 
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviaservicegraphs,verbs=get;list;watch;create;update;patch;delete
@@ -29,31 +39,20 @@ type GryviaServiceGraphReconciler struct {
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviaservicegraphs/finalizers,verbs=update
 //+kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
-//+kubebuilder:rbac:groups="",resources=endpoints,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 func (r *GryviaServiceGraphReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// Fetch the GryviaServiceGraph instance
 	graph := &gryviav1.GryviaServiceGraph{}
 	if err := r.Get(ctx, req.NamespacedName, graph); err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("GryviaServiceGraph resource not found, ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		logger.Error(err, "Failed to get GryviaServiceGraph")
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("Reconciling GryviaServiceGraph",
-		"name", graph.Name,
-		"namespaces", graph.Spec.Namespaces,
-		"includeExternal", graph.Spec.IncludeExternal,
-	)
-
-	// Parse refresh interval
 	refreshInterval := 1 * time.Minute
 	if graph.Spec.RefreshInterval != "" {
 		if parsed, err := time.ParseDuration(graph.Spec.RefreshInterval); err == nil && parsed > 0 {
@@ -61,51 +60,65 @@ func (r *GryviaServiceGraphReconciler) Reconcile(ctx context.Context, req ctrl.R
 		}
 	}
 
-	// Discover services across target namespaces
-	nodes := r.discoverServiceNodes(ctx, graph)
+	services := r.discoverServiceNodes(ctx, graph)
 
-	// Build edges from Hubble flow data
-	edges := r.buildServiceEdges(ctx, graph, nodes)
+	var cg sources.Graph
+	var stats sources.Stats
+	var err error
+	if r.Collector == nil {
+		err = errNoCollector
+	} else {
+		cg, stats, err = r.Collector.Graph(ctx)
+	}
 
-	// Determine health status for each node
-	r.evaluateNodeHealth(ctx, nodes, edges)
+	var nodes []gryviav1.ServiceGraphNode
+	var edges []gryviav1.ServiceGraphEdge
+	if err == nil {
+		nodes, edges = buildGraph(graph, services, cg)
+		evaluateNodeHealth(nodes, edges)
+	} else {
+		logger.Info("collector graph unavailable; keeping the last known edges", "reason", err.Error())
+		nodes, edges = services, graph.Status.Edges
+	}
 
-	// Update status with the graph
-	r.updateStatus(ctx, req.NamespacedName, nodes, edges)
-
-	logger.Info("GryviaServiceGraph refreshed",
-		"nodes", len(nodes),
-		"edges", len(edges),
-	)
-
+	key := req.NamespacedName
+	uerr := updateStatus(ctx, r.Client, key, func() *gryviav1.GryviaServiceGraph { return &gryviav1.GryviaServiceGraph{} },
+		func(g *gryviav1.GryviaServiceGraph) {
+			g.Status.Nodes = nodes
+			g.Status.Edges = edges
+			if err == nil {
+				g.Status.LastUpdated = metav1.Now()
+			}
+			setSource(&g.Status.Conditions, g.Generation, err, stats,
+				"edges are collector counters of live connections (no verdicts, no p99); spec.depth is not used")
+		})
+	if uerr != nil && !errors.IsNotFound(uerr) {
+		return ctrl.Result{}, uerr
+	}
+	logger.Info("GryviaServiceGraph refreshed", "nodes", len(nodes), "edges", len(edges), "collectorError", err != nil)
 	return ctrl.Result{RequeueAfter: refreshInterval}, nil
 }
 
-// discoverServiceNodes enumerates services across target namespaces to build graph nodes
+// discoverServiceNodes enumerates services across target namespaces to build graph nodes.
 func (r *GryviaServiceGraphReconciler) discoverServiceNodes(ctx context.Context, graph *gryviav1.GryviaServiceGraph) []gryviav1.ServiceGraphNode {
 	logger := log.FromContext(ctx)
 	var nodes []gryviav1.ServiceGraphNode
 
 	namespaces := graph.Spec.Namespaces
 	if len(namespaces) == 0 {
-		// Default to the graph's own namespace
 		namespaces = []string{graph.Namespace}
 	}
-
 	for _, ns := range namespaces {
-		// Verify namespace exists
 		namespace := &corev1.Namespace{}
 		if err := r.Get(ctx, types.NamespacedName{Name: ns}, namespace); err != nil {
 			logger.V(1).Info("Namespace not found, skipping", "namespace", ns)
 			continue
 		}
-
 		svcList := &corev1.ServiceList{}
 		if err := r.List(ctx, svcList, client.InNamespace(ns)); err != nil {
 			logger.Error(err, "Failed to list services", "namespace", ns)
 			continue
 		}
-
 		for _, svc := range svcList.Items {
 			nodeType := "service"
 			if svc.Spec.Type == corev1.ServiceTypeExternalName {
@@ -114,121 +127,135 @@ func (r *GryviaServiceGraphReconciler) discoverServiceNodes(ctx context.Context,
 				}
 				nodeType = "external"
 			}
-
-			nodes = append(nodes, gryviav1.ServiceGraphNode{
-				Name:      svc.Name,
-				Namespace: svc.Namespace,
-				Type:      nodeType,
-				Health:    "unknown",
-			})
+			nodes = append(nodes, gryviav1.ServiceGraphNode{Name: svc.Name, Namespace: svc.Namespace, Type: nodeType, Health: "unknown"})
 		}
 	}
-
 	return nodes
 }
 
-// buildServiceEdges queries Hubble flow data to discover connections between services
-func (r *GryviaServiceGraphReconciler) buildServiceEdges(ctx context.Context, graph *gryviav1.GryviaServiceGraph, nodes []gryviav1.ServiceGraphNode) []gryviav1.ServiceGraphEdge {
-	logger := log.FromContext(ctx)
-
-	// Check if Hubble is available
-	hubbleSvc := &corev1.Service{}
-	err := r.Get(ctx, types.NamespacedName{
-		Name:      "hubble-relay",
-		Namespace: "kube-system",
-	}, hubbleSvc)
-	if err != nil {
-		logger.V(1).Info("Hubble relay not available, using existing edges from status")
-		// Preserve existing edges from status if Hubble is unavailable
-		existing := &gryviav1.GryviaServiceGraph{}
-		if getErr := r.Get(ctx, types.NamespacedName{
-			Name:      graph.Name,
-			Namespace: graph.Namespace,
-		}, existing); getErr == nil {
-			return existing.Status.Edges
-		}
-		return nil
+func isIPEndpoint(id string) bool {
+	host := id
+	if h, _, err := net.SplitHostPort(id); err == nil {
+		host = h
 	}
-
-	// In production, this would:
-	// 1. Connect to Hubble relay gRPC API
-	// 2. Query flows grouped by (source_service, destination_service, port, protocol)
-	// 3. Calculate aggregate latency (P99) and throughput for each edge
-	// 4. Determine verdict (forwarded, dropped, error) based on flow verdicts
-	// 5. Respect the depth parameter for graph traversal depth
-	//
-	// Example Hubble query: GetFlows with source/destination namespace filters
-	// matching graph.Spec.Namespaces, aggregated over graph.Spec.RefreshInterval
-
-	// Build a service lookup for cross-referencing
-	serviceMap := make(map[string]bool)
-	for _, node := range nodes {
-		key := fmt.Sprintf("%s/%s", node.Namespace, node.Name)
-		serviceMap[key] = true
-	}
-
-	// Preserve existing edges
-	existing := &gryviav1.GryviaServiceGraph{}
-	if getErr := r.Get(ctx, types.NamespacedName{
-		Name:      graph.Name,
-		Namespace: graph.Namespace,
-	}, existing); getErr == nil {
-		return existing.Status.Edges
-	}
-
-	return nil
+	return net.ParseIP(host) != nil
 }
 
-// evaluateNodeHealth determines the health status of each service node
-// based on error rates observed in the service edges
-func (r *GryviaServiceGraphReconciler) evaluateNodeHealth(ctx context.Context, nodes []gryviav1.ServiceGraphNode, edges []gryviav1.ServiceGraphEdge) {
-	// Build a map of error/drop counts per destination service
-	errorCounts := make(map[string]int)
-	totalCounts := make(map[string]int)
-
-	for _, edge := range edges {
-		totalCounts[edge.Destination]++
-		if edge.Verdict == "dropped" || edge.Verdict == "error" {
-			errorCounts[edge.Destination]++
+// buildGraph turns the merged collector graph into status nodes and edges. An edge is kept when at
+// least one endpoint is a known Service of the target namespaces (or a collector node whose namespace
+// is one of them); endpoints that are bare IPs are external and kept only with spec.includeExternal.
+func buildGraph(graph *gryviav1.GryviaServiceGraph, services []gryviav1.ServiceGraphNode, cg sources.Graph) ([]gryviav1.ServiceGraphNode, []gryviav1.ServiceGraphEdge) {
+	targets := map[string]bool{}
+	for _, ns := range graph.Spec.Namespaces {
+		targets[ns] = true
+	}
+	if len(targets) == 0 {
+		targets[graph.Namespace] = true
+	}
+	byName := map[string][]gryviav1.ServiceGraphNode{}
+	for _, n := range services {
+		byName[n.Name] = append(byName[n.Name], n)
+	}
+	cgNS := map[string]string{}
+	for _, n := range cg.Nodes {
+		cgNS[n.ID] = n.Namespace
+	}
+	inScope := func(id string) bool {
+		if len(byName[id]) > 0 {
+			return true
 		}
+		if i := strings.IndexByte(id, '/'); i > 0 {
+			if targets[id[:i]] {
+				return true
+			}
+		}
+		return targets[cgNS[id]] && !isIPEndpoint(id)
 	}
 
-	// Evaluate health based on error ratio
-	for i := range nodes {
-		key := fmt.Sprintf("%s/%s", nodes[i].Namespace, nodes[i].Name)
-		total := totalCounts[key]
-		errs := errorCounts[key]
+	nodeSet := map[string]gryviav1.ServiceGraphNode{}
+	for _, n := range services {
+		nodeSet[n.Name] = n
+	}
+	var kept []sources.Edge
+	for _, e := range cg.Edges {
+		if !inScope(e.Source) && !inScope(e.Target) {
+			continue
+		}
+		if !graph.Spec.IncludeExternal && (isIPEndpoint(e.Source) && !inScope(e.Source) || isIPEndpoint(e.Target) && !inScope(e.Target)) {
+			continue
+		}
+		kept = append(kept, e)
+	}
+	sort.SliceStable(kept, func(i, j int) bool { return kept[i].BytesTotal > kept[j].BytesTotal })
+	if len(kept) > maxGraphEdges {
+		kept = kept[:maxGraphEdges]
+	}
+	edges := make([]gryviav1.ServiceGraphEdge, 0, len(kept))
+	for _, e := range kept {
+		for _, id := range []string{e.Source, e.Target} {
+			if _, ok := nodeSet[id]; !ok {
+				typ := "workload"
+				if isIPEndpoint(id) {
+					typ = "external"
+				}
+				ns := ""
+				if !isIPEndpoint(id) {
+					ns = cgNS[id]
+				}
+				nodeSet[id] = gryviav1.ServiceGraphNode{Name: id, Namespace: ns, Type: typ, Health: "unknown"}
+			}
+		}
+		edges = append(edges, gryviav1.ServiceGraphEdge{
+			Source: e.Source, Destination: e.Target, Protocol: strings.ToLower(e.Protocol), Port: int(e.Port),
+			LatencyP50: formatMs(e.LatencyMs), BytesTotal: satInt64(e.BytesTotal), FlowCount: satInt64(e.FlowCount),
+			Throughput: formatBytes(satInt64(e.BytesTotal)),
+		})
+	}
+	sort.Slice(edges, func(i, j int) bool {
+		a, b := edges[i], edges[j]
+		if a.Source != b.Source {
+			return a.Source < b.Source
+		}
+		if a.Destination != b.Destination {
+			return a.Destination < b.Destination
+		}
+		return a.Port < b.Port
+	})
+	nodes := make([]gryviav1.ServiceGraphNode, 0, len(nodeSet))
+	for _, n := range nodeSet {
+		nodes = append(nodes, n)
+	}
+	sort.Slice(nodes, func(i, j int) bool { return nodes[i].Name < nodes[j].Name })
+	return nodes, edges
+}
 
-		if total == 0 {
+// evaluateNodeHealth derives health from edge verdicts. The collector graph carries no verdicts, so
+// nodes stay "unknown" unless some other source fills them; never "healthy" by absence of data.
+func evaluateNodeHealth(nodes []gryviav1.ServiceGraphNode, edges []gryviav1.ServiceGraphEdge) {
+	errs, total := map[string]int{}, map[string]int{}
+	for _, e := range edges {
+		if e.Verdict == "" {
+			continue
+		}
+		total[e.Destination]++
+		if e.Verdict == "dropped" || e.Verdict == "error" {
+			errs[e.Destination]++
+		}
+	}
+	for i := range nodes {
+		t := total[nodes[i].Name]
+		if t == 0 {
 			nodes[i].Health = "unknown"
 			continue
 		}
-
-		errorRate := float64(errs) / float64(total)
-		switch {
-		case errorRate == 0:
+		switch rate := float64(errs[nodes[i].Name]) / float64(t); {
+		case rate == 0:
 			nodes[i].Health = "healthy"
-		case errorRate < 0.05:
+		case rate < 0.05:
 			nodes[i].Health = "degraded"
 		default:
 			nodes[i].Health = "unhealthy"
 		}
-	}
-}
-
-// updateStatus updates the GryviaServiceGraph status subresource
-func (r *GryviaServiceGraphReconciler) updateStatus(ctx context.Context, namespacedName types.NamespacedName, nodes []gryviav1.ServiceGraphNode, edges []gryviav1.ServiceGraphEdge) {
-	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		graph := &gryviav1.GryviaServiceGraph{}
-		if err := r.Get(ctx, namespacedName, graph); err != nil {
-			return err
-		}
-		graph.Status.Nodes = nodes
-		graph.Status.Edges = edges
-		graph.Status.LastUpdated = metav1.Now()
-		return r.Status().Update(ctx, graph)
-	}); err != nil {
-		log.FromContext(ctx).Error(err, "Failed to update GryviaServiceGraph status")
 	}
 }
 

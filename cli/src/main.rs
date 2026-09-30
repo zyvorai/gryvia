@@ -1,6 +1,7 @@
 mod client;
 mod commands;
 mod display;
+mod gateway;
 mod output;
 mod platform;
 mod types;
@@ -59,6 +60,14 @@ struct Cli {
     /// Disable colored output (also honours NO_COLOR)
     #[arg(long, global = true)]
     no_color: bool,
+
+    /// Gateway base URL for the commands whose data lives behind it (network flows/graph, gpu memory, security alerts). The API key is read from GRYVIA_API_KEY
+    #[arg(long, global = true, env = "GRYVIA_GATEWAY_URL", value_name = "URL")]
+    gateway: Option<String>,
+
+    /// Do not verify the gateway's TLS certificate (a CA bundle can be set with GRYVIA_CA_FILE instead)
+    #[arg(long, global = true)]
+    insecure: bool,
 }
 
 #[derive(Subcommand)]
@@ -423,7 +432,7 @@ enum Commands {
     },
 
     /// Network intelligence commands
-    #[command(after_help = examples(&["gryvia network status", "gryvia network anomalies --severity high"]))]
+    #[command(after_help = examples(&["gryvia network status", "gryvia network flows --gateway https://gryvia.example.com", "gryvia network graph --format json", "gryvia network anomalies --severity high"]))]
     Network {
         #[command(subcommand)]
         action: NetworkCommands,
@@ -437,7 +446,7 @@ enum Commands {
     },
 
     /// GPU communication and training analysis commands
-    #[command(after_help = examples(&["gryvia gpu memory --node gpu-node-01", "gryvia gpu nccl --job llm-training"]))]
+    #[command(after_help = examples(&["gryvia gpu memory", "gryvia gpu rdma --job llm-training", "gryvia gpu nccl --job llm-training"]))]
     Gpu {
         #[command(subcommand)]
         action: GpuCommands,
@@ -765,7 +774,7 @@ enum SecurityPolicyCommands {
         #[arg(long)]
         rules: String,
 
-        /// Enable automatic blocking of detected threats
+        /// Deprecated and ignored by the operator: nothing is ever blocked automatically
         #[arg(long)]
         auto_block: bool,
 
@@ -792,22 +801,26 @@ enum GpuCommands {
         gpu_namespace: String,
     },
 
-    /// Show GPU memory transfer stats for a node
+    /// Show host/device memory transfer counters (through the gateway)
     Memory {
-        /// Node name
+        /// Node name (not applied: the gateway sums the counters over all collectors)
         #[arg(long)]
-        node: String,
+        node: Option<String>,
 
         /// Target namespace
         #[arg(long, default_value = "default")]
         gpu_namespace: String,
     },
 
-    /// Show RDMA stats for a node
+    /// Show RDMA / fabric signals (GryviaFabricSignal status; with --node also the node's fabric health)
     Rdma {
-        /// Node name
+        /// Node name (adds that node's GryviaNodeFabric)
         #[arg(long)]
-        node: String,
+        node: Option<String>,
+
+        /// Only the fabric signal of this job
+        #[arg(long)]
+        job: Option<String>,
 
         /// Target namespace
         #[arg(long, default_value = "default")]
@@ -882,6 +895,67 @@ async fn run() -> Result<()> {
             return Ok(());
         }
         _ => {}
+    }
+
+    // Commands whose data lives behind the gateway run through it when one is configured, before (and
+    // without) a kube client, so they work from a laptop with only GRYVIA_GATEWAY_URL and GRYVIA_API_KEY.
+    let gateway = gateway::GatewayConfig::resolve(cli.gateway.as_deref(), cli.insecure)
+        .map(gateway::GatewayClient::new);
+    if let Some(gw) = &gateway {
+        match &cli.command {
+            Commands::Network {
+                action:
+                    NetworkCommands::Flows {
+                        service, output, ..
+                    },
+            } => {
+                commands::flows::execute_gateway(gw, service.as_deref(), output.as_str()).await?;
+                return Ok(());
+            }
+            Commands::Network {
+                action: NetworkCommands::Graph { format, .. },
+            } => {
+                commands::graph::execute_gateway(gw, format).await?;
+                return Ok(());
+            }
+            Commands::Gpu {
+                action: GpuCommands::Memory { node, .. },
+            } => {
+                commands::gpu_trace::execute_memory_gateway(gw, node.as_deref()).await?;
+                return Ok(());
+            }
+            Commands::Security {
+                action:
+                    SecurityCommands::Alerts {
+                        severity,
+                        alert_type,
+                        ..
+                    },
+            } => {
+                let printed = commands::security::alerts_via_gateway(
+                    gw,
+                    severity.as_deref(),
+                    alert_type.as_deref(),
+                )
+                .await?;
+                if printed {
+                    return Ok(());
+                }
+                // no per-event source at the gateway: fall through to the policy counters (kube)
+            }
+            _ => {}
+        }
+    }
+
+    // `gpu memory` has no Kubernetes source at all: without a gateway it only says what it needs.
+    if gateway.is_none() {
+        if let Commands::Gpu {
+            action: GpuCommands::Memory { node, .. },
+        } = &cli.command
+        {
+            commands::gpu_trace::execute_memory_without_gateway(node.as_deref())?;
+            return Ok(());
+        }
     }
 
     // Save namespace flag before passing ownership to client
@@ -1382,26 +1456,12 @@ async fn run() -> Result<()> {
                     )
                     .await?;
                 }
-                GpuCommands::Memory {
-                    node,
-                    gpu_namespace,
-                } => {
-                    let effective_ns = if has_ns_flag {
-                        &ns_default
-                    } else {
-                        &gpu_namespace
-                    };
-                    commands::gpu_trace::execute(
-                        &client,
-                        commands::gpu_trace::GpuAction::Memory {
-                            node,
-                            namespace: effective_ns.to_string(),
-                        },
-                    )
-                    .await?;
+                GpuCommands::Memory { .. } => {
+                    unreachable!("handled before the cluster client is created")
                 }
                 GpuCommands::Rdma {
                     node,
+                    job,
                     gpu_namespace,
                 } => {
                     let effective_ns = if has_ns_flag {
@@ -1413,6 +1473,7 @@ async fn run() -> Result<()> {
                         &client,
                         commands::gpu_trace::GpuAction::Rdma {
                             node,
+                            job,
                             namespace: effective_ns.to_string(),
                         },
                     )

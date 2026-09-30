@@ -87,6 +87,8 @@ jobs:
         run: python3 scripts/check-cli-docs.py
       - name: Every example and documented manifest matches its CRD schema
         run: python3 scripts/check-examples.py
+      - name: Files and `gryvia` commands referenced from example READMEs and scripts exist
+        run: python3 scripts/check-example-refs.py
 
   sdk-python:
     name: Python SDK tests

@@ -1,8 +1,8 @@
 # Network Intelligence Guide
 
 Guide to Gryvia's eBPF-based network intelligence: the kernel programs, the per-node collector, the
-`network-intelligence` operator and its CRDs. Read the status box first: the programs and the operator are real code, but
-several links between them are not wired yet.
+`network-intelligence` operator and its CRDs. Read the status box first: the programs and the operator are real code and
+the operator now reads its sources, but none of it has run on a real cluster with the real collector.
 
 :::caution Status: what works and what does not
 **Programs.** The 35 eBPF programs in `ebpf/` are CO-RE (no per-kernel builds; they need a node kernel with BTF, and the
@@ -15,22 +15,27 @@ everything GPU-related (NCCL/CUDA uprobes, RDMA, GDS), which needs GPU or RDMA h
 **Collector.** A privileged, `hostNetwork`, `hostPID` DaemonSet in the `helm/network-intelligence` chart,
 disabled by default (`ebpf.enabled=false`). Its image (`gryvia-ebpf-collector`) is built in CI but is not among the release
 images. Its HTTP listener on `:9090` (`/metrics`, `/healthz`, `/api/v1/{graph,anomalies,gpu/nccl,gpu/memory,fabric,security/alerts,ai/training,ai/pipeline,tuning/tcp,ebpf/status}`)
-is unauthenticated, except `/api/v1/flight/diagnose`, which needs an HMAC token (`-flight-token-file`).
+is unauthenticated by default (HMAC, TLS and mTLS are opt-in: `docs/collector-security.md`); `/api/v1/flight/*` and
+`/api/v1/inference` always need the flight token.
 
-**Operator.** The ten controllers are registered and unit-tested, but most of the data path is a stub:
+**Operator.** The ten controllers read real sources; full table in
+[`docs/network-intelligence-sources.md`](https://github.com/zyvorai/gryvia/blob/main/docs/network-intelligence-sources.md).
+Verified with unit tests (fake Kubernetes client, fake sources, `httptest` collector) and a kind e2e workflow that uses a
+FAKE collector (operator side only); **not** run against the real collector at scale, real Hubble or Cilium.
 
-- `GryviaFlowPolicy`, `GryviaAutoPolicy` and the auto-mitigation of `GryviaNetworkAnomaly` create
-  **CiliumNetworkPolicy** objects, so those features need Cilium as the CNI. Nothing was verified on a Cilium cluster.
-- The Hubble gRPC and Prometheus (PromQL) queries are not implemented. `GryviaTrafficInsight` does not measure latency or
-  throughput, `GryviaTraceSession` manages its lifecycle and results ConfigMap but does not capture flows,
-  `GryviaServiceGraph` does not discover edges, and `GryviaNetworkAnomaly` sees empty metrics.
-- `GryviaSecurityPolicy`, `GryviaNetworkCost`, `GryviaTrainingInsight` and `GryviaInferenceInsight` read from the
-  collector over HTTP, but the operator uses a hard-coded base URL,
-  `http://gryvia-collector.gryvia-system.svc.cluster.local:9090`, and the chart creates no Service with that name (the
-  chart's Services are `<release>-collector-metrics` in the chart namespace, `gryvia-network` by default). Moreover the
-  operator asks for `/api/v1/health`, `/api/v1/network/costs` and `/api/v1/inference/latency`, which the collector does not
-  serve. Until both sides are aligned these resources stay in an "awaiting data" state. Only `/api/v1/security/alerts` and `/api/v1/ai/training` exist on
-  both sides.
+- `ServiceGraph` edges, `NetworkAnomaly`, `TrafficInsight` top talkers and `SecurityPolicy` alerts come from the merged
+  `/api/v1/{graph,anomalies,security/alerts}` of every collector pod (discovered by label, requests HMAC-signed with a
+  mounted token, optional TLS/mTLS). `NetworkCost` is built from `GryviaNetworkUsageRecord` and `GryviaNetworkRate`
+  objects (no HTTP), `TrainingInsight`/`InferenceInsight` from `GryviaFabricSignal.status`, `TraceSession` and
+  `FlowPolicy.status.matchedFlows` from Netra, and `AutoPolicy` writes `GryviaFlowPolicy` suggestions from the learned graph.
+- Every status has a `SourceAvailable` condition: `False` with a reason (`NoCollectors`, `Unreachable`, `NotConfigured`,
+  `NoSignal`, `NoData`, ...) and a message when the source is missing, so an empty status is never mistaken for "nothing
+  happened". Fields with no source (p99 latency and drop counts of `TrafficInsight`, per-rank statistics, the inference
+  phase breakdown) stay unset.
+- `GryviaFlowPolicy`, `GryviaAutoPolicy` suggestions once approved, and the auto-mitigation of `GryviaNetworkAnomaly`
+  create **CiliumNetworkPolicy** objects, so those features need Cilium as the CNI. Nothing was verified on a Cilium cluster.
+- The Hubble gRPC and Prometheus (PromQL) paths do not exist any more: nothing here uses Hubble or Prometheus.
+- Enable the wiring in the chart with `operator.sources.enabled=true` (RBAC, token and TLS Secret mounts).
 
 **Flow sources.** Real flows can also come from **[Netra](https://github.com/zyvorai/netra)**, the separate standalone eBPF
 network observability product: set `apiGateway.netra.url` (an address the gateway pod can reach; a `*.svc` name only works
@@ -234,8 +239,10 @@ spec:
 ### GryviaTrafficInsight
 
 Declares a service and a rolling window to analyse, with the metrics of interest (`latency`, `throughput`, `drops`,
-`retransmits`). The controller requeues every `window` and would fill latency, throughput and top-talker status, but the
-Prometheus/Hubble queries it relies on are not implemented, so no measurements are produced today.
+`retransmits`). The controller requeues every `window` and fills, from the collector graph, the top talkers (inbound
+edges of the service by cumulative bytes), a smoothed p50 latency (moving average of the inbound edges, not a percentile),
+the throughput (growth of those byte counters between two reconciles) and the collector's anomalies of that service.
+`p99Latency` and `dropCount` have no source and stay unset.
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
@@ -256,9 +263,13 @@ spec:
 
 ### GryviaAutoPolicy
 
-Learn / suggest / enforce state machine for generated policies. `enforce` creates CiliumNetworkPolicy objects from stored
-suggestions, gated by `approvalRequired`. The learning step is a stub (no Hubble connection), so no traffic is learned
-today; treat the state handling as the only real part.
+Learns Service-to-Service edges from the collector graph (kept in the ConfigMap `autopolicy-<name>-learned`) and, in
+mode `suggest` after `learningWindow`, writes one `GryviaFlowPolicy` per learned edge in the AutoPolicy's namespace:
+deterministic name, labelled `gryvia.io/suggested=true` and `gryvia.io/auto-policy=<name>`, owned by the AutoPolicy,
+action `allow`. **They are never applied automatically**: the flow-policy controller ignores a suggested policy until a
+human removes the label (`gryvia network policy apply NAME`). Mode `enforce` behaves like `suggest` (condition
+`EnforceNotAutomatic`). The confidence is a heuristic from the number of observed flows. `gryvia network policy suggest`
+lists the suggestions.
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
@@ -281,8 +292,10 @@ spec:
 ### GryviaTraceSession
 
 Time-limited debugging session. The controller creates a results ConfigMap, marks the session `active` and completes it
-when `duration` expires. `level` is `l3`, `l4` or `l7`. Flow capture from Hubble is not implemented, so the ConfigMap
-holds no captured flows.
+when `duration` expires. While active it reads Netra's flow history for the window, keeps the flows of the service's pods
+(and `filters.port/protocol/dstIP`) in the ConfigMap (at most 2000, replaced on every poll) and sets `flowsCaptured`.
+Without Netra (`GRYVIA_NETRA_URL` on the operator) nothing is captured and the `SourceAvailable` condition says so.
+`level`, `captureHeaders` and `filters.srcIP` are not applied.
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
@@ -303,9 +316,10 @@ spec:
 
 ### GryviaServiceGraph
 
-Service dependency graph over a set of namespaces, refreshed every `refreshInterval`. Edge discovery is not implemented;
-existing status edges are preserved. The gateway's `GET /api/network/flows` falls back to these edges when Netra is not
-configured.
+Service dependency graph over a set of namespaces, refreshed every `refreshInterval`. Nodes are the Services of the namespaces; edges are the merged collector graph
+(bytes, flow counts and a smoothed p50 latency; no verdicts, so node health stays `unknown`; `depth` is not used).
+Edges to bare IPs are kept only with `includeExternal`. While the collector is unavailable the last edges are kept and
+the condition says why. The gateway's `GET /api/network/flows` falls back to these edges when Netra is not configured.
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
@@ -324,9 +338,12 @@ spec:
 
 ### GryviaNetworkAnomaly
 
-Threshold rules on a service. Metrics come from Prometheus in design; today the metric source is empty, so rules do not
-fire. What is real: the webhook call and, with `autoMitigate`, a temporary deny CiliumNetworkPolicy for critical/high
-anomalies that expires after 15 minutes.
+Anomalies of a service, taken from the collector's own statistical detector (`/api/v1/anomalies`: latency spikes, traffic
+bursts, new connections, DNS failures). `detectionRules` only select which types to keep (`latency` -> latency_spike,
+`throughput` -> traffic_burst, `connections` -> new_connection); their thresholds are not evaluated. Also real: the
+webhook call and, with `autoMitigate`, a temporary deny CiliumNetworkPolicy (`app=<targetService>` ingress deny) for new
+critical/high anomalies that expires after 15 minutes. That mitigation now fires on real collector data: enable it only
+after reading the collector's detections.
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
@@ -386,10 +403,11 @@ spec:
 ### GryviaNetworkCost
 
 Per-namespace network cost reports from same-zone, cross-zone and external byte counters, priced with `costPerGB` and
-attributed with `costCenters`. Reports are appended to `status.reports` every `reportingInterval` (default 1h). The
-byte counters would come from the collector's `cost_tracker` program, but the operator asks for
-`/api/v1/network/costs`, which the collector does not serve, so reports are empty today. The rates below are
-placeholders, not real prices.
+attributed with `costCenters`. The byte counters are the `GryviaNetworkUsageRecord` objects the collector writes into the
+`tenant-<name>` namespaces (`ebpf.attributeNetwork` + `ebpf.publishNetworkUsage`), read from Kubernetes, no HTTP. One
+report per namespace and UTC day is (re)computed every `reportingInterval`; only egress is priced, only the zone classes
+same-zone, cross-zone and internet have a price (1 GB = 10^9 bytes, same rules as the gateway). Prices: `costPerGB`, or
+when it is all zero the cluster's `GryviaNetworkRate`. Estimates, not invoices; the rates below are placeholders.
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
@@ -413,10 +431,13 @@ spec:
 
 ### GryviaTrainingInsight
 
-NCCL analysis for one `GryviaAIJob`. The controller reads `/api/v1/ai/training?job=<targetJob>` from the collector (an
-endpoint both sides have), then fills `status.rankStats`, `stragglers`, `commPattern`, `commComputeRatio` and a
-`bottleneck` verdict; `phase` is `AwaitingData` until ranks are reported. The straggler and bottleneck rules are simple
-heuristics on that data. Nothing here has run against a real NCCL job.
+NCCL analysis for one `GryviaAIJob`. The controller reads the `status` of the job's `GryviaFabricSignal`
+(`spec.jobRef == targetJob`, same namespace; the collector fills it with `ebpf.publishFabricStatus`): NCCL p99, the
+collective skew, the overlap-idle ratio, the RDMA retry ratio and the fabric score. That status has per-job aggregates
+only, so there are no per-rank statistics, communication pattern or comm/compute ratio (they stay unset); a straggler is
+reported only when the collector flagged one, and the bottleneck is `communication` only with that evidence, else
+`unknown`. `phase` is `AwaitingData` until a signal with data exists; a signal older than 5 minutes is reported `Stale`.
+Nothing here has run against a real NCCL job.
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
@@ -436,10 +457,12 @@ spec:
 
 ### GryviaInferenceInsight
 
-Latency breakdown for an inference service (`status.latencyBreakdown`: DNS, TCP connect, TLS handshake, GPU queue, GPU
-execution, postprocess; `p50/p95/p99TotalNs`; `bottleneck`). The controller asks the collector for
-`/api/v1/inference/latency`, which the collector does not serve, so the status stays empty today. The `infer_latency`
-program measures only accept-to-first-read wait, not this full breakdown.
+Serving-engine latency for an inference service, read from the `GryviaFabricSignal` with `spec.jobRef == targetService`
+(collector flags `-infer-metrics` and `-publish-fabric-status`): time to first token, inter-token latency, engine queue time
+and end-to-end latency (p99, as the engine reports them; a field the engine does not export stays unset), queued requests,
+KV-cache usage and the eBPF accept-to-read wait. `gpuQueueNs` is the engine queue p99 and `totalNs`/`p99TotalNs` the engine
+end-to-end p99; the per-phase breakdown (DNS, TCP connect, TLS, GPU execution, postprocess) and p50/p95 have no source and
+stay unset. `bottleneck` is `queue`, `network_wait`, `engine` or `unknown` (a heuristic: p99s are not additive).
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
@@ -454,25 +477,28 @@ spec:
 
 ### GryviaFabricSignal
 
-The CRD exists for scheduler-facing fabric signals (see the fabric programs above), but no controller fills it and it is
-not part of the operator's ten kinds.
+The CRD holds per-job fabric signals. The collector fills its `status` (`ebpf.publishFabricStatus`); the
+network-intelligence operator only reads it (Training/InferenceInsight) and the ai-operator's fabric-aware scheduling
+uses it. It is not one of the operator's ten kinds.
 
 ---
 
 ## CLI Commands
 
-The CLI reads Kubernetes objects with your kubeconfig; it does not call the collector or the gateway. That determines what
-each command can show:
+Most commands read Kubernetes objects with your kubeconfig. The commands whose data lives in the collectors or behind the
+gateway (`network flows`, `network graph`, `gpu memory`, `security alerts`) use the gateway when `GRYVIA_GATEWAY_URL` (or
+`--gateway`) and `GRYVIA_API_KEY` are set:
 
 | Command | Reads | Note |
 |---------|-------|------|
-| `gryvia network flows`, `graph`, `trace --follow` | `GryviaFlow` objects (labelled `gryvia.io/service`) | There is **no `GryviaFlow` CRD** in `crds/` and nothing creates such objects, so these print a warning or an empty result on a stock install. |
-| `gryvia network trace` | creates a `GryviaTraceSession` | See the trace caveats above. |
-| `gryvia network policy list/suggest/apply` | `GryviaFlowPolicy` / `GryviaAutoPolicy` | Works on whatever the operator stores. |
-| `gryvia network anomalies`, `status` | `GryviaNetworkAnomaly` and related objects | Empty until anomalies are produced. |
-| `gryvia security alerts/status/policy` | `GryviaSecurityPolicy` (`status.detectionCounts`) | Depends on the collector data path. |
+| `gryvia network flows`, `graph` | gateway `/api/network/flows`, `/api/network/graph`; without a gateway the `GryviaServiceGraph` status | The gateway shows Netra flows when it has Netra, else the graph edges. Edges have no verdict. |
+| `gryvia network trace` | creates a `GryviaTraceSession`, prints the flows from its result ConfigMap | Flows need Netra on the operator (see the trace caveats above). |
+| `gryvia network policy list/suggest/apply` | `GryviaFlowPolicy` | `suggest` lists the policies a `GryviaAutoPolicy` labelled `gryvia.io/suggested=true`; `apply` removes the label so the operator enforces it. |
+| `gryvia network anomalies`, `status` | `GryviaNetworkAnomaly` status, `GryviaServiceGraph` edges, policies, traces | Empty until the operator has produced them. |
+| `gryvia security alerts/status/policy` | gateway `/api/security/alerts` when it has per-event alerts, else `GryviaSecurityPolicy` (`status.detectionCounts`) | |
 | `gryvia gpu nccl`, `training` | `GryviaTrainingInsight` | Needs an insight object for the job. |
-| `gryvia gpu memory`, `rdma` | `GryviaGpuNode` / placeholder | Print a hint or placeholder values; they do not query the collector. |
+| `gryvia gpu memory` | gateway `/api/gpu/memory` | Cumulative counters summed over all collectors; without a gateway it only says what it needs. |
+| `gryvia gpu rdma` | `GryviaFabricSignal` status (and `GryviaNodeFabric` with `--node`) | Rates that were not measured show `-`. |
 
 For real flows in a browser, use the dashboard with Netra configured (`GET /api/network/flows`). See the
 [CLI guide](./CLI_GUIDE.md) for every flag.

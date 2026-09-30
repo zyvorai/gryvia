@@ -1,9 +1,10 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use kube::api::{Api, ApiResource, GroupVersionKind, ListParams};
 use kube::core::DynamicObject;
 
 use crate::client::GryviaClient;
 use crate::display;
+use crate::gateway::GatewayClient;
 use crate::ui::{self, Cell2, Marker};
 
 pub enum GpuAction {
@@ -12,12 +13,9 @@ pub enum GpuAction {
         follow: bool,
         namespace: String,
     },
-    Memory {
-        node: String,
-        namespace: String,
-    },
     Rdma {
-        node: String,
+        node: Option<String>,
+        job: Option<String>,
         namespace: String,
     },
     Training {
@@ -33,8 +31,11 @@ pub async fn execute(client: &GryviaClient, action: GpuAction) -> Result<()> {
             follow,
             namespace,
         } => execute_nccl(client, &job, follow, &namespace).await,
-        GpuAction::Memory { node, namespace } => execute_memory(client, &node, &namespace).await,
-        GpuAction::Rdma { node, namespace } => execute_rdma(client, &node, &namespace).await,
+        GpuAction::Rdma {
+            node,
+            job,
+            namespace,
+        } => execute_rdma(client, node.as_deref(), job.as_deref(), &namespace).await,
         GpuAction::Training { job, namespace } => execute_training(client, &job, &namespace).await,
     }
 }
@@ -200,115 +201,332 @@ pub fn nccl_lines(insight: &DynamicObject, color: bool) -> Vec<String> {
     lines
 }
 
-async fn execute_memory(client: &GryviaClient, node: &str, _namespace: &str) -> Result<()> {
-    let color = ui::color_enabled();
-    println!(
-        "{}",
-        ui::header(&format!("GPU Memory Transfer Stats: {node}"), color)
-    );
-    println!();
+/// Host/device transfer counters the gateway sums over every collector (`/api/gpu/memory`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MemoryStats {
+    pub h2d_bytes: u64,
+    pub d2h_bytes: u64,
+    pub d2d_bytes: u64,
+    pub h2d_count: u64,
+    pub d2h_count: u64,
+    pub d2d_count: u64,
+    /// (reachable, total) collectors behind the sums, when the gateway says.
+    pub collectors: Option<(u64, u64)>,
+}
 
-    // Query node GPU metrics
-    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
-        "gryvia.io",
-        "v1alpha1",
-        "GryviaGpuNode",
-    ));
-    let api: Api<DynamicObject> = Api::all_with(client.kube_client.clone(), &ar);
-
-    match api.get(node).await {
-        Ok(gpu_node) => {
-            print_lines(memory_lines(tracked_gpus(&gpu_node), color));
-        }
-        Err(_) => {
-            println!(
-                "{}",
-                hint("GPU memory stats not yet available for this node.", color)
-            );
-            println!(
-                "{}",
-                hint(
-                    "Ensure eBPF collectors are deployed on the target node.",
-                    color
-                )
-            );
-
-            // Show placeholder stats
-            println!();
-            print_lines(memory_lines(None, color));
-        }
+/// Parse the gateway's `/api/gpu/memory` body.
+pub fn parse_memory(body: &serde_json::Value) -> MemoryStats {
+    let n = |k: &str| body.get(k).and_then(|v| v.as_u64()).unwrap_or(0);
+    let collectors = body.get("collectors").map(|c| {
+        (
+            c.get("reachable").and_then(|v| v.as_u64()).unwrap_or(0),
+            c.get("total").and_then(|v| v.as_u64()).unwrap_or(0),
+        )
+    });
+    MemoryStats {
+        h2d_bytes: n("h2dBytes"),
+        d2h_bytes: n("d2hBytes"),
+        d2d_bytes: n("d2dBytes"),
+        h2d_count: n("h2dCount"),
+        d2h_count: n("d2hCount"),
+        d2d_count: n("d2dCount"),
+        collectors,
     }
+}
 
+/// `gpu memory` through the gateway. The counters are summed over all collectors and cumulative since each
+/// collector started; the gateway has no per-node view, so `--node` is not applied.
+pub async fn execute_memory_gateway(gw: &GatewayClient, node: Option<&str>) -> Result<()> {
+    let color = ui::color_enabled();
+    println!("{}", ui::header("GPU Memory Transfer Stats", color));
+    println!();
+    let body = gw
+        .get_json("/api/gpu/memory")
+        .await
+        .context("could not read GPU memory counters from the gateway")?;
+    let stats = parse_memory(&body);
+    if let Some(node) = node {
+        println!(
+            "{}",
+            hint(
+                &format!(
+                    "--node {node} is not applied: the gateway reports totals over all collectors."
+                ),
+                color
+            )
+        );
+    }
+    print_lines(memory_lines(&stats, color));
     println!();
     Ok(())
 }
 
-/// Number of GPUs listed in a node's status, when the list is present.
-fn tracked_gpus(node: &DynamicObject) -> Option<usize> {
-    node.data
-        .get("status")
-        .and_then(|s| s.get("gpus"))
-        .and_then(|v| v.as_array())
-        .map(|g| g.len())
+/// Without a gateway there is no source: the counters live in the collectors, not in Kubernetes objects.
+pub fn execute_memory_without_gateway(node: Option<&str>) -> Result<()> {
+    let color = ui::color_enabled();
+    let title = match node {
+        Some(n) => format!("GPU Memory Transfer Stats: {n}"),
+        None => "GPU Memory Transfer Stats".to_string(),
+    };
+    println!("{}", ui::header(&title, color));
+    println!();
+    println!(
+        "{}",
+        hint(
+            "GPU memory transfer counters are read from the eBPF collectors through the API gateway.",
+            color
+        )
+    );
+    println!(
+        "{}",
+        hint(
+            "Set GRYVIA_GATEWAY_URL (or --gateway) and GRYVIA_API_KEY; the collector must be deployed (helm ebpf.enabled).",
+            color
+        )
+    );
+    println!();
+    Ok(())
 }
 
-/// Lines of the memory transfer table; `gpus` is the tracked GPU count when known.
-pub fn memory_lines(gpus: Option<usize>, color: bool) -> Vec<String> {
-    let h2d = match gpus {
-        Some(n) => format!("{n} GPUs tracked"),
-        None => "- GB/s".to_string(),
+/// Human-readable byte count (binary units).
+fn human_bytes(n: u64) -> String {
+    const UNITS: [&str; 6] = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
+    let mut v = n as f64;
+    let mut i = 0;
+    while v >= 1024.0 && i < UNITS.len() - 1 {
+        v /= 1024.0;
+        i += 1;
+    }
+    if i == 0 {
+        format!("{n} B")
+    } else {
+        format!("{v:.1} {}", UNITS[i])
+    }
+}
+
+/// Lines of the memory transfer table (cumulative counters; there is no bandwidth or latency source).
+pub fn memory_lines(stats: &MemoryStats, color: bool) -> Vec<String> {
+    let row = |name: &str, bytes: u64, count: u64| -> Vec<Cell2> {
+        vec![
+            (name.to_string(), None),
+            (human_bytes(bytes), None),
+            (count.to_string(), None),
+            (
+                bytes
+                    .checked_div(count)
+                    .map(human_bytes)
+                    .unwrap_or_else(|| "-".to_string()),
+                None,
+            ),
+        ]
     };
-    let dash = || ("-".to_string(), None);
-    let rows: Vec<Vec<Cell2>> = vec![
-        vec![
-            ("H2D (Host->Device)".to_string(), None),
-            (h2d, None),
-            dash(),
-            dash(),
-        ],
-        vec![
-            ("D2H (Device->Host)".to_string(), None),
-            ("- GB/s".to_string(), None),
-            dash(),
-            dash(),
-        ],
-        vec![
-            ("D2D (Device->Device)".to_string(), None),
-            ("- GB/s".to_string(), None),
-            dash(),
-            dash(),
-        ],
+    let rows = vec![
+        row("H2D (Host->Device)", stats.h2d_bytes, stats.h2d_count),
+        row("D2H (Device->Host)", stats.d2h_bytes, stats.d2h_count),
+        row("D2D (Device->Device)", stats.d2d_bytes, stats.d2d_count),
     ];
+    let mut lines = ui::grid(
+        &["DIRECTION", "BYTES", "TRANSFERS", "AVG SIZE"],
+        &rows,
+        color,
+    );
+    if let Some((reachable, total)) = stats.collectors {
+        let text = if total == 0 {
+            "no collector found; the counters are zero because nothing measures them".to_string()
+        } else {
+            format!("{reachable} of {total} collectors answered")
+        };
+        lines.push(String::new());
+        lines.push(format!(
+            "{} {}",
+            if reachable < total || total == 0 {
+                Marker::Warn.paint_with(Marker::Warn.glyph(), color)
+            } else {
+                Marker::Ok.paint_with(Marker::Ok.glyph(), color)
+            },
+            text
+        ));
+    }
+    lines
+}
+
+/// `gpu rdma`: the fabric signals of jobs (`GryviaFabricSignal.status`, published by the collector with
+/// `ebpf.publishFabricStatus`) and, with `--node`, that node's `GryviaNodeFabric`. There are no per-NIC
+/// figures in these objects; a rate that is absent was not measured (never shown as zero).
+async fn execute_rdma(
+    client: &GryviaClient,
+    node: Option<&str>,
+    job: Option<&str>,
+    namespace: &str,
+) -> Result<()> {
+    let color = ui::color_enabled();
+    let title = match (node, job) {
+        (_, Some(j)) => format!("RDMA / Fabric Signals: job {j}"),
+        (Some(n), None) => format!("RDMA / Fabric Signals: node {n}"),
+        _ => "RDMA / Fabric Signals".to_string(),
+    };
+    println!("{}", ui::header(&title, color));
+    println!();
+
+    let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
+        "gryvia.io",
+        "v1alpha1",
+        "GryviaFabricSignal",
+    ));
+    let api: Api<DynamicObject> = Api::namespaced_with(client.kube_client.clone(), namespace, &ar);
+    match api.list(&ListParams::default()).await {
+        Ok(list) => {
+            let signals: Vec<&DynamicObject> = list
+                .items
+                .iter()
+                .filter(|o| {
+                    job.is_none_or(|j| {
+                        o.data
+                            .get("spec")
+                            .and_then(|s| s.get("jobRef"))
+                            .and_then(|v| v.as_str())
+                            == Some(j)
+                    })
+                })
+                .collect();
+            if signals.is_empty() {
+                println!(
+                    "{}",
+                    hint(
+                        &format!("No GryviaFabricSignal found in namespace {namespace}."),
+                        color
+                    )
+                );
+                println!(
+                    "{}",
+                    hint(
+                        "Create one per job (spec.jobRef) and run the collector with ebpf.publishFabricStatus and ebpf.nicCounters.",
+                        color
+                    )
+                );
+            } else {
+                print_lines(rdma_lines(&signals, color));
+            }
+        }
+        Err(e) => {
+            display::print_warning(&format!(
+                "Could not query fabric signals: {}",
+                display::cluster_error_text(&e.to_string())
+            ));
+        }
+    }
+
+    if let Some(node) = node {
+        println!();
+        let nf_ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
+            "gryvia.io",
+            "v1alpha1",
+            "GryviaNodeFabric",
+        ));
+        let nf_api: Api<DynamicObject> = Api::all_with(client.kube_client.clone(), &nf_ar);
+        match nf_api.get(node).await {
+            Ok(nf) => print_lines(node_fabric_lines(&nf, color)),
+            Err(_) => println!(
+                "{}",
+                hint(
+                    &format!("No GryviaNodeFabric for node {node} (needs ebpf.publishNodeFabric)."),
+                    color
+                )
+            ),
+        }
+    }
+    println!();
+    Ok(())
+}
+
+fn rate(status: Option<&serde_json::Value>, key: &str, unit: &str) -> String {
+    match status.and_then(|s| s.get(key)).and_then(|v| v.as_f64()) {
+        Some(v) => format!("{}{unit}", trim_float(v)),
+        None => "-".to_string(),
+    }
+}
+
+fn trim_float(v: f64) -> String {
+    let s = format!("{v:.4}");
+    s.trim_end_matches('0').trim_end_matches('.').to_string()
+}
+
+/// Lines of the per-job fabric signal table.
+pub fn rdma_lines(signals: &[&DynamicObject], color: bool) -> Vec<String> {
+    let rows: Vec<Vec<Cell2>> = signals
+        .iter()
+        .map(|o| {
+            let status = o.data.get("status");
+            let job = o
+                .data
+                .get("spec")
+                .and_then(|s| s.get("jobRef"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("-");
+            let updated = status
+                .and_then(|s| s.get("updatedAt"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("-");
+            vec![
+                (job.to_string(), None),
+                (rate(status, "rdmaRetryRate", ""), None),
+                (rate(status, "cnpRate", "/s"), None),
+                (rate(status, "pfcRate", "/s"), None),
+                (rate(status, "ncclP99ms", " ms"), None),
+                (rate(status, "scoreDelta", ""), None),
+                (updated.to_string(), None),
+            ]
+        })
+        .collect();
     ui::grid(
-        &["DIRECTION", "BANDWIDTH", "COUNT", "AVG LATENCY"],
+        &[
+            "JOB",
+            "RETRY RATIO",
+            "CNP",
+            "PFC",
+            "NCCL P99",
+            "SCORE DELTA",
+            "UPDATED",
+        ],
         &rows,
         color,
     )
 }
 
-async fn execute_rdma(_client: &GryviaClient, node: &str, _namespace: &str) -> Result<()> {
-    let color = ui::color_enabled();
-    println!("{}", ui::header(&format!("RDMA Stats: {node}"), color));
-    println!();
-
-    // RDMA stats would come from the eBPF collector
-    println!(
-        "{}",
-        hint(
-            "RDMA statistics require eBPF collector to be deployed on the target node.",
-            color
-        )
-    );
-    println!(
-        "{}",
-        hint(
-            "Ensure InfiniBand/RoCE devices are available and monitored.",
-            color
-        )
-    );
-
-    println!();
-    Ok(())
+/// Lines of a node's fabric health.
+pub fn node_fabric_lines(nf: &DynamicObject, color: bool) -> Vec<String> {
+    let spec = nf.data.get("spec");
+    let mut lines = vec![ui::section("Node Fabric", color)];
+    lines.push(ui::kv(
+        "Score delta",
+        &rate(spec, "scoreDelta", ""),
+        13,
+        color,
+    ));
+    let reasons: Vec<&str> = spec
+        .and_then(|s| s.get("reasons"))
+        .and_then(|v| v.as_array())
+        .map(|a| a.iter().filter_map(|r| r.as_str()).collect())
+        .unwrap_or_default();
+    lines.push(ui::kv(
+        "Reasons",
+        &if reasons.is_empty() {
+            "-".to_string()
+        } else {
+            reasons.join(", ")
+        },
+        13,
+        color,
+    ));
+    lines.push(ui::kv(
+        "Measured at",
+        spec.and_then(|s| s.get("measuredAt"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("-"),
+        13,
+        color,
+    ));
+    lines
 }
 
 async fn execute_training(client: &GryviaClient, job: &str, namespace: &str) -> Result<()> {
@@ -380,11 +598,16 @@ pub fn training_lines(insight: &DynamicObject, color: bool) -> Vec<String> {
                     .get("reason")
                     .and_then(|v| v.as_str())
                     .unwrap_or("-");
+                let what = if factor > 0.0 {
+                    format!("is {factor:.1}x slower")
+                } else {
+                    "is flagged as a straggler".to_string()
+                };
                 lines.push(format!(
-                    "{} Rank {} is {:.1}x slower ({})",
+                    "{} Rank {} {} ({})",
                     Marker::Error.paint_with(Marker::Error.glyph(), color),
                     rank,
-                    factor,
+                    what,
                     reason
                 ));
             }
@@ -507,13 +730,67 @@ mod tests {
 
     #[test]
     fn memory_table_renders() {
+        let stats = parse_memory(
+            &json!({"h2dBytes": 3221225472u64, "h2dCount": 3, "d2hBytes": 1024,
+            "d2hCount": 2, "d2dBytes": 0, "d2dCount": 0, "collectors": {"reachable": 2, "total": 3}}),
+        );
         assert_eq!(
-            memory_lines(Some(8), false),
+            memory_lines(&stats, false),
             vec![
-                "DIRECTION             BANDWIDTH       COUNT  AVG LATENCY",
-                "H2D (Host->Device)    8 GPUs tracked  -      -",
-                "D2H (Device->Host)    - GB/s          -      -",
-                "D2D (Device->Device)  - GB/s          -      -",
+                "DIRECTION             BYTES    TRANSFERS  AVG SIZE",
+                "H2D (Host->Device)    3.0 GiB  3          1.0 GiB",
+                "D2H (Device->Host)    1.0 KiB  2          512 B",
+                "D2D (Device->Device)  0 B      0          -",
+                "",
+                "! 2 of 3 collectors answered",
+            ]
+        );
+        let none = parse_memory(&json!({"collectors": {"reachable": 0, "total": 0}}));
+        assert!(memory_lines(&none, false)
+            .last()
+            .unwrap()
+            .contains("no collector found"));
+    }
+
+    #[tokio::test]
+    async fn gateway_memory_is_read() {
+        use crate::gateway::{mock, GatewayClient, GatewayConfig};
+        let body = json!({"h2dBytes": 10, "h2dCount": 1, "d2hBytes": 0, "d2hCount": 0,
+            "d2dBytes": 0, "d2dCount": 0, "collectors": {"reachable": 1, "total": 1}});
+        let gw = mock::start(vec![("/api/gpu/memory", 200, body.to_string())]).await;
+        let client = GatewayClient::new(GatewayConfig {
+            base_url: gw.url.clone(),
+            api_key: Some("k".into()),
+            insecure: false,
+            ca_file: None,
+            timeout: std::time::Duration::from_secs(5),
+        });
+        let v = client.get_json("/api/gpu/memory").await.unwrap();
+        assert_eq!(parse_memory(&v).h2d_bytes, 10);
+        assert_eq!(parse_memory(&v).collectors, Some((1, 1)));
+    }
+
+    #[test]
+    fn rdma_table_shows_unmeasured_as_dash() {
+        let sig = |job: &str, status: serde_json::Value| -> DynamicObject {
+            serde_json::from_value(json!({
+                "apiVersion": "gryvia.io/v1alpha1", "kind": "GryviaFabricSignal",
+                "metadata": {"name": job}, "spec": {"jobRef": job}, "status": status
+            }))
+            .unwrap()
+        };
+        let a = sig(
+            "llama",
+            json!({"rdmaRetryRate": 0.0021, "cnpRate": 12.5, "pfcRate": 3.0, "ncclP99ms": 42.5,
+            "scoreDelta": 0.4, "updatedAt": "2026-01-01T00:00:00Z"}),
+        );
+        let b = sig("bert", json!({}));
+        assert_eq!(
+            rdma_lines(&[&a, &b], false),
+            vec![
+                "JOB    RETRY RATIO  CNP     PFC  NCCL P99  SCORE DELTA  UPDATED",
+                "llama  0.0021       12.5/s  3/s  42.5 ms   0.4          2026-01-01T00:00:00Z",
+                "bert   -            -       -    -         -            -",
             ]
         );
     }
