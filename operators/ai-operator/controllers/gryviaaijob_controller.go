@@ -67,6 +67,8 @@ type GryviaAIJobReconciler struct {
 	// KueueIntegration (flag --kueue-integration, default false) creates the batch Job suspended with a
 	// Kueue queue label and maps Kueue's admission state to the job phase. See gryviaaijob_kueue.go.
 	KueueIntegration bool
+	// KueueStrictAdmission keeps tenant jobs suspended even when their default queue is absent.
+	KueueStrictAdmission bool
 	// KueueDefaultQueue is the LocalQueue used in tenant-* namespaces (flag --kueue-default-queue).
 	KueueDefaultQueue string
 	// priorityClasses caches the WorkloadPriorityClasses already ensured.
@@ -189,6 +191,28 @@ func (r *GryviaAIJobReconciler) reconcileAIJob(ctx context.Context, job *gryviav
 		return res, err
 	}
 
+	if job.Status.Phase == PhasePending || (job.Status.Phase == PhaseScheduling && !conditionTrue(job, ConditionScheduled)) {
+		if err := validateRecoveryOptions(job); err != nil {
+			return ctrl.Result{}, r.failJob(ctx, job, "InvalidRecoveryOptions", err.Error())
+		}
+	}
+	kind, err := r.resolveWorkloadKind(ctx, job)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	var queue string
+	if job.Status.Phase == PhasePending || (job.Status.Phase == PhaseScheduling && !conditionTrue(job, ConditionScheduled)) {
+		queue, _, err = r.resolveKueueQueue(ctx, job)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+	// Strict admission cannot protect a StatefulSet; do not silently run it outside Kueue.
+	if r.KueueStrictAdmission && queue != "" && kind != gryviav1.WorkloadKindJob &&
+		(job.Status.Phase == PhasePending || job.Status.Phase == PhaseScheduling) {
+		return ctrl.Result{}, r.failJob(ctx, job, "UnsupportedQueueWorkload", "strict Kueue admission requires workloadKind: job")
+	}
+	queueManaged := queue != "" && kind == gryviav1.WorkloadKindJob
 	gpusPerPod := r.getGPUsPerPod(job)
 
 	// Phase 1: Scheduling - find suitable GPU nodes (advisory; kept in status.nodesAllocated).
@@ -196,7 +220,17 @@ func (r *GryviaAIJobReconciler) reconcileAIJob(ctx context.Context, job *gryviav
 		log.Info("Scheduling AI job")
 		job.Status.Phase = PhaseScheduling
 
-		if gpusPerPod == 0 {
+		if queueManaged {
+			// Free capacity is Kueue's decision. Checking it here prevents occupied GPUs
+			// from ever producing a Workload, hiding demand and blocking preemption.
+			job.Status.NodesAllocated = nil
+			job.Status.PlacementExplanation = nil
+			job.Status.GpusAllocated = 0
+			r.updateCondition(job, ConditionScheduled, metav1.ConditionTrue, "QueueManaged", "Placement delegated to Kueue and kube-scheduler")
+			if err := r.Status().Update(ctx, job); err != nil {
+				return ctrl.Result{}, err
+			}
+		} else if gpusPerPod == 0 {
 			// CPU-only job: there is no GPU placement to advise on.
 			job.Status.GpusAllocated = 0
 			r.updateCondition(job, ConditionScheduled, metav1.ConditionTrue, "CPUOnly", "CPU-only job: no GPU placement needed")
@@ -258,10 +292,6 @@ func (r *GryviaAIJobReconciler) reconcileAIJob(ctx context.Context, job *gryviav
 	}
 
 	// Phase 4+5: create the workload and derive status from it.
-	kind, err := r.resolveWorkloadKind(ctx, job)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
 	if kind == gryviav1.WorkloadKindJob {
 		if err := r.reconcileBatchJob(ctx, job); err != nil {
 			log.Error(err, "Failed to reconcile batch Job")
@@ -615,6 +645,7 @@ func (r *GryviaAIJobReconciler) buildPodTemplate(job *gryviav1.GryviaAIJob, labe
 		RestartPolicy: corev1.RestartPolicyAlways,
 	}
 
+	applyRecoveryOptions(job, &podSpec)
 	r.applyReservation(job, &podSpec) // gryvia.io/reservation: toleration + nodeSelector (gryviaaijob_reservation.go)
 
 	return corev1.PodTemplateSpec{

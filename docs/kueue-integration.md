@@ -246,3 +246,7 @@ kubectl -n gryvia-system logs deploy/kueue-controller-manager
 - Quota is enforced by Kueue **only for jobs that have a queue**: a job in a namespace without a LocalQueue (or with the
   integration off) bypasses it. The existing webhook and quota-operator policies (GPU type allow-lists, per-job limits,
   `Rejected`) still apply to every job.
+
+## Strict admission and recovery
+
+See [Reliable admission and cooperative recovery](admission-recovery.md) for opt-in fail-closed tenant queues, queue-managed GPU demand, worker spreading and checkpoint hooks.

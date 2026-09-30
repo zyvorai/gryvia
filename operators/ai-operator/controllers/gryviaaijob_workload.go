@@ -101,6 +101,9 @@ func (r *GryviaAIJobReconciler) resolveWorkloadKind(ctx context.Context, job *gr
 // node and is incompatible with podFailurePolicy. Neither restarts the other ranks: this
 // is not elastic training.
 func (r *GryviaAIJobReconciler) buildJob(job *gryviav1.GryviaAIJob) (*batchv1.Job, error) {
+	if err := validateRecoveryOptions(job); err != nil {
+		return nil, err
+	}
 	labels := map[string]string{
 		"gryvia.io/job":  job.Name,
 		"gryvia.io/type": job.Spec.Type,
