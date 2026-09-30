@@ -53,7 +53,7 @@ jobs:
           kubectl create namespace "$NS"
           # The operator signs with the client Secret, the fake verifies with the server Secret: equal now,
           # made different later to prove that a wrong token is reported instead of silently swallowed.
-          tok="$(head -c 24 /dev/urandom | base64 | tr -d '=+/' | head -c 40)"
+          tok="$(head -c 48 /dev/urandom | base64 | tr -d '=+/' | head -c 40)"
           kubectl -n "$NS" create secret generic collector-token-server --from-literal=token="$tok"
           kubectl -n "$NS" create secret generic collector-token-client --from-literal=token="$tok"
           kubectl -n "$NS" create configmap fake-collector --from-file=fake_collector.py=scripts/tests/netintel-e2e/fake_collector.py
@@ -184,7 +184,7 @@ jobs:
         run: |
           source scripts/tests/netintel-e2e/lib.sh
           # rotate only the operator's token (the Secret is re-read on every request; the kubelet syncs the mount within ~1 min)
-          kubectl -n "$NS" create secret generic collector-token-client --from-literal=token="$(head -c 24 /dev/urandom | base64 | tr -d '=+/' | head -c 40)" \
+          kubectl -n "$NS" create secret generic collector-token-client --from-literal=token="$(head -c 48 /dev/urandom | base64 | tr -d '=+/' | head -c 40)" \
             --dry-run=client -o yaml | kubectl apply -f -
           wait_for "graph reports Unreachable with HTTP 401" 240 py shop gryviaservicegraph g '
           c = {c["type"]: c for c in s["conditions"]}["SourceAvailable"]

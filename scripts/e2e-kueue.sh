@@ -101,7 +101,8 @@ YAML
     bash -c "[[ \"\$(kubectl get clusterqueue $CQ -o jsonpath='{.status.conditions[?(@.type==\"Active\")].status}')\" == True ]]"
 
   # The objects are what docs/kueue-integration.md says.
-  [[ "$(cq_field '{.spec.cohort}')" == "gryvia" ]] || fail "cohort != gryvia"
+  # v1beta2 (Kueue >= 0.15) calls the field cohortName, v1beta1 calls it cohort.
+  [[ "$(cq_field '{.spec.cohortName}')$(cq_field '{.spec.cohort}')" == "gryvia" ]] || fail "cohort != gryvia"
   [[ "$(cq_field '{.spec.namespaceSelector.matchLabels.kubernetes\.io/metadata\.name}')" == "$NS" ]] || fail "namespaceSelector"
   [[ "$(cq_field '{.spec.preemption.withinClusterQueue}')" == "LowerPriority" ]] || fail "preemption.withinClusterQueue"
   [[ "$(cq_field '{.spec.resourceGroups[0].flavors[0].resources[0].name}')" == "$SLOT" ]] || fail "quota resource != $SLOT"
