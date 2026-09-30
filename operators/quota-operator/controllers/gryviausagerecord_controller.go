@@ -2,7 +2,6 @@ package controllers
 
 import (
 	"context"
-	"sort"
 	"strings"
 	"time"
 
@@ -18,6 +17,7 @@ import (
 
 	gryviav1 "github.com/zyvorai/gryvia/operators/quota-operator/api/v1"
 	"github.com/zyvorai/gryvia/operators/quota-operator/pkg/pricing"
+	"github.com/zyvorai/gryvia/operators/quota-operator/pkg/spend"
 )
 
 const (
@@ -111,7 +111,7 @@ func (r *GryviaUsageRecordReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	if hours < 0 {
 		hours = 0
 	}
-	gpuHours := hours * float64(job.Spec.GPUs)
+	gpuHours := hours * float64(job.Spec.TotalGPUs())
 
 	tenantName, tenant, err := r.resolveTenant(ctx, job)
 	if err != nil {
@@ -128,7 +128,7 @@ func (r *GryviaUsageRecordReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		JobUID:   string(job.UID),
 		GpuType:  job.Spec.GpuType,
 		Sku:      skuName,
-		Gpus:     job.Spec.GPUs,
+		Gpus:     job.Spec.TotalGPUs(),
 		Start:    *job.Status.StartTime,
 		End:      endPtr,
 		GpuHours: gpuHours,
@@ -259,24 +259,9 @@ func skuEnabled(s *gryviav1.GryviaGpuSku) bool {
 	return s.Spec.Enabled == nil || *s.Spec.Enabled
 }
 
-// findSku returns the enabled SKU (by name order, so the choice is stable) whose gpuType
-// matches, honouring allowedSkus when non-empty.
+// findSku is spend.FindSKU (the shared pricing rule).
 func findSku(items []gryviav1.GryviaGpuSku, gpuType string, allowedSkus []string) *gryviav1.GryviaGpuSku {
-	sorted := make([]*gryviav1.GryviaGpuSku, 0, len(items))
-	for i := range items {
-		sorted = append(sorted, &items[i])
-	}
-	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Name < sorted[j].Name })
-	for _, s := range sorted {
-		if !skuEnabled(s) || !strings.EqualFold(s.Spec.GpuType, gpuType) {
-			continue
-		}
-		if len(allowedSkus) > 0 && !containsString(allowedSkus, s.Name) {
-			continue
-		}
-		return s
-	}
-	return nil
+	return spend.FindSKU(items, gpuType, allowedSkus)
 }
 
 func containsString(list []string, v string) bool {

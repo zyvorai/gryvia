@@ -90,29 +90,36 @@ fn policy_phase_marker(phase: &str) -> Marker {
     }
 }
 
-/// Lines of the flow policies table.
+/// A string at `spec.<path...>` of a policy, or `default`.
+fn spec_text(policy: &DynamicObject, path: &[&str], default: &str) -> String {
+    let mut v = policy.data.get("spec");
+    for key in path {
+        v = v.and_then(|x| x.get(*key));
+    }
+    v.and_then(|x| x.as_str())
+        .filter(|x| !x.is_empty())
+        .unwrap_or(default)
+        .to_string()
+}
+
+/// Lines of the flow policies table. The endpoints are the GryviaFlowPolicy `spec.source.service` and
+/// `spec.destination.service` / `.port`.
 pub fn policies_lines(policies: &[DynamicObject], color: bool) -> Vec<String> {
     let rows: Vec<Vec<Cell2>> = policies
         .iter()
         .map(|policy| {
             let name = policy.metadata.name.as_deref().unwrap_or("<unknown>");
-            let spec = policy.data.get("spec");
             let status = policy.data.get("status");
-            let text = |key: &str| -> String {
-                spec.and_then(|s| s.get(key))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("-")
-                    .to_string()
-            };
-            let port = spec
-                .and_then(|s| s.get("port"))
+            let port = policy
+                .data
+                .get("spec")
+                .and_then(|s| s.get("destination"))
+                .and_then(|d| d.get("port"))
                 .and_then(|v| v.as_u64())
+                .filter(|p| *p > 0)
                 .map(|p| p.to_string())
                 .unwrap_or_else(|| "-".to_string());
-            let action = spec
-                .and_then(|s| s.get("action"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("allow");
+            let action = spec_text(policy, &["action"], "allow");
             let phase = status
                 .and_then(|s| s.get("phase"))
                 .and_then(|v| v.as_str())
@@ -120,16 +127,17 @@ pub fn policies_lines(policies: &[DynamicObject], color: bool) -> Vec<String> {
             let matched_flows = status
                 .and_then(|s| s.get("matchedFlows"))
                 .and_then(|v| v.as_u64())
-                .unwrap_or(0);
+                .map(|n| n.to_string())
+                .unwrap_or_else(|| "-".to_string());
             vec![
                 (name.to_string(), None),
-                (text("sourceService"), None),
-                (text("destinationService"), None),
+                (spec_text(policy, &["source", "service"], "-"), None),
+                (spec_text(policy, &["destination", "service"], "-"), None),
                 (port, None),
-                (action.to_string(), Some(verdict_marker(action))),
-                (text("intent"), None),
+                (action.clone(), Some(verdict_marker(&action))),
+                (spec_text(policy, &["intent"], "-"), None),
                 (phase.to_string(), Some(policy_phase_marker(phase))),
-                (matched_flows.to_string(), None),
+                (matched_flows, None),
             ]
         })
         .collect();
@@ -190,7 +198,7 @@ async fn suggest_policies(client: &GryviaClient, namespace: &str) -> Result<()> 
         println!(
             "{}",
             Marker::Disabled.paint_with(
-                "No policy suggestions available. Traffic analysis may still be in progress.",
+                "No policy suggestions. They come from a GryviaAutoPolicy (spec.mode suggest) in this namespace once its learning window has passed and the collector has seen traffic.",
                 color
             )
         );
@@ -205,39 +213,48 @@ async fn suggest_policies(client: &GryviaClient, namespace: &str) -> Result<()> 
     Ok(())
 }
 
-/// Lines of the numbered policy suggestions.
+/// Lines of the numbered policy suggestions (GryviaFlowPolicy objects labelled `gryvia.io/suggested=true`,
+/// written by the GryviaAutoPolicy controller; the confidence is in the `gryvia.io/confidence` annotation).
 pub fn suggestion_lines(suggestions: &[DynamicObject], color: bool) -> Vec<String> {
     let mut lines = Vec::new();
     for (i, suggestion) in suggestions.iter().enumerate() {
         let name = suggestion.metadata.name.as_deref().unwrap_or("<unknown>");
-        let spec = suggestion.data.get("spec");
-        let text = |key: &str, default: &str| -> String {
-            spec.and_then(|s| s.get(key))
-                .and_then(|v| v.as_str())
-                .unwrap_or(default)
-                .to_string()
-        };
-        let port = spec
-            .and_then(|s| s.get("port"))
+        let port = suggestion
+            .data
+            .get("spec")
+            .and_then(|s| s.get("destination"))
+            .and_then(|d| d.get("port"))
             .and_then(|v| v.as_u64())
+            .filter(|p| *p > 0)
             .map(|p| p.to_string())
             .unwrap_or_else(|| "*".to_string());
-        let action = text("action", "allow");
-        let confidence = spec
-            .and_then(|s| s.get("confidence"))
-            .and_then(|v| v.as_f64())
+        let action = spec_text(suggestion, &["action"], "allow");
+        let confidence = suggestion
+            .metadata
+            .annotations
+            .as_ref()
+            .and_then(|a| a.get("gryvia.io/confidence"))
+            .and_then(|v| v.parse::<f64>().ok())
             .unwrap_or(0.0);
+        let flows = suggestion
+            .metadata
+            .annotations
+            .as_ref()
+            .and_then(|a| a.get("gryvia.io/observed-flows"))
+            .map(|v| format!(", {v} flows observed"))
+            .unwrap_or_default();
 
         lines.push(format!(
-            "{} {} (confidence: {:.0}%)",
+            "{} {} (confidence: {:.0}%{})",
             ui::ansi(&format!("{}.", i + 1), "1", color),
             name,
-            confidence * 100.0
+            confidence * 100.0,
+            flows
         ));
         lines.push(format!(
             "   {} → {}  port:{}  action:{}",
-            text("sourceService", "-"),
-            text("destinationService", "-"),
+            spec_text(suggestion, &["source", "service"], "-"),
+            spec_text(suggestion, &["destination", "service"], "-"),
             port,
             verdict_marker(&action).paint_with(&action, color)
         ));
@@ -245,7 +262,7 @@ pub fn suggestion_lines(suggestions: &[DynamicObject], color: bool) -> Vec<Strin
             "   {}",
             ui::kv(
                 "Intent",
-                &text("intent", "observed traffic pattern"),
+                &spec_text(suggestion, &["intent"], "observed traffic pattern"),
                 8,
                 color
             )
@@ -285,6 +302,12 @@ async fn apply_policy(client: &GryviaClient, policy_name: &str, namespace: &str)
         .await
         .context(format!("Policy '{}' not found", policy_name))?;
 
+    let suggested = policy
+        .metadata
+        .labels
+        .as_ref()
+        .and_then(|l| l.get("gryvia.io/suggested"))
+        .is_some_and(|v| v == "true");
     let current_phase = policy
         .data
         .get("status")
@@ -292,35 +315,42 @@ async fn apply_policy(client: &GryviaClient, policy_name: &str, namespace: &str)
         .and_then(|v| v.as_str())
         .unwrap_or("Unknown");
 
-    if current_phase == "Enforced" || current_phase == "Active" {
-        display::print_info(&format!("Policy '{}' is already enforced.", policy_name));
+    if !suggested {
+        display::print_info(&format!(
+            "Policy '{}' is not a suggestion (phase: {}); nothing to approve.",
+            policy_name, current_phase
+        ));
         return Ok(());
     }
 
-    // Patch the policy to set phase to Enforced and remove suggested label
+    // Approving a suggestion = removing the suggested label. The operator ignores suggested policies and
+    // translates a policy without the label into a CiliumNetworkPolicy; the status is its to write.
     let patch = json!({
-        "status": {
-            "phase": "Enforced"
-        },
         "metadata": {
             "labels": {
                 "gryvia.io/suggested": null
+            },
+            "annotations": {
+                "gryvia.io/approved-by": "gryvia-cli"
             }
         }
     });
 
-    api.patch(
-        policy_name,
-        &PatchParams::apply("gryvia-cli"),
-        &Patch::Merge(&patch),
-    )
-    .await
-    .context("Failed to apply policy")?;
+    api.patch(policy_name, &PatchParams::default(), &Patch::Merge(&patch))
+        .await
+        .context("Failed to approve policy")?;
 
     println!(
-        "{} Policy '{}' applied and enforced.",
+        "{} Policy '{}' approved. The operator will now enforce it; check with: gryvia network policy list",
         Marker::Ok.paint_with(Marker::Ok.glyph(), color),
         policy_name
+    );
+    println!(
+        "  {}",
+        Marker::Disabled.paint_with(
+            "An allow policy limits the source pods' egress to what it lists; review the whole set before approving.",
+            color
+        )
     );
     println!();
 
@@ -348,13 +378,13 @@ mod tests {
         vec![
             policy(
                 "web-to-api",
-                json!({"sourceService": "web", "destinationService": "api", "port": 8080,
-                    "action": "allow", "intent": "frontend traffic", "confidence": 0.9}),
+                json!({"source": {"service": "web"}, "destination": {"service": "api", "port": 8080},
+                    "action": "allow", "intent": "frontend traffic"}),
                 json!({"phase": "Enforced", "matchedFlows": 120}),
             ),
             policy(
                 "block-db",
-                json!({"sourceService": "web", "destinationService": "db", "action": "deny"}),
+                json!({"source": {"service": "web"}, "destination": {"service": "db"}, "action": "deny"}),
                 json!({}),
             ),
         ]
@@ -367,18 +397,27 @@ mod tests {
             vec![
                 "NAME        SOURCE  DESTINATION  PORT  ACTION  INTENT            STATUS    MATCHED FLOWS",
                 "web-to-api  web     api          8080  allow   frontend traffic  Enforced  120",
-                "block-db    web     db           -     deny    -                 Pending   0",
+                "block-db    web     db           -     deny    -                 Pending   -",
             ]
         );
     }
 
     #[test]
     fn suggestions_render() {
-        let lines = suggestion_lines(&fixture()[..1], false);
+        let mut sugg = fixture();
+        sugg[0].metadata.annotations = Some(
+            [
+                ("gryvia.io/confidence".to_string(), "0.90".to_string()),
+                ("gryvia.io/observed-flows".to_string(), "120".to_string()),
+            ]
+            .into_iter()
+            .collect(),
+        );
+        let lines = suggestion_lines(&sugg[..1], false);
         assert_eq!(
             lines,
             vec![
-                "1. web-to-api (confidence: 90%)",
+                "1. web-to-api (confidence: 90%, 120 flows observed)",
                 "   web → api  port:8080  action:allow",
                 "   Intent  frontend traffic",
                 "   Apply   gryvia network policy apply web-to-api",

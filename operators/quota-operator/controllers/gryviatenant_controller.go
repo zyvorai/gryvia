@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -30,6 +31,10 @@ const (
 type GryviaTenantReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+
+	// TenantRBAC creates RoleBindings for members and OIDC groups (operator flag
+	// --tenant-rbac, default false; needs the rolebindings and bind RBAC from the chart).
+	TenantRBAC bool
 }
 
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviatenants,verbs=get;list;watch;create;update;patch;delete
@@ -100,6 +105,19 @@ func (r *GryviaTenantReconciler) reconcileTenant(ctx context.Context, tenant *gr
 	nsName := fmt.Sprintf("tenant-%s", tenant.Name)
 	if err := r.ensureNamespace(ctx, tenant, nsName); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to ensure namespace: %w", err)
+	}
+
+	// RoleBindings for members and OIDC groups (gryviatenant_rbac.go)
+	if !r.TenantRBAC {
+		// disabled: nothing to do
+	} else if invalid, err := r.reconcileTenantRBAC(ctx, tenant, nsName); err != nil {
+		logger.Error(err, "Failed to reconcile tenant RoleBindings")
+		r.updateCondition(tenant, "RBACReady", metav1.ConditionFalse, "RoleBindingFailed", err.Error())
+	} else if len(invalid) > 0 {
+		r.updateCondition(tenant, "RBACReady", metav1.ConditionTrue, "UnknownRole",
+			"unknown roles treated as viewer: "+strings.Join(invalid, ", "))
+	} else {
+		r.updateCondition(tenant, "RBACReady", metav1.ConditionTrue, "RoleBindingsApplied", "RoleBindings match spec.members and spec.oidcGroups")
 	}
 
 	// Apply ResourceQuota to the namespace
@@ -342,7 +360,7 @@ func (r *GryviaTenantReconciler) calculateUsage(ctx context.Context, tenant *gry
 		switch job.Status.Phase {
 		case "Running":
 			usage.RunningJobs++
-			usage.UsedGPUs += int(job.Spec.GPUs)
+			usage.UsedGPUs += int(job.Spec.TotalGPUs())
 
 			if job.Status.StartTime != nil {
 				effectiveStart := job.Status.StartTime.Time
@@ -350,7 +368,7 @@ func (r *GryviaTenantReconciler) calculateUsage(ctx context.Context, tenant *gry
 					effectiveStart = startOfMonth
 				}
 				hours := time.Since(effectiveStart).Hours()
-				gpuHours := hours * float64(job.Spec.GPUs)
+				gpuHours := hours * float64(job.Spec.TotalGPUs())
 				usage.GPUHours += gpuHours
 				usage.CostUSD += gpuHours * budget.GetGPURate(job.Spec.GpuType)
 			}
@@ -364,7 +382,7 @@ func (r *GryviaTenantReconciler) calculateUsage(ctx context.Context, tenant *gry
 				if job.Status.CompletionTime.Time.After(startOfMonth) {
 					hours := job.Status.CompletionTime.Time.Sub(effectiveStart).Hours()
 					if hours > 0 {
-						gpuHours := hours * float64(job.Spec.GPUs)
+						gpuHours := hours * float64(job.Spec.TotalGPUs())
 						usage.GPUHours += gpuHours
 						usage.CostUSD += gpuHours * budget.GetGPURate(job.Spec.GpuType)
 					}

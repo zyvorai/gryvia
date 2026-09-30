@@ -2,41 +2,27 @@
 
 NetPredator is the network intelligence layer for the Gryvia GPU platform. It provides Cilium/eBPF-based network visibility, security, and traffic control through Kubernetes custom resources. The operator registers ten controllers; this page details the first six (`GryviaSecurityPolicy`, `GryviaNetworkCost`, `GryviaTrainingInsight` and `GryviaInferenceInsight` are also registered but not described here).
 
-> **Status.** The CRDs and controllers are registered and unit-tested, but the data-collection side is largely a stub. Only the Kubernetes-side actions are real: `GryviaFlowPolicy` builds and applies a CiliumNetworkPolicy, `GryviaAutoPolicy` has learn/suggest/enforce state handling, and `GryviaNetworkAnomaly` can create a temporary deny CiliumNetworkPolicy. The Hubble relay gRPC and Prometheus PromQL queries are **not implemented** (the code only checks whether the `hubble-relay` / `prometheus-server` services exist and otherwise preserves existing status values). As a result `GryviaTrafficInsight` does not measure latency or throughput, `GryviaTraceSession` does not capture flows, `GryviaServiceGraph` does not discover edges from live traffic, and `GryviaNetworkAnomaly` currently sees empty metrics. Nothing here has been verified on a cluster running Cilium and Hubble.
+> **Status.** The ten controllers read real sources: the per-node collector pods (`/api/v1/graph`, `/anomalies`, `/security/alerts`; discovered by label, HMAC-signed, merged), Netra (optional, `GRYVIA_NETRA_URL`), and Kubernetes objects (`GryviaNetworkUsageRecord`, `GryviaNetworkRate`, `GryviaFabricSignal`). Every status carries a `SourceAvailable` condition that says when a source is missing. Hubble and Prometheus are not used. See [`docs/network-intelligence-sources.md`](../../docs/network-intelligence-sources.md) for what each controller reads, its limits and what is unverified. Verified with unit tests (fake client, fake sources, `httptest`) and a kind e2e workflow that uses a FAKE collector; **not** verified against the real collector at scale, Cilium or Hubble. `GryviaFlowPolicy` creates a CiliumNetworkPolicy and needs Cilium.
 
 ## Architecture
 
 ```
-+------------------------------------------------------------------+
-|                    NetPredator Operator                           |
-|                                                                  |
-|  +------------------+  +---------------------+  +--------------+ |
-|  | FlowPolicy       |  | TrafficInsight      |  | AutoPolicy   | |
-|  | Controller       |  | Controller          |  | Controller   | |
-|  |                  |  |                     |  |              | |
-|  | Intent -> Cilium |  | Prometheus/Hubble   |  | Learn ->     | |
-|  | Policy mapping   |  | metrics collection  |  | Suggest ->   | |
-|  |                  |  | anomaly detection   |  | Enforce      | |
-|  +--------+---------+  +----------+----------+  +------+-------+ |
-|           |                       |                     |         |
-|  +--------+---------+  +----------+----------+  +------+-------+ |
-|  | TraceSession     |  | ServiceGraph        |  | Network      | |
-|  | Controller       |  | Controller          |  | Anomaly      | |
-|  |                  |  |                     |  | Controller   | |
-|  | Time-limited     |  | Dependency graph    |  |              | |
-|  | flow capture     |  | from Hubble flows   |  | Threshold    | |
-|  | via Hubble       |  | with health status  |  | detection +  | |
-|  |                  |  |                     |  | auto-mitigate| |
-|  +------------------+  +---------------------+  +--------------+ |
-|                                                                  |
-+----+--------------------+---------------------+------------------+
-     |                    |                     |
-     v                    v                     v
-+----------+     +-----------------+    +----------------+
-| Cilium   |     | Hubble Relay    |    | Prometheus     |
-| CNI/eBPF |     | (gRPC API)     |    | (PromQL)       |
-+----------+     +-----------------+    +----------------+
+  GryviaFlowPolicy      -> CiliumNetworkPolicy (Cilium CNI)
+  GryviaAutoPolicy      -> learned edges -> suggested GryviaFlowPolicy (never applied automatically)
+  GryviaServiceGraph  \
+  GryviaTrafficInsight  }-- collector pods: /api/v1/graph, /api/v1/anomalies  (label app.kubernetes.io/component=collector,
+  GryviaNetworkAnomaly  |                                                       HMAC-signed with the mounted token, merged)
+  GryviaSecurityPolicy /   /api/v1/security/alerts
+  GryviaTraceSession    -- Netra flow history (optional)
+  GryviaNetworkCost     -- GryviaNetworkUsageRecord + GryviaNetworkRate (Kubernetes objects)
+  GryviaTrainingInsight \__ GryviaFabricSignal.status (published by the collector)
+  GryviaInferenceInsight/
 ```
+
+Operator flags for the collector (all optional): `--collector-namespace`, `--collector-port`, `--collector-token-file`,
+`--collector-tls`, `--collector-ca-file`, `--collector-client-cert-file`, `--collector-client-key-file`,
+`--collector-server-name`, `--collector-timeout`, `--collector-concurrency`; Netra: environment `GRYVIA_NETRA_URL`,
+`GRYVIA_NETRA_TOKEN`, `GRYVIA_NETRA_CA_FILE`, `GRYVIA_NETRA_INSECURE`.
 
 ## Custom Resources
 
@@ -76,7 +62,7 @@ spec:
 
 ### GryviaTrafficInsight
 
-Traffic analysis (design intent; live metric collection is not implemented, see Status) with percentile latencies, throughput measurements, drop rate tracking, top talker identification, and anomaly detection.
+Traffic analysis from the collector graph: top talkers, a smoothed p50 latency, throughput (growth of the byte counters between reconciles) and the collector's anomalies for the service. p99 latency and drop counts have no source and stay unset.
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
@@ -100,9 +86,9 @@ spec:
 Self-healing firewall that learns traffic patterns and automatically generates network policies.
 
 **Modes:**
-- `learn` - Observe traffic patterns via Hubble flow logs
-- `suggest` - Generate CiliumNetworkPolicy suggestions with confidence scores
-- `enforce` - Apply suggested policies (with optional approval gate)
+- `learn` - Record service-to-service edges learned from the collector graph (ConfigMap `autopolicy-<name>-learned`)
+- `suggest` - After the learning window, write `GryviaFlowPolicy` suggestions (label `gryvia.io/suggested=true`, never applied automatically; approve with `gryvia network policy apply`)
+- `enforce` - Behaves like `suggest` (condition `EnforceNotAutomatic`): nothing is applied without a human
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
@@ -124,7 +110,7 @@ spec:
 
 ### GryviaTraceSession
 
-Time-limited network trace/debug sessions. Session lifecycle and the results ConfigMap are managed, but flow capture from Hubble is not implemented yet.
+Time-limited network trace/debug sessions. Flows come from Netra's history for the window (needs `GRYVIA_NETRA_URL` on the operator; otherwise the condition says nothing is captured) and are written to the results ConfigMap. `level`, `captureHeaders` and `filters.srcIP` are not applied.
 
 **Trace levels:**
 - `l3` - IP-level flow capture
@@ -150,7 +136,7 @@ spec:
 
 ### GryviaServiceGraph
 
-Service dependency graph intended to be built from Hubble flow data (not yet implemented; existing edges are preserved) with health status, latency, and throughput per edge.
+Service dependency graph: nodes are the namespaces' Services, edges the merged collector graph (bytes, flow count, smoothed p50 latency; no verdicts or health).
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
@@ -172,12 +158,7 @@ spec:
 
 Network anomaly detection with threshold-based rules, webhook alerting, and automatic mitigation.
 
-**Detection capabilities:**
-- Latency spikes
-- Traffic bursts
-- Connection storms
-- Unusual port activity
-- Elevated error/drop rates
+**Detections** are the collector's own (`/api/v1/anomalies`): latency spikes, traffic bursts, new connections, DNS failures. `detectionRules` only select which types are kept (`latency`, `throughput`, `connections`); thresholds are not evaluated here.
 
 **Auto-mitigation:** For critical/high severity anomalies, creates temporary CiliumNetworkPolicy deny rules, with automatic expiration after 15 minutes.
 
@@ -209,8 +190,7 @@ spec:
 ## Prerequisites
 
 - Kubernetes cluster with Cilium CNI (needed for CiliumNetworkPolicy resources)
-- Hubble observability enabled in Cilium (checked for, not yet queried)
-- Prometheus (checked for, not yet queried)
+- The eBPF collector (helm `ebpf.enabled`) for graph, anomalies and security alerts; Netra for trace flows and matched flows (both optional; objects report `SourceAvailable=False` without them)
 
 ## Building
 

@@ -436,3 +436,39 @@ func NewSearchStrategy(algo gryviav1.SearchAlgorithm, direction gryviav1.Objecti
 		return &RandomSearch{}
 	}
 }
+
+// GridSize returns the number of combinations a grid search over space enumerates, saturating at limit+1 so a
+// huge space is detected without computing it.
+func GridSize(space []gryviav1.ParameterSpec, limit int) int {
+	size := 1
+	for _, p := range space {
+		n := paramCount(p)
+		if n == 0 {
+			return 0
+		}
+		if size > limit/n {
+			return limit + 1
+		}
+		size *= n
+	}
+	return size
+}
+
+// paramCount is len(expandParam(p)) without materialising a huge integer range.
+func paramCount(p gryviav1.ParameterSpec) int {
+	if p.Type == gryviav1.ParameterTypeInt && len(p.Values) == 0 {
+		if p.Min == nil || p.Max == nil || *p.Max < *p.Min {
+			return 0
+		}
+		step := 1.0
+		if p.Step != nil && *p.Step > 0 {
+			step = float64(*p.Step)
+		}
+		n := math.Floor((*p.Max-*p.Min)/step) + 1
+		if n > 1<<30 {
+			return 1 << 30
+		}
+		return int(n)
+	}
+	return len(expandParam(p))
+}

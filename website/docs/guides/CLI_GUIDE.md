@@ -677,14 +677,18 @@ gryvia invoice -o json
 
 ## Network Intelligence Commands
 
-:::caution What these commands read
-They read Kubernetes objects; they do not query the eBPF collector. `network flows`, `network graph` and
-`network trace --follow` read `GryviaFlow` objects, but **there is no `GryviaFlow` CRD in `crds/` and nothing creates
-such objects**, so on a stock install they print a warning or an empty result. Policies, anomalies and security
-status read `GryviaFlowPolicy`, `GryviaAutoPolicy`, `GryviaNetworkAnomaly` and `GryviaSecurityPolicy`, which are only
-filled in when the network-intelligence operator (separate chart) and its data sources work; much of that data path is
-still a stub. `gpu memory` and `gpu rdma` print hints or placeholder values. For real flows use the dashboard with
-Netra configured. See [Network Intelligence](./NETWORK_INTELLIGENCE.md) for the full status.
+:::info Where these commands get their data
+Commands whose data lives in the eBPF collectors or behind the gateway (`network flows`, `network graph`,
+`gpu memory`, `security alerts`) go through the **API gateway** when `GRYVIA_GATEWAY_URL` (or `--gateway URL`) is set:
+they send the API key from `GRYVIA_API_KEY` as a bearer token, verify TLS against the system roots (or the CA bundle in
+`GRYVIA_CA_FILE`; `--insecure` turns verification off), and need no kubeconfig. Without a gateway, `network flows`
+and `network graph` read the `GryviaServiceGraph` objects of the namespace, `security alerts` shows the counters of
+the `GryviaSecurityPolicy` objects, and `gpu memory` only says what it needs (the counters exist only in the
+collectors). Everything else reads Kubernetes objects: `gpu rdma` the `GryviaFabricSignal` status, `network policy
+suggest` the `GryviaFlowPolicy` objects labelled `gryvia.io/suggested=true` that a `GryviaAutoPolicy` writes.
+The objects are filled by the network-intelligence operator (separate chart; see
+[Network Intelligence](./NETWORK_INTELLIGENCE.md) and `docs/network-intelligence-sources.md`). Nothing here has been
+run against a live gateway or collector fleet; the CLI is tested against an in-process mock gateway.
 :::
 
 ### Network Overview
@@ -712,15 +716,19 @@ gryvia network trace training-service --follow
 ### Flow Analysis
 
 ```bash
-# Recent flows in a namespace
+# Recent flows in a namespace (service-graph edges when no gateway is configured)
 gryvia network flows --flow-namespace ml-research
 
-# Flows for a specific service over the last hour
-gryvia network flows --service training-service --last 1h
+# Flows through the gateway (Netra history when the gateway has Netra, else graph edges), for one service
+gryvia network flows --gateway https://gryvia.example.com --service training-service
 
 # Export flows as JSON
 gryvia network flows --flow-namespace ml-research --output json
 ```
+
+Through the gateway the answer covers every namespace over the gateway's fixed window, so `--flow-namespace` and
+`--last` do not apply there; `--service` filters client-side. Edges carry no verdict when the source has none: the
+verdict shows `-`, never `FORWARDED` by default.
 
 ### Service Graph
 
@@ -730,6 +738,9 @@ gryvia network graph --graph-namespace ml-research
 
 # JSON output
 gryvia network graph --graph-namespace ml-research --format json
+
+# Merged graph of every namespace through the gateway
+gryvia network graph --gateway https://gryvia.example.com
 ```
 
 ### Network Policy Management
@@ -738,12 +749,15 @@ gryvia network graph --graph-namespace ml-research --format json
 # List flow policies
 gryvia network policy list
 
-# Show auto-generated policy suggestions
+# Show auto-generated policy suggestions (from a GryviaAutoPolicy in that namespace)
 gryvia network policy suggest --policy-namespace ml-research
 
-# Apply a suggested policy by name
+# Approve a suggested policy by name (removes the suggested label; the operator then enforces it)
 gryvia network policy apply suggestion-name --policy-namespace ml-research
 ```
+
+Suggestions are never applied automatically. Applying one means the source pods' egress is limited to what the
+allow policy lists, so review the whole set before approving.
 
 ### Anomaly Detection
 
@@ -772,6 +786,9 @@ gryvia security alerts --severity critical
 # Filter by alert type (escape, mining, exfiltration, privesc)
 gryvia security alerts --alert-type mining
 
+# Through the gateway when it serves per-event alerts (falls back to the policy counters otherwise)
+gryvia security alerts --gateway https://gryvia.example.com
+
 # View security status overview
 gryvia security status
 
@@ -780,22 +797,29 @@ gryvia security policy list
 
 # Create a security policy
 gryvia security policy create my-policy \
-  --namespaces ml-research,ml-platform --rules escape,mining --auto-block
+  --namespaces ml-research,ml-platform --rules escape,mining
 ```
+
+`--auto-block` is deprecated and ignored: the operator never blocks traffic on an alert.
 
 ## GPU Network Analysis Commands
 
 `gpu nccl` and `gpu training` read a `GryviaTrainingInsight` object for the job (create one and run the network-intelligence
-operator and collector); `gpu memory` and `gpu rdma` do not query the collector today.
+operator and collector). `gpu memory` reads cumulative host/device transfer counters, summed over all collectors, through
+the gateway (`--node` is accepted but not applied). `gpu rdma` reads the `GryviaFabricSignal` status of the jobs in the
+namespace (retry ratio, CNP and PFC rates, NCCL p99, score delta); a value that was not measured shows `-`. With
+`--node` it also shows that node's `GryviaNodeFabric`. RDMA figures need the collector with `ebpf.nicCounters` and
+`ebpf.publishFabricStatus` on RDMA hardware (unverified on hardware).
 
 ```bash
 # View NCCL communication metrics for a training job
 gryvia gpu nccl --job llm-distributed-training
 
-# View GPU memory transfer stats for a node
-gryvia gpu memory --node gpu-node-01
+# View GPU memory transfer counters (through the gateway)
+gryvia gpu memory
 
-# View RDMA statistics for a node
+# View RDMA / fabric signals of a job, or of all jobs in the namespace
+gryvia gpu rdma --job llm-distributed-training
 gryvia gpu rdma --node gpu-node-01
 
 # Training insights for a job

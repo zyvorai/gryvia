@@ -1,7 +1,7 @@
 package netcost
 
 import (
-	"net"
+	"net/netip"
 	"sort"
 	"sync"
 	"time"
@@ -9,21 +9,15 @@ import (
 
 // Limits keep memory bounded no matter what the network does.
 const (
-	MaxPairs   = 65536 // (local, remote) delta states, same order as the kernel map
+	MaxPairs   = 65536 // (local, remote) delta states over both address families, same order as one kernel map
 	MaxBuckets = 20000 // open (hour, tenant, peer, zone) accumulators
 )
 
-// Sample is one cumulative counter pair read from the traffic_costs map. Addresses are the raw
-// network-order u32 values of the kernel map, converted by IPv4.
+// Sample is one cumulative counter pair read from the traffic_costs (IPv4) or traffic_costs6 (IPv6) map.
 type Sample struct {
-	Local, Remote uint32
+	Local, Remote netip.Addr
 	BytesSent     uint64 // egress from Local to Remote
 	BytesRecv     uint64 // ingress to Local from Remote
-}
-
-// IPv4 renders a kernel network-order u32 (as read by a little-endian host) as dotted quad.
-func IPv4(v uint32) string {
-	return net.IPv4(byte(v), byte(v>>8), byte(v>>16), byte(v>>24)).String()
 }
 
 // Key identifies one accumulator. Direction is not part of it: a Totals holds both directions.
@@ -42,7 +36,7 @@ type Totals struct {
 
 type pairState struct{ sent, recv uint64 }
 
-type pairKey struct{ local, remote uint32 }
+type pairKey struct{ local, remote netip.Addr }
 
 // Stats are counters for observability; none of them is billed.
 type Stats struct {
@@ -101,7 +95,7 @@ func (m *Meter) Observe(samples []Sample, now time.Time) {
 		if dSent == 0 && dRecv == 0 {
 			continue
 		}
-		v, ok, why := Classify(m.res, m.node, IPv4(s.Local), IPv4(s.Remote))
+		v, ok, why := Classify(m.res, m.node, s.Local.String(), s.Remote.String())
 		if !ok {
 			m.stats.Skipped[why] += dSent + dRecv
 			continue

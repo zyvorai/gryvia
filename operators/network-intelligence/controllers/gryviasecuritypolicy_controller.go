@@ -4,22 +4,19 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
+	"sort"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	gryviav1 "github.com/zyvorai/gryvia/operators/network-intelligence/api/v1"
+	"github.com/zyvorai/gryvia/operators/network-intelligence/pkg/sources"
 )
 
 const (
@@ -29,93 +26,159 @@ const (
 	// securityWebhookTimeout is the timeout for security alert webhook calls
 	securityWebhookTimeout = 10 * time.Second
 
-	// collectorBaseURL is the base URL for the eBPF collector API
-	collectorBaseURL = "http://gryvia-collector.gryvia-system.svc.cluster.local:9090"
+	// ConditionAutoBlockIgnored is set when the deprecated spec.autoBlock is true.
+	ConditionAutoBlockIgnored = "AutoBlockIgnored"
 )
 
-// GryviaSecurityPolicyReconciler reconciles a GryviaSecurityPolicy object
+// ruleEventTypes maps a GryviaSecurityPolicy detection rule type to the collector event_type names
+// (collector/pkg/decoder SecurityEventTypeName) it covers. A rule type that is itself an event_type
+// name matches that type.
+var ruleEventTypes = map[string][]string{
+	"escape":       {"container_escape", "namespace_breach"},
+	"mining":       {"crypto_mining"},
+	"exfiltration": {"data_exfiltration"},
+	"privesc":      {"privilege_escalation"},
+	"driver_fim":   {"driver_tampering"},
+}
+
+// GryviaSecurityPolicyReconciler reconciles a GryviaSecurityPolicy object.
+//
+// Alerts come from the merged collector /api/v1/security/alerts. The collector keeps a bounded ring of
+// recent alerts per node; only alerts newer than status.lastAlert are counted, so counters do not grow
+// on every poll. Alerts carry no namespace, so spec.targetNamespaces cannot filter them. Nothing is ever
+// blocked: spec.autoBlock is deprecated and ignored.
 type GryviaSecurityPolicyReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme    *runtime.Scheme
+	Collector sources.Collector
 }
 
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviasecuritypolicies,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviasecuritypolicies/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviasecuritypolicies/finalizers,verbs=update
-//+kubebuilder:rbac:groups=cilium.io,resources=ciliumnetworkpolicies,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 func (r *GryviaSecurityPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// Fetch the GryviaSecurityPolicy instance
 	policy := &gryviav1.GryviaSecurityPolicy{}
 	if err := r.Get(ctx, req.NamespacedName, policy); err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("GryviaSecurityPolicy resource not found, ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		logger.Error(err, "Failed to get GryviaSecurityPolicy")
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("Reconciling GryviaSecurityPolicy",
-		"name", policy.Name,
-		"namespaces", policy.Spec.TargetNamespaces,
-		"rules", len(policy.Spec.DetectionRules),
-	)
-
-	// Count active detection rules
-	activeDetections := 0
+	active := 0
 	for _, rule := range policy.Spec.DetectionRules {
 		if rule.Enabled {
-			activeDetections++
+			active++
 		}
 	}
 
-	// Verify eBPF programs are running for each enabled detection rule
-	r.verifyEBPFPrograms(ctx, policy)
-
-	// Query collector for security alerts
-	alerts := r.querySecurityAlerts(ctx, policy)
-
-	// Count alerts by detection type
-	detectionCounts := make(map[string]int)
-	for _, alert := range alerts {
-		detectionCounts[alert.Type]++
-	}
-
-	// Auto-block if enabled and critical alerts detected
-	if policy.Spec.AutoBlock {
-		r.autoBlockThreats(ctx, policy, alerts)
-	}
-
-	// Send webhook alerts for new detections
-	if policy.Spec.AlertWebhook != "" && len(alerts) > 0 {
-		r.sendSecurityWebhook(ctx, policy, alerts)
-	}
-
-	// Update status
-	var lastAlert metav1.Time
-	if len(alerts) > 0 {
-		lastAlert = metav1.Now()
+	var raw []sources.SecurityAlert
+	var stats sources.Stats
+	var err error
+	if r.Collector == nil {
+		err = errNoCollector
 	} else {
-		lastAlert = policy.Status.LastAlert
+		raw, stats, err = r.Collector.SecurityAlerts(ctx)
 	}
 
-	totalAlerts := policy.Status.AlertsTriggered + len(alerts)
+	var fresh []sources.SecurityAlert
+	counts := map[string]int{}
+	var newest time.Time
+	if err == nil {
+		fresh, counts = newAlerts(policy, raw, policy.Status.LastAlert.Time)
+		for _, a := range fresh {
+			if a.Timestamp.After(newest) {
+				newest = a.Timestamp
+			}
+		}
+		if policy.Spec.AlertWebhook != "" && len(fresh) > 0 {
+			r.sendSecurityWebhook(ctx, policy, fresh)
+		}
+	}
 
-	r.updateSecurityStatus(ctx, req.NamespacedName, "Active", activeDetections, totalAlerts, lastAlert, detectionCounts)
-
-	logger.Info("GryviaSecurityPolicy check complete",
-		"activeDetections", activeDetections,
-		"newAlerts", len(alerts),
-	)
-
+	uerr := updateStatus(ctx, r.Client, req.NamespacedName, func() *gryviav1.GryviaSecurityPolicy { return &gryviav1.GryviaSecurityPolicy{} },
+		func(p *gryviav1.GryviaSecurityPolicy) {
+			p.Status.ActiveDetections = active
+			if err != nil {
+				p.Status.Phase = "Degraded"
+			} else {
+				p.Status.Phase = "Active"
+				if p.Status.DetectionCounts == nil {
+					p.Status.DetectionCounts = map[string]int{}
+				}
+				for k, v := range counts {
+					p.Status.DetectionCounts[k] += v
+					p.Status.AlertsTriggered += v
+				}
+				if !newest.IsZero() {
+					p.Status.LastAlert = metav1.NewTime(newest)
+				}
+			}
+			setSource(&p.Status.Conditions, p.Generation, err, stats,
+				"alerts are node-level (no namespace), so targetNamespaces does not filter them")
+			if p.Spec.AutoBlock {
+				setCondition(&p.Status.Conditions, p.Generation, ConditionAutoBlockIgnored, metav1.ConditionTrue, "Deprecated",
+					"spec.autoBlock is deprecated and ignored: the operator never blocks traffic on a security alert")
+			} else {
+				removeCondition(&p.Status.Conditions, ConditionAutoBlockIgnored)
+			}
+		})
+	if uerr != nil && !errors.IsNotFound(uerr) {
+		return ctrl.Result{}, uerr
+	}
+	logger.Info("GryviaSecurityPolicy check complete", "activeDetections", active, "newAlerts", len(fresh), "collectorError", err != nil)
 	return ctrl.Result{RequeueAfter: securityCheckInterval}, nil
 }
 
-// securityAlert represents an alert from the collector
+func removeCondition(conds *[]metav1.Condition, typ string) {
+	out := (*conds)[:0]
+	for _, c := range *conds {
+		if c.Type != typ {
+			out = append(out, c)
+		}
+	}
+	*conds = out
+}
+
+// newAlerts returns the alerts newer than since that match an enabled rule (a policy with no enabled rule
+// counts nothing) and the per-rule-type counts of those.
+func newAlerts(policy *gryviav1.GryviaSecurityPolicy, raw []sources.SecurityAlert, since time.Time) ([]sources.SecurityAlert, map[string]int) {
+	byEvent := map[string]string{} // event_type -> rule type
+	for _, rule := range policy.Spec.DetectionRules {
+		if !rule.Enabled {
+			continue
+		}
+		if evs, ok := ruleEventTypes[rule.Type]; ok {
+			for _, e := range evs {
+				byEvent[e] = rule.Type
+			}
+		} else if rule.Type != "" {
+			byEvent[rule.Type] = rule.Type
+		}
+	}
+	counts := map[string]int{}
+	var out []sources.SecurityAlert
+	for _, a := range raw {
+		if !a.Timestamp.After(since) {
+			continue
+		}
+		ruleType, ok := byEvent[a.EventType]
+		if !ok {
+			continue
+		}
+		counts[ruleType]++
+		out = append(out, a)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Timestamp.Before(out[j].Timestamp) })
+	return out, counts
+}
+
+// securityAlert is the alert element of the operator's OWN webhook payload (unchanged contract); it is
+// filled from the collector's event_type / process_name / src_ip / details fields.
 type securityAlert struct {
 	Type     string `json:"type"`
 	Severity string `json:"severity"`
@@ -123,185 +186,6 @@ type securityAlert struct {
 	Path     string `json:"path"`
 	SourceIP string `json:"sourceIP"`
 	Message  string `json:"message"`
-}
-
-// verifyEBPFPrograms checks that the eBPF collector is healthy and programs are loaded
-func (r *GryviaSecurityPolicyReconciler) verifyEBPFPrograms(ctx context.Context, policy *gryviav1.GryviaSecurityPolicy) {
-	logger := log.FromContext(ctx)
-
-	httpClient := &http.Client{Timeout: 5 * time.Second}
-	resp, err := httpClient.Get(fmt.Sprintf("%s/api/v1/health", collectorBaseURL))
-	if err != nil {
-		logger.V(1).Info("eBPF collector not reachable", "error", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		logger.Info("eBPF collector health check failed", "statusCode", resp.StatusCode)
-	}
-}
-
-// querySecurityAlerts fetches security alerts from the collector API
-func (r *GryviaSecurityPolicyReconciler) querySecurityAlerts(ctx context.Context, policy *gryviav1.GryviaSecurityPolicy) []securityAlert {
-	logger := log.FromContext(ctx)
-
-	httpClient := &http.Client{Timeout: 10 * time.Second}
-	resp, err := httpClient.Get(fmt.Sprintf("%s/api/v1/security/alerts", collectorBaseURL))
-	if err != nil {
-		logger.V(1).Info("Failed to query security alerts from collector", "error", err)
-		return nil
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		logger.V(1).Info("Collector returned non-OK for security alerts", "statusCode", resp.StatusCode)
-		return nil
-	}
-
-	var alerts []securityAlert
-	if err := json.NewDecoder(resp.Body).Decode(&alerts); err != nil {
-		logger.Error(err, "Failed to decode security alerts response")
-		return nil
-	}
-
-	// Filter alerts by enabled detection rules
-	var filtered []securityAlert
-	enabledTypes := make(map[string]bool)
-	for _, rule := range policy.Spec.DetectionRules {
-		if rule.Enabled {
-			enabledTypes[rule.Type] = true
-		}
-	}
-
-	for _, alert := range alerts {
-		if enabledTypes[alert.Type] {
-			filtered = append(filtered, alert)
-		}
-	}
-
-	return filtered
-}
-
-// autoBlockThreats creates temporary CiliumNetworkPolicy to block detected threats
-func (r *GryviaSecurityPolicyReconciler) autoBlockThreats(ctx context.Context, policy *gryviav1.GryviaSecurityPolicy, alerts []securityAlert) {
-	logger := log.FromContext(ctx)
-
-	for _, alert := range alerts {
-		if alert.Severity != "critical" && alert.Severity != "high" {
-			continue
-		}
-
-		if alert.SourceIP == "" {
-			continue
-		}
-
-		policyName := fmt.Sprintf("fsp-block-%s-%d", policy.Name, time.Now().Unix())
-
-		blockPolicy := &unstructured.Unstructured{
-			Object: map[string]interface{}{
-				"apiVersion": "cilium.io/v2",
-				"kind":       "CiliumNetworkPolicy",
-				"metadata": map[string]interface{}{
-					"name":      policyName,
-					"namespace": policy.Namespace,
-					"annotations": map[string]interface{}{
-						"gryvia.io/managed-by": "security-policy",
-						"gryvia.io/alert-type": alert.Type,
-						"gryvia.io/temporary":  "true",
-						"gryvia.io/expires":    time.Now().Add(30 * time.Minute).Format(time.RFC3339),
-						"gryvia.io/source-ip":  alert.SourceIP,
-					},
-					"labels": map[string]interface{}{
-						"gryvia.io/security-block": "auto",
-					},
-				},
-				"spec": map[string]interface{}{
-					"ingressDeny": []interface{}{
-						map[string]interface{}{
-							"fromCIDR": []interface{}{
-								fmt.Sprintf("%s/32", alert.SourceIP),
-							},
-						},
-					},
-				},
-			},
-		}
-
-		existingPolicy := &unstructured.Unstructured{}
-		existingPolicy.SetGroupVersionKind(schema.GroupVersionKind{
-			Group:   "cilium.io",
-			Version: "v2",
-			Kind:    "CiliumNetworkPolicy",
-		})
-
-		err := r.Get(ctx, types.NamespacedName{
-			Name:      policyName,
-			Namespace: policy.Namespace,
-		}, existingPolicy)
-
-		if errors.IsNotFound(err) {
-			if createErr := r.Create(ctx, blockPolicy); createErr != nil {
-				logger.Error(createErr, "Failed to create security block policy", "name", policyName)
-				continue
-			}
-			logger.Info("Created auto-block policy for security threat",
-				"name", policyName,
-				"alertType", alert.Type,
-				"sourceIP", alert.SourceIP,
-			)
-		} else if err != nil {
-			logger.Error(err, "Failed to check security block policy", "name", policyName)
-		}
-	}
-
-	// Clean up expired block policies
-	r.cleanupExpiredBlockPolicies(ctx, policy)
-}
-
-// cleanupExpiredBlockPolicies removes temporary block policies that have expired
-func (r *GryviaSecurityPolicyReconciler) cleanupExpiredBlockPolicies(ctx context.Context, policy *gryviav1.GryviaSecurityPolicy) {
-	logger := log.FromContext(ctx)
-
-	policyList := &unstructured.UnstructuredList{}
-	policyList.SetGroupVersionKind(schema.GroupVersionKind{
-		Group:   "cilium.io",
-		Version: "v2",
-		Kind:    "CiliumNetworkPolicyList",
-	})
-
-	if err := r.List(ctx, policyList,
-		client.InNamespace(policy.Namespace),
-		client.MatchingLabels{"gryvia.io/security-block": "auto"},
-	); err != nil {
-		logger.V(1).Info("Failed to list security block policies for cleanup", "error", err)
-		return
-	}
-
-	for _, p := range policyList.Items {
-		annotations := p.GetAnnotations()
-		if annotations == nil {
-			continue
-		}
-
-		expiresStr, ok := annotations["gryvia.io/expires"]
-		if !ok {
-			continue
-		}
-
-		expires, err := time.Parse(time.RFC3339, expiresStr)
-		if err != nil {
-			continue
-		}
-
-		if time.Now().After(expires) {
-			if deleteErr := r.Delete(ctx, &p); deleteErr != nil {
-				logger.Error(deleteErr, "Failed to delete expired security block policy", "name", p.GetName())
-			} else {
-				logger.Info("Cleaned up expired security block policy", "name", p.GetName())
-			}
-		}
-	}
 }
 
 // securityWebhookPayload is the JSON payload sent to security alert webhooks
@@ -312,23 +196,30 @@ type securityWebhookPayload struct {
 	Timestamp  string          `json:"timestamp"`
 }
 
-// sendSecurityWebhook sends security alerts to the configured webhook URL
-func (r *GryviaSecurityPolicyReconciler) sendSecurityWebhook(ctx context.Context, policy *gryviav1.GryviaSecurityPolicy, alerts []securityAlert) {
+func toWebhookAlerts(alerts []sources.SecurityAlert) []securityAlert {
+	out := make([]securityAlert, 0, len(alerts))
+	for _, a := range alerts {
+		out = append(out, securityAlert{Type: a.EventType, Severity: a.Severity, Process: a.ProcessName,
+			Path: a.Path, SourceIP: a.SrcIP, Message: a.Details})
+	}
+	return out
+}
+
+// sendSecurityWebhook sends new security alerts to the configured webhook URL
+func (r *GryviaSecurityPolicyReconciler) sendSecurityWebhook(ctx context.Context, policy *gryviav1.GryviaSecurityPolicy, alerts []sources.SecurityAlert) {
 	logger := log.FromContext(ctx)
 
 	payload := securityWebhookPayload{
 		PolicyName: policy.Name,
 		Namespace:  policy.Namespace,
-		Alerts:     alerts,
+		Alerts:     toWebhookAlerts(alerts),
 		Timestamp:  time.Now().UTC().Format(time.RFC3339),
 	}
-
 	body, err := json.Marshal(payload)
 	if err != nil {
 		logger.Error(err, "Failed to marshal security webhook payload")
 		return
 	}
-
 	httpClient := &http.Client{Timeout: securityWebhookTimeout}
 	resp, err := httpClient.Post(policy.Spec.AlertWebhook, "application/json", bytes.NewReader(body))
 	if err != nil {
@@ -336,35 +227,8 @@ func (r *GryviaSecurityPolicyReconciler) sendSecurityWebhook(ctx context.Context
 		return
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode >= 300 {
-		logger.Info("Security webhook returned non-success status",
-			"url", policy.Spec.AlertWebhook,
-			"statusCode", resp.StatusCode,
-		)
-	} else {
-		logger.Info("Security webhook alert sent successfully",
-			"url", policy.Spec.AlertWebhook,
-			"alerts", len(alerts),
-		)
-	}
-}
-
-// updateSecurityStatus updates the GryviaSecurityPolicy status subresource
-func (r *GryviaSecurityPolicyReconciler) updateSecurityStatus(ctx context.Context, namespacedName types.NamespacedName, phase string, activeDetections, alertsTriggered int, lastAlert metav1.Time, detectionCounts map[string]int) {
-	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		policy := &gryviav1.GryviaSecurityPolicy{}
-		if err := r.Get(ctx, namespacedName, policy); err != nil {
-			return err
-		}
-		policy.Status.Phase = phase
-		policy.Status.ActiveDetections = activeDetections
-		policy.Status.AlertsTriggered = alertsTriggered
-		policy.Status.LastAlert = lastAlert
-		policy.Status.DetectionCounts = detectionCounts
-		return r.Status().Update(ctx, policy)
-	}); err != nil {
-		log.FromContext(ctx).Error(err, "Failed to update GryviaSecurityPolicy status")
+		logger.Info("Security webhook returned non-success status", "url", policy.Spec.AlertWebhook, "statusCode", resp.StatusCode)
 	}
 }
 

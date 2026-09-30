@@ -135,7 +135,7 @@ local ranks' NCCL call windows `[end - duration, end]`; each DCGM sample stands 
 * `smActiveDuringCompute`: mean SM activity outside the windows between the job's first and last collective.
 * `gpuCorrelationCoverage`: share of communication time that had any sample. **A coarse exporter interval (default 30 s)
   shows as low coverage, not as a made-up ratio.** Run dcgm-exporter with `--collect-interval 1000` or lower.
-  Fields are removed from the status (null patch) when not measured. Prometheus: `gryvia_fabric_gpu_idle_during_comm_ratio`,
+  Fields are omitted from the status patch when a node did not measure them (see [fabric-status.md](fabric-status.md)). Prometheus: `gryvia_fabric_gpu_idle_during_comm_ratio`,
   `gryvia_fabric_sm_active_during_compute`, `gryvia_fabric_gpu_correlation_coverage`.
 
 Limits: the windows are host-side call windows, not on-GPU collective time; GPUs are averaged per job (the rank -> GPU

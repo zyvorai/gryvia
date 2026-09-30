@@ -4,17 +4,17 @@ Gryvia's machine learning workflow kinds: hyperparameter tuning, DAG pipelines, 
 
 ## Status: read this first
 
-The five kinds this guide is mostly about are **not running behaviour today**:
+The ai-operator registers a controller for each of the five kinds this guide is mostly about (on by default; `--enable-ml-controllers=false` turns them off). What they do, their status fields, flags and RBAC are in [docs/ml-controllers.md](https://github.com/zyvorai/gryvia/blob/main/docs/ml-controllers.md). **Verification is limited:** unit tests with a fake client, and a kind workflow (`.github/workflows/e2e-ml.yml`, tiny CPU images in place of Jupyter, vLLM and Triton) that is authored but had not been run when this was written. Nothing has run on GPUs, with a real model server image or with an HPA on real metrics.
 
-| Kind | CRD | Gateway/dashboard CRUD | Controller registered |
-|------|-----|------------------------|-----------------------|
-| `GryviaAutoTuner` | yes | create, list, delete, list trials | no |
-| `GryviaWorkflow` | yes | create, list, delete | no |
-| `GryviaModelRegistry` | yes | list, get, promote (patches `spec.stage` only) | no |
-| `GryviaInferenceService` | yes | create, list, delete | no |
-| `GryviaWorkspace` | yes | create, list, delete, pause and resume | no |
+| Kind | CRD | Gateway/dashboard | Controller registered |
+|------|-----|-------------------|-----------------------|
+| `GryviaAutoTuner` | yes | create, list, delete, list trials | yes (trials are child `GryviaAIJob`s) |
+| `GryviaWorkflow` | yes | create, list, delete | yes (job, script and webhook steps; webhook steps off unless `--workflow-allow-webhooks`) |
+| `GryviaModelRegistry` | yes | list, get, register (`POST /api/models`), promote | yes (`autoServe` at stage `production` creates a `GryviaInferenceService`) |
+| `GryviaInferenceService` | yes | create, list, delete | yes (Deployment, Service, CPU-based HPA, pod-count canary) |
+| `GryviaWorkspace` | yes | create, list, delete, pause and resume | yes (Pod, Service, optional PVC) |
 
-You can `kubectl apply` these manifests and the gateway and dashboard can create and list them, but no operator reconciles them: no trials are launched, no DAG steps run, no model is served, no notebook pod is created, and `status` stays empty. Controller-style code for several of them exists under `operators/ai-operator/controllers/` (and a search library in `operators/ai-operator/pkg/tuner`) but is not registered in the operator's `main.go`. The sections below describe the schema that exists and the behaviour the kinds are designed for; the behaviour parts are marked as design. All YAML uses the real schema (`crds/`) and is checked in CI; the examples in `examples/ml-workflow/` are the source models.
+Job steps and tuner trials create `GryviaAIJob`s, which the AIJob controller runs to completion as Indexed batch Jobs ([AIJob lifecycle](https://github.com/zyvorai/gryvia/blob/main/docs/aijob-lifecycle.md)). The sections below keep the schema examples; where a paragraph is still labelled design, the behaviour it describes is not implemented (for example weighted canary routing, or an HPA on GPU utilisation or requests per second). All YAML uses the real schema (`crds/`) and is checked in CI; the examples in `examples/ml-workflow/` are the source models.
 
 The API routes are in the [API reference](../developer-guide/api-reference.md). See the [CRD reference](../reference/crds.md) for the Controller column across all kinds.
 
@@ -33,7 +33,7 @@ The API routes are in the [API reference](../developer-guide/api-reference.md). 
 
 The ai-operator registers controllers for these training-related kinds (examples in `examples/training/`):
 
-- `GryviaAIJob`: creates the StatefulSet, Service and PVC for a job (see [Scheduling](SCHEDULING.md#what-runs-today) and the [job guide](../user-guide/jobs.md)).
+- `GryviaAIJob`: creates the Indexed Job (or StatefulSet for inference), Service and PVC for a job (see [Scheduling](SCHEDULING.md#what-runs-today) and the [job guide](../user-guide/jobs.md)).
 - `GryviaCheckpointGuard`: checkpoint protection for a job.
 - `GryviaTrainingTimeMachine`: checkpoint history and forking experiments from checkpoints.
 - `GryviaLiveExperiment`: compares experiment runs using metrics parsed from job logs (metric patterns are configurable).
@@ -46,11 +46,11 @@ The gpu-operator adds `GryviaGpuMemoryOptimizer`. All of these are exercised by 
 
 ## Hyperparameter Tuning (GryviaAutoTuner)
 
-Status: CRD and gateway/dashboard CRUD only. No controller launches trials.
+Status: the ai-operator runs the study: each trial is a child `GryviaAIJob` (`<tuner>-trial-<n>`), capped by `--tuner-max-trials` and `--tuner-max-parallelism`. A trial's metric is read from the annotation `gryvia.io/metric-<name>` that your training code (or whatever runs the trial) must set; unit-tested, e2e authored, not verified on GPUs. See [docs/ml-controllers.md](https://github.com/zyvorai/gryvia/blob/main/docs/ml-controllers.md).
 
 ### Overview
 
-`GryviaAutoTuner` describes a study: a search algorithm, an objective, a parameter space and a `GryviaAIJob` spec (`jobTemplate`) to run for each trial. The schema names four `searchAlgorithm` values: `grid`, `random`, `bayesian` and `asha` (with `ashaConfig` for `maxEpochs`, `minResource` and `reductionFactor`). A search library exists in `operators/ai-operator/pkg/tuner/search.go`, but the controller that would use it is not registered, so nothing generates trials from the spec. Do not rely on any convergence claim for these strategies; none has been measured here.
+`GryviaAutoTuner` describes a study: a search algorithm, an objective, a parameter space and a `GryviaAIJob` spec (`jobTemplate`) to run for each trial. The schema names four `searchAlgorithm` values: `grid`, `random`, `bayesian` and `asha` (with `ashaConfig` for `maxEpochs`, `minResource` and `reductionFactor`). The controller generates trials with the search library in `operators/ai-operator/pkg/tuner/search.go` (the Bayesian strategy is a simplified TPE-style heuristic). Do not rely on any convergence claim for these strategies; none has been measured here.
 
 ### Example (schema-valid)
 
@@ -107,13 +107,13 @@ kubectl get gryviaautotuner resnet-hpo -n ml-team -o yaml
 
 ### Status fields
 
-The schema defines `status.phase`, `trialsCompleted`, `trialsRunning`, `trialsFailed`, `bestTrial` (name, jobName, parameters, metricValue, ...) and `trials`. They would be filled by a controller; today they stay empty.
+The schema defines `status.phase`, `trialsCompleted`, `trialsRunning`, `trialsFailed`, `bestTrial` (name, jobName, parameters, metricValue, ...) and `trials`. The controller fills them.
 
 ---
 
 ## DAG-Based Pipelines (GryviaWorkflow)
 
-Status: CRD and gateway/dashboard CRUD only. No controller executes steps.
+Status: the ai-operator executes the DAG: `job` steps create child `GryviaAIJob`s, `script` steps run a Pod, `webhook` steps are off unless the operator runs with `--workflow-allow-webhooks`. Validated first (at most 100 steps, no cycles); retries, timeouts, skip-on-failure and the `condition` form `steps.<name>.status == 'Succeeded'` are implemented. Unit-tested, e2e authored, not verified on GPUs.
 
 ### Overview
 
@@ -185,7 +185,7 @@ train -> evaluate ---\
 train -> benchmark ---> publish
 ```
 
-Design only until a workflow controller exists.
+The controller implements the ordering and fan-out shown here; artifact passing between steps is not implemented.
 
 ### Working with it today
 
@@ -194,13 +194,13 @@ kubectl apply -f pipeline.yaml
 kubectl get gryviaworkflows -n ml-team
 ```
 
-To get a pipeline running now, run the steps as separate `GryviaAIJob` objects yourself or use an external workflow engine.
+Watch it with `kubectl get gryviaworkflow pipeline -n ml-team -o jsonpath='{.status.stepStatuses}'` (or the dashboard).
 
 ---
 
 ## Model Registry (GryviaModelRegistry)
 
-Status: CRD, list/get and a promote route in the gateway. No controller acts on the object.
+Status: the controller mirrors serving state; with `spec.autoServe: true` and `spec.stage: production` it creates a `GryviaInferenceService` named `<entry>-serving`. The gateway lists, gets, registers (`POST /api/models`) and promotes entries. Unit-tested, e2e authored, not verified with a real model server.
 
 ### Overview
 
@@ -295,9 +295,9 @@ spec:
     autoRollback: true
 ```
 
-### Intended canary behaviour (design)
+### Canary behaviour
 
-A serving controller would route `canary.weight` percent of traffic to `canary.modelVersion`, promote after `promoteAfterSeconds` if healthy, and roll back after `failureThreshold` failed health checks. The step-wise weight schedule and latency or error-rate thresholds that earlier versions of this guide described are not in the schema. No such rollout runs today.
+The controller runs a canary Deployment sized so about `canary.weight` percent of the pods are canary pods (a pod-count split behind one Service, not weighted routing), promotes after `promoteAfterSeconds` if healthy, and deletes the canary after `failureThreshold` failed health checks (the stable Deployment is not rolled back). The step-wise weight schedule and latency or error-rate thresholds that earlier versions of this guide described are not in the schema. No such rollout runs today.
 
 ### Working with it today
 
@@ -348,14 +348,14 @@ spec:
 kubectl apply -f workspace.yaml
 kubectl get gryviaworkspaces -n ml-team
 
-# Sets spec.paused; with no controller this only changes the field
+# Sets spec.paused: the controller deletes the Pod and keeps the PVC and Service
 kubectl patch gryviaworkspace research-notebook -n ml-team \
   --type merge -p '{"spec":{"paused":true}}'
 
 kubectl delete gryviaworkspace research-notebook -n ml-team
 ```
 
-Status fields (`phase`, `url`, `podName`, `lastActivity`) are defined but not populated.
+Status fields (`phase`, `url`, `podName`, `lastActivity`) are written by the controller. `url` is cluster-internal: there is no ingress, TLS or authentication in front of the workspace Service.
 
 ---
 
@@ -365,10 +365,10 @@ These apply to running training today.
 
 - Write checkpoints to a mounted volume from your own training code, and see `GryviaCheckpointGuard` for the operator-side checkpoint handling.
 - Set `spec.storage` on a `GryviaAIJob` to get a PVC mounted at `/data`.
-- CPU-only work: the admission webhook rejects `gpus: 0` on a `GryviaAIJob` (the `gpus: 0` in the workflow example above only satisfies the schema), so run CPU-only steps as plain Kubernetes Jobs.
+- CPU-only work: `gpus: 0` on a `GryviaAIJob` is allowed and runs as a CPU-only Job (no GPU limit, no GPU node selector).
 - Add `team` and project labels to jobs so cost and usage reports can group them.
 
-The tuning, pipeline, registry, serving and workspace practices from earlier versions of this guide (early stopping budgets, canary weights, idle timeouts) presuppose controllers that do not exist and have been removed.
+Practices that depend on behaviour the controllers do not have (weighted canary routing, latency-driven autoscaling, activity-based idle detection without something writing `gryvia.io/last-activity`) are not listed here.
 
 ---
 

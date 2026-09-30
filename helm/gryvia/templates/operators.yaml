@@ -48,6 +48,33 @@ spec:
             {{- if and (eq $name "ai-operator") $.Values.aiOperator.fabricAwareScheduling }}
             - --fabric-aware-scheduling=true
             {{- end }}
+            {{- if and (eq $name "ai-operator") $.Values.aiOperator.kueueIntegration }}
+            - --kueue-integration=true
+            - --kueue-default-queue={{ $.Values.aiOperator.kueueDefaultQueue }}
+            {{- end }}
+            {{- if and (eq $name "quota-operator") $.Values.quotaOperator.kueueIntegration }}
+            - --kueue-integration=true
+            - --kueue-quota-resources={{ $.Values.quotaOperator.kueueQuotaResources }}
+            {{- if $.Values.quotaOperator.kueueGpuTypeFlavors }}
+            - --kueue-gpu-type-flavors=true
+            {{- end }}
+            {{- end }}
+            {{- if and (eq $name "ai-operator") $.Values.aiOperator.admissionGate }}
+            - --admission-gate=true
+            - --admission-default-hours={{ $.Values.aiOperator.admissionDefaultHours }}
+            {{- end }}
+            {{- if and (eq $name "quota-operator") $.Values.quotaOperator.tenantRbac }}
+            - --tenant-rbac=true
+            {{- end }}
+            {{- if and (eq $name "quota-operator") $.Values.quotaOperator.reservations }}
+            - --enable-reservations=true
+            {{- end }}
+            {{- range $op.extraArgs }}
+            - {{ . | quote }}
+            {{- end }}
+            {{- if and (eq $name "ai-operator") $.Values.aiOperator.mergeFabricSignals }}
+            - --merge-fabric-signals=true
+            {{- end }}
             {{- if $webhook }}
             - --enable-webhooks=true
             - --webhook-cert-dir=/tmp/k8s-webhook-server/serving-certs

@@ -60,6 +60,14 @@ type GryviaFlowPolicyStatus struct {
 
 	// MatchedFlows is the number of flows matching this policy
 	MatchedFlows int64 `json:"matchedFlows,omitempty"`
+
+	// Conditions report whether the data sources behind this status are reachable. The condition
+	// SourceAvailable is False (with a reason and message) when the collector, Netra or the kube
+	// objects this status is derived from are not available, so an empty status is never read as
+	// "nothing happened".
+	// +listType=map
+	// +listMapKey=type
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 //+kubebuilder:object:root=true
@@ -151,6 +159,14 @@ type GryviaTrafficInsightStatus struct {
 
 	// LastUpdated is the timestamp of the last metrics update
 	LastUpdated metav1.Time `json:"lastUpdated,omitempty"`
+
+	// Conditions report whether the data sources behind this status are reachable. The condition
+	// SourceAvailable is False (with a reason and message) when the collector, Netra or the kube
+	// objects this status is derived from are not available, so an empty status is never read as
+	// "nothing happened".
+	// +listType=map
+	// +listMapKey=type
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 //+kubebuilder:object:root=true
@@ -227,6 +243,14 @@ type GryviaAutoPolicyStatus struct {
 
 	// LastLearned is the timestamp of the last learning cycle
 	LastLearned metav1.Time `json:"lastLearned,omitempty"`
+
+	// Conditions report whether the data sources behind this status are reachable. The condition
+	// SourceAvailable is False (with a reason and message) when the collector, Netra or the kube
+	// objects this status is derived from are not available, so an empty status is never read as
+	// "nothing happened".
+	// +listType=map
+	// +listMapKey=type
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 //+kubebuilder:object:root=true
@@ -318,6 +342,14 @@ type GryviaTraceSessionStatus struct {
 
 	// ResultRef references the stored trace data
 	ResultRef *TraceResultRef `json:"resultRef,omitempty"`
+
+	// Conditions report whether the data sources behind this status are reachable. The condition
+	// SourceAvailable is False (with a reason and message) when the collector, Netra or the kube
+	// objects this status is derived from are not available, so an empty status is never read as
+	// "nothing happened".
+	// +listType=map
+	// +listMapKey=type
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 //+kubebuilder:object:root=true
@@ -395,8 +427,20 @@ type ServiceGraphEdge struct {
 	// Throughput is the traffic throughput
 	Throughput string `json:"throughput,omitempty"`
 
-	// Verdict indicates the traffic verdict (forwarded, dropped, error)
+	// Verdict indicates the traffic verdict (forwarded, dropped, error). Empty when the source does not
+	// report verdicts (the eBPF collector graph does not).
 	Verdict string `json:"verdict,omitempty"`
+
+	// LatencyP50 is the smoothed median latency of the edge as measured by the collector (a moving
+	// average of observed flow latencies, not a percentile over a window)
+	LatencyP50 string `json:"latencyP50,omitempty"`
+
+	// BytesTotal is the number of bytes the collector counted on this edge since it started or
+	// the edge was created (summed over nodes)
+	BytesTotal int64 `json:"bytesTotal,omitempty"`
+
+	// FlowCount is the number of flow events counted on this edge (summed over nodes)
+	FlowCount int64 `json:"flowCount,omitempty"`
 }
 
 // GryviaServiceGraphStatus defines the observed state of GryviaServiceGraph
@@ -409,6 +453,14 @@ type GryviaServiceGraphStatus struct {
 
 	// LastUpdated is the timestamp of the last graph refresh
 	LastUpdated metav1.Time `json:"lastUpdated,omitempty"`
+
+	// Conditions report whether the data sources behind this status are reachable. The condition
+	// SourceAvailable is False (with a reason and message) when the collector, Netra or the kube
+	// objects this status is derived from are not available, so an empty status is never read as
+	// "nothing happened".
+	// +listType=map
+	// +listMapKey=type
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 //+kubebuilder:object:root=true
@@ -491,6 +543,14 @@ type GryviaNetworkAnomalyStatus struct {
 
 	// LastCheck is the timestamp of the last anomaly check
 	LastCheck metav1.Time `json:"lastCheck,omitempty"`
+
+	// Conditions report whether the data sources behind this status are reachable. The condition
+	// SourceAvailable is False (with a reason and message) when the collector, Netra or the kube
+	// objects this status is derived from are not available, so an empty status is never read as
+	// "nothing happened".
+	// +listType=map
+	// +listMapKey=type
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 //+kubebuilder:object:root=true
@@ -541,7 +601,10 @@ type GryviaSecurityPolicySpec struct {
 	// AlertWebhook is the URL to send security alerts to
 	AlertWebhook string `json:"alertWebhook,omitempty"`
 
-	// AutoBlock enables automatic blocking of detected threats
+	// AutoBlock is DEPRECATED and ignored: the operator never blocks anything on a security alert
+	// (there is no enforcement path behind it). The field is kept so existing objects still validate.
+	// A condition explains this when it is set to true.
+	// +optional
 	AutoBlock bool `json:"autoBlock,omitempty"`
 }
 
@@ -561,6 +624,14 @@ type GryviaSecurityPolicyStatus struct {
 
 	// DetectionCounts maps detection type to count of triggered alerts
 	DetectionCounts map[string]int `json:"detectionCounts,omitempty"`
+
+	// Conditions report whether the data sources behind this status are reachable. The condition
+	// SourceAvailable is False (with a reason and message) when the collector, Netra or the kube
+	// objects this status is derived from are not available, so an empty status is never read as
+	// "nothing happened".
+	// +listType=map
+	// +listMapKey=type
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 //+kubebuilder:object:root=true
@@ -661,6 +732,14 @@ type GryviaNetworkCostStatus struct {
 
 	// LastReport is the timestamp of the last cost report
 	LastReport metav1.Time `json:"lastReport,omitempty"`
+
+	// Conditions report whether the data sources behind this status are reachable. The condition
+	// SourceAvailable is False (with a reason and message) when the collector, Netra or the kube
+	// objects this status is derived from are not available, so an empty status is never read as
+	// "nothing happened".
+	// +listType=map
+	// +listMapKey=type
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 //+kubebuilder:object:root=true
@@ -748,8 +827,34 @@ type GryviaTrainingInsightStatus struct {
 	// Bottleneck identifies the primary bottleneck (compute, communication, data_loading)
 	Bottleneck string `json:"bottleneck,omitempty"`
 
+	// SignalRef is the GryviaFabricSignal the figures below were read from
+	SignalRef string `json:"signalRef,omitempty"`
+
+	// NCCLP99Ms is the p99 latency in milliseconds of straggler-flagged NCCL collectives
+	NCCLP99Ms float64 `json:"ncclP99ms,omitempty"`
+
+	// CollectiveMaxSkewMs is the largest slowest-minus-fastest NCCL call duration among matched collectives
+	CollectiveMaxSkewMs float64 `json:"collectiveMaxSkewMs,omitempty"`
+
+	// OverlapIdleRatio is the fraction of the window the job spent in cudaDeviceSynchronize inside an in-flight allreduce
+	OverlapIdleRatio float64 `json:"overlapIdleRatio,omitempty"`
+
+	// RDMARetryRate is the ratio of RDMA retry/RNR error completions to posted sends
+	RDMARetryRate float64 `json:"rdmaRetryRate,omitempty"`
+
+	// ScoreDelta is the fabric penalty in [0,1] published by the collector (0 = healthy fabric)
+	ScoreDelta float64 `json:"scoreDelta,omitempty"`
+
 	// LastAnalysis is the timestamp of the last analysis
 	LastAnalysis metav1.Time `json:"lastAnalysis,omitempty"`
+
+	// Conditions report whether the data sources behind this status are reachable. The condition
+	// SourceAvailable is False (with a reason and message) when the collector, Netra or the kube
+	// objects this status is derived from are not available, so an empty status is never read as
+	// "nothing happened".
+	// +listType=map
+	// +listMapKey=type
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 //+kubebuilder:object:root=true
@@ -830,8 +935,43 @@ type GryviaInferenceInsightStatus struct {
 	// Bottleneck identifies the phase with the highest latency contribution
 	Bottleneck string `json:"bottleneck,omitempty"`
 
+	// SignalRef is the GryviaFabricSignal the figures below were read from
+	SignalRef string `json:"signalRef,omitempty"`
+
+	// Engine names the serving engine whose own metrics fill the fields below (vllm, triton, tgi, mixed)
+	Engine string `json:"engine,omitempty"`
+
+	// TTFTP99Ms is the p99 time to first token in milliseconds (unset = not measured)
+	TTFTP99Ms *float64 `json:"ttftP99ms,omitempty"`
+
+	// ITLP99Ms is the p99 inter-token latency in milliseconds (unset = not measured)
+	ITLP99Ms *float64 `json:"itlP99ms,omitempty"`
+
+	// QueueTimeP99Ms is the p99 time in milliseconds a request waited in the engine queue (unset = not measured)
+	QueueTimeP99Ms *float64 `json:"queueTimeP99ms,omitempty"`
+
+	// E2EP99Ms is the p99 end-to-end latency in milliseconds inside the engine (unset = not measured)
+	E2EP99Ms *float64 `json:"e2eP99ms,omitempty"`
+
+	// InferWaitP99Ms is the p99 network wait in milliseconds from accept to first read on inference ports (eBPF)
+	InferWaitP99Ms float64 `json:"inferWaitP99ms,omitempty"`
+
+	// RequestsWaiting is the number of requests queued in the engine
+	RequestsWaiting *int64 `json:"requestsWaiting,omitempty"`
+
+	// KVCacheUsage is the KV cache usage in [0,1] (worst replica)
+	KVCacheUsage *float64 `json:"kvCacheUsage,omitempty"`
+
 	// LastAnalysis is the timestamp of the last analysis
 	LastAnalysis metav1.Time `json:"lastAnalysis,omitempty"`
+
+	// Conditions report whether the data sources behind this status are reachable. The condition
+	// SourceAvailable is False (with a reason and message) when the collector, Netra or the kube
+	// objects this status is derived from are not available, so an empty status is never read as
+	// "nothing happened".
+	// +listType=map
+	// +listMapKey=type
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 //+kubebuilder:object:root=true

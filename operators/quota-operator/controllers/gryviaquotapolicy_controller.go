@@ -140,7 +140,7 @@ func (r *GryviaQuotaPolicyReconciler) calculatePolicyUsage(ctx context.Context, 
 			switch job.Status.Phase {
 			case "Running":
 				policyUsage.Jobs.Concurrent++
-				policyUsage.GPU.Concurrent += int(job.Spec.GPUs)
+				policyUsage.GPU.Concurrent += int(job.Spec.TotalGPUs())
 
 				if job.Status.StartTime != nil {
 					effectiveStart := job.Status.StartTime.Time
@@ -148,7 +148,7 @@ func (r *GryviaQuotaPolicyReconciler) calculatePolicyUsage(ctx context.Context, 
 						effectiveStart = startOfMonth
 					}
 					hours := time.Since(effectiveStart).Hours()
-					gpuHours := hours * float64(job.Spec.GPUs)
+					gpuHours := hours * float64(job.Spec.TotalGPUs())
 					policyUsage.GPU.HoursThisMonth += gpuHours
 					policyUsage.GPU.ByType[job.Spec.GpuType] += gpuHours
 					policyUsage.Cost.MonthToDate += gpuHours * budget.GetGPURate(job.Spec.GpuType)
@@ -165,7 +165,7 @@ func (r *GryviaQuotaPolicyReconciler) calculatePolicyUsage(ctx context.Context, 
 					if job.Status.CompletionTime.Time.After(startOfMonth) {
 						hours := job.Status.CompletionTime.Time.Sub(effectiveStart).Hours()
 						if hours > 0 {
-							gpuHours := hours * float64(job.Spec.GPUs)
+							gpuHours := hours * float64(job.Spec.TotalGPUs())
 							policyUsage.GPU.HoursThisMonth += gpuHours
 							policyUsage.GPU.ByType[job.Spec.GpuType] += gpuHours
 							policyUsage.Cost.MonthToDate += gpuHours * budget.GetGPURate(job.Spec.GpuType)

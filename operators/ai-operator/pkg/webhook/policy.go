@@ -46,8 +46,8 @@ func checkGPUPolicy(job *gryviav1.GryviaAIJob, p gpuPolicy) []string {
 		reasons = append(reasons, fmt.Sprintf("GPU type %q is not allowed for this namespace (allowed: %s)",
 			gpuType, strings.Join(p.allowedTypes, ", ")))
 	}
-	if p.maxGPUsPerJob > 0 && int64(job.Spec.GPUs) > p.maxGPUsPerJob {
-		reasons = append(reasons, fmt.Sprintf("%d GPUs exceeds the per-job limit of %d", job.Spec.GPUs, p.maxGPUsPerJob))
+	if total := job.Spec.TotalGPUs(); p.maxGPUsPerJob > 0 && int64(total) > p.maxGPUsPerJob {
+		reasons = append(reasons, fmt.Sprintf("%d GPUs exceeds the per-job limit of %d", total, p.maxGPUsPerJob))
 	}
 	if p.tenant != "" && len(p.allowedSkus) > 0 && !anyType {
 		ok := false
@@ -79,16 +79,24 @@ func containsFold(list []string, v string) bool {
 // returns ok=false so admission never blocks on a stale or unreachable view; the quota operator's reactive
 // enforcement still applies.
 func (v *GryviaAIJobValidator) loadPolicy(ctx context.Context, namespace string) (gpuPolicy, bool) {
-	var p gpuPolicy
 	if v.Client == nil {
-		return p, false
+		return gpuPolicy{}, false
 	}
-
-	quotas := &unstructured.UnstructuredList{}
-	quotas.SetGroupVersionKind(quotaGVK)
-	if err := v.Client.List(ctx, quotas); err != nil {
+	p, err := loadGPUPolicy(ctx, v.Client, namespace)
+	if err != nil {
 		v.log.V(1).Info("quota lookup skipped", "error", err.Error())
 		return p, false
+	}
+	return p, true
+}
+
+// loadGPUPolicy is loadPolicy without the fail-open policy: it returns the read error.
+func loadGPUPolicy(ctx context.Context, c client.Client, namespace string) (gpuPolicy, error) {
+	var p gpuPolicy
+	quotas := &unstructured.UnstructuredList{}
+	quotas.SetGroupVersionKind(quotaGVK)
+	if err := c.List(ctx, quotas); err != nil {
+		return p, err
 	}
 	for _, q := range quotas.Items {
 		nss, _, _ := unstructured.NestedStringSlice(q.Object, "spec", "namespaces")
@@ -107,7 +115,7 @@ func (v *GryviaAIJobValidator) loadPolicy(ctx context.Context, namespace string)
 		name := strings.TrimPrefix(namespace, tenantNamespacePrefix)
 		tenants := &unstructured.UnstructuredList{}
 		tenants.SetGroupVersionKind(tenantGVK)
-		if err := v.Client.List(ctx, tenants); err == nil {
+		if err := c.List(ctx, tenants); err == nil {
 			for _, t := range tenants.Items {
 				if t.GetName() != name {
 					continue
@@ -119,8 +127,8 @@ func (v *GryviaAIJobValidator) loadPolicy(ctx context.Context, namespace string)
 		if p.tenant != "" && len(p.allowedSkus) > 0 {
 			skus := &unstructured.UnstructuredList{}
 			skus.SetGroupVersionKind(skuGVK)
-			if err := v.Client.List(ctx, skus, &client.ListOptions{}); err != nil {
-				return p, false
+			if err := c.List(ctx, skus, &client.ListOptions{}); err != nil {
+				return p, err
 			}
 			for _, s := range skus.Items {
 				gt, _, _ := unstructured.NestedString(s.Object, "spec", "gpuType")
@@ -129,5 +137,5 @@ func (v *GryviaAIJobValidator) loadPolicy(ctx context.Context, namespace string)
 			}
 		}
 	}
-	return p, true
+	return p, nil
 }

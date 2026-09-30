@@ -1,3 +1,4 @@
+pub mod budget;
 pub mod cancel;
 pub mod capacity;
 pub mod catalog;
@@ -20,6 +21,7 @@ pub mod platform_status;
 pub mod policy;
 pub mod queue;
 pub mod quota;
+pub mod reservation;
 pub mod security;
 pub mod status;
 pub mod submit;

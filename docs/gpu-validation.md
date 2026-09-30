@@ -6,6 +6,25 @@ a machine with an NVIDIA GPU before relying on it, and report what differs.
 
 Use a fresh Ubuntu 22.04 or 24.04 server with one NVIDIA GPU, no NVIDIA driver installed, Secure Boot off.
 
+## Run it as a script
+
+Steps 2 to 5 (and the optional RDMA part) are automated by `scripts/validate-gpu.sh`. Run it after step 1, from the
+repository root, on the machine that has the cluster credentials (for RDMA checks, on the GPU node itself):
+
+```bash
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+./scripts/validate-gpu.sh --report gpu-validation-report.json            # add --host-driver for step 6 machines
+./scripts/validate-gpu.sh --rdma --collector-url http://<collector>:9090 \
+  --collector-token-file /path/to/api-token                              # adds the RDMA/NIC checks
+./scripts/validate-gpu.sh --dry-run                                      # print the commands, run nothing
+```
+
+It waits for each component (default budget 900 s per check, `--timeout`), prints a table, writes the JSON report and
+exits non-zero if any check failed. It creates one pod (`gryvia-validate-smi`) and submits the example job, and deletes
+both afterwards unless you pass `--keep`. **The script itself has only been tested against a fake `kubectl`
+(`scripts/tests/validate-gpu.test.sh`); it has not run on a GPU node.** If it misbehaves on real hardware, that is a
+finding: report it together with the output.
+
 ## 1. Install
 
 ```bash
@@ -57,4 +76,32 @@ On a machine that already has a working driver (`nvidia-smi` works), the install
 
 ## Report
 
-Note the GPU model, driver version chosen, kernel, which step failed and the relevant pod logs.
+Paste the script's summary table and `gpu-validation-report.json` into an issue, plus the GPU model, driver version
+chosen, kernel, and the pod logs of whichever step failed. The report looks like this (the values below are an
+illustration of the format, not a real run):
+
+```json
+{
+  "schema": "gryvia.validate-gpu/v1",
+  "result": "pass",
+  "started": "2026-01-01T10:00:00Z",
+  "finished": "2026-01-01T10:12:30Z",
+  "context": "default",
+  "namespace": "gryvia-system",
+  "node": "gpu-node-1",
+  "checks": [
+    {"name": "nvidia.clusterpolicy", "status": "pass", "detail": "ClusterPolicy state ready", "started": "...", "finished": "..."},
+    {"name": "pod.nvidia-smi", "status": "pass", "detail": "| NVIDIA-SMI 550.54 Driver Version: 550.54 ...", "started": "...", "finished": "..."}
+  ]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `result` | `pass`, `fail` (any check failed; the script exits 1) or `dry-run` |
+| `checks[].name` | `preflight.kubectl`, `preflight.context`, `preflight.namespace`, `nvidia.clusterpolicy`, `nvidia.pods.{driver,toolkit,device-plugin}`, `node.allocatable`, `pod.nvidia-smi`, `gryvia.gpunode`, `gryvia.job`, and with `--rdma` `rdma.sysfs`, `rdma.collector` |
+| `checks[].status` | `pass`, `fail`, or `skip` (not applicable: `--host-driver`, `--skip-job`, no GPU node found, earlier preflight failure, no collector URL) |
+| `checks[].detail` | what was observed, or why it failed or was skipped |
+| `checks[].started` / `finished` | UTC timestamps |
+
+Step 6 (host-driver mode) and the installer itself (step 1) are not scripted here.

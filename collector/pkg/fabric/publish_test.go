@@ -88,17 +88,18 @@ func TestPublishPatchesOnlyExistingMatchingObjects(t *testing.T) {
 	if err := json.Unmarshal(body, &got); err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range []string{"stragglerRank", "ncclP99ms", "rdmaRetryRate", "gdsHitRatio", "overlapIdleRatio", "cnpRate",
-		"inferWaitP99ms", "pfcRate", "exfilEvents", "scoreDelta", "updatedAt"} {
+	for _, f := range []string{"stragglerRank", "ncclP99ms", "scoreDelta", "updatedAt"} {
 		if _, ok := got.Status[f]; !ok {
 			t.Errorf("status field %s missing from the patch: %s", f, body)
 		}
 	}
+	for _, f := range []string{"rdmaRetryRate", "gdsHitRatio", "overlapIdleRatio", "cnpRate", "inferWaitP99ms", "pfcRate", "exfilEvents"} {
+		if _, ok := got.Status[f]; ok {
+			t.Errorf("unmeasured field %s must be omitted from the patch: %s", f, body)
+		}
+	}
 	if got.Status["stragglerRank"].(float64) != 3 {
 		t.Errorf("rank: %v", got.Status["stragglerRank"])
-	}
-	if got.Status["gdsHitRatio"] != nil {
-		t.Errorf("unmeasured GDS must be null, got %v", got.Status["gdsHitRatio"])
 	}
 	if strings.Contains(string(body), "spec") || strings.Contains(string(body), "ucx") {
 		t.Errorf("patch must carry status only: %s", body)
@@ -180,7 +181,7 @@ func TestPublishBoundedJobs(t *testing.T) {
 func itoa(i int) string { b, _ := json.Marshal(i); return string(b) }
 
 func TestStatusPatchBodyClampsAndFormats(t *testing.T) {
-	st := Status{StragglerRank: 1 << 31, ExfilEvents: 1 << 63, NCCLP99MS: nan(), ScoreDelta: 5, GDSMeasured: true, GDSHitRatio: 0.25,
+	st := Status{StragglerHits: 1, StragglerRank: 1 << 31, ExfilEvents: 1 << 63, NCCLP99MS: nan(), ScoreDelta: 5, GDSMeasured: true, GDSHitRatio: 0.25,
 		UpdatedAt: time.Date(2026, 1, 2, 3, 4, 5, 999, time.FixedZone("x", 3600))}
 	b, err := StatusPatchBody(st)
 	if err != nil {
@@ -190,7 +191,7 @@ func TestStatusPatchBodyClampsAndFormats(t *testing.T) {
 		Status map[string]interface{} `json:"status"`
 	}
 	_ = json.Unmarshal(b, &m)
-	if m.Status["stragglerRank"].(float64) != 2147483647 || m.Status["ncclP99ms"].(float64) != 0 ||
+	if m.Status["stragglerRank"].(float64) != 2147483647 || m.Status["ncclP99ms"] != nil ||
 		m.Status["scoreDelta"].(float64) != 1 || m.Status["gdsHitRatio"].(float64) != 0.25 ||
 		m.Status["updatedAt"] != "2026-01-02T02:04:05Z" {
 		t.Fatalf("%s", b)
@@ -206,7 +207,7 @@ func TestPublishNilSafe(t *testing.T) {
 	}
 }
 
-func TestStatusPatchBodyGPUFieldsNullUnlessMeasured(t *testing.T) {
+func TestStatusPatchBodyGPUFieldsOmittedUnlessMeasured(t *testing.T) {
 	get := func(st Status) map[string]interface{} {
 		b, err := StatusPatchBody(st)
 		if err != nil {
@@ -220,8 +221,8 @@ func TestStatusPatchBodyGPUFieldsNullUnlessMeasured(t *testing.T) {
 	}
 	s := get(Status{CollectiveMaxSkewMS: 12.5})
 	for _, k := range []string{"gpuIdleDuringCommRatio", "smActiveDuringCompute", "gpuCorrelationCoverage"} {
-		if v, ok := s[k]; !ok || v != nil {
-			t.Errorf("%s = %v (present=%v), want explicit null so a stale value is removed", k, v, ok)
+		if v, ok := s[k]; ok {
+			t.Errorf("%s = %v, want omitted when not measured", k, v)
 		}
 	}
 	if s["collectiveMaxSkewMs"].(float64) != 12.5 {

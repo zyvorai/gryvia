@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -17,19 +18,36 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	gryviav1 "github.com/zyvorai/gryvia/operators/network-intelligence/api/v1"
+	"github.com/zyvorai/gryvia/operators/network-intelligence/pkg/sources"
 )
 
 // GryviaTraceSessionReconciler reconciles a GryviaTraceSession object
+//
+// Flows come from Netra's history API over the session window [startTime, endTime], filtered to the
+// pods behind spec.service in spec.namespace (and spec.filters port/protocol/dstIP; srcIP and the
+// l3/l4/l7 level are NOT applied - Netra records carry no such split). They are written to the result
+// ConfigMap (replaced on every poll, at most 2000 flows) and status.flowsCaptured is that count. Without
+// Netra (GRYVIA_NETRA_URL) nothing is captured and the SourceAvailable condition says so. Header capture
+// is not supported.
 type GryviaTraceSessionReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+	// Netra is the flow source; nil or unconfigured means no capture.
+	Netra sources.FlowHistory
 }
+
+const (
+	maxTraceFlows = 2000
+	// tracePollInterval is how often an active session re-reads Netra.
+	tracePollInterval = 30 * time.Second
+)
 
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviatracesessions,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviatracesessions/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviatracesessions/finalizers,verbs=update
 //+kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch
+//+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 func (r *GryviaTraceSessionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -107,11 +125,6 @@ func (r *GryviaTraceSessionReconciler) startSession(ctx context.Context, namespa
 		return ctrl.Result{}, fmt.Errorf("failed to check trace results ConfigMap: %w", err)
 	}
 
-	// Configure Hubble to capture flows matching the session filters.
-	// In production, this would call the Hubble observer API with the configured
-	// filters (srcIP, dstIP, port, protocol) and trace level.
-	r.configureHubbleCapture(ctx, session)
-
 	// Update status to active
 	now := metav1.Now()
 	endTime := metav1.NewTime(now.Add(sessionDuration))
@@ -130,6 +143,12 @@ func (r *GryviaTraceSessionReconciler) startSession(ctx context.Context, namespa
 			Name:      resultCMName,
 			Namespace: session.Namespace,
 		}
+		var startErr error
+		if r.Netra == nil || !r.Netra.Configured() {
+			startErr = &sources.SourceError{Source: "netra", Reason: sources.ReasonNotConfigured,
+				Message: "no flows will be captured: trace sessions read Netra's flow history and GRYVIA_NETRA_URL is not set on the operator"}
+		}
+		r.setCaptureCondition(current, startErr)
 		return r.Status().Update(ctx, current)
 	}); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to update trace session status: %w", err)
@@ -141,7 +160,7 @@ func (r *GryviaTraceSessionReconciler) startSession(ctx context.Context, namespa
 	)
 
 	// Requeue to check for expiration
-	return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+	return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 }
 
 // reconcileActiveSession checks if the session has expired and captures flow data
@@ -154,41 +173,51 @@ func (r *GryviaTraceSessionReconciler) reconcileActiveSession(ctx context.Contex
 		return r.completeSession(ctx, namespacedName, session)
 	}
 
-	// Capture flows from Hubble (best-effort)
-	capturedFlows := r.captureFlows(ctx, session)
-
-	// Update the results ConfigMap with captured flows
-	if session.Status.ResultRef != nil {
-		r.updateTraceResults(ctx, session, capturedFlows)
+	flows, cerr := r.captureFlows(ctx, session)
+	if session.Status.ResultRef != nil && cerr == nil {
+		r.updateTraceResults(ctx, session, flows)
 	}
-
-	// Update flow count in status
 	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		current := &gryviav1.GryviaTraceSession{}
 		if err := r.Get(ctx, namespacedName, current); err != nil {
 			return err
 		}
-		current.Status.FlowsCaptured = current.Status.FlowsCaptured + int64(len(capturedFlows))
+		if cerr == nil {
+			current.Status.FlowsCaptured = int64(len(flows))
+		}
+		r.setCaptureCondition(current, cerr)
 		return r.Status().Update(ctx, current)
 	}); err != nil {
 		logger.Error(err, "Failed to update flow count")
 	}
 
-	// Calculate time until expiration for requeue
-	requeueAfter := 10 * time.Second
+	requeueAfter := tracePollInterval
 	if !session.Status.EndTime.IsZero() {
-		remaining := time.Until(session.Status.EndTime.Time)
-		if remaining < requeueAfter {
+		if remaining := time.Until(session.Status.EndTime.Time); remaining < requeueAfter {
 			requeueAfter = remaining
 		}
 	}
-
+	if requeueAfter < time.Second {
+		requeueAfter = time.Second
+	}
 	return ctrl.Result{RequeueAfter: requeueAfter}, nil
+}
+
+func (r *GryviaTraceSessionReconciler) setCaptureCondition(s *gryviav1.GryviaTraceSession, err error) {
+	setSource(&s.Status.Conditions, s.Generation, err, sources.Stats{},
+		"flows are Netra history records of the service's pods; spec.level, spec.captureHeaders and filters.srcIP are not applied")
 }
 
 // completeSession finalizes the trace session
 func (r *GryviaTraceSessionReconciler) completeSession(ctx context.Context, namespacedName types.NamespacedName, session *gryviav1.GryviaTraceSession) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
+
+	// Final capture over the whole window.
+	flows, cerr := r.captureFlows(ctx, session)
+	if session.Status.ResultRef != nil && cerr == nil {
+		r.updateTraceResults(ctx, session, flows)
+		session.Status.FlowsCaptured = int64(len(flows))
+	}
 
 	// Update the results ConfigMap to mark as completed
 	if session.Status.ResultRef != nil {
@@ -227,6 +256,10 @@ func (r *GryviaTraceSessionReconciler) completeSession(ctx context.Context, name
 		}
 		current.Status.Phase = phase
 		current.Status.EndTime = metav1.Now()
+		if cerr == nil {
+			current.Status.FlowsCaptured = int64(len(flows))
+		}
+		r.setCaptureCondition(current, cerr)
 		return r.Status().Update(ctx, current)
 	}); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to update completed session status: %w", err)
@@ -240,29 +273,6 @@ func (r *GryviaTraceSessionReconciler) completeSession(ctx context.Context, name
 	return ctrl.Result{}, nil
 }
 
-// configureHubbleCapture configures Hubble to capture flows for this session.
-// In production, this connects to Hubble's gRPC API to set up flow observation.
-func (r *GryviaTraceSessionReconciler) configureHubbleCapture(ctx context.Context, session *gryviav1.GryviaTraceSession) {
-	logger := log.FromContext(ctx)
-
-	// Verify Hubble relay is available
-	hubbleSvc := &corev1.Service{}
-	err := r.Get(ctx, types.NamespacedName{
-		Name:      "hubble-relay",
-		Namespace: "kube-system",
-	}, hubbleSvc)
-	if err != nil {
-		logger.V(1).Info("Hubble relay service not found, trace capture will be limited")
-		return
-	}
-
-	logger.Info("Hubble relay available, flow capture configured",
-		"filters", session.Spec.Filters,
-		"level", session.Spec.Level,
-		"captureHeaders", session.Spec.CaptureHeaders,
-	)
-}
-
 // capturedFlow represents a single captured network flow
 type capturedFlow struct {
 	Timestamp   string `json:"timestamp"`
@@ -274,58 +284,129 @@ type capturedFlow struct {
 	Bytes       int64  `json:"bytes"`
 }
 
-// captureFlows queries Hubble for flows matching session filters.
-// In production, this streams flows from the Hubble observer API.
-func (r *GryviaTraceSessionReconciler) captureFlows(ctx context.Context, session *gryviav1.GryviaTraceSession) []capturedFlow {
-	// In production, this would:
-	// 1. Connect to Hubble relay gRPC at hubble-relay.kube-system:4245
-	// 2. Create a GetFlows request with the session's filters
-	// 3. Stream flows and apply level-specific filtering (L3/L4/L7)
-	// 4. If captureHeaders is true and level is l7, include HTTP headers
-	// 5. Return collected flows
-
-	return nil
+// captureFlows reads the Netra flows of the session window that belong to the traced service.
+func (r *GryviaTraceSessionReconciler) captureFlows(ctx context.Context, session *gryviav1.GryviaTraceSession) ([]capturedFlow, error) {
+	if r.Netra == nil || !r.Netra.Configured() {
+		return nil, &sources.SourceError{Source: "netra", Reason: sources.ReasonNotConfigured,
+			Message: "no flows captured: trace sessions read Netra's flow history and GRYVIA_NETRA_URL is not set on the operator"}
+	}
+	start, end := session.Status.StartTime.Time, session.Status.EndTime.Time
+	if start.IsZero() {
+		start = time.Now()
+	}
+	if end.IsZero() || end.After(time.Now()) {
+		end = time.Now()
+	}
+	ns := session.Spec.Namespace
+	if ns == "" {
+		ns = session.Namespace
+	}
+	pods, havePods, err := r.servicePods(ctx, ns, session.Spec.Service)
+	if err != nil {
+		return nil, err
+	}
+	recs, err := r.Netra.History(ctx, time.Since(start)+5*time.Second, 5000)
+	if err != nil {
+		return nil, err
+	}
+	var out []capturedFlow
+	for _, rec := range recs {
+		if rec.Namespace != ns || rec.ObservedAt.Before(start) || rec.ObservedAt.After(end.Add(5*time.Second)) {
+			continue
+		}
+		if havePods {
+			if !pods[rec.Pod] {
+				continue
+			}
+		} else if rec.WorkloadName != session.Spec.Service && !strings.HasPrefix(rec.Pod, session.Spec.Service+"-") {
+			continue
+		}
+		if f := session.Spec.Filters; f != nil {
+			if f.Port > 0 && rec.Port != f.Port {
+				continue
+			}
+			if f.Protocol != "" && f.Protocol != "any" && rec.Protocol != "" && !strings.EqualFold(rec.Protocol, f.Protocol) {
+				continue
+			}
+			if f.DstIP != "" && rec.Peer != f.DstIP {
+				continue
+			}
+		}
+		verdict := "FORWARDED"
+		if rec.Blocked {
+			verdict = "DROP"
+		}
+		out = append(out, capturedFlow{Timestamp: rec.ObservedAt.UTC().Format(time.RFC3339), Source: netraEndpoint(rec),
+			Destination: rec.Peer, Port: rec.Port, Protocol: strings.ToUpper(rec.Protocol), Verdict: verdict, Bytes: rec.Bytes})
+	}
+	if len(out) > maxTraceFlows {
+		out = out[len(out)-maxTraceFlows:]
+	}
+	return out, nil
 }
 
-// updateTraceResults appends captured flows to the results ConfigMap
+func netraEndpoint(rec sources.FlowRecord) string {
+	switch {
+	case rec.Namespace != "" && rec.Pod != "":
+		return rec.Namespace + "/" + rec.Pod
+	case rec.Pod != "":
+		return rec.Pod
+	case rec.WorkloadName != "":
+		return rec.WorkloadName
+	case rec.Comm != "" && rec.Node != "":
+		return rec.Comm + "@" + rec.Node
+	}
+	return rec.Comm + rec.Node
+}
+
+// servicePods returns the pods selected by the Service; ok=false when the Service does not exist or has no selector.
+func (r *GryviaTraceSessionReconciler) servicePods(ctx context.Context, ns, service string) (map[string]bool, bool, error) {
+	svc := &corev1.Service{}
+	if err := r.Get(ctx, types.NamespacedName{Name: service, Namespace: ns}, svc); err != nil {
+		if errors.IsNotFound(err) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	if len(svc.Spec.Selector) == 0 {
+		return nil, false, nil
+	}
+	pods := &corev1.PodList{}
+	if err := r.List(ctx, pods, client.InNamespace(ns), client.MatchingLabels(svc.Spec.Selector)); err != nil {
+		return nil, false, err
+	}
+	out := map[string]bool{}
+	for _, p := range pods.Items {
+		out[p.Name] = true
+	}
+	return out, true, nil
+}
+
+// updateTraceResults replaces the flows in the results ConfigMap.
 func (r *GryviaTraceSessionReconciler) updateTraceResults(ctx context.Context, session *gryviav1.GryviaTraceSession, flows []capturedFlow) {
-	if session.Status.ResultRef == nil || len(flows) == 0 {
+	if session.Status.ResultRef == nil {
 		return
 	}
-
 	logger := log.FromContext(ctx)
-
 	cm := &corev1.ConfigMap{}
-	err := r.Get(ctx, types.NamespacedName{
-		Name:      session.Status.ResultRef.Name,
-		Namespace: session.Status.ResultRef.Namespace,
-	}, cm)
-	if err != nil {
+	if err := r.Get(ctx, types.NamespacedName{Name: session.Status.ResultRef.Name, Namespace: session.Status.ResultRef.Namespace}, cm); err != nil {
 		logger.Error(err, "Failed to get trace results ConfigMap")
 		return
 	}
-
-	// Append new flows to existing data
-	existingFlows := cm.Data["flows"]
-	var allFlows []capturedFlow
-	if existingFlows != "" && existingFlows != "[]" {
-		if jsonErr := json.Unmarshal([]byte(existingFlows), &allFlows); jsonErr != nil {
-			logger.Error(jsonErr, "Failed to parse existing flows")
-		}
+	if flows == nil {
+		flows = []capturedFlow{}
 	}
-	allFlows = append(allFlows, flows...)
-
-	flowsJSON, err := json.Marshal(allFlows)
+	flowsJSON, err := json.Marshal(flows)
 	if err != nil {
 		logger.Error(err, "Failed to marshal flows")
 		return
 	}
-
 	if cm.Data == nil {
 		cm.Data = make(map[string]string)
 	}
 	cm.Data["flows"] = string(flowsJSON)
-
+	cm.Data["source"] = "netra"
+	cm.Data["flowsCaptured"] = fmt.Sprintf("%d", len(flows))
 	if updateErr := r.Update(ctx, cm); updateErr != nil {
 		logger.Error(updateErr, "Failed to update trace results ConfigMap")
 	}

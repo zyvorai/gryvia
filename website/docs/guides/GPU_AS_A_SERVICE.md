@@ -6,8 +6,8 @@ tenant's GPU hours and cost.
 
 :::note What this is, and is not
 Costs are **metered estimates** from job run time (GPUs x hours x the SKU's hourly rate). Gryvia generates
-**estimate invoices** (a monthly statement per tenant, as JSON or CSV) but does not take payments, issue tax invoices
-or reserve capacity. Feed the invoice or usage export to your billing and payment system.
+**estimate invoices** (a monthly statement per tenant, as JSON or CSV) but does not take payments or issue tax invoices.
+It can reserve nodes for a tenant (opt-in, see below). Feed the invoice or usage export to your billing and payment system.
 :::
 
 ```
@@ -100,7 +100,20 @@ The dashboard **Invoices** page shows the same statements with CSV and JSON down
 ## Payments
 
 Gryvia does not process payments. Take the CSV/JSON invoice into your billing system, or poll
-`/api/invoices?month=YYYY-MM` from it, and let that system charge the tenant.
+`/api/invoices?month=YYYY-MM` from it, and let that system charge the tenant. As a provider-neutral seam an admin can
+`POST /api/invoices/{tenant}/{month}/send` to push the invoice JSON, HMAC-signed, to the URL in
+`GRYVIA_INVOICE_WEBHOOK_URL` (off unless set). A Stripe-style integration needs a provider decision and is not built.
+
+## Budgets, reservations and tenant RBAC (opt-in)
+
+- **Budgets** are computed from the metered usage records (`GryviaBudget`, `GryviaQuota.spec.budget`). With
+  `aiOperator.admissionGate=true` a job whose forecast cost would push a hard budget over its limit is rejected before
+  anything is created.
+- **Reservations** (`quotaOperator.reservations=true`) taint and label nodes for the owning tenant; the owner's jobs opt in with
+  the annotation `gryvia.io/reservation`.
+- **Tenant RBAC** (`quotaOperator.tenantRbac=true`) gives each tenant's members Kubernetes access to their own namespace only.
+
+Details, semantics and limits: [docs/gpuaas-completion.md](https://github.com/zyvorai/gryvia/blob/main/docs/gpuaas-completion.md).
 
 ## Limits
 
@@ -108,5 +121,6 @@ Gryvia does not process payments. Take the CSV/JSON invoice into your billing sy
 - Enforcement needs a `GryviaQuota` covering the tenant namespace; a namespace without one is not enforced.
 - Admission checks (allowed GPU types, per-job GPU limit, the tenant's allowed SKUs) run when a job is created and
   fail open: if the quotas cannot be read, the job is admitted and the quota operator's reactive enforcement rejects
-  it shortly after. Only new jobs are checked, never updates. Concurrent-job and budget limits are enforced reactively.
+  it shortly after. Only new jobs are checked, never updates. Concurrent-job limits are enforced reactively; budgets are
+  also checked before creation when `aiOperator.admissionGate` is on (off by default), from estimates.
 - Verified with unit tests and fake clusters; it has not yet run against a real identity provider or GPUs.

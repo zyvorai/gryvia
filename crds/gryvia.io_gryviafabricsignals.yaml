@@ -140,6 +140,98 @@ spec:
                 description: NCCLP99Ms is the p99 latency in milliseconds of straggler-flagged
                   NCCL collectives
                 type: number
+              nodes:
+                description: |-
+                  Nodes holds one entry per collector node (collector flag -fabric-status-per-node); empty in
+                  the default mode. The ai-operator (--merge-fabric-signals) folds the fresh entries into the
+                  fields above: max for degradation metrics, sample-weighted means for ratios
+                items:
+                  description: |-
+                    FabricNodeStatus is what ONE node's collector measured for the job (collector flag
+                    -fabric-status-per-node). Each collector owns only its entry (server-side apply, field manager
+                    gryvia-collector-<node>), so nodes cannot overwrite each other. A nil field means the node did
+                    not measure it. With the ai-operator's --merge-fabric-signals the fresh entries are folded into
+                    the top-level status fields.
+                  properties:
+                    cnpRate:
+                      type: number
+                    collectiveMaxSkewMs:
+                      type: number
+                    e2eMeanMs:
+                      type: number
+                    e2eP99ms:
+                      type: number
+                    engine:
+                      type: string
+                    exfilEvents:
+                      format: int64
+                      type: integer
+                    gdsHitRatio:
+                      type: number
+                    gpuCorrelationCoverage:
+                      type: number
+                    gpuIdleDuringCommRatio:
+                      type: number
+                    inferWaitP99ms:
+                      type: number
+                    itlP99ms:
+                      type: number
+                    kvCacheUsage:
+                      type: number
+                    measuredAt:
+                      description: MeasuredAt is when the collector wrote this entry
+                      format: date-time
+                      type: string
+                    ncclP99ms:
+                      type: number
+                    node:
+                      description: Node is the Kubernetes node the collector runs
+                        on (list map key)
+                      type: string
+                    overlapIdleRatio:
+                      type: number
+                    pfcRate:
+                      type: number
+                    queueTimeMeanMs:
+                      type: number
+                    queueTimeP99ms:
+                      type: number
+                    rdmaRetryRate:
+                      type: number
+                    requestsWaiting:
+                      format: int64
+                      type: integer
+                    sampleCount:
+                      description: SampleCount is the number of signals folded into
+                        the entry (the weight of its ratios)
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    scoreDelta:
+                      type: number
+                    smActiveDuringCompute:
+                      type: number
+                    stragglerRank:
+                      format: int32
+                      type: integer
+                    ttftP99ms:
+                      type: number
+                    ttlSeconds:
+                      default: 300
+                      description: TTLSeconds is how long the entry stays valid after
+                        measuredAt; older entries are ignored
+                      format: int32
+                      minimum: 1
+                      type: integer
+                  required:
+                  - measuredAt
+                  - node
+                  type: object
+                maxItems: 256
+                type: array
+                x-kubernetes-list-map-keys:
+                - node
+                x-kubernetes-list-type: map
               overlapIdleRatio:
                 description: |-
                   OverlapIdleRatio is the fraction of the window the job spent in cudaDeviceSynchronize

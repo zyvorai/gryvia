@@ -90,6 +90,71 @@ rules:
       - patch
       - update
       - watch
+  {{- if .Values.operator.sources.enabled }}
+  # operator.sources.enabled: the operator's own kinds (the rules above only cover gryvianetworks)
+  - apiGroups:
+      - gryvia.io
+    resources:
+      - gryviaflowpolicies
+      - gryviatrafficinsights
+      - gryviaautopolicies
+      - gryviatracesessions
+      - gryviaservicegraphs
+      - gryvianetworkanomalies
+      - gryviasecuritypolicies
+      - gryvianetworkcosts
+      - gryviatraininginsights
+      - gryviainferenceinsights
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+  - apiGroups:
+      - gryvia.io
+    resources:
+      - gryviaflowpolicies/status
+      - gryviatrafficinsights/status
+      - gryviaautopolicies/status
+      - gryviatracesessions/status
+      - gryviaservicegraphs/status
+      - gryvianetworkanomalies/status
+      - gryviasecuritypolicies/status
+      - gryvianetworkcosts/status
+      - gryviatraininginsights/status
+      - gryviainferenceinsights/status
+    verbs:
+      - get
+      - update
+      - patch
+  # read-only sources: fabric signals (Training/InferenceInsight), network usage and rates (NetworkCost)
+  - apiGroups:
+      - gryvia.io
+    resources:
+      - gryviafabricsignals
+      - gryvianetworkusagerecords
+      - gryvianetworkrates
+    verbs:
+      - get
+      - list
+      - watch
+  # FlowPolicy -> CiliumNetworkPolicy (needs Cilium CRDs), anomaly mitigation
+  - apiGroups:
+      - cilium.io
+    resources:
+      - ciliumnetworkpolicies
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole

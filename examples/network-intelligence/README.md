@@ -2,7 +2,7 @@
 
 Example YAML manifests for Gryvia network intelligence CRDs powered by eBPF and Cilium.
 
-> **Status.** The controllers are registered, but live Hubble and Prometheus data collection is not implemented, so insight, trace, graph and anomaly resources will not show measured data. `GryviaFlowPolicy` (creates a CiliumNetworkPolicy) requires Cilium. See `operators/network-intelligence/README.md`.
+> **Status.** The controllers read the eBPF collector (through its per-node pods), Netra (optional, `GRYVIA_NETRA_URL` on the operator) and the fabric-signal and network-usage objects; an object says `SourceAvailable=False` in its status conditions when its source is not deployed or not reachable. `GryviaFlowPolicy` (creates a CiliumNetworkPolicy) requires Cilium. Verified with unit tests and a fake collector only; not run against a real collector fleet, Hubble or Cilium. See `docs/network-intelligence-sources.md` for which controller reads what.
 
 ## Examples
 

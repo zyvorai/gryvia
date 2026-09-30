@@ -67,7 +67,7 @@ Set by the ai-operator (`status.phase`):
 4. **Succeeded**: the batch Job completed (every index exited 0)
 5. **Failed**: the batch Job failed (retry limit or timeout reached), with the reason in `status.message`
 
-Set by other components: **Queued** and **Rejected** (quota operator; nothing is created for them), **Preempted** (priority controller) and **Cancelled** (`gryvia cancel`, or the annotation `gryvia.io/cancel: "true"`). Cancelling or preempting deletes the Job (pods stop) and keeps the PVC. Succeeded, Failed, Cancelled and Rejected are final. Details: [AIJob lifecycle](https://github.com/zyvorai/gryvia/blob/main/docs/aijob-lifecycle.md).
+Set by other components: **Queued** and **Rejected** (quota operator; nothing is created for them). With the opt-in Kueue integration **Queued** is also set by the ai-operator while Kueue holds the job for quota (the Job exists, suspended, no pods; `status.message` carries Kueue's reason) and again after Kueue evicts a running job for a higher-priority one ([Kueue integration](https://github.com/zyvorai/gryvia/blob/main/docs/kueue-integration.md)), **Preempted** (priority controller) and **Cancelled** (`gryvia cancel`, or the annotation `gryvia.io/cancel: "true"`). Cancelling or preempting deletes the Job (pods stop) and keeps the PVC. Succeeded, Failed, Cancelled and Rejected are final. Details: [AIJob lifecycle](https://github.com/zyvorai/gryvia/blob/main/docs/aijob-lifecycle.md).
 
 Workload kind: `spec.workloadKind` is `job` (default for training, fine-tuning, evaluation) or `statefulset` (default for inference; pods restart forever and the job never completes). A job that already runs on a StatefulSet keeps it. `spec.suspend: true` creates the Job suspended. `gpus: 0` runs a CPU-only job.
 
@@ -278,7 +278,7 @@ Older versions of this page showed `checkpointing`, `restartPolicy`/`backoffLimi
 
 - **Checkpointing**: write checkpoints to a mounted volume from your own training code. The separate `GryviaCheckpointGuard` kind (reconciled by the ai-operator) manages checkpoint policies; see the [ML workflows guide](../guides/ML_WORKFLOWS.md).
 - **Retries**: for the batch Job workload `spec.retryLimit` is the Job's `backoffLimit` (0 fails the job on the first failed pod; a failed pod is replaced by a new pod with the same index and rank) and `status.retries` counts failed pods. `spec.timeout` (`90m`, `24h`, `7d`) is the Job's `activeDeadlineSeconds`. Neither applies to the StatefulSet workload, whose pods restart in place.
-- **Priority**: `spec.priority` is an integer 0 to 100 that the admission webhook range-checks; nothing schedules or preempts by it yet. See [Scheduling](../guides/SCHEDULING.md#priority-preemption).
+- **Priority**: `spec.priority` is an integer 0 to 100 that the admission webhook range-checks. Only with the opt-in Kueue integration does it matter: it preempts lower-priority jobs in the same queue ([Kueue integration](https://github.com/zyvorai/gryvia/blob/main/docs/kueue-integration.md)). `spec.queueName` (or the annotation `gryvia.io/queue-name`) names the Kueue LocalQueue; it is ignored without the integration. See [Scheduling](../guides/SCHEDULING.md#priority-preemption).
 - **Spot**: no spot field or controller. Spot-related services in `services/` are separate and not part of the job API.
 
 ## Cost Management

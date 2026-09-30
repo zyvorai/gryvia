@@ -401,6 +401,77 @@ rules:
       - update
       - watch
 
+  # ML controllers (GryviaWorkspace, GryviaInferenceService, GryviaModelRegistry, GryviaWorkflow, GryviaAutoTuner)
+  - apiGroups:
+      - gryvia.io
+    resources:
+      - gryviaworkspaces
+      - gryviainferenceservices
+      - gryviamodelregistries
+      - gryviaworkflows
+      - gryviaautotuners
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - gryvia.io
+    resources:
+      - gryviaworkspaces/status
+      - gryviainferenceservices/status
+      - gryviamodelregistries/status
+      - gryviaworkflows/status
+      - gryviaautotuners/status
+    verbs:
+      - get
+      - patch
+      - update
+  - apiGroups:
+      - gryvia.io
+    resources:
+      - gryviaworkspaces/finalizers
+      - gryviainferenceservices/finalizers
+      - gryviamodelregistries/finalizers
+      - gryviaworkflows/finalizers
+      - gryviaautotuners/finalizers
+    verbs:
+      - update
+  # Inference services: a Deployment per service (and per canary), scaled by an HPA
+  - apiGroups:
+      - apps
+    resources:
+      - deployments
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - watch
+  - apiGroups:
+      - autoscaling
+    resources:
+      - horizontalpodautoscalers
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - watch
+  # The inference controller patches its Service (port changes); the pods, PVCs and Services it and the workspace
+  # controller create are covered by the pod/service/PVC rules above
+  - apiGroups:
+      - ""
+    resources:
+      - services
+    verbs:
+      - patch
+
   {{- if .Values.aiOperator.fabricAwareScheduling }}
   # aiOperator.fabricAwareScheduling: read the per-node fabric health published by the collector
   - apiGroups:
@@ -411,6 +482,70 @@ rules:
       - get
       - list
       - watch
+  {{- end }}
+
+  {{- if .Values.aiOperator.kueueIntegration }}
+  # aiOperator.kueueIntegration: read Kueue's Workloads and LocalQueues, create the WorkloadPriorityClasses
+  - apiGroups:
+      - kueue.x-k8s.io
+    resources:
+      - workloads
+      - localqueues
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - kueue.x-k8s.io
+    resources:
+      - workloadpriorityclasses
+    verbs:
+      - get
+      - create
+  {{- end }}
+  {{- if .Values.quotaOperator.kueueIntegration }}
+  # quotaOperator.kueueIntegration: per-tenant ClusterQueue, LocalQueue and ResourceFlavors
+  - apiGroups:
+      - kueue.x-k8s.io
+    resources:
+      - clusterqueues
+      - resourceflavors
+      - localqueues
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+  {{- end }}
+  {{- if .Values.quotaOperator.tenantRbac }}
+  # quotaOperator.tenantRbac: the tenant controller manages RoleBindings in tenant namespaces. RBAC escalation rules:
+  # the operator may only grant permissions it holds or is allowed to `bind`, so it gets `bind` on exactly the three
+  # tenant ClusterRoles (resourceNames, never a wildcard) and can grant nothing else.
+  - apiGroups:
+      - rbac.authorization.k8s.io
+    resources:
+      - rolebindings
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+  - apiGroups:
+      - rbac.authorization.k8s.io
+    resources:
+      - clusterroles
+    verbs:
+      - bind
+    resourceNames:
+      - gryvia-tenant-viewer
+      - gryvia-tenant-member
+      - gryvia-tenant-admin
   {{- end }}
 
   # Manage Namespaces, ResourceQuotas and LimitRanges (tenant namespaces)

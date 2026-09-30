@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/netip"
 	"strings"
 	"testing"
 	"time"
@@ -88,7 +89,7 @@ func TestClassifyMatrix(t *testing.T) {
 		{"local non-tenant pod", "10.0.3.9", "8.8.8.8", false, SkipUnattributed, "", "", ""},
 		{"ambiguous local ip", "10.0.6.6", "8.8.8.8", false, SkipUnattributed, "", "", ""},
 		{"label wins over name", "10.0.5.5", "8.8.8.8", true, "", PeerExternal, ZoneInternet, "alpha"},
-		{"ipv6 unsupported", "fd00::1", "8.8.8.8", false, SkipInvalid, "", "", ""},
+		{"mixed families are invalid", "fd00::1", "8.8.8.8", false, SkipInvalid, "", "", ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -160,19 +161,12 @@ func (g *fakeGetter) Get(_ context.Context, path string) ([]byte, error) {
 	}
 }
 
-func ip(s string) uint32 {
-	var a, b, c, d byte
-	fmt.Sscanf(s, "%d.%d.%d.%d", &a, &b, &c, &d)
-	return binary.LittleEndian.Uint32([]byte{a, b, c, d})
-}
-
-func TestIPv4RoundTrip(t *testing.T) {
-	if IPv4(ip("10.0.1.9")) != "10.0.1.9" {
-		t.Fatal(IPv4(ip("10.0.1.9")))
-	}
-}
+func addr(s string) netip.Addr { return netip.MustParseAddr(s) }
 
 func TestStructLayoutMatchesKernel(t *testing.T) {
+	if n := binary.Size(costKey6{}); n != 32 {
+		t.Fatalf("cost_key6 is 32 bytes, got %d", n)
+	}
 	if n := binary.Size(costKey{}); n != 8 {
 		t.Fatalf("cost_key is 8 bytes, got %d", n)
 	}
@@ -198,8 +192,8 @@ func TestBothEndsBilledOnce(t *testing.T) {
 	d := stdDir(t)
 	n1, n2 := NewMeter(d, "n1"), NewMeter(d, "n2")
 	// the request A -> B (1000 B) and the reply B -> A (300 B)
-	n1.Observe([]Sample{{Local: ip("10.0.1.1"), Remote: ip("10.0.2.9"), BytesSent: 1000, BytesRecv: 300}}, t0)
-	n2.Observe([]Sample{{Local: ip("10.0.2.9"), Remote: ip("10.0.1.1"), BytesSent: 300, BytesRecv: 1000}}, t0)
+	n1.Observe([]Sample{{Local: addr("10.0.1.1"), Remote: addr("10.0.2.9"), BytesSent: 1000, BytesRecv: 300}}, t0)
+	n2.Observe([]Sample{{Local: addr("10.0.2.9"), Remote: addr("10.0.1.1"), BytesSent: 300, BytesRecv: 1000}}, t0)
 	a := find(n1.Snapshot(), "alpha", PeerOtherTenant, ZoneCross)
 	b := find(n2.Snapshot(), "beta", PeerOtherTenant, ZoneCross)
 	if a.Egress != 1000 || b.Egress != 300 {
@@ -216,7 +210,7 @@ func TestBothEndsBilledOnce(t *testing.T) {
 // A packet only forwarded through n2 (its source pod lives on n1) must not be attributed by n2.
 func TestForeignPodTrafficIgnored(t *testing.T) {
 	m := NewMeter(stdDir(t), "n2")
-	m.Observe([]Sample{{Local: ip("10.0.1.1"), Remote: ip("8.8.8.8"), BytesSent: 5000}}, t0)
+	m.Observe([]Sample{{Local: addr("10.0.1.1"), Remote: addr("8.8.8.8"), BytesSent: 5000}}, t0)
 	if len(m.Snapshot()) != 0 || m.Stats().Skipped[SkipUnattributed] != 5000 {
 		t.Fatalf("%+v %+v", m.Snapshot(), m.Stats())
 	}
@@ -224,7 +218,7 @@ func TestForeignPodTrafficIgnored(t *testing.T) {
 
 func TestDeltasAreIdempotent(t *testing.T) {
 	m := NewMeter(stdDir(t), "n1")
-	s := Sample{Local: ip("10.0.1.1"), Remote: ip("8.8.8.8"), BytesSent: 1000}
+	s := Sample{Local: addr("10.0.1.1"), Remote: addr("8.8.8.8"), BytesSent: 1000}
 	m.Observe([]Sample{s}, t0)
 	m.Observe([]Sample{s}, t0.Add(15*time.Second)) // same cumulative value: nothing new
 	m.Observe([]Sample{s, s}, t0.Add(30*time.Second))
@@ -255,11 +249,11 @@ func TestDeltasAreIdempotent(t *testing.T) {
 // to byte deltas.
 func TestFlowEventsNeverBilled(t *testing.T) {
 	m := NewMeter(stdDir(t), "n1")
-	m.Observe([]Sample{{Local: ip("10.0.1.1"), Remote: ip("8.8.8.8"), BytesSent: 700}}, t0)
+	m.Observe([]Sample{{Local: addr("10.0.1.1"), Remote: addr("8.8.8.8"), BytesSent: 700}}, t0)
 	for i := 0; i < 5; i++ {
 		m.NoteFlowEvent() // connect + close (+ retransmit observation) of the same connection
 	}
-	m.Observe([]Sample{{Local: ip("10.0.1.1"), Remote: ip("8.8.8.8"), BytesSent: 700}}, t0.Add(time.Minute))
+	m.Observe([]Sample{{Local: addr("10.0.1.1"), Remote: addr("8.8.8.8"), BytesSent: 700}}, t0.Add(time.Minute))
 	if e := find(m.Snapshot(), "alpha", PeerExternal, ZoneInternet).Egress; e != 700 {
 		t.Fatalf("got %d", e)
 	}
@@ -271,9 +265,9 @@ func TestFlowEventsNeverBilled(t *testing.T) {
 func TestLoopbackAndSameNodeExcluded(t *testing.T) {
 	m := NewMeter(stdDir(t), "n1")
 	m.Observe([]Sample{
-		{Local: ip("127.0.0.1"), Remote: ip("127.0.0.1"), BytesSent: 10},
-		{Local: ip("10.0.1.1"), Remote: ip("10.0.1.2"), BytesSent: 20},  // same tenant, same node
-		{Local: ip("10.0.1.1"), Remote: ip("10.0.1.9"), BytesSent: 40}}, // other tenant, same node
+		{Local: addr("127.0.0.1"), Remote: addr("127.0.0.1"), BytesSent: 10},
+		{Local: addr("10.0.1.1"), Remote: addr("10.0.1.2"), BytesSent: 20},  // same tenant, same node
+		{Local: addr("10.0.1.1"), Remote: addr("10.0.1.9"), BytesSent: 40}}, // other tenant, same node
 		t0)
 	bs := m.Snapshot()
 	if len(bs) != 1 || find(bs, "alpha", PeerOtherTenant, ZoneSameNode).Egress != 40 {
@@ -286,7 +280,7 @@ func TestBoundedBuckets(t *testing.T) {
 	for i := 0; i < MaxBuckets; i++ {
 		m.buckets[Key{Hour: t0.Add(time.Duration(i) * time.Hour), Tenant: "x"}] = &Totals{}
 	}
-	m.Observe([]Sample{{Local: ip("10.0.1.1"), Remote: ip("8.8.8.8"), BytesSent: 9}}, t0)
+	m.Observe([]Sample{{Local: addr("10.0.1.1"), Remote: addr("8.8.8.8"), BytesSent: 9}}, t0)
 	if len(m.buckets) != MaxBuckets || m.Stats().DroppedBucketBytes != 9 {
 		t.Fatal("bucket limit not enforced")
 	}
@@ -364,7 +358,7 @@ func TestPublishCreatesThenUpdatesOneRecordPerBucket(t *testing.T) {
 	api := newAPI()
 	m := NewMeter(stdDir(t), "n1")
 	p := newPub(api, m, t0)
-	m.Observe([]Sample{{Local: ip("10.0.1.1"), Remote: ip("8.8.8.8"), BytesSent: 1000, BytesRecv: 50}}, t0)
+	m.Observe([]Sample{{Local: addr("10.0.1.1"), Remote: addr("8.8.8.8"), BytesSent: 1000, BytesRecv: 50}}, t0)
 	if n := p.PublishOnce(context.Background()); n != 1 || api.posts != 1 {
 		t.Fatalf("n=%d posts=%d", n, api.posts)
 	}
@@ -375,7 +369,7 @@ func TestPublishCreatesThenUpdatesOneRecordPerBucket(t *testing.T) {
 	}
 	// publishing again without new bytes changes nothing; new bytes overwrite with the running total
 	p.PublishOnce(context.Background())
-	m.Observe([]Sample{{Local: ip("10.0.1.1"), Remote: ip("8.8.8.8"), BytesSent: 1500, BytesRecv: 50}}, t0.Add(time.Minute))
+	m.Observe([]Sample{{Local: addr("10.0.1.1"), Remote: addr("8.8.8.8"), BytesSent: 1500, BytesRecv: 50}}, t0.Add(time.Minute))
 	p.PublishOnce(context.Background())
 	if api.posts != 1 || api.spec(t, recPath)["egressBytes"] != float64(1500) {
 		t.Fatalf("posts=%d %v", api.posts, api.spec(t, recPath))
@@ -385,12 +379,12 @@ func TestPublishCreatesThenUpdatesOneRecordPerBucket(t *testing.T) {
 func TestPublishRestartAddsToStoredBaseAndNeverLowers(t *testing.T) {
 	api := newAPI()
 	m := NewMeter(stdDir(t), "n1")
-	m.Observe([]Sample{{Local: ip("10.0.1.1"), Remote: ip("8.8.8.8"), BytesSent: 1000}}, t0)
+	m.Observe([]Sample{{Local: addr("10.0.1.1"), Remote: addr("8.8.8.8"), BytesSent: 1000}}, t0)
 	newPub(api, m, t0).PublishOnce(context.Background())
 
 	// the collector restarts: fresh meter (counters restart at 0), fresh publisher, same store
 	m2 := NewMeter(stdDir(t), "n1")
-	m2.Observe([]Sample{{Local: ip("10.0.1.1"), Remote: ip("8.8.8.8"), BytesSent: 200}}, t0.Add(5*time.Minute))
+	m2.Observe([]Sample{{Local: addr("10.0.1.1"), Remote: addr("8.8.8.8"), BytesSent: 200}}, t0.Add(5*time.Minute))
 	p2 := newPub(api, m2, t0.Add(5*time.Minute))
 	p2.PublishOnce(context.Background())
 	p2.PublishOnce(context.Background()) // idempotent within one run
@@ -402,7 +396,7 @@ func TestPublishRestartAddsToStoredBaseAndNeverLowers(t *testing.T) {
 func TestPublishFinalClosesEvictsAndIsNeverModified(t *testing.T) {
 	api := newAPI()
 	m := NewMeter(stdDir(t), "n1")
-	m.Observe([]Sample{{Local: ip("10.0.1.1"), Remote: ip("8.8.8.8"), BytesSent: 1000}}, t0)
+	m.Observe([]Sample{{Local: addr("10.0.1.1"), Remote: addr("8.8.8.8"), BytesSent: 1000}}, t0)
 	end := t0.Truncate(time.Hour).Add(time.Hour)
 	p := newPub(api, m, end.Add(time.Minute)) // inside the grace period: still open
 	p.PublishOnce(context.Background())
@@ -416,7 +410,7 @@ func TestPublishFinalClosesEvictsAndIsNeverModified(t *testing.T) {
 	}
 	// a restarted collector holding new bytes for the closed hour must not touch the final record
 	m2 := NewMeter(stdDir(t), "n1")
-	m2.Observe([]Sample{{Local: ip("10.0.1.1"), Remote: ip("8.8.8.8"), BytesSent: 999}}, t0)
+	m2.Observe([]Sample{{Local: addr("10.0.1.1"), Remote: addr("8.8.8.8"), BytesSent: 999}}, t0)
 	newPub(api, m2, t0).PublishOnce(context.Background())
 	if api.spec(t, recPath)["egressBytes"] != float64(1000) {
 		t.Fatal("a final record is never modified")
@@ -426,7 +420,7 @@ func TestPublishFinalClosesEvictsAndIsNeverModified(t *testing.T) {
 func TestPublishSkipsUnattributedAndBadTenantNames(t *testing.T) {
 	api := newAPI()
 	m := NewMeter(stdDir(t), "n1")
-	m.Observe([]Sample{{Local: ip("10.0.3.9"), Remote: ip("8.8.8.8"), BytesSent: 1}}, t0) // kube-system
+	m.Observe([]Sample{{Local: addr("10.0.3.9"), Remote: addr("8.8.8.8"), BytesSent: 1}}, t0) // kube-system
 	m.buckets[Key{Hour: t0.Truncate(time.Hour), Tenant: "../evil", Peer: PeerExternal, Zone: ZoneInternet}] = &Totals{Egress: 5}
 	if n := newPub(api, m, t0).PublishOnce(context.Background()); n != 0 || len(api.store) != 0 {
 		t.Fatal("nothing may be written")

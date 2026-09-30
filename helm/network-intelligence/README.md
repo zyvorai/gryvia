@@ -15,13 +15,16 @@ independent: neither requires the other.
   `collector/Dockerfile` and set `collector.image.repository`/`tag`. It was verified on Linux 7.0 x86_64 only; GPU, RDMA,
   arm64 and the gated attachments are unverified on hardware. See [collector/README.md](../../collector/README.md) and
   [ebpf/README.md](../../ebpf/README.md).
-- `security.enabled` and `security.autoBlock` are **reserved and not read**: the operator has no such flags and no
-  auto-blocking exists. Earlier versions of this chart passed them as `--security-*` arguments, which Go's flag parser
-  rejects, so the operator exited at start-up; the chart no longer passes them.
-- Known issue (code reading, not run): the operator's controllers call the collector at the hard-coded
-  `http://gryvia-collector.gryvia-system.svc.cluster.local:9090`, but this chart creates no Service with that name (the
-  collector is in `gryvia-network`), and the operator asks for some paths the collector does not serve. Treat the
-  operator-to-collector data path as not working.
+- The keys `security.enabled`, `security.autoBlock`, `ha.enabled` and the top-level `labels` and `annotations` were
+  removed from `values.yaml`: no template read them (the operator has no `--security-*` flags and no auto-blocking
+  exists; earlier chart versions passed them as arguments Go's flag parser rejects). Setting them was already a no-op.
+- The operator no longer uses a fixed collector URL: it finds the collector pods by label
+  (`app.kubernetes.io/component=collector`) in its own namespace (or `operator.sources.collector.namespace`; without the chart wiring the built-in default is `gryvia-network`), signs its
+  requests with the API token from a mounted Secret and merges the answers of all pods. Without that wiring
+  (`operator.sources.enabled=false`, the default) it looks in `gryvia-network` and sends unsigned requests; a status then says `SourceAvailable=False` with the reason. See
+  [docs/network-intelligence-sources.md](../../docs/network-intelligence-sources.md). Not yet run against the real collector
+  on a cluster (the e2e workflow uses a fake collector). The default chart also lacks RBAC for the operator's own ten
+  kinds; `operator.sources.enabled=true` adds it.
 - Flow data can also come from [Netra](https://github.com/zyvorai/netra) through the gateway
   (`apiGateway.netra.url` in the main chart), which needs neither this collector nor its privileges.
 
@@ -52,6 +55,11 @@ name is `gryvia-network-intelligence`.
 |-----------|-------------|---------|
 | `operator.image.repository` / `.tag` | Operator image | `ghcr.io/zyvorai/gryvia-network-intelligence-operator`, chart appVersion |
 | `operator.replicas`, `operator.resources` | Operator size | `1`, 100m/128Mi requests, 500m/512Mi limits |
+| `operator.sources.enabled` | Wire the operator to its data sources: flags, token/TLS Secret mounts and the RBAC of its ten kinds (fabric signals, usage records and rates read-only, CiliumNetworkPolicy) | `false` |
+| `operator.sources.collector.namespace`, `.port`, `.timeout` | Where the collector pods are (default: the release namespace), their port and the per-request timeout | `""`, `9090`, `5s` |
+| `operator.sources.collector.tokenSecret`, `.tokenKey` | Secret with the collector API token (defaults to `ebpf.security.apiTokenSecret`); read on every request, requests are HMAC-signed | `""`, `token` |
+| `operator.sources.collector.tls`, `.caSecret`, `.caKey`, `.serverName`, `.clientCertSecret` | https to the collectors, CA bundle, certificate name to verify, mTLS client certificate | `false`, `""`, `ca.crt`, `gryvia-collector`, `""` |
+| `operator.sources.netra.url`, `.tokenSecret`, `.tokenKey`, `.caSecret`, `.caKey` | Netra flow history for `GryviaTraceSession` and `matchedFlows` (env `GRYVIA_NETRA_URL` etc.) | `""` |
 | `ebpf.enabled` | Run the eBPF collector DaemonSet | `false` |
 | `collector.image.repository` / `.tag` | Collector image (not published; build your own) | `ghcr.io/zyvorai/gryvia-ebpf-collector` |
 | `collector.hostNetwork` | Host networking for the collector; the pod's port 9090 is then bound on the node | `true` |
@@ -62,6 +70,7 @@ name is `gryvia-network-intelligence`.
 | `ebpf.diagnosis.cgroupSignals` | Let the unified diagnosis read the pods' cgroup counters and pressure files from the host cgroup mount (`-flight-diagnosis-cgroup`, read-only); otherwise those signals are reported unavailable | `false` |
 | `ebpf.diagnosis.thresholds` | Overrides for the diagnosis thresholds (rendered to a ConfigMap, `-flight-diagnosis-thresholds`) | `{}` |
 | `ebpf.flightStore.enabled` | Persist incident history on the node (`-flight-store-dir`); `.volume` is `emptyDir` or `hostPath`, plus `.hostPath`, `.sizeLimit`, `.retention`, `.maxBytes`, `.fsync`, `.incidentMinDuration` | `false` |
+| `ebpf.fabricStatusPerNode` | With `publishFabricStatus`: write this node's own `status.nodes[]` entry by server-side apply instead of merge-patching the top level (`-fabric-status-per-node`); needs the ai-operator's `aiOperator.mergeFabricSignals`; no extra RBAC | `false` |
 | `ebpf.publishFabricStatus` | Patch the status of existing `GryviaFabricSignal` objects every 30 s (`-publish-fabric-status`); adds `list` on `gryviafabricsignals` and `patch` on `gryviafabricsignals/status` to the collector ClusterRole | `false` |
 | `ebpf.publishNodeFabric` | Write this node's fabric health to the cluster-scoped `GryviaNodeFabric` named after the node every 30 s (`-publish-node-fabric`); adds `create`, `patch` on `gryvianodefabrics` to the collector ClusterRole | `false` |
 | `ebpf.inferMetrics.targets`, `.discover`, `.ports`, `.interval` | Read serving-engine latency (TTFT, ITL, queue time) from vLLM / Triton / TGI metrics endpoints (`-infer-metrics`, `-infer-metrics-discover`); read-only GETs, no new RBAC; see [docs/inference-latency.md](../../docs/inference-latency.md) | `[]`, `false`, `8000,8002,8080`, `15s` |
@@ -70,7 +79,6 @@ name is `gryvia-network-intelligence`.
 | `ebpf.quotaPace.sync` | **Mutating.** Grant pace leases from `GryviaQuota` `spec.network.maxEgressMbps` (`-quota-pace-sync`); needs `ebpf.quotaPace.enabled`; adds `list` on `gryviaquotas` to the collector ClusterRole | `false` |
 | `ebpf.quotaPace.dryRun` | Log what `sync` would do and write nothing (`-quota-pace-dry-run`); needs `ebpf.quotaPace.sync` | `false` |
 | `prometheus.serviceMonitor.enabled` | Create ServiceMonitors (only when the Prometheus Operator CRD exists) | `true` |
-| `security.enabled`, `security.autoBlock` | Reserved, not read by anything | `true`, `false` |
 | `namespace.name`, `namespace.create` | Target namespace | `gryvia-network`, `true` |
 | `ha.leaderElection` | Operator leader election | `true` |
 
@@ -99,5 +107,6 @@ The CRDs come from `helm/gryvia` (or `crds/`), not from this chart, and are kept
 ## Monitoring
 
 With `prometheus.serviceMonitor.enabled=true` and the Prometheus Operator installed, ServiceMonitors are created for the
-operator (`:8080/metrics`) and the collector (`:9090/metrics`). `monitoring/grafana-dashboards/` holds dashboard
-templates; most metric names they query are not produced by any Gryvia component yet (see `monitoring/README.md`).
+operator (`:8080/metrics`) and the collector (`:9090/metrics`). `prometheus.rules.enabled` and `prometheus.dashboards.enabled`
+(both off by default) also install the alert rules and Grafana dashboards from `monitoring/` (enable them in one chart only;
+the gryvia chart's `monitoring.*` installs the same assets). See [docs/observability.md](../../docs/observability.md).

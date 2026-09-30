@@ -1,3 +1,9 @@
+// Package queue is an in-memory priority queue with dominant-resource fair sharing.
+//
+// It is NOT USED by any controller: nothing in the operators imports it. When Kueue is the
+// admission path (ai-operator flag --kueue-integration, docs/kueue-integration.md), queueing, fair
+// sharing and preemption are done by Kueue, not by this package. It is kept only as library code
+// with no tests and no e2e; do not assume it is wired or verified.
 package queue
 
 import (

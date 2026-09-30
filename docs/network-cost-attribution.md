@@ -6,13 +6,15 @@ the defaults the collector, the charts and the gateway behave exactly as before.
 Nothing is invoiced, charged or paid.
 
 Status: unit-tested with crafted pod/node JSON, canned counter samples and a fake API server; the map reader was
-also run against a real kernel LRU hash map on Linux 7.0 (key/value layout). **Not run end to end on a real cluster**
+also run against real kernel LRU hash maps on Linux 7.0 (IPv4 and IPv6 key/value layouts), and `cost_tracker` itself was
+run with `BPF_PROG_TEST_RUN` on crafted IPv4 and IPv6 packets (egress and ingress, both maps checked). **Not run end to end on a real cluster**
 (pod churn, CNI behaviour and Netra's live API are unverified).
 
 ## What is measured
 
 The only source of bytes is the `traffic_costs` map of the `cost_tracker` tcx program (`ebpf/cost_tracker.c`): cumulative
-bytes per `(local IP, remote IP)` pair, `bytes_sent` counted on egress (local is the packet source) and `bytes_recv`
+bytes per `(local IP, remote IP)` pair (IPv4 pairs in `traffic_costs`, IPv6 pairs in `traffic_costs6`, 32-byte key of the
+two raw addresses, same value layout), `bytes_sent` counted on egress (local is the packet source) and `bytes_recv`
 on ingress (local is the packet destination). It is attached to **one** interface (`-iface`); attach it to the interface
 that carries pod traffic (with a routed CNI, the node NIC). Attaching to several interfaces would count a packet once per
 interface.
@@ -30,6 +32,13 @@ The pod cache (`collector/pkg/netcost`) lists pods, nodes and namespaces from th
 **fail closed**: an address held by two pods, a `hostNetwork` pod, a finished pod, and any lookup when the cache is older
 than 2 minutes resolve to "unknown". Counters carry no PID, so this pipeline uses the pod IP, not the PID -> cgroup
 resolver of the Flight Recorder (which only knows pods with a `gryvia.io/job` label).
+
+IPv4 and IPv6 are handled the same way. The cache holds every address of a pod (`status.podIPs`, so a dual-stack pod
+resolves under both families, and is not ambiguous with itself) and node addresses; IPv6 addresses are compared in
+canonical form (`2001:DB8::1` equals `2001:db8:0::1`). A pair whose two ends are not the same family, an IPv4-mapped
+IPv6 address or an address with a zone is `invalid` and never billed. For IPv6, `unknown` (never priced) covers
+ULA `fc00::/7`, link-local `fe80::/10` and multicast; any other address that is not a known pod or node is `external`
+(global unicast).
 
 A tenant is the namespace label `gryvia.io/tenant` (set by the tenant controller), falling back to the `tenant-<name>`
 naming convention. The **local** address must be exactly one non-hostNetwork pod of a tenant namespace scheduled **on this
@@ -124,8 +133,12 @@ ClusterRole. The gateway chart gets read access to `gryvianetworkusagerecords` a
   so the peer is the backend pod.
 - **hostNetwork pods** share the node IP and are never attributed. Traffic between pods on one node does not cross the
   NIC and is not counted.
-- **IPv4 only.** IPv6 packets are ignored by `cost_tracker`.
-- Bytes are IP-level (`tot_len`): headers included, encrypted payload irrelevant. Retransmissions count.
+- **IPv6 extension headers are not walked.** IPv6 bytes are `payload_length + 40`: extension headers are inside
+  `payload_length`, so they count as bytes, but the upper-layer protocol is never parsed, and a jumbo packet
+  (`payload_length` 0) counts only its 40-byte header. The kernel-side zone classification (`zone_map`, `cost_stats`)
+  is IPv4 only; IPv6 adds to the packet total only (tenant attribution is userspace and covers IPv6). NPTv6 or NAT64
+  rewrites are like SNAT below: the local address is not a pod and the bytes are unattributed.
+- Bytes are IP-level (IPv4 `tot_len`, IPv6 as above): headers included, encrypted payload irrelevant. Retransmissions count.
 - Traffic during collector downtime, the first scan gap, and the sub-scan skew at hour boundaries (up to 15 s of bytes
   land in the next hour).
 - `unknown-zone` and `unknown` peers are reported but never priced. Provider-side discounts, tiers, NAT gateway or load

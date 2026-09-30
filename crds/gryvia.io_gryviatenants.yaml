@@ -150,6 +150,22 @@ spec:
                         type: string
                     type: object
                 type: object
+              oidcGroupRole:
+                description: 'OIDCGroupRole is the tenant role given to oidcGroups:
+                  viewer, member or admin'
+                enum:
+                - viewer
+                - member
+                - admin
+                type: string
+              oidcGroups:
+                description: |-
+                  OIDCGroups lists identity-provider groups that get Kubernetes access to the tenant
+                  namespace with the role oidcGroupRole (default member). Requires the API server to
+                  accept the group claim (--oidc-groups-claim); the gateway resolves tenants separately.
+                items:
+                  type: string
+                type: array
               parentTenant:
                 description: ParentTenant for hierarchical organization
                 type: string

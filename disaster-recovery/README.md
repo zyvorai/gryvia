@@ -7,11 +7,11 @@ Comprehensive disaster recovery and business continuity for Gryvia.
 > `BackupPolicy`, `DataReplication`, `MultiRegionConfig` and `DRDrill` kinds do not exist, the `kfctl` CLI
 > used throughout does not exist (the `gryvia` CLI has no `backup`, `restore` or `dr` command), and the
 > `gryvia_backup_*` / replication metrics are not exported. The RPO/RTO tiers are targets you would have
-> to design and test, not measured or promised figures. What does exist is `tools/backup-restore.sh`, a
-> manual kubectl-based script that saves the Gryvia CRDs, GryviaGpuNode/AIJob/Quota/Storage/Network
-> objects, gryvia-system ConfigMaps and RBAC to a tar.gz (Secrets are deliberately skipped; see
-> `tools/README.md`). It does not back up checkpoints, datasets, PVC contents or model artifacts, and a
-> restore has not been validated on a real cluster. Use a proper cluster backup tool (for example Velero
+> to design and test, not measured or promised figures. What does exist is `scripts/backup-crs.sh`, a manual
+> kubectl-based export/restore of every `gryvia.io` custom resource (no Secrets, namespaces or CRDs; see
+> `website/docs/guides/OPERATIONS.md`). Its round trip is exercised on a kind cluster by `scripts/upgrade-test.sh`
+> in CI. It does not back up checkpoints, datasets, PVC contents or model artifacts, and a restore has not been
+> validated on a production cluster. Use a proper cluster backup tool (for example Velero
 > plus your storage vendor's replication) for real DR.
 
 ## Overview

@@ -257,20 +257,18 @@ helm upgrade gryvia ./helm/gryvia -n gryvia-system --reuse-values \
   --set gpuOperator.replicas=2 --set aiOperator.replicas=2 --set quotaOperator.replicas=2
 ```
 
-`ha.enabled` exists in `values.yaml` but no template reads it; `podDisruptionBudget.enabled` is the related switch that
-does something. There are no `highAvailability.*` or `networkIntelligenceOperator.*` values; the network-intelligence
+There is no `ha.enabled` value (only `ha.leaderElection`); `podDisruptionBudget.enabled` is the related switch. There are no `highAvailability.*` or `networkIntelligenceOperator.*` values; the network-intelligence
 operator has its own chart (`operator.replicas`, `ha.*`). No failover test has been published.
 
 ### GPU pricing
 
 Prices come from the `GryviaGpuSku` catalog (`gryvia catalog`, the dashboard Catalog page, `POST /api/skus`). With no
-SKUs, a built-in default table is used. The old `gpu-pricing` ConfigMap is not read, and `quotaOperator.pricing` in
-`values.yaml` is not consumed by any chart template. See [GPU as a Service](./GPU_AS_A_SERVICE.md).
+SKUs, a built-in default table is used. The old `gpu-pricing` ConfigMap is not read, and there is no `quotaOperator.pricing` value. See [GPU as a Service](./GPU_AS_A_SERVICE.md).
 
 ### Backup
 
 Gryvia keeps its state in custom resources; see [Operations](./OPERATIONS.md) for export, restore, upgrade and
-uninstall, and `tools/backup-restore.sh`. A cluster-level tool such as Velero can also back up the namespaces; that is
+uninstall, and `scripts/backup-crs.sh`. A cluster-level tool such as Velero can also back up the namespaces; that is
 independent of Gryvia and not tested with it.
 
 ## Troubleshooting

@@ -115,6 +115,10 @@ type Status struct {
 	GPUComputeMeasured     bool    `json:"gpuComputeMeasured"`
 	GPUCorrelationCoverage float64 `json:"gpuCorrelationCoverage"`
 
+	// SampleCount is the number of signals folded into this status (the weight the ai-operator
+	// gives this node when it averages ratios across a job's nodes).
+	SampleCount int `json:"sampleCount"`
+
 	ScoreDelta float64   `json:"scoreDelta"`
 	UpdatedAt  time.Time `json:"updatedAt"`
 }
@@ -303,6 +307,7 @@ func (f *Folder) correlateGPU(st *Status, k JobKey, colls []sample, from time.Ti
 
 func fold(list, colls []sample, gdsDirect bool, window time.Duration) Status {
 	var st Status
+	st.SampleCount = len(list) + len(colls)
 	var lat, inferLat, ucxLat []float64
 	var errs, posted, direct, total, overlapNS, cnps, pfcs uint64
 	var nicRetry, nicErr, nicCNP, nicPause uint64

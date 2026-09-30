@@ -87,6 +87,10 @@ Metric families include `gryvia_network_*` (flow bytes, latency, active connecti
 | `-window` | `300` | Aggregation window in seconds |
 | `-nats-url` | empty | Accepted but not implemented: no NATS connection is made |
 
+## Overhead
+
+CPU of the collector and the kernel-side cost of its programs, measured on one host: [`docs/ebpf-overhead.md`](../docs/ebpf-overhead.md).
+
 ## Building and deploying
 
 ```bash

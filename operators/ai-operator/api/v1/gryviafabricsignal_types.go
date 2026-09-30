@@ -16,6 +16,52 @@ type GryviaFabricSignalSpec struct {
 	ObserveOnly *bool `json:"observeOnly,omitempty"`
 }
 
+// FabricNodeStatus is what ONE node's collector measured for the job (collector flag
+// -fabric-status-per-node). Each collector owns only its entry (server-side apply, field manager
+// gryvia-collector-<node>), so nodes cannot overwrite each other. A nil field means the node did
+// not measure it. With the ai-operator's --merge-fabric-signals the fresh entries are folded into
+// the top-level status fields.
+type FabricNodeStatus struct {
+	// Node is the Kubernetes node the collector runs on (list map key)
+	Node string `json:"node"`
+
+	// MeasuredAt is when the collector wrote this entry
+	MeasuredAt metav1.Time `json:"measuredAt"`
+
+	// TTLSeconds is how long the entry stays valid after measuredAt; older entries are ignored
+	// +kubebuilder:default=300
+	// +kubebuilder:validation:Minimum=1
+	TTLSeconds int32 `json:"ttlSeconds,omitempty"`
+
+	// SampleCount is the number of signals folded into the entry (the weight of its ratios)
+	// +kubebuilder:validation:Minimum=0
+	SampleCount int64 `json:"sampleCount,omitempty"`
+
+	StragglerRank          *int32   `json:"stragglerRank,omitempty"`
+	NCCLP99Ms              *float64 `json:"ncclP99ms,omitempty"`
+	RDMARetryRate          *float64 `json:"rdmaRetryRate,omitempty"`
+	GDSHitRatio            *float64 `json:"gdsHitRatio,omitempty"`
+	OverlapIdleRatio       *float64 `json:"overlapIdleRatio,omitempty"`
+	CNPRate                *float64 `json:"cnpRate,omitempty"`
+	InferWaitP99Ms         *float64 `json:"inferWaitP99ms,omitempty"`
+	PFCRate                *float64 `json:"pfcRate,omitempty"`
+	ExfilEvents            *int64   `json:"exfilEvents,omitempty"`
+	CollectiveMaxSkewMs    *float64 `json:"collectiveMaxSkewMs,omitempty"`
+	GPUIdleDuringCommRatio *float64 `json:"gpuIdleDuringCommRatio,omitempty"`
+	SMActiveDuringCompute  *float64 `json:"smActiveDuringCompute,omitempty"`
+	GPUCorrelationCoverage *float64 `json:"gpuCorrelationCoverage,omitempty"`
+	ScoreDelta             *float64 `json:"scoreDelta,omitempty"`
+	Engine                 *string  `json:"engine,omitempty"`
+	TTFTP99Ms              *float64 `json:"ttftP99ms,omitempty"`
+	ITLP99Ms               *float64 `json:"itlP99ms,omitempty"`
+	QueueTimeP99Ms         *float64 `json:"queueTimeP99ms,omitempty"`
+	E2EP99Ms               *float64 `json:"e2eP99ms,omitempty"`
+	QueueTimeMeanMs        *float64 `json:"queueTimeMeanMs,omitempty"`
+	E2EMeanMs              *float64 `json:"e2eMeanMs,omitempty"`
+	RequestsWaiting        *int64   `json:"requestsWaiting,omitempty"`
+	KVCacheUsage           *float64 `json:"kvCacheUsage,omitempty"`
+}
+
 // GryviaFabricSignalStatus defines the observed state of GryviaFabricSignal
 type GryviaFabricSignalStatus struct {
 	// StragglerRank is the rank of the most recent NCCL straggler
@@ -109,6 +155,14 @@ type GryviaFabricSignalStatus struct {
 
 	// UpdatedAt is the time the status was last refreshed from collector signals
 	UpdatedAt *metav1.Time `json:"updatedAt,omitempty"`
+
+	// Nodes holds one entry per collector node (collector flag -fabric-status-per-node); empty in
+	// the default mode. The ai-operator (--merge-fabric-signals) folds the fresh entries into the
+	// fields above: max for degradation metrics, sample-weighted means for ratios
+	// +listType=map
+	// +listMapKey=node
+	// +kubebuilder:validation:MaxItems=256
+	Nodes []FabricNodeStatus `json:"nodes,omitempty"`
 }
 
 //+kubebuilder:object:root=true

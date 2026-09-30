@@ -225,7 +225,7 @@ func (r *GryviaCostPredictorReconciler) updateAccuracyMetrics(
 
 		// Calculate actual cost (GPU hours * rate)
 		rate := getJobGPURate(costPredictor, job.Spec.GpuType)
-		actualCost := rate * actualDuration.Hours() * float64(job.Spec.GPUs)
+		actualCost := rate * actualDuration.Hours() * float64(job.Spec.TotalGPUs())
 
 		// Parse estimated duration
 		estimatedDurationStr := job.Annotations[annotationEstimatedDuration]

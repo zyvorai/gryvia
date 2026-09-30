@@ -17,6 +17,42 @@ operator:
       memory: 128Mi
   nodeSelector: {}
   tolerations: []
+  # Where the operator's controllers read their data (docs/network-intelligence-sources.md). Off by default:
+  # nothing below is rendered and the operator starts with its built-in defaults (it looks for collector pods in
+  # its own namespace and sends unsigned requests; objects then say SourceAvailable=False when nothing answers).
+  # When enabled, the chart also grants the operator the RBAC its controllers need (its own ten kinds, read of
+  # GryviaFabricSignal / GryviaNetworkUsageRecord / GryviaNetworkRate, CiliumNetworkPolicy management). NOT yet
+  # run on a cluster; the e2e workflow .github/workflows/e2e-netintel.yml proves the operator side with a fake collector.
+  sources:
+    enabled: false
+    collector:
+      # Namespace of the collector pods; empty means the release namespace (namespace.name).
+      namespace: ""
+      port: 9090
+      # Secret in the release namespace holding the collector API token (the one behind
+      # ebpf.security.apiTokenSecret); mounted and read on every request, requests are HMAC-signed with it.
+      # Empty defaults to ebpf.security.apiTokenSecret; if both are empty requests are unsigned.
+      tokenSecret: ""
+      tokenKey: token
+      # https to the collectors. caSecret holds the CA bundle that signed the collector certificate (key caKey);
+      # empty with tls=true uses the system trust store. serverName is the certificate name to verify (collectors
+      # are reached by pod IP, so the certificate must carry it; the default matches ebpf.security.tls.certManager.dnsNames).
+      tls: false
+      caSecret: ""
+      caKey: ca.crt
+      serverName: gryvia-collector
+      # mTLS client certificate (Secret with tls.crt/tls.key) for collectors run with ebpf.security.tls.clientCA.
+      clientCertSecret: ""
+      timeout: 5s
+    # Netra flow history for GryviaTraceSession and GryviaFlowPolicy.status.matchedFlows (env GRYVIA_NETRA_URL/TOKEN).
+    netra:
+      url: ""
+      # Secret (release namespace) with the bearer token; empty sends none.
+      tokenSecret: ""
+      tokenKey: token
+      # Secret with a CA bundle (key caKey) for an https Netra with a private CA.
+      caSecret: ""
+      caKey: ca.crt
 
 # eBPF Collector configuration
 collector:
@@ -63,6 +99,12 @@ ebpf:
   # ClusterRole additionally gets list on gryviafabricsignals and patch on gryviafabricsignals/status; it creates
   # nothing. Jobs are attributed through the Flight Recorder's pod resolver (needs NODE_NAME, set by this chart).
   publishFabricStatus: false
+  # With publishFabricStatus: write this node's measurements as its own entry in status.nodes[] (server-side apply,
+  # field manager gryvia-collector-<node>, ttl 5 min) instead of merge-patching the top-level status, so collectors
+  # of one job's nodes stop overwriting each other. Needs the ai-operator with aiOperator.mergeFabricSignals (in the
+  # gryvia chart) to fold the entries into the top-level status; without it only status.nodes[] is filled.
+  # No extra RBAC. Off by default (flag -fabric-status-per-node). See docs/fabric-status.md.
+  fabricStatusPerNode: false
   # Publish this node's fabric health (worst scoreDelta + top reasons, ttl 5 min) into the cluster-scoped
   # GryviaNodeFabric named after the node, every 30 s (flag -publish-node-fabric). Off by default. When on, the
   # collector ClusterRole additionally gets create and patch on gryvianodefabrics (Kubernetes RBAC cannot limit
@@ -211,12 +253,13 @@ prometheus:
     interval: 15s
     namespace: ""
     additionalLabels: {}
-
-# Reserved and currently NOT read by any template or by the operator (no auto-blocking exists). The operator
-# binary has no --security-* flags; passing them made it exit at start-up, so the chart no longer passes them.
-security:
-  enabled: true
-  autoBlock: false
+  # Optional, OFF by default: also install the Gryvia alert rules (PrometheusRule, needs the Prometheus Operator CRD) and the
+  # Grafana dashboards ConfigMap (label grafana_dashboard: "1"), from monitoring-assets/ (a copy of monitoring/ kept in sync by
+  # scripts/sync-monitoring-assets.sh). Enable them in ONE chart only: the gryvia chart's monitoring.* installs the same assets.
+  rules:
+    enabled: false
+  dashboards:
+    enabled: false
 
 # Namespace configuration
 namespace:
@@ -239,7 +282,6 @@ serviceAccount:
 
 # High availability
 ha:
-  enabled: false
   leaderElection: true
 
 # Container-level security context for the operator
@@ -267,8 +309,3 @@ fullnameOverride: ""
 # Image pull secrets
 imagePullSecrets: []
 
-# Global labels
-labels: {}
-
-# Global annotations
-annotations: {}

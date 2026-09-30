@@ -1,78 +1,39 @@
-#!/bin/bash
-# Automated deployment script for complete Gryvia setup
+#!/usr/bin/env bash
+# Install Gryvia from this checkout's Helm chart and apply the example manifest.
+#
+#   ./deploy.sh                         # install, wait, then apply production-deployment.yaml
+#   SKIP_EXAMPLES=1 ./deploy.sh         # install only
+#   GRYVIA_API_KEY=... ./deploy.sh      # sign-in key (default: the well-known lab key Admin@321)
+#
+# This runs scripts/install.sh with GRYVIA_CHART=./helm/gryvia (helm install of the chart with
+# namespace.create=false and --create-namespace, waiting for the workloads), then waits for the gateway and
+# UI and applies production-deployment.yaml. That manifest holds example endpoints, hardware and capacities and
+# <REPLACE_WITH_*> credential placeholders: edit it first, or set SKIP_EXAMPLES=1. Not run on real GPU, VAST or
+# InfiniBand hardware.
+set -euo pipefail
 
-set -e
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$HERE/../.." && pwd)"
+NS="${GRYVIA_NAMESPACE:-gryvia-system}"
 
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m'
-
-echo -e "${GREEN}Gryvia Complete Setup Deployment${NC}"
-echo "========================================"
-
-# Check prerequisites
-echo -e "\n${YELLOW}Checking prerequisites...${NC}"
-command -v kubectl >/dev/null 2>&1 || { echo -e "${RED}kubectl required${NC}"; exit 1; }
-command -v helm >/dev/null 2>&1 || { echo -e "${RED}helm required${NC}"; exit 1; }
-
-# Create namespace
-echo -e "\n${YELLOW}Creating namespace...${NC}"
-kubectl create namespace gryvia-system --dry-run=client -o yaml | kubectl apply -f -
-
-# Deploy CRDs
-echo -e "\n${YELLOW}Deploying CRDs...${NC}"
-kubectl apply -f ../../crds/
-
-# Deploy operators
-echo -e "\n${YELLOW}Deploying operators...${NC}"
-for op in gpu-operator ai-operator storage-operator network-operator quota-operator; do
-    echo "  - $op"
-    kubectl apply -f ../../operators/$op/config/deployment.yaml
+for tool in kubectl helm; do
+  command -v "$tool" >/dev/null 2>&1 || { echo "$tool is required but not installed" >&2; exit 1; }
 done
 
-# Wait for operators
-echo -e "\n${YELLOW}Waiting for operators to be ready...${NC}"
-sleep 10
-kubectl wait --for=condition=available --timeout=300s \
-    -n gryvia-system \
-    deployment/gryvia-gpu-operator \
-    deployment/gryvia-ai-operator \
-    deployment/gryvia-storage-operator \
-    deployment/gryvia-network-operator \
-    deployment/gryvia-quota-operator
+echo "Installing Gryvia from $ROOT/helm/gryvia into namespace $NS ..."
+GRYVIA_CHART="$ROOT/helm/gryvia" GRYVIA_NAMESPACE="$NS" "$ROOT/scripts/install.sh"
 
-# Deploy GPU nodes
-echo -e "\n${YELLOW}Configuring GPU nodes...${NC}"
-kubectl apply -f gpu-nodes/
+echo "Waiting for the gateway and UI ..."
+kubectl -n "$NS" wait --for=condition=available --timeout=300s deployment/gryvia-api-gateway deployment/gryvia-ui
 
-# Deploy storage
-echo -e "\n${YELLOW}Configuring storage...${NC}"
-kubectl apply -f storage-config.yaml
-
-# Deploy network
-echo -e "\n${YELLOW}Configuring network...${NC}"
-kubectl apply -f network-config.yaml
-
-# Create quotas
-echo -e "\n${YELLOW}Creating team quotas...${NC}"
-kubectl apply -f quotas/
-
-# Deploy monitoring
-echo -e "\n${YELLOW}Deploying monitoring stack...${NC}"
-kubectl apply -f ../../monitoring/
-
-# Deploy API Gateway and Web UI
-echo -e "\n${YELLOW}Deploying Web UI...${NC}"
-kubectl apply -f ../../manifests/deploy/api-gateway-deployment.yaml
-kubectl apply -f ../../manifests/deploy/ui-deployment.yaml
-
-echo -e "\n${GREEN}========================================"
-echo "Deployment complete!"
-echo "========================================${NC}"
-echo ""
-echo "Next steps:"
-echo "  1. Access Web UI: kubectl port-forward -n gryvia-system svc/gryvia-ui 8443:443"
-echo "  2. Submit example jobs: kubectl apply -f jobs/"
-echo "  3. Monitor: kubectl port-forward -n gryvia-system svc/prometheus-grafana 3000:80"
-echo ""
+if [[ "${SKIP_EXAMPLES:-}" == "1" ]]; then
+  echo "SKIP_EXAMPLES=1: not applying the example manifest."
+  exit 0
+fi
+if grep -q '<REPLACE_WITH_' "$HERE/production-deployment.yaml"; then
+  echo "production-deployment.yaml still contains <REPLACE_WITH_*> placeholders; edit it, then run:" >&2
+  echo "  kubectl apply -f $HERE/production-deployment.yaml" >&2
+  exit 1
+fi
+kubectl apply -f "$HERE/production-deployment.yaml"
+echo "Applied production-deployment.yaml. Check: kubectl get gryviaaijobs -n default"

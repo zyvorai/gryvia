@@ -29,553 +29,791 @@ const (
 	PhaseRollingBack    = "RollingBack"
 
 	// Condition types for inference service
-	ConditionInferenceReady = "InferenceReady"
-	ConditionCanaryActive   = "CanaryActive"
-	ConditionHealthy        = "Healthy"
+	ConditionInferenceReady   = "InferenceReady"
+	ConditionCanaryActive     = "CanaryActive"
+	ConditionHealthy          = "Healthy"
+	ConditionAutoscalingValid = "AutoscalingValid"
+
+	annotationSpecHash        = "gryvia.io/spec-hash"
+	annotationModelVersion    = "gryvia.io/model-version"
+	annotationPromoted        = "gryvia.io/promoted-version"
+	annotationRolledBack      = "gryvia.io/rolled-back-version"
+	labelTrack                = "gryvia.io/track"
+	trackStable, trackCanary  = "stable", "canary"
+	canaryHealthPending       = "Pending"
+	canaryHealthHealthy       = "Healthy"
+	canaryHealthUnhealthy     = "Unhealthy"
+	canaryHealthPromoted      = "Promoted"
+	canaryHealthRolledBack    = "RolledBack"
+	defaultCPURequest         = "250m"
+	defaultHealthIntervalSecs = 30
 )
 
-// GryviaInferenceServiceReconciler reconciles a GryviaInferenceService object
+// DefaultInferenceImages are the images used when spec.image is empty and no --inference-image-<backend> flag is
+// set. They are unpinned/unverified defaults: pin your own for production.
+var DefaultInferenceImages = map[gryviav1.InferenceBackend]string{
+	gryviav1.BackendVLLM:        "vllm/vllm-openai:latest",
+	gryviav1.BackendTriton:      "nvcr.io/nvidia/tritonserver:24.01-py3",
+	gryviav1.BackendTensorRTLLM: "nvcr.io/nvidia/tritonserver:24.01-trtllm-python-py3",
+	gryviav1.BackendTorchServe:  "pytorch/torchserve:latest-gpu",
+}
+
+// backendDefaults: the port and the readiness path each server answers on out of the box.
+var backendDefaults = map[gryviav1.InferenceBackend]struct {
+	port int32
+	path string
+}{
+	gryviav1.BackendVLLM:        {8000, "/health"},
+	gryviav1.BackendTriton:      {8000, "/v2/health/ready"},
+	gryviav1.BackendTensorRTLLM: {8000, "/v2/health/ready"},
+	gryviav1.BackendTorchServe:  {8080, "/ping"},
+}
+
+// GryviaInferenceServiceReconciler reconciles a GryviaInferenceService object.
+//
+// It creates a stable Deployment "<name>-inference", a ClusterIP Service of the same name, an optional HPA
+// "<name>-inference-hpa" and, while spec.canary is enabled, a canary Deployment "<name>-canary". The Service
+// selects stable and canary pods alike, so the traffic split is proportional to the replica counts (the canary
+// gets about weight% of the pods): this is not weighted routing, which needs a mesh or an ingress controller.
 type GryviaInferenceServiceReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Log    logr.Logger
+
+	// Images overrides DefaultInferenceImages per backend (used when spec.image is empty).
+	Images map[gryviav1.InferenceBackend]string
+	// HealthPath, when set, replaces the per-backend default readiness path (spec.healthCheck.path still wins).
+	HealthPath string
+	// CanaryStartupGrace is how long a new canary may take to become ready before it counts as failing.
+	CanaryStartupGrace time.Duration
+	// Clock returns the current time (time.Now when nil); tests move it.
+	Clock func() time.Time
 }
 
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviainferenceservices,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviainferenceservices/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviainferenceservices/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviamodelregistries,verbs=get;list;watch
 //+kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=autoscaling,resources=horizontalpodautoscalers,verbs=get;list;watch;create;update;patch;delete
 
-// Reconcile is part of the main kubernetes reconciliation loop
+func inferPrimaryName(svc *gryviav1.GryviaInferenceService) string {
+	return childName(svc.Name, "inference")
+}
+func inferCanaryName(svc *gryviav1.GryviaInferenceService) string {
+	return childName(svc.Name, "canary")
+}
+func inferHPAName(svc *gryviav1.GryviaInferenceService) string {
+	return childName(svc.Name, "inference", "hpa")
+}
+
+func (r *GryviaInferenceServiceReconciler) port(svc *gryviav1.GryviaInferenceService) int32 {
+	if svc.Spec.ServicePort > 0 {
+		return svc.Spec.ServicePort
+	}
+	if d, ok := backendDefaults[svc.Spec.Backend]; ok {
+		return d.port
+	}
+	return 8080
+}
+
+func (r *GryviaInferenceServiceReconciler) healthPath(svc *gryviav1.GryviaInferenceService) string {
+	if svc.Spec.HealthCheck != nil && svc.Spec.HealthCheck.Path != "" {
+		return svc.Spec.HealthCheck.Path
+	}
+	if r.HealthPath != "" {
+		return r.HealthPath
+	}
+	if d, ok := backendDefaults[svc.Spec.Backend]; ok {
+		return d.path
+	}
+	return "/health"
+}
+
+func (r *GryviaInferenceServiceReconciler) image(svc *gryviav1.GryviaInferenceService) (string, error) {
+	if svc.Spec.Image != "" {
+		return svc.Spec.Image, nil
+	}
+	if img := r.Images[svc.Spec.Backend]; img != "" {
+		return img, nil
+	}
+	if img := DefaultInferenceImages[svc.Spec.Backend]; img != "" {
+		return img, nil
+	}
+	return "", fmt.Errorf("unknown backend %q and no spec.image", svc.Spec.Backend)
+}
+
+// Reconcile drives one GryviaInferenceService towards its spec.
 func (r *GryviaInferenceServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("gryviainferenceservice", req.NamespacedName)
 
-	// Fetch the GryviaInferenceService instance
 	svc := &gryviav1.GryviaInferenceService{}
-	err := r.Get(ctx, req.NamespacedName, svc)
-	if err != nil {
+	if err := r.Get(ctx, req.NamespacedName, svc); err != nil {
 		if errors.IsNotFound(err) {
-			log.Info("GryviaInferenceService resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		log.Error(err, "Failed to get GryviaInferenceService")
 		return ctrl.Result{}, err
 	}
+	if !svc.DeletionTimestamp.IsZero() {
+		return ctrl.Result{}, nil // children are garbage-collected through their owner reference
+	}
 
-	// Handle deletion
-	if !svc.ObjectMeta.DeletionTimestamp.IsZero() {
+	orig := svc.DeepCopy()
+	res, err := r.reconcileService(ctx, svc)
+	if perr := patchStatus(ctx, r.Client, svc, orig); perr != nil {
+		log.Error(perr, "Failed to patch inference service status")
+		if err == nil {
+			err = perr
+		}
+	}
+	return res, err
+}
+
+func (r *GryviaInferenceServiceReconciler) failSvc(svc *gryviav1.GryviaInferenceService, err error) {
+	svc.Status.Phase = PhaseFailed
+	svc.Status.Message = err.Error()
+	setCondition(&svc.Status.Conditions, svc.Generation, ConditionInferenceReady, metav1.ConditionFalse, "Invalid", err.Error())
+}
+
+func (r *GryviaInferenceServiceReconciler) reconcileService(ctx context.Context, svc *gryviav1.GryviaInferenceService) (ctrl.Result, error) {
+	if svc.Status.Phase == PhaseFailed {
+		svc.Status.Message = "" // a failure message from an earlier pass no longer applies once the spec is valid again
+	}
+	if svc.Spec.ModelRef == "" {
+		r.failSvc(svc, fmt.Errorf("spec.modelRef is required"))
+		return ctrl.Result{}, nil
+	}
+	if _, err := r.image(svc); err != nil {
+		r.failSvc(svc, err)
 		return ctrl.Result{}, nil
 	}
 
-	// Initialize status
-	if svc.Status.Phase == "" {
-		svc.Status.Phase = PhasePending
-		if err := r.Status().Update(ctx, svc); err != nil {
-			log.Error(err, "Failed to initialize inference service status")
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{Requeue: true}, nil
-	}
+	model := r.lookupModel(ctx, svc)
 
-	// Reconcile the inference service
-	result, err := r.reconcileInferenceService(ctx, svc)
+	primary, err := r.ensureDeployment(ctx, svc, model)
 	if err != nil {
-		log.Error(err, "Failed to reconcile inference service")
-		return result, err
-	}
-
-	return result, nil
-}
-
-func (r *GryviaInferenceServiceReconciler) reconcileInferenceService(ctx context.Context, svc *gryviav1.GryviaInferenceService) (ctrl.Result, error) {
-	log := r.Log.WithValues("gryviainferenceservice", svc.Name)
-
-	// Phase 1: Ensure primary Deployment
-	if err := r.ensureDeployment(ctx, svc); err != nil {
-		log.Error(err, "Failed to ensure deployment")
+		if isConfigError(err) {
+			r.failSvc(svc, err)
+			return ctrl.Result{}, nil
+		}
 		return ctrl.Result{RequeueAfter: 15 * time.Second}, err
 	}
-
-	// Phase 2: Ensure Service
 	if err := r.ensureService(ctx, svc); err != nil {
-		log.Error(err, "Failed to ensure service")
+		if isConfigError(err) {
+			r.failSvc(svc, err)
+			return ctrl.Result{}, nil
+		}
+		return ctrl.Result{RequeueAfter: 15 * time.Second}, err
+	}
+	if err := r.reconcileHPA(ctx, svc); err != nil {
 		return ctrl.Result{RequeueAfter: 15 * time.Second}, err
 	}
 
-	// Phase 3: Ensure HPA if autoscaling is enabled
-	if svc.Spec.Autoscaling != nil && svc.Spec.Autoscaling.Enabled {
-		if err := r.ensureHPA(ctx, svc); err != nil {
-			log.Error(err, "Failed to ensure HPA")
-			// Non-fatal, continue
-		}
-	}
-
-	// Phase 4: Handle canary deployment
-	if svc.Spec.Canary != nil && svc.Spec.Canary.Enabled {
-		if err := r.reconcileCanary(ctx, svc); err != nil {
-			log.Error(err, "Failed to reconcile canary")
-		}
-	}
-
-	// Phase 5: Update status from Deployment
-	if err := r.syncDeploymentStatus(ctx, svc); err != nil {
-		log.Error(err, "Failed to sync deployment status")
-	}
-
-	// Phase 6: Health checks and auto-rollback
-	if svc.Spec.HealthCheck != nil && svc.Spec.HealthCheck.AutoRollback {
-		r.checkHealthAndRollback(ctx, svc)
-	}
-
-	if err := r.Status().Update(ctx, svc); err != nil {
-		log.Error(err, "Failed to update inference service status")
-		return ctrl.Result{}, err
-	}
-
-	return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
-}
-
-// ensureDeployment creates or updates the inference Deployment.
-func (r *GryviaInferenceServiceReconciler) ensureDeployment(ctx context.Context, svc *gryviav1.GryviaInferenceService) error {
-	deployName := fmt.Sprintf("%s-inference", svc.Name)
-	deploy := &appsv1.Deployment{}
-	err := r.Get(ctx, types.NamespacedName{Namespace: svc.Namespace, Name: deployName}, deploy)
-
-	desired := r.buildDeployment(svc, deployName, false)
-
-	if err != nil && errors.IsNotFound(err) {
-		if err := controllerutil.SetControllerReference(svc, desired, r.Scheme); err != nil {
-			return err
-		}
-		svc.Status.DeploymentName = deployName
-		return r.Create(ctx, desired)
-	}
+	next := 30 * time.Second
+	canaryWait, err := r.reconcileCanary(ctx, svc, primary, model)
 	if err != nil {
-		return err
+		return ctrl.Result{RequeueAfter: 15 * time.Second}, err
+	}
+	if canaryWait > 0 {
+		next = minDuration(next, canaryWait)
 	}
 
-	// Update if image or replicas changed
-	needsUpdate := false
-	if *deploy.Spec.Replicas != *desired.Spec.Replicas {
-		deploy.Spec.Replicas = desired.Spec.Replicas
-		needsUpdate = true
+	// Re-read the primary: a promotion may just have changed it.
+	live := &appsv1.Deployment{}
+	if err := r.Get(ctx, types.NamespacedName{Namespace: svc.Namespace, Name: inferPrimaryName(svc)}, live); err == nil {
+		primary = live
 	}
-	if len(deploy.Spec.Template.Spec.Containers) > 0 && len(desired.Spec.Template.Spec.Containers) > 0 {
-		if deploy.Spec.Template.Spec.Containers[0].Image != desired.Spec.Template.Spec.Containers[0].Image {
-			deploy.Spec.Template.Spec.Containers[0].Image = desired.Spec.Template.Spec.Containers[0].Image
-			needsUpdate = true
-		}
-	}
-	if needsUpdate {
-		return r.Update(ctx, deploy)
-	}
-
-	svc.Status.DeploymentName = deployName
-	return nil
+	r.syncStatus(svc, primary)
+	return ctrl.Result{RequeueAfter: next}, nil
 }
 
-// buildDeployment constructs the Deployment spec for the inference service.
-func (r *GryviaInferenceServiceReconciler) buildDeployment(svc *gryviav1.GryviaInferenceService, name string, isCanary bool) *appsv1.Deployment {
-	labels := map[string]string{
+// lookupModel returns the registry entry the service serves (nil when it is missing: the service still runs).
+func (r *GryviaInferenceServiceReconciler) lookupModel(ctx context.Context, svc *gryviav1.GryviaInferenceService) *gryviav1.GryviaModelRegistry {
+	m := &gryviav1.GryviaModelRegistry{}
+	if err := r.Get(ctx, types.NamespacedName{Namespace: svc.Namespace, Name: svc.Spec.ModelRef}, m); err != nil {
+		return nil
+	}
+	return m
+}
+
+// ensureDeployment creates the stable Deployment or brings it back to the desired pod template.
+func (r *GryviaInferenceServiceReconciler) ensureDeployment(ctx context.Context, svc *gryviav1.GryviaInferenceService, model *gryviav1.GryviaModelRegistry) (*appsv1.Deployment, error) {
+	name := inferPrimaryName(svc)
+	deploy := &appsv1.Deployment{}
+	err := r.Get(ctx, types.NamespacedName{Namespace: svc.Namespace, Name: name}, deploy)
+	if err != nil && !errors.IsNotFound(err) {
+		return nil, err
+	}
+	notFound := errors.IsNotFound(err)
+	if !notFound && !metav1.IsControlledBy(deploy, svc) {
+		return nil, configError{fmt.Errorf("deployment %q already exists and is not owned by this service", name)}
+	}
+
+	version := ""
+	if !notFound {
+		version = deploy.Annotations[annotationPromoted]
+	}
+	desired, err := r.buildDeployment(svc, model, name, trackStable, version, r.primaryReplicas(svc))
+	if err != nil {
+		return nil, configError{err}
+	}
+
+	if notFound {
+		if err := controllerutil.SetControllerReference(svc, desired, r.Scheme); err != nil {
+			return nil, err
+		}
+		if err := r.Create(ctx, desired); err != nil {
+			return nil, err
+		}
+		svc.Status.DeploymentName = name
+		return desired, nil
+	}
+
+	base := deploy.DeepCopy()
+	changed := false
+	if deploy.Annotations[annotationSpecHash] != desired.Annotations[annotationSpecHash] {
+		deploy.Spec.Template = desired.Spec.Template
+		deploy.Spec.Selector = base.Spec.Selector // immutable
+		if deploy.Annotations == nil {
+			deploy.Annotations = map[string]string{}
+		}
+		deploy.Annotations[annotationSpecHash] = desired.Annotations[annotationSpecHash]
+		changed = true
+	}
+	// With an HPA the autoscaler owns the replica count: only reset it when there is none.
+	if !autoscalingEnabled(svc) && (deploy.Spec.Replicas == nil || *deploy.Spec.Replicas != *desired.Spec.Replicas) {
+		deploy.Spec.Replicas = desired.Spec.Replicas
+		changed = true
+	}
+	if changed {
+		if err := r.Patch(ctx, deploy, client.MergeFrom(base)); err != nil {
+			return nil, err
+		}
+	}
+	svc.Status.DeploymentName = name
+	return deploy, nil
+}
+
+func autoscalingEnabled(svc *gryviav1.GryviaInferenceService) bool {
+	return svc.Spec.Autoscaling != nil && svc.Spec.Autoscaling.Enabled
+}
+
+// primaryReplicas is the replica count for a new stable Deployment (clamped into the HPA range when there is one).
+func (r *GryviaInferenceServiceReconciler) primaryReplicas(svc *gryviav1.GryviaInferenceService) int32 {
+	n := svc.Spec.Replicas
+	if n <= 0 {
+		n = 1
+	}
+	if autoscalingEnabled(svc) {
+		if lo, hi, ok := autoscalingRange(svc); ok {
+			if n < lo {
+				n = lo
+			}
+			if n > hi {
+				n = hi
+			}
+		}
+	}
+	return n
+}
+
+// buildDeployment constructs a stable or canary Deployment. version is the model version the pods serve (the
+// promoted or canary version); empty for a service that never promoted a canary.
+func (r *GryviaInferenceServiceReconciler) buildDeployment(svc *gryviav1.GryviaInferenceService, model *gryviav1.GryviaModelRegistry,
+	name, track, version string, replicas int32) (*appsv1.Deployment, error) {
+	image, err := r.image(svc)
+	if err != nil {
+		return nil, err
+	}
+	port := r.port(svc)
+	path := r.healthPath(svc)
+
+	selector := map[string]string{
 		"gryvia.io/inference": svc.Name,
 		"gryvia.io/component": "inference-server",
-	}
-	if isCanary {
-		labels["gryvia.io/canary"] = "true"
-	}
-
-	image := r.getBackendImage(svc)
-	replicas := svc.Spec.Replicas
-	if replicas <= 0 {
-		replicas = 1
-	}
-
-	port := svc.Spec.ServicePort
-	if port <= 0 {
-		port = 8080
-	}
-
-	gpuCount := svc.Spec.GPUCount
-	if gpuCount <= 0 {
-		gpuCount = 1
+		labelTrack:            track,
 	}
 
 	container := corev1.Container{
 		Name:  "inference",
 		Image: image,
 		Args:  svc.Spec.Args,
-		Ports: []corev1.ContainerPort{
-			{
-				Name:          "http",
-				ContainerPort: port,
-				Protocol:      corev1.ProtocolTCP,
-			},
+		Ports: []corev1.ContainerPort{{Name: "http", ContainerPort: port, Protocol: corev1.ProtocolTCP}},
+		Env: []corev1.EnvVar{
+			{Name: "MODEL_NAME", Value: svc.Spec.ModelRef},
+			{Name: "BACKEND", Value: string(svc.Spec.Backend)},
 		},
 		Resources: corev1.ResourceRequirements{
-			Limits: corev1.ResourceList{
-				"nvidia.com/gpu": *resource.NewQuantity(int64(gpuCount), resource.DecimalSI),
-			},
+			Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse(defaultCPURequest)},
+			Limits:   corev1.ResourceList{},
+		},
+		// Model servers can take minutes to load a model: the startup probe holds liveness back for up to 30 min.
+		StartupProbe: &corev1.Probe{
+			ProbeHandler:     corev1.ProbeHandler{HTTPGet: &corev1.HTTPGetAction{Path: path, Port: intstr.FromInt32(port)}},
+			PeriodSeconds:    5,
+			FailureThreshold: 360,
 		},
 		ReadinessProbe: &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				HTTPGet: &corev1.HTTPGetAction{
-					Path: r.getHealthPath(svc),
-					Port: intstr.FromInt32(port),
-				},
-			},
-			InitialDelaySeconds: 30,
-			PeriodSeconds:       10,
+			ProbeHandler:  corev1.ProbeHandler{HTTPGet: &corev1.HTTPGetAction{Path: path, Port: intstr.FromInt32(port)}},
+			PeriodSeconds: 10,
 		},
 		LivenessProbe: &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				HTTPGet: &corev1.HTTPGetAction{
-					Path: r.getHealthPath(svc),
-					Port: intstr.FromInt32(port),
-				},
-			},
-			InitialDelaySeconds: 60,
-			PeriodSeconds:       30,
+			ProbeHandler:  corev1.ProbeHandler{HTTPGet: &corev1.HTTPGetAction{Path: path, Port: intstr.FromInt32(port)}},
+			PeriodSeconds: 30,
+		},
+		SecurityContext: &corev1.SecurityContext{
+			AllowPrivilegeEscalation: boolPtr(false),
+			SeccompProfile:           &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
 		},
 	}
-
-	// Add model reference env var
-	container.Env = []corev1.EnvVar{
-		{Name: "MODEL_NAME", Value: svc.Spec.ModelRef},
-		{Name: "BACKEND", Value: string(svc.Spec.Backend)},
+	// gpuCount 0 (or unset) means a CPU service: no GPU limit.
+	if svc.Spec.GPUCount > 0 {
+		container.Resources.Limits["nvidia.com/gpu"] = *resource.NewQuantity(int64(svc.Spec.GPUCount), resource.DecimalSI)
+	}
+	if version != "" {
+		container.Env = append(container.Env, corev1.EnvVar{Name: "MODEL_VERSION", Value: version})
+	}
+	if track == trackCanary {
+		container.Env = append(container.Env, corev1.EnvVar{Name: "CANARY_MODEL", Value: version})
 	}
 
-	nodeSelector := map[string]string{}
+	var volumes []corev1.Volume
+	if model != nil {
+		art := model.Spec.Artifacts
+		if art.S3Path != "" {
+			container.Env = append(container.Env, corev1.EnvVar{Name: "MODEL_S3_PATH", Value: art.S3Path})
+		}
+		if art.Format != "" {
+			container.Env = append(container.Env, corev1.EnvVar{Name: "MODEL_FORMAT", Value: art.Format})
+		}
+		if art.PVCName != "" {
+			volumes = append(volumes, corev1.Volume{Name: "model", VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: art.PVCName, ReadOnly: true},
+			}})
+			container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
+				Name: "model", MountPath: "/models", SubPath: art.SubPath, ReadOnly: true,
+			})
+			container.Env = append(container.Env, corev1.EnvVar{Name: "MODEL_PATH", Value: "/models"})
+		}
+	}
+	if svc.Spec.GPUCount > 0 {
+		volumes = append(volumes, corev1.Volume{Name: "shm", VolumeSource: corev1.VolumeSource{
+			EmptyDir: &corev1.EmptyDirVolumeSource{Medium: corev1.StorageMediumMemory},
+		}})
+		container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{Name: "shm", MountPath: "/dev/shm"})
+	}
+
+	var nodeSelector map[string]string
 	if svc.Spec.GPUType != "" && svc.Spec.GPUType != "any" {
-		nodeSelector["gryvia.io/gpu"] = svc.Spec.GPUType
+		nodeSelector = map[string]string{"gryvia.io/gpu": svc.Spec.GPUType}
 	}
 
-	deploy := &appsv1.Deployment{
+	template := corev1.PodTemplateSpec{
+		ObjectMeta: metav1.ObjectMeta{Labels: selector},
+		Spec: corev1.PodSpec{
+			Containers:                   []corev1.Container{container},
+			Volumes:                      volumes,
+			NodeSelector:                 nodeSelector,
+			AutomountServiceAccountToken: boolPtr(false),
+		},
+	}
+	labels := map[string]string{}
+	for k, v := range selector {
+		labels[k] = v
+	}
+	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: svc.Namespace,
 			Labels:    labels,
+			Annotations: map[string]string{
+				annotationSpecHash:     specHash(template),
+				annotationModelVersion: version,
+			},
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &replicas,
-			Selector: &metav1.LabelSelector{
-				MatchLabels: labels,
-			},
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: labels,
-				},
-				Spec: corev1.PodSpec{
-					Containers:   []corev1.Container{container},
-					NodeSelector: nodeSelector,
-				},
-			},
-			Strategy: appsv1.DeploymentStrategy{
-				Type: appsv1.RollingUpdateDeploymentStrategyType,
-			},
+			Selector: &metav1.LabelSelector{MatchLabels: selector},
+			Template: template,
+			Strategy: appsv1.DeploymentStrategy{Type: appsv1.RollingUpdateDeploymentStrategyType},
 		},
-	}
-
-	return deploy
+	}, nil
 }
 
-// getBackendImage returns the default container image for the given backend.
-func (r *GryviaInferenceServiceReconciler) getBackendImage(svc *gryviav1.GryviaInferenceService) string {
-	if svc.Spec.Image != "" {
-		return svc.Spec.Image
-	}
-
-	switch svc.Spec.Backend {
-	case gryviav1.BackendVLLM:
-		return "vllm/vllm-openai:latest"
-	case gryviav1.BackendTriton:
-		return "nvcr.io/nvidia/tritonserver:24.01-py3"
-	case gryviav1.BackendTensorRTLLM:
-		return "nvcr.io/nvidia/tritonserver:24.01-trtllm-python-py3"
-	case gryviav1.BackendTorchServe:
-		return "pytorch/torchserve:latest-gpu"
-	default:
-		return "vllm/vllm-openai:latest"
-	}
-}
-
-// getHealthPath returns the health check path.
-func (r *GryviaInferenceServiceReconciler) getHealthPath(svc *gryviav1.GryviaInferenceService) string {
-	if svc.Spec.HealthCheck != nil && svc.Spec.HealthCheck.Path != "" {
-		return svc.Spec.HealthCheck.Path
-	}
-	return "/health"
-}
-
-// ensureService creates or updates the Kubernetes Service for inference.
+// ensureService creates the ClusterIP Service (stable and canary pods behind one name) and records the endpoint.
 func (r *GryviaInferenceServiceReconciler) ensureService(ctx context.Context, svc *gryviav1.GryviaInferenceService) error {
-	svcName := fmt.Sprintf("%s-inference", svc.Name)
+	name := inferPrimaryName(svc)
+	port := r.port(svc)
 	k8sSvc := &corev1.Service{}
-	err := r.Get(ctx, types.NamespacedName{Namespace: svc.Namespace, Name: svcName}, k8sSvc)
-
-	port := svc.Spec.ServicePort
-	if port <= 0 {
-		port = 8080
-	}
-
-	if err != nil && errors.IsNotFound(err) {
+	err := r.Get(ctx, types.NamespacedName{Namespace: svc.Namespace, Name: name}, k8sSvc)
+	switch {
+	case errors.IsNotFound(err):
 		k8sSvc = &corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      svcName,
+				Name:      name,
 				Namespace: svc.Namespace,
-				Labels: map[string]string{
-					"gryvia.io/inference": svc.Name,
-					"gryvia.io/component": "inference-service",
-				},
+				Labels:    map[string]string{"gryvia.io/inference": svc.Name, "gryvia.io/component": "inference-service"},
 			},
 			Spec: corev1.ServiceSpec{
-				Selector: map[string]string{
-					"gryvia.io/inference": svc.Name,
-					"gryvia.io/component": "inference-server",
-				},
-				Ports: []corev1.ServicePort{
-					{
-						Name:       "http",
-						Port:       port,
-						TargetPort: intstr.FromString("http"),
-						Protocol:   corev1.ProtocolTCP,
-					},
-				},
+				Selector: map[string]string{"gryvia.io/inference": svc.Name, "gryvia.io/component": "inference-server"},
+				Ports: []corev1.ServicePort{{
+					Name: "http", Port: port, TargetPort: intstr.FromString("http"), Protocol: corev1.ProtocolTCP,
+				}},
 				Type: corev1.ServiceTypeClusterIP,
 			},
 		}
-
 		if err := controllerutil.SetControllerReference(svc, k8sSvc, r.Scheme); err != nil {
 			return err
 		}
-
 		if err := r.Create(ctx, k8sSvc); err != nil {
-			return err
+			if errors.IsInvalid(err) {
+				return configError{err}
+			}
+			if !errors.IsAlreadyExists(err) {
+				return err
+			}
 		}
+	case err != nil:
+		return err
+	case !metav1.IsControlledBy(k8sSvc, svc):
+		return configError{fmt.Errorf("service %q already exists and is not owned by this inference service", name)}
+	default:
+		if len(k8sSvc.Spec.Ports) == 1 && k8sSvc.Spec.Ports[0].Port != port {
+			base := k8sSvc.DeepCopy()
+			k8sSvc.Spec.Ports[0].Port = port
+			if err := r.Patch(ctx, k8sSvc, client.MergeFrom(base)); err != nil {
+				return err
+			}
+		}
+	}
+	svc.Status.ServiceName = name
+	svc.Status.Endpoint = fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", name, svc.Namespace, port)
+	return nil
+}
 
-		svc.Status.ServiceName = svcName
-		svc.Status.Endpoint = fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", svcName, svc.Namespace, port)
+// autoscalingRange validates the HPA bounds.
+func autoscalingRange(svc *gryviav1.GryviaInferenceService) (lo, hi int32, ok bool) {
+	a := svc.Spec.Autoscaling
+	lo = a.MinReplicas
+	if lo <= 0 {
+		lo = 1
+	}
+	hi = a.MaxReplicas
+	return lo, hi, hi >= 1 && lo <= hi
+}
+
+// reconcileHPA creates, updates or removes the HorizontalPodAutoscaler. It scales on CPU utilisation only:
+// spec.autoscaling.targetGPUUtilization and targetRequestsPerSecond would need a custom metrics adapter
+// (DCGM/Prometheus) that this controller does not configure, and the status says so instead of pretending.
+func (r *GryviaInferenceServiceReconciler) reconcileHPA(ctx context.Context, svc *gryviav1.GryviaInferenceService) error {
+	name := inferHPAName(svc)
+	existing := &autoscalingv2.HorizontalPodAutoscaler{}
+	err := r.Get(ctx, types.NamespacedName{Namespace: svc.Namespace, Name: name}, existing)
+	if err != nil && !errors.IsNotFound(err) {
+		return err
+	}
+	exists := err == nil
+	if exists && !metav1.IsControlledBy(existing, svc) {
+		setCondition(&svc.Status.Conditions, svc.Generation, ConditionAutoscalingValid, metav1.ConditionFalse, "NameCollision",
+			fmt.Sprintf("HPA %q already exists and is not owned by this inference service", name))
 		return nil
 	}
 
-	svc.Status.ServiceName = svcName
-	svc.Status.Endpoint = fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", svcName, svc.Namespace, port)
-	return err
-}
-
-// ensureHPA creates or updates the HorizontalPodAutoscaler.
-func (r *GryviaInferenceServiceReconciler) ensureHPA(ctx context.Context, svc *gryviav1.GryviaInferenceService) error {
-	hpaName := fmt.Sprintf("%s-inference-hpa", svc.Name)
-	hpa := &autoscalingv2.HorizontalPodAutoscaler{}
-	err := r.Get(ctx, types.NamespacedName{Namespace: svc.Namespace, Name: hpaName}, hpa)
-
-	minReplicas := svc.Spec.Autoscaling.MinReplicas
-	if minReplicas <= 0 {
-		minReplicas = 1
+	if !autoscalingEnabled(svc) {
+		if exists {
+			if err := r.Delete(ctx, existing); err != nil && !errors.IsNotFound(err) {
+				return err
+			}
+		}
+		removeCondition(&svc.Status.Conditions, ConditionAutoscalingValid)
+		return nil
 	}
+
+	lo, hi, ok := autoscalingRange(svc)
+	if !ok {
+		msg := fmt.Sprintf("invalid autoscaling: need maxReplicas >= 1 and minReplicas <= maxReplicas (min %d, max %d); no HPA created",
+			svc.Spec.Autoscaling.MinReplicas, svc.Spec.Autoscaling.MaxReplicas)
+		setCondition(&svc.Status.Conditions, svc.Generation, ConditionAutoscalingValid, metav1.ConditionFalse, "InvalidRange", msg)
+		if exists {
+			if err := r.Delete(ctx, existing); err != nil && !errors.IsNotFound(err) {
+				return err
+			}
+		}
+		return nil
+	}
+	msg := "HPA scales on CPU utilisation (80%)"
+	if svc.Spec.Autoscaling.TargetGPUUtilization > 0 || svc.Spec.Autoscaling.TargetRequestsPerSecond > 0 {
+		msg += "; targetGPUUtilization and targetRequestsPerSecond are not wired to metrics"
+	}
+	setCondition(&svc.Status.Conditions, svc.Generation, ConditionAutoscalingValid, metav1.ConditionTrue, "Valid", msg)
 
 	targetCPU := int32(80)
-
-	metrics := []autoscalingv2.MetricSpec{
-		{
+	spec := autoscalingv2.HorizontalPodAutoscalerSpec{
+		ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{APIVersion: "apps/v1", Kind: "Deployment", Name: inferPrimaryName(svc)},
+		MinReplicas:    &lo,
+		MaxReplicas:    hi,
+		Metrics: []autoscalingv2.MetricSpec{{
 			Type: autoscalingv2.ResourceMetricSourceType,
 			Resource: &autoscalingv2.ResourceMetricSource{
-				Name: corev1.ResourceCPU,
-				Target: autoscalingv2.MetricTarget{
-					Type:               autoscalingv2.UtilizationMetricType,
-					AverageUtilization: &targetCPU,
-				},
+				Name:   corev1.ResourceCPU,
+				Target: autoscalingv2.MetricTarget{Type: autoscalingv2.UtilizationMetricType, AverageUtilization: &targetCPU},
 			},
-		},
+		}},
 	}
-
-	if err != nil && errors.IsNotFound(err) {
-		hpa = &autoscalingv2.HorizontalPodAutoscaler{
+	if !exists {
+		hpa := &autoscalingv2.HorizontalPodAutoscaler{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      hpaName,
-				Namespace: svc.Namespace,
-				Labels: map[string]string{
-					"gryvia.io/inference": svc.Name,
-				},
+				Name:        name,
+				Namespace:   svc.Namespace,
+				Labels:      map[string]string{"gryvia.io/inference": svc.Name},
+				Annotations: map[string]string{annotationSpecHash: specHash(spec)},
 			},
-			Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-				ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
-					APIVersion: "apps/v1",
-					Kind:       "Deployment",
-					Name:       fmt.Sprintf("%s-inference", svc.Name),
-				},
-				MinReplicas: &minReplicas,
-				MaxReplicas: svc.Spec.Autoscaling.MaxReplicas,
-				Metrics:     metrics,
-			},
+			Spec: spec,
 		}
-
 		if err := controllerutil.SetControllerReference(svc, hpa, r.Scheme); err != nil {
 			return err
 		}
-
-		return r.Create(ctx, hpa)
-	}
-
-	return err
-}
-
-// reconcileCanary manages the canary deployment.
-func (r *GryviaInferenceServiceReconciler) reconcileCanary(ctx context.Context, svc *gryviav1.GryviaInferenceService) error {
-	canaryName := fmt.Sprintf("%s-canary", svc.Name)
-
-	// Ensure canary deployment exists
-	deploy := &appsv1.Deployment{}
-	err := r.Get(ctx, types.NamespacedName{Namespace: svc.Namespace, Name: canaryName}, deploy)
-
-	if err != nil && errors.IsNotFound(err) {
-		canaryDeploy := r.buildDeployment(svc, canaryName, true)
-
-		// Override model ref to canary version
-		for i := range canaryDeploy.Spec.Template.Spec.Containers {
-			canaryDeploy.Spec.Template.Spec.Containers[i].Env = append(
-				canaryDeploy.Spec.Template.Spec.Containers[i].Env,
-				corev1.EnvVar{Name: "CANARY_MODEL", Value: svc.Spec.Canary.ModelVersion},
-			)
-		}
-
-		// Canary gets a fraction of the replicas proportional to its weight
-		canaryReplicas := int32(1)
-		canaryDeploy.Spec.Replicas = &canaryReplicas
-
-		if err := controllerutil.SetControllerReference(svc, canaryDeploy, r.Scheme); err != nil {
+		if err := r.Create(ctx, hpa); err != nil && !errors.IsAlreadyExists(err) {
 			return err
 		}
-
-		if err := r.Create(ctx, canaryDeploy); err != nil {
-			return err
-		}
+		return nil
 	}
-
-	// Update canary status
-	if svc.Status.CanaryStatus == nil {
-		now := metav1.Now()
-		svc.Status.CanaryStatus = &gryviav1.CanaryStatus{
-			Active:         true,
-			Weight:         svc.Spec.Canary.Weight,
-			DeploymentName: canaryName,
-			StartedAt:      &now,
+	if existing.Annotations[annotationSpecHash] != specHash(spec) {
+		base := existing.DeepCopy()
+		existing.Spec = spec
+		if existing.Annotations == nil {
+			existing.Annotations = map[string]string{}
 		}
+		existing.Annotations[annotationSpecHash] = specHash(spec)
+		return r.Patch(ctx, existing, client.MergeFrom(base))
 	}
-
-	// Sync canary deployment status
-	canaryDeploy := &appsv1.Deployment{}
-	if err := r.Get(ctx, types.NamespacedName{Namespace: svc.Namespace, Name: canaryName}, canaryDeploy); err == nil {
-		svc.Status.CanaryStatus.ReadyReplicas = canaryDeploy.Status.ReadyReplicas
-		if canaryDeploy.Status.ReadyReplicas > 0 {
-			svc.Status.CanaryStatus.Health = "Healthy"
-		} else {
-			svc.Status.CanaryStatus.Health = "Unhealthy"
-		}
-	}
-
-	// Check for auto-promote
-	if svc.Spec.Canary.AutoPromote && svc.Status.CanaryStatus.StartedAt != nil {
-		elapsed := time.Since(svc.Status.CanaryStatus.StartedAt.Time)
-		promoteAfter := time.Duration(svc.Spec.Canary.PromoteAfterSeconds) * time.Second
-		if promoteAfter > 0 && elapsed > promoteAfter && svc.Status.CanaryStatus.Health == "Healthy" {
-			// Promote canary: update primary deployment to use canary model
-			// and remove canary deployment
-			if err := r.Delete(ctx, &appsv1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{Name: canaryName, Namespace: svc.Namespace},
-			}); err != nil && !errors.IsNotFound(err) {
-				return err
-			}
-			svc.Status.CanaryStatus = nil
-			svc.Status.Message = fmt.Sprintf("Canary promoted: %s", svc.Spec.Canary.ModelVersion)
-		}
-	}
-
-	r.updateInferCondition(svc, ConditionCanaryActive, metav1.ConditionTrue, "CanaryDeployed",
-		fmt.Sprintf("Canary weight: %d%%", svc.Spec.Canary.Weight))
-
 	return nil
 }
 
-// syncDeploymentStatus updates the inference service status based on the Deployment.
-func (r *GryviaInferenceServiceReconciler) syncDeploymentStatus(ctx context.Context, svc *gryviav1.GryviaInferenceService) error {
-	deployName := fmt.Sprintf("%s-inference", svc.Name)
-	deploy := &appsv1.Deployment{}
-	err := r.Get(ctx, types.NamespacedName{Namespace: svc.Namespace, Name: deployName}, deploy)
+func removeCondition(conds *[]metav1.Condition, condType string) {
+	out := (*conds)[:0]
+	for _, c := range *conds {
+		if c.Type != condType {
+			out = append(out, c)
+		}
+	}
+	*conds = out
+}
+
+// canaryReplicas gives the canary the share of pods that matches its weight: with p stable replicas and a canary
+// weight w (percent), c = ceil(p*w/(100-w)) so that c/(p+c) is about w. At least one pod.
+func canaryReplicas(stable, weight int32) int32 {
+	if weight >= 100 {
+		return stable
+	}
+	if weight < 1 {
+		return 1
+	}
+	c := (stable*weight + (100 - weight) - 1) / (100 - weight)
+	if c < 1 {
+		c = 1
+	}
+	return c
+}
+
+// reconcileCanary runs the canary lifecycle: create, health-check, promote (auto), roll back (auto). It returns
+// how soon the next check is due.
+func (r *GryviaInferenceServiceReconciler) reconcileCanary(ctx context.Context, svc *gryviav1.GryviaInferenceService,
+	primary *appsv1.Deployment, model *gryviav1.GryviaModelRegistry) (time.Duration, error) {
+	now := clock(r.Clock)
+	name := inferCanaryName(svc)
+
+	existing := &appsv1.Deployment{}
+	err := r.Get(ctx, types.NamespacedName{Namespace: svc.Namespace, Name: name}, existing)
+	if err != nil && !errors.IsNotFound(err) {
+		return 0, err
+	}
+	exists := err == nil
+	if exists && !metav1.IsControlledBy(existing, svc) {
+		return 0, nil // not ours: leave it alone
+	}
+	deleteCanary := func() error {
+		if !exists {
+			return nil
+		}
+		if err := r.Delete(ctx, existing); err != nil && !errors.IsNotFound(err) {
+			return err
+		}
+		exists = false
+		return nil
+	}
+
+	c := svc.Spec.Canary
+	if c == nil || !c.Enabled {
+		if err := deleteCanary(); err != nil {
+			return 0, err
+		}
+		svc.Status.CanaryStatus = nil
+		svc.Status.ConsecutiveFailures = 0
+		removeCondition(&svc.Status.Conditions, ConditionCanaryActive)
+		return 0, nil
+	}
+	version := c.ModelVersion
+
+	// A canary version that was already promoted or rolled back stays finished until the user picks a new version.
+	if primary.Annotations[annotationPromoted] == version {
+		if err := deleteCanary(); err != nil {
+			return 0, err
+		}
+		svc.Status.CanaryStatus = &gryviav1.CanaryStatus{Active: false, Health: canaryHealthPromoted}
+		setCondition(&svc.Status.Conditions, svc.Generation, ConditionCanaryActive, metav1.ConditionFalse, "Promoted", "Canary "+version+" was promoted")
+		return 0, nil
+	}
+	if primary.Annotations[annotationRolledBack] == version {
+		if err := deleteCanary(); err != nil {
+			return 0, err
+		}
+		svc.Status.CanaryStatus = &gryviav1.CanaryStatus{Active: false, Health: canaryHealthRolledBack}
+		setCondition(&svc.Status.Conditions, svc.Generation, ConditionCanaryActive, metav1.ConditionFalse, "RolledBack", "Canary "+version+" was rolled back")
+		return 0, nil
+	}
+
+	replicas := canaryReplicas(r.primaryReplicas(svc), c.Weight)
+	desired, err := r.buildDeployment(svc, model, name, trackCanary, version, replicas)
 	if err != nil {
-		return err
+		return 0, err
+	}
+	newCanary := !exists || existing.Annotations[annotationModelVersion] != version
+	switch {
+	case !exists:
+		if err := controllerutil.SetControllerReference(svc, desired, r.Scheme); err != nil {
+			return 0, err
+		}
+		if err := r.Create(ctx, desired); err != nil {
+			return 0, err
+		}
+		existing = desired
+	default:
+		base := existing.DeepCopy()
+		if existing.Annotations[annotationSpecHash] != desired.Annotations[annotationSpecHash] {
+			existing.Spec.Template = desired.Spec.Template
+			existing.Annotations[annotationSpecHash] = desired.Annotations[annotationSpecHash]
+			existing.Annotations[annotationModelVersion] = version
+		}
+		existing.Spec.Replicas = desired.Spec.Replicas
+		if err := r.Patch(ctx, existing, client.MergeFrom(base)); err != nil {
+			return 0, err
+		}
 	}
 
-	svc.Status.ReadyReplicas = deploy.Status.ReadyReplicas
-
-	if deploy.Status.ReadyReplicas > 0 && deploy.Status.ReadyReplicas == *deploy.Spec.Replicas {
-		svc.Status.Phase = PhaseReady
-		svc.Status.HealthStatus = "Healthy"
+	cs := svc.Status.CanaryStatus
+	if newCanary || cs == nil || !cs.Active || cs.StartedAt == nil {
+		t := metav1.NewTime(now)
+		cs = &gryviav1.CanaryStatus{Active: true, StartedAt: &t}
 		svc.Status.ConsecutiveFailures = 0
-		r.updateInferCondition(svc, ConditionInferenceReady, metav1.ConditionTrue, "Ready", "All replicas are ready")
-	} else if deploy.Status.ReadyReplicas > 0 {
+		svc.Status.LastHealthCheck = nil
+	}
+	cs.Weight = c.Weight
+	cs.DeploymentName = name
+	cs.ReadyReplicas = existing.Status.ReadyReplicas
+	svc.Status.CanaryStatus = cs
+	setCondition(&svc.Status.Conditions, svc.Generation, ConditionCanaryActive, metav1.ConditionTrue, "CanaryDeployed",
+		fmt.Sprintf("Canary %s at about %d%% of the pods", version, c.Weight))
+
+	age := now.Sub(cs.StartedAt.Time)
+	interval := time.Duration(defaultHealthIntervalSecs) * time.Second
+	if svc.Spec.HealthCheck != nil && svc.Spec.HealthCheck.IntervalSeconds > 0 {
+		interval = time.Duration(svc.Spec.HealthCheck.IntervalSeconds) * time.Second
+	}
+
+	switch {
+	case cs.ReadyReplicas > 0:
+		cs.Health = canaryHealthHealthy
+		svc.Status.ConsecutiveFailures = 0
+	case age <= r.CanaryStartupGrace:
+		cs.Health = canaryHealthPending
+	default:
+		cs.Health = canaryHealthUnhealthy
+		// One failure per health-check interval, however often the object is reconciled.
+		if svc.Status.LastHealthCheck == nil || now.Sub(svc.Status.LastHealthCheck.Time) >= interval {
+			svc.Status.ConsecutiveFailures++
+			t := metav1.NewTime(now)
+			svc.Status.LastHealthCheck = &t
+		}
+	}
+
+	// Automatic rollback: enough consecutive failed checks remove the canary and pin its version as rejected.
+	if svc.Spec.HealthCheck != nil && svc.Spec.HealthCheck.AutoRollback {
+		threshold := svc.Spec.HealthCheck.FailureThreshold
+		if threshold <= 0 {
+			threshold = 3
+		}
+		if svc.Status.ConsecutiveFailures >= threshold {
+			if err := r.annotatePrimary(ctx, primary, annotationRolledBack, version); err != nil {
+				return 0, err
+			}
+			if err := deleteCanary(); err != nil {
+				return 0, err
+			}
+			svc.Status.Message = fmt.Sprintf("Canary %s rolled back after %d failed health checks", version, svc.Status.ConsecutiveFailures)
+			setCondition(&svc.Status.Conditions, svc.Generation, ConditionHealthy, metav1.ConditionFalse, "CanaryRolledBack", svc.Status.Message)
+			setCondition(&svc.Status.Conditions, svc.Generation, ConditionCanaryActive, metav1.ConditionFalse, "RolledBack", svc.Status.Message)
+			svc.Status.CanaryStatus = &gryviav1.CanaryStatus{Active: false, Health: canaryHealthRolledBack}
+			svc.Status.ConsecutiveFailures = 0
+			return time.Second, nil
+		}
+	}
+
+	// Automatic promotion: the canary has been healthy for promoteAfterSeconds (0 = as soon as it is ready).
+	if c.AutoPromote && cs.Health == canaryHealthHealthy && age >= time.Duration(c.PromoteAfterSeconds)*time.Second {
+		if err := r.annotatePrimary(ctx, primary, annotationPromoted, version); err != nil {
+			return 0, err
+		}
+		if err := deleteCanary(); err != nil {
+			return 0, err
+		}
+		svc.Status.Message = "Canary promoted: " + version
+		svc.Status.CanaryStatus = &gryviav1.CanaryStatus{Active: false, Health: canaryHealthPromoted}
+		setCondition(&svc.Status.Conditions, svc.Generation, ConditionCanaryActive, metav1.ConditionFalse, "Promoted", svc.Status.Message)
+		return time.Second, nil // the next pass rolls the promoted version out to the stable Deployment
+	}
+
+	if cs.Health == canaryHealthHealthy && c.AutoPromote {
+		if left := time.Duration(c.PromoteAfterSeconds)*time.Second - age; left > 0 {
+			return left + time.Second, nil
+		}
+	}
+	return interval, nil
+}
+
+// annotatePrimary records a decision (promoted or rejected version) on the stable Deployment's metadata.
+func (r *GryviaInferenceServiceReconciler) annotatePrimary(ctx context.Context, primary *appsv1.Deployment, key, value string) error {
+	base := primary.DeepCopy()
+	if primary.Annotations == nil {
+		primary.Annotations = map[string]string{}
+	}
+	primary.Annotations[key] = value
+	return r.Patch(ctx, primary, client.MergeFrom(base))
+}
+
+// syncStatus fills phase, readyReplicas and health from the stable Deployment.
+func (r *GryviaInferenceServiceReconciler) syncStatus(svc *gryviav1.GryviaInferenceService, primary *appsv1.Deployment) {
+	want := int32(1)
+	if primary.Spec.Replicas != nil {
+		want = *primary.Spec.Replicas
+	}
+	ready := primary.Status.ReadyReplicas
+	svc.Status.ReadyReplicas = ready
+	switch {
+	case ready > 0 && ready >= want:
 		svc.Status.Phase = PhaseReady
-		r.updateInferCondition(svc, ConditionInferenceReady, metav1.ConditionFalse, "PartiallyReady",
-			fmt.Sprintf("%d/%d replicas ready", deploy.Status.ReadyReplicas, *deploy.Spec.Replicas))
-	} else {
+		svc.Status.HealthStatus = canaryHealthHealthy
+		setCondition(&svc.Status.Conditions, svc.Generation, ConditionInferenceReady, metav1.ConditionTrue, "Ready", "All replicas are ready")
+	case ready > 0:
+		svc.Status.Phase = PhaseReady
+		svc.Status.HealthStatus = canaryHealthHealthy
+		setCondition(&svc.Status.Conditions, svc.Generation, ConditionInferenceReady, metav1.ConditionFalse, "PartiallyReady",
+			fmt.Sprintf("%d/%d replicas ready", ready, want))
+	default:
 		svc.Status.Phase = PhaseDeployingInfer
-	}
-
-	return nil
-}
-
-// checkHealthAndRollback implements automatic rollback on consecutive health check failures.
-func (r *GryviaInferenceServiceReconciler) checkHealthAndRollback(ctx context.Context, svc *gryviav1.GryviaInferenceService) {
-	threshold := svc.Spec.HealthCheck.FailureThreshold
-	if threshold <= 0 {
-		threshold = 3
-	}
-
-	if svc.Status.HealthStatus == "Unhealthy" {
-		svc.Status.ConsecutiveFailures++
-	}
-
-	if svc.Status.ConsecutiveFailures >= threshold {
-		svc.Status.Phase = PhaseRollingBack
-		svc.Status.Message = fmt.Sprintf("Rolling back: %d consecutive health check failures", svc.Status.ConsecutiveFailures)
-		r.updateInferCondition(svc, ConditionHealthy, metav1.ConditionFalse, "Unhealthy",
-			fmt.Sprintf("Auto-rollback triggered after %d failures", svc.Status.ConsecutiveFailures))
-		// In production, this would restore the previous Deployment revision
-		svc.Status.ConsecutiveFailures = 0
-	}
-
-	now := metav1.Now()
-	svc.Status.LastHealthCheck = &now
-}
-
-func (r *GryviaInferenceServiceReconciler) updateInferCondition(svc *gryviav1.GryviaInferenceService, condType string, status metav1.ConditionStatus, reason, message string) {
-	condition := metav1.Condition{
-		Type:               condType,
-		Status:             status,
-		Reason:             reason,
-		Message:            message,
-		ObservedGeneration: svc.Generation,
-		LastTransitionTime: metav1.Now(),
-	}
-
-	for _, cond := range svc.Status.Conditions {
-		if cond.Type == condType && cond.Status == status {
-			condition.LastTransitionTime = cond.LastTransitionTime
-			break
-		}
-	}
-
-	found := false
-	for i, cond := range svc.Status.Conditions {
-		if cond.Type == condType {
-			svc.Status.Conditions[i] = condition
-			found = true
-			break
-		}
-	}
-	if !found {
-		svc.Status.Conditions = append(svc.Status.Conditions, condition)
+		svc.Status.HealthStatus = "Unknown"
+		setCondition(&svc.Status.Conditions, svc.Generation, ConditionInferenceReady, metav1.ConditionFalse, "Deploying", "No replica is ready yet")
 	}
 }
 

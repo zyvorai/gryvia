@@ -14,6 +14,8 @@ from typing import Any, Dict, List, Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 
+from .common import require_admin
+from .invoice_webhook import deliver_invoice
 from .tenancy import is_admin
 from .uiutil import namespaces, parse_ts
 from .netusage import (clean, fetch_network_records, hour_of, in_month as hour_in_month, load_rates,
@@ -188,5 +190,18 @@ def build_router(deps: Deps) -> APIRouter:
             return Response(invoice_csv(inv), media_type="text/csv", headers={
                 "Content-Disposition": f'attachment; filename="{inv["number"]}.csv"'})
         return inv
+
+    @router.post("/api/invoices/{tenant}/{month}/send")
+    @deps.limiter.limit("10/minute")
+    async def send_invoice(request: Request, tenant: str, month: str, _=Depends(deps.verify_auth),
+                           __=Depends(require_admin)):
+        """POST the invoice JSON to the operator-configured webhook (GRYVIA_INVOICE_WEBHOOK_URL).
+        Delivery only: no payment is processed."""
+        y, m = parse_month(month)
+        found = await _month_invoices(request, y, m, tenant)
+        inv = next((i for i in found if i["tenant"] == tenant), None)
+        if inv is None:
+            raise HTTPException(status_code=404, detail="no usage for that tenant in that month")
+        return await deliver_invoice(inv)
 
     return router

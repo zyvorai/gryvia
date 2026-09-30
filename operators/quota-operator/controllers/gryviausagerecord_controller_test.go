@@ -327,3 +327,41 @@ func TestQuota_EnforceQuota_RejectsDisallowedTypeAndSku(t *testing.T) {
 		})
 	}
 }
+
+// A distributed job holds nodes*gpusPerNode GPUs; spec.gpus alone would undercount it.
+func TestUsage_DistributedJobCountsNodesTimesGpusPerNode(t *testing.T) {
+	now := t0.Add(2 * time.Hour)
+	start := t0
+	j := usageJob("ns1", "dist", "ud", "Running", "H100", 8, &start, nil)
+	j.Spec.Distributed = &gryviav1.GryviaAIJobDistributedSpec{Enabled: true, Nodes: 4, GpusPerNode: 8}
+	r, c := newUsageReconciler(&now, j)
+	reconcileJob(t, r, "ns1", "dist")
+	s := getRecord(t, c, "ns1", "ud").Spec
+	if s.Gpus != 32 || !near(s.GpuHours, 64) || !near(s.Cost, 64*8) {
+		t.Errorf("gpus/hours/cost = %d/%v/%v, want 32/64/512", s.Gpus, s.GpuHours, s.Cost)
+	}
+}
+
+func TestTotalGPUs(t *testing.T) {
+	d := func(n, per int32) *gryviav1.GryviaAIJobDistributedSpec {
+		return &gryviav1.GryviaAIJobDistributedSpec{Enabled: true, Nodes: n, GpusPerNode: per}
+	}
+	cases := []struct {
+		name string
+		spec gryviav1.GryviaAIJobSpec
+		want int32
+	}{
+		{"single", gryviav1.GryviaAIJobSpec{GPUs: 4}, 4},
+		{"cpu only", gryviav1.GryviaAIJobSpec{}, 0},
+		{"distributed", gryviav1.GryviaAIJobSpec{GPUs: 8, Distributed: d(3, 8)}, 24},
+		{"distributed default per node", gryviav1.GryviaAIJobSpec{GPUs: 2, Distributed: d(3, 0)}, 3},
+		{"distributed cpu only", gryviav1.GryviaAIJobSpec{Distributed: d(3, 0)}, 0},
+		{"distributed nodes default 1", gryviav1.GryviaAIJobSpec{GPUs: 8, Distributed: d(0, 8)}, 8},
+		{"disabled distributed ignored", gryviav1.GryviaAIJobSpec{GPUs: 4, Distributed: &gryviav1.GryviaAIJobDistributedSpec{Nodes: 9, GpusPerNode: 9}}, 4},
+	}
+	for _, c := range cases {
+		if got := c.spec.TotalGPUs(); got != c.want {
+			t.Errorf("%s: %d, want %d", c.name, got, c.want)
+		}
+	}
+}

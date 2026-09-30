@@ -3,15 +3,23 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"io"
+	"net/http"
+	"regexp"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 )
@@ -21,454 +29,757 @@ const (
 	ConditionDAGValid     = "DAGValid"
 	ConditionStepsRunning = "StepsRunning"
 	ConditionWorkflowDone = "WorkflowComplete"
+
+	// Limits that bound how many child objects one workflow can create.
+	maxWorkflowSteps                = 100
+	DefaultWorkflowMaxParallelSteps = 10
+	maxStepRetries                  = 10
+
+	webhookTimeout = 10 * time.Second
 )
 
-// GryviaWorkflowReconciler reconciles a GryviaWorkflow object
+var (
+	stepNameRE     = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
+	conditionRE    = regexp.MustCompile(`^steps\.([a-z0-9]([-a-z0-9]*[a-z0-9])?)\.status\s*(==|!=)\s*['"]([A-Za-z]+)['"]$`)
+	webhookStatusR = regexp.MustCompile(`^status\s*==\s*([1-5][0-9][0-9])$`)
+)
+
+// GryviaWorkflowReconciler reconciles a GryviaWorkflow object.
+//
+// Steps run as soon as everything they depend on is done:
+//
+//   - job steps create a child GryviaAIJob (named "<workflow>-<step>", owned by the workflow); they need the
+//     AIJob controller to actually run the workload;
+//   - script steps run as a Pod owned by the workflow (non-root, no privilege escalation, capabilities dropped,
+//     no service-account token, bounded resources), independent of the AIJob controller;
+//   - webhook steps make one HTTP call from the operator; they are off unless AllowWebhooks is set, because they
+//     let anyone who can create a workflow make the operator issue requests inside the cluster network.
+//
+// A failed step is retried up to spec.retries times (new child object per attempt, optional backoff). A step whose
+// dependency failed or was skipped is skipped, unless it has a condition that says otherwise.
 type GryviaWorkflowReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Log    logr.Logger
+
+	// MaxParallelSteps caps how many steps of one workflow run at the same time (10 when 0).
+	MaxParallelSteps int
+	// AllowWebhooks enables webhook steps (off by default).
+	AllowWebhooks bool
+	// HTTPClient performs webhook calls (a client with a 10s timeout when nil).
+	HTTPClient *http.Client
+	// Clock returns the current time (time.Now when nil); tests move it.
+	Clock func() time.Time
 }
 
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviaworkflows,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviaworkflows/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviaworkflows/finalizers,verbs=update
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;delete
+//+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
 
-// Reconcile is part of the main kubernetes reconciliation loop
+// Reconcile drives one GryviaWorkflow.
 func (r *GryviaWorkflowReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("gryviaworkflow", req.NamespacedName)
 
-	// Fetch the GryviaWorkflow instance
 	wf := &gryviav1.GryviaWorkflow{}
-	err := r.Get(ctx, req.NamespacedName, wf)
-	if err != nil {
+	if err := r.Get(ctx, req.NamespacedName, wf); err != nil {
 		if errors.IsNotFound(err) {
-			log.Info("GryviaWorkflow resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		log.Error(err, "Failed to get GryviaWorkflow")
 		return ctrl.Result{}, err
 	}
-
-	// Handle deletion
-	if !wf.ObjectMeta.DeletionTimestamp.IsZero() {
-		return ctrl.Result{}, nil
+	if !wf.DeletionTimestamp.IsZero() {
+		return ctrl.Result{}, nil // children are garbage-collected through their owner reference
 	}
-
-	// Initialize status
-	if wf.Status.Phase == "" {
-		if err := r.initializeWorkflow(ctx, wf); err != nil {
-			log.Error(err, "Failed to initialize workflow")
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{Requeue: true}, nil
-	}
-
-	// Skip if terminal
 	if wf.Status.Phase == PhaseSucceeded || wf.Status.Phase == PhaseFailed {
 		return ctrl.Result{}, nil
 	}
 
-	// Reconcile workflow steps
-	result, err := r.reconcileWorkflow(ctx, wf)
-	if err != nil {
-		log.Error(err, "Failed to reconcile workflow")
-		return result, err
+	orig := wf.DeepCopy()
+	res, err := r.reconcileWorkflow(ctx, wf)
+	if perr := patchStatus(ctx, r.Client, wf, orig); perr != nil {
+		log.Error(perr, "Failed to patch workflow status")
+		if err == nil {
+			err = perr
+		}
 	}
-	return result, nil
+	return res, err
 }
 
-// initializeWorkflow sets up the initial status with all steps in Pending state.
-func (r *GryviaWorkflowReconciler) initializeWorkflow(ctx context.Context, wf *gryviav1.GryviaWorkflow) error {
-	// Validate DAG (no cycles)
-	if err := r.validateDAG(wf); err != nil {
-		wf.Status.Phase = PhaseFailed
-		wf.Status.Message = fmt.Sprintf("Invalid DAG: %v", err)
-		return r.Status().Update(ctx, wf)
+func (r *GryviaWorkflowReconciler) finish(wf *gryviav1.GryviaWorkflow, phase, msg string, now time.Time) {
+	wf.Status.Phase = phase
+	wf.Status.Message = msg
+	t := metav1.NewTime(now)
+	wf.Status.CompletionTime = &t
+	status := metav1.ConditionTrue
+	if phase == PhaseFailed {
+		status = metav1.ConditionFalse
 	}
-
-	wf.Status.Phase = PhasePending
-	now := metav1.Now()
-	wf.Status.StartTime = &now
-	wf.Status.StepStatuses = make([]gryviav1.StepStatus, len(wf.Spec.Steps))
-	for i, step := range wf.Spec.Steps {
-		wf.Status.StepStatuses[i] = gryviav1.StepStatus{
-			Name:  step.Name,
-			Phase: gryviav1.StepPhasePending,
-		}
-	}
-
-	return r.Status().Update(ctx, wf)
+	setCondition(&wf.Status.Conditions, wf.Generation, ConditionWorkflowDone, status, phase, msg)
 }
 
-// validateDAG checks for cycles in the dependency graph using DFS.
-func (r *GryviaWorkflowReconciler) validateDAG(wf *gryviav1.GryviaWorkflow) error {
-	// Build adjacency list
-	stepNames := make(map[string]bool, len(wf.Spec.Steps))
-	for _, step := range wf.Spec.Steps {
-		if stepNames[step.Name] {
-			return fmt.Errorf("duplicate step name: %s", step.Name)
+// parsedCondition is one clause of a step condition.
+type parsedCondition struct {
+	step   string
+	negate bool
+	phase  string
+}
+
+// parseCondition understands "steps.<name>.status == 'Succeeded'" clauses joined with "&&" (== or !=).
+func parseCondition(expr string) ([]parsedCondition, error) {
+	var out []parsedCondition
+	for _, part := range strings.Split(expr, "&&") {
+		m := conditionRE.FindStringSubmatch(strings.TrimSpace(part))
+		if m == nil {
+			return nil, fmt.Errorf("unsupported condition %q (use: steps.<name>.status == 'Succeeded', joined with &&)", expr)
 		}
-		stepNames[step.Name] = true
-	}
-
-	// Verify all dependencies refer to existing steps
-	for _, step := range wf.Spec.Steps {
-		for _, dep := range step.DependsOn {
-			if !stepNames[dep] {
-				return fmt.Errorf("step %q depends on non-existent step %q", step.Name, dep)
-			}
-			if dep == step.Name {
-				return fmt.Errorf("step %q depends on itself", step.Name)
-			}
+		switch m[4] {
+		case "Succeeded", "Failed", "Skipped", "Running", "Pending":
+		default:
+			return nil, fmt.Errorf("condition %q: unknown step phase %q", expr, m[4])
 		}
+		out = append(out, parsedCondition{step: m[1], negate: m[3] == "!=", phase: m[4]})
 	}
+	return out, nil
+}
 
-	// DFS-based cycle detection
-	white := 0 // unvisited
-	gray := 1  // in progress
-	black := 2 // completed
-	colors := make(map[string]int, len(wf.Spec.Steps))
+// stepKind resolves the step type, inferring it from the payload when spec.type is empty.
+func stepKind(s *gryviav1.WorkflowStep) gryviav1.StepType {
+	if s.Type != "" {
+		return s.Type
+	}
+	switch {
+	case s.JobTemplate != nil:
+		return gryviav1.StepTypeJob
+	case s.Script != nil:
+		return gryviav1.StepTypeScript
+	case s.Webhook != nil:
+		return gryviav1.StepTypeWebhook
+	}
+	return ""
+}
 
+// validateWorkflow rejects a workflow that cannot run: too many steps, bad names, missing payloads, unknown or
+// cyclic dependencies, unsupported conditions.
+func validateWorkflow(wf *gryviav1.GryviaWorkflow) error {
+	if len(wf.Spec.Steps) == 0 {
+		return fmt.Errorf("the workflow has no steps")
+	}
+	if len(wf.Spec.Steps) > maxWorkflowSteps {
+		return fmt.Errorf("%d steps exceeds the limit of %d", len(wf.Spec.Steps), maxWorkflowSteps)
+	}
 	deps := make(map[string][]string, len(wf.Spec.Steps))
-	for _, step := range wf.Spec.Steps {
-		deps[step.Name] = step.DependsOn
+	for i := range wf.Spec.Steps {
+		s := &wf.Spec.Steps[i]
+		if !stepNameRE.MatchString(s.Name) || len(s.Name) > maxDNSLabel {
+			return fmt.Errorf("step name %q must be a lowercase DNS label (a-z, 0-9, '-'; at most %d characters)", s.Name, maxDNSLabel)
+		}
+		if _, dup := deps[s.Name]; dup {
+			return fmt.Errorf("duplicate step name: %s", s.Name)
+		}
+		deps[s.Name] = s.DependsOn
+		if s.Retries < 0 || s.Retries > maxStepRetries {
+			return fmt.Errorf("step %q: retries must be between 0 and %d", s.Name, maxStepRetries)
+		}
+		switch k := stepKind(s); k {
+		case gryviav1.StepTypeJob:
+			if s.JobTemplate == nil {
+				return fmt.Errorf("step %q has type 'job' but no jobTemplate", s.Name)
+			}
+		case gryviav1.StepTypeScript:
+			if s.Script == nil || s.Script.Image == "" || len(s.Script.Command) == 0 {
+				return fmt.Errorf("step %q has type 'script' but no script image and command", s.Name)
+			}
+		case gryviav1.StepTypeWebhook:
+			if s.Webhook == nil || s.Webhook.URL == "" {
+				return fmt.Errorf("step %q has type 'webhook' but no webhook url", s.Name)
+			}
+			if sc := s.Webhook.SuccessCondition; sc != "" && !webhookStatusR.MatchString(strings.TrimSpace(sc)) {
+				return fmt.Errorf("step %q: unsupported successCondition %q (use: status == 200)", s.Name, sc)
+			}
+		default:
+			return fmt.Errorf("step %q has no recognised type or payload", s.Name)
+		}
 	}
-
-	var hasCycle func(node string) bool
-	hasCycle = func(node string) bool {
-		colors[node] = gray
-		for _, dep := range deps[node] {
-			switch colors[dep] {
-			case white:
-				if hasCycle(dep) {
-					return true
+	for _, s := range wf.Spec.Steps {
+		for _, d := range s.DependsOn {
+			if _, ok := deps[d]; !ok {
+				return fmt.Errorf("step %q depends on non-existent step %q", s.Name, d)
+			}
+			if d == s.Name {
+				return fmt.Errorf("step %q depends on itself", s.Name)
+			}
+		}
+		if s.Condition != "" {
+			clauses, err := parseCondition(s.Condition)
+			if err != nil {
+				return fmt.Errorf("step %q: %w", s.Name, err)
+			}
+			for _, c := range clauses {
+				if !contains(s.DependsOn, c.step) {
+					return fmt.Errorf("step %q: its condition refers to %q, which is not in dependsOn", s.Name, c.step)
 				}
-			case gray:
-				return true // back edge = cycle
-			}
-		}
-		colors[node] = black
-		return false
-	}
-
-	for _, step := range wf.Spec.Steps {
-		if colors[step.Name] == white {
-			if hasCycle(step.Name) {
-				return fmt.Errorf("cycle detected in workflow DAG")
 			}
 		}
 	}
-
-	_ = black // suppress unused warning if already used above
+	// Kahn's algorithm: whatever cannot be ordered is on, or behind, a cycle.
+	indeg := make(map[string]int, len(deps))
+	for n, ds := range deps {
+		indeg[n] = len(uniq(ds))
+	}
+	users := map[string][]string{}
+	for n, ds := range deps {
+		for _, d := range uniq(ds) {
+			users[d] = append(users[d], n)
+		}
+	}
+	var queue []string
+	for n, d := range indeg {
+		if d == 0 {
+			queue = append(queue, n)
+		}
+	}
+	seen := 0
+	for len(queue) > 0 {
+		n := queue[0]
+		queue = queue[1:]
+		seen++
+		for _, u := range users[n] {
+			if indeg[u]--; indeg[u] == 0 {
+				queue = append(queue, u)
+			}
+		}
+	}
+	if seen != len(deps) {
+		return fmt.Errorf("cycle detected in workflow DAG")
+	}
 	return nil
+}
+
+func contains(list []string, s string) bool {
+	for _, x := range list {
+		if x == s {
+			return true
+		}
+	}
+	return false
+}
+
+func uniq(in []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, s := range in {
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func stepTerminal(p gryviav1.StepPhase) bool {
+	return p == gryviav1.StepPhaseSucceeded || p == gryviav1.StepPhaseFailed || p == gryviav1.StepPhaseSkipped
 }
 
 func (r *GryviaWorkflowReconciler) reconcileWorkflow(ctx context.Context, wf *gryviav1.GryviaWorkflow) (ctrl.Result, error) {
 	log := r.Log.WithValues("gryviaworkflow", wf.Name)
+	now := clock(r.Clock)
 
-	// Build step status lookup
-	stepStatusMap := make(map[string]*gryviav1.StepStatus, len(wf.Status.StepStatuses))
-	for i := range wf.Status.StepStatuses {
-		stepStatusMap[wf.Status.StepStatuses[i].Name] = &wf.Status.StepStatuses[i]
-	}
-
-	// Build step spec lookup
-	stepSpecMap := make(map[string]*gryviav1.WorkflowStep, len(wf.Spec.Steps))
-	for i := range wf.Spec.Steps {
-		stepSpecMap[wf.Spec.Steps[i].Name] = &wf.Spec.Steps[i]
-	}
-
-	// Sync running steps with their job statuses
-	for i := range wf.Status.StepStatuses {
-		ss := &wf.Status.StepStatuses[i]
-		if ss.Phase != gryviav1.StepPhaseRunning || ss.JobName == "" {
-			continue
+	if wf.Status.Phase == "" {
+		if err := validateWorkflow(wf); err != nil {
+			setCondition(&wf.Status.Conditions, wf.Generation, ConditionDAGValid, metav1.ConditionFalse, "Invalid", err.Error())
+			r.finish(wf, PhaseFailed, fmt.Sprintf("Invalid workflow: %v", err), now)
+			return ctrl.Result{}, nil
 		}
-
-		job := &gryviav1.GryviaAIJob{}
-		err := r.Get(ctx, types.NamespacedName{
-			Namespace: wf.Namespace,
-			Name:      ss.JobName,
-		}, job)
-		if err != nil {
-			if errors.IsNotFound(err) {
-				ss.Phase = gryviav1.StepPhaseFailed
-				ss.Message = "Step job not found"
-				now := metav1.Now()
-				ss.CompletionTime = &now
-			}
-			continue
+		setCondition(&wf.Status.Conditions, wf.Generation, ConditionDAGValid, metav1.ConditionTrue, "Valid", "The step graph is a valid DAG")
+		t := metav1.NewTime(now)
+		wf.Status.StartTime = &t
+		wf.Status.Phase = PhasePending
+		for _, s := range wf.Spec.Steps {
+			wf.Status.StepStatuses = append(wf.Status.StepStatuses, gryviav1.StepStatus{Name: s.Name, Phase: gryviav1.StepPhasePending})
 		}
-
-		switch job.Status.Phase {
-		case PhaseSucceeded:
-			ss.Phase = gryviav1.StepPhaseSucceeded
-			now := metav1.Now()
-			ss.CompletionTime = &now
-		case PhaseFailed:
-			// Check for retries
-			spec := stepSpecMap[ss.Name]
-			if spec != nil && ss.RetriesAttempted < spec.Retries {
-				ss.RetriesAttempted++
-				ss.Phase = gryviav1.StepPhasePending
-				ss.Message = fmt.Sprintf("Retrying (%d/%d)", ss.RetriesAttempted, spec.Retries)
-				// Delete the failed job so it can be recreated
-				if deleteErr := r.Delete(ctx, job); deleteErr != nil && !errors.IsNotFound(deleteErr) {
-					log.Error(deleteErr, "Failed to delete failed step job for retry")
-				}
-			} else {
-				ss.Phase = gryviav1.StepPhaseFailed
-				ss.Message = job.Status.Message
-				now := metav1.Now()
-				ss.CompletionTime = &now
-			}
-		}
-	}
-
-	// Determine which pending steps can be started (all dependencies met)
-	anyRunning := false
-	anyFailed := false
-	allSucceeded := true
-
-	for i := range wf.Status.StepStatuses {
-		ss := &wf.Status.StepStatuses[i]
-
-		switch ss.Phase {
-		case gryviav1.StepPhaseRunning:
-			anyRunning = true
-			allSucceeded = false
-		case gryviav1.StepPhaseFailed:
-			anyFailed = true
-			allSucceeded = false
-		case gryviav1.StepPhaseSkipped:
-			// skipped steps don't block completion
-		case gryviav1.StepPhasePending:
-			allSucceeded = false
-			spec := stepSpecMap[ss.Name]
-			if spec == nil {
-				continue
-			}
-
-			// Check if all dependencies are met
-			depsReady := true
-			depsFailed := false
-			for _, dep := range spec.DependsOn {
-				depStatus := stepStatusMap[dep]
-				if depStatus == nil {
-					depsReady = false
-					break
-				}
-				if depStatus.Phase == gryviav1.StepPhaseSucceeded || depStatus.Phase == gryviav1.StepPhaseSkipped {
-					continue
-				}
-				if depStatus.Phase == gryviav1.StepPhaseFailed {
-					depsFailed = true
-				}
-				depsReady = false
-			}
-
-			if depsFailed {
-				// If any dependency failed, skip this step
-				ss.Phase = gryviav1.StepPhaseSkipped
-				ss.Message = "Skipped: dependency failed"
-				continue
-			}
-
-			if !depsReady {
-				continue
-			}
-
-			// Check condition if specified
-			if spec.Condition != "" {
-				if !r.evaluateCondition(spec.Condition, stepStatusMap) {
-					ss.Phase = gryviav1.StepPhaseSkipped
-					ss.Message = "Skipped: condition not met"
-					continue
-				}
-			}
-
-			// Launch this step
-			if err := r.launchStep(ctx, wf, spec, ss); err != nil {
-				log.Error(err, "Failed to launch step", "step", ss.Name)
-				ss.Message = fmt.Sprintf("Launch failed: %v", err)
-				continue
-			}
-			anyRunning = true
-		}
-	}
-
-	// Determine overall workflow phase
-	if allSucceeded {
-		wf.Status.Phase = PhaseSucceeded
-		wf.Status.Message = "All steps completed successfully"
-		now := metav1.Now()
-		wf.Status.CompletionTime = &now
-	} else if anyFailed && !anyRunning {
-		// Check if there are pending steps that could still run
-		hasPending := false
-		for _, ss := range wf.Status.StepStatuses {
-			if ss.Phase == gryviav1.StepPhasePending {
-				hasPending = true
-				break
-			}
-		}
-		if !hasPending {
-			wf.Status.Phase = PhaseFailed
-			wf.Status.Message = "Workflow failed: one or more steps failed"
-			now := metav1.Now()
-			wf.Status.CompletionTime = &now
-		} else {
-			wf.Status.Phase = PhaseRunning
-		}
-	} else {
-		wf.Status.Phase = PhaseRunning
-	}
-
-	if err := r.Status().Update(ctx, wf); err != nil {
-		log.Error(err, "Failed to update workflow status")
-		return ctrl.Result{}, err
-	}
-
-	if wf.Status.Phase == PhaseSucceeded || wf.Status.Phase == PhaseFailed {
+	} else if err := validateWorkflow(wf); err != nil {
+		// The spec was edited into something invalid while running.
+		r.finish(wf, PhaseFailed, fmt.Sprintf("Invalid workflow: %v", err), now)
 		return ctrl.Result{}, nil
 	}
 
-	return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+	specs := make(map[string]*gryviav1.WorkflowStep, len(wf.Spec.Steps))
+	for i := range wf.Spec.Steps {
+		specs[wf.Spec.Steps[i].Name] = &wf.Spec.Steps[i]
+	}
+	byName := make(map[string]*gryviav1.StepStatus, len(wf.Status.StepStatuses))
+	for i := range wf.Status.StepStatuses {
+		byName[wf.Status.StepStatuses[i].Name] = &wf.Status.StepStatuses[i]
+	}
+	for _, s := range wf.Spec.Steps { // steps added after the first pass
+		if byName[s.Name] == nil {
+			wf.Status.StepStatuses = append(wf.Status.StepStatuses, gryviav1.StepStatus{Name: s.Name, Phase: gryviav1.StepPhasePending})
+			byName = make(map[string]*gryviav1.StepStatus, len(wf.Status.StepStatuses))
+			for i := range wf.Status.StepStatuses {
+				byName[wf.Status.StepStatuses[i].Name] = &wf.Status.StepStatuses[i]
+			}
+		}
+	}
+
+	next := 10 * time.Second
+	wake := func(d time.Duration) {
+		if d < time.Second {
+			d = time.Second
+		}
+		next = minDuration(next, d)
+	}
+
+	// 1. Follow the steps that are running.
+	for i := range wf.Status.StepStatuses {
+		ss := &wf.Status.StepStatuses[i]
+		spec := specs[ss.Name]
+		if spec == nil || ss.Phase != gryviav1.StepPhaseRunning {
+			continue
+		}
+		done, ok, msg, err := r.pollStep(ctx, wf, spec, ss)
+		if err != nil {
+			return ctrl.Result{RequeueAfter: 5 * time.Second}, err
+		}
+		if !done && spec.TimeoutSeconds > 0 && ss.StartTime != nil {
+			if elapsed := now.Sub(ss.StartTime.Time); elapsed > time.Duration(spec.TimeoutSeconds)*time.Second {
+				r.deleteStepChild(ctx, wf, spec, ss)
+				done, ok, msg = true, false, fmt.Sprintf("timed out after %ds", spec.TimeoutSeconds)
+			} else {
+				wake(time.Duration(spec.TimeoutSeconds)*time.Second - elapsed + time.Second)
+			}
+		}
+		if !done {
+			continue
+		}
+		if ok {
+			ss.Phase = gryviav1.StepPhaseSucceeded
+			ss.Message = ""
+			t := metav1.NewTime(now)
+			ss.CompletionTime = &t
+			continue
+		}
+		r.failStep(ss, spec, msg, now)
+	}
+
+	// 2. Start what is ready, skipping what can no longer run. Repeat while skips cascade.
+	maxParallel := r.MaxParallelSteps
+	if maxParallel <= 0 {
+		maxParallel = DefaultWorkflowMaxParallelSteps
+	}
+	for changed := true; changed; {
+		changed = false
+		running := 0
+		for _, ss := range wf.Status.StepStatuses {
+			if ss.Phase == gryviav1.StepPhaseRunning {
+				running++
+			}
+		}
+		for i := range wf.Status.StepStatuses {
+			ss := &wf.Status.StepStatuses[i]
+			spec := specs[ss.Name]
+			if spec == nil || ss.Phase != gryviav1.StepPhasePending {
+				continue
+			}
+			ready, badDep := true, false
+			for _, d := range spec.DependsOn {
+				dp := byName[d].Phase
+				if !stepTerminal(dp) {
+					ready = false
+					break
+				}
+				if dp != gryviav1.StepPhaseSucceeded {
+					badDep = true
+				}
+			}
+			if !ready {
+				continue
+			}
+			if spec.Condition != "" {
+				if !evalCondition(spec.Condition, byName) {
+					ss.Phase = gryviav1.StepPhaseSkipped
+					ss.Message = "Skipped: condition not met"
+					changed = true
+					continue
+				}
+			} else if badDep {
+				ss.Phase = gryviav1.StepPhaseSkipped
+				ss.Message = "Skipped: a dependency failed or was skipped"
+				changed = true
+				continue
+			}
+			// Retry backoff: wait out spec.retryBackoffSeconds after the failed attempt.
+			if ss.RetriesAttempted > 0 && ss.CompletionTime != nil && spec.RetryBackoffSeconds > 0 {
+				due := ss.CompletionTime.Add(time.Duration(spec.RetryBackoffSeconds) * time.Second)
+				if now.Before(due) {
+					wake(due.Sub(now) + time.Second)
+					continue
+				}
+			}
+			if running >= maxParallel {
+				continue
+			}
+			if err := r.launchStep(ctx, wf, spec, ss, now); err != nil {
+				log.Error(err, "Failed to launch step", "step", ss.Name)
+				return ctrl.Result{RequeueAfter: 5 * time.Second}, err
+			}
+			if ss.Phase == gryviav1.StepPhaseRunning {
+				running++
+			} else {
+				changed = true // a webhook step finished (or failed) inline
+			}
+		}
+	}
+
+	// 3. The workflow phase.
+	pending, run, failed := 0, 0, []string{}
+	for _, ss := range wf.Status.StepStatuses {
+		switch ss.Phase {
+		case gryviav1.StepPhasePending:
+			pending++
+		case gryviav1.StepPhaseRunning:
+			run++
+		case gryviav1.StepPhaseFailed:
+			failed = append(failed, ss.Name)
+		}
+	}
+	switch {
+	case pending == 0 && run == 0 && len(failed) > 0:
+		sort.Strings(failed)
+		r.finish(wf, PhaseFailed, fmt.Sprintf("Workflow failed: step(s) %s failed", strings.Join(failed, ", ")), now)
+		return ctrl.Result{}, nil
+	case pending == 0 && run == 0:
+		r.finish(wf, PhaseSucceeded, "All steps completed successfully", now)
+		return ctrl.Result{}, nil
+	}
+	wf.Status.Phase = PhaseRunning
+	setCondition(&wf.Status.Conditions, wf.Generation, ConditionStepsRunning, metav1.ConditionTrue, "StepsActive",
+		fmt.Sprintf("%d running, %d waiting", run, pending))
+	return ctrl.Result{RequeueAfter: next}, nil
 }
 
-// evaluateCondition does a simple string-matching condition evaluation.
-// For production use this would use a proper CEL evaluator. Currently supports
-// checking step phase: "steps.<name>.status == 'Succeeded'" style patterns.
-func (r *GryviaWorkflowReconciler) evaluateCondition(condition string, stepStatuses map[string]*gryviav1.StepStatus) bool {
-	// Simple heuristic: if condition references a step status, check it.
-	// In production this would use a full expression evaluator.
-	// For now, if we can't parse it, default to true (run the step).
-	_ = condition
-	_ = stepStatuses
+// evalCondition evaluates a validated condition against the current step phases.
+func evalCondition(expr string, byName map[string]*gryviav1.StepStatus) bool {
+	clauses, err := parseCondition(expr)
+	if err != nil {
+		return false
+	}
+	for _, c := range clauses {
+		ss := byName[c.step]
+		match := ss != nil && string(ss.Phase) == c.phase
+		if match == c.negate {
+			return false
+		}
+	}
 	return true
 }
 
-// launchStep creates a GryviaAIJob for a job-type step, or a pod for a script-type step.
-func (r *GryviaWorkflowReconciler) launchStep(ctx context.Context, wf *gryviav1.GryviaWorkflow, step *gryviav1.WorkflowStep, ss *gryviav1.StepStatus) error {
-	jobName := fmt.Sprintf("%s-%s", wf.Name, step.Name)
-
-	stepType := step.Type
-	if stepType == "" && step.JobTemplate != nil {
-		stepType = gryviav1.StepTypeJob
+// failStep records a failed attempt: it goes back to Pending while retries remain, else it is Failed.
+func (r *GryviaWorkflowReconciler) failStep(ss *gryviav1.StepStatus, spec *gryviav1.WorkflowStep, msg string, now time.Time) {
+	t := metav1.NewTime(now)
+	ss.CompletionTime = &t // of the attempt; also the start of the retry backoff
+	if ss.RetriesAttempted < spec.Retries {
+		ss.RetriesAttempted++
+		ss.Phase = gryviav1.StepPhasePending
+		ss.Message = fmt.Sprintf("Retrying (%d/%d) after failure: %s", ss.RetriesAttempted, spec.Retries, msg)
+		return
 	}
-	if stepType == "" && step.Script != nil {
-		stepType = gryviav1.StepTypeScript
+	ss.Phase = gryviav1.StepPhaseFailed
+	ss.Message = msg
+}
+
+// attemptName is the child object name for the step's current attempt.
+func attemptName(wf *gryviav1.GryviaWorkflow, step string, attempt int32) string {
+	if attempt == 0 {
+		return childName(wf.Name, step)
+	}
+	return childName(wf.Name, step, fmt.Sprintf("r%d", attempt))
+}
+
+func stepLabels(wf *gryviav1.GryviaWorkflow, step, component string) map[string]string {
+	return map[string]string{
+		"gryvia.io/workflow":  childName(wf.Name),
+		"gryvia.io/step":      childName(step),
+		"gryvia.io/component": component,
+	}
+}
+
+// launchStep starts one step. For a webhook step the outcome is set directly.
+func (r *GryviaWorkflowReconciler) launchStep(ctx context.Context, wf *gryviav1.GryviaWorkflow, step *gryviav1.WorkflowStep,
+	ss *gryviav1.StepStatus, now time.Time) error {
+	name := attemptName(wf, step.Name, ss.RetriesAttempted)
+	started := func() {
+		ss.Phase = gryviav1.StepPhaseRunning
+		ss.JobName = name
+		ss.Message = ""
+		t := metav1.NewTime(now)
+		ss.StartTime = &t
+		ss.CompletionTime = nil
 	}
 
-	switch stepType {
+	switch stepKind(step) {
 	case gryviav1.StepTypeJob:
-		if step.JobTemplate == nil {
-			return fmt.Errorf("step %q has type 'job' but no jobTemplate", step.Name)
+		job := &gryviav1.GryviaAIJob{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: wf.Namespace, Labels: stepLabels(wf, step.Name, "workflow-step")},
+			Spec:       *step.JobTemplate.DeepCopy(),
 		}
-		return r.launchJobStep(ctx, wf, step, ss, jobName)
-
+		job.Spec.Env = r.stepEnv(wf, step, job.Spec.Env)
+		if err := controllerutil.SetControllerReference(wf, job, r.Scheme); err != nil {
+			return err
+		}
+		if err := r.Create(ctx, job); err != nil {
+			if !errors.IsAlreadyExists(err) {
+				if errors.IsInvalid(err) || errors.IsForbidden(err) || errors.IsBadRequest(err) {
+					r.failStep(ss, step, fmt.Sprintf("cannot create the job: %v", err), now)
+					return nil
+				}
+				return err
+			}
+			existing := &gryviav1.GryviaAIJob{}
+			if gerr := r.Get(ctx, types.NamespacedName{Namespace: wf.Namespace, Name: name}, existing); gerr != nil {
+				return gerr
+			}
+			if !metav1.IsControlledBy(existing, wf) {
+				r.failStep(ss, step, fmt.Sprintf("job %q already exists and is not owned by this workflow", name), now)
+				return nil
+			}
+		}
+		started()
 	case gryviav1.StepTypeScript:
-		if step.Script == nil {
-			return fmt.Errorf("step %q has type 'script' but no script", step.Name)
+		pod, err := r.buildScriptPod(wf, step, name)
+		if err != nil {
+			r.failStep(ss, step, err.Error(), now)
+			return nil
 		}
-		return r.launchScriptStep(ctx, wf, step, ss, jobName)
-
+		if err := controllerutil.SetControllerReference(wf, pod, r.Scheme); err != nil {
+			return err
+		}
+		if err := r.Create(ctx, pod); err != nil {
+			if !errors.IsAlreadyExists(err) {
+				if errors.IsInvalid(err) || errors.IsForbidden(err) || errors.IsBadRequest(err) {
+					r.failStep(ss, step, fmt.Sprintf("cannot create the script pod: %v", err), now)
+					return nil
+				}
+				return err
+			}
+			existing := &corev1.Pod{}
+			if gerr := r.Get(ctx, types.NamespacedName{Namespace: wf.Namespace, Name: name}, existing); gerr != nil {
+				return gerr
+			}
+			if !metav1.IsControlledBy(existing, wf) {
+				r.failStep(ss, step, fmt.Sprintf("pod %q already exists and is not owned by this workflow", name), now)
+				return nil
+			}
+		}
+		started()
 	case gryviav1.StepTypeWebhook:
-		// Webhook steps are executed inline; mark as succeeded immediately.
-		// A production implementation would make the HTTP call and check the response.
-		ss.Phase = gryviav1.StepPhaseSucceeded
-		ss.Message = "Webhook executed"
-		now := metav1.Now()
-		ss.StartTime = &now
-		ss.CompletionTime = &now
-		return nil
-
+		if !r.AllowWebhooks {
+			// A configuration problem: retrying cannot help.
+			ss.Phase = gryviav1.StepPhaseFailed
+			ss.Message = "webhook steps are disabled (start the ai-operator with --workflow-allow-webhooks)"
+			t := metav1.NewTime(now)
+			ss.CompletionTime = &t
+			return nil
+		}
+		started()
+		ss.JobName = ""
+		if msg, ok := r.callWebhook(ctx, step.Webhook); ok {
+			ss.Phase = gryviav1.StepPhaseSucceeded
+			ss.Message = msg
+			t := metav1.NewTime(now)
+			ss.CompletionTime = &t
+		} else {
+			r.failStep(ss, step, msg, now)
+		}
 	default:
-		// Default to job step if template is available
-		if step.JobTemplate != nil {
-			return r.launchJobStep(ctx, wf, step, ss, jobName)
-		}
-		return fmt.Errorf("step %q has no recognized type or template", step.Name)
+		r.failStep(ss, step, "step has no recognised type", now)
 	}
-}
-
-func (r *GryviaWorkflowReconciler) launchJobStep(ctx context.Context, wf *gryviav1.GryviaWorkflow, step *gryviav1.WorkflowStep, ss *gryviav1.StepStatus, jobName string) error {
-	job := &gryviav1.GryviaAIJob{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      jobName,
-			Namespace: wf.Namespace,
-			Labels: map[string]string{
-				"gryvia.io/workflow":  wf.Name,
-				"gryvia.io/step":      step.Name,
-				"gryvia.io/component": "workflow-step",
-			},
-			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(wf, gryviav1.GroupVersion.WithKind("GryviaWorkflow")),
-			},
-		},
-		Spec: *step.JobTemplate.DeepCopy(),
-	}
-
-	// Inject workflow parameters as env vars
-	for k, v := range wf.Spec.Parameters {
-		job.Spec.Env = append(job.Spec.Env, gryviav1.EnvVarFromCoreV1(k, v))
-	}
-
-	if err := r.Create(ctx, job); err != nil {
-		if errors.IsAlreadyExists(err) {
-			// Job already exists, just update status
-		} else {
-			return err
-		}
-	}
-
-	ss.Phase = gryviav1.StepPhaseRunning
-	ss.JobName = jobName
-	now := metav1.Now()
-	ss.StartTime = &now
 	return nil
 }
 
-func (r *GryviaWorkflowReconciler) launchScriptStep(ctx context.Context, wf *gryviav1.GryviaWorkflow, step *gryviav1.WorkflowStep, ss *gryviav1.StepStatus, jobName string) error {
-	// For script steps, create a simple GryviaAIJob with the script's image and command
-	job := &gryviav1.GryviaAIJob{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      jobName,
-			Namespace: wf.Namespace,
-			Labels: map[string]string{
-				"gryvia.io/workflow":  wf.Name,
-				"gryvia.io/step":      step.Name,
-				"gryvia.io/component": "workflow-script",
-			},
-			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(wf, gryviav1.GroupVersion.WithKind("GryviaWorkflow")),
-			},
-		},
-		Spec: gryviav1.GryviaAIJobSpec{
-			Type:    "script",
-			Image:   step.Script.Image,
-			Command: step.Script.Command,
-			Args:    step.Script.Args,
-			GPUs:    0,
-		},
+// stepEnv adds the workflow parameters (sorted, without overriding variables the step sets itself) and the
+// WORKFLOW_NAME/WORKFLOW_STEP identifiers to a step's environment.
+func (r *GryviaWorkflowReconciler) stepEnv(wf *gryviav1.GryviaWorkflow, step *gryviav1.WorkflowStep, env []corev1.EnvVar) []corev1.EnvVar {
+	have := map[string]bool{}
+	for _, e := range env {
+		have[e.Name] = true
 	}
-
-	if err := r.Create(ctx, job); err != nil {
-		if errors.IsAlreadyExists(err) {
-			// Already exists, continue
-		} else {
-			return err
+	add := func(k, v string) {
+		if !have[k] {
+			have[k] = true
+			env = append(env, corev1.EnvVar{Name: k, Value: v})
 		}
 	}
+	keys := make([]string, 0, len(wf.Spec.Parameters))
+	for k := range wf.Spec.Parameters {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		add(k, wf.Spec.Parameters[k])
+	}
+	add("WORKFLOW_NAME", wf.Name)
+	add("WORKFLOW_STEP", step.Name)
+	return env
+}
 
-	ss.Phase = gryviav1.StepPhaseRunning
-	ss.JobName = jobName
-	now := metav1.Now()
-	ss.StartTime = &now
-	return nil
+// buildScriptPod is the hardened Pod a script step runs in.
+func (r *GryviaWorkflowReconciler) buildScriptPod(wf *gryviav1.GryviaWorkflow, step *gryviav1.WorkflowStep, name string) (*corev1.Pod, error) {
+	nonRoot := int64(65534)
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: wf.Namespace, Labels: stepLabels(wf, step.Name, "workflow-script")},
+		Spec: corev1.PodSpec{
+			RestartPolicy:                corev1.RestartPolicyNever,
+			AutomountServiceAccountToken: boolPtr(false),
+			SecurityContext: &corev1.PodSecurityContext{
+				RunAsNonRoot:   boolPtr(true),
+				RunAsUser:      &nonRoot,
+				RunAsGroup:     &nonRoot,
+				SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
+			},
+			Containers: []corev1.Container{{
+				Name:    "script",
+				Image:   step.Script.Image,
+				Command: step.Script.Command,
+				Args:    step.Script.Args,
+				Env:     r.stepEnv(wf, step, nil),
+				SecurityContext: &corev1.SecurityContext{
+					AllowPrivilegeEscalation: boolPtr(false),
+					Privileged:               boolPtr(false),
+					Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
+				},
+				Resources: corev1.ResourceRequirements{
+					Requests: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("100m"),
+						corev1.ResourceMemory: resource.MustParse("128Mi"),
+					},
+					Limits: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("1"),
+						corev1.ResourceMemory: resource.MustParse("1Gi"),
+					},
+				},
+			}},
+		},
+	}
+	if step.TimeoutSeconds > 0 {
+		d := step.TimeoutSeconds
+		pod.Spec.ActiveDeadlineSeconds = &d
+	}
+	return pod, nil
+}
+
+// pollStep reports whether a running step finished, whether it succeeded, and a failure message.
+func (r *GryviaWorkflowReconciler) pollStep(ctx context.Context, wf *gryviav1.GryviaWorkflow, step *gryviav1.WorkflowStep,
+	ss *gryviav1.StepStatus) (done, ok bool, msg string, err error) {
+	if ss.JobName == "" {
+		return true, false, "step has no child object", nil
+	}
+	key := types.NamespacedName{Namespace: wf.Namespace, Name: ss.JobName}
+	switch stepKind(step) {
+	case gryviav1.StepTypeJob:
+		job := &gryviav1.GryviaAIJob{}
+		if err := r.Get(ctx, key, job); err != nil {
+			if errors.IsNotFound(err) {
+				return true, false, "step job not found", nil
+			}
+			return false, false, "", err
+		}
+		switch job.Status.Phase {
+		case PhaseSucceeded:
+			return true, true, "", nil
+		case PhaseFailed:
+			m := job.Status.Message
+			if m == "" {
+				m = "job failed"
+			}
+			return true, false, m, nil
+		}
+	case gryviav1.StepTypeScript:
+		pod := &corev1.Pod{}
+		if err := r.Get(ctx, key, pod); err != nil {
+			if errors.IsNotFound(err) {
+				return true, false, "script pod not found", nil
+			}
+			return false, false, "", err
+		}
+		switch pod.Status.Phase {
+		case corev1.PodSucceeded:
+			return true, true, "", nil
+		case corev1.PodFailed:
+			return true, false, podFailureMessage(pod), nil
+		}
+	}
+	return false, false, "", nil
+}
+
+func podFailureMessage(pod *corev1.Pod) string {
+	if pod.Status.Reason != "" {
+		return fmt.Sprintf("pod failed: %s %s", pod.Status.Reason, pod.Status.Message)
+	}
+	for _, cs := range pod.Status.ContainerStatuses {
+		if t := cs.State.Terminated; t != nil {
+			return fmt.Sprintf("script exited with code %d %s", t.ExitCode, t.Reason)
+		}
+	}
+	return "script pod failed"
+}
+
+// deleteStepChild best-effort deletes the running child of a timed-out step.
+func (r *GryviaWorkflowReconciler) deleteStepChild(ctx context.Context, wf *gryviav1.GryviaWorkflow, step *gryviav1.WorkflowStep, ss *gryviav1.StepStatus) {
+	if ss.JobName == "" {
+		return
+	}
+	meta := metav1.ObjectMeta{Name: ss.JobName, Namespace: wf.Namespace}
+	var obj client.Object
+	switch stepKind(step) {
+	case gryviav1.StepTypeJob:
+		obj = &gryviav1.GryviaAIJob{ObjectMeta: meta}
+	case gryviav1.StepTypeScript:
+		obj = &corev1.Pod{ObjectMeta: meta}
+	default:
+		return
+	}
+	if err := r.Delete(ctx, obj); err != nil && !errors.IsNotFound(err) {
+		r.Log.Error(err, "Failed to delete the child of a timed-out step", "step", step.Name)
+	}
+}
+
+// callWebhook performs the HTTP call of a webhook step. Success is a 2xx answer, or the status code named by
+// successCondition ("status == 200").
+func (r *GryviaWorkflowReconciler) callWebhook(ctx context.Context, w *gryviav1.WebhookStep) (string, bool) {
+	method := strings.ToUpper(w.Method)
+	if method == "" {
+		method = http.MethodPost
+	}
+	cctx, cancel := context.WithTimeout(ctx, webhookTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(cctx, method, w.URL, strings.NewReader(w.Body))
+	if err != nil {
+		return fmt.Sprintf("invalid webhook request: %v", err), false
+	}
+	for k, v := range w.Headers {
+		req.Header.Set(k, v)
+	}
+	hc := r.HTTPClient
+	if hc == nil {
+		hc = &http.Client{Timeout: webhookTimeout}
+	}
+	resp, err := hc.Do(req)
+	if err != nil {
+		return fmt.Sprintf("webhook call failed: %v", err), false
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+
+	want := 0
+	if m := webhookStatusR.FindStringSubmatch(strings.TrimSpace(w.SuccessCondition)); m != nil {
+		fmt.Sscanf(m[1], "%d", &want)
+	}
+	if (want != 0 && resp.StatusCode == want) || (want == 0 && resp.StatusCode >= 200 && resp.StatusCode < 300) {
+		return fmt.Sprintf("Webhook answered %d", resp.StatusCode), true
+	}
+	return fmt.Sprintf("webhook answered %d", resp.StatusCode), false
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -476,5 +787,6 @@ func (r *GryviaWorkflowReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&gryviav1.GryviaWorkflow{}).
 		Owns(&gryviav1.GryviaAIJob{}).
+		Owns(&corev1.Pod{}).
 		Complete(r)
 }

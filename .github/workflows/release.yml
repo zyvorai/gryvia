@@ -42,6 +42,9 @@ jobs:
           - {name: storage-operator, context: operators/storage-operator, file: operators/storage-operator/Dockerfile}
           - {name: network-operator, context: operators/network-operator, file: operators/network-operator/Dockerfile}
           - {name: network-intelligence-operator, context: operators/network-intelligence, file: operators/network-intelligence/Dockerfile}
+          # The eBPF collector builds the .o files itself (clang) and needs the repository root as context, as in images.yml.
+          # It is the default image of the network-intelligence chart. Its arm64 build compiles the eBPF programs under QEMU.
+          - {name: ebpf-collector,   context: .,                          file: collector/Dockerfile}
           - {name: api-gateway,      context: services/api-gateway,       file: services/api-gateway/Dockerfile}
           - {name: ui,               context: .,                          file: docker/Dockerfile.ui}
     steps:
@@ -110,7 +113,7 @@ jobs:
       - name: Package
         run: |
           v="${TAG#v}"
-          # helm/gryvia depends on NVIDIA's GPU Operator chart; fetch it so the package is self-contained.
+          # helm/gryvia depends on NVIDIA's GPU Operator chart and the Kueue chart (oci://registry.k8s.io, no repo add); fetch them so the package is self-contained.
           helm repo add nvidia https://helm.ngc.nvidia.com/nvidia
           helm dependency build helm/gryvia
           for c in helm/gryvia helm/network-intelligence; do
@@ -175,6 +178,21 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
+      - name: Bundle the CRDs
+        run: |
+          # `kubectl apply --server-side --force-conflicts -f https://github.com/zyvorai/gryvia/releases/download/<tag>/gryvia-crds.yaml`
+          # (Helm installs CRDs on first install only and never upgrades them; see website/docs/guides/OPERATIONS.md).
+          for f in crds/*.yaml; do
+            echo '---'
+            cat "$f"
+          done > artifacts/gryvia-crds.yaml
+          python3 - <<'PY'
+          import yaml
+          docs = [d for d in yaml.safe_load_all(open("artifacts/gryvia-crds.yaml")) if d]
+          assert docs and all(d["kind"] == "CustomResourceDefinition" for d in docs), "unexpected object in the CRD bundle"
+          print(len(docs), "CRDs in gryvia-crds.yaml")
+          PY
+          (cd artifacts && sha256sum gryvia-crds.yaml > gryvia-crds.yaml.sha256)
       - name: Create release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

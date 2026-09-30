@@ -1,6 +1,7 @@
 mod client;
 mod commands;
 mod display;
+mod gateway;
 mod output;
 mod platform;
 mod types;
@@ -59,6 +60,14 @@ struct Cli {
     /// Disable colored output (also honours NO_COLOR)
     #[arg(long, global = true)]
     no_color: bool,
+
+    /// Gateway base URL for the commands whose data lives behind it (network flows/graph, gpu memory, security alerts). The API key is read from GRYVIA_API_KEY
+    #[arg(long, global = true, env = "GRYVIA_GATEWAY_URL", value_name = "URL")]
+    gateway: Option<String>,
+
+    /// Do not verify the gateway's TLS certificate (a CA bundle can be set with GRYVIA_CA_FILE instead)
+    #[arg(long, global = true)]
+    insecure: bool,
 }
 
 #[derive(Subcommand)]
@@ -267,6 +276,30 @@ enum Commands {
         output: OutputFormat,
     },
 
+    /// Manage GPU node reservations: list, create, cancel
+    ///
+    /// A reservation is a GryviaReservation object. The quota operator taints the reserved nodes so only
+    /// jobs annotated gryvia.io/reservation=<name> by the owner can run there.
+    #[command(after_help = examples(&["gryvia reservation list", "gryvia reservation create --owner ml --gpu-type H100 --gpus 16 --duration 8h", "gryvia reservation cancel resv-1 --yes"]))]
+    Reservation {
+        #[command(subcommand)]
+        action: ReservationCommands,
+    },
+
+    /// Show budgets and spend against limits
+    ///
+    /// Reads GryviaBudget objects. Spend is estimated from usage records; it is not an invoice.
+    #[command(after_help = examples(&["gryvia budget", "gryvia budget --scope ml", "gryvia budget -o json"]))]
+    Budget {
+        /// Only budgets whose scope name is this
+        #[arg(long)]
+        scope: Option<String>,
+
+        /// Output format
+        #[arg(short, long, value_enum, default_value_t = OutputFormat::Table, env = "GRYVIA_OUTPUT")]
+        output: OutputFormat,
+    },
+
     /// Manage tenants: list, get, create, delete
     ///
     /// A tenant is a GryviaTenant object; its workloads run in the namespace `tenant-<name>`.
@@ -399,7 +432,7 @@ enum Commands {
     },
 
     /// Network intelligence commands
-    #[command(after_help = examples(&["gryvia network status", "gryvia network anomalies --severity high"]))]
+    #[command(after_help = examples(&["gryvia network status", "gryvia network flows --gateway https://gryvia.example.com", "gryvia network graph --format json", "gryvia network anomalies --severity high"]))]
     Network {
         #[command(subcommand)]
         action: NetworkCommands,
@@ -413,10 +446,69 @@ enum Commands {
     },
 
     /// GPU communication and training analysis commands
-    #[command(after_help = examples(&["gryvia gpu memory --node gpu-node-01", "gryvia gpu nccl --job llm-training"]))]
+    #[command(after_help = examples(&["gryvia gpu memory", "gryvia gpu rdma --job llm-training", "gryvia gpu nccl --job llm-training"]))]
     Gpu {
         #[command(subcommand)]
         action: GpuCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum ReservationCommands {
+    /// List reservations
+    List {
+        /// Output format
+        #[arg(short, long, value_enum, default_value_t = OutputFormat::Table, env = "GRYVIA_OUTPUT")]
+        output: OutputFormat,
+    },
+
+    /// Create a reservation (immediate unless --start is given)
+    Create {
+        /// Reservation name (default: resv-<unix time>)
+        #[arg(long)]
+        name: Option<String>,
+
+        /// Owner type: user, team, project or namespace
+        #[arg(long, default_value = "team")]
+        owner_type: String,
+
+        /// Owner name; only this owner's jobs may use the reservation
+        #[arg(long)]
+        owner: String,
+
+        /// GPU type to reserve (matches the node label gryvia.io/gpu)
+        #[arg(long)]
+        gpu_type: String,
+
+        /// Number of GPUs to reserve (whole nodes are reserved)
+        #[arg(long)]
+        gpus: u32,
+
+        /// Start time, RFC 3339 (default: now)
+        #[arg(long)]
+        start: Option<String>,
+
+        /// End time, RFC 3339
+        #[arg(long, conflicts_with = "duration")]
+        end: Option<String>,
+
+        /// Length, e.g. 8h, 90m, 2d (counted from the start, or from now)
+        #[arg(long)]
+        duration: Option<String>,
+
+        /// Keep the nodes exclusive to the owner
+        #[arg(long, value_name = "BOOL", action = clap::ArgAction::Set, default_value_t = true)]
+        exclusive: bool,
+    },
+
+    /// Cancel (delete) a reservation; the nodes are released
+    Cancel {
+        /// Reservation name
+        name: String,
+
+        /// Skip confirmation
+        #[arg(short, long)]
+        yes: bool,
     },
 }
 
@@ -682,7 +774,7 @@ enum SecurityPolicyCommands {
         #[arg(long)]
         rules: String,
 
-        /// Enable automatic blocking of detected threats
+        /// Deprecated and ignored by the operator: nothing is ever blocked automatically
         #[arg(long)]
         auto_block: bool,
 
@@ -709,22 +801,26 @@ enum GpuCommands {
         gpu_namespace: String,
     },
 
-    /// Show GPU memory transfer stats for a node
+    /// Show host/device memory transfer counters (through the gateway)
     Memory {
-        /// Node name
+        /// Node name (not applied: the gateway sums the counters over all collectors)
         #[arg(long)]
-        node: String,
+        node: Option<String>,
 
         /// Target namespace
         #[arg(long, default_value = "default")]
         gpu_namespace: String,
     },
 
-    /// Show RDMA stats for a node
+    /// Show RDMA / fabric signals (GryviaFabricSignal status; with --node also the node's fabric health)
     Rdma {
-        /// Node name
+        /// Node name (adds that node's GryviaNodeFabric)
         #[arg(long)]
-        node: String,
+        node: Option<String>,
+
+        /// Only the fabric signal of this job
+        #[arg(long)]
+        job: Option<String>,
 
         /// Target namespace
         #[arg(long, default_value = "default")]
@@ -799,6 +895,67 @@ async fn run() -> Result<()> {
             return Ok(());
         }
         _ => {}
+    }
+
+    // Commands whose data lives behind the gateway run through it when one is configured, before (and
+    // without) a kube client, so they work from a laptop with only GRYVIA_GATEWAY_URL and GRYVIA_API_KEY.
+    let gateway = gateway::GatewayConfig::resolve(cli.gateway.as_deref(), cli.insecure)
+        .map(gateway::GatewayClient::new);
+    if let Some(gw) = &gateway {
+        match &cli.command {
+            Commands::Network {
+                action:
+                    NetworkCommands::Flows {
+                        service, output, ..
+                    },
+            } => {
+                commands::flows::execute_gateway(gw, service.as_deref(), output.as_str()).await?;
+                return Ok(());
+            }
+            Commands::Network {
+                action: NetworkCommands::Graph { format, .. },
+            } => {
+                commands::graph::execute_gateway(gw, format).await?;
+                return Ok(());
+            }
+            Commands::Gpu {
+                action: GpuCommands::Memory { node, .. },
+            } => {
+                commands::gpu_trace::execute_memory_gateway(gw, node.as_deref()).await?;
+                return Ok(());
+            }
+            Commands::Security {
+                action:
+                    SecurityCommands::Alerts {
+                        severity,
+                        alert_type,
+                        ..
+                    },
+            } => {
+                let printed = commands::security::alerts_via_gateway(
+                    gw,
+                    severity.as_deref(),
+                    alert_type.as_deref(),
+                )
+                .await?;
+                if printed {
+                    return Ok(());
+                }
+                // no per-event source at the gateway: fall through to the policy counters (kube)
+            }
+            _ => {}
+        }
+    }
+
+    // `gpu memory` has no Kubernetes source at all: without a gateway it only says what it needs.
+    if gateway.is_none() {
+        if let Commands::Gpu {
+            action: GpuCommands::Memory { node, .. },
+        } = &cli.command
+        {
+            commands::gpu_trace::execute_memory_without_gateway(node.as_deref())?;
+            return Ok(());
+        }
     }
 
     // Save namespace flag before passing ownership to client
@@ -901,6 +1058,42 @@ async fn run() -> Result<()> {
             output,
         } => {
             commands::queue::execute(&client, name, watch, output.as_str()).await?;
+        }
+        Commands::Reservation { action } => match action {
+            ReservationCommands::List { output } => {
+                commands::reservation::list(&client, output.as_str()).await?;
+            }
+            ReservationCommands::Create {
+                name,
+                owner_type,
+                owner,
+                gpu_type,
+                gpus,
+                start,
+                end,
+                duration,
+                exclusive,
+            } => {
+                commands::reservation::create(
+                    &client,
+                    name.as_deref(),
+                    &owner_type,
+                    &owner,
+                    &gpu_type,
+                    gpus,
+                    start.as_deref(),
+                    end.as_deref(),
+                    duration.as_deref(),
+                    exclusive,
+                )
+                .await?;
+            }
+            ReservationCommands::Cancel { name, yes } => {
+                commands::reservation::cancel(&client, &name, yes).await?;
+            }
+        },
+        Commands::Budget { scope, output } => {
+            commands::budget::execute(&client, scope, output.as_str()).await?;
         }
         Commands::Catalog { output } => {
             commands::catalog::execute(&client, output.as_str()).await?;
@@ -1263,26 +1456,12 @@ async fn run() -> Result<()> {
                     )
                     .await?;
                 }
-                GpuCommands::Memory {
-                    node,
-                    gpu_namespace,
-                } => {
-                    let effective_ns = if has_ns_flag {
-                        &ns_default
-                    } else {
-                        &gpu_namespace
-                    };
-                    commands::gpu_trace::execute(
-                        &client,
-                        commands::gpu_trace::GpuAction::Memory {
-                            node,
-                            namespace: effective_ns.to_string(),
-                        },
-                    )
-                    .await?;
+                GpuCommands::Memory { .. } => {
+                    unreachable!("handled before the cluster client is created")
                 }
                 GpuCommands::Rdma {
                     node,
+                    job,
                     gpu_namespace,
                 } => {
                     let effective_ns = if has_ns_flag {
@@ -1294,6 +1473,7 @@ async fn run() -> Result<()> {
                         &client,
                         commands::gpu_trace::GpuAction::Rdma {
                             node,
+                            job,
                             namespace: effective_ns.to_string(),
                         },
                     )

@@ -319,7 +319,6 @@ fi
 helm upgrade --install gryvia ./helm/gryvia \\
   --namespace gryvia-system --create-namespace \\
   --set namespace.create=false \\
-  --set crds.install=false \\
   --set monitoring.enabled=false \\
   --set nvidiaDevicePlugin.enabled=false \\
   --set dcgmExporter.enabled=false \\

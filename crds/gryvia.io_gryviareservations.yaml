@@ -154,10 +154,13 @@ spec:
                     description: Recurrence defines recurring schedule
                     properties:
                       cron:
-                        description: Cron is the cron expression
+                        description: |-
+                          Cron is a five-field cron expression (minute hour day-of-month month day-of-week,
+                          UTC): each fire time opens a reservation window. Names and macros are not supported.
                         type: string
                       duration:
-                        description: Duration is how long each reservation lasts
+                        description: Duration is how long each window lasts, e.g.
+                          8h, 90m or 2d
                         type: string
                     type: object
                   startTime:
@@ -165,8 +168,10 @@ spec:
                     format: date-time
                     type: string
                   type:
-                    description: Type is the schedule type (immediate, scheduled,
-                      recurring)
+                    description: |-
+                      Type is the schedule type: immediate (active now until endTime, if set), scheduled
+                      (active from startTime until endTime) or recurring (active during each window that
+                      starts at a recurrence.cron fire time and lasts recurrence.duration, until endTime)
                     type: string
                 required:
                 - type
@@ -209,6 +214,10 @@ spec:
                     description: WastedCost is the cost for idle time
                     type: number
                 type: object
+              message:
+                description: Message explains why a reservation is pending or only
+                  partly allocated
+                type: string
               state:
                 description: State is the current state (pending, active, expired,
                   cancelled)

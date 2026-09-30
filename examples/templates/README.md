@@ -24,37 +24,14 @@ Only the sections below exist in this README; JAX, full fine-tuning, RLHF, Tenso
 
 ## Usage
 
-### Using kfctl
-
-```bash
-# List available templates
-kfctl templates list
-
-# Create job from template
-kfctl submit --template pytorch-ddp \
-  --param model=llama-7b \
-  --param dataset=openwebtext \
-  --param gpu-count=8
-
-# View template
-kfctl templates show pytorch-ddp
-```
-
-### Using kubectl
-
-```bash
-# Apply template directly
-kubectl apply -f examples/templates/pytorch-ddp.yaml
-
-# Customize with kustomize
-kubectl apply -k examples/templates/pytorch-ddp/
-```
+No template files ship with Gryvia. For manifests that work today, copy one from `examples/jobs/` or
+`examples/training/` and submit it with `gryvia submit -f job.yaml` (or `kubectl apply -f`). The sections below are
+design sketches of what parameterised templates could look like.
 
 ## PyTorch DDP Training
 
 Distributed data parallel training with PyTorch.
 
-**Template:** `pytorch-ddp.yaml`
 
 Design sketch, not accepted by the current CRD schema:
 
@@ -100,21 +77,10 @@ spec:
 - `BATCH_SIZE`: Batch size per GPU (default: 32)
 - `LEARNING_RATE`: Learning rate (default: 3e-4)
 
-**Example:**
-
-```bash
-kfctl submit --template pytorch-ddp \
-  --param model=llama-13b \
-  --param dataset=/data/openwebtext \
-  --param gpu-count=16 \
-  --param batch-size=16
-```
-
 ## TensorFlow Distributed
 
 Multi-worker distributed training with TensorFlow.
 
-**Template:** `tensorflow-distributed.yaml`
 
 Design sketch, not accepted by the current CRD schema:
 
@@ -148,7 +114,6 @@ spec:
 
 Large model training with DeepSpeed ZeRO optimization.
 
-**Template:** `deepspeed-training.yaml`
 
 Design sketch, not accepted by the current CRD schema:
 
@@ -228,7 +193,6 @@ spec:
 
 Parameter-efficient fine-tuning with LoRA.
 
-**Template:** `lora-finetuning.yaml`
 
 Design sketch, not accepted by the current CRD schema:
 
@@ -273,7 +237,6 @@ spec:
 
 High-throughput LLM inference server with vLLM.
 
-**Template:** `vllm-inference.yaml`
 
 Design sketch, not accepted by the current CRD schema:
 
@@ -333,12 +296,7 @@ spec:
 **Usage:**
 
 ```bash
-# Deploy inference server
-kfctl submit --template vllm-inference \
-  --param model=meta-llama/Llama-2-13b-hf \
-  --param gpu-count=2
-
-# Test inference
+# Test inference (once a vLLM server is running behind this service name)
 curl http://vllm-inference:8000/v1/completions \
   -H "Content-Type: application/json" \
   -d '{
@@ -352,7 +310,6 @@ curl http://vllm-inference:8000/v1/completions \
 
 Large-scale data preprocessing job.
 
-**Template:** `dataset-preprocessing.yaml`
 
 Design sketch, not accepted by the current CRD schema:
 
@@ -411,19 +368,9 @@ spec:
     # ... job spec
 ```
 
-### 2. Register Template
+### 2. Use it
 
-```bash
-kubectl apply -f my-template.yaml
-```
-
-### 3. Use Template
-
-```bash
-kfctl submit --template my-custom-template \
-  --param model=custom-model \
-  --param gpu-count=16
-```
+There is no template controller, so nothing registers or instantiates a template today.
 
 ## Best Practices
 

@@ -9,12 +9,12 @@ What Gryvia does today when a `GryviaAIJob` is submitted, and which of the more 
 | GPU-aware node selection (filter and score nodes, recorded in `status.nodesAllocated`) | Implemented and run by the GryviaAIJob controller. Advisory: see [What runs today](#what-runs-today) |
 | Indexed batch Job (training, fine-tuning, evaluation) or StatefulSet (inference), headless Service and PVC creation, NCCL/`MASTER_ADDR`/`WORLD_SIZE`/`RANK` env for distributed jobs | Implemented; unit-tested against fake clients, kind end-to-end in CI, not run on GPUs. See [AIJob lifecycle](https://github.com/zyvorai/gryvia/blob/main/docs/aijob-lifecycle.md) |
 | Validating admission webhook (job sanity, quota and SKU policy) | Implemented, served by the ai-operator when enabled; fails open by default |
-| Gang scheduling | Library code in `operators/ai-operator/pkg/scheduler/gang.go`, not called by the controller |
-| DRF fair share and queue ordering | Library code in `operators/ai-operator/pkg/queue`, not called by the controller |
-| Backfill | Not implemented as a running behaviour |
+| Gang admission, queueing, quotas, borrowing between tenants, priority preemption | **Opt-in, backed by Kueue** (`--kueue-integration`, off by default): the Job is created suspended and Kueue admits all its pods together. Unit-tested with fake clients; the kind workflow `e2e-kueue.yml` is written but unverified until it has passed; not run on GPUs. See the [Kueue integration](https://github.com/zyvorai/gryvia/blob/main/docs/kueue-integration.md) |
+| Gang scheduling in-tree (`pkg/scheduler/gang.go`), DRF queue (`pkg/queue`) | Library code, not called by anything; superseded by Kueue when it is enabled |
+| Backfill | Not implemented (Kueue's `BestEffortFIFO` lets smaller jobs run past a blocked one, which is not time-based backfill) |
 | Elastic training | Library code in `operators/ai-operator/pkg/elastic`, not called by the controller |
 | Mutating webhook (NCCL injection and defaults) | Code exists in `pkg/webhook/mutator.go`; not registered in `main.go`, so it does not run |
-| Priority preemption, `GryviaPriority` classes | CRD only, no controller |
+| Priority preemption | With Kueue integration: a higher `spec.priority` job preempts lower-priority jobs of the same ClusterQueue (and of borrowing tenants in the cohort); the victim is requeued (`Queued`), not lost. Without Kueue: none. `GryviaPriority` classes: CRD only, no controller |
 | Fabric-health penalty on node scores | Function exists (`pkg/scheduler/fabric_score.go`), marked NOT WIRED in the code |
 
 The remaining sections describe the running behaviour first, then the designs. Sections marked "Design" are not what a cluster does today. Nothing here has been verified on real GPU hardware; the operator logic is covered by Go unit tests against fake clients.
@@ -31,7 +31,7 @@ The GryviaAIJob controller (`operators/ai-operator/controllers/gryviaaijob_contr
 3. Creates a PVC when `spec.storage` is set, a headless Service, and the workload with one `trainer` container. Training, fine-tuning and evaluation jobs get an **Indexed `batch/v1` Job** named `<job>` (parallelism = completions = `distributed.nodes`, `restartPolicy: Never`, `backoffLimit` = `spec.retryLimit`, `activeDeadlineSeconds` from `spec.timeout`); inference jobs get a StatefulSet named `<job>-training`. `spec.workloadKind` (`job` or `statefulset`) overrides the default, and a job that already has a StatefulSet keeps it.
 4. Derives status from the workload. For a Job: `Scheduling` until a pod is ready, `Running`, then `Succeeded` when the Job is Complete or `Failed` (with a message such as `BackoffLimitExceeded` or `DeadlineExceeded`) when the Job fails. Terminal phases are final. For a StatefulSet: `Running` once a replica is ready; pods restart forever, so it never completes.
 
-`Queued`, `Rejected`, `Preempted` and `Cancelled` are honoured: nothing is created while a job is `Queued` or `Rejected`, and `Cancelled`/`Preempted` delete the workload (the PVC is kept). Full state machine: [AIJob lifecycle](https://github.com/zyvorai/gryvia/blob/main/docs/aijob-lifecycle.md).
+With `--kueue-integration` the Job of a job that has a queue is created suspended and Kueue decides when it starts; the job shows `Queued` with Kueue's reason while it waits (see [Gang Scheduling](#gang-scheduling)). `Queued`, `Rejected`, `Preempted` and `Cancelled` are honoured: nothing is created while a job is `Queued` or `Rejected`, and `Cancelled`/`Preempted` delete the workload (the PVC is kept). Full state machine: [AIJob lifecycle](https://github.com/zyvorai/gryvia/blob/main/docs/aijob-lifecycle.md).
 
 Important limits of the current implementation:
 
@@ -69,13 +69,17 @@ For a distributed job the controller creates 4 replicas with 8 GPUs each and inj
 
 ## Gang Scheduling
 
-Status: library code only. `GangScheduler` in `operators/ai-operator/pkg/scheduler/gang.go` implements a `PodGroup` with all-or-nothing reservation of GPUs across nodes, a hold timeout (a constant of 2 minutes in the code) that releases reserved GPUs to break deadlocks, and a deadlock detector. Nothing in the running controller calls it, and there is no `spec.scheduling` field on `GryviaAIJob`.
+Status: **Kueue-backed and opt-in.** Without `--kueue-integration` a multi-node job becomes one Indexed Job (all pods are created at once) or, for inference and `workloadKind: statefulset`, one StatefulSet, and the Kubernetes scheduler places each pod independently: nothing reserves the whole set of GPUs up front, so two large jobs can each end up holding part of the cluster.
 
-What that means today: a multi-node job becomes one Indexed Job (all pods are created at once) or, for inference and `workloadKind: statefulset`, one StatefulSet (default `OrderedReady` pod management, so pods start one after another) and the Kubernetes scheduler places each pod independently. Nothing reserves the whole set of GPUs up front, so two large jobs can each end up holding part of the cluster. If you need real gang semantics now, use a gang-aware scheduler such as Kueue or Volcano in front of the cluster; Gryvia does not integrate with them.
+With `--kueue-integration` on both operators (and Kueue installed, for example `kueue.enabled=true` in the chart) the ai-operator creates the Job **suspended** with the label `kueue.x-k8s.io/queue-name`. Kueue reserves quota for all `distributed.nodes` pods at once and only then unsuspends the Job, so a gang that does not fit stays entirely un-started (zero pods) instead of holding part of the cluster. The queue comes from `spec.queueName`, the annotation `gryvia.io/queue-name`, or the tenant's default LocalQueue `gryvia` in `tenant-*` namespaces. What "all pods admitted together" does and does not guarantee (quota, not node placement; `waitForPodsReady`; no topology-aware placement) is in the [Kueue integration](https://github.com/zyvorai/gryvia/blob/main/docs/kueue-integration.md).
+
+**Unverified:** this has unit tests against fake clients and a kind workflow (`.github/workflows/e2e-kueue.yml`) that has not been run yet; nothing was run on GPUs or with real multi-node NCCL.
+
+The in-tree `GangScheduler` in `operators/ai-operator/pkg/scheduler/gang.go` (a `PodGroup` with all-or-nothing GPU reservation) is library code that nothing calls and that is superseded by Kueue; there is no `spec.scheduling` field on `GryviaAIJob`. Volcano is not integrated.
 
 ### Design sketch
 
-Design sketch, not accepted by the current CRD schema (there is no `scheduling` field):
+Design sketch, not accepted by the current CRD schema (there is no `scheduling` field). Topology preference values (`same-node`, `same-rack`, `same-zone`, `any`) are not implemented and Kueue's topology-aware scheduling is not wired; the only topology signal in the real scorer is the `gryvia.io/interconnect` node label (NVSwitch, NVLink).
 
 ```text
 spec:
@@ -88,22 +92,22 @@ spec:
         preferred: same-rack
 ```
 
-The intended behaviour is: reserve resources without binding until every pod of the gang can be placed, then bind atomically; on timeout release the reservations and re-queue. Topology preference values (`same-node`, `same-rack`, `same-zone`, `any`) are not implemented; the only topology signal in the real scorer is the `gryvia.io/interconnect` node label (NVSwitch, NVLink).
-
 ---
 
-## DRF Fair-Share Queue
+## Queues, quotas and fair sharing
 
-Status: library code only. `operators/ai-operator/pkg/queue` contains a priority queue (`controller.go`) and a Dominant Resource Fairness calculator (`fairshare.go`: register teams with weights, record allocations, pick the team with the smallest weighted dominant share). The controller does not use either, so there is no fair-share ordering of jobs, no hierarchical queues and no backfill running. There is no `GryviaQueue` kind.
+Status: **Kueue-backed and opt-in** (same switch as above; no in-tree fair-share queue runs). With the quota operator's `--kueue-integration`, every `GryviaTenant` gets a LocalQueue `gryvia` in `tenant-<name>` and a ClusterQueue `gryvia-<tenant>` whose nominal quota comes from `spec.quotas.concurrentGPUs` (else the `maxGPUs` of a `GryviaQuota` covering the namespace, else unlimited). All tenant ClusterQueues share the cohort `gryvia`: idle quota is borrowed between tenants and reclaimed by preemption, with `BestEffortFIFO` ordering. Kueue's own fair-sharing modes and DRF are **not** enabled; what you get is nominal quota + borrowing + preemption. Details, limits and the exact objects: [Kueue integration](https://github.com/zyvorai/gryvia/blob/main/docs/kueue-integration.md).
 
-What exists for multi-tenant limits instead:
+The in-tree DRF calculator and priority queue (`operators/ai-operator/pkg/queue`) are library code that nothing calls. There is no `GryviaQueue` kind, no hierarchical queues and no time-based backfill.
+
+Other multi-tenant limits, independent of Kueue:
 
 - `GryviaQuota` (reconciled by the quota-operator) tracks usage per namespace, and the admission webhook enforces per-job GPU limits and allowed GPU types from quotas and the tenant's SKU list on create.
 - Kubernetes `ResourceQuota` and namespaces per tenant work as usual.
 
 ### The CLI queue view
 
-`gryvia queue` lists jobs whose phase is Pending, Queued or Scheduling, plus a summary of running jobs. It reads `GryviaAIJob` objects through your kubeconfig; the optional name argument filters by job name substring, it is not a queue name.
+`gryvia queue` lists jobs whose phase is Pending, Queued or Scheduling (with Kueue integration, `Queued` includes jobs waiting for quota, with Kueue's reason in the message; `kubectl get workloads,clusterqueues,localqueues` shows Kueue's own view), plus a summary of running jobs. It reads `GryviaAIJob` objects through your kubeconfig; the optional name argument filters by job name substring, it is not a queue name.
 
 ```bash
 gryvia queue
@@ -113,7 +117,7 @@ gryvia queue -o json
 
 ### Design sketch
 
-Design sketch, not accepted by the current CRD schema (no `GryviaQueue` kind exists):
+Design sketch, not accepted by the current CRD schema (no `GryviaQueue` kind exists; Kueue's ClusterQueue/LocalQueue objects are what exists when the integration is on):
 
 ```text
 kind: GryviaQueue
@@ -182,15 +186,17 @@ Rules that earlier versions of this guide listed but that are **not** implemente
 
 ## Priority Preemption
 
-Status: not implemented. `spec.priority` (0 to 100) is validated but the controller neither orders jobs by it nor preempts anything. A `GryviaPriority` CRD exists (priority classes such as production or best-effort in the design), and a controller file exists under `operators/ai-operator/controllers/`, but it is not registered in `main.go`, so nothing reconciles it. There is no `priorityClassName`, `preemption` or `checkpointing` field on `GryviaAIJob`.
+Status: **Kueue-backed and opt-in; without it, not implemented.** With `--kueue-integration`, `spec.priority` (0 to 100) is mapped to a Kueue `WorkloadPriorityClass` `gryvia-priority-<n>` (`n` = priority rounded down to a multiple of 10; priority below 10 uses Kueue's default of 0), and the tenant ClusterQueues are created with `withinClusterQueue: LowerPriority`, `reclaimWithinCohort: Any` and `borrowWithinCohort: LowerPriority`. A higher-priority job that cannot fit therefore evicts lower-priority admitted jobs of the same queue; a tenant reclaiming quota it lent out evicts the borrowers. An evicted job goes back to `Queued` (message "Evicted by Kueue ...") and runs again when it fits: it is requeued by Kueue, not deleted and not terminal `Preempted`. **Nothing checkpoints first**: the pods are terminated, so the job must resume from its own checkpoints. Metering caveat and details: [Kueue integration](https://github.com/zyvorai/gryvia/blob/main/docs/kueue-integration.md).
 
-For preemption today, use Kubernetes `PriorityClass` and the default scheduler's preemption on the pods. That requires a `priorityClassName` on the pod template, which `GryviaAIJob` does not expose either, so in practice it is not reachable through this API yet.
+Without Kueue integration `spec.priority` is validated but not acted on. The `GryviaPriority` CRD (priority classes) exists, and a controller file exists under `operators/ai-operator/controllers/`, but it is not registered in `main.go`, so nothing reconciles it. There is no `priorityClassName`, `preemption` or `checkpointing` field on `GryviaAIJob`.
 
-### Design
-
-The intended flow is: a high-priority job arrives at a full cluster, the scheduler picks lower-priority victims (preferring jobs that checkpoint, lowest priority first), victims get SIGTERM and a grace period to checkpoint, then are re-queued and resume from the checkpoint. None of this exists in running code. The priority class table (values, who can preempt whom) in earlier versions of this guide was a proposal, not shipped behaviour, and has been removed.
+**Unverified:** unit tests against fake clients only; the kind workflow that preempts a running job has not been run yet.
 
 ```bash
+# Kueue view of the queue (with the integration on)
+kubectl get workloads,clusterqueues,localqueues -A
+kubectl get workloadpriorityclasses
+
 # The CRD exists; nothing reconciles it yet
 kubectl get gryviapriorities
 
@@ -207,11 +213,12 @@ kubectl describe gryviaaijob my-job
 | Feature | Real state |
 |---------|-----------|
 | Node selection | Runs; recorded in status, pods are placed by the Kubernetes scheduler using selectors |
-| Gang scheduling | Library code, not wired |
-| DRF fair share, hierarchical queues, backfill | Library code (DRF and queue), backfill absent; not wired |
+| Gang admission (all pods together) | Kueue-backed, opt-in (`--kueue-integration`); unit-tested, e2e written but unverified. In-tree `gang.go` is unused library code |
+| Queues, per-tenant quota, borrowing | Kueue-backed, opt-in; nominal quota + cohort borrowing, not DRF. In-tree DRF/queue packages are unused library code |
+| Hierarchical queues, backfill | Not implemented |
 | Elastic training | Library code, not wired, no CRD field |
 | Validating webhook | Runs when enabled; quota and SKU policy; fails open by default |
 | Mutating webhook (NCCL injection) | Code only, not registered |
-| Priority preemption | Not implemented |
+| Priority preemption | Kueue-backed, opt-in: evicted jobs are requeued, no checkpointing. Off without the integration |
 
 See also [GPU nodes](GPU_NODES.md), [GPU as a service](GPU_AS_A_SERVICE.md) for quota and tenancy, and [Operations](OPERATIONS.md).

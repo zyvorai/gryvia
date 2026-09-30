@@ -40,6 +40,12 @@ func main() {
 	var webhookCertDir string
 	var fabricAware bool
 	var fabricMaxPenalty float64
+	var kueueIntegration bool
+	var kueueDefaultQueue string
+	var admissionGate bool
+	var admissionDefaultHours float64
+	var ml mlOptions
+	var mergeFabricSignals bool
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -54,6 +60,18 @@ func main() {
 		"Rank nodes with the fresh per-node fabric health published by the collector (GryviaNodeFabric). Per-job override: annotation gryvia.io/fabric-aware=true|false. Off by default.")
 	flag.Float64Var(&fabricMaxPenalty, "fabric-max-penalty", 25,
 		"Most points fabric health may subtract from a node score (0 or above 25 means 25).")
+
+	flag.BoolVar(&kueueIntegration, "kueue-integration", false,
+		"Create the batch Job of a job with a queue suspended and labelled kueue.x-k8s.io/queue-name so Kueue admits all its pods together, and report Kueue's admission state as phase Queued. Needs Kueue installed. Off by default: nothing changes without it.")
+	flag.StringVar(&kueueDefaultQueue, "kueue-default-queue", "gryvia",
+		"With --kueue-integration: LocalQueue used by jobs in tenant-* namespaces that name no queue (only if that LocalQueue exists).")
+	flag.BoolVar(&admissionGate, "admission-gate", false,
+		"Before creating a job's workload, check the quotas and hard budgets covering its namespace (spend from usage records plus a forecast for the job) and reject it instead of creating it. Fails open on lookup errors. Off by default.")
+	flag.Float64Var(&admissionDefaultHours, "admission-default-hours", 1,
+		"Hours a job without spec.timeout is assumed to run for the admission gate's cost forecast.")
+	ml.bind(flag.CommandLine)
+	flag.BoolVar(&mergeFabricSignals, "merge-fabric-signals", false,
+		"Fold the per-node entries collectors write into GryviaFabricSignal status.nodes[] into the top-level status (max for degradation metrics, sample-weighted means for ratios, stale entries ignored). Off by default.")
 
 	opts := zap.Options{
 		Development: false,
@@ -89,12 +107,27 @@ func main() {
 		Scheme: mgr.GetScheme(),
 		Log:    ctrl.Log.WithName("controllers").WithName("GryviaAIJob"),
 
-		FabricAware:      fabricAware,
-		FabricMaxPenalty: fabricMaxPenalty,
-		Recorder:         mgr.GetEventRecorderFor("gryviaaijob-controller"),
+		FabricAware:       fabricAware,
+		FabricMaxPenalty:  fabricMaxPenalty,
+		KueueIntegration:  kueueIntegration,
+		KueueDefaultQueue: kueueDefaultQueue,
+		Recorder:          mgr.GetEventRecorderFor("gryviaaijob-controller"),
+
+		AdmissionGate:         admissionGate,
+		AdmissionDefaultHours: admissionDefaultHours,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "GryviaAIJob")
 		os.Exit(1)
+	}
+
+	if mergeFabricSignals {
+		if err = (&controllers.GryviaFabricSignalReconciler{
+			Client: mgr.GetClient(),
+			Scheme: mgr.GetScheme(),
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "GryviaFabricSignal")
+			os.Exit(1)
+		}
 	}
 
 	// Create kubernetes clientset for pod log access
@@ -149,6 +182,73 @@ func main() {
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "GryviaTrainingTimeMachine")
 		os.Exit(1)
+	}
+
+	// The ML controllers: their flags and defaults are in ml_controllers.go, docs/ml-controllers.md explains them.
+	if ml.enabled {
+		if ml.autoServeGPUCount < 0 {
+			setupLog.Error(nil, "--autoserve-default-gpu-count must not be negative")
+			os.Exit(1)
+		}
+		if err = (&controllers.GryviaWorkspaceReconciler{
+			Client:       mgr.GetClient(),
+			Scheme:       mgr.GetScheme(),
+			Log:          ctrl.Log.WithName("controllers").WithName("GryviaWorkspace"),
+			JupyterImage: ml.workspaceJupyterImage,
+			CodeImage:    ml.workspaceCodeImage,
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "GryviaWorkspace")
+			os.Exit(1)
+		}
+
+		if err = (&controllers.GryviaInferenceServiceReconciler{
+			Client: mgr.GetClient(),
+			Scheme: mgr.GetScheme(),
+			Log:    ctrl.Log.WithName("controllers").WithName("GryviaInferenceService"),
+			Images: map[gryviav1.InferenceBackend]string{
+				gryviav1.BackendVLLM:        ml.inferenceImageVLLM,
+				gryviav1.BackendTriton:      ml.inferenceImageTriton,
+				gryviav1.BackendTensorRTLLM: ml.inferenceImageTensorRT,
+				gryviav1.BackendTorchServe:  ml.inferenceImageTorchServe,
+			},
+			HealthPath:         ml.inferenceHealthPath,
+			CanaryStartupGrace: ml.canaryStartupGrace,
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "GryviaInferenceService")
+			os.Exit(1)
+		}
+
+		if err = (&controllers.GryviaModelRegistryReconciler{
+			Client:            mgr.GetClient(),
+			Scheme:            mgr.GetScheme(),
+			Log:               ctrl.Log.WithName("controllers").WithName("GryviaModelRegistry"),
+			AutoServeGPUCount: int32(ml.autoServeGPUCount),
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "GryviaModelRegistry")
+			os.Exit(1)
+		}
+
+		if err = (&controllers.GryviaWorkflowReconciler{
+			Client:           mgr.GetClient(),
+			Scheme:           mgr.GetScheme(),
+			Log:              ctrl.Log.WithName("controllers").WithName("GryviaWorkflow"),
+			MaxParallelSteps: ml.workflowMaxParallelSteps,
+			AllowWebhooks:    ml.workflowAllowWebhooks,
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "GryviaWorkflow")
+			os.Exit(1)
+		}
+
+		if err = (&controllers.GryviaAutoTunerReconciler{
+			Client:            mgr.GetClient(),
+			Scheme:            mgr.GetScheme(),
+			Log:               ctrl.Log.WithName("controllers").WithName("GryviaAutoTuner"),
+			MaxTrialsCap:      int32(ml.tunerMaxTrials),
+			MaxParallelismCap: int32(ml.tunerMaxParallelism),
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "GryviaAutoTuner")
+			os.Exit(1)
+		}
 	}
 
 	if enableWebhooks {

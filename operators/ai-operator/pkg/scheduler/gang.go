@@ -1,3 +1,8 @@
+// gang.go: an in-memory PodGroup gang scheduler. It is NOT USED by any controller (nothing calls
+// it) and is unverified. Gang admission is done by Kueue when the ai-operator runs with
+// --kueue-integration (all pods of a Job are admitted together against a quota; see
+// docs/kueue-integration.md). Kept only as library code.
+
 package scheduler
 
 import (

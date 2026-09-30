@@ -120,15 +120,15 @@ func TestStatusPatchWithInference(t *testing.T) {
 	if s["kvCacheUsage"].(float64) != 1 {
 		t.Errorf("kvCacheUsage is clamped to 1: %v", s["kvCacheUsage"])
 	}
-	if v, has := s["queueTimeMeanMs"]; !has || v != nil {
-		t.Errorf("NaN must become null, got %v (present %v)", v, has)
+	if v, has := s["queueTimeMeanMs"]; has {
+		t.Errorf("NaN is not a measurement and must be omitted, got %v", v)
 	}
-	// Nothing measured: every engine field is an explicit null so a stale value is removed.
+	// Nothing measured: every engine field is omitted (never null/zero: another node may have measured it).
 	body, _ = statusPatchBody(Status{UpdatedAt: time.Unix(1_700_000_000, 0)}, true)
 	s = decodeStatus(t, body)
 	for _, k := range []string{"ttftP99ms", "itlP99ms", "queueTimeP99ms", "e2eP99ms", "requestsWaiting", "kvCacheUsage", "engine"} {
-		if v, has := s[k]; !has || v != nil {
-			t.Errorf("%s = %v (present %v), want explicit null", k, v, has)
+		if v, has := s[k]; has {
+			t.Errorf("%s = %v, want omitted", k, v)
 		}
 	}
 }
@@ -168,7 +168,7 @@ func TestStatusPatchCarriesInferenceAndCollectiveFields(t *testing.T) {
 	if s["collectiveMaxSkewMs"].(float64) != 12.5 || s["gpuIdleDuringCommRatio"].(float64) != 0.25 || s["gpuCorrelationCoverage"].(float64) != 0.5 {
 		t.Errorf("collective/GPU fields lost: %s", body)
 	}
-	if v, has := s["smActiveDuringCompute"]; !has || v != nil {
-		t.Errorf("unmeasured compute activity must be an explicit null: %v", v)
+	if v, has := s["smActiveDuringCompute"]; has {
+		t.Errorf("unmeasured compute activity must be omitted: %v", v)
 	}
 }

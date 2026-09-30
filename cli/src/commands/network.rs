@@ -9,17 +9,17 @@ use crate::ui::{self, Cell2, Marker};
 pub async fn execute_status(client: &GryviaClient, namespace: &str) -> Result<()> {
     let color = ui::color_enabled();
 
-    // Query flows
-    let flow_ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
+    // Active flows = distinct edges of the service graphs (there is no per-flow Kubernetes kind)
+    let graph_ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
         "gryvia.io",
         "v1alpha1",
-        "GryviaFlow",
+        "GryviaServiceGraph",
     ));
-    let flow_api: Api<DynamicObject> =
-        Api::namespaced_with(client.kube_client.clone(), namespace, &flow_ar);
+    let graph_api: Api<DynamicObject> =
+        Api::namespaced_with(client.kube_client.clone(), namespace, &graph_ar);
 
-    let active_flows = match flow_api.list(&ListParams::default()).await {
-        Ok(list) => list.items.len(),
+    let active_flows = match graph_api.list(&ListParams::default()).await {
+        Ok(list) => crate::commands::graph::graphs_to_graph(&list.items).1.len(),
         Err(_) => 0,
     };
 
@@ -63,19 +63,12 @@ pub async fn execute_status(client: &GryviaClient, namespace: &str) -> Result<()
     let (total_anomalies, critical_anomalies) = match anomaly_api.list(&ListParams::default()).await
     {
         Ok(list) => {
-            let critical = list
-                .items
+            let rows = anomaly_rows(&list.items);
+            let critical = rows
                 .iter()
-                .filter(|a| {
-                    a.data
-                        .get("spec")
-                        .and_then(|s| s.get("severity"))
-                        .and_then(|v| v.as_str())
-                        .map(|sev| sev == "critical")
-                        .unwrap_or(false)
-                })
+                .filter(|r| r["spec"]["severity"].as_str() == Some("critical"))
                 .count();
-            (list.items.len(), critical)
+            (rows.len(), critical)
         }
         Err(_) => (0, 0),
     };
@@ -98,7 +91,10 @@ pub async fn execute_status(client: &GryviaClient, namespace: &str) -> Result<()
                     .get("status")
                     .and_then(|s| s.get("phase"))
                     .and_then(|v| v.as_str())
-                    .map(|phase| phase == "Running" || phase == "Active")
+                    .map(|phase| {
+                        phase.eq_ignore_ascii_case("active")
+                            || phase.eq_ignore_ascii_case("running")
+                    })
                     .unwrap_or(false)
             })
             .count(),
@@ -206,40 +202,27 @@ pub async fn execute_anomalies(
     ));
     let api: Api<DynamicObject> = Api::namespaced_with(client.kube_client.clone(), namespace, &ar);
 
-    let mut params = ListParams::default();
-    if let Some(svc) = service {
-        let label_selector = format!("gryvia.io/service={}", svc);
-        params = params.labels(&label_selector);
-    }
-
-    let anomalies = match api.list(&params).await {
+    let anomalies = match api.list(&ListParams::default()).await {
         Ok(list) => list,
         Err(e) => {
-            display::print_warning(&format!("Could not query anomalies: {}", e));
+            display::print_warning(&format!(
+                "Could not query anomalies: {}",
+                display::cluster_error_text(&e.to_string())
+            ));
             println!();
             return Ok(());
         }
     };
 
-    // Filter by severity if specified
-    let filtered: Vec<&DynamicObject> = anomalies
-        .items
-        .iter()
-        .filter(|a| {
-            if let Some(sev) = severity {
-                a.data
-                    .get("spec")
-                    .and_then(|s| s.get("severity"))
-                    .and_then(|v| v.as_str())
-                    .map(|actual_sev| actual_sev == sev)
-                    .unwrap_or(false)
-            } else {
-                true
-            }
-        })
-        .collect();
+    let mut rows = anomaly_rows(&anomalies.items);
+    if let Some(svc) = service {
+        rows.retain(|r| r["spec"]["service"].as_str() == Some(svc));
+    }
+    if let Some(sev) = severity {
+        rows.retain(|r| r["spec"]["severity"].as_str() == Some(sev));
+    }
 
-    if filtered.is_empty() {
+    if rows.is_empty() {
         println!(
             "{} No anomalies detected.",
             Marker::Ok.paint_with(Marker::Ok.glyph(), color)
@@ -250,32 +233,65 @@ pub async fn execute_anomalies(
 
     match output {
         "json" | "yaml" => {
-            let items: Vec<&serde_json::Value> = filtered.iter().map(|a| &a.data).collect();
-            crate::output::print_serialized(output, &items)?;
+            crate::output::print_serialized(output, &rows)?;
         }
         _ => {
-            print_anomalies_table(&filtered);
+            print_anomalies_table(&rows);
         }
     }
 
     Ok(())
 }
 
+/// One row per anomaly in the `status.anomalies` of GryviaNetworkAnomaly objects, shaped like the gateway's
+/// `/api/network/anomalies` items: `{"spec": {severity, service, type, description, detectedAt}}`.
+pub fn anomaly_rows(objects: &[DynamicObject]) -> Vec<serde_json::Value> {
+    let mut rows = Vec::new();
+    for o in objects {
+        let service = o
+            .data
+            .get("spec")
+            .and_then(|s| s.get("targetService"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        for a in o
+            .data
+            .get("status")
+            .and_then(|s| s.get("anomalies"))
+            .and_then(|v| v.as_array())
+            .into_iter()
+            .flatten()
+        {
+            let text = |k: &str| a.get(k).and_then(|v| v.as_str()).unwrap_or("");
+            rows.push(serde_json::json!({"spec": {
+                "severity": text("severity").to_ascii_lowercase(),
+                "service": service,
+                "type": text("type"),
+                "description": text("description"),
+                "detectedAt": text("detected"),
+            }}));
+        }
+    }
+    rows
+}
+
 /// Lines of the anomalies table (SEVERITY SERVICE TYPE DESCRIPTION DETECTED AT).
-pub fn anomalies_lines(anomalies: &[&DynamicObject], color: bool) -> Vec<String> {
+pub fn anomalies_lines(anomalies: &[serde_json::Value], color: bool) -> Vec<String> {
     let text = |spec: Option<&serde_json::Value>, key: &str| -> String {
         spec.and_then(|s| s.get(key))
             .and_then(|v| v.as_str())
+            .filter(|v| !v.is_empty())
             .unwrap_or("-")
             .to_string()
     };
     let rows: Vec<Vec<Cell2>> = anomalies
         .iter()
         .map(|anomaly| {
-            let spec = anomaly.data.get("spec");
+            let spec = anomaly.get("spec");
             let severity = spec
                 .and_then(|s| s.get("severity"))
                 .and_then(|v| v.as_str())
+                .filter(|v| !v.is_empty())
                 .unwrap_or("unknown");
             vec![
                 (severity.to_string(), Some(severity_marker(severity))),
@@ -293,7 +309,7 @@ pub fn anomalies_lines(anomalies: &[&DynamicObject], color: bool) -> Vec<String>
     )
 }
 
-fn print_anomalies_table(anomalies: &[&DynamicObject]) {
+fn print_anomalies_table(anomalies: &[serde_json::Value]) {
     for line in anomalies_lines(anomalies, ui::color_enabled()) {
         println!("{line}");
     }
@@ -327,29 +343,33 @@ mod tests {
     use serde_json::json;
     use strip_ansi as strip;
 
-    fn anomaly(spec: serde_json::Value) -> DynamicObject {
+    fn anomaly_object(target: &str, anomalies: serde_json::Value) -> DynamicObject {
         serde_json::from_value(json!({
             "apiVersion": "gryvia.io/v1alpha1",
             "kind": "GryviaNetworkAnomaly",
             "metadata": {"name": "a"},
-            "spec": spec,
+            "spec": {"targetService": target},
+            "status": {"anomalies": anomalies},
         }))
         .unwrap()
     }
 
     #[test]
     fn anomalies_table_is_aligned() {
-        let a = anomaly(
-            json!({"severity": "critical", "service": "api", "type": "latency-spike",
-            "description": "p99 above 2s", "detectedAt": "2026-09-29T10:00:00Z"}),
-        );
-        let b = anomaly(json!({"severity": "low", "service": "db"}));
-        let lines = anomalies_lines(&[&a, &b], false);
+        let rows = anomaly_rows(&[
+            anomaly_object(
+                "api",
+                json!([{"severity": "critical", "type": "latency_spike",
+                "description": "p99 above 2s", "detected": "2026-09-29T10:00:00Z"}]),
+            ),
+            anomaly_object("db", json!([{"severity": "Low"}])),
+        ]);
+        assert_eq!(rows.len(), 2);
         assert_eq!(
-            lines,
+            anomalies_lines(&rows, false),
             vec![
                 "SEVERITY  SERVICE  TYPE           DESCRIPTION   DETECTED AT",
-                "critical  api      latency-spike  p99 above 2s  2026-09-29T10:00:00Z",
+                "critical  api      latency_spike  p99 above 2s  2026-09-29T10:00:00Z",
                 "low       db       -              -             -",
             ]
         );

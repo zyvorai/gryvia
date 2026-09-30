@@ -31,7 +31,8 @@ args=(upgrade --install gryvia "$CHART" --namespace "$NS" --create-namespace --s
 [[ -n "${GRYVIA_VERSION:-}" ]] && args+=(--version "$GRYVIA_VERSION")
 if [[ "${GRYVIA_NVIDIA:-}" == "1" ]]; then args+=(--set nvidia.enabled=true); fi
 if [[ "${GRYVIA_HOST_DRIVER:-}" == "1" ]]; then args+=(--set nvidia.driver.enabled=false); fi
-# A chart from a checkout needs its dependency (NVIDIA's GPU Operator, disabled by default) downloaded first.
+# A chart from a checkout needs its dependencies (NVIDIA's GPU Operator and Kueue, both disabled by default; Kueue is an
+# oci:// dependency and needs no `helm repo add`) downloaded first.
 if [[ -d "$CHART" ]]; then
   helm repo add nvidia https://helm.ngc.nvidia.com/nvidia --force-update >/dev/null
   helm dependency build "$CHART" >/dev/null

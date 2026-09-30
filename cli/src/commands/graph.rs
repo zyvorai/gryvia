@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use kube::api::{Api, ApiResource, GroupVersionKind, ListParams};
 use kube::core::DynamicObject;
 use std::collections::{HashMap, HashSet};
@@ -6,90 +6,164 @@ use std::collections::{HashMap, HashSet};
 use crate::client::GryviaClient;
 use crate::commands::flows::verdict_marker;
 use crate::display;
+use crate::gateway::GatewayClient;
 use crate::ui::{self, Marker};
 
+/// `network graph` through the gateway: `/api/network/graph` (edges merged from every GryviaServiceGraph).
+/// The gateway returns every namespace; `--graph-namespace` does not apply.
+pub async fn execute_gateway(gw: &GatewayClient, format: &str) -> Result<()> {
+    let (services, edges) = fetch_gateway(gw).await?;
+    show(&services, &edges, format)
+}
+
+/// The services and edges the gateway reports.
+pub async fn fetch_gateway(gw: &GatewayClient) -> Result<(HashSet<String>, Vec<Edge>)> {
+    let body = gw
+        .get_json("/api/network/graph")
+        .await
+        .context("could not read the service graph from the gateway")?;
+    Ok(parse_gateway_graph(&body))
+}
+
+/// Parse the gateway graph (`{"nodes": [{"id"}], "edges": [{"source","target","protocol","latency","verdict"}]}`).
+pub fn parse_gateway_graph(body: &serde_json::Value) -> (HashSet<String>, Vec<Edge>) {
+    let text = |v: &serde_json::Value, k: &str, d: &str| {
+        v.get(k)
+            .and_then(|x| x.as_str())
+            .filter(|x| !x.is_empty())
+            .unwrap_or(d)
+            .to_string()
+    };
+    let mut services = HashSet::new();
+    for n in body
+        .get("nodes")
+        .and_then(|v| v.as_array())
+        .into_iter()
+        .flatten()
+    {
+        services.insert(text(n, "id", "unknown"));
+    }
+    let mut edges = Vec::new();
+    for e in body
+        .get("edges")
+        .and_then(|v| v.as_array())
+        .into_iter()
+        .flatten()
+    {
+        let edge = Edge {
+            source: text(e, "source", "unknown"),
+            destination: text(e, "target", "unknown"),
+            latency: text(e, "latency", "-"),
+            protocol: text(e, "protocol", "TCP").to_ascii_uppercase(),
+            verdict: text(e, "verdict", ""),
+        };
+        services.insert(edge.source.clone());
+        services.insert(edge.destination.clone());
+        edges.push(edge);
+    }
+    (services, edges)
+}
+
+/// `network graph` without a gateway: the status of the GryviaServiceGraph objects in the namespace.
 pub async fn execute(client: &GryviaClient, namespace: &str, format: &str) -> Result<()> {
     let ar = ApiResource::from_gvk(&GroupVersionKind::gvk(
         "gryvia.io",
         "v1alpha1",
-        "GryviaFlow",
+        "GryviaServiceGraph",
     ));
     let api: Api<DynamicObject> = Api::namespaced_with(client.kube_client.clone(), namespace, &ar);
 
-    let flows = match api.list(&ListParams::default()).await {
+    let graphs = match api.list(&ListParams::default()).await {
         Ok(list) => list,
         Err(e) => {
-            display::print_warning(&format!("Could not query flow resources: {}", e));
+            display::print_warning(&format!(
+                "Could not query service graphs: {}",
+                display::cluster_error_text(&e.to_string())
+            ));
             println!("  Showing empty graph.");
             println!();
             return Ok(());
         }
     };
+    let (services, edges) = graphs_to_graph(&graphs.items);
+    show(&services, &edges, format)
+}
 
-    // Build graph from flows
-    let mut services: HashSet<String> = HashSet::new();
-    let mut edges: Vec<Edge> = Vec::new();
-
-    for flow in &flows.items {
-        let spec = flow.data.get("spec");
-        let source = spec
-            .and_then(|s| s.get("source"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown")
-            .to_string();
-        let destination = spec
-            .and_then(|s| s.get("destination"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown")
-            .to_string();
-        let latency = spec
-            .and_then(|s| s.get("latency"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("-")
-            .to_string();
-        let protocol = spec
-            .and_then(|s| s.get("protocol"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("TCP")
-            .to_string();
-        let verdict = spec
-            .and_then(|s| s.get("verdict"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("FORWARDED")
-            .to_string();
-
-        services.insert(source.clone());
-        services.insert(destination.clone());
-
-        edges.push(Edge {
-            source,
-            destination,
-            latency,
-            protocol,
-            verdict,
-        });
-    }
-
-    match format {
-        "json" => {
-            print_json_graph(&services, &edges)?;
+/// Services and edges of GryviaServiceGraph objects (`status.nodes`, `status.edges`).
+pub fn graphs_to_graph(graphs: &[DynamicObject]) -> (HashSet<String>, Vec<Edge>) {
+    let mut services = HashSet::new();
+    let mut edges = Vec::new();
+    let mut seen = HashSet::new();
+    for g in graphs {
+        let status = g.data.get("status");
+        for n in status
+            .and_then(|s| s.get("nodes"))
+            .and_then(|v| v.as_array())
+            .into_iter()
+            .flatten()
+        {
+            if let Some(name) = n.get("name").and_then(|v| v.as_str()) {
+                services.insert(name.to_string());
+            }
         }
+        for e in status
+            .and_then(|s| s.get("edges"))
+            .and_then(|v| v.as_array())
+            .into_iter()
+            .flatten()
+        {
+            let text = |k: &str| e.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let (source, destination) = (text("source"), text("destination"));
+            if source.is_empty() || destination.is_empty() {
+                continue;
+            }
+            let port = e.get("port").and_then(|v| v.as_u64()).unwrap_or(0);
+            let protocol = text("protocol");
+            if !seen.insert((source.clone(), destination.clone(), protocol.clone(), port)) {
+                continue;
+            }
+            let latency = ["latencyP99", "latencyP50"]
+                .iter()
+                .map(|k| text(k))
+                .find(|s| !s.is_empty())
+                .unwrap_or_else(|| "-".to_string());
+            services.insert(source.clone());
+            services.insert(destination.clone());
+            edges.push(Edge {
+                source,
+                destination,
+                latency,
+                protocol: if protocol.is_empty() {
+                    "TCP".to_string()
+                } else {
+                    protocol.to_ascii_uppercase()
+                },
+                verdict: text("verdict").to_ascii_uppercase(),
+            });
+        }
+    }
+    (services, edges)
+}
+
+fn show(services: &HashSet<String>, edges: &[Edge], format: &str) -> Result<()> {
+    match format {
+        "json" => print_json_graph(services, edges)?,
         _ => {
-            for line in ascii_graph_lines(&services, &edges, ui::color_enabled()) {
+            for line in ascii_graph_lines(services, edges, ui::color_enabled()) {
                 println!("{line}");
             }
         }
     }
-
     Ok(())
 }
 
-struct Edge {
-    source: String,
-    destination: String,
-    latency: String,
-    protocol: String,
-    verdict: String,
+pub struct Edge {
+    pub source: String,
+    pub destination: String,
+    pub latency: String,
+    pub protocol: String,
+    /// Empty when the source does not report verdicts.
+    pub verdict: String,
 }
 
 /// Lines of the ascii service dependency graph.
@@ -177,11 +251,16 @@ fn node_lines<'a>(
             } else {
                 "├──"
             };
-            let marker = verdict_marker(&edge.verdict);
-            let symbol = match marker {
-                Marker::Ok => "→",
-                Marker::Error => "✗",
-                _ => "?",
+            let (marker, symbol) = if edge.verdict.is_empty() {
+                (Marker::Disabled, "→")
+            } else {
+                let marker = verdict_marker(&edge.verdict);
+                let symbol = match marker {
+                    Marker::Ok => "→",
+                    Marker::Error => "✗",
+                    _ => "?",
+                };
+                (marker, symbol)
             };
             let latency = if edge.latency == "-" {
                 String::new()
@@ -295,6 +374,55 @@ mod tests {
         assert!(colored.iter().any(|l| l.contains('\x1b')));
         let stripped: Vec<String> = colored.iter().map(|l| strip_ansi(l)).collect();
         assert_eq!(stripped, plain);
+    }
+
+    #[tokio::test]
+    async fn gateway_graph_renders() {
+        use crate::gateway::{mock, GatewayConfig};
+        let body = serde_json::json!({
+            "nodes": [{"id": "web", "label": "web", "health": "unknown"}, {"id": "api"}],
+            "edges": [{"source": "web", "target": "api", "protocol": "tcp", "latency": "4.3ms", "verdict": ""}]
+        });
+        let gw = mock::start(vec![("/api/network/graph", 200, body.to_string())]).await;
+        let client = GatewayClient::new(GatewayConfig {
+            base_url: gw.url.clone(),
+            api_key: None,
+            insecure: false,
+            ca_file: None,
+            timeout: std::time::Duration::from_secs(5),
+        });
+        let (services, edges) = fetch_gateway(&client).await.unwrap();
+        assert_eq!(
+            ascii_graph_lines(&services, &edges, false),
+            vec![
+                "━━━ Service Dependency Graph ━━━",
+                "",
+                "  [web]",
+                "    └── → api TCP (4.3ms)",
+                "",
+                "  [api]",
+                "    (leaf) (no outgoing connections)",
+                "",
+                "ℹ 2 services, 1 connections",
+                "",
+            ]
+        );
+    }
+
+    #[test]
+    fn service_graph_status_becomes_a_graph() {
+        let g: DynamicObject = serde_json::from_value(serde_json::json!({
+            "apiVersion": "gryvia.io/v1alpha1", "kind": "GryviaServiceGraph", "metadata": {"name": "g"},
+            "status": {"nodes": [{"name": "db"}], "edges": [
+                {"source": "web", "destination": "api", "protocol": "tcp", "port": 80, "latencyP50": "2.0ms"},
+                {"source": "web", "destination": "api", "protocol": "tcp", "port": 80}]}
+        }))
+        .unwrap();
+        let (services, edges) = graphs_to_graph(&[g]);
+        assert_eq!(services.len(), 3);
+        assert_eq!(edges.len(), 1, "the same edge in two graphs is one edge");
+        assert_eq!(edges[0].latency, "2.0ms");
+        assert_eq!(edges[0].verdict, "");
     }
 
     #[test]
