@@ -1,16 +1,19 @@
 name: Build and Test Operators
 
 on:
+  workflow_dispatch:
   push:
     branches: [ main, develop ]
     paths:
       - 'operators/**'
       - 'crds/**'
+      - '.github/workflows/operators.yml'
   pull_request:
     branches: [ main ]
     paths:
       - 'operators/**'
       - 'crds/**'
+      - '.github/workflows/operators.yml'
 
 permissions:
   contents: read
