@@ -268,6 +268,10 @@ topology optimizer in `scheduler/` are not called by the running operator. `Fabr
 Optional strict tenant Kueue admission, distributed worker spreading and cooperative checkpoint hooks are described in
 [docs/admission-recovery.md](docs/admission-recovery.md). Checkpoint hooks require a compatible trainer and persistent storage; they do not guarantee a save before eviction or node failure.
 
+## Inference serving
+
+Explicit GPU/RPS autoscaling targets use custom per-pod HPA metrics, and opt-in Gateway API routing adds weighted canary traffic and accepted-route promotion gating. Both require external components; see [docs/inference-serving.md](docs/inference-serving.md) for configuration and validation limits.
+
 ## Performance Metrics
 
 The only measured numbers are the eBPF collector's overhead on one shared x86 host with loopback traffic

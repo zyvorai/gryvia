@@ -59,11 +59,11 @@ enabled and `<name>-canary` while a canary is enabled. The Service selects stabl
 | `gpuCount` | `> 0` adds the GPU limit and `/dev/shm`; `0` or unset is a CPU service (no GPU limit) |
 | `replicas` | Deployment replicas. With autoscaling on, the HPA owns the count afterwards |
 | `modelRef` | The `GryviaModelRegistry` name. Its `artifacts` reach the pods as env `MODEL_S3_PATH`, `MODEL_FORMAT` and, for a PVC, a read-only mount at `/models` (`MODEL_PATH`). The pods also get `MODEL_NAME`, `BACKEND` and, after a promotion, `MODEL_VERSION`. The server image has to use them |
-| `autoscaling` | An HPA on **CPU utilisation 80%** between `minReplicas` (default 1) and `maxReplicas`. A range with `max < 1` or `min > max` creates no HPA and sets the condition `AutoscalingValid=False`. `targetGPUUtilization` and `targetRequestsPerSecond` are **not wired to any metric**; the condition says so |
+| `autoscaling` | An HPA between `minReplicas` (default 1) and `maxReplicas`. Explicit GPU/RPS targets use custom per-pod metrics and require an adapter; otherwise CPU utilization at 80% is used. Invalid bounds/targets set `AutoscalingValid=False`. `AutoscalingReady` reports the HPA metric status. See [Inference serving](inference-serving.md) |
 | `canary` | See below |
 
 Canary: the canary Deployment gets `ceil(stable * w / (100 - w))` replicas so about `weight` percent of the pods are
-canary pods. This is a pod-count split behind one Service, not weighted routing. `status.canaryStatus` tracks
+canary pods. The default is a pod-count split behind one Service. Optional [Gateway API routing](inference-serving.md) provides weighted backend traffic through separate track Services. `status.canaryStatus` tracks
 `active`, `weight`, `readyReplicas`, `health` (`Pending`, `Healthy`, `Unhealthy`, `Promoted`, `RolledBack`) and
 `startedAt`.
 

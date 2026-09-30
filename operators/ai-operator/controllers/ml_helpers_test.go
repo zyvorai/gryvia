@@ -37,6 +37,7 @@ func mlClient(objs ...client.Object) client.Client {
 		WithStatusSubresource(
 			&gryviav1.GryviaWorkspace{}, &gryviav1.GryviaInferenceService{}, &gryviav1.GryviaModelRegistry{},
 			&gryviav1.GryviaWorkflow{}, &gryviav1.GryviaAutoTuner{}, &gryviav1.GryviaAIJob{},
+			&autoscalingv2.HorizontalPodAutoscaler{},
 		).
 		Build()
 }

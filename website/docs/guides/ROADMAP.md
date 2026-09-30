@@ -40,7 +40,7 @@ These have CRDs, and some are creatable from the gateway and dashboard, but no o
 - Backfill, hierarchical fair share, DRF and Kueue's fair-sharing modes (the Kueue integration provides queues, quota, cohort borrowing and priority preemption only, opt-in and unverified on a real cluster until its e2e passes), Kueue topology-aware scheduling and MultiKueue
 - Cilium as the default CNI or any cluster-wide CNI replacement
 - Multi-cluster control plane and global scheduler
-- Verified inference serving (Triton, vLLM, TensorRT-LLM) managed by Gryvia: the controller exists, with a pod-count canary, but weighted routing and real-image behaviour are not implemented or not verified
+- Verified inference serving (Triton, vLLM, TensorRT-LLM) managed by Gryvia: the controller exists, with a pod-count canary, but opt-in Gateway API weighted routing and custom GPU/RPS HPA metrics are implemented; real-image/data-plane behaviour is not verified (see [inference serving](https://github.com/zyvorai/gryvia/blob/main/docs/inference-serving.md))
 - Budget notifications, chargeback
 - Automatic GPU health remediation
 - Payment processing and billing

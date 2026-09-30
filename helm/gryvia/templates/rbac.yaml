@@ -440,6 +440,11 @@ rules:
       - gryviaautotuners/finalizers
     verbs:
       - update
+  {{- if .Values.aiOperator.inferenceGatewayRouting }}
+  - apiGroups: [gateway.networking.k8s.io]
+    resources: [httproutes]
+    verbs: [get, list, watch, create, patch, delete]
+  {{- end }}
   # Inference services: a Deployment per service (and per canary), scaled by an HPA
   - apiGroups:
       - apps

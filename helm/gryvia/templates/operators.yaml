@@ -54,6 +54,9 @@ spec:
             {{- if eq $name "gpu-operator" }}
             - --auto-register={{ $.Values.gpuOperator.autoRegister }}
             {{- end }}
+            {{- if and (eq $name "ai-operator") $.Values.aiOperator.inferenceGatewayRouting }}
+            - --inference-gateway-routing=true
+            {{- end }}
             {{- if and (eq $name "ai-operator") $.Values.aiOperator.fabricAwareScheduling }}
             - --fabric-aware-scheduling=true
             {{- end }}
