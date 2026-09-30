@@ -260,6 +260,31 @@ nvidia:
     #   - {name: CONTAINERD_SET_AS_DEFAULT, value: "true"}
     env: []
 
+# --- NVIDIA one-click extras (NOT passed to the GPU Operator chart) ----------------------
+# Sibling of `nvidia:` so unknown keys never hit the GPU Operator values schema.
+# GPU Operator pass-through (set these on the install; they are real GPU Operator keys):
+#   --set nvidia.driver.rdma.enabled=true
+#   --set nvidia.gds.enabled=true
+#   --set nvidia.mig.strategy=mixed
+#   --set nvidia.migManager.enabled=true
+# Time-slicing also needs the ClusterPolicy to read the ConfigMap rendered below:
+#   --set nvidia.devicePlugin.config.name=gryvia-time-slicing   (same as nvidiaPlatform.timeSlicing.configName)
+nvidiaPlatform:
+  timeSlicing:
+    enabled: false
+    replicas: 4
+    configName: gryvia-time-slicing
+  validate:
+    enabled: false
+    image: nvcr.io/nvidia/cuda:12.8.0-base-ubuntu22.04
+
+# NVIDIA Network Operator sub-chart (alias nvidiaNetwork). DOCA/OFED, SR-IOV and RDMA
+# device plugins. Off by default. Not validated on real NICs.
+nvidiaNetwork:
+  enabled: false
+  nfd:
+    enabled: false
+
 # --- Kueue (job queueing, gang admission, quotas, preemption) -------------------------------------------------
 # Off by default. `kueue.enabled=true` installs the Kueue controller from its own chart (registry.k8s.io/kueue/charts,
 # version pinned in Chart.yaml) into the release namespace; Gryvia only uses it with aiOperator.kueueIntegration and
