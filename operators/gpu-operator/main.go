@@ -36,10 +36,13 @@ func main() {
 	var enableLeaderElection bool
 	var probeAddr string
 	var autoRegister bool
+	var devicePluginConfigName, devicePluginConfigNamespace string
 
 	flag.BoolVar(&enableGPUHealth, "enable-gpu-health-controller", false, "Enable GPU health checks from fresh GryviaGpuNode observations.")
 	flag.BoolVar(&enableGPURemediation, "enable-gpu-remediation", false, "Allow requested cordon/quarantine and PDB-respecting drain on measured GPU health failures.")
 	flag.BoolVar(&enableGPUSharing, "enable-gpu-sharing", false, "Reconcile GryviaGPUSharingPolicy: label matching GPU nodes for time-slicing, MIG and fractional sharing (nvidia.com/device-plugin.config, nvidia.com/mig.config and gryvia.io/* labels). Off by default; it writes node labels.")
+	flag.StringVar(&devicePluginConfigName, "device-plugin-config-name", "", "ConfigMap the NVIDIA device plugin reads (GPU Operator devicePlugin.config.name). With --device-plugin-config-namespace, a time-slicing GryviaGPUSharingPolicy writes the data key for its maxPodsPerGPU there. Empty = only label nodes with the fixed key gryvia-time-slicing.")
+	flag.StringVar(&devicePluginConfigNamespace, "device-plugin-config-namespace", "", "Namespace of --device-plugin-config-name.")
 	flag.BoolVar(&reportUnsupportedAPIs, "report-unsupported-apis", false, "Report unsupported legacy APIs with Ready=False instead of silently leaving them pending.")
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -114,6 +117,9 @@ func main() {
 			Client: mgr.GetClient(),
 			Scheme: mgr.GetScheme(),
 			Log:    ctrl.Log.WithName("controllers").WithName("GryviaGPUSharingPolicy"),
+
+			DevicePluginConfigName:      devicePluginConfigName,
+			DevicePluginConfigNamespace: devicePluginConfigNamespace,
 		}).SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "GryviaGPUSharingPolicy")
 			os.Exit(1)

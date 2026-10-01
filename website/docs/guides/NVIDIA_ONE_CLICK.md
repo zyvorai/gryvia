@@ -62,7 +62,7 @@ release Secret; create the `ngc-api` Secret yourself if that is not acceptable.
 Sharing policy labels the GPU Operator already watches. The controller that writes them is **opt-in**: set
 `gpuOperator.gpuSharing=true` (flag `--enable-gpu-sharing`), otherwise a `GryviaGPUSharingPolicy` does nothing:
 
-- time-slicing → `nvidia.com/device-plugin.config=gryvia-time-slicing`
+- time-slicing → `nvidia.com/device-plugin.config=gryvia-time-slicing`. That key's replica count is the chart's `nvidiaPlatform.timeSlicing.replicas`, not the policy's `maxPodsPerGPU`. Set `gpuOperator.devicePluginConfig=true` and the policy writes its own key `gryvia-ts-<maxPodsPerGPU>` into the ConfigMap and labels nodes with it (Ready=False `ConfigWriteFailed` if the write fails). Whether the device plugin then advertises that many GPUs is not verified without a GPU node.
 - mig → `nvidia.com/mig.config=<first profile>` (must be a mig-parted name)
 
 ## Fabric Manager

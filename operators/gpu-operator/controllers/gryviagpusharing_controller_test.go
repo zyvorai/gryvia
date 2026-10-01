@@ -228,3 +228,84 @@ func TestSharingNotReadyWhenLabelWriteFails(t *testing.T) {
 		t.Errorf("Ready = %s/%s, want False/LabelWriteFailed (%s)", cond.Status, cond.Reason, cond.Message)
 	}
 }
+
+func reconcileWith(t *testing.T, r *GryviaGPUSharingPolicyReconciler, c client.Client, name string) *gryviav1.GryviaGPUSharingPolicy {
+	t.Helper()
+	if _, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Name: name}}); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	got := &gryviav1.GryviaGPUSharingPolicy{}
+	if err := c.Get(context.Background(), types.NamespacedName{Name: name}, got); err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+
+// With a device-plugin ConfigMap configured, the policy's maxPodsPerGPU is what the plugin is told,
+// and the node label points at that key. The chart's own key is left alone.
+func TestSharingWritesDevicePluginConfigForReplicas(t *testing.T) {
+	policy := timeSlicingPolicy("ts8", true)
+	policy.Spec.TimeSlicing.MaxPodsPerGPU = 8
+	scheme := newGpuNodeTestScheme()
+	c := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(policy, sharingGpuNode("gpu-1", "node-1", "A100", 1),
+			&corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1"}},
+			&corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Namespace: "gpu", Name: "plugin-cfg"},
+				Data: map[string]string{"gryvia-time-slicing": "chart-owned"}}).
+		WithStatusSubresource(&gryviav1.GryviaGPUSharingPolicy{}).Build()
+	r := &GryviaGPUSharingPolicyReconciler{Client: c, Scheme: scheme, Log: ctrl.Log.WithName("test"),
+		DevicePluginConfigName: "plugin-cfg", DevicePluginConfigNamespace: "gpu"}
+	got := reconcileWith(t, r, c, "ts8")
+
+	cm := &corev1.ConfigMap{}
+	if err := c.Get(context.Background(), types.NamespacedName{Namespace: "gpu", Name: "plugin-cfg"}, cm); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(cm.Data["gryvia-ts-8"], "replicas: 8") {
+		t.Errorf("key gryvia-ts-8 missing or wrong: %q", cm.Data["gryvia-ts-8"])
+	}
+	if cm.Data["gryvia-time-slicing"] != "chart-owned" {
+		t.Errorf("the chart's key was modified: %q", cm.Data["gryvia-time-slicing"])
+	}
+	wantLabel(t, nodeLabels(t, c, "node-1"), "nvidia.com/device-plugin.config", "gryvia-ts-8")
+	if cond := readyCondition(t, got); cond.Status != metav1.ConditionTrue {
+		t.Errorf("Ready = %s/%s (%s)", cond.Status, cond.Reason, cond.Message)
+	}
+}
+
+// The ConfigMap is created when missing; a failed write is Ready=False, not swallowed.
+func TestSharingCreatesConfigMapAndReportsWriteFailure(t *testing.T) {
+	policy := timeSlicingPolicy("ts4", true)
+	scheme := newGpuNodeTestScheme()
+	build := func(fail bool) (*GryviaGPUSharingPolicyReconciler, client.Client) {
+		b := fake.NewClientBuilder().WithScheme(scheme).
+			WithObjects(policy.DeepCopy(), sharingGpuNode("gpu-1", "node-1", "A100", 1),
+				&corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1"}}).
+			WithStatusSubresource(&gryviav1.GryviaGPUSharingPolicy{})
+		if fail {
+			b = b.WithInterceptorFuncs(interceptor.Funcs{Create: func(ctx context.Context, cl client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
+				if _, ok := obj.(*corev1.ConfigMap); ok {
+					return fmt.Errorf("forbidden")
+				}
+				return cl.Create(ctx, obj, opts...)
+			}})
+		}
+		c := b.Build()
+		return &GryviaGPUSharingPolicyReconciler{Client: c, Scheme: scheme, Log: ctrl.Log.WithName("test"),
+			DevicePluginConfigName: "plugin-cfg", DevicePluginConfigNamespace: "gpu"}, c
+	}
+	r, c := build(false)
+	reconcileWith(t, r, c, "ts4")
+	cm := &corev1.ConfigMap{}
+	if err := c.Get(context.Background(), types.NamespacedName{Namespace: "gpu", Name: "plugin-cfg"}, cm); err != nil || !strings.Contains(cm.Data["gryvia-ts-4"], "replicas: 4") {
+		t.Fatalf("ConfigMap not created: %v %v", err, cm.Data)
+	}
+	r, c = build(true)
+	got := reconcileWith(t, r, c, "ts4")
+	if cond := readyCondition(t, got); cond.Status != metav1.ConditionFalse || cond.Reason != "ConfigWriteFailed" {
+		t.Errorf("Ready = %s/%s, want False/ConfigWriteFailed", cond.Status, cond.Reason)
+	}
+	if l := nodeLabels(t, c, "node-1"); l["nvidia.com/device-plugin.config"] != "" {
+		t.Errorf("nodes were labelled although the ConfigMap write failed: %v", l)
+	}
+}
