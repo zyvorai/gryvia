@@ -16,6 +16,7 @@
 // packet_filter.c and dns_tracker.c on the same interface.
 
 #include "headers/fabric_signal.h"
+#include "headers/xdp_chain.h"
 
 #define ROCE_UDP_PORT  4791
 #define BTH_OPCODE_CNP 0x81
@@ -41,8 +42,7 @@ static __always_inline void bump(__u32 slot)
 		*v += 1; /* per-CPU element, XDP runs with preemption off */
 }
 
-SEC("xdp")
-int gryvia_roce_cnp(struct xdp_md *ctx)
+static __always_inline int gryvia_roce_cnp_body(struct xdp_md *ctx)
 {
 	void *data = (void *)(long)ctx->data;
 	void *end = (void *)(long)ctx->data_end;
@@ -107,6 +107,14 @@ int gryvia_roce_cnp(struct xdp_md *ctx)
 	if (*bth == BTH_OPCODE_CNP)
 		bump(CNP_SLOT_CNP);
 	return XDP_PASS;
+}
+
+/* Entry point.  With xdp_mux this continues the chain to the next populated slot (see
+ * headers/xdp_chain.h); attached on its own it simply returns the verdict. */
+SEC("xdp")
+int gryvia_roce_cnp(struct xdp_md *ctx)
+{
+	return xdp_chain_next(ctx, XDP_SLOT_ROCE_CNP, gryvia_roce_cnp_body(ctx));
 }
 
 char LICENSE[] SEC("license") = "Dual BSD/GPL";

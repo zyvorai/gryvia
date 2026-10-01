@@ -2,7 +2,7 @@
 //
 // Additive signal types for nccl_transport.c, p2p_fallback.c, capture_gate.c and
 // the XDP slot map of xdp_mux.c. Keep the numbers aligned with
-// ebpf/headers/fabric_signal.h and ebpf/xdp_mux.c (signal_ext_test.go checks it).
+// ebpf/headers/fabric_signal.h and ebpf/headers/xdp_chain.h (signal_ext_test.go checks it).
 // struct fabric_signal stays 80 bytes; do not add fields.
 //
 // Not yet decoded or loaded: signal.go's Decode does not interpret these types
@@ -52,8 +52,9 @@ const (
 	XportNetRoCE = 5
 )
 
-// XDP mux slots. Must match ebpf/xdp_mux.c. The mux runs only the first
-// populated slot (a successful tail call does not return).
+// XDP chain slots. Must match ebpf/headers/xdp_chain.h. xdp_mux tail-calls the first
+// populated slot and each feature tail-calls the next one, so every loaded feature runs
+// (collector/pkg/loader/xdpmux.go).
 const (
 	XDPSlotRoceCNP      uint32 = 0
 	XDPSlotPFCPause     uint32 = 1

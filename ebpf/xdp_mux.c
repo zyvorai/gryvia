@@ -2,49 +2,36 @@
 //
 // xdp_mux.c - one XDP owner for the RDMA-facing interface.
 //
-// packet_filter, dns_tracker, roce_cnp and pfc_pause cannot share an
-// interface: Linux allows one XDP program per device.  This program is the
-// only one the collector should attach.  Feature programs are optional tail
-// calls loaded into xdp_features by userspace (index = feature slot).  A
-// missing slot is a no-op and this program returns XDP_PASS.  Tail-call depth
-// is 1, so feature programs must not tail-call back into the mux.
+// packet_filter, dns_tracker, roce_cnp, pfc_pause and roce_ecn cannot share an
+// interface on their own: Linux allows one XDP program per device.  This is the
+// only program the collector attaches.  It tail-calls the first populated slot of
+// xdp_features; that feature runs and tail-calls the next populated slot, and so on
+// (headers/xdp_chain.h), so every loaded feature sees every packet, in slot order.
+// An empty xdp_features map, or a chain that ends, returns XDP_PASS.
 //
-// LIMIT: a successful bpf_tail_call does not return.  The first populated
-// slot (lowest index) runs and its verdict is the packet's verdict; later
-// slots do not run.  So this is a priority selector over one feature program,
-// NOT a way to run roce_cnp, pfc_pause, dns_tracker and packet_filter side by
-// side.  Running several at once needs each feature to chain to the next
-// (they do not today) or an XDP dispatcher such as libxdp.  The feature
-// programs here are observers that return XDP_PASS, so the mux passes every
-// packet through today; it would not if a slot held a program that returns
-// XDP_DROP.
-//
-// Slot map (collector must agree):
+// Slot map (the collector must agree; see headers/xdp_chain.h):
 //   0  roce_cnp
 //   1  pfc_pause
 //   2  dns_tracker
 //   3  packet_filter   (observe-only build; a drop rule still belongs in Cilium)
 //   4  roce_ecn
+//
+// A feature that returns a verdict other than XDP_PASS ends the chain and decides
+// the packet.  Every feature here only observes and returns XDP_PASS, so the mux
+// passes every packet through unchanged.  The packet is never rewritten.
+//
+// The collector must replace each feature object's xdp_features map with the
+// mux's own map when loading (cilium/ebpf MapReplacements) and put each feature
+// program in its slot; a feature loaded without that still works when attached on
+// its own.
+//
+// xdp_mux_stats: 0 = packets seen, 1 = no feature was populated (tail calls missed).
 
-#include "headers/gryvia_core.h"
-
-#define XDP_SLOT_ROCE_CNP      0
-#define XDP_SLOT_PFC_PAUSE     1
-#define XDP_SLOT_DNS           2
-#define XDP_SLOT_PACKET_FILTER 3
-#define XDP_SLOT_ROCE_ECN      4
-#define XDP_SLOT_MAX           5
-
-struct {
-	__uint(type, BPF_MAP_TYPE_PROG_ARRAY);
-	__uint(max_entries, XDP_SLOT_MAX);
-	__type(key, __u32);
-	__type(value, __u32);
-} xdp_features SEC(".maps");
+#include "headers/xdp_chain.h"
 
 struct {
 	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
-	__uint(max_entries, 2); /* 0 = seen, 1 = tail-call miss (slot empty) */
+	__uint(max_entries, 2);
 	__type(key, __u32);
 	__type(value, __u64);
 } xdp_mux_stats SEC(".maps");
@@ -61,13 +48,8 @@ SEC("xdp")
 int gryvia_xdp_mux(struct xdp_md *ctx)
 {
 	bump(0);
-	/* Tried in slot order.  An empty slot makes the call fall through to the
-	 * next; the first populated slot takes over and never returns here. */
-	bpf_tail_call(ctx, &xdp_features, XDP_SLOT_ROCE_CNP);
-	bpf_tail_call(ctx, &xdp_features, XDP_SLOT_PFC_PAUSE);
-	bpf_tail_call(ctx, &xdp_features, XDP_SLOT_DNS);
-	bpf_tail_call(ctx, &xdp_features, XDP_SLOT_PACKET_FILTER);
-	bpf_tail_call(ctx, &xdp_features, XDP_SLOT_ROCE_ECN);
+	/* Does not return when a slot is populated: that feature continues the chain. */
+	xdp_chain_from(ctx, 0);
 	bump(1);
 	return XDP_PASS;
 }

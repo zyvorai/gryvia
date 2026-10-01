@@ -14,6 +14,7 @@
 // IPv4 and IPv6.  IPv6 extension headers are not walked (nexthdr must be UDP).
 
 #include "headers/gryvia_core.h"
+#include "headers/xdp_chain.h"
 
 #define ROCE_UDP_PORT 4791
 #define MAX_VLAN_TAGS 2
@@ -43,8 +44,7 @@ static __always_inline void bump(__u32 slot)
 		*v += 1;
 }
 
-SEC("xdp")
-int gryvia_roce_ecn(struct xdp_md *ctx)
+static __always_inline int gryvia_roce_ecn_body(struct xdp_md *ctx)
 {
 	void *data = (void *)(long)ctx->data;
 	void *end = (void *)(long)ctx->data_end;
@@ -109,6 +109,14 @@ int gryvia_roce_ecn(struct xdp_md *ctx)
 	else if (ecn)
 		bump(ECN_SLOT_ECT);
 	return XDP_PASS;
+}
+
+/* Entry point.  With xdp_mux this continues the chain to the next populated slot (see
+ * headers/xdp_chain.h); attached on its own it simply returns the verdict. */
+SEC("xdp")
+int gryvia_roce_ecn(struct xdp_md *ctx)
+{
+	return xdp_chain_next(ctx, XDP_SLOT_ROCE_ECN, gryvia_roce_ecn_body(ctx));
 }
 
 char LICENSE[] SEC("license") = "Dual BSD/GPL";

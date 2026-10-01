@@ -25,6 +25,7 @@
 // (rx_prio*_pause) is the reliable source.
 
 #include "headers/fabric_signal.h"
+#include "headers/xdp_chain.h"
 
 #define ETH_P_PAUSE     0x8808          /* MAC control */
 #define PAUSE_OP_LEGACY 0x0001          /* IEEE 802.3x PAUSE */
@@ -51,8 +52,7 @@ static __always_inline void bump(__u32 slot)
 		*v += 1; /* per-CPU element, XDP runs with preemption off */
 }
 
-SEC("xdp")
-int gryvia_pfc_pause(struct xdp_md *ctx)
+static __always_inline int gryvia_pfc_pause_body(struct xdp_md *ctx)
 {
 	void *data = (void *)(long)ctx->data;
 	void *end = (void *)(long)ctx->data_end;
@@ -90,6 +90,14 @@ int gryvia_pfc_pause(struct xdp_md *ctx)
 			bump(PFC_SLOT_PRIO0 + i);
 	}
 	return XDP_PASS;
+}
+
+/* Entry point.  With xdp_mux this continues the chain to the next populated slot (see
+ * headers/xdp_chain.h); attached on its own it simply returns the verdict. */
+SEC("xdp")
+int gryvia_pfc_pause(struct xdp_md *ctx)
+{
+	return xdp_chain_next(ctx, XDP_SLOT_PFC_PAUSE, gryvia_pfc_pause_body(ctx));
 }
 
 char LICENSE[] SEC("license") = "Dual BSD/GPL";

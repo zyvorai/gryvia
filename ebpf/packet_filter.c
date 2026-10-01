@@ -7,6 +7,7 @@
 // increments a per-rule counter that the collector scrapes for metrics.
 
 #include "headers/common.h"
+#include "headers/xdp_chain.h"
 
 /*
  * Maximum number of rules.  Every rule is checked by a bounded loop that the
@@ -67,8 +68,7 @@ struct {
 
 /* ---- XDP program ------------------------------------------------------ */
 
-SEC("xdp")
-int xdp_packet_filter(struct xdp_md *ctx)
+static __always_inline int xdp_packet_filter_body(struct xdp_md *ctx)
 {
     void *data     = (void *)(long)ctx->data;
     void *data_end = (void *)(long)ctx->data_end;
@@ -160,6 +160,14 @@ int xdp_packet_filter(struct xdp_md *ctx)
         __sync_fetch_and_add(pass_ctr, 1);
 
     return XDP_PASS;
+}
+
+/* Entry point.  With xdp_mux this continues the chain to the next populated slot (see
+ * headers/xdp_chain.h); attached on its own it simply returns the verdict. */
+SEC("xdp")
+int xdp_packet_filter(struct xdp_md *ctx)
+{
+	return xdp_chain_next(ctx, XDP_SLOT_PACKET_FILTER, xdp_packet_filter_body(ctx));
 }
 
 char LICENSE[] SEC("license") = "Dual BSD/GPL";
