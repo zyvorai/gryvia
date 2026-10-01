@@ -8,7 +8,7 @@ version, so training jobs, RAG ingestion and evaluation read the same bytes. It 
 | Verified | How |
 | --- | --- |
 | PVC creation (size, storage class, owner), the download Job for each source type (image, env, volumes, non-root pod), the termination-message result read back into status, versions and `keepLast` retention, a changed source downloading again, failures and invalid specs reported in status | Unit tests with a fake client (`operators/storage-operator/controllers/gryviadataset_controller_test.go`) |
-| The download script (http with sha256, the swap into `/data/<version>`, pruning, the file count, size and checksum) on a real cluster | The "Datasets" step of `.github/workflows/e2e-ml.yml` with a stand-in HTTP server |
+| The download script (http with sha256, the swap into `/data/<version>`, pruning, the file count, size and checksum) on a real cluster | The "Datasets" step of `.github/workflows/e2e-ml.yml` with a stand-in HTTP server; these steps also passed on a single-node k3s host (2026-10-01) |
 | Gateway routes and tenant scoping | `services/api-gateway/tests/test_datasets.py` |
 
 | Not verified | Why |

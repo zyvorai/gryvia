@@ -14,7 +14,7 @@ It runs as `/manager llm-gateway`, a mode of the ai-operator binary (same image)
 | Hourly token records (create, update while open, final after the hour), the tokensPerDay check seeded from today's records, the UTC day reset, 429 | Same tests with a fake client |
 | Key create/list/revoke with tenant scoping, the key shown once and only its hash stored, models and usage routes | `services/api-gateway/tests/test_llm.py` |
 | CLI key Secret, hashing, model and usage tables | `cli/src/commands/llm.rs` tests |
-| The gateway on a real cluster against a stand-in OpenAI server: key, model list, a chat completion, a streamed one, the usage record and a 429 | The "LLM gateway" step of `.github/workflows/e2e-ml.yml` |
+| The gateway on a real cluster against a stand-in OpenAI server: key, model list, a chat completion, a streamed one, the usage record and a 429 | The "LLM gateway" step of `.github/workflows/e2e-ml.yml`; these steps also passed on a single-node k3s host (2026-10-01) |
 
 | Not verified | Why |
 | --- | --- |

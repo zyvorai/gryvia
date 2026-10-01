@@ -151,44 +151,16 @@ server off its backend default (vLLM and Triton 8000, TorchServe 8080); for exam
 
 ## Quantization
 
-`examples/model-factory/quantize.py` turns the fine-tuned model into 4-bit weights with
-[llm-compressor](https://github.com/vllm-project/llm-compressor): `--method awq` (default scheme `W4A16_ASYM`) or
-`--method gptq` (`W4A16`, also `W8A16`), calibrated on `--samples` (256) records of the training JSONL rendered with
-the chat template. `lm_head` stays in full precision. The output goes next to the input (`<path>-awq`) in the
-compressed-tensors format, and the step reports `path`, `subPath`, `format` and `quantization`
-(`compressed-tensors`), `method` and `scheme`. In [model-watch.yaml](../examples/model-factory/model-watch.yaml) the
-step runs between fine-tune and evaluate, the evaluation scores the quantized model, and the register step stores
-`artifacts.format`, `metadata.quantization` and the vLLM argument `--quantization={{steps.quantize.outputs.quantization}}`.
-No CRD change: it is an ordinary job step. 4-bit weights need about a quarter of the GPU memory of bf16, so the same
-`gpuCount` serves a larger model or longer contexts.
+An optional step between fine-tune and evaluate turns the model into 4-bit AWQ or GPTQ weights
+(`examples/model-factory/quantize.py`), so the evaluation scores the quantized model. See
+[Model evaluation](model-evaluation.md#quantization).
 
 ## Continuous evaluation and rollback
 
-```yaml
-rollbackPolicy: {metric: live_score, threshold: "0.5", direction: maximize}
-```
-
-A promoted version can get worse in production (data drift, a serving regression). A scheduled workflow re-scores
-the served version and a `registry` step writes the score onto its entry;
-[eval-schedule.yaml](../examples/model-factory/eval-schedule.yaml) runs `evaluate.py --endpoint` against the shared
-service every night and writes `live_score`.
-
-The registry controller rolls the shared service back when the entry it serves has a `rollbackPolicy` and
-`spec.metadata[metric]` is below `threshold` (`maximize`, the default) or above it (`minimize`), or when the entry has
-the annotation `gryvia.io/rollback-requested` (set by `POST /api/models/{name}/rollback`, `gryvia models rollback`
-and `registry` steps with `action: rollback`):
-
-1. The entry in `status.previousVersion` (an entry name, or a version of the same `modelName`, on the same
-   `serviceName`) is moved back to `production`.
-2. The service's `modelRef` becomes that entry and any canary is dropped.
-3. The rolled-back entry is archived, keeps phase `RolledBack`, gets the condition `RolledBack=True` (reason
-   `PolicyBreached` or `Requested`) and an Event `RolledBack`; the annotation is removed.
-
-A missing or non-numeric metric is not a breach. The policy only acts on the entry the service serves (or on a
-canary, which is then archived). A requested rollback that cannot be done (not an auto-served production entry with a
-`serviceName`, no previous version on that service) sets `RolledBack=False` with the reason (`NotServing`,
-`NoPreviousVersion`, `NotStable`) and an Event `RollbackRefused`, removes the annotation and changes nothing else.
-The restored version is judged by its own `rollbackPolicy`, with its own metadata, from then on.
+A scheduled workflow re-scores the served version and a `registry` step writes the score onto its entry; the
+registry's `rollbackPolicy` brings the previous version back when the score crosses the threshold, and
+`POST /api/models/{name}/rollback` or `gryvia models rollback` does it on request. See
+[Model evaluation](model-evaluation.md).
 
 ## Surfaces
 

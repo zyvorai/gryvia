@@ -17,7 +17,7 @@ the data).
 | `/v1/retrieve`: namespace scoping, 404/409/400/429, query embedding through the published model, metering, Qdrant search request and reply mapping, store API key | `operators/ai-operator/pkg/llmgateway/retrieve_test.go` (`httptest` backends) |
 | Reading text, JSONL and HTML, skipping binaries, chunking, batching, retries, the new-collection-then-alias switch, removal of old collections, the termination message | `examples/rag/test_ingest.py` (in-process fake gateway and Qdrant) |
 | Routes, CLI and dashboard helpers | `services/api-gateway/tests/test_vector_indexes.py`, `cli/src/commands/rag.rs`, `web-ui/src/lib/rag.test.ts` |
-| The whole path on kind: the real Qdrant image (`-unprivileged`, uid 1000) and the real ingestion image, a dataset from a stand-in file server, embeddings from a stand-in OpenAI server published on the gateway, Ready with the expected counts, the right nearest chunk, metering, reingest and deletion | The "RAG" steps of `.github/workflows/e2e-ml.yml` |
+| The whole path on kind: the real Qdrant image (`-unprivileged`, uid 1000) and the real ingestion image, a dataset from a stand-in file server, embeddings from a stand-in OpenAI server published on the gateway, Ready with the expected counts, the right nearest chunk, metering, reingest and deletion | The "RAG" steps of `.github/workflows/e2e-ml.yml`; these steps also passed on a single-node k3s host (2026-10-01) |
 
 | Not verified | Why |
 | --- | --- |
