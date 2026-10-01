@@ -56,7 +56,8 @@ jobs:
           tok="$(head -c 48 /dev/urandom | base64 | tr -d '=+/' | head -c 40)"
           kubectl -n "$NS" create secret generic collector-token-server --from-literal=token="$tok"
           kubectl -n "$NS" create secret generic collector-token-client --from-literal=token="$tok"
-          kubectl -n "$NS" create configmap fake-collector --from-file=fake_collector.py=scripts/tests/netintel-e2e/fake_collector.py
+          kubectl -n "$NS" create configmap fake-collector --from-file=fake_collector.py=scripts/tests/netintel-e2e/fake_collector.py \
+            --from-literal=start.txt="$(date -u +%Y-%m-%dT%H:%M:%SZ)"   # one detection time shared by both replicas
           kubectl -n "$NS" apply -f - <<'YAML'
           apiVersion: apps/v1
           kind: Deployment

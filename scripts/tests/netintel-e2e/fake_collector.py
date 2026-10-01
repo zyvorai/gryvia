@@ -16,7 +16,17 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 TOKEN_FILE = os.environ.get("TOKEN_FILE", "/etc/collector-token/token")
-START = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+def _start():
+    """One detection time for every replica. Each replica computing its own made the operator see two
+    anomalies (same type, detection times a second apart) and the e2e's len == 1 check flaked."""
+    try:
+        with open(os.environ.get("START_FILE", "/srv/start.txt"), "r", encoding="utf-8") as f:
+            return f.read(64).strip()
+    except OSError:
+        return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+START = _start()
 
 GRAPH = {
     "nodes": [
