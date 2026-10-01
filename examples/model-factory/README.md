@@ -6,7 +6,7 @@ result in the `GryviaModelRegistry`. The registry's `promotionPolicy` moves the 
 evaluation score beats the version being served, and `servingConfig.serviceName` rolls it out as a canary of the
 shared vLLM service, promoted after it stays healthy or rolled back.
 
-> **Status.** The controllers are unit-tested and the control-plane flow (e2e with a stand-in hub and busybox steps) passed on a k3s cluster without GPUs.
+> **Status.** The controllers are unit-tested and the control-plane flow (e2e with a stand-in hub and busybox steps) passed on a k3s cluster without GPUs and in kind CI.
 > The scripts here are unit-tested without a GPU. Nothing has run on GPUs, with real model weights or with a real
 > vLLM image. See [docs/model-factory.md](../../docs/model-factory.md).
 
