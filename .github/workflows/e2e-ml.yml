@@ -7,8 +7,9 @@ name: ML controllers end-to-end
 #
 # NOT proven here (no GPU, no real model server, no metrics-server on kind): the real Jupyter, code-server, vLLM,
 # Triton, TensorRT-LLM and TorchServe images, GPU scheduling, and an HPA scaling on real metrics. The model factory
-# runs against a stand-in hub (a 20-line Python server, not huggingface.co) and its download/fine-tune/evaluate steps
-# are busybox stand-ins that only emit outputs; the real scripts in examples/model-factory are unit-tested separately.
+# runs against a stand-in hub (a 20-line Python server, not huggingface.co) and its download/fine-tune/quantize/evaluate
+# steps are busybox stand-ins that only emit outputs; the real scripts in examples/model-factory are unit-tested
+# separately.
 # The GryviaDataset controller (storage-operator) downloads from a stand-in HTTP file server; its s3 and nfs sources
 # are covered by unit tests only.
 #
@@ -452,9 +453,16 @@ jobs:
                     gpus: 0
                     command: [sh, -c]
                     args: ['test "{{steps.download.outputs.revision}}" = "{{model.revision}}" && printf "{\"subPath\":\"{{model.slug}}\",\"train_loss\":0.42}" > /dev/termination-log']
-                - name: evaluate
+                - name: quantize
                   type: script
                   dependsOn: [finetune]
+                  script:
+                    image: busybox:1.36
+                    command: [sh, -c]
+                    args: ['printf "{\"subPath\":\"{{steps.finetune.outputs.subPath}}-awq\",\"format\":\"compressed-tensors\",\"method\":\"awq\",\"scheme\":\"W4A16_ASYM\"}" > /dev/termination-log']
+                - name: evaluate
+                  type: script
+                  dependsOn: [quantize]
                   script:
                     image: busybox:1.36
                     command: [sh, -c]
@@ -465,10 +473,11 @@ jobs:
                   register:
                     modelName: e2e-chat
                     version: "{{model.slug}}"
-                    artifacts: {s3Path: "s3://bucket/{{steps.finetune.outputs.subPath}}"}
+                    artifacts: {s3Path: "s3://bucket/{{steps.quantize.outputs.subPath}}", format: "{{steps.quantize.outputs.format}}"}
                     metadata:
                       eval_score: "{{steps.evaluate.outputs.score}}"
                       train_loss: "{{steps.finetune.outputs.train_loss}}"
+                      quantization: "{{steps.quantize.outputs.method}}-{{steps.quantize.outputs.scheme}}"
                     autoServe: true
                     servingConfig: {backend: torchserve, replicas: 1, serviceName: e2e-chat, canaryWeight: 50, promoteAfterSeconds: 30}
                     promotionPolicy: {metric: eval_score, direction: maximize, minDelta: "0.01"}
@@ -494,6 +503,9 @@ jobs:
           assert_nonempty "registered entry" "$e1"
           assert_eq "entry metadata from outputs" "$(jp "gryviamodelregistry/$e1" '{.spec.metadata.eval_score}')" 0.6
           assert_eq "entry base_model" "$(jp "gryviamodelregistry/$e1" '{.spec.metadata.base_model}')" e2e-org/tiny-1
+          assert_eq "quantized artifacts" "$(jp "gryviamodelregistry/$e1" '{.spec.artifacts.s3Path}')" s3://bucket/tiny-1-awq
+          assert_eq "artifact format" "$(jp "gryviamodelregistry/$e1" '{.spec.artifacts.format}')" compressed-tensors
+          assert_eq "quantization metadata" "$(jp "gryviamodelregistry/$e1" '{.spec.metadata.quantization}')" awq-W4A16_ASYM
           wait_for "first version promoted to production" 60 field_is "gryviamodelregistry/$e1" '{.spec.stage}' production
           assert_eq "promotion decision" "$(jp "gryviamodelregistry/$e1" '{.status.promotionDecision}')" Promoted
           wait_for "shared service created" 60 kubectl -n "$NS" get gryviainferenceservice/e2e-chat

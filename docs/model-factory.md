@@ -16,7 +16,8 @@ inference service. It is four pieces of the ai-operator working together:
 5. **`rollbackPolicy`** and a scheduled evaluation keep checking the served version and bring the previous one back
    when its score drops (see [Continuous evaluation and rollback](#continuous-evaluation-and-rollback)).
 
-A ready-made watch, image and scripts (download, TRL/PEFT LoRA fine-tune, lm-evaluation-harness) are in
+A ready-made watch, image and scripts (download, TRL/PEFT LoRA fine-tune, llm-compressor AWQ/GPTQ quantization,
+lm-evaluation-harness) are in
 [examples/model-factory](../examples/model-factory/README.md).
 
 ## What is verified and what is not
@@ -30,7 +31,8 @@ A ready-made watch, image and scripts (download, TRL/PEFT LoRA fine-tune, lm-eva
 
 | Not verified anywhere | Why |
 | --- | --- |
-| A real download, fine-tune or evaluation, on any model | No GPU and no model weights in CI. The scripts call TRL, PEFT and lm-eval as documented, but have not run them |
+| A real download, fine-tune, quantization or evaluation, on any model | No GPU and no model weights in CI. The scripts call TRL, PEFT, llm-compressor and lm-eval as documented, but have not run them |
+| vLLM serving the quantized (compressed-tensors) weights, and the quality loss of AWQ on your model | No GPU; the evaluation step scores the quantized model so the promotion decision includes the loss |
 | The real Hugging Face API | CI uses a stand-in server that returns the same JSON shape |
 | vLLM loading a fine-tuned model from the registry PVC | No GPU; the e2e serves an nginx stand-in |
 | The GPU estimate being enough memory | It is a rule of thumb (below), not a measurement |
@@ -146,6 +148,19 @@ Both the stable and the canary Deployment load the artifacts of their own versio
 `servingConfig.servicePort` is the port the serving container is served and probed on. Set it whenever `args` move the
 server off its backend default (vLLM and Triton 8000, TorchServe 8080); for example vLLM with `--port=8080` needs
 `servicePort: 8080`, otherwise the pods never pass their probes.
+
+## Quantization
+
+`examples/model-factory/quantize.py` turns the fine-tuned model into 4-bit weights with
+[llm-compressor](https://github.com/vllm-project/llm-compressor): `--method awq` (default scheme `W4A16_ASYM`) or
+`--method gptq` (`W4A16`, also `W8A16`), calibrated on `--samples` (256) records of the training JSONL rendered with
+the chat template. `lm_head` stays in full precision. The output goes next to the input (`<path>-awq`) in the
+compressed-tensors format, and the step reports `path`, `subPath`, `format` and `quantization`
+(`compressed-tensors`), `method` and `scheme`. In [model-watch.yaml](../examples/model-factory/model-watch.yaml) the
+step runs between fine-tune and evaluate, the evaluation scores the quantized model, and the register step stores
+`artifacts.format`, `metadata.quantization` and the vLLM argument `--quantization={{steps.quantize.outputs.quantization}}`.
+No CRD change: it is an ordinary job step. 4-bit weights need about a quarter of the GPU memory of bf16, so the same
+`gpuCount` serves a larger model or longer contexts.
 
 ## Continuous evaluation and rollback
 

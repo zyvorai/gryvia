@@ -8,6 +8,8 @@ import evaluate
 from evaluate import aggregate, exact_match, openai_generator, output_key
 from finetune_lora import filter_kwargs, output_dir, validate_jsonl
 from outputs import write_outputs
+from quantize import calibration_texts
+from quantize import parse_args as parse_quantize_args
 
 
 class OutputsTests(unittest.TestCase):
@@ -136,6 +138,32 @@ class EvaluateTests(unittest.TestCase):
             self.assertEqual(written["score"], "0.500000")
         with self.assertRaises(SystemExit):
             evaluate.main(["--model", "/m", "--endpoint", "http://x"])
+
+
+class QuantizeTests(unittest.TestCase):
+    def test_args_defaults_and_validation(self):
+        a = parse_quantize_args(["--model", "/models/ft/qwen3-8b/abc/", "--calibration", "/data/chat.jsonl"])
+        self.assertEqual((a.method, a.scheme, a.output), ("awq", "W4A16_ASYM", "/models/ft/qwen3-8b/abc-awq"))
+        g = parse_quantize_args(["--model", "/m/x", "--calibration", "c", "--method", "gptq", "--scheme", "W8A16"])
+        self.assertEqual((g.scheme, g.output), ("W8A16", "/m/x-gptq"))
+        for bad in (["--method", "awq", "--scheme", "W8A16"], ["--method", "fp8"], ["--samples", "0"]):
+            with self.assertRaises(SystemExit):
+                parse_quantize_args(["--model", "/m", "--calibration", "c"] + bad)
+
+    def test_calibration_texts(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "chat.jsonl")
+            open(path, "w").write('{"text": "plain"}\n\n{"messages": [{"role": "user", "content": "hi"}]}\n'
+                                  '{"text": "third"}\n')
+            render = lambda m: "<chat>" + m[0]["content"]  # noqa: E731
+            self.assertEqual(calibration_texts(path, 10, render), ["plain", "<chat>hi", "third"])
+            self.assertEqual(calibration_texts(path, 2, render), ["plain", "<chat>hi"])
+            bad = os.path.join(d, "bad.jsonl")
+            open(bad, "w").write('{"prompt": "x"}\n')
+            self.assertRaises(ValueError, calibration_texts, bad, 10, render)
+            empty = os.path.join(d, "empty.jsonl")
+            open(empty, "w").write("\n")
+            self.assertRaises(ValueError, calibration_texts, empty, 10, render)
 
 
 if __name__ == "__main__":
