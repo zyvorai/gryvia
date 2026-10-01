@@ -13,8 +13,9 @@ yet, which are opt-in: `nccl_transport`, `p2p_fallback`, `capture_gate`, `gpu_oo
 `all` enables every one). Without it they are not loaded into the kernel, and `/api/v1/ebpf/status` lists them as skipped
 with `notRequested: true` and no `gryvia_ebpf_program_attached` series (so they do not trigger `GryviaEbpfProgramNotAttached`;
 the same goes for any program the configuration did not ask for, such as XDP without `-iface` or quota pacing while off).
-Even enabled, their signals are not interpreted yet (the fabric folder has no case for types 11 to 22, so the events are
-read and dropped) and the maps that steer `nccl_transport`, `capture_gate` and `gpu_dev` (`transport_hint`,
+Enabled, their signals are counted per job by the fabric folder (`gryvia_fabric_signal_events{signal=...}`, plus
+`gryvia_fabric_infer_ttft_p99_seconds`; `weight_mmap` and `gpu_dev` also log a warning). They are informational: none
+feeds the placement score, none is published to `GryviaFabricSignal` status, and nothing acts on them. The maps that steer `nccl_transport`, `capture_gate` and `gpu_dev` (`transport_hint`,
 `capture_lease`, `allowed_cg`, `gpu_dev_cfg`) are never written. `xdp_mux` and `roce_ecn` are governed by `-xdp-mux`
 (off by default). Earlier results: the collector attached the kprobe/tracepoint subset there and decoded real TCP flows. GPU, NCCL,
 RDMA and GPUDirect Storage behaviour, arm64 loading and the gated XDP/TCX/sockops attachments have not been verified on

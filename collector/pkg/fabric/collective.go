@@ -197,12 +197,14 @@ func spanOf(s Signal) CollSpan {
 }
 
 // Signals synthesised in userspace from NIC hardware counters (pkg/nic); they
-// never appear on a ring. Bytes = the event count since the previous poll.
+// never appear on a ring. Bytes = the event count since the previous poll. They
+// are numbered from 128 so they cannot collide with the ring types in
+// fabric_signal.h (11-22 are real ring signals; they used to share 11-14).
 const (
-	SigNICRetry uint8 = 11 // transport retries / sequence errors
-	SigNICError uint8 = 12 // link, symbol, discard errors
-	SigNICCNP   uint8 = 13 // CNPs handled by the NIC (rp_cnp_handled); zero counts are recorded to mark "NIC counters present"
-	SigNICPause uint8 = 14 // pause frames counted by the NIC; zero counts recorded too
+	SigNICRetry uint8 = 128 // transport retries / sequence errors
+	SigNICError uint8 = 129 // link, symbol, discard errors
+	SigNICCNP   uint8 = 130 // CNPs handled by the NIC (rp_cnp_handled); zero counts are recorded to mark "NIC counters present"
+	SigNICPause uint8 = 131 // pause frames counted by the NIC; zero counts recorded too
 )
 
 // NICJob is the node-level key under which NIC retry/error events are folded.
