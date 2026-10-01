@@ -15,6 +15,10 @@ gpuOperator:
   # Create a GryviaGpuNode for every node that carries the NVIDIA GPU feature-discovery labels
   # (nvidia.com/gpu.present=true), and remove it again when the GPU goes away. Hand-made objects are never touched.
   autoRegister: true
+  # Reconcile GryviaGPUSharingPolicy (flag --enable-gpu-sharing): matching GPU nodes get the labels the NVIDIA GPU Operator
+  # reads for time-slicing (nvidia.com/device-plugin.config) and MIG (nvidia.com/mig.config), plus gryvia.io/* labels.
+  # Off by default because it writes node labels. See website/docs/guides/NVIDIA_ONE_CLICK.md.
+  gpuSharing: false
   image: {name: gryvia-gpu-operator, tag: ""}
   replicas: 1
   resources:

@@ -65,7 +65,7 @@ func (r *apiContract) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Res
 	return ctrl.Result{}, r.Status().Patch(ctx, obj, client.MergeFrom(base))
 }
 func RegisterAPIContracts(mgr ctrl.Manager) error {
-	for _, obj := range []client.Object{&gryviav1.GryviaBenchmark{}, &gryviav1.GryviaMetric{}, &gryviav1.GryviaGPUSharingPolicy{}} {
+	for _, obj := range []client.Object{&gryviav1.GryviaBenchmark{}, &gryviav1.GryviaMetric{}} {
 		if err := ctrl.NewControllerManagedBy(mgr).For(obj).Complete(&apiContract{Client: mgr.GetClient(), Prototype: obj}); err != nil {
 			return err
 		}

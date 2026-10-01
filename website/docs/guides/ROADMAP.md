@@ -32,7 +32,7 @@ The project is alpha: the API is `gryvia.io/v1alpha1` and can change. For what e
 
 ### Legacy APIs without supported runtime behavior
 
-Dormant simulation controllers have been removed for `GryviaSLA`, `GryviaAutoScaler`, `GryviaRetryPolicy`, `GryviaJobHook`, `GryviaDataset`, `GryviaBenchmark`, `GryviaAudit`, `GryviaDRTest`, `GryviaGPUSharingPolicy`, `GryviaMetric` and `GryviaQuotaPolicy`. Their CRDs remain readable for migration; opt-in capability reporting marks them unsupported. `GryviaGpuSku` is catalog data and needs no controller. PriorityClass reconciliation, template validation, federation readiness probes, actual-usage chargeback and optional GPU health checks now have registered controllers. See the [completion bundle](https://github.com/zyvorai/gryvia/blob/main/docs/platform-completion.md) for their limits.
+Dormant simulation controllers have been removed for `GryviaSLA`, `GryviaAutoScaler`, `GryviaRetryPolicy`, `GryviaJobHook`, `GryviaDataset`, `GryviaBenchmark`, `GryviaAudit`, `GryviaDRTest`, `GryviaMetric` and `GryviaQuotaPolicy`. `GryviaGPUSharingPolicy` keeps its controller (opt-in, `gpuOperator.gpuSharing`) for the NVIDIA one-click labels. Their CRDs remain readable for migration; opt-in capability reporting marks them unsupported. `GryviaGpuSku` is catalog data and needs no controller. PriorityClass reconciliation, template validation, federation readiness probes, actual-usage chargeback and optional GPU health checks now have registered controllers. See the [completion bundle](https://github.com/zyvorai/gryvia/blob/main/docs/platform-completion.md) for their limits.
 
 ### Not implemented
 

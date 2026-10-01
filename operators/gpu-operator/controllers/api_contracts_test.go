@@ -18,7 +18,7 @@ func TestLegacyCapabilityConditionsSurviveTypedConversion(t *testing.T) {
 	if err := gryviav1.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	for _, obj := range []client.Object{&gryviav1.GryviaBenchmark{}, &gryviav1.GryviaMetric{}, &gryviav1.GryviaGPUSharingPolicy{}} {
+	for _, obj := range []client.Object{&gryviav1.GryviaBenchmark{}, &gryviav1.GryviaMetric{}} {
 		t.Run(string(obj.GetObjectKind().GroupVersionKind().Kind)+reflectName(obj), func(t *testing.T) {
 			obj.SetName("legacy")
 			obj.SetNamespace("test")

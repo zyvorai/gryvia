@@ -25,7 +25,7 @@ Gryvia defines 52 custom resources in the `gryvia.io` API group (version `v1alph
 | `GryviaFabricSignal` | `gryviafabricsignals` | Namespaced | ai-operator | none | `jobRef`, `observeOnly` |
 | `GryviaFederation` | `gryviafederations` | Cluster | ai-operator | none | `clusters`, `costManagement`, `distribution`, `failover`, `loadBalancing`, `resourceSharing` |
 | `GryviaFlowPolicy` | `gryviaflowpolicies` | Namespaced | network-intelligence | none | `action`, `destination`, `intent`, `priority`, `protocol`, `source` |
-| `GryviaGPUSharingPolicy` | `gryviagpusharingpolicies` | Cluster | none | `strategy` | `fractionalGPU`, `mig`, `nodeSelector`, `priority`, `qos`, `tenantQuotas`, `timeSlicing` |
+| `GryviaGPUSharingPolicy` | `gryviagpusharingpolicies` | Cluster | gpu-operator | `strategy` | `fractionalGPU`, `mig`, `nodeSelector`, `priority`, `qos`, `tenantQuotas`, `timeSlicing` |
 | `GryviaGpuMemoryOptimizer` | `gryviagpumemoryoptimizers` | Cluster | gpu-operator | `scope` | `inferencePacking`, `oomPrevention`, `rightSizing` |
 | `GryviaGpuNode` | `gryviagpunodes` | Cluster | gpu-operator | `gpuCount`, `gpuType`, `nodeName` | `bandwidth`, `computeCapability`, `drivers`, `healthCheck`, `interconnect`, `labels`, `memoryGB`, `rdma`, … |
 | `GryviaGpuSku` | `gryviagpuskus` | Cluster | none | `gpuType`, `hourlyRate` | `currency`, `description`, `enabled`, `gpusPerUnit`, `spotDiscount` |

@@ -60,6 +60,9 @@ spec:
             {{- if and (eq $name "ai-operator") $.Values.platformCompletion.inferenceTelemetry }}
             - {{ printf "--inference-telemetry-image=%s" (include "gryvia.image" (dict "root" $ "image" $op.image)) | quote }}
             {{- end }}
+            {{- if and (eq $name "gpu-operator") $.Values.gpuOperator.gpuSharing }}
+            - --enable-gpu-sharing=true
+            {{- end }}
             {{- if and (eq $name "gpu-operator") $.Values.platformCompletion.gpuHealth }}
             - --enable-gpu-health-controller=true
             {{- end }}

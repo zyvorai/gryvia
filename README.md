@@ -73,7 +73,7 @@ NVIDIA feature-discovery labels. Not yet validated on real GPUs.<br>
 
 **Six Kubernetes operators**<br>
 GPU, AI workload and quota operators (plus optional storage and network operators for RDMA/SR-IOV and
-parallel-filesystem CSI backends) in the main chart; network intelligence in its own. 37 of the 52 CRDs have a
+parallel-filesystem CSI backends) in the main chart; network intelligence in its own. 38 of the 52 CRDs have a
 registered runtime controller (some are opt-in).<br>
 [Core components](#core-components)
 
@@ -107,7 +107,7 @@ for the custom resources.<br>
 | **Implemented and tested in CI** (unit tests, chart rendering, a kind install with demo data read back through the API and CLI) | The Helm chart; GPU, AI workload and quota operators; `GryviaAIJob` placement, run-to-completion Job and StatefulSet creation and the admission webhook; per-namespace quotas and budgets; tenants, SKU catalog, usage metering and estimate invoices; the API gateway with API-key, session and OIDC roles; the dashboard; the CLI |
 | **Implemented, tests are unit-level or a kind e2e (AIJob lifecycle, ML controllers and the kind demo have passed in CI; the Kueue, GPUaaS and fake-collector network-intelligence e2e were fixed after their first runs failed and are not yet confirmed green); unverified on real clusters, GPUs and services** | The ML controllers for workspaces, inference services, the model registry, workflows and the auto tuner (on by default in the ai-operator, `--enable-ml-controllers`; only unit tests with a fake client and `e2e-ml.yml`, tiny CPU images, no GPU or real model server); opt-in Kueue integration (`kueue.enabled`, `aiOperator.kueueIntegration`, `quotaOperator.kueueIntegration`); opt-in admission gate for quotas and hard budgets (`aiOperator.admissionGate`), node reservations (`quotaOperator.reservations`), per-tenant Kubernetes RBAC (`quotaOperator.tenantRbac`) and the signed invoice webhook; opt-in gateway and quota-operator Prometheus metrics with dashboards, alerts and runbooks (`monitoring.enabled`, `apiGateway.metrics.*`; never rendered against a live Prometheus or Grafana); the network-intelligence operator's real collector and Netra sources (`operator.sources.*`; e2e against a fake collector only); opt-in per-node fabric status merge (`aiOperator.mergeFabricSignals`); NVIDIA GPU Operator sub-chart, `install-k3s-gpu.sh` and node auto-registration (GPU-less k3s in CI only); storage and network operators (off by default); OIDC against a real identity provider; anything that needs GPUs, RDMA or a parallel filesystem |
 | **Experimental** | The eBPF collector, the 47 eBPF programs, fabric signals and the Flight Recorder (verified on Linux 7.0 x86_64 only); the network-intelligence operator |
-| **Legacy APIs without supported runtime behavior** | SLA, audit, auto-scaler, retry policy, job hooks, DR tests, benchmarks, GPU sharing, metrics, quota policies and datasets retain readable CRDs for migration. Opt-in capability reporting marks them unsupported. The operator's own gang scheduling, DRF queues, preemption and elastic scaling are library code that no controller calls (Kueue provides gang admission and preemption when its integration is switched on) |
+| **Legacy APIs without supported runtime behavior** | SLA, audit, auto-scaler, retry policy, job hooks, DR tests, benchmarks, metrics, quota policies and datasets retain readable CRDs for migration. Opt-in capability reporting marks them unsupported. The operator's own gang scheduling, DRF queues, preemption and elastic scaling are library code that no controller calls (Kueue provides gang admission and preemption when its integration is switched on) |
 | **Not implemented** | Payments or tax invoices, multi-cluster federation, a mutating quota-pacing eBPF program |
 
 The [CRD reference](website/docs/reference/crds.md) lists every kind with the operator that reconciles it (or `none`).
@@ -220,10 +220,10 @@ operator's node selection (filter, score, select), not a separate scheduler.
 ## Core Components
 
 <details>
-<summary><b>52 CRDs, 37 of them with a runtime controller (the CRD reference has the full table)</b></summary>
+<summary><b>52 CRDs, 38 of them with a runtime controller (the CRD reference has the full table)</b></summary>
 
-**Reconciled by a runtime controller (37; some opt-in).**
-GPU operator: `GryviaHealthCheck` (opt-in health/remediation flags), `GryviaGpuNode` (also auto-created from GPU feature-discovery labels), `GryviaGpuMemoryOptimizer` ·
+**Reconciled by a runtime controller (38; some opt-in).**
+GPU operator: `GryviaHealthCheck` (opt-in health/remediation flags), `GryviaGpuNode` (also auto-created from GPU feature-discovery labels), `GryviaGpuMemoryOptimizer`, `GryviaGPUSharingPolicy` (opt-in `--enable-gpu-sharing`, chart `gpuOperator.gpuSharing`: writes the node labels for time-slicing and MIG) ·
 AI operator: `GryviaAIJob`, `GryviaCheckpointGuard`, `GryviaLiveExperiment`, `GryviaModelLineage`,
 `GryviaTrainingProfiler`, `GryviaTrainingTimeMachine`, and the ML kinds `GryviaWorkspace`, `GryviaInferenceService`,
 `GryviaModelRegistry`, `GryviaWorkflow`, `GryviaAutoTuner`, `GryviaPriority`, `GryviaTemplate` (on by default, `--enable-ml-controllers`), plus
@@ -233,7 +233,7 @@ Network-intelligence operator: `GryviaFlowPolicy`, `GryviaTrafficInsight`, `Gryv
 `GryviaServiceGraph`, `GryviaNetworkAnomaly`, `GryviaSecurityPolicy`, `GryviaNetworkCost`, `GryviaTrainingInsight`,
 `GryviaInferenceInsight`.
 
-**Data or legacy APIs without runtime actions (15).** `GryviaGpuSku`, `GryviaNetworkRate`, `GryviaNetworkUsageRecord` and `GryviaNodeFabric` are catalog/telemetry data. `GryviaDataset`, `GryviaAutoScaler`, `GryviaJobHook`, `GryviaRetryPolicy`, `GryviaSLA`, `GryviaAudit`, `GryviaQuotaPolicy`, `GryviaGPUSharingPolicy`, `GryviaMetric`, `GryviaBenchmark` and `GryviaDRTest` have no supported runtime implementation. The platform completion flags can report them unsupported without executing their specs.
+**Data or legacy APIs without runtime actions (14).** `GryviaGpuSku`, `GryviaNetworkRate`, `GryviaNetworkUsageRecord` and `GryviaNodeFabric` are catalog/telemetry data. `GryviaDataset`, `GryviaAutoScaler`, `GryviaJobHook`, `GryviaRetryPolicy`, `GryviaSLA`, `GryviaAudit`, `GryviaQuotaPolicy`, `GryviaMetric`, `GryviaBenchmark` and `GryviaDRTest` have no supported runtime implementation. The platform completion flags can report them unsupported without executing their specs.
 
 </details>
 
