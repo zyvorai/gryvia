@@ -34,6 +34,25 @@ type ProgramStatus struct {
 	Target   string `json:"target,omitempty"`
 	Attached bool   `json:"attached"`
 	Reason   string `json:"reason,omitempty"` // why not attached
+	// NotRequested marks a program that was not attached because the configuration did not ask for it: an
+	// opt-in program that was not enabled (optin.go), an opt-in feature that is off (quota pacing, the
+	// libibverbs probes, -xdp-mux, no -infer-ports), or XDP/TCX without -iface and sockops/sk_msg without
+	// -cgroup-path. That is not a failure to attach, so it gets no gryvia_ebpf_program_attached series (the
+	// gauge that drives GryviaEbpfProgramNotAttached). A missing library or symbol, an interface that is
+	// already taken and an attach error are not "not requested": they still export 0.
+	NotRequested bool `json:"notRequested,omitempty"`
+}
+
+// AttachGauge is the value of gryvia_ebpf_program_attached for this program, and whether the series
+// should exist at all.
+func (s ProgramStatus) AttachGauge() (value float64, export bool) {
+	switch {
+	case s.NotRequested:
+		return 0, false
+	case s.Attached:
+		return 1, true
+	}
+	return 0, true
 }
 
 // MapReader is an opened event reader plus its dispatch class.
@@ -137,6 +156,23 @@ func (m *Manager) loadObject(file, path string) error {
 	if err != nil {
 		return fmt.Errorf("parse collection spec: %w", err)
 	}
+	// An opt-in object nothing consumes yet is not loaded at all; its programs are listed as skipped.
+	if reason := OptInSkipReason(file, m.cfg); reason != "" {
+		names := make([]string, 0, len(spec.Programs))
+		for n := range spec.Programs {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			st := ProgramStatus{Object: file, Program: name, Section: spec.Programs[name].SectionName, Reason: "skipped: " + reason, NotRequested: true}
+			if as, err := ParseSection(st.Section); err == nil {
+				st.Kind, st.Target = string(as.Kind), as.Symbol
+			}
+			m.addStatus(st)
+		}
+		m.log.Infow("skipping object", "object", file, "reason", reason)
+		return nil
+	}
 	// An XDP feature behind an attached mux shares the mux's prog array: every object declares its
 	// own xdp_features map (headers/xdp_chain.h), replaced here by the mux's.
 	var copts ebpf.CollectionOptions
@@ -207,11 +243,14 @@ func (m *Manager) loadObject(file, path string) error {
 		st.Kind = string(as.Kind)
 		st.Target = as.Symbol
 		reason := skipAll
+		notRequested := skipAll != "" // every skipAll reason is a switch that is off or an input that is not set
 		if reason == "" {
 			reason = SkipReason(as, m.cfg)
+			notRequested = reason != "" && SkipIsNotRequested(as, m.cfg)
 		}
 		if reason != "" {
 			st.Reason = "skipped: " + reason
+			st.NotRequested = notRequested
 			m.log.Infow("skipping program", "object", file, "program", name, "reason", reason)
 			m.addStatus(st)
 			continue

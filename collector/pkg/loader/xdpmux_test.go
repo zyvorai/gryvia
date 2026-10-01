@@ -13,6 +13,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/cilium/ebpf"
@@ -266,4 +267,93 @@ func mustAbs(t *testing.T, p string) string {
 		t.Fatal(err)
 	}
 	return a
+}
+
+// An opt-in object is not loaded by default: its programs are listed as skipped and nothing is
+// attached. Named in EnablePrograms, the same object loads and attaches.
+func TestManagerOptInObject(t *testing.T) {
+	src := mustAbs(t, ebpfDir(t))
+	dir := t.TempDir()
+	if err := os.Symlink(filepath.Join(src, "capture_gate.o"), filepath.Join(dir, "capture_gate.o")); err != nil {
+		t.Fatal(err)
+	}
+
+	m, err := New(Config{Dir: dir}, zap.NewNop().Sugar())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Nothing attached, so LoadAndAttach reports an error; the statuses are what matters.
+	_ = m.LoadAndAttach()
+	st := m.Status()
+	if len(st) == 0 {
+		t.Fatal("no status for the skipped object")
+	}
+	for _, s := range st {
+		if s.Attached || !s.NotRequested || !strings.Contains(s.Reason, "opt-in program") || s.Object != "capture_gate.o" {
+			t.Errorf("default: %+v, want a skipped opt-in program", s)
+		}
+	}
+	if m.Map("capture_gate.o", "capture_lease") != nil {
+		t.Error("default: capture_gate.o was loaded into the kernel")
+	}
+	m.Close()
+
+	m, err = New(Config{Dir: dir, EnablePrograms: []string{"capture_gate"}}, zap.NewNop().Sugar())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	if err := m.LoadAndAttach(); err != nil {
+		t.Fatalf("enabled: LoadAndAttach: %v", err)
+	}
+	attached := false
+	for _, s := range m.Status() {
+		attached = attached || s.Attached
+	}
+	if !attached || m.Map("capture_gate.o", "capture_lease") == nil {
+		t.Errorf("enabled: capture_gate.o did not load and attach: %+v", m.Status())
+	}
+}
+
+// Programs the configuration did not ask for are marked NotRequested and export no gauge series;
+// a program the node cannot attach for lack of a library is not, and still exports 0.
+func TestManagerNotRequested(t *testing.T) {
+	src := mustAbs(t, ebpfDir(t))
+	dir := t.TempDir()
+	for _, f := range []string{"quota_pace.o", "ibv_verbs.o", "dns_tracker.o", "straggler.o"} {
+		if err := os.Symlink(filepath.Join(src, f), filepath.Join(dir, f)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m, err := New(Config{Dir: dir}, zap.NewNop().Sugar())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	_ = m.LoadAndAttach() // nothing may attach on a runner without NCCL; the statuses are the point
+
+	seen := map[string]int{}
+	for _, s := range m.Status() {
+		seen[s.Object]++
+		_, export := s.AttachGauge()
+		switch s.Object {
+		case "quota_pace.o", "ibv_verbs.o", "dns_tracker.o":
+			// quota pacing off, libibverbs probes off, and an XDP program with no -iface.
+			if s.Attached || !s.NotRequested || export {
+				t.Errorf("%s/%s: attached=%v notRequested=%v export=%v (%q), want a skipped, not-requested program with no series",
+					s.Object, s.Program, s.Attached, s.NotRequested, export, s.Reason)
+			}
+		case "straggler.o":
+			// uprobes on libnccl: either the library is found and they attach, or it is missing and the
+			// gap is reported (series present, value 0) rather than hidden.
+			if s.NotRequested || !export {
+				t.Errorf("straggler.o/%s: notRequested=%v export=%v (%q), want a status that still exports", s.Program, s.NotRequested, export, s.Reason)
+			}
+		}
+	}
+	for _, f := range []string{"quota_pace.o", "ibv_verbs.o", "dns_tracker.o", "straggler.o"} {
+		if seen[f] == 0 {
+			t.Errorf("no status for %s", f)
+		}
+	}
 }

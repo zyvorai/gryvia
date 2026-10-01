@@ -111,6 +111,8 @@ type Config struct {
 	QuotaPace bool
 	// IBVerbs lets ibv_verbs.c (libibverbs control-path uprobes) attach. Default false.
 	IBVerbs bool
+	// EnablePrograms names the opt-in programs to attach (see optin.go); "all" enables every one.
+	EnablePrograms []string
 	// XDPMux attaches xdp_mux.o as the interface's only XDP program and chains the XDP
 	// feature programs (roce_cnp, pfc_pause, dns_tracker, packet_filter, roce_ecn) behind it,
 	// so they all run, instead of one XDP program per interface. Needs Iface. Default false.
@@ -266,6 +268,19 @@ func SkipReason(spec AttachSpec, cfg Config) string {
 		}
 	}
 	return ""
+}
+
+// SkipIsNotRequested reports whether SkipReason skipped the program because a setting is empty
+// (XDP/TCX need -iface, sockops/sk_msg need -cgroup-path), as opposed to the node lacking something it
+// would need (a library for a uprobe), which is a gap the operator may want to hear about.
+func SkipIsNotRequested(spec AttachSpec, cfg Config) bool {
+	switch spec.Kind {
+	case KindXDP, KindTCXIngress, KindTCXEgress:
+		return cfg.Iface == ""
+	case KindSockOps, KindSkMsg:
+		return cfg.CgroupPath == ""
+	}
+	return false
 }
 
 // LibraryFor picks the configured library for a user-space symbol.

@@ -65,6 +65,7 @@ name is `gryvia-network-intelligence`.
 | `collector.hostNetwork` | Host networking for the collector; the pod's port 9090 is then bound on the node | `true` |
 | `ebpf.interface` | Interface for the XDP/TCX programs (`-iface`); empty means they are not attached | `""` |
 | `ebpf.xdpMux` | Attach `xdp_mux` as the interface's only XDP program and chain `roce_cnp`, `pfc_pause`, `dns_tracker`, `packet_filter` and `roce_ecn` behind it (`-xdp-mux`); needs `ebpf.interface`. Without it only one XDP program can attach per interface. Tested in CI on the loopback interface, not on a NIC | `false` |
+| `ebpf.enablePrograms` | Opt-in eBPF programs to attach (`-enable-programs`): `nccl_transport`, `p2p_fallback`, `capture_gate`, `gpu_oom`, `graph_stall`, `gdr_fail`, `infer_ttft`, `weight_mmap`, `gpu_dev`, `ucx_complete`, or `all`. They are skipped by default because nothing in the collector reads their signals yet | `[]` |
 | `ebpf.cgroupPath` | cgroup v2 path for sockops/sk_msg (`-cgroup-path`); empty means not attached | `""` |
 | `ebpf.ncclLib`, `ebpf.cudaLib` | Library paths for the GPU uprobes; empty means auto-discover | `""` |
 | `ebpf.flightTokenSecret`, `ebpf.flightTokenKey` | Secret holding the Flight Recorder token (`-flight-token-file`); empty disables that endpoint | `""`, `token` |

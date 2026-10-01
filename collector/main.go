@@ -48,6 +48,7 @@ func main() {
 		natsURL         = flag.String("nats-url", "", "NATS server URL (optional)")
 		ebpfDir         = flag.String("ebpf-dir", "/opt/gryvia/ebpf", "Directory containing compiled eBPF .o files")
 		iface           = flag.String("iface", "", "Network interface for XDP/TCX attachment (empty = skip those programs)")
+		enablePrograms  = flag.String("enable-programs", "", "comma-separated opt-in eBPF programs to attach, or \"all\": programs whose signals or counters nothing in the collector reads yet are skipped by default ("+strings.Join(loader.OptInPrograms(), ", ")+")")
 		xdpMux          = flag.Bool("xdp-mux", false, "attach xdp_mux as the interface's only XDP program and chain roce_cnp, pfc_pause, dns_tracker, packet_filter and roce_ecn behind it, so all of them run on one interface (without it only one XDP program can attach per interface). Needs -iface. Off by default")
 		cgroupPath      = flag.String("cgroup-path", "", "cgroup v2 path for sockops/sk_msg attachment (empty = skip)")
 		ncclLib         = flag.String("nccl-lib", "", "path to libnccl.so for uprobes (empty = auto-discover)")
@@ -149,9 +150,14 @@ func main() {
 	}
 
 	// ---- Load eBPF programs ----
+	optIn, err := loader.ParseEnablePrograms(*enablePrograms)
+	if err != nil {
+		log.Fatalw("invalid -enable-programs", "error", err)
+	}
 	mgr, err := loader.New(loader.Config{
-		InferPorts: ports,
-		Dir:        *ebpfDir, Iface: *iface, CgroupPath: *cgroupPath,
+		EnablePrograms: optIn,
+		InferPorts:     ports,
+		Dir:            *ebpfDir, Iface: *iface, CgroupPath: *cgroupPath,
 		NCCLLib: *ncclLib, CUDALib: *cudaLib, CuFileLib: *cufileLib, UCXLib: *ucxLib, UprobePID: *uprobePID,
 		IBVerbsLib: *ibverbsLib, IBVerbs: *ibverbsProbes,
 		QuotaPace: *quotaPace, XDPMux: *xdpMux,
@@ -170,9 +176,9 @@ func main() {
 	}, []string{"object", "program", "kind"})
 	prometheus.MustRegister(attachGauge)
 	for _, s := range mgr.Status() {
-		v := 0.0
-		if s.Attached {
-			v = 1
+		v, export := s.AttachGauge()
+		if !export {
+			continue // not requested by the configuration: not a failure to attach, so no series and no alert
 		}
 		attachGauge.WithLabelValues(s.Object, s.Program, s.Kind).Set(v)
 	}
