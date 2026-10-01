@@ -83,6 +83,12 @@ type Status struct {
 	// UCXSlowP99MS is the p99 duration of UCX tag-send calls that blocked for
 	// at least the probe threshold. Informational: it does not feed ScoreDelta.
 	UCXSlowP99MS float64 `json:"ucxSlowP99ms"`
+	// InferTTFTP99MS is the p99 of accept -> first send on inference ports
+	// (infer_ttft.c, opt-in). Informational.
+	InferTTFTP99MS float64 `json:"inferTTFTP99ms"`
+	// Events counts the opt-in probe signals in the window, keyed by EventName
+	// (for example "gpu_oom"). Informational: it never changes ScoreDelta.
+	Events map[string]uint64 `json:"events,omitempty"`
 
 	// CollectivesCompared is the number of collectives (same communicator
 	// ordinal, sequence and op) seen on at least two local ranks, and
@@ -308,7 +314,7 @@ func (f *Folder) correlateGPU(st *Status, k JobKey, colls []sample, from time.Ti
 func fold(list, colls []sample, gdsDirect bool, window time.Duration) Status {
 	var st Status
 	st.SampleCount = len(list) + len(colls)
-	var lat, inferLat, ucxLat []float64
+	var lat, inferLat, ucxLat, ttftLat []float64
 	var errs, posted, direct, total, overlapNS, cnps, pfcs uint64
 	var nicRetry, nicErr, nicCNP, nicPause uint64
 	var nicCNPSeen, nicPauseSeen bool
@@ -343,6 +349,12 @@ func fold(list, colls []sample, gdsDirect bool, window time.Duration) Status {
 			st.ExfilEvents++
 		case SigUCXSlow:
 			ucxLat = append(ucxLat, float64(s.LatencyNS)/1e6)
+		case SigInferTTFT:
+			ttftLat = append(ttftLat, float64(s.LatencyNS)/1e6)
+			st.countEvent(s.Type)
+		case SigNCCLTransport, SigP2PFallback, SigGPUOOM, SigGraphStall, SigGDRFail,
+			SigInferGap, SigWeightMmap, SigGPUDev, SigUCXWait:
+			st.countEvent(s.Type)
 		case SigNICRetry:
 			nicRetry += s.Bytes
 		case SigNICError:
@@ -401,6 +413,7 @@ func fold(list, colls []sample, gdsDirect bool, window time.Duration) Status {
 	}
 	st.InferWaitP99MS = percentile(inferLat, 0.99)
 	st.UCXSlowP99MS = percentile(ucxLat, 0.99)
+	st.InferTTFTP99MS = percentile(ttftLat, 0.99)
 	if secs := window.Seconds(); secs > 0 {
 		st.OverlapIdleRatio = math.Min(1, float64(overlapNS)/1e9/secs)
 		st.CNPRate = float64(cnps) / secs
@@ -410,6 +423,13 @@ func fold(list, colls []sample, gdsDirect bool, window time.Duration) Status {
 	}
 	st.ScoreDelta = ScoreDelta(st)
 	return st
+}
+
+func (st *Status) countEvent(t uint8) {
+	if st.Events == nil {
+		st.Events = make(map[string]uint64)
+	}
+	st.Events[EventName(t)]++
 }
 
 func spansOf(colls []sample) []CollSpan {

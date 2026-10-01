@@ -516,6 +516,15 @@ func main() {
 					recorder.RecordCollective(ev)
 				}
 			}
+			if sig.Type == fabric.SigWeightMmap {
+				// Observe only, like SigExfil: peer_rank carries the remote IPv4 in host order.
+				log.Warnw("possible model-weight exfiltration: weight file mapped, then a connect to a public address",
+					"pid", sig.PID, "comm", sig.Comm, "remote_port", sig.Rank, "mmap_to_connect_ms", sig.LatencyNS/1_000_000)
+			}
+			if sig.Type == fabric.SigGPUDev {
+				log.Warnw("GPU device opened from a cgroup outside the allowed set",
+					"pid", sig.PID, "comm", sig.Comm, "cgroup_id_lo", sig.CgroupLo)
+			}
 			if sig.Type == fabric.SigExfil {
 				// Observe only: the probe emits one signal per read burst. Never enforced here.
 				log.Warnw("possible model-weight exfiltration: large model-file read followed by a connect to a non-internal address",

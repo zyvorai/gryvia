@@ -20,16 +20,16 @@ import (
 
 // optInObjects maps an object file to why it is opt-in.
 var optInObjects = map[string]string{
-	"nccl_transport.o": "its signal is not interpreted yet and nothing writes transport_hint",
-	"p2p_fallback.o":   "its signal is not interpreted yet",
+	"nccl_transport.o": "its signal is only counted, and nothing writes transport_hint",
+	"p2p_fallback.o":   "its signal is only counted per job, not acted on",
 	"capture_gate.o":   "nothing writes capture_lease, so it never arms and costs a map lookup per TCP send",
-	"gpu_oom.o":        "its signal is not interpreted yet",
-	"graph_stall.o":    "its signal is not interpreted yet",
-	"gdr_fail.o":       "its signal is not interpreted yet",
-	"infer_ttft.o":     "its signals are not interpreted yet",
-	"weight_mmap.o":    "its signal is not interpreted yet and it probes every mmap and IPv4 connect on the node",
+	"gpu_oom.o":        "its signal is only counted per job (routine under a caching allocator)",
+	"graph_stall.o":    "its signal is only counted per job, not acted on",
+	"gdr_fail.o":       "its signal is only counted per job, not acted on",
+	"infer_ttft.o":     "its signals are only exported (TTFT p99, gap count), not acted on",
+	"weight_mmap.o":    "its signal is only logged and counted, and it probes every mmap and IPv4 connect on the node",
 	"gpu_dev.o":        "nothing writes gpu_dev_cfg or allowed_cg, so it only counts GPU opens while probing every file open",
-	"ucx_complete.o":   "its signal is not interpreted yet",
+	"ucx_complete.o":   "its signal is only counted per job, not acted on",
 }
 
 // EnableAllPrograms is the -enable-programs value that enables every opt-in program.

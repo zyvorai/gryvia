@@ -54,6 +54,8 @@ type Metrics struct {
 	fabricInferWaitP99  *prometheus.GaugeVec
 	fabricPFCRate       *prometheus.GaugeVec
 	fabricExfilEvents   *prometheus.GaugeVec
+	fabricSignalEvents  *prometheus.GaugeVec
+	fabricInferTTFTP99  *prometheus.GaugeVec
 	fabricUCXSlowP99    *prometheus.GaugeVec
 	engineLatency       *prometheus.GaugeVec // gryvia_inference_latency_seconds{namespace,job,engine,metric}
 	engineRequests      *prometheus.GaugeVec // gryvia_inference_requests{namespace,job,engine,state}
@@ -232,6 +234,14 @@ func NewMetrics() *Metrics {
 		fabricExfilEvents: promauto.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "gryvia_fabric_exfil_events",
 			Help: "weight_exfil signals in the window: large model-file read then connect to a non-internal address. Informational, never changes the score.",
+		}, fabricLabels),
+		fabricSignalEvents: promauto.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "gryvia_fabric_signal_events",
+			Help: "Opt-in probe signals in the window by signal (nccl_transport, p2p_fallback, gpu_oom, graph_stall, gdr_fail, infer_gap, weight_mmap, gpu_dev, ucx_wait). Informational, never changes the score; gpu_oom is routine under PyTorch's caching allocator.",
+		}, []string{"namespace", "job", "signal"}),
+		fabricInferTTFTP99: promauto.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "gryvia_fabric_infer_ttft_p99_seconds",
+			Help: "p99 of accept to first send on inference ports (infer_ttft, opt-in).",
 		}, fabricLabels),
 		fabricUCXSlowP99: promauto.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "gryvia_fabric_ucx_slow_p99_seconds",
@@ -457,6 +467,8 @@ func (m *Metrics) RecordFabric(jobs []fabric.JobStatus) {
 	m.fabricInferWaitP99.Reset()
 	m.fabricPFCRate.Reset()
 	m.fabricExfilEvents.Reset()
+	m.fabricSignalEvents.Reset()
+	m.fabricInferTTFTP99.Reset()
 	m.fabricUCXSlowP99.Reset()
 	m.engineLatency.Reset()
 	m.engineRequests.Reset()
@@ -480,6 +492,12 @@ func (m *Metrics) RecordFabric(jobs []fabric.JobStatus) {
 		m.fabricPFCRate.WithLabelValues(j.Namespace, j.Job).Set(j.PFCRate)
 		m.fabricExfilEvents.WithLabelValues(j.Namespace, j.Job).Set(float64(j.ExfilEvents))
 		m.fabricUCXSlowP99.WithLabelValues(j.Namespace, j.Job).Set(j.UCXSlowP99MS / 1e3)
+		for name, n := range j.Events {
+			m.fabricSignalEvents.WithLabelValues(j.Namespace, j.Job, name).Set(float64(n))
+		}
+		if j.InferTTFTP99MS > 0 {
+			m.fabricInferTTFTP99.WithLabelValues(j.Namespace, j.Job).Set(j.InferTTFTP99MS / 1e3)
+		}
 		if j.GDSMeasured {
 			m.fabricGDSHitRatio.WithLabelValues(j.Namespace, j.Job).Set(j.GDSHitRatio)
 		}
