@@ -30,9 +30,6 @@ spec:
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
-    deprecated: true
-    deprecationWarning: no controller reconciles this kind and its spec is not executed;
-      it is kept readable for migration and will be removed in a future release
     name: v1alpha1
     schema:
       openAPIV3Schema:
@@ -97,6 +94,12 @@ spec:
                 type: string
               license:
                 description: License is the dataset license
+                type: string
+              namespace:
+                description: |-
+                  Namespace is where the dataset is materialized (its PVC and download Jobs); jobs that read it run there.
+                  Empty uses the storage-operator's --dataset-namespace.
+                pattern: ^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$
                 type: string
               source:
                 description: Source defines the data source
@@ -284,10 +287,33 @@ spec:
               currentVersion:
                 description: CurrentVersion is the current active version
                 type: string
+              fileCount:
+                description: FileCount and TotalSizeBytes describe the current version
+                  as downloaded.
+                format: int64
+                type: integer
+              message:
+                description: Message explains the state (the download error, for example).
+                type: string
+              namespace:
+                description: Namespace and PVCName locate the materialized data; each
+                  version is the directory SubPath of the PVC.
+                type: string
+              pvcName:
+                type: string
+              sourceHash:
+                description: SourceHash identifies the source and version the current
+                  data was materialized from.
+                type: string
               state:
                 description: State is the current state (initializing, ready, error,
                   syncing)
                 type: string
+              subPath:
+                type: string
+              totalSizeBytes:
+                format: int64
+                type: integer
               usage:
                 description: Usage holds usage information
                 properties:

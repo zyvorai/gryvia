@@ -93,6 +93,19 @@ spec:
             - {{ printf "--model-watch-hub-url=%s" (dig "aiOperator" "modelWatch" "hubURL" nil $.Values.AsMap) | quote }}
             - {{ printf "--model-watch-min-poll-interval=%s" (dig "aiOperator" "modelWatch" "minPollInterval" nil $.Values.AsMap) | quote }}
             {{- end }}
+            {{- if and (eq $name "storage-operator") (dig "storageOperator" "datasets" "enabled" nil $.Values.AsMap) }}
+            - --enable-datasets=true
+            - {{ printf "--dataset-namespace=%s" (default (include "gryvia.namespace" $) (dig "storageOperator" "datasets" "namespace" nil $.Values.AsMap)) | quote }}
+            {{- with (dig "storageOperator" "datasets" "image" nil $.Values.AsMap) }}
+            - {{ printf "--dataset-image=%s" . | quote }}
+            {{- end }}
+            {{- with (dig "storageOperator" "datasets" "s3Image" nil $.Values.AsMap) }}
+            - {{ printf "--dataset-s3-image=%s" . | quote }}
+            {{- end }}
+            {{- with (dig "storageOperator" "datasets" "defaultSize" nil $.Values.AsMap) }}
+            - {{ printf "--dataset-default-size=%s" . | quote }}
+            {{- end }}
+            {{- end }}
             {{- if and (eq $name "ai-operator") $.Values.aiOperator.placementHolds }}
             - --placement-holds=true
             {{- end }}

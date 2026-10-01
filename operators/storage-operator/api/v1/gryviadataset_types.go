@@ -35,6 +35,11 @@ type GryviaDatasetSpec struct {
 
 	// Statistics defines dataset statistics
 	Statistics *DatasetStatistics `json:"statistics,omitempty"`
+
+	// Namespace is where the dataset is materialized (its PVC and download Jobs); jobs that read it run there.
+	// Empty uses the storage-operator's --dataset-namespace.
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$`
+	Namespace string `json:"namespace,omitempty"`
 }
 
 // DatasetSource defines where the data comes from
@@ -206,9 +211,23 @@ type GryviaDatasetStatus struct {
 
 	// Usage holds usage information
 	Usage *DatasetUsageStatus `json:"usage,omitempty"`
+
+	// Namespace and PVCName locate the materialized data; each version is the directory SubPath of the PVC.
+	Namespace string `json:"namespace,omitempty"`
+	PVCName   string `json:"pvcName,omitempty"`
+	SubPath   string `json:"subPath,omitempty"`
+
+	// FileCount and TotalSizeBytes describe the current version as downloaded.
+	FileCount      int64 `json:"fileCount,omitempty"`
+	TotalSizeBytes int64 `json:"totalSizeBytes,omitempty"`
+
+	// SourceHash identifies the source and version the current data was materialized from.
+	SourceHash string `json:"sourceHash,omitempty"`
+
+	// Message explains the state (the download error, for example).
+	Message string `json:"message,omitempty"`
 }
 
-//+kubebuilder:deprecatedversion:warning="no controller reconciles this kind and its spec is not executed; it is kept readable for migration and will be removed in a future release"
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 //+kubebuilder:resource:scope=Cluster

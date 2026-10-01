@@ -9,6 +9,7 @@ import type { Experiment } from '@/lib/experiments'
 import type { Sku, SkuBody, TenantResource, CreateTenantBody, UsageReport } from '@/lib/cloud'
 import type { InvoiceReport } from '@/lib/invoices'
 import type { ModelWatch, ModelWatchRun } from '@/lib/modelWatches'
+import type { Dataset } from '@/lib/datasets'
 
 export interface ClusterStats {
   totalGPUs: number
@@ -962,6 +963,16 @@ export const api = {
 
   deleteModelWatch: async (name: string): Promise<void> => {
     await apiClient.delete(`/model-watches/${encodeURIComponent(name)}`)
+  },
+
+  // Datasets
+  getDatasets: async (): Promise<Dataset[]> => {
+    const { data } = await apiClient.get('/datasets')
+    return data.items || []
+  },
+
+  deleteDataset: async (name: string): Promise<void> => {
+    await apiClient.delete(`/datasets/${encodeURIComponent(name)}`)
   },
 }
 

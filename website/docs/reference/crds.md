@@ -21,7 +21,7 @@ Gryvia defines 53 custom resources in the `gryvia.io` API group (version `v1alph
 | `GryviaCheckpointGuard` | `gryviacheckpointguards` | Namespaced | ai-operator | `checkpointPolicy`, `jobSelector` | `monitoring`, `restore`, `validation` |
 | `GryviaCostPredictor` | `gryviacostpredictors` | Cluster | quota-operator | none | `alternatives`, `historicalData`, `integration`, `models`, `pricing` |
 | `GryviaDRTest` | `gryviadrtests` | Cluster | none | `type` | `approvalRequired`, `backupRestore`, `chaosEngineering`, `dataIntegrity`, `failover`, `fullDrill`, `notifications`, `rpoRto`, … |
-| `GryviaDataset` | `gryviadatasets` | Cluster | none | `source` | `access`, `cache`, `description`, `license`, `statistics`, `tags`, `type`, `version`, … |
+| `GryviaDataset` | `gryviadatasets` | Cluster | storage-operator | `source` | `access`, `cache`, `description`, `license`, `namespace`, `statistics`, `tags`, `type`, … |
 | `GryviaFabricSignal` | `gryviafabricsignals` | Namespaced | ai-operator | none | `jobRef`, `observeOnly` |
 | `GryviaFederation` | `gryviafederations` | Cluster | ai-operator | none | `clusters`, `costManagement`, `distribution`, `failover`, `loadBalancing`, `resourceSharing` |
 | `GryviaFlowPolicy` | `gryviaflowpolicies` | Namespaced | network-intelligence | none | `action`, `destination`, `intent`, `priority`, `protocol`, `source` |

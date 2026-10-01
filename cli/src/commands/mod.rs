@@ -5,6 +5,8 @@ pub mod catalog;
 pub mod cluster;
 pub mod cost;
 pub mod create;
+pub mod crd;
+pub mod datasets;
 pub mod delete;
 pub mod experiment;
 pub mod flows;

@@ -371,6 +371,16 @@ enum Commands {
         action: ModelsCommands,
     },
 
+    /// Datasets: download an http, s3 or nfs source into a PVC, one directory per version
+    ///
+    /// A dataset is a cluster-scoped GryviaDataset. The storage-operator (with --enable-datasets) materializes
+    /// it in spec.namespace; jobs there mount the PVC in status.pvcName at status.subPath.
+    #[command(after_help = examples(&["gryvia datasets list", "gryvia datasets create -f examples/datasets/http-dataset.yaml", "gryvia datasets get corpus", "gryvia datasets delete corpus --yes"]))]
+    Datasets {
+        #[command(subcommand)]
+        action: CrdCommands,
+    },
+
     /// Interactive job creation wizard
     #[command(after_help = examples(&["gryvia create job"]))]
     Create {
@@ -461,6 +471,63 @@ enum Commands {
         #[command(subcommand)]
         action: GpuCommands,
     },
+}
+
+/// The verbs of the kinds that only need list, get, create and delete.
+#[derive(Subcommand)]
+enum CrdCommands {
+    /// List them
+    List {
+        /// Output format
+        #[arg(short, long, value_enum, default_value_t = OutputFormat::Table, env = "GRYVIA_OUTPUT")]
+        output: OutputFormat,
+    },
+
+    /// Show one: its spec and status
+    Get {
+        /// Name
+        name: String,
+
+        /// Output format (table prints YAML)
+        #[arg(short, long, value_enum, default_value_t = OutputFormat::Table, env = "GRYVIA_OUTPUT")]
+        output: OutputFormat,
+    },
+
+    /// Create the objects of this kind in a YAML file (other kinds in the file are skipped)
+    Create {
+        /// Path to the YAML file
+        #[arg(short, long)]
+        file: String,
+    },
+
+    /// Delete one
+    Delete {
+        /// Name
+        name: String,
+
+        /// Skip confirmation
+        #[arg(short, long)]
+        yes: bool,
+    },
+}
+
+async fn run_crd(
+    client: &client::GryviaClient,
+    k: &commands::crd::KindSpec,
+    action: CrdCommands,
+    next: &str,
+    consequence: &str,
+) -> Result<()> {
+    match action {
+        CrdCommands::List { output } => commands::crd::list(client, k, output.as_str()).await,
+        CrdCommands::Get { name, output } => {
+            commands::crd::get(client, k, &name, output.as_str()).await
+        }
+        CrdCommands::Create { file } => commands::crd::create(client, k, &file, next).await,
+        CrdCommands::Delete { name, yes } => {
+            commands::crd::delete(client, k, &name, yes, consequence).await
+        }
+    }
 }
 
 #[derive(Subcommand)]
@@ -1186,6 +1253,16 @@ async fn run() -> Result<()> {
                 commands::models::delete(&client, &name, yes).await?;
             }
         },
+        Commands::Datasets { action } => {
+            run_crd(
+                &client,
+                &commands::datasets::DATASETS,
+                action,
+                "follow it with: gryvia datasets list",
+                "Its PVC and every downloaded version are deleted",
+            )
+            .await?;
+        }
         Commands::Budget { scope, output } => {
             commands::budget::execute(&client, scope, output.as_str()).await?;
         }

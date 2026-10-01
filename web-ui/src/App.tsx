@@ -35,6 +35,7 @@ const GpuCommunication = lazy(() => import('./pages/GpuCommunication'))
 const Workspaces = lazy(() => import('./pages/Workspaces'))
 const ModelRegistry = lazy(() => import('./pages/ModelRegistry'))
 const ModelFactory = lazy(() => import('./pages/ModelFactory'))
+const Datasets = lazy(() => import('./pages/Datasets'))
 const InferenceServices = lazy(() => import('./pages/InferenceServices'))
 const Workflows = lazy(() => import('./pages/Workflows'))
 const AutoTuner = lazy(() => import('./pages/AutoTuner'))
@@ -172,6 +173,7 @@ function App() {
               <Route path="/workspaces" element={<Workspaces />} />
               <Route path="/models" element={<ModelRegistry />} />
               <Route path="/model-factory" element={<ModelFactory />} />
+              <Route path="/datasets" element={<Datasets />} />
               <Route path="/inference" element={<InferenceServices />} />
               <Route path="/workflows" element={<Workflows />} />
               <Route path="/experiments" element={<Experiments />} />

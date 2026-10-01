@@ -9,6 +9,8 @@ name: ML controllers end-to-end
 # Triton, TensorRT-LLM and TorchServe images, GPU scheduling, and an HPA scaling on real metrics. The model factory
 # runs against a stand-in hub (a 20-line Python server, not huggingface.co) and its download/fine-tune/evaluate steps
 # are busybox stand-ins that only emit outputs; the real scripts in examples/model-factory are unit-tested separately.
+# The GryviaDataset controller (storage-operator) downloads from a stand-in HTTP file server; its s3 and nfs sources
+# are covered by unit tests only.
 #
 # The workflow-with-jobs and auto-tuner steps run GryviaAIJob children, which the AIJob controller runs to completion
 # (indexed batch/v1 Job workload, docs/aijob-lifecycle.md), so a failure of those steps fails the run.
@@ -20,6 +22,7 @@ on:
     branches: [ main ]
     paths:
       - 'operators/ai-operator/**'
+      - 'operators/storage-operator/**'
       - 'helm/**'
       - 'crds/**'
       - 'services/api-gateway/**'
@@ -537,6 +540,120 @@ jobs:
           sleep 25
           assert_eq "no run while suspended" "$(run_field e2e-watch e2e-org/tiny-4 phase)" ""
 
+      # ------------------------------------------------------------------ Datasets (storage-operator)
+      # A stand-in file server holds data.csv and its sha256; the dataset controller downloads it into a PVC, one
+      # directory per version, and keeps the last two versions.
+      - name: Datasets - enable the storage-operator's dataset controller
+        run: |
+          docker build -f operators/storage-operator/Dockerfile -t ghcr.io/zyvorai/gryvia-storage-operator:dev operators/storage-operator
+          kind load docker-image --name "$KIND_CLUSTER" ghcr.io/zyvorai/gryvia-storage-operator:dev
+          helm upgrade gryvia ./helm/gryvia --namespace gryvia-system --reuse-values --wait --timeout 300s \
+            --set storageOperator.enabled=true --set storageOperator.datasets.enabled=true \
+            --set storageOperator.datasets.image="$TINY_JOB_IMAGE" --set storageOperator.datasets.defaultSize=64Mi
+          kubectl -n gryvia-system rollout status deploy -l app.kubernetes.io/component=storage-operator --timeout=180s
+          source scripts/e2e-ml-lib.sh
+          check() { kubectl -n "$NS" logs -l app.kubernetes.io/component=storage-operator --tail=-1 | grep -q '"controllerKind":"GryviaDataset"'; }
+          wait_for "controller GryviaDataset started" 90 check
+
+      - name: Datasets - stand-in file server
+        run: |
+          source scripts/e2e-ml-lib.sh
+          mkdir -p /tmp/e2e-files
+          printf 'id,label\n1,cat\n2,dog\n' > /tmp/e2e-files/data.csv
+          (cd /tmp/e2e-files && sha256sum data.csv > data.csv.sha256)
+          printf 'not the data\n' > /tmp/e2e-files/bad.sha256
+          kubectl -n "$NS" create configmap e2e-files --from-file=/tmp/e2e-files --dry-run=client -o yaml | kubectl apply -f -
+          cat <<EOF | kubectl apply -f -
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata: {name: e2e-files, namespace: gryvia-system}
+          spec:
+            selector: {matchLabels: {app: e2e-files}}
+            template:
+              metadata: {labels: {app: e2e-files}}
+              spec:
+                securityContext: {runAsNonRoot: true, runAsUser: 65534, seccompProfile: {type: RuntimeDefault}}
+                containers:
+                  - name: files
+                    image: ${TINY_PY_IMAGE}
+                    imagePullPolicy: IfNotPresent
+                    command: [python3, -u, -m, http.server, "8080", --directory, /files]
+                    ports: [{containerPort: 8080}]
+                    readinessProbe: {httpGet: {path: /data.csv, port: 8080}, periodSeconds: 2}
+                    securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+                    volumeMounts: [{name: files, mountPath: /files}]
+                volumes: [{name: files, configMap: {name: e2e-files}}]
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata: {name: e2e-files, namespace: gryvia-system}
+          spec: {selector: {app: e2e-files}, ports: [{port: 8080, targetPort: 8080}]}
+          EOF
+          kubectl -n "$NS" rollout status deploy/e2e-files --timeout=120s
+
+      - name: Datasets - download, checksum, versions, retention, gateway
+        run: |
+          source scripts/e2e-ml-lib.sh
+          files=http://e2e-files.gryvia-system.svc:8080
+          want_sum="$(cut -d' ' -f1 /tmp/e2e-files/data.csv.sha256)"
+          create() {
+            api /api/datasets -X POST -d "{\"name\":\"e2e-data\",\"type\":\"tabular\",\"version\":\"$1\",\"retention\":{\"keepLast\":2},
+              \"source\":{\"type\":\"http\",\"http\":{\"url\":\"$files/data.csv\",\"checksumURL\":\"$files/data.csv.sha256\"}}}"
+          }
+          create v1 | jq -e '.metadata.name == "e2e-data"'
+          wait_for "dataset ready" 240 field_is gryviadataset/e2e-data '{.status.state}' ready
+          assert_eq "PVC" "$(jp gryviadataset/e2e-data '{.status.pvcName}')" dataset-e2e-data
+          assert_eq "PVC owner" "$(jp pvc/dataset-e2e-data '{.metadata.ownerReferences[0].kind}')" GryviaDataset
+          assert_eq "subPath" "$(jp gryviadataset/e2e-data '{.status.subPath}')" v1
+          assert_eq "files" "$(jp gryviadataset/e2e-data '{.status.fileCount}')" 1
+          assert_eq "bytes" "$(jp gryviadataset/e2e-data '{.status.totalSizeBytes}')" "$(stat -c %s /tmp/e2e-files/data.csv)"
+          assert_eq "Ready condition" "$(jp gryviadataset/e2e-data '{.status.conditions[?(@.type=="Ready")].status}')" True
+
+          # A pod mounting the PVC sees the file, byte for byte.
+          cat <<EOF | kubectl apply -f -
+          apiVersion: v1
+          kind: Pod
+          metadata: {name: e2e-data-reader, namespace: gryvia-system}
+          spec:
+            restartPolicy: Never
+            securityContext: {runAsNonRoot: true, runAsUser: 65534, seccompProfile: {type: RuntimeDefault}}
+            containers:
+              - name: read
+                image: ${TINY_JOB_IMAGE}
+                imagePullPolicy: IfNotPresent
+                command: [sha256sum, /data/v1/data.csv]
+                securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+                volumeMounts: [{name: data, mountPath: /data, readOnly: true}]
+            volumes: [{name: data, persistentVolumeClaim: {claimName: dataset-e2e-data, readOnly: true}}]
+          EOF
+          wait_for "reader done" 120 field_is pod/e2e-data-reader '{.status.phase}' Succeeded
+          assert_eq "file content" "$(kubectl -n "$NS" logs pod/e2e-data-reader | cut -d' ' -f1)" "$want_sum"
+          kubectl -n "$NS" delete pod/e2e-data-reader --wait=true
+
+          # New versions: v2 and v3 are downloaded; keepLast 2 drops v1.
+          for v in v2 v3; do
+            kubectl -n "$NS" patch gryviadataset/e2e-data --type=merge -p "{\"spec\":{\"version\":\"$v\"}}"
+            wait_for "dataset $v ready" 240 field_is gryviadataset/e2e-data '{.status.currentVersion}' "$v"
+            wait_for "dataset ready at $v" 60 field_is gryviadataset/e2e-data '{.status.state}' ready
+          done
+          assert_eq "kept versions" "$(jp gryviadataset/e2e-data '{.status.versions[*].version}')" "v2 v3"
+
+          # Gateway view.
+          assert_eq "gateway state" "$(gw /api/datasets/e2e-data .status.state)" ready
+          assert_eq "gateway version" "$(gw /api/datasets/e2e-data .status.currentVersion)" v3
+          assert_eq "gateway list" "$(gw /api/datasets '[.items[] | select(.metadata.name=="e2e-data")] | length')" 1
+          assert_eq "invalid source is a 422" "$(api_status /api/datasets -X POST -d '{"name":"e2e-bad","source":{"type":"s3"}}')" 422
+
+          # A checksum mismatch fails the download and says so.
+          api /api/datasets -X POST -d "{\"name\":\"e2e-data-bad\",\"source\":{\"type\":\"http\",\"http\":{\"url\":\"$files/data.csv\",\"checksumURL\":\"$files/bad.sha256\"}}}" >/dev/null
+          wait_for "checksum mismatch is an error" 300 field_is gryviadataset/e2e-data-bad '{.status.state}' error
+          jp gryviadataset/e2e-data-bad '{.status.message}' | grep -q "sha256 mismatch"
+          echo "ok: checksum mismatch reported"
+
+          # Delete through the gateway: the PVC goes with it.
+          api /api/datasets/e2e-data -X DELETE >/dev/null
+          wait_for "PVC garbage-collected" 120 gone pvc/dataset-e2e-data
+
       - name: Dump state on failure
         if: failure()
         run: |
@@ -546,3 +663,6 @@ jobs:
           kubectl -n gryvia-system logs -l app.kubernetes.io/component=ai-operator --tail=200 || true
           kubectl -n gryvia-system logs -l app=gryvia-api-gateway --tail=50 || true
           kubectl -n gryvia-system logs deploy/e2e-fake-hf --tail=50 || true
+          kubectl get gryviadatasets -o yaml || true
+          kubectl -n gryvia-system get jobs,pvc -l gryvia.io/dataset || true
+          kubectl -n gryvia-system logs -l app.kubernetes.io/component=storage-operator --tail=100 || true
