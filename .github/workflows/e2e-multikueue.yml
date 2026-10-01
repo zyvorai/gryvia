@@ -67,12 +67,15 @@ jobs:
           metadata: {name: probe}
           YAML
           done
-      - name: Manager - tenant q1 gets its queues (fake slots on the node)
-        run: ./scripts/e2e-kueue.sh setup
       - name: Worker - namespace, flavor, ClusterQueue and LocalQueue
         run: ./scripts/e2e-multikueue.sh worker
       - name: Manager - connect to the worker (kubeconfig Secret, MultiKueueCluster, AdmissionCheck)
+        # Before the tenant queues: a ClusterQueue that references a missing/inactive admission check is not Active.
         run: ./scripts/e2e-multikueue.sh connect
+      - name: Manager - tenant q1 gets its queues (fake slots on the node)
+        run: ./scripts/e2e-kueue.sh setup
+      - name: Manager - the tenant ClusterQueue is bound to the multikueue check
+        run: ./scripts/e2e-multikueue.sh verify
       - name: A job submitted on the manager runs on the worker and reports back
         run: ./scripts/e2e-multikueue.sh dispatch
       - name: Dump state on failure

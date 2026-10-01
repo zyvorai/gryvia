@@ -5,6 +5,8 @@
 #
 #   scripts/e2e-multikueue.sh worker      # worker: Kueue-ready namespace, flavor, ClusterQueue, LocalQueue, fake slots
 #   scripts/e2e-multikueue.sh connect     # manager: worker kubeconfig Secret, MultiKueueCluster/Config, AdmissionCheck
+#   (then scripts/e2e-kueue.sh setup: the tenant queues; they stay inactive until the check above is Active)
+#   scripts/e2e-multikueue.sh verify      # the tenant ClusterQueue is Active and bound to the check
 #   scripts/e2e-multikueue.sh dispatch    # the job runs on the worker, not on the manager, and finishes
 #
 # Scope: this proves Kueue's MultiKueue binding as Gryvia configures it (tenant ClusterQueue bound to the
@@ -113,6 +115,11 @@ YAML
     jsonpath_is km True get multikueuecluster worker1 -o 'jsonpath={.status.conditions[?(@.type=="Active")].status}'
   wait_for 120 "AdmissionCheck multikueue is Active" \
     jsonpath_is km True get admissioncheck multikueue -o 'jsonpath={.status.conditions[?(@.type=="Active")].status}'
+}
+
+# After e2e-kueue.sh setup: the tenant ClusterQueue exists. It stays inactive while the admission check it
+# references does not exist or is not Active, which is why `connect` must run before `setup`.
+scenario_verify() {
   wait_for 180 "tenant ClusterQueue gryvia-q1 is Active with the check bound" \
     jsonpath_is km True get clusterqueue gryvia-q1 -o 'jsonpath={.status.conditions[?(@.type=="Active")].status}'
   km get clusterqueue gryvia-q1 -o jsonpath='{.spec.admissionChecksStrategy}' | grep -q multikueue \
@@ -152,7 +159,8 @@ YAML
 case "${1:-}" in
   worker)   scenario_worker ;;
   connect)  scenario_connect ;;
+  verify)   scenario_verify ;;
   dispatch) scenario_dispatch ;;
-  *) echo "usage: $0 worker|connect|dispatch" >&2; exit 2 ;;
+  *) echo "usage: $0 worker|connect|verify|dispatch" >&2; exit 2 ;;
 esac
 echo "E2E OK: ${1}"
