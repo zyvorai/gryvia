@@ -34,6 +34,9 @@ type ProgramStatus struct {
 	Target   string `json:"target,omitempty"`
 	Attached bool   `json:"attached"`
 	Reason   string `json:"reason,omitempty"` // why not attached
+	// OptIn marks a program of an opt-in object (see optin.go) that was not enabled: not requested rather
+	// than failed, so it has no gryvia_ebpf_program_attached series (that gauge drives GryviaEbpfProgramNotAttached).
+	OptIn bool `json:"optIn,omitempty"`
 }
 
 // MapReader is an opened event reader plus its dispatch class.
@@ -136,6 +139,23 @@ func (m *Manager) loadObject(file, path string) error {
 	spec, err := ebpf.LoadCollectionSpec(path)
 	if err != nil {
 		return fmt.Errorf("parse collection spec: %w", err)
+	}
+	// An opt-in object nothing consumes yet is not loaded at all; its programs are listed as skipped.
+	if reason := OptInSkipReason(file, m.cfg); reason != "" {
+		names := make([]string, 0, len(spec.Programs))
+		for n := range spec.Programs {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			st := ProgramStatus{Object: file, Program: name, Section: spec.Programs[name].SectionName, Reason: "skipped: " + reason, OptIn: true}
+			if as, err := ParseSection(st.Section); err == nil {
+				st.Kind, st.Target = string(as.Kind), as.Symbol
+			}
+			m.addStatus(st)
+		}
+		m.log.Infow("skipping object", "object", file, "reason", reason)
+		return nil
 	}
 	// An XDP feature behind an attached mux shares the mux's prog array: every object declares its
 	// own xdp_features map (headers/xdp_chain.h), replaced here by the mux's.

@@ -89,7 +89,7 @@ Deployment and reconciles the ten CRDs below.
 
 ## eBPF Programs
 
-Gryvia ships 47 eBPF programs (24 original programs in six categories, plus eleven fabric-signal programs and twelve newer ones, from `xdp_mux` to `ucx_complete` in `ebpf/README.md`, which the collector attaches when their hooks resolve but does not interpret yet). The collector
+Gryvia ships 47 eBPF programs (24 original programs in six categories, plus eleven fabric-signal programs and twelve newer ones, from `xdp_mux` to `ucx_complete` in `ebpf/README.md`, ten of which are opt-in with `-enable-programs` because nothing in the collector consumes their signals yet). The collector
 loads them and attaches each by section name. Hook types below come from the `SEC()` annotations in `ebpf/*.c`.
 
 ### GPU Programs

@@ -5,9 +5,9 @@
 // ebpf/headers/fabric_signal.h and ebpf/headers/xdp_chain.h (signal_ext_test.go checks it).
 // struct fabric_signal stays 80 bytes; do not add fields.
 //
-// Not interpreted yet: the collector's loader attaches these programs when their hooks resolve and
-// reads their ring, but Folder has no case for these types (they are read and dropped), and
-// nothing writes the maps that steer them (transport_hint, capture_lease, allowed_cg, gpu_dev_cfg).
+// Not interpreted yet: Folder has no case for these types (events are read and dropped) and nothing
+// writes the maps that steer them (transport_hint, capture_lease, allowed_cg, gpu_dev_cfg), so the
+// programs are opt-in in the collector (-enable-programs, see pkg/loader/optin.go).
 
 package fabric
 

@@ -149,6 +149,9 @@ spec:
             {{- end }}
             - -xdp-mux
             {{- end }}
+            {{- with .Values.ebpf.enablePrograms }}
+            - -enable-programs={{ join "," . }}
+            {{- end }}
             {{- if .Values.ebpf.nicCounters }}
             - -nic-counters
             {{- end }}

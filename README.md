@@ -339,7 +339,7 @@ guarantee yet; see the [changelog](CHANGELOG.md). What exists today:
 **Experimental:** the 47 CO-RE eBPF programs (24 original, plus the fabric-signal programs `straggler`, `rdma_health`,
 `gds_trace`, `overlap`, `roce_cnp`, `infer_latency`, `ucx_gloo`, `pfc_pause`, `weight_exfil`, `quota_pace` and `ibv_verbs`,
 and twelve newer ones: `xdp_mux`, `roce_ecn`, `nccl_transport`, `p2p_fallback`, `capture_gate`, `gpu_oom`, `graph_stall`,
-`gdr_fail`, `infer_ttft`, `weight_mmap`, `gpu_dev` and `ucx_complete`, whose signals nothing interprets yet) build and pass the
+`gdr_fail`, `infer_ttft`, `weight_mmap`, `gpu_dev` and `ucx_complete`, whose signals nothing interprets yet, so ten of them are opt-in with `-enable-programs`) build and pass the
 verifier on a Linux 7.0 x86_64 host and in CI (arm64 is compile-only). With `-xdp-mux` the collector chains the XDP
 programs behind one attach instead of one XDP program per interface (tested in CI on loopback only). On the x86_64 host the collector attached the supported
 kprobe/tracepoint subset and decoded TCP flows. GPU, NCCL, RDMA and GPUDirect Storage runtime behavior and the gated

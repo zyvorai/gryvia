@@ -44,7 +44,7 @@ jobs:
         # xdp_mux plus the five XDP features, loaded as one chain: run with BPF_PROG_TEST_RUN on a crafted RoCEv2 frame, and attached to lo through the collector's Manager (-xdp-mux) with real UDP packets.
         run: |
           go test -c -tags bpfroot -o "$RUNNER_TEMP/loader.test" ./pkg/loader
-          sudo env GRYVIA_EBPF_DIR="$PWD/../ebpf" "$RUNNER_TEMP/loader.test" -test.run 'TestXDP|TestManagerXDP' -test.v
+          sudo env GRYVIA_EBPF_DIR="$PWD/../ebpf" "$RUNNER_TEMP/loader.test" -test.run 'TestXDP|TestManagerXDP|TestManagerOptIn' -test.v
         working-directory: collector
       - name: Cross-compile (arm64)
         run: |

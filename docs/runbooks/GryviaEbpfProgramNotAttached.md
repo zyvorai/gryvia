@@ -29,6 +29,10 @@ To query the collector directly see [Calling a collector](README.md#calling-a-co
 - Program needs hardware absent on the node (RDMA, NVIDIA userspace libraries for uprobes): expected on such nodes.
 - Interface/driver without XDP support (PFC/CNP programs).
 
+Programs that are opt-in and were not enabled (`-enable-programs`, chart `ebpf.enablePrograms`) are not failures: they
+have no `gryvia_ebpf_program_attached` series and do not fire this alert. They show in `GET /api/v1/ebpf/status` as
+skipped with `optIn: true`.
+
 ## Mitigation
 
 - Fix the kernel/capability cause shown in the log, then restart the collector pod.

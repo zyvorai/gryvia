@@ -234,6 +234,11 @@ ebpf:
   # program can attach per interface). Needs ebpf.interface. Off by default. Verified with BPF_PROG_TEST_RUN and
   # on the loopback interface in CI; UNVERIFIED on a NIC. See ebpf/README.md.
   xdpMux: false
+  # Opt-in eBPF programs to attach (flag -enable-programs). The programs whose signals or counters nothing in the
+  # collector reads yet are skipped by default: nccl_transport, p2p_fallback, capture_gate, gpu_oom, graph_stall,
+  # gdr_fail, infer_ttft, weight_mmap, gpu_dev and ucx_complete. List the ones to attach, or ["all"]. An unknown name
+  # stops the collector at start. Even when enabled their signals are not interpreted yet; see ebpf/README.md.
+  enablePrograms: []
   # RDMA NIC hardware counters from /sys/class/infiniband (flag -nic-counters): retry/error/CNP/pause rates
   # folded into the fabric status and exported as gryvia_nic_counter_rate. Off by default; a node without RDMA
   # devices is skipped. UNVERIFIED on real RDMA hardware. See docs/nccl-rdma-gpu-correlation.md.

@@ -111,6 +111,8 @@ type Config struct {
 	QuotaPace bool
 	// IBVerbs lets ibv_verbs.c (libibverbs control-path uprobes) attach. Default false.
 	IBVerbs bool
+	// EnablePrograms names the opt-in programs to attach (see optin.go); "all" enables every one.
+	EnablePrograms []string
 	// XDPMux attaches xdp_mux.o as the interface's only XDP program and chains the XDP
 	// feature programs (roce_cnp, pfc_pause, dns_tracker, packet_filter, roce_ecn) behind it,
 	// so they all run, instead of one XDP program per interface. Needs Iface. Default false.

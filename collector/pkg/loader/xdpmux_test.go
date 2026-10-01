@@ -13,6 +13,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/cilium/ebpf"
@@ -266,4 +267,50 @@ func mustAbs(t *testing.T, p string) string {
 		t.Fatal(err)
 	}
 	return a
+}
+
+// An opt-in object is not loaded by default: its programs are listed as skipped and nothing is
+// attached. Named in EnablePrograms, the same object loads and attaches.
+func TestManagerOptInObject(t *testing.T) {
+	src := mustAbs(t, ebpfDir(t))
+	dir := t.TempDir()
+	if err := os.Symlink(filepath.Join(src, "capture_gate.o"), filepath.Join(dir, "capture_gate.o")); err != nil {
+		t.Fatal(err)
+	}
+
+	m, err := New(Config{Dir: dir}, zap.NewNop().Sugar())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Nothing attached, so LoadAndAttach reports an error; the statuses are what matters.
+	_ = m.LoadAndAttach()
+	st := m.Status()
+	if len(st) == 0 {
+		t.Fatal("no status for the skipped object")
+	}
+	for _, s := range st {
+		if s.Attached || !s.OptIn || !strings.Contains(s.Reason, "opt-in program") || s.Object != "capture_gate.o" {
+			t.Errorf("default: %+v, want a skipped opt-in program", s)
+		}
+	}
+	if m.Map("capture_gate.o", "capture_lease") != nil {
+		t.Error("default: capture_gate.o was loaded into the kernel")
+	}
+	m.Close()
+
+	m, err = New(Config{Dir: dir, EnablePrograms: []string{"capture_gate"}}, zap.NewNop().Sugar())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	if err := m.LoadAndAttach(); err != nil {
+		t.Fatalf("enabled: LoadAndAttach: %v", err)
+	}
+	attached := false
+	for _, s := range m.Status() {
+		attached = attached || s.Attached
+	}
+	if !attached || m.Map("capture_gate.o", "capture_lease") == nil {
+		t.Errorf("enabled: capture_gate.o did not load and attach: %+v", m.Status())
+	}
 }
