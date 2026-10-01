@@ -109,6 +109,7 @@ POST   /api/skus                 # admin: {name, gpuType, gpusPerUnit, hourlyRat
 PUT    /api/skus/{name}          # admin: same fields without name
 DELETE /api/skus/{name}          # admin
 GET    /api/audit                # admin: recent state-changing requests (?limit&outcome&method)
+GET    /api/federations[/{name}] # admin: GryviaFederation cluster health (read-only, no credentials)
 GET    /api/experiments[/{name}] # GryviaLiveExperiment leaderboards (tenant-filtered, read-only)
 GET    /api/tenants[/{name}]     # admin: all; tenant: its own
 POST   /api/tenants              # admin: {name, displayName, allowedSkus, maxGPUs, isolated}

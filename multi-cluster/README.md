@@ -2,10 +2,14 @@
 
 Deploy and manage Gryvia across multiple Kubernetes clusters for high availability, disaster recovery, and geographic distribution.
 
-> **Status: design document; multi-cluster federation is not implemented.** Gryvia runs per cluster today.
-> `GryviaFederation` and `GryviaDataset` are CRDs with no controller wired yet (reconcilers exist under
-> `operators/ai-operator/controllers/` but are not registered in `main.go`), so nothing registers clusters,
-> places jobs across clusters, fails over, replicates data, or aggregates cost. Not present in this repo:
+> **Status: design document; job placement across clusters is not implemented.** Gryvia runs per cluster today.
+> What exists: an opt-in `GryviaFederation` controller in the ai-operator (`--federation-allowed-servers`; it probes
+> the allow-listed HTTPS API servers with a kubeconfig Secret and records per-cluster `healthy`/`unreachable` state;
+> the GPU totals it reports are the `spec.capacity` you declared, not measurements), a read-only admin view of it
+> (`GET /api/federations`, credentials never returned), and Kueue's own MultiKueue binding
+> (`platformCompletion.kueueAdmissionCheck`, see docs/kueue-integration.md; not exercised across real clusters).
+> `GryviaDataset` has no controller. Nothing here places jobs across clusters itself, fails over, replicates data,
+> or aggregates cost. Not present in this repo:
 > the `gryvia/gryvia-federation` Helm chart, the `GryviaCluster` and `GryviaFederatedQuota` kinds, the
 > `gryvia.io/placement*`, `target-cluster`, `cluster-affinity`, `failover` annotations, `spec.dataAffinity`
 > and `spec.checkpointing` job fields, and the `kfctl` CLI (the `gryvia` CLI has no `federation` command).
