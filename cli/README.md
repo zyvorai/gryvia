@@ -369,8 +369,8 @@ cargo test
 | Command | Description |
 |---------|-------------|
 | `submit` | Submit a job from YAML file |
-| `list` | List resources (jobs, quotas, nodes) |
-| `get` | Get resource details (job, quota, node, storage, network) |
+| `list` | List resources (jobs, quotas, nodes, experiments) |
+| `get` | Get resource details (job, quota, node, storage, network, experiment) |
 | `delete` | Delete a resource (supports job, quota, storage, network) |
 | `status` | Show platform status, or one job's status |
 | `logs` | View job logs |

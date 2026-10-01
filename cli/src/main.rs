@@ -92,7 +92,7 @@ enum Commands {
     #[command(visible_alias = "ls")]
     #[command(after_help = examples(&["gryvia list jobs", "gryvia list jobs --all-namespaces -o json", "gryvia list nodes"]))]
     List {
-        /// Resource type to list (jobs, quotas, nodes)
+        /// Resource type to list (jobs, quotas, nodes, experiments)
         resource: String,
 
         /// Show all namespaces
@@ -108,7 +108,7 @@ enum Commands {
     #[command(visible_alias = "describe")]
     #[command(after_help = examples(&["gryvia get job my-job", "gryvia get node gpu-node-01 -o json"]))]
     Get {
-        /// Resource type (job, quota, node, storage, network)
+        /// Resource type (job, quota, node, storage, network, experiment)
         resource: String,
 
         /// Resource name

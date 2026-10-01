@@ -5,6 +5,7 @@ import type { GryviaAIJob, GryviaQuota, GryviaGpuNode } from '@/types'
 import { getStoredToken, clearToken } from '@/lib/auth'
 import type { Reservation, ReservationBody } from '@/lib/reservations'
 import type { Budget } from '@/lib/budgets'
+import type { Experiment } from '@/lib/experiments'
 import type { Sku, SkuBody, TenantResource, CreateTenantBody, UsageReport } from '@/lib/cloud'
 import type { InvoiceReport } from '@/lib/invoices'
 
@@ -792,6 +793,11 @@ export const api = {
 
   cancelReservation: async (name: string): Promise<void> => {
     await apiClient.delete(`/reservations/${encodeURIComponent(name)}`)
+  },
+
+  getExperiments: async (): Promise<Experiment[]> => {
+    const { data } = await apiClient.get('/experiments')
+    return data.items || []
   },
 
   getBudgets: async (): Promise<Budget[]> => {
