@@ -1,0 +1,90 @@
+name: Kind e2e (MultiKueue, two clusters)
+
+# Two kind clusters on one docker network: a manager running Gryvia with Kueue (tenant ClusterQueues bound to a
+# MultiKueue admission check via platformCompletion.kueueAdmissionCheck) and a worker running only Kueue. A
+# GryviaAIJob submitted on the manager must run on the worker and report Succeeded back. CPU pods only; this says
+# nothing about GPUs, data replication, failover or cost across clusters. Scenarios: scripts/e2e-multikueue.sh.
+# ASSUMPTIONS that may need adjusting after the first runs are listed at the top of that script.
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'scripts/e2e-multikueue.sh'
+      - '.github/workflows/e2e-multikueue.yml'
+  workflow_dispatch:
+  schedule:
+    - cron: '41 4 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  multikueue:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v5
+      - uses: helm/kind-action@v1
+        with:
+          install_only: true
+      - name: Manager cluster with Gryvia built from this checkout
+        run: GRYVIA_LOCAL_IMAGES=1 ./scripts/kind-demo.sh
+      - name: Remove the demo tenants (they would lend quota to q1)
+        run: |
+          kubectl delete gryviatenant --all --wait=true --timeout=180s
+          kubectl delete gryviaquota --all --ignore-not-found --wait=true --timeout=60s
+      - name: Worker cluster with Kueue only
+        run: |
+          kind create cluster --name gryvia-worker --wait 120s
+          helm install kueue oci://registry.k8s.io/kueue/charts/kueue --version 0.19.6 \
+            --namespace kueue-system --create-namespace --kube-context kind-gryvia-worker --wait --timeout 300s
+          kubectl config use-context kind-gryvia-demo
+          kubectl config get-contexts
+      - name: Manager - Kueue, per-tenant queues bound to the multikueue admission check
+        run: |
+          helm upgrade gryvia ./helm/gryvia --namespace gryvia-system --set namespace.create=false \
+            --set nvidiaDevicePlugin.enabled=false --set dcgmExporter.enabled=false --set monitoring.enabled=false \
+            --set global.imageTag=dev --set global.imagePullPolicy=Never \
+            --set kueue.enabled=true \
+            --set aiOperator.kueueIntegration=true --set aiOperator.kueueStrictAdmission=true \
+            --set quotaOperator.kueueIntegration=true \
+            --set quotaOperator.kueueQuotaResources=example.com/slot \
+            --set platformCompletion.kueueAdmissionCheck=multikueue \
+            --wait --timeout 600s
+          kubectl -n gryvia-system rollout status deploy/kueue-controller-manager --timeout=300s
+          kubectl -n gryvia-system rollout status deploy -l app.kubernetes.io/component=ai-operator --timeout=180s
+          kubectl -n gryvia-system rollout status deploy -l app.kubernetes.io/component=quota-operator --timeout=180s
+          for i in $(seq 1 30); do
+            kubectl create -f - --dry-run=server <<'YAML' >/dev/null 2>&1 && break || sleep 4
+          apiVersion: kueue.x-k8s.io/v1beta1
+          kind: ResourceFlavor
+          metadata: {name: probe}
+          YAML
+          done
+      - name: Manager - tenant q1 gets its queues (fake slots on the node)
+        run: ./scripts/e2e-kueue.sh setup
+      - name: Worker - namespace, flavor, ClusterQueue and LocalQueue
+        run: ./scripts/e2e-multikueue.sh worker
+      - name: Manager - connect to the worker (kubeconfig Secret, MultiKueueCluster, AdmissionCheck)
+        run: ./scripts/e2e-multikueue.sh connect
+      - name: A job submitted on the manager runs on the worker and reports back
+        run: ./scripts/e2e-multikueue.sh dispatch
+      - name: Dump state on failure
+        if: failure()
+        run: |
+          for ctx in kind-gryvia-demo kind-gryvia-worker; do
+            echo "=== $ctx ==="
+            kubectl --context $ctx get nodes -o wide || true
+            kubectl --context $ctx get clusterqueues,localqueues,workloads,admissionchecks,multikueueclusters,multikueueconfigs -A -o yaml || true
+            kubectl --context $ctx get jobs,pods -A -o wide || true
+          done
+          kubectl --context kind-gryvia-demo get gryviaaijobs -A -o yaml || true
+          kubectl --context kind-gryvia-demo -n gryvia-system logs deploy/kueue-controller-manager --tail=300 || true
+          kubectl --context kind-gryvia-worker -n kueue-system logs deploy/kueue-controller-manager --tail=200 || true
+          kubectl --context kind-gryvia-demo -n gryvia-system logs -l app.kubernetes.io/component=ai-operator --tail=200 || true
