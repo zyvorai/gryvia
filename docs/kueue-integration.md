@@ -202,7 +202,7 @@ and never holds part of the quota. Limits:
   backoff instead of a hang. Without it, an admitted-but-unschedulable gang holds its quota forever.
 - No topology-aware placement (Kueue's Topology API is not wired; `gryvia.io/interconnect` scoring is unchanged).
 - No elastic resize (`nodes` cannot change on a Job).
-- Multi-cluster (MultiKueue): Gryvia only binds the tenant ClusterQueues to an administrator-created MultiKueue admission check (`platformCompletion.kueueAdmissionCheck`). `.github/workflows/e2e-multikueue.yml` (two kind clusters, CPU pods) checks that a job submitted on the manager runs on the worker and reports back; see its status below. Not tested: GPUs, data replication, failover, cost aggregation.
+- Multi-cluster (MultiKueue): Gryvia only binds the tenant ClusterQueues to an administrator-created MultiKueue admission check (`platformCompletion.kueueAdmissionCheck`). `.github/workflows/e2e-multikueue.yml` (two kind clusters, CPU pods) passes in CI (run 36875403171): a GryviaAIJob submitted on the manager is admitted by Kueue "on worker1", its pod runs on the worker cluster (none on the manager) and Succeeded comes back to the manager. Not tested: GPUs, data replication, failover, cost aggregation.
 - CPU and memory are not accounted (see above); only the quota resource is.
 - Kueue's DRF/fair-sharing modes, `admissionFairSharing` and hierarchical cohorts are not configured.
 - The unused in-tree gang scheduler and queue packages were removed; Kueue replaces them.
