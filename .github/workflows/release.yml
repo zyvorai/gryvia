@@ -49,6 +49,8 @@ jobs:
           - {name: ui,               context: .,                          file: docker/Dockerfile.ui}
           # Reference ingestion image of GryviaVectorIndex (the ai-operator's --rag-ingest-image default).
           - {name: rag-ingest,       context: examples/rag,               file: examples/rag/Dockerfile}
+          # Reference GryviaAgent runtime (the ai-operator's --agent-image default).
+          - {name: agent-runtime,    context: examples/agents,            file: examples/agents/Dockerfile}
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3

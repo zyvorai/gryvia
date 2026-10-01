@@ -30,6 +30,7 @@ export const NAVIGATION: NavItem[] = [
       { name: 'Inference', href: '/inference', blurb: 'Serving and autoscaling' },
       { name: 'LLM gateway', href: '/llm', blurb: 'OpenAI endpoint, API keys and tokens' },
       { name: 'Vector indexes', href: '/rag', blurb: 'RAG retrieval over your datasets' },
+      { name: 'Agents', href: '/agents', blurb: 'Tool-calling agents on your models' },
     ],
   },
   {

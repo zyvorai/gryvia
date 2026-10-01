@@ -12,6 +12,7 @@ import type { ModelWatch, ModelWatchRun } from '@/lib/modelWatches'
 import type { Dataset } from '@/lib/datasets'
 import type { CreatedLlmKey, LlmKey, LlmModels, LlmUsage } from '@/lib/llm'
 import type { VectorIndexList } from '@/lib/rag'
+import type { Agent, AgentReply, ChatMessage } from '@/lib/agents'
 
 export interface ClusterStats {
   totalGPUs: number
@@ -1018,6 +1019,26 @@ export const api = {
 
   deleteVectorIndex: async (name: string): Promise<void> => {
     await apiClient.delete(`/vector-indexes/${encodeURIComponent(name)}`)
+  },
+
+  // Agents
+  getAgents: async (): Promise<Agent[]> => {
+    const { data } = await apiClient.get('/agents')
+    return data.items || []
+  },
+
+  chatAgent: async (name: string, messages: ChatMessage[]): Promise<AgentReply> => {
+    // An agent turn runs several model calls and tools.
+    const { data } = await apiClient.post(`/agents/${encodeURIComponent(name)}/chat`, { messages }, { timeout: 180_000 })
+    return data
+  },
+
+  scaleAgent: async (name: string, replicas: number): Promise<void> => {
+    await apiClient.post(`/agents/${encodeURIComponent(name)}/scale`, { replicas })
+  },
+
+  deleteAgent: async (name: string): Promise<void> => {
+    await apiClient.delete(`/agents/${encodeURIComponent(name)}`)
   },
 }
 

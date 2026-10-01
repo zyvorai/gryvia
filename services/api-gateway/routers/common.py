@@ -64,6 +64,8 @@ class Deps:
     llm_gateway_url: Optional[str] = None                                      # GRYVIA_LLM_GATEWAY_URL
     # tests inject this: returns a list of bodies, or (bodies, total_collectors)
     collector_fetch: Optional[Callable[[str], Awaitable[Any]]] = None
+    # tests inject this: (agent chat URL, body) -> (status, JSON body)
+    agent_chat: Optional[Callable[[str, Dict[str, Any]], Awaitable[Any]]] = None
 
 
 async def require_admin(request: Request) -> None:

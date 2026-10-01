@@ -402,6 +402,17 @@ enum Commands {
         action: RagCommands,
     },
 
+    /// Agents: tool-calling agents served as OpenAI-compatible endpoints
+    ///
+    /// A GryviaAgent (namespaced, -n) names an LLM gateway model, a system prompt and tools (retrieval over a
+    /// vector index, or HTTP calls to allowlisted URLs). The ai-operator (chart value aiOperator.agents.enabled)
+    /// runs its runtime; `chat` goes through the api-gateway (GRYVIA_GATEWAY_URL), which proxies to the agent.
+    #[command(after_help = examples(&["gryvia agents create -f examples/agents/agent.yaml -n tenant-alpha", "gryvia agents list -n tenant-alpha", "gryvia agents chat helper what is the GPU quota", "gryvia agents delete helper -n tenant-alpha --yes"]))]
+    Agents {
+        #[command(subcommand)]
+        action: AgentsCommands,
+    },
+
     /// Interactive job creation wizard
     #[command(after_help = examples(&["gryvia create job"]))]
     Create {
@@ -567,6 +578,26 @@ enum ModelsCommands {
         /// Skip the confirmation prompt
         #[arg(short, long)]
         yes: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum AgentsCommands {
+    #[command(flatten)]
+    Crd(CrdCommands),
+
+    /// Send a message to an agent through the api-gateway and print its answer and tool calls
+    Chat {
+        /// Agent name
+        name: String,
+
+        /// Message (the remaining words, joined with spaces)
+        #[arg(required = true, trailing_var_arg = true)]
+        message: Vec<String>,
+
+        /// Output format
+        #[arg(short, long, value_enum, default_value_t = OutputFormat::Table, env = "GRYVIA_OUTPUT")]
+        output: OutputFormat,
     },
 }
 
@@ -1206,6 +1237,19 @@ async fn run() -> Result<()> {
             commands::rag::query(cfg, index, query, *top_k, output.as_str()).await?;
             return Ok(());
         }
+        // Talks only to the api-gateway.
+        Commands::Agents {
+            action:
+                AgentsCommands::Chat {
+                    name,
+                    message,
+                    output,
+                },
+        } => {
+            let cfg = gateway::GatewayConfig::resolve(cli.gateway.as_deref(), cli.insecure);
+            commands::agents::chat(cfg, name, message, output.as_str()).await?;
+            return Ok(());
+        }
         _ => {}
     }
 
@@ -1454,6 +1498,21 @@ async fn run() -> Result<()> {
             }
             RagCommands::Reingest { name } => commands::rag::reingest(&client, &name).await?,
             RagCommands::Query { .. } => unreachable!("handled before the kube client is created"),
+        },
+        Commands::Agents { action } => match action {
+            AgentsCommands::Crd(action) => {
+                run_crd(
+                    &client,
+                    &commands::agents::AGENTS,
+                    action,
+                    "follow it with: gryvia agents list",
+                    "Its runtime Deployment, Service, NetworkPolicy and gateway key are deleted",
+                )
+                .await?;
+            }
+            AgentsCommands::Chat { .. } => {
+                unreachable!("handled before the kube client is created")
+            }
         },
         Commands::Llm { action } => match action {
             LlmCommands::Keys {

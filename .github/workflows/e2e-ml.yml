@@ -30,6 +30,7 @@ on:
       - 'scripts/e2e-ml-lib.sh'
       - 'scripts/kind-demo.sh'
       - 'examples/rag/**'
+      - 'examples/agents/**'
       - '.github/workflows/e2e-ml.yml'
   workflow_dispatch:
 
@@ -979,6 +980,124 @@ jobs:
           kubectl -n "$NS" delete gryviainferenceservice/e2e-embed
           kubectl delete gryviadataset/e2e-kb
 
+      # ------------------------------------------------------------------ Agents (GryviaAgent)
+      # The real agent runtime (examples/agents, built here) against a stand-in tool-calling model on the LLM gateway:
+      # it asks for the HTTP tool on the first call and answers with the tool result on the second.
+      - name: Agents - enable agents and publish a stand-in tool-calling model
+        run: |
+          docker build -t ghcr.io/zyvorai/gryvia-agent-runtime:dev examples/agents
+          kind load docker-image --name "$KIND_CLUSTER" ghcr.io/zyvorai/gryvia-agent-runtime:dev
+          helm upgrade gryvia ./helm/gryvia --namespace gryvia-system --reuse-values --wait --timeout 300s \
+            --set aiOperator.agents.enabled=true --set aiOperator.agents.image=ghcr.io/zyvorai/gryvia-agent-runtime:dev
+          kubectl -n gryvia-system rollout status deploy -l app.kubernetes.io/component=ai-operator --timeout=180s
+          source scripts/e2e-ml-lib.sh
+          check() { kubectl -n "$NS" logs -l app.kubernetes.io/component=ai-operator --tail=-1 | grep -q '"controllerKind":"GryviaAgent"'; }
+          wait_for "controller GryviaAgent started" 90 check
+
+          cat <<'EOF' > /tmp/e2e-agent-llm.yaml
+          apiVersion: gryvia.io/v1alpha1
+          kind: GryviaInferenceService
+          metadata:
+            name: e2e-agent-llm
+            namespace: gryvia-system
+            annotations:
+              gryvia.io/llm-model: tiny-agent
+              gryvia.io/llm-served-model: stand-in-agent
+          spec:
+            modelRef: e2e-agent-llm
+            backend: torchserve
+            image: TINY_PY_IMAGE
+            replicas: 1
+            servicePort: 8080
+            args:
+              - python3
+              - -u
+              - -c
+              - |
+                import http.server, json
+                KB = "http://e2e-files.gryvia-system.svc:8080/kb.md"
+                OTHER = "http://e2e-fake-hf.gryvia-system.svc:8080/api/models"
+                class H(http.server.BaseHTTPRequestHandler):
+                    def reply(self, code, obj):
+                        body = json.dumps(obj).encode()
+                        self.send_response(code)
+                        self.send_header("Content-Type", "application/json")
+                        self.send_header("Content-Length", str(len(body)))
+                        self.end_headers()
+                        self.wfile.write(body)
+                    def do_GET(self):
+                        self.reply(200, {})
+                    def do_POST(self):
+                        req = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                        if self.path != "/v1/chat/completions" or req.get("model") != "stand-in-agent":
+                            return self.reply(400, {"error": {"message": "unexpected %s %s" % (self.path, req.get("model"))}})
+                        msgs = req["messages"]
+                        last = msgs[-1]
+                        msg = {"role": "assistant", "content": None}
+                        if last["role"] == "tool":
+                            msg["content"] = "From the tool: " + last["content"][:400]
+                        elif req.get("tools"):
+                            url = OTHER if "forbidden" in last["content"] else KB
+                            name = req["tools"][0]["function"]["name"]
+                            msg["tool_calls"] = [{"id": "call-1", "type": "function",
+                                                  "function": {"name": name, "arguments": json.dumps({"url": url})}}]
+                        else:
+                            msg["content"] = "no tools offered"
+                        self.reply(200, {"object": "chat.completion", "model": req["model"],
+                                         "choices": [{"index": 0, "message": msg,
+                                                      "finish_reason": "tool_calls" if msg.get("tool_calls") else "stop"}],
+                                         "usage": {"prompt_tokens": 7, "completion_tokens": 3, "total_tokens": 10}})
+                http.server.ThreadingHTTPServer(("", 8080), H).serve_forever()
+          EOF
+          sed -i "s|TINY_PY_IMAGE|${TINY_PY_IMAGE}|" /tmp/e2e-agent-llm.yaml
+          kubectl apply -f /tmp/e2e-agent-llm.yaml
+          wait_for "stand-in tool-calling model Ready" 240 field_is gryviainferenceservice/e2e-agent-llm '{.status.phase}' Ready
+
+      - name: Agents - runtime, chat through the api-gateway, tool allowlist, metering, scale and deletion
+        run: |
+          source scripts/e2e-ml-lib.sh
+          api /api/agents -X POST -d '{"name":"e2e-agent","model":"tiny-agent","systemPrompt":"Answer from the handbook.",
+            "maxSteps":3,"tools":[{"name":"read_kb","type":"http","urls":["http://e2e-files.gryvia-system.svc:8080/kb.md"]}]}' \
+            | jq -e '.metadata.name == "e2e-agent"'
+          wait_for "agent Ready" 240 field_is gryviaagent/e2e-agent '{.status.phase}' Ready
+          kubectl -n "$NS" get gryviaagent/e2e-agent -o yaml
+          assert_eq "endpoint" "$(jp gryviaagent/e2e-agent '{.status.endpoint}')" "http://e2e-agent-agent.gryvia-system.svc.cluster.local:8080"
+          assert_eq "read-only root" "$(jp deploy/e2e-agent-agent '{.spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem}')" true
+          kubectl -n gryvia-llm-keys get secret gryvia-system.agent-e2e-agent -o name
+          types="$(jp networkpolicy/e2e-agent-agent '{.spec.policyTypes}')"
+          echo "$types" | grep -q Egress || { echo "no egress policy: $types"; exit 1; }
+          assert_eq "egress rules (dns, gateway, e2e-files namespace)" "$(kubectl -n "$NS" get networkpolicy/e2e-agent-agent -o json | jq '.spec.egress | length')" 3
+
+          # The model calls read_kb, the runtime fetches kb.md, the model answers with it.
+          out="$(api /api/agents/e2e-agent/chat -X POST -d '{"messages":[{"role":"user","content":"what caps GPU hours"}]}')"
+          echo "$out" | jq .
+          echo "$out" | jq -e '.choices[0].message.content | test("Quotas cap the GPU hours")' >/dev/null || { echo "answer lacks the tool result"; exit 1; }
+          assert_eq "tool call" "$(echo "$out" | jq -c '[.gryvia.toolCalls[] | {tool, ok}]')" '[{"tool":"read_kb","ok":true}]'
+          assert_eq "steps" "$(echo "$out" | jq -r .gryvia.steps)" 2
+          assert_eq "summed tokens" "$(echo "$out" | jq -r .usage.total_tokens)" 20
+          assert_eq "model is the agent" "$(echo "$out" | jq -r .model)" e2e-agent
+
+          # A URL outside the allowlist is refused by the runtime and reported to the model.
+          out="$(api /api/agents/e2e-agent/chat -X POST -d '{"messages":[{"role":"user","content":"forbidden"}]}')"
+          assert_eq "refused tool call" "$(echo "$out" | jq -c '[.gryvia.toolCalls[] | .ok]')" '[false]'
+          echo "$out" | jq -e '.choices[0].message.content | test("not allowed")' >/dev/null || { echo "refusal not reported"; exit 1; }
+
+          # The agent's model calls are metered under its namespace as model tiny-agent (4 calls of 7 input tokens).
+          agent_tokens() { [ "$(gw '/api/llm/usage?groupBy=model' '.items[] | select(.model=="tiny-agent") | .inputTokens')" -ge 28 ]; }
+          wait_for "agent tokens recorded" 60 agent_tokens
+
+          # Scale to zero: no replicas, chat refused with 409; then delete: the runtime and the key go with the agent.
+          api /api/agents/e2e-agent/scale -X POST -d '{"replicas":0}' | jq -e '.replicas == 0'
+          wait_for "scaled to zero" 60 field_is deploy/e2e-agent-agent '{.spec.replicas}' 0
+          wait_for "agent Pending" 60 field_is gryviaagent/e2e-agent '{.status.phase}' Pending
+          assert_eq "chat while scaled down" "$(api_status /api/agents/e2e-agent/chat -X POST -d '{"messages":[{"role":"user","content":"x"}]}')" 409
+          api /api/agents/e2e-agent -X DELETE >/dev/null
+          wait_for "agent deleted" 120 gone gryviaagent/e2e-agent
+          wait_for "runtime deleted" 120 gone deploy/e2e-agent-agent
+          key_gone() { ! kubectl -n gryvia-llm-keys get secret gryvia-system.agent-e2e-agent >/dev/null 2>&1; }
+          wait_for "agent key removed" 60 key_gone
+          kubectl -n "$NS" delete gryviainferenceservice/e2e-agent-llm
+
       - name: Dump state on failure
         if: failure()
         run: |
@@ -996,3 +1115,6 @@ jobs:
           kubectl -n gryvia-system get gryviavectorindexes,statefulsets,jobs -o wide || true
           kubectl -n gryvia-system get gryviavectorindexes -o yaml || true
           kubectl -n gryvia-system logs -l gryvia.io/vector-index --tail=100 --all-containers || true
+          kubectl -n gryvia-system get gryviaagents -o yaml || true
+          kubectl -n gryvia-system get deploy,networkpolicies -l gryvia.io/component=agent -o yaml || true
+          kubectl -n gryvia-system logs -l gryvia.io/component=agent --tail=100 || true

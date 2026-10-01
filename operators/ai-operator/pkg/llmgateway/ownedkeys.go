@@ -118,9 +118,13 @@ func EnsureOwnedKey(ctx context.Context, c client.Client, scheme *runtime.Scheme
 	return c.Update(ctx, hashed)
 }
 
-// DeleteOwnedKey removes the hashed key (and any mirrored store credential) of an owner from the key namespace.
+// DeleteOwnedKey removes the hashed key (and an index's mirrored store credential) of an owner from the key namespace.
 func DeleteOwnedKey(ctx context.Context, c client.Client, keyNamespace, namespace, kind, name string) error {
-	for _, n := range []string{OwnedKeySecretName(namespace, kind, name), StoreSecretName(namespace, name)} {
+	names := []string{OwnedKeySecretName(namespace, kind, name)}
+	if kind == "index" {
+		names = append(names, StoreSecretName(namespace, name))
+	}
+	for _, n := range names {
 		err := c.Delete(ctx, &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Namespace: keyNamespace, Name: n}})
 		if err != nil && !errors.IsNotFound(err) {
 			return err

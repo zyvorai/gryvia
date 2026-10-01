@@ -83,7 +83,8 @@ of their own namespaces. Revoking takes effect as soon as the gateway's informer
 
 Vector indexes ([RAG](rag.md)) get keys of their own from the ai-operator: Secrets `<namespace>.index-<name>` with the
 label `gryvia.io/llm-key-owner=index`, listed with the tenant's keys. The operator writes them back on its next
-reconcile, so suspend or delete the index rather than revoking its key. The gateway also caches the copies of external
+reconcile, so suspend or delete the index rather than revoking its key. [Agents](agents.md) get keys the same way:
+Secrets `<namespace>.agent-<name>`, label `gryvia.io/llm-key-owner=agent`. The gateway also caches the copies of external
 vector-store API keys kept in `keyNamespace` (label `gryvia.io/llm-key=store`); they are not API keys.
 
 ## Calling it

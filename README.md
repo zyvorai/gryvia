@@ -72,7 +72,7 @@ NVIDIA feature-discovery labels. Not yet validated on real GPUs.<br>
 
 **Six Kubernetes operators**<br>
 GPU, AI workload and quota operators (plus optional storage and network operators for RDMA/SR-IOV and
-parallel-filesystem CSI backends) in the main chart; network intelligence in its own. 41 of the 54 CRDs have a
+parallel-filesystem CSI backends) in the main chart; network intelligence in its own. 42 of the 55 CRDs have a
 registered runtime controller (some are opt-in).<br>
 [Core components](#core-components)
 
@@ -219,14 +219,14 @@ operator's node selection (filter, score, select), not a separate scheduler.
 ## Core Components
 
 <details>
-<summary><b>54 CRDs, 41 of them with a runtime controller (the CRD reference has the full table)</b></summary>
+<summary><b>55 CRDs, 42 of them with a runtime controller (the CRD reference has the full table)</b></summary>
 
-**Reconciled by a runtime controller (41; some opt-in).**
+**Reconciled by a runtime controller (42; some opt-in).**
 GPU operator: `GryviaHealthCheck` (opt-in health/remediation flags), `GryviaGpuNode` (also auto-created from GPU feature-discovery labels), `GryviaGpuMemoryOptimizer`, `GryviaGPUSharingPolicy` (opt-in `--enable-gpu-sharing`, chart `gpuOperator.gpuSharing`: writes the node labels for time-slicing and MIG) ·
 AI operator: `GryviaAIJob`, `GryviaCheckpointGuard`, `GryviaLiveExperiment`, `GryviaModelLineage`,
 `GryviaTrainingProfiler`, `GryviaTrainingTimeMachine`, and the ML kinds `GryviaWorkspace`, `GryviaInferenceService`,
 `GryviaModelRegistry`, `GryviaWorkflow`, `GryviaAutoTuner`, `GryviaPriority`, `GryviaTemplate` (on by default, `--enable-ml-controllers`), plus
-`GryviaModelWatch` (only with `--enable-model-watch`, see [Model factory](docs/model-factory.md)), `GryviaVectorIndex` (only with `--enable-rag`, see [RAG](docs/rag.md)), `GryviaFederation` (only with an administrator server allowlist), `GryviaFabricSignal` (only with `--merge-fabric-signals`) · Quota operator: `GryviaQuota`, `GryviaTenant`,
+`GryviaModelWatch` (only with `--enable-model-watch`, see [Model factory](docs/model-factory.md)), `GryviaVectorIndex` (only with `--enable-rag`, see [RAG](docs/rag.md)), `GryviaAgent` (only with `--enable-agents`, see [Agents](docs/agents.md)), `GryviaFederation` (only with an administrator server allowlist), `GryviaFabricSignal` (only with `--merge-fabric-signals`) · Quota operator: `GryviaQuota`, `GryviaTenant`,
 `GryviaUsageRecord`, `GryviaCostPredictor`, `GryviaBudget`, `GryviaChargeback`, `GryviaReservation` (only with `--enable-reservations`) · Storage operator: `GryviaStorage`, `GryviaDataset` (only with `--enable-datasets`, see [Datasets](docs/datasets.md)) · Network operator: `GryviaNetwork` ·
 Network-intelligence operator: `GryviaFlowPolicy`, `GryviaTrafficInsight`, `GryviaAutoPolicy`, `GryviaTraceSession`,
 `GryviaServiceGraph`, `GryviaNetworkAnomaly`, `GryviaSecurityPolicy`, `GryviaNetworkCost`, `GryviaTrainingInsight`,

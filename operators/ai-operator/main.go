@@ -333,8 +333,25 @@ func main() {
 				os.Exit(1)
 			}
 		}
-	} else if ml.modelWatchEnabled || ml.ragEnabled {
-		setupLog.Error(nil, "--enable-model-watch and --enable-rag need --enable-ml-controllers")
+		if ml.agentsEnabled {
+			if ml.llmGatewayURL == "" {
+				setupLog.Error(nil, "--enable-agents needs --llm-gateway-url (agents call models through the LLM gateway)")
+				os.Exit(1)
+			}
+			if err = (&controllers.GryviaAgentReconciler{
+				Client:       mgr.GetClient(),
+				Scheme:       mgr.GetScheme(),
+				Log:          ctrl.Log.WithName("controllers").WithName("GryviaAgent"),
+				Image:        ml.agentImage,
+				GatewayURL:   ml.llmGatewayURL,
+				KeyNamespace: ml.llmKeyNamespace,
+			}).SetupWithManager(mgr); err != nil {
+				setupLog.Error(err, "unable to create controller", "controller", "GryviaAgent")
+				os.Exit(1)
+			}
+		}
+	} else if ml.modelWatchEnabled || ml.ragEnabled || ml.agentsEnabled {
+		setupLog.Error(nil, "--enable-model-watch, --enable-rag and --enable-agents need --enable-ml-controllers")
 		os.Exit(1)
 	}
 

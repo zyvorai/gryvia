@@ -1,3 +1,4 @@
+pub mod agents;
 pub mod budget;
 pub mod cancel;
 pub mod capacity;

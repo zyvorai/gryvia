@@ -104,6 +104,12 @@ aiOperator:
     enabled: false
     qdrantImage: qdrant/qdrant:v1.12.6-unprivileged
     ingestImage: ghcr.io/zyvorai/gryvia-rag-ingest:latest
+  # GryviaAgent (--enable-agents): a tool-calling agent runtime Deployment per agent, serving an OpenAI-compatible
+  # /v1/chat/completions, calling its model through the LLM gateway with its own key, behind a NetworkPolicy that
+  # limits egress to DNS, the gateway and the allowlisted tool hosts. Needs llmGateway.enabled. See docs/agents.md.
+  agents:
+    enabled: false
+    image: ghcr.io/zyvorai/gryvia-agent-runtime:latest
   extraArgs: []
   # Fold the per-node entries collectors write into GryviaFabricSignal status.nodes[] (network-intelligence
   # ebpf.fabricStatusPerNode) into the top-level status: max for degradation metrics, sample-weighted means for ratios,

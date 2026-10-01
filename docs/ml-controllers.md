@@ -1,8 +1,9 @@
 # ML controllers
 
 The ai-operator runs five controllers for the ML kinds: `GryviaWorkspace`, `GryviaInferenceService`, `GryviaModelRegistry`,
-`GryviaWorkflow` and `GryviaAutoTuner`, plus two opt-in ones: `GryviaModelWatch` (`--enable-model-watch`, see
-[Model factory](model-factory.md)) and `GryviaVectorIndex` (`--enable-rag`, see [RAG](rag.md)). They are registered in `operators/ai-operator/main.go` (turn them all off with
+`GryviaWorkflow` and `GryviaAutoTuner`, plus three opt-in ones: `GryviaModelWatch` (`--enable-model-watch`, see
+[Model factory](model-factory.md)), `GryviaVectorIndex` (`--enable-rag`, see [RAG](rag.md)) and `GryviaAgent`
+(`--enable-agents`, see [Agents](agents.md)). They are registered in `operators/ai-operator/main.go` (turn them all off with
 `--enable-ml-controllers=false`) and the chart's manager ClusterRole carries the permissions they need.
 
 This page says what each one creates, which status fields it writes (the API gateway and the dashboard read exactly
@@ -191,8 +192,10 @@ Pass them with the chart value `aiOperator.extraArgs` (a list of strings, empty 
 | `--enable-rag` | `false` | Run the `GryviaVectorIndex` controller (chart: `aiOperator.rag.enabled`) |
 | `--rag-qdrant-image` | `qdrant/qdrant:v1.12.6-unprivileged` | Managed store image (chart: `aiOperator.rag.qdrantImage`) |
 | `--rag-ingest-image` | `ghcr.io/zyvorai/gryvia-rag-ingest:latest` | Ingestion Job image (chart: `aiOperator.rag.ingestImage`) |
-| `--llm-gateway-url` | | LLM gateway the ingestion Jobs call; required with `--enable-rag` (the chart derives it) |
-| `--llm-key-namespace` | `gryvia-llm-keys` | Where index keys are hashed (chart: `llmGateway.keyNamespace`) |
+| `--enable-agents` | `false` | Run the `GryviaAgent` controller (chart: `aiOperator.agents.enabled`) |
+| `--agent-image` | `ghcr.io/zyvorai/gryvia-agent-runtime:latest` | Agent runtime image (chart: `aiOperator.agents.image`) |
+| `--llm-gateway-url` | | LLM gateway the ingestion Jobs and agents call; required with `--enable-rag` or `--enable-agents` (the chart derives it) |
+| `--llm-key-namespace` | `gryvia-llm-keys` | Where index and agent keys are hashed (chart: `llmGateway.keyNamespace`) |
 
 Example for a cluster without GPUs (what the e2e uses):
 `aiOperator.extraArgs={--workspace-code-image=nginxinc/nginx-unprivileged:1.27-alpine,--inference-image-torchserve=nginxinc/nginx-unprivileged:1.27-alpine,--inference-health-path=/,--autoserve-default-gpu-count=0}`.

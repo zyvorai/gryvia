@@ -423,6 +423,7 @@ rules:
       - gryviaautotuners
       - gryviamodelwatches
       - gryviavectorindexes
+      - gryviaagents
     verbs:
       - create
       - delete
@@ -441,6 +442,7 @@ rules:
       - gryviaautotuners/status
       - gryviamodelwatches/status
       - gryviavectorindexes/status
+      - gryviaagents/status
     verbs:
       - get
       - patch
@@ -455,6 +457,7 @@ rules:
       - gryviaautotuners/finalizers
       - gryviamodelwatches/finalizers
       - gryviavectorindexes/finalizers
+      - gryviaagents/finalizers
     verbs:
       - update
   {{- if .Values.aiOperator.inferenceGatewayRouting }}
@@ -473,6 +476,7 @@ rules:
       - get
       - list
       - patch
+      - update
       - watch
   - apiGroups:
       - autoscaling
