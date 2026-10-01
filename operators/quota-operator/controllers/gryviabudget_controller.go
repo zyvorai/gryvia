@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"time"
 
+	"crypto/sha256"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -32,7 +35,8 @@ type GryviaBudgetReconciler struct {
 	Scheme *runtime.Scheme
 
 	// Now returns the current time; tests override it. Defaults to time.Now.
-	Now func() time.Time
+	Now            func() time.Time
+	EventNamespace string
 }
 
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviabudgets,verbs=get;list;watch
@@ -66,6 +70,9 @@ func (r *GryviaBudgetReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 	if err := r.Status().Update(ctx, fb); err != nil {
+		return ctrl.Result{}, err
+	}
+	if err := r.publishAlerts(ctx, fb); err != nil {
 		return ctrl.Result{}, err
 	}
 	return ctrl.Result{RequeueAfter: budgetRequeue}, nil
@@ -239,4 +246,20 @@ func (r *GryviaBudgetReconciler) enforceBudget(ctx context.Context, fb *gryviav1
 		return err
 	}
 	return r.rejectHeldJobs(ctx, fb, jobs)
+}
+
+// Deterministic event names make delivery idempotent and retryable after status persistence.
+func (r *GryviaBudgetReconciler) publishAlerts(ctx context.Context, fb *gryviav1.GryviaBudget) error {
+	for _, a := range fb.Status.Alerts {
+		ns := r.EventNamespace
+		if ns == "" {
+			ns = "default"
+		}
+		digest := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s/%s/%g", fb.UID, a.Timestamp.Time.Format(time.RFC3339Nano), a.Threshold))))[:24]
+		e := &corev1.Event{ObjectMeta: metav1.ObjectMeta{Name: "gryvia-budget-" + digest, Namespace: ns}, InvolvedObject: corev1.ObjectReference{APIVersion: "gryvia.io/v1", Kind: "GryviaBudget", Name: fb.Name, Namespace: fb.Namespace, UID: types.UID(fb.UID)}, Reason: "BudgetThresholdCrossed", Message: a.Message, Type: corev1.EventTypeWarning, FirstTimestamp: a.Timestamp, LastTimestamp: a.Timestamp, Count: 1, Source: corev1.EventSource{Component: "gryvia-quota-operator"}}
+		if err := r.Create(ctx, e); err != nil && !errors.IsAlreadyExists(err) {
+			return err
+		}
+	}
+	return nil
 }

@@ -110,6 +110,15 @@ func (r *GryviaAIJobReconciler) buildJob(job *gryviav1.GryviaAIJob) (*batchv1.Jo
 	}
 	nodes := r.getReplicaCount(job)
 	tpl := r.buildPodTemplate(job, labels, r.getGPUsPerPod(job), gryviav1.WorkloadKindJob, envVersionCurrent)
+	if key, val, _ := topologyAnnotation(job); val != "" {
+		if tpl.Annotations == nil {
+			tpl.Annotations = map[string]string{}
+		}
+		tpl.Annotations[key] = val
+	}
+	if pc := job.Annotations["gryvia.io/priority-class"]; pc != "" {
+		tpl.Spec.PriorityClassName = pc
+	}
 	tpl.Spec.RestartPolicy = corev1.RestartPolicyNever
 	tpl.Spec.Subdomain = headlessServiceName(job) // pod DNS: <job>-<index>.<svc>.<ns>.svc
 

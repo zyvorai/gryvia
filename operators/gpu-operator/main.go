@@ -30,11 +30,17 @@ func init() {
 }
 
 func main() {
+	var reportUnsupportedAPIs bool
 	var metricsAddr string
+	var enableGPUHealth, enableGPURemediation, enableGPUSharing bool
 	var enableLeaderElection bool
 	var probeAddr string
 	var autoRegister bool
 
+	flag.BoolVar(&enableGPUHealth, "enable-gpu-health-controller", false, "Enable GPU health checks from fresh GryviaGpuNode observations.")
+	flag.BoolVar(&enableGPURemediation, "enable-gpu-remediation", false, "Allow requested cordon/quarantine and PDB-respecting drain on measured GPU health failures.")
+	flag.BoolVar(&enableGPUSharing, "enable-gpu-sharing", false, "Reconcile GryviaGPUSharingPolicy: label matching GPU nodes for time-slicing, MIG and fractional sharing (nvidia.com/device-plugin.config, nvidia.com/mig.config and gryvia.io/* labels). Off by default; it writes node labels.")
+	flag.BoolVar(&reportUnsupportedAPIs, "report-unsupported-apis", false, "Report unsupported legacy APIs with Ready=False instead of silently leaving them pending.")
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", true,
@@ -87,6 +93,12 @@ func main() {
 		}
 	}
 
+	if enableGPUHealth {
+		if err = (&controllers.GryviaHealthCheckReconciler{Client: mgr.GetClient(), Scheme: mgr.GetScheme(), Log: ctrl.Log.WithName("gpu-health"), EnableRemediation: enableGPURemediation}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "health controller")
+			os.Exit(1)
+		}
+	}
 	if err = (&controllers.GryviaGpuMemoryOptimizerReconciler{
 		Client:    mgr.GetClient(),
 		Scheme:    mgr.GetScheme(),
@@ -97,6 +109,23 @@ func main() {
 		os.Exit(1)
 	}
 
+	if enableGPUSharing {
+		if err = (&controllers.GryviaGPUSharingPolicyReconciler{
+			Client: mgr.GetClient(),
+			Scheme: mgr.GetScheme(),
+			Log:    ctrl.Log.WithName("controllers").WithName("GryviaGPUSharingPolicy"),
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "GryviaGPUSharingPolicy")
+			os.Exit(1)
+		}
+	}
+
+	if reportUnsupportedAPIs {
+		if err := controllers.RegisterAPIContracts(mgr); err != nil {
+			setupLog.Error(err, "API capability contracts")
+			os.Exit(1)
+		}
+	}
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up health check")
 		os.Exit(1)

@@ -189,6 +189,9 @@ type DatasetUsageStatus struct {
 
 // GryviaDatasetStatus defines the observed state of GryviaDataset
 type GryviaDatasetStatus struct {
+	// Conditions report runtime capability and remediation state.
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
 	// State is the current state (initializing, ready, error, syncing)
 	State string `json:"state,omitempty"`
 

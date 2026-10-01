@@ -3,11 +3,13 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -33,8 +35,9 @@ const (
 // GryviaHealthCheckReconciler reconciles a GryviaHealthCheck object
 type GryviaHealthCheckReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
-	Log    logr.Logger
+	Scheme            *runtime.Scheme
+	Log               logr.Logger
+	EnableRemediation bool
 }
 
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviahealthchecks,verbs=get;list;watch;create;update;patch;delete
@@ -105,6 +108,9 @@ func (r *GryviaHealthCheckReconciler) reconcileHealthCheck(ctx context.Context, 
 	var checkResults []gryviav1.HealthCheckResult
 	var affectedResources []gryviav1.AffectedResource
 	overallHealth := healthHealthy
+	if len(nodes) == 0 {
+		overallHealth = healthUnknown
+	}
 	now := metav1.Now()
 
 	for _, node := range nodes {
@@ -125,6 +131,7 @@ func (r *GryviaHealthCheckReconciler) reconcileHealthCheck(ctx context.Context, 
 
 			result := r.runCheck(check, gpuNode, &node)
 			result.Timestamp = &now
+			result.CheckName = check.Name + "@" + node.Name
 			checkResults = append(checkResults, result)
 
 			// Track affected resources
@@ -155,25 +162,43 @@ func (r *GryviaHealthCheckReconciler) reconcileHealthCheck(ctx context.Context, 
 	hc.Status.CheckResults = checkResults
 	hc.Status.AffectedResources = affectedResources
 
+	var remediationErr error
 	// Handle failures
 	if overallHealth == healthUnhealthy || overallHealth == healthDegraded {
 		if err := r.handleFailure(ctx, hc, nodes, affectedResources); err != nil {
 			log.Error(err, "Failed to handle health check failure")
+			remediationErr = err
 		}
 	}
 
+	if hc.Spec.OnFailure != nil {
+		status, reason, msg := metav1.ConditionTrue, "NoActionRequired", "No remediation failure observed"
+		if !r.EnableRemediation {
+			status, reason, msg = metav1.ConditionFalse, "Disabled", "Enable operator GPU remediation capability before requesting mutations"
+		}
+		if remediationErr != nil {
+			status, reason, msg = metav1.ConditionFalse, "DrainBlocked", remediationErr.Error()
+		}
+		if a := hc.Spec.Remediation; a != nil && hc.Spec.OnFailure.AutoRemediate && (a.GpuReset || a.DriverReload || a.NodeReboot) {
+			status, reason, msg = metav1.ConditionFalse, "UnsupportedAction", "GPU reset/driver reload/reboot require a verified node agent"
+		}
+		meta.SetStatusCondition(&hc.Status.Conditions, metav1.Condition{Type: "RemediationReady", Status: status, Reason: reason, Message: msg, ObservedGeneration: hc.Generation})
+	}
 	// Update node labels based on health status
 	if err := r.updateNodeLabels(ctx, nodes, checkResults, overallHealth); err != nil {
 		log.Error(err, "Failed to update node labels")
 	}
 
+	if len(hc.Status.RemediationHistory) > 20 {
+		hc.Status.RemediationHistory = hc.Status.RemediationHistory[len(hc.Status.RemediationHistory)-20:]
+	}
 	// Update status
 	if err := r.Status().Update(ctx, hc); err != nil {
 		log.Error(err, "Failed to update status")
 		return ctrl.Result{}, err
 	}
 
-	return ctrl.Result{RequeueAfter: r.getCheckInterval(hc)}, nil
+	return ctrl.Result{RequeueAfter: r.getCheckInterval(hc)}, remediationErr
 }
 
 func (r *GryviaHealthCheckReconciler) getTargetNodes(ctx context.Context, hc *gryviav1.GryviaHealthCheck) ([]corev1.Node, error) {
@@ -215,7 +240,7 @@ func (r *GryviaHealthCheckReconciler) runCheck(check gryviav1.HealthCheck, gpuNo
 		Message:   "Check passed",
 	}
 
-	if gpuNode == nil {
+	if gpuNode == nil || len(gpuNode.Status.GpuStatus) == 0 || gpuNode.Status.LastHealthCheck == nil || time.Since(gpuNode.Status.LastHealthCheck.Time) > 2*time.Minute || gpuNode.Status.LastHealthCheck.Time.After(time.Now().Add(time.Second)) {
 		result.Status = checkStatusWarning
 		result.Message = "No GryviaGpuNode found for node " + node.Name
 		return result
@@ -241,12 +266,12 @@ func (r *GryviaHealthCheckReconciler) runCheck(check gryviav1.HealthCheck, gpuNo
 		r.checkGpuPower(check, gpuNode, &result)
 
 	case "pcie-bandwidth":
-		result.Status = checkStatusPass
+		result.Status = checkStatusWarning
 		result.Value = "N/A"
 		result.Message = "PCIe bandwidth check requires runtime measurement"
 
 	case "clock-speeds":
-		result.Status = checkStatusPass
+		result.Status = checkStatusWarning
 		result.Value = "N/A"
 		result.Message = "Clock speed check requires runtime measurement"
 
@@ -359,29 +384,8 @@ func (r *GryviaHealthCheckReconciler) checkGpuMemory(check gryviav1.HealthCheck,
 }
 
 func (r *GryviaHealthCheckReconciler) checkECCErrors(check gryviav1.HealthCheck, gpuNode *gryviav1.GryviaGpuNode, result *gryviav1.HealthCheckResult) {
-	// In a real implementation, this would query DCGM for ECC error counts.
-	// For now, check health status from the GPU node.
-	var unhealthyGPUs int
-	for _, gpuStatus := range gpuNode.Status.GpuStatus {
-		if gpuStatus.Health != "Healthy" && gpuStatus.Health != "" {
-			unhealthyGPUs++
-		}
-	}
-
-	result.Value = fmt.Sprintf("%d", unhealthyGPUs)
-
-	if unhealthyGPUs > 0 {
-		if check.Threshold != nil && check.Threshold.Max != nil && float64(unhealthyGPUs) > *check.Threshold.Max {
-			result.Status = checkStatusFail
-			result.Message = fmt.Sprintf("%d GPUs reporting health issues", unhealthyGPUs)
-			return
-		}
-		result.Status = checkStatusWarning
-		result.Message = fmt.Sprintf("%d GPUs reporting health issues", unhealthyGPUs)
-		return
-	}
-
-	result.Message = "No ECC errors detected"
+	result.Status = checkStatusWarning
+	result.Message = "ECC metrics are not available in GryviaGpuNode status"
 }
 
 func (r *GryviaHealthCheckReconciler) checkNVLink(check gryviav1.HealthCheck, gpuNode *gryviav1.GryviaGpuNode, result *gryviav1.HealthCheckResult) {
@@ -434,81 +438,37 @@ func (r *GryviaHealthCheckReconciler) handleFailure(ctx context.Context, hc *gry
 	if hc.Spec.OnFailure == nil {
 		return nil
 	}
-
-	log := r.Log.WithValues("gryviahealthcheck", hc.Name)
-
-	// Build set of affected node names
-	affectedNodes := make(map[string]bool)
+	if !r.EnableRemediation {
+		return nil
+	}
 	for _, res := range affected {
-		if res.Type == "node" {
-			affectedNodes[res.Name] = true
+		if res.Type != "node" {
+			continue
 		}
-	}
-
-	// Cordon affected nodes
-	if hc.Spec.OnFailure.Cordon {
-		for _, node := range nodes {
-			if !affectedNodes[node.Name] {
-				continue
+		if hc.Spec.OnFailure.Cordon || hc.Spec.OnFailure.Drain {
+			if err := r.quarantine(ctx, hc, res.Name); err != nil {
+				return err
 			}
-
-			if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-				n := &corev1.Node{}
-				if err := r.Get(ctx, types.NamespacedName{Name: node.Name}, n); err != nil {
-					return err
-				}
-				if !n.Spec.Unschedulable {
-					n.Spec.Unschedulable = true
-					return r.Update(ctx, n)
-				}
-				return nil
-			}); err != nil {
-				log.Error(err, "Failed to cordon node", "node", node.Name)
-			} else {
-				now := metav1.Now()
-				hc.Status.RemediationHistory = append(hc.Status.RemediationHistory, gryviav1.RemediationEvent{
-					Timestamp: &now,
-					Action:    "cordon-node",
-					Success:   true,
-					Message:   fmt.Sprintf("Node %s cordoned", node.Name),
-				})
+		}
+		if hc.Spec.OnFailure.Drain {
+			if err := r.drain(ctx, res.Name); err != nil {
+				return err
 			}
 		}
 	}
-
-	// Auto-remediate if enabled
-	if hc.Spec.OnFailure.AutoRemediate && hc.Spec.Remediation != nil {
-		for _, node := range nodes {
-			if !affectedNodes[node.Name] {
-				continue
-			}
-
-			if hc.Spec.Remediation.GpuReset {
-				now := metav1.Now()
-				log.Info("Attempting GPU reset", "node", node.Name)
-				// In a real implementation, this would trigger a GPU reset via DaemonSet or node agent
-				hc.Status.RemediationHistory = append(hc.Status.RemediationHistory, gryviav1.RemediationEvent{
-					Timestamp: &now,
-					Action:    "gpu-reset",
-					Success:   false,
-					Message:   fmt.Sprintf("GPU reset requested for node %s (requires node agent)", node.Name),
-				})
-			}
-		}
-	}
-
 	return nil
 }
 
 func (r *GryviaHealthCheckReconciler) updateNodeLabels(ctx context.Context, nodes []corev1.Node, results []gryviav1.HealthCheckResult, overallHealth string) error {
-	// Build per-node health status
-	nodeHealth := make(map[string]string)
+	nodeHealth := map[string]string{}
 	for _, result := range results {
-		if result.Status == checkStatusFail {
-			// Find which node this result belongs to by checking affected resources
-			// For simplicity, mark all nodes in a cluster check
-			for _, node := range nodes {
-				nodeHealth[node.Name] = healthUnhealthy
+		for _, node := range nodes {
+			if result.CheckName != "" && strings.HasSuffix(result.CheckName, "@"+node.Name) {
+				if result.Status == checkStatusFail {
+					nodeHealth[node.Name] = healthUnhealthy
+				} else if result.Status == checkStatusWarning && nodeHealth[node.Name] != healthUnhealthy {
+					nodeHealth[node.Name] = healthUnknown
+				}
 			}
 		}
 	}

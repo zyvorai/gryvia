@@ -54,6 +54,30 @@ spec:
             {{- if eq $name "gpu-operator" }}
             - --auto-register={{ $.Values.gpuOperator.autoRegister }}
             {{- end }}
+            {{- if and $.Values.platformCompletion.reportUnsupportedAPIs (has $name (list "ai-operator" "gpu-operator" "quota-operator" "storage-operator")) }}
+            - --report-unsupported-apis=true
+            {{- end }}
+            {{- if and (eq $name "ai-operator") $.Values.platformCompletion.inferenceTelemetry }}
+            - {{ printf "--inference-telemetry-image=%s" (include "gryvia.image" (dict "root" $ "image" $op.image)) | quote }}
+            {{- end }}
+            {{- if and (eq $name "gpu-operator") $.Values.gpuOperator.gpuSharing }}
+            - --enable-gpu-sharing=true
+            {{- end }}
+            {{- if and (eq $name "gpu-operator") $.Values.platformCompletion.gpuHealth }}
+            - --enable-gpu-health-controller=true
+            {{- end }}
+            {{- if and (eq $name "gpu-operator") $.Values.platformCompletion.gpuRemediation }}
+            - --enable-gpu-remediation=true
+            {{- end }}
+            {{- if and (eq $name "quota-operator") $.Values.platformCompletion.kueueFairSharing }}
+            - --kueue-fair-sharing=true
+            {{- end }}
+            {{- if and (eq $name "quota-operator") $.Values.platformCompletion.kueueTopologyName }}
+            - {{ printf "--kueue-topology-name=%s" $.Values.platformCompletion.kueueTopologyName | quote }}
+            {{- end }}
+            {{- if and (eq $name "quota-operator") $.Values.platformCompletion.kueueAdmissionCheck }}
+            - {{ printf "--kueue-admission-check=%s" $.Values.platformCompletion.kueueAdmissionCheck | quote }}
+            {{- end }}
             {{- if and (eq $name "ai-operator") $.Values.aiOperator.inferenceGatewayRouting }}
             - --inference-gateway-routing=true
             {{- end }}

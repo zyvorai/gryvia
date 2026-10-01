@@ -108,6 +108,9 @@ type HookRetry struct {
 
 // GryviaJobHookStatus defines the observed state of GryviaJobHook
 type GryviaJobHookStatus struct {
+	// Conditions report runtime capability and remediation state.
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
 	// LastExecutionTime is the time of the last hook execution
 	LastExecutionTime *metav1.Time `json:"lastExecutionTime,omitempty"`
 

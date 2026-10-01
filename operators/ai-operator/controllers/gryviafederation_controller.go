@@ -18,8 +18,10 @@ import (
 // GryviaFederationReconciler reconciles a GryviaFederation object
 type GryviaFederationReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
-	Log    logr.Logger
+	Scheme               *runtime.Scheme
+	Log                  logr.Logger
+	CredentialsNamespace string
+	AllowedServers       []string
 }
 
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviafederations,verbs=get;list;watch;create;update;patch;delete
@@ -71,14 +73,24 @@ func (r *GryviaFederationReconciler) reconcileFederation(ctx context.Context, fe
 	// Calculate aggregate stats
 	federation.Status.AggregateStats = r.calculateAggregateStats(federation)
 
-	// Calculate job distribution
-	federation.Status.JobDistribution = r.calculateJobDistribution(ctx, federation)
+	// Remote workload dispatch is owned by MultiKueue, not fabricated local job counts.
+	federation.Status.JobDistribution = nil
 
+	r.updateFederationCondition(federation, "DispatchReady", metav1.ConditionUnknown, "UseMultiKueue", "Configure a Kueue MultiKueue admission check for workload dispatch")
 	// Determine overall federation state
 	federation.Status.State = r.determineFederationState(clusterStatuses)
 
 	// Update condition
-	r.updateFederationCondition(federation, "Ready", metav1.ConditionTrue, "FederationHealthy",
+	ready := metav1.ConditionTrue
+	for _, s := range clusterStatuses {
+		if s.State != "healthy" {
+			ready = metav1.ConditionFalse
+		}
+	}
+	if len(clusterStatuses) == 0 {
+		ready = metav1.ConditionFalse
+	}
+	r.updateFederationCondition(federation, "Ready", ready, "ClusterProbes",
 		fmt.Sprintf("Federation %s: %d clusters, %d total GPUs",
 			federation.Status.State,
 			len(clusterStatuses),
@@ -128,7 +140,8 @@ func (r *GryviaFederationReconciler) healthCheckClusters(ctx context.Context, fe
 		}
 
 		// Calculate utilization from capacity
-		status.Utilization = r.calculateClusterUtilization(cluster)
+		// Spec capacity is declared inventory, not a live usage measurement.
+		status.Utilization = nil
 
 		statuses = append(statuses, status)
 	}
@@ -136,44 +149,8 @@ func (r *GryviaFederationReconciler) healthCheckClusters(ctx context.Context, fe
 	return statuses
 }
 
-func (r *GryviaFederationReconciler) checkClusterHealth(ctx context.Context, cluster gryviav1.FederationCluster) bool {
-	// In a production implementation, this would:
-	// 1. Load kubeconfig from the referenced secret
-	// 2. Create a client for the remote cluster
-	// 3. Perform a health check (e.g., GET /healthz)
-	// 4. Return true if the cluster is reachable and healthy
-
-	// For now, check that the API server URL is configured
-	if cluster.APIServer == "" {
-		return false
-	}
-
-	// Assume healthy if configured
-	return true
-}
-
-func (r *GryviaFederationReconciler) calculateClusterUtilization(cluster gryviav1.FederationCluster) *gryviav1.FederationUtilization {
-	if cluster.Capacity == nil {
-		return nil
-	}
-
-	totalGPUs := 0
-	availableGPUs := 0
-	for _, gpuType := range cluster.Capacity.GPUTypes {
-		totalGPUs += gpuType.Total
-		availableGPUs += gpuType.Available
-	}
-
-	usedGPUs := totalGPUs - availableGPUs
-	percentage := 0.0
-	if totalGPUs > 0 {
-		percentage = float64(usedGPUs) / float64(totalGPUs) * 100
-	}
-
-	return &gryviav1.FederationUtilization{
-		GPUs:       usedGPUs,
-		Percentage: percentage,
-	}
+func (r *GryviaFederationReconciler) checkClusterHealth(ctx context.Context, c gryviav1.FederationCluster) bool {
+	return r.probeCluster(ctx, c) == nil
 }
 
 func (r *GryviaFederationReconciler) calculateAggregateStats(federation *gryviav1.GryviaFederation) *gryviav1.FederationAggregateStats {
@@ -189,45 +166,9 @@ func (r *GryviaFederationReconciler) calculateAggregateStats(federation *gryviav
 			stats.AvailableGPUs += gpuType.Available
 		}
 
-		// Calculate cost per hour based on used GPUs and pricing
-		if cluster.Pricing != nil {
-			for _, gpuType := range cluster.Capacity.GPUTypes {
-				usedGPUs := gpuType.Total - gpuType.Available
-				if rate, ok := cluster.Pricing.GPUHourlyRates[gpuType.Type]; ok {
-					stats.TotalCostPerHour += float64(usedGPUs) * rate
-				}
-			}
-		}
 	}
 
 	return stats
-}
-
-func (r *GryviaFederationReconciler) calculateJobDistribution(ctx context.Context, federation *gryviav1.GryviaFederation) map[string]int {
-	distribution := make(map[string]int)
-
-	// List all jobs in the local cluster
-	jobList := &gryviav1.GryviaAIJobList{}
-	if err := r.List(ctx, jobList); err != nil {
-		return distribution
-	}
-
-	// Count jobs per cluster (using labels or annotations)
-	localJobs := 0
-	for _, job := range jobList.Items {
-		if job.Status.Phase == "Running" {
-			localJobs++
-		}
-	}
-
-	// For the local cluster, use the first cluster name
-	if len(federation.Spec.Clusters) > 0 {
-		distribution[federation.Spec.Clusters[0].Name] = localJobs
-	}
-
-	// In production, remote cluster job counts would be fetched via cross-cluster API calls
-
-	return distribution
 }
 
 func (r *GryviaFederationReconciler) determineFederationState(statuses []gryviav1.FederationClusterStatus) string {

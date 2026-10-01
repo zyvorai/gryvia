@@ -59,7 +59,8 @@ release Secret; create the `ngc-api` Secret yourself if that is not acceptable.
 | `nvidiaNim.enabled` | NIM Operator |
 | `nvidiaPlatform.validate` | post-install `nvidia-smi` Job, not NCCL |
 
-Sharing policy labels the GPU Operator already watches:
+Sharing policy labels the GPU Operator already watches. The controller that writes them is **opt-in**: set
+`gpuOperator.gpuSharing=true` (flag `--enable-gpu-sharing`), otherwise a `GryviaGPUSharingPolicy` does nothing:
 
 - time-slicing → `nvidia.com/device-plugin.config=gryvia-time-slicing`
 - mig → `nvidia.com/mig.config=<first profile>` (must be a mig-parted name)

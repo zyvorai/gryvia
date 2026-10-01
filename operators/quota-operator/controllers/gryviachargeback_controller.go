@@ -3,345 +3,173 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"math"
+	"strings"
 	"time"
 
-	"k8s.io/apimachinery/pkg/api/errors"
+	gryviav1 "github.com/zyvorai/gryvia/operators/quota-operator/api/v1"
+	"github.com/zyvorai/gryvia/operators/quota-operator/pkg/spend"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
-
-	gryviav1 "github.com/zyvorai/gryvia/operators/quota-operator/api/v1"
 )
 
-// GryviaChargebackReconciler reconciles a GryviaChargeback object
+// Chargeback reconciles persisted usage estimates, never recomputes historic prices.
 type GryviaChargebackReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+	Now    func() time.Time
 }
-
-//+kubebuilder:rbac:groups=gryvia.io,resources=gryviachargebacks,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=gryviachargebacks/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=gryvia.io,resources=gryviachargebacks/finalizers,verbs=update
-//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs,verbs=get;list;watch
-//+kubebuilder:rbac:groups=gryvia.io,resources=gryviaquotas,verbs=get;list;watch
-//+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 func (r *GryviaChargebackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
-
-	// Fetch the GryviaChargeback instance
-	chargeback := &gryviav1.GryviaChargeback{}
-	err := r.Get(ctx, req.NamespacedName, chargeback)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			logger.Info("GryviaChargeback resource not found. Ignoring since object must be deleted")
-			return ctrl.Result{}, nil
-		}
-		logger.Error(err, "Failed to get GryviaChargeback")
-		return ctrl.Result{}, err
+	cb := &gryviav1.GryviaChargeback{}
+	if err := r.Get(ctx, req.NamespacedName, cb); err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
-
-	// Handle deletion
-	if !chargeback.ObjectMeta.DeletionTimestamp.IsZero() {
+	if !cb.DeletionTimestamp.IsZero() {
 		return ctrl.Result{}, nil
 	}
-
-	logger.Info("Reconciling GryviaChargeback", "mode", chargeback.Spec.Mode, "period", chargeback.Spec.Period.Type)
-
-	// Reconcile the chargeback
-	result, err := r.reconcileChargeback(ctx, chargeback)
-	if err != nil {
-		logger.Error(err, "Failed to reconcile chargeback")
-		r.updateCondition(chargeback, "Ready", metav1.ConditionFalse, "ReconcileFailed", err.Error())
-		if statusErr := r.Status().Update(ctx, chargeback); statusErr != nil {
-			logger.Error(statusErr, "Failed to update status after reconcile failure")
-		}
-		return result, err
-	}
-
-	// Update status
-	if err := r.Status().Update(ctx, chargeback); err != nil {
-		logger.Error(err, "Failed to update GryviaChargeback status")
-		return ctrl.Result{}, err
-	}
-
-	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
-}
-
-func (r *GryviaChargebackReconciler) reconcileChargeback(ctx context.Context, cb *gryviav1.GryviaChargeback) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
-
-	// Initialize current period
-	currentPeriod := r.initializeCurrentPeriod(cb)
-
-	// Calculate costs per cost center
-	if err := r.calculateCostCenterCosts(ctx, cb, currentPeriod); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to calculate cost center costs: %w", err)
-	}
-
-	// Calculate total cost
-	totalCost := 0.0
-	for _, cc := range currentPeriod.CostCenters {
-		totalCost += cc.Cost
-	}
-
-	// Apply platform overhead
-	if cb.Spec.AllocationModel.IncludePlatformCosts && cb.Spec.AllocationModel.PlatformOverhead > 0 {
-		platformCost := totalCost * (cb.Spec.AllocationModel.PlatformOverhead / 100.0)
-		if currentPeriod.ByResourceType == nil {
-			currentPeriod.ByResourceType = &gryviav1.ResourceTypeCosts{}
-		}
-		currentPeriod.ByResourceType.Platform = platformCost
-		totalCost += platformCost
-	}
-	currentPeriod.TotalCost = totalCost
-
-	cb.Status.CurrentPeriod = currentPeriod
-
-	// Check if periodic report is due
-	if cb.Spec.Reports != nil && cb.Spec.Reports.Enabled {
-		r.checkReportGeneration(cb)
-	}
-
-	logger.Info("Chargeback reconciled", "totalCost", totalCost, "costCenters", len(currentPeriod.CostCenters))
-
-	r.updateCondition(cb, "Ready", metav1.ConditionTrue, "ChargebackActive",
-		fmt.Sprintf("Total cost: $%.2f for %d cost centers", totalCost, len(currentPeriod.CostCenters)))
-
-	return ctrl.Result{}, nil
-}
-
-func (r *GryviaChargebackReconciler) initializeCurrentPeriod(cb *gryviav1.GryviaChargeback) *gryviav1.ChargebackCurrentPeriod {
 	now := time.Now()
-	period := &gryviav1.ChargebackCurrentPeriod{}
-
-	switch cb.Spec.Period.Type {
-	case "monthly":
-		start := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
-		end := start.AddDate(0, 1, 0).Add(-time.Second)
-		period.StartDate = start.Format("2006-01-02")
-		period.EndDate = end.Format("2006-01-02")
-	case "quarterly":
-		quarter := (int(now.Month()) - 1) / 3
-		startMonth := time.Month(quarter*3 + 1)
-		start := time.Date(now.Year(), startMonth, 1, 0, 0, 0, 0, now.Location())
-		end := start.AddDate(0, 3, 0).Add(-time.Second)
-		period.StartDate = start.Format("2006-01-02")
-		period.EndDate = end.Format("2006-01-02")
-	case "annual":
-		start := time.Date(now.Year(), 1, 1, 0, 0, 0, 0, now.Location())
-		end := time.Date(now.Year(), 12, 31, 23, 59, 59, 0, now.Location())
-		period.StartDate = start.Format("2006-01-02")
-		period.EndDate = end.Format("2006-01-02")
-	default:
-		start := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
-		end := start.AddDate(0, 1, 0).Add(-time.Second)
-		period.StartDate = start.Format("2006-01-02")
-		period.EndDate = end.Format("2006-01-02")
+	if r.Now != nil {
+		now = r.Now()
 	}
-
-	period.ByResourceType = &gryviav1.ResourceTypeCosts{}
-
-	return period
+	err := r.calculate(ctx, cb, now)
+	status, reason, msg := metav1.ConditionTrue, "Reconciled", "Usage estimates reconciled; this is not a payment invoice"
+	if err != nil {
+		status, reason, msg = metav1.ConditionFalse, "InvalidConfiguration", err.Error()
+		cb.Status.CurrentPeriod = nil
+	}
+	meta.SetStatusCondition(&cb.Status.Conditions, metav1.Condition{Type: "Ready", Status: status, Reason: reason, Message: msg, ObservedGeneration: cb.Generation})
+	if cb.Spec.Reports != nil && cb.Spec.Reports.Enabled {
+		meta.SetStatusCondition(&cb.Status.Conditions, metav1.Condition{Type: "ReportsReady", Status: metav1.ConditionFalse, Reason: "Unsupported", Message: "Export currentPeriod as JSON; PDF/email report delivery is not configured", ObservedGeneration: cb.Generation})
+	}
+	return ctrl.Result{RequeueAfter: time.Minute}, r.Status().Update(ctx, cb)
 }
-
-func (r *GryviaChargebackReconciler) calculateCostCenterCosts(ctx context.Context, cb *gryviav1.GryviaChargeback, period *gryviav1.ChargebackCurrentPeriod) error {
-	// Get all jobs to calculate costs
-	jobList := &gryviav1.GryviaAIJobList{}
-	if err := r.List(ctx, jobList); err != nil {
-		return fmt.Errorf("failed to list GryviaAIJobs: %w", err)
+func (r *GryviaChargebackReconciler) calculate(ctx context.Context, cb *gryviav1.GryviaChargeback, now time.Time) error {
+	if cb.Spec.AllocationModel.Method != "" && cb.Spec.AllocationModel.Method != "actual-usage" {
+		return fmt.Errorf("only actual-usage allocation is supported")
 	}
-
-	// Find team-to-cost-center mapping
-	teamToCostCenter := make(map[string]*gryviav1.CostCenter)
-	for i := range cb.Spec.CostCenters {
-		cc := &cb.Spec.CostCenters[i]
-		for _, team := range cc.Teams {
-			teamToCostCenter[team] = cc
-		}
+	if cb.Spec.Pricing.Storage != nil || cb.Spec.Pricing.Network != nil {
+		return fmt.Errorf("storage/network attribution requires separate usage records")
 	}
-
-	// Find team-to-namespace mapping via GryviaQuota
-	quotaList := &gryviav1.GryviaQuotaList{}
-	if err := r.List(ctx, quotaList); err != nil {
-		return fmt.Errorf("failed to list GryviaQuotas: %w", err)
+	if len(cb.Spec.Pricing.GPURates) > 0 {
+		return fmt.Errorf("prices are frozen in usage records; configure GPU SKUs before metering")
 	}
-	nsToTeam := make(map[string]string)
-	for _, quota := range quotaList.Items {
-		for _, ns := range quota.Spec.Namespaces {
-			nsToTeam[ns] = quota.Spec.Team
+	loc := time.UTC
+	var err error
+	if cb.Spec.Period.Timezone != "" {
+		loc, err = time.LoadLocation(cb.Spec.Period.Timezone)
+		if err != nil {
+			return err
 		}
 	}
-
-	// Calculate per-cost-center costs
-	costCenterCosts := make(map[string]float64)
-	costCenterComputeCosts := make(map[string]float64)
-
-	periodStart := time.Time{}
-	if period.StartDate != "" {
-		if t, err := time.Parse("2006-01-02", period.StartDate); err == nil {
-			periodStart = t
+	p, err := spend.PeriodFor(cb.Spec.Period.Type, cb.Spec.Period.StartDate, cb.Spec.Period.EndDate, now.In(loc))
+	if err != nil {
+		return err
+	}
+	records := &gryviav1.GryviaUsageRecordList{}
+	if err = r.List(ctx, records); err != nil {
+		return err
+	}
+	quotas := &gryviav1.GryviaQuotaList{}
+	if err = r.List(ctx, quotas); err != nil {
+		return err
+	}
+	nsTeam := map[string]string{}
+	for _, q := range quotas.Items {
+		for _, ns := range q.Spec.Namespaces {
+			if prior := nsTeam[ns]; prior != "" && prior != q.Spec.Team {
+				return fmt.Errorf("namespace %s has ambiguous team attribution", ns)
+			}
+			nsTeam[ns] = q.Spec.Team
 		}
 	}
-
-	totalComputeCost := 0.0
-
-	for _, job := range jobList.Items {
-		if job.Status.StartTime == nil || job.Status.StartTime.IsZero() {
-			continue
-		}
-
-		// Calculate GPU hours for this job in the current period
-		effectiveStart := job.Status.StartTime.Time
-		if effectiveStart.Before(periodStart) {
-			effectiveStart = periodStart
-		}
-
-		var duration time.Duration
-		if job.Status.CompletionTime == nil || job.Status.CompletionTime.IsZero() {
-			duration = time.Since(effectiveStart)
-		} else {
-			duration = job.Status.CompletionTime.Time.Sub(effectiveStart)
-		}
-
-		if duration <= 0 {
-			continue
-		}
-
-		hours := duration.Hours()
-		gpuHours := hours * float64(job.Spec.TotalGPUs())
-
-		// Get GPU rate from pricing config or default
-		rate := r.getGPURate(cb, job.Spec.GpuType)
-		computeCost := gpuHours * rate
-		totalComputeCost += computeCost
-
-		// Map job to cost center via namespace -> team -> cost center
-		team, teamFound := nsToTeam[job.Namespace]
-		if !teamFound {
-			team = "unassigned"
-		}
-
-		cc, ccFound := teamToCostCenter[team]
-		ccID := "unassigned"
-		if ccFound {
-			ccID = cc.ID
-		}
-
-		costCenterCosts[ccID] += computeCost
-		costCenterComputeCosts[ccID] += computeCost
-	}
-
-	// Build cost center status entries
+	teams := map[string]string{}
+	ids := map[string]bool{}
 	for _, cc := range cb.Spec.CostCenters {
-		cost := costCenterCosts[cc.ID]
-		budgetAmount := 0.0
+		if cc.ID == "" || cc.ID == "unassigned" || ids[cc.ID] {
+			return fmt.Errorf("cost center IDs must be unique and nonempty; unassigned is reserved")
+		}
+		ids[cc.ID] = true
+		for _, team := range cc.Teams {
+			if teams[team] != "" {
+				return fmt.Errorf("team %s belongs to multiple cost centers", team)
+			}
+			teams[team] = cc.ID
+		}
+	}
+	currency := strings.ToUpper(cb.Spec.Pricing.Currency)
+	if currency == "" {
+		currency = "USD"
+	}
+	costs := map[string]float64{}
+	seen := map[string]bool{}
+	for _, rec := range records.Items {
+		if rec.Spec.JobUID == "" || seen[rec.Spec.JobUID] {
+			return fmt.Errorf("usage must have a unique jobUID")
+		}
+		seen[rec.Spec.JobUID] = true
+		if math.IsNaN(rec.Spec.Cost) || math.IsInf(rec.Spec.Cost, 0) || rec.Spec.Cost < 0 {
+			return fmt.Errorf("invalid metered cost")
+		}
+		total := spend.Sum([]gryviav1.GryviaUsageRecord{rec}, spend.Scope{Namespaces: []string{rec.Namespace}}, p, now)
+		if total.Records == 0 {
+			continue
+		}
+		if len(total.Currencies) != 1 || total.Currencies[0] != currency {
+			return fmt.Errorf("usage currency must match %s; no FX conversion is performed", currency)
+		}
+		id := teams[nsTeam[rec.Namespace]]
+		if id == "" {
+			id = "unassigned"
+		}
+		costs[id] += total.Cost
+	}
+	out := &gryviav1.ChargebackCurrentPeriod{StartDate: p.Start.Format(time.RFC3339), EndDate: p.End.Format(time.RFC3339), ByResourceType: &gryviav1.ResourceTypeCosts{}}
+	overhead := cb.Spec.AllocationModel.PlatformOverhead
+	if math.IsNaN(overhead) || math.IsInf(overhead, 0) || overhead < 0 {
+		return fmt.Errorf("platform overhead must be finite and nonnegative")
+	}
+	for _, cc := range cb.Spec.CostCenters {
+		cost := costs[cc.ID]
+		budget := 0.0
 		if cc.Budget != nil {
 			switch cb.Spec.Period.Type {
-			case "monthly":
-				budgetAmount = cc.Budget.Monthly
 			case "quarterly":
-				budgetAmount = cc.Budget.Quarterly
+				budget = cc.Budget.Quarterly
 			case "annual":
-				budgetAmount = cc.Budget.Annual
+				budget = cc.Budget.Annual
 			default:
-				budgetAmount = cc.Budget.Monthly
+				budget = cc.Budget.Monthly
 			}
 		}
-
-		percentUsed := 0.0
-		if budgetAmount > 0 {
-			percentUsed = (cost / budgetAmount) * 100
+		if cb.Spec.AllocationModel.IncludePlatformCosts {
+			cost *= 1 + overhead/100
 		}
-
-		ccStatus := gryviav1.CostCenterStatus{
-			ID:          cc.ID,
-			Name:        cc.Name,
-			Cost:        cost,
-			Budget:      budgetAmount,
-			Variance:    cost - budgetAmount,
-			PercentUsed: percentUsed,
+		percent := 0.0
+		if budget > 0 {
+			percent = cost / budget * 100
 		}
-		period.CostCenters = append(period.CostCenters, ccStatus)
+		out.CostCenters = append(out.CostCenters, gryviav1.CostCenterStatus{ID: cc.ID, Name: cc.Name, Cost: cost, Budget: budget, Variance: cost - budget, PercentUsed: percent})
 	}
-
-	period.ByResourceType.Compute = totalComputeCost
-
+	if cost := costs["unassigned"]; cost > 0 {
+		if cb.Spec.AllocationModel.IncludePlatformCosts {
+			cost *= 1 + overhead/100
+		}
+		out.CostCenters = append(out.CostCenters, gryviav1.CostCenterStatus{ID: "unassigned", Name: "Unassigned", Cost: cost})
+	}
+	for _, cost := range costs {
+		out.ByResourceType.Compute += cost
+	}
+	if cb.Spec.AllocationModel.IncludePlatformCosts {
+		out.ByResourceType.Platform = out.ByResourceType.Compute * overhead / 100
+	}
+	out.TotalCost = out.ByResourceType.Compute + out.ByResourceType.Platform
+	cb.Status.CurrentPeriod = out
 	return nil
 }
-
-func (r *GryviaChargebackReconciler) getGPURate(cb *gryviav1.GryviaChargeback, gpuType string) float64 {
-	if cb.Spec.Pricing.GPURates != nil {
-		if rate, ok := cb.Spec.Pricing.GPURates[gpuType]; ok {
-			return rate.HourlyRate
-		}
-	}
-	// Default rates
-	defaults := map[string]float64{
-		"H100":     32.00,
-		"A100-80G": 24.00,
-		"A100-40G": 18.00,
-		"V100":     16.00,
-		"T4":       8.00,
-	}
-	if rate, ok := defaults[gpuType]; ok {
-		return rate
-	}
-	return 10.00
-}
-
-func (r *GryviaChargebackReconciler) checkReportGeneration(cb *gryviav1.GryviaChargeback) {
-	if cb.Spec.Reports == nil || !cb.Spec.Reports.Enabled {
-		return
-	}
-
-	// Check if a report needs to be generated based on frequency
-	now := time.Now()
-	generateReport := false
-
-	if cb.Status.LastReport == nil || cb.Status.LastReport.Timestamp == nil {
-		generateReport = true
-	} else {
-		lastReport := cb.Status.LastReport.Timestamp.Time
-		switch cb.Spec.Reports.Frequency {
-		case "daily":
-			generateReport = now.Sub(lastReport) > 24*time.Hour
-		case "weekly":
-			generateReport = now.Sub(lastReport) > 7*24*time.Hour
-		case "monthly":
-			generateReport = now.Sub(lastReport) > 30*24*time.Hour
-		case "quarterly":
-			generateReport = now.Sub(lastReport) > 90*24*time.Hour
-		}
-	}
-
-	if generateReport {
-		reportTime := metav1.Now()
-		cb.Status.LastReport = &gryviav1.ChargebackReportRef{
-			Timestamp: &reportTime,
-			Period:    fmt.Sprintf("%s-%s", cb.Status.CurrentPeriod.StartDate, cb.Status.CurrentPeriod.EndDate),
-			Path:      fmt.Sprintf("/reports/chargeback/%s-%s.json", cb.Name, now.Format("2006-01")),
-		}
-	}
-}
-
-func (r *GryviaChargebackReconciler) updateCondition(cb *gryviav1.GryviaChargeback, condType string, status metav1.ConditionStatus, reason, message string) {
-	condition := metav1.Condition{
-		Type:               condType,
-		Status:             status,
-		Reason:             reason,
-		Message:            message,
-		LastTransitionTime: metav1.Now(),
-	}
-	meta.SetStatusCondition(&cb.Status.Conditions, condition)
-}
-
-// SetupWithManager sets up the controller with the Manager.
 func (r *GryviaChargebackReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&gryviav1.GryviaChargeback{}).
-		Complete(r)
+	return ctrl.NewControllerManagedBy(mgr).For(&gryviav1.GryviaChargeback{}).Complete(r)
 }

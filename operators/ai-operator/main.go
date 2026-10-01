@@ -3,7 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/zyvorai/gryvia/operators/ai-operator/pkg/servingproxy"
 	"os"
+	"strings"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -34,6 +36,15 @@ func init() {
 }
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "inference-proxy" {
+		if err := servingproxy.Run(); err != nil {
+			setupLog.Error(err, "inference proxy")
+			os.Exit(1)
+		}
+		return
+	}
+	var federationServers, federationNamespace string
+	var reportUnsupportedAPIs bool
 	var metricsAddr string
 	var enableLeaderElection bool
 	var probeAddr string
@@ -49,6 +60,9 @@ func main() {
 	var ml mlOptions
 	var mergeFabricSignals bool
 
+	flag.StringVar(&federationServers, "federation-allowed-servers", "", "Comma-separated administrator-allowed HTTPS Kubernetes API servers; empty disables federation probes.")
+	flag.StringVar(&federationNamespace, "federation-credentials-namespace", "gryvia-system", "Namespace containing trusted inline federation kubeconfig secrets.")
+	flag.BoolVar(&reportUnsupportedAPIs, "report-unsupported-apis", false, "Report unsupported legacy APIs with Ready=False instead of silently leaving them pending.")
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", true,
@@ -193,7 +207,21 @@ func main() {
 	}
 
 	// The ML controllers: their flags and defaults are in ml_controllers.go, docs/ml-controllers.md explains them.
+	if federationServers != "" {
+		if err = (&controllers.GryviaFederationReconciler{Client: mgr.GetClient(), Scheme: mgr.GetScheme(), Log: ctrl.Log.WithName("federation"), AllowedServers: strings.Split(federationServers, ","), CredentialsNamespace: federationNamespace}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "federation controller")
+			os.Exit(1)
+		}
+	}
 	if ml.enabled {
+		if err = (&controllers.GryviaPriorityReconciler{Client: mgr.GetClient(), Scheme: mgr.GetScheme(), Log: ctrl.Log.WithName("priority")}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "priority controller")
+			os.Exit(1)
+		}
+		if err = (&controllers.GryviaTemplateReconciler{Client: mgr.GetClient(), Scheme: mgr.GetScheme(), Log: ctrl.Log.WithName("template")}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "template controller")
+			os.Exit(1)
+		}
 		if ml.autoServeGPUCount < 0 {
 			setupLog.Error(nil, "--autoserve-default-gpu-count must not be negative")
 			os.Exit(1)
@@ -223,6 +251,7 @@ func main() {
 			CanaryStartupGrace: ml.canaryStartupGrace,
 			GatewayRouting:     ml.inferenceGatewayRouting,
 			PrometheusURL:      ml.inferencePrometheusURL,
+			TelemetryImage:     ml.inferenceTelemetryImage,
 		}).SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "GryviaInferenceService")
 			os.Exit(1)
@@ -267,6 +296,12 @@ func main() {
 		setupLog.Info("registered validating webhook", "path", jobwebhook.ValidatePath, "certDir", webhookCertDir)
 	}
 
+	if reportUnsupportedAPIs {
+		if err := controllers.RegisterAPIContracts(mgr); err != nil {
+			setupLog.Error(err, "API capability contracts")
+			os.Exit(1)
+		}
+	}
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up health check")
 		os.Exit(1)

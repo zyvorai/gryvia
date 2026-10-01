@@ -207,6 +207,9 @@ type BenchmarkHardwareInfo struct {
 
 // GryviaBenchmarkStatus defines the observed state of GryviaBenchmark
 type GryviaBenchmarkStatus struct {
+	// Conditions report runtime capability and remediation state.
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
 	// State is the current state (pending, running, completed, failed, regressed)
 	State string `json:"state,omitempty"`
 

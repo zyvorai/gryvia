@@ -159,3 +159,5 @@ Real-cluster acceptance requires observing HPA replica changes under load, reque
 your chosen Gateway, canary rollback and streaming/drain behavior with actual serving images.
 
 Prometheus query semantics and response formats: [functions](https://prometheus.io/docs/prometheus/latest/querying/functions/) and [HTTP API](https://prometheus.io/docs/prometheus/latest/querying/api/).
+
+Opt-in proxy telemetry and live Prometheus validation are described in [platform completion](platform-completion.md). Real model-server and GPU Gateway qualification remains required.

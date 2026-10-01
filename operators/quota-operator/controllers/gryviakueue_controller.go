@@ -96,6 +96,9 @@ type GryviaKueueReconciler struct {
 	// GPUTypeFlavors also creates one ResourceFlavor per enabled GryviaGpuSku gpuType and puts them
 	// (plus the default) in the ClusterQueue. Off by default: see docs/kueue-integration.md for why.
 	GPUTypeFlavors bool
+	FairSharing    bool
+	TopologyName   string
+	AdmissionCheck string
 }
 
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviatenants,verbs=get;list;watch;update;patch
@@ -279,7 +282,25 @@ func (r *GryviaKueueReconciler) desired(tenant *gryviav1.GryviaTenant, quotas []
 		typeNames = gpuTypes(skus)
 	}
 	objs := BuildFlavors(typeNames)
-	objs = append(objs, BuildClusterQueue(tenant.Name, tenantQuota(tenant, quotas), r.quotaResources(), typeNames))
+	if r.TopologyName != "" {
+		for _, f := range objs {
+			_ = unstructured.SetNestedField(f.Object, r.TopologyName, "spec", "topologyName")
+			labels, _, _ := unstructured.NestedStringMap(f.Object, "spec", "nodeLabels")
+			if labels == nil {
+				labels = map[string]string{}
+			}
+			labels["kubernetes.io/os"] = "linux"
+			_ = unstructured.SetNestedStringMap(f.Object, labels, "spec", "nodeLabels")
+		}
+	}
+	cq := BuildClusterQueue(tenant.Name, tenantQuota(tenant, quotas), r.quotaResources(), typeNames)
+	if r.FairSharing {
+		_ = unstructured.SetNestedField(cq.Object, "1", "spec", "fairSharing", "weight")
+	}
+	if r.AdmissionCheck != "" {
+		_ = unstructured.SetNestedSlice(cq.Object, []interface{}{map[string]interface{}{"name": r.AdmissionCheck}}, "spec", "admissionChecksStrategy", "admissionChecks")
+	}
+	objs = append(objs, cq)
 	objs = append(objs, BuildLocalQueue(tenant.Name))
 	return objs
 }

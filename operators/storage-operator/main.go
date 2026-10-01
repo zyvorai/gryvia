@@ -28,10 +28,12 @@ func init() {
 }
 
 func main() {
+	var reportUnsupportedAPIs bool
 	var metricsAddr string
 	var enableLeaderElection bool
 	var probeAddr string
 
+	flag.BoolVar(&reportUnsupportedAPIs, "report-unsupported-apis", false, "Report unsupported legacy APIs with Ready=False instead of silently leaving them pending.")
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", true,
@@ -68,6 +70,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	if reportUnsupportedAPIs {
+		if err := controllers.RegisterAPIContracts(mgr); err != nil {
+			setupLog.Error(err, "API capability contracts")
+			os.Exit(1)
+		}
+	}
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up health check")
 		os.Exit(1)
