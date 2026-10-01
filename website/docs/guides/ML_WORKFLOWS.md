@@ -367,7 +367,7 @@ Status fields (`phase`, `url`, `podName`, `lastActivity`) are written by the con
 
 ## Model factory (GryviaModelWatch)
 
-Status: opt-in (`aiOperator.modelWatch.enabled`). Unit-tested; the e2e control-plane flow (stand-in hub, busybox steps) passed on a k3s cluster without GPUs. No real download, fine-tune or evaluation has run. Full reference: [docs/model-factory.md](https://github.com/zyvorai/gryvia/blob/main/docs/model-factory.md).
+Status: opt-in (`aiOperator.modelWatch.enabled`). Unit-tested; the e2e control-plane flow (stand-in hub, busybox steps) passed on a k3s cluster without GPUs and in kind CI. No real download, fine-tune or evaluation has run. Full reference: [docs/model-factory.md](https://github.com/zyvorai/gryvia/blob/main/docs/model-factory.md).
 
 A watch polls the Hugging Face Hub. The first poll records existing models as the baseline; each later model that passes the filters gets a workflow rendered from `workflowTemplate`, with `{{model.id}}`, `{{model.revision}}`, `{{model.slug}}`, `{{model.gpus}}` and similar filled in. A typical template downloads, fine-tunes, evaluates and registers; the registry's `promotionPolicy` and `servingConfig.serviceName` then decide whether the new version replaces the served one.
 
