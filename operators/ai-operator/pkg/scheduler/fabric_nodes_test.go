@@ -227,3 +227,33 @@ func TestPreferredNodeTerms(t *testing.T) {
 		t.Errorf("terms = %+v", got)
 	}
 }
+
+func TestPinToNodesAddsRequirementToEveryTerm(t *testing.T) {
+	orig := &corev1.Affinity{NodeAffinity: &corev1.NodeAffinity{RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+		NodeSelectorTerms: []corev1.NodeSelectorTerm{
+			{MatchExpressions: []corev1.NodeSelectorRequirement{{Key: "a", Operator: corev1.NodeSelectorOpExists}}},
+			{MatchExpressions: []corev1.NodeSelectorRequirement{{Key: "b", Operator: corev1.NodeSelectorOpExists}}},
+		}}}}
+	got := PinToNodes(orig, []string{"n1", "n2"})
+	for i, term := range got.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms {
+		if len(term.MatchFields) != 1 || term.MatchFields[0].Key != "metadata.name" || len(term.MatchFields[0].Values) != 2 {
+			t.Errorf("term %d not pinned: %+v", i, term)
+		}
+		if len(term.MatchExpressions) != 1 {
+			t.Errorf("term %d lost the user's expression", i)
+		}
+	}
+	if len(orig.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0].MatchFields) != 0 {
+		t.Error("input was mutated")
+	}
+}
+
+func TestPinToNodesCreatesTermAndIgnoresEmpty(t *testing.T) {
+	got := PinToNodes(nil, []string{"n1"})
+	if terms := got.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms; len(terms) != 1 || terms[0].MatchFields[0].Values[0] != "n1" {
+		t.Errorf("unexpected terms: %+v", terms)
+	}
+	if PinToNodes(nil, nil) != nil {
+		t.Error("empty nodes must leave affinity nil")
+	}
+}

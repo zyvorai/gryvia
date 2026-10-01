@@ -674,6 +674,11 @@ func (r *GryviaAIJobReconciler) buildPodTemplate(job *gryviav1.GryviaAIJob, labe
 // affinity toward the nodes the operator selected. Required terms and the user's
 // own preferences are never touched; the spec object is never mutated.
 func (r *GryviaAIJobReconciler) buildAffinity(job *gryviav1.GryviaAIJob) *corev1.Affinity {
+	if job.Annotations[scheduler.AnnotationPinPlacement] == "true" && len(job.Status.NodesAllocated) > 0 {
+		// Opt-in: required, not preferred. If a chosen node goes away the pods stay Pending until
+		// the job is rescheduled; that is the price of making placement binding.
+		return scheduler.PinToNodes(job.Spec.Affinity, job.Status.NodesAllocated)
+	}
 	if job.Annotations[scheduler.AnnotationFabricAware] == "false" {
 		return job.Spec.Affinity
 	}
