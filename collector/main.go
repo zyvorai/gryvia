@@ -48,6 +48,7 @@ func main() {
 		natsURL         = flag.String("nats-url", "", "NATS server URL (optional)")
 		ebpfDir         = flag.String("ebpf-dir", "/opt/gryvia/ebpf", "Directory containing compiled eBPF .o files")
 		iface           = flag.String("iface", "", "Network interface for XDP/TCX attachment (empty = skip those programs)")
+		xdpMux          = flag.Bool("xdp-mux", false, "attach xdp_mux as the interface's only XDP program and chain roce_cnp, pfc_pause, dns_tracker, packet_filter and roce_ecn behind it, so all of them run on one interface (without it only one XDP program can attach per interface). Needs -iface. Off by default")
 		cgroupPath      = flag.String("cgroup-path", "", "cgroup v2 path for sockops/sk_msg attachment (empty = skip)")
 		ncclLib         = flag.String("nccl-lib", "", "path to libnccl.so for uprobes (empty = auto-discover)")
 		cudaLib         = flag.String("cuda-lib", "", "path to libcudart.so for uprobes (empty = auto-discover)")
@@ -128,6 +129,9 @@ func main() {
 		log.Fatalw("-quota-pace needs -cgroup-path: pacing is only ever attached to an explicit cgroup")
 	}
 
+	if *xdpMux && *iface == "" {
+		log.Fatalw("-xdp-mux needs -iface (xdp_mux attaches to it)")
+	}
 	if *traceCorrelate && (*iface == "" || *flightTokenFile == "") {
 		log.Fatalw("-trace-correlate needs -iface (trace_correlator attaches to it) and -flight-token-file (the trace lookup is HMAC-protected)")
 	}
@@ -150,7 +154,7 @@ func main() {
 		Dir:        *ebpfDir, Iface: *iface, CgroupPath: *cgroupPath,
 		NCCLLib: *ncclLib, CUDALib: *cudaLib, CuFileLib: *cufileLib, UCXLib: *ucxLib, UprobePID: *uprobePID,
 		IBVerbsLib: *ibverbsLib, IBVerbs: *ibverbsProbes,
-		QuotaPace: *quotaPace,
+		QuotaPace: *quotaPace, XDPMux: *xdpMux,
 	}, log)
 	if err != nil {
 		log.Fatalw("failed to create eBPF loader", "error", err)

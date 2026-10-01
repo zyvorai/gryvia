@@ -41,10 +41,10 @@ jobs:
           sudo "$RUNNER_TEMP/verifyobj" ../ebpf
         working-directory: collector
       - name: Run the XDP chain (BPF_PROG_TEST_RUN)
-        # xdp_mux plus the five XDP features, loaded as one chain and run in the kernel on a crafted RoCEv2 frame.
+        # xdp_mux plus the five XDP features, loaded as one chain: run with BPF_PROG_TEST_RUN on a crafted RoCEv2 frame, and attached to lo through the collector's Manager (-xdp-mux) with real UDP packets.
         run: |
           go test -c -tags bpfroot -o "$RUNNER_TEMP/loader.test" ./pkg/loader
-          sudo env GRYVIA_EBPF_DIR="$PWD/../ebpf" "$RUNNER_TEMP/loader.test" -test.run 'TestXDP' -test.v
+          sudo env GRYVIA_EBPF_DIR="$PWD/../ebpf" "$RUNNER_TEMP/loader.test" -test.run 'TestXDP|TestManagerXDP' -test.v
         working-directory: collector
       - name: Cross-compile (arm64)
         run: |

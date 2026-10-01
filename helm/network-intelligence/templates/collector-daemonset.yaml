@@ -143,6 +143,12 @@ spec:
             {{- if or .Values.ebpf.inferMetrics.targets .Values.ebpf.inferMetrics.discover }}
             - -infer-metrics-interval={{ .Values.ebpf.inferMetrics.interval }}
             {{- end }}
+            {{- if .Values.ebpf.xdpMux }}
+            {{- if not .Values.ebpf.interface }}
+            {{- fail "ebpf.xdpMux needs ebpf.interface (xdp_mux attaches to it)" }}
+            {{- end }}
+            - -xdp-mux
+            {{- end }}
             {{- if .Values.ebpf.nicCounters }}
             - -nic-counters
             {{- end }}

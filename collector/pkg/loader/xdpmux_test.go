@@ -10,12 +10,14 @@ package loader
 
 import (
 	"encoding/binary"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/rlimit"
+	"go.uber.org/zap"
 )
 
 const (
@@ -184,4 +186,84 @@ func TestXDPFeatureStandalone(t *testing.T) {
 	if sum != 1 {
 		t.Errorf("standalone cnp_count[CNP] = %d, want 1", sum)
 	}
+}
+
+// The Manager, configured with -xdp-mux, attaches xdp_mux to an interface and places the XDP
+// features in its chain. On the loopback interface, real UDP packets to port 4791 are then seen
+// by both roce_cnp and roce_ecn: the same packets are counted by the first and the last slot.
+func TestManagerXDPChainOnLoopback(t *testing.T) {
+	src := ebpfDir(t)
+	dir := t.TempDir()
+	for _, f := range []string{"xdp_mux.o", "roce_cnp.o", "roce_ecn.o"} {
+		if err := os.Symlink(filepath.Join(mustAbs(t, src), f), filepath.Join(dir, f)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m, err := New(Config{Dir: dir, Iface: "lo", XDPMux: true}, zap.NewNop().Sugar())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	if err := m.LoadAndAttach(); err != nil {
+		t.Fatalf("LoadAndAttach: %v", err)
+	}
+
+	byObject := map[string]ProgramStatus{}
+	for _, s := range m.Status() {
+		byObject[s.Object] = s
+	}
+	if s := byObject["xdp_mux.o"]; !s.Attached {
+		t.Fatalf("xdp_mux not attached: %+v", s)
+	}
+	for _, f := range []struct{ obj, target string }{
+		{"roce_cnp.o", "xdp_mux.o slot 0"}, {"roce_ecn.o", "xdp_mux.o slot 4"},
+	} {
+		if s := byObject[f.obj]; !s.Attached || s.Target != f.target {
+			t.Errorf("%s: attached=%v target=%q reason=%q, want attached to %q", f.obj, s.Attached, s.Target, s.Reason, f.target)
+		}
+	}
+
+	// Real packets: UDP to 4791 over loopback, first payload byte 0x81 (a CNP opcode). A listener on
+	// the port keeps the kernel from answering with ICMP port-unreachable, which would make the
+	// connected sender's later writes fail with "connection refused".
+	listener, err := net.ListenPacket("udp", "127.0.0.1:4791")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	conn, err := net.Dial("udp", "127.0.0.1:4791")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	const n = 5
+	for i := 0; i < n; i++ {
+		if _, err := conn.Write([]byte{0x81, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cnp, err := m.ReadCounter("roce_cnp.o", "cnp_count", cnpSlotRoCE)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ecn, err := m.ReadCounter("roce_ecn.o", "ecn_count", ecnSlotRoCE)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cnp < n || ecn < n {
+		t.Errorf("RoCE packets counted: roce_cnp %d, roce_ecn %d, want at least %d each", cnp, ecn, n)
+	}
+	if cnp != ecn {
+		t.Errorf("roce_cnp (slot 0) counted %d and roce_ecn (slot 4) %d: a feature in the chain missed packets", cnp, ecn)
+	}
+}
+
+func mustAbs(t *testing.T, p string) string {
+	t.Helper()
+	a, err := filepath.Abs(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return a
 }
