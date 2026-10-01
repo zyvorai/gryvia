@@ -13,9 +13,11 @@ COPY *.go ./
 COPY api/ api/
 COPY controllers/ controllers/
 COPY pkg/ pkg/
+COPY cmd/ cmd/
 
 # Build
-RUN CGO_ENABLED=0 go build -a -o manager .
+RUN CGO_ENABLED=0 go build -a -o manager . && \
+    CGO_ENABLED=0 go build -a -o gpu-reset-agent ./cmd/gpu-reset-agent
 
 # Runtime stage
 FROM gcr.io/distroless/static:nonroot
@@ -23,6 +25,7 @@ FROM gcr.io/distroless/static:nonroot
 WORKDIR /
 
 COPY --from=builder /workspace/manager .
+COPY --from=builder /workspace/gpu-reset-agent .
 
 USER 65532:65532
 
