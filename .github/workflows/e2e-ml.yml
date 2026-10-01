@@ -711,6 +711,125 @@ jobs:
           api /api/datasets/e2e-data -X DELETE >/dev/null
           wait_for "PVC garbage-collected" 120 gone pvc/dataset-e2e-data
 
+      # ------------------------------------------------------------------ LLM gateway (ai-operator image, llm-gateway mode)
+      # A stand-in OpenAI server runs as a real GryviaInferenceService (python image, args only) and is published with
+      # gryvia.io/llm-model. It answers with its own model id and sends a usage chunk only when the request asks for
+      # one (stream_options.include_usage), so the gateway's rewrite and usage injection are both visible.
+      - name: LLM gateway - enable it and publish a stand-in model
+        run: |
+          helm upgrade gryvia ./helm/gryvia --namespace gryvia-system --reuse-values --wait --timeout 300s \
+            --set llmGateway.enabled=true --set llmGateway.flushInterval=10s --set llmGateway.quotaRefreshInterval=5s \
+            --set llmGateway.priceInputPer1M=1 --set llmGateway.priceOutputPer1M=2
+          kubectl -n gryvia-system rollout status deploy/gryvia-llm-gateway --timeout=180s
+          kubectl -n gryvia-system rollout status deploy/gryvia-api-gateway --timeout=180s
+          source scripts/e2e-ml-lib.sh
+          cat <<'EOF' > /tmp/e2e-llm.yaml
+          apiVersion: gryvia.io/v1alpha1
+          kind: GryviaInferenceService
+          metadata:
+            name: e2e-llm
+            namespace: gryvia-system
+            annotations:
+              gryvia.io/llm-model: tiny-chat
+              gryvia.io/llm-served-model: stand-in
+          spec:
+            modelRef: e2e-llm
+            backend: torchserve
+            image: TINY_PY_IMAGE
+            replicas: 1
+            servicePort: 8080
+            args:
+              - python3
+              - -u
+              - -c
+              - |
+                import http.server, json
+                class H(http.server.BaseHTTPRequestHandler):
+                    def reply(self, code, body, ctype="application/json"):
+                        self.send_response(code)
+                        self.send_header("Content-Type", ctype)
+                        self.send_header("Content-Length", str(len(body)))
+                        self.end_headers()
+                        self.wfile.write(body)
+                    def do_GET(self):
+                        self.reply(200, b"{}")
+                    def do_POST(self):
+                        req = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                        if self.headers.get("Authorization"):
+                            return self.reply(400, b'{"error":"the key reached the upstream"}')
+                        usage = {"prompt_tokens": 7, "completion_tokens": 3}
+                        if req.get("stream"):
+                            chunks = [{"model": req["model"], "choices": [{"delta": {"content": "hi"}}]}]
+                            if (req.get("stream_options") or {}).get("include_usage"):
+                                chunks.append({"model": req["model"], "choices": [], "usage": usage})
+                            body = "".join("data: %s\n\n" % json.dumps(c) for c in chunks) + "data: [DONE]\n\n"
+                            return self.reply(200, body.encode(), "text/event-stream")
+                        self.reply(200, json.dumps({"model": req["model"], "choices": [{"message": {"content": "hi"}}], "usage": usage}).encode())
+                http.server.ThreadingHTTPServer(("", 8080), H).serve_forever()
+          EOF
+          sed -i "s|TINY_PY_IMAGE|${TINY_PY_IMAGE}|" /tmp/e2e-llm.yaml
+          kubectl apply -f /tmp/e2e-llm.yaml
+          wait_for "stand-in model Ready" 240 field_is gryviainferenceservice/e2e-llm '{.status.phase}' Ready
+
+      - name: LLM gateway - keys, routing, streaming, metering, quota and revocation
+        run: |
+          source scripts/e2e-ml-lib.sh
+          kubectl -n "$NS" port-forward svc/gryvia-llm-gateway 18080:8080 18081:8081 &
+          sleep 3
+          LLM=http://localhost:18080
+          key="$(api /api/llm-keys -X POST -d '{"name":"e2e","namespace":"gryvia-system","description":"e2e"}' | jq -r .key)"
+          case "$key" in gk-*) echo "ok: key issued";; *) echo "no key: $key"; exit 1;; esac
+          assert_eq "only the hash is stored" "$(kubectl -n gryvia-llm-keys get secret gryvia-system.e2e -o jsonpath='{.data.hash}' | base64 -d)" "$(printf %s "$key" | sha256sum | cut -d' ' -f1)"
+          assert_eq "key listed without the key" "$(gw /api/llm-keys '[.items[] | select(.name=="e2e") | has("key")] | .[0]')" false
+          assert_eq "gateway lists the model" "$(gw /api/llm/models '[.items[] | select(.model=="tiny-chat")] | length')" 1
+
+          llm() { curl -s -H "Authorization: Bearer $key" -H 'Content-Type: application/json' "$@"; }
+          code() { curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' "$@"; }
+          models_has_tiny() { llm "$LLM/v1/models" | jq -e '.data[] | select(.id=="tiny-chat")' >/dev/null; }
+          wait_for "key and model visible to the gateway" 60 models_has_tiny
+          chat='{"model":"tiny-chat","messages":[{"role":"user","content":"hello"}]}'
+
+          assert_eq "no key is a 401" "$(code "$LLM/v1/chat/completions" -d "$chat")" 401
+          assert_eq "wrong key is a 401" "$(code -H 'Authorization: Bearer gk-wrong' "$LLM/v1/chat/completions" -d "$chat")" 401
+          assert_eq "unknown model is a 404" "$(code -H "Authorization: Bearer $key" "$LLM/v1/chat/completions" -d '{"model":"nope"}')" 404
+
+          out="$(llm "$LLM/v1/chat/completions" -d "$chat")"
+          echo "$out"
+          assert_eq "served model rewritten" "$(echo "$out" | jq -r .model)" stand-in
+          assert_eq "usage passed through" "$(echo "$out" | jq -r .usage.prompt_tokens)" 7
+
+          stream="$(llm -N "$LLM/v1/chat/completions" -d '{"model":"tiny-chat","stream":true,"messages":[]}')"
+          echo "$stream"
+          echo "$stream" | grep -q 'data: \[DONE\]'
+          echo "$stream" | grep -q '"usage"' || { echo "the gateway did not ask for stream usage"; exit 1; }
+          echo "ok: streamed with a usage chunk"
+
+          # Two requests of 7 input and 3 output tokens: one hourly record, cost 14/1e6*1 + 6/1e6*2.
+          tokens_recorded() { [ "$(gw /api/llm/usage .total.inputTokens)" = 14 ]; }
+          wait_for "token usage record written" 60 tokens_recorded
+          assert_eq "output tokens" "$(gw /api/llm/usage .total.outputTokens)" 6
+          assert_eq "record kind" "$(kubectl -n "$NS" get gryviausagerecords -l gryvia.io/usage-kind=tokens -o jsonpath='{.items[0].spec.job}')" "llm:tiny-chat"
+          curl -s http://localhost:18081/metrics | grep -q 'gryvia_llm_tokens_total{model="tiny-chat",tenant="gryvia-system",type="input"} 14'
+          echo "ok: metrics"
+
+          # A token quota already used up: the next request is refused.
+          cat <<EOF | kubectl apply -f -
+          apiVersion: gryvia.io/v1alpha1
+          kind: GryviaQuota
+          metadata: {name: e2e-tokens}
+          spec: {team: e2e, namespaces: [gryvia-system], gpuQuota: {maxGPUs: 0}, tokensPerDay: 10}
+          EOF
+          is_429() { [ "$(code -H "Authorization: Bearer $key" "$LLM/v1/chat/completions" -d "$chat")" = 429 ]; }
+          wait_for "tokensPerDay enforced with 429" 60 is_429
+          assert_eq "quota shown with today's use" "$(gw /api/llm/usage '.quotas[] | select(.name=="e2e-tokens") | .usedToday')" 20
+          kubectl delete gryviaquota e2e-tokens
+
+          # Revoked keys stop working.
+          api /api/llm-keys/e2e -X DELETE >/dev/null
+          is_401() { [ "$(code -H "Authorization: Bearer $key" "$LLM/v1/models")" = 401 ]; }
+          wait_for "revoked key refused" 60 is_401
+          kubectl -n "$NS" delete gryviainferenceservice/e2e-llm
+
       - name: Dump state on failure
         if: failure()
         run: |
@@ -723,3 +842,5 @@ jobs:
           kubectl get gryviadatasets -o yaml || true
           kubectl -n gryvia-system get jobs,pvc -l gryvia.io/dataset || true
           kubectl -n gryvia-system logs -l app.kubernetes.io/component=storage-operator --tail=100 || true
+          kubectl -n gryvia-system logs -l app.kubernetes.io/component=llm-gateway --tail=100 || true
+          kubectl -n gryvia-system get gryviausagerecords -l gryvia.io/usage-kind=tokens -o yaml || true

@@ -103,6 +103,35 @@ aiOperator:
   # entries older than their ttl ignored (--merge-fabric-signals). Off by default; needs no extra RBAC.
   mergeFabricSignals: false
 
+# LLM gateway (`/manager llm-gateway`, the ai-operator image): one OpenAI-compatible endpoint
+# (/v1/models, /v1/chat/completions, /v1/completions, /v1/embeddings) in front of every GryviaInferenceService
+# annotated gryvia.io/llm-model. Callers use per-tenant keys (created with `gryvia llm keys create` or
+# POST /api/llm-keys; stored hashed in Secrets in keyNamespace), tokens are metered into GryviaUsageRecords of kind
+# tokens and GryviaQuota.spec.tokensPerDay is enforced with HTTP 429. Off by default. Adds the namespace keyNamespace,
+# a Role on its Secrets for the gateway (read) and the api-gateway (create/delete), and a ClusterRole that reads
+# inference services and quotas and writes usage records. See docs/llm-gateway.md.
+llmGateway:
+  enabled: false
+  replicas: 1
+  # Namespace of the key Secrets; created by the chart. Keep it dedicated: the api-gateway may create and delete
+  # every Secret in it.
+  keyNamespace: gryvia-llm-keys
+  # Default prices per million tokens for models without the gryvia.io/llm-price-*-per-1m annotations.
+  priceInputPer1M: 0
+  priceOutputPer1M: 0
+  currency: USD
+  # How often token counts are written as GryviaUsageRecords, and how often GryviaQuotas are reloaded.
+  flushInterval: 5m
+  quotaRefreshInterval: 30s
+  service:
+    type: ClusterIP
+    port: 8080
+  resources:
+    limits: {cpu: "1", memory: 512Mi}
+    requests: {cpu: 100m, memory: 128Mi}
+  nodeSelector: {}
+  tolerations: []
+
 # Admission webhook served by the ai-operator: validates GryviaAIJob on CREATE/UPDATE.
 # It uses its own self-signed certificate (independent of tls.mode), reused on upgrades.
 webhook:

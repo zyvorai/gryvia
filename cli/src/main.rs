@@ -381,6 +381,16 @@ enum Commands {
         action: CrdCommands,
     },
 
+    /// LLM gateway: per-tenant API keys, published models and token usage
+    ///
+    /// The gateway (chart value llmGateway.enabled) is one OpenAI-compatible endpoint for every
+    /// GryviaInferenceService annotated gryvia.io/llm-model. Keys belong to the namespace (-n) they are created in.
+    #[command(after_help = examples(&["gryvia llm keys create ci -n tenant-alpha", "gryvia llm keys list -A", "gryvia llm models", "gryvia llm usage --group-by day --days 7", "gryvia llm keys delete ci -n tenant-alpha --yes"]))]
+    Llm {
+        #[command(subcommand)]
+        action: LlmCommands,
+    },
+
     /// Interactive job creation wizard
     #[command(after_help = examples(&["gryvia create job"]))]
     Create {
@@ -541,6 +551,92 @@ enum ModelsCommands {
     /// Roll a model's shared service back to the version it replaced; the entry is archived
     Rollback {
         /// Model registry entry (a production entry with servingConfig.serviceName)
+        name: String,
+
+        /// Skip the confirmation prompt
+        #[arg(short, long)]
+        yes: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum LlmCommands {
+    /// Manage API keys: create (prints the key once), list, delete
+    Keys {
+        /// Namespace of the key Secrets (chart value llmGateway.keyNamespace)
+        #[arg(
+            long,
+            global = true,
+            default_value = "gryvia-llm-keys",
+            env = "GRYVIA_LLM_KEY_NAMESPACE"
+        )]
+        key_namespace: String,
+
+        #[command(subcommand)]
+        action: LlmKeyCommands,
+    },
+
+    /// List the models a key of this namespace can call (its own and the shared ones)
+    Models {
+        /// Every published model, in all namespaces
+        #[arg(short = 'A', long)]
+        all_namespaces: bool,
+
+        /// Output format
+        #[arg(short, long, value_enum, default_value_t = OutputFormat::Table, env = "GRYVIA_OUTPUT")]
+        output: OutputFormat,
+    },
+
+    /// Token usage from the gateway's hourly usage records (written every 5 minutes)
+    Usage {
+        /// Usage of every namespace
+        #[arg(short = 'A', long)]
+        all_namespaces: bool,
+
+        /// Group by
+        #[arg(long, value_parser = ["model", "tenant", "namespace", "day"], default_value = "model")]
+        group_by: String,
+
+        /// Days back, today included
+        #[arg(long, default_value_t = 30)]
+        days: u32,
+
+        /// Output format
+        #[arg(short, long, value_enum, default_value_t = OutputFormat::Table, env = "GRYVIA_OUTPUT")]
+        output: OutputFormat,
+    },
+}
+
+#[derive(Subcommand)]
+enum LlmKeyCommands {
+    /// Create a key for the namespace; the key is printed once and only its hash is stored
+    Create {
+        /// Key name (lowercase letters, digits and '-')
+        name: String,
+
+        /// What the key is for
+        #[arg(long, default_value = "")]
+        description: String,
+
+        /// Output format
+        #[arg(short, long, value_enum, default_value_t = OutputFormat::Table, env = "GRYVIA_OUTPUT")]
+        output: OutputFormat,
+    },
+
+    /// List the keys of the namespace (never the keys themselves)
+    List {
+        /// Keys of every namespace
+        #[arg(short = 'A', long)]
+        all_namespaces: bool,
+
+        /// Output format
+        #[arg(short, long, value_enum, default_value_t = OutputFormat::Table, env = "GRYVIA_OUTPUT")]
+        output: OutputFormat,
+    },
+
+    /// Revoke a key of the namespace
+    Delete {
+        /// Key name
         name: String,
 
         /// Skip the confirmation prompt
@@ -1278,6 +1374,57 @@ async fn run() -> Result<()> {
             )
             .await?;
         }
+        Commands::Llm { action } => match action {
+            LlmCommands::Keys {
+                key_namespace,
+                action,
+            } => match action {
+                LlmKeyCommands::Create {
+                    name,
+                    description,
+                    output,
+                } => {
+                    commands::llm::keys_create(
+                        &client,
+                        &key_namespace,
+                        &name,
+                        &description,
+                        output.as_str(),
+                    )
+                    .await?;
+                }
+                LlmKeyCommands::List {
+                    all_namespaces,
+                    output,
+                } => {
+                    commands::llm::keys_list(
+                        &client,
+                        &key_namespace,
+                        all_namespaces,
+                        output.as_str(),
+                    )
+                    .await?;
+                }
+                LlmKeyCommands::Delete { name, yes } => {
+                    commands::llm::keys_delete(&client, &key_namespace, &name, yes).await?;
+                }
+            },
+            LlmCommands::Models {
+                all_namespaces,
+                output,
+            } => {
+                commands::llm::models(&client, all_namespaces, output.as_str()).await?;
+            }
+            LlmCommands::Usage {
+                all_namespaces,
+                group_by,
+                days,
+                output,
+            } => {
+                commands::llm::usage(&client, all_namespaces, &group_by, days, output.as_str())
+                    .await?;
+            }
+        },
         Commands::Budget { scope, output } => {
             commands::budget::execute(&client, scope, output.as_str()).await?;
         }

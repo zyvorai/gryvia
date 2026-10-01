@@ -36,6 +36,7 @@ const Workspaces = lazy(() => import('./pages/Workspaces'))
 const ModelRegistry = lazy(() => import('./pages/ModelRegistry'))
 const ModelFactory = lazy(() => import('./pages/ModelFactory'))
 const Datasets = lazy(() => import('./pages/Datasets'))
+const LlmGateway = lazy(() => import('./pages/LlmGateway'))
 const InferenceServices = lazy(() => import('./pages/InferenceServices'))
 const Workflows = lazy(() => import('./pages/Workflows'))
 const AutoTuner = lazy(() => import('./pages/AutoTuner'))
@@ -174,6 +175,7 @@ function App() {
               <Route path="/models" element={<ModelRegistry />} />
               <Route path="/model-factory" element={<ModelFactory />} />
               <Route path="/datasets" element={<Datasets />} />
+              <Route path="/llm" element={<LlmGateway />} />
               <Route path="/inference" element={<InferenceServices />} />
               <Route path="/workflows" element={<Workflows />} />
               <Route path="/experiments" element={<Experiments />} />

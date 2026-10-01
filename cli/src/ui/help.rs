@@ -29,7 +29,7 @@ pub const GROUPS: &[(&str, &[&str])] = &[
             "budget",
         ],
     ),
-    ("ML", &["models", "datasets"]),
+    ("ML", &["models", "datasets", "llm"]),
     ("Operations", &["health", "maintenance"]),
     ("Observe", &["network", "security", "gpu"]),
     ("Utilities", &["completion", "version"]),

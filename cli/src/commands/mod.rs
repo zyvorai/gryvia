@@ -16,6 +16,7 @@ pub mod graph;
 pub mod health;
 pub mod invoice;
 pub mod list;
+pub mod llm;
 pub mod logs;
 pub mod maintenance;
 pub mod models;

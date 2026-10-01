@@ -45,7 +45,7 @@ Gryvia defines 53 custom resources in the `gryvia.io` API group (version `v1alph
 | `GryviaNetworkUsageRecord` | `gryvianetworkusagerecords` | Namespaced | none | `egressBytes`, `final`, `hour`, `node`, `peerClass`, `tenant`, `zoneClass` | `ingressBytes`, `source` |
 | `GryviaNodeFabric` | `gryvianodefabrics` | Cluster | none | `measuredAt`, `nodeName`, `scoreDelta` | `expiresAt`, `reasons`, `ttlSeconds` |
 | `GryviaPriority` | `gryviapriorities` | Cluster | ai-operator | `value` | `description`, `preemptionPolicy`, `quotaOverride`, `sla` |
-| `GryviaQuota` | `gryviaquotas` | Cluster | quota-operator | `gpuQuota`, `namespaces`, `team` | `budget`, `network`, `priority` |
+| `GryviaQuota` | `gryviaquotas` | Cluster | quota-operator | `gpuQuota`, `namespaces`, `team` | `budget`, `network`, `priority`, `tokensPerDay` |
 | `GryviaQuotaPolicy` | `gryviaquotapolicies` | Cluster | none | none | `alerts`, `allocation`, `enforcement`, `hierarchy`, `limits`, `scope`, `timeBased` |
 | `GryviaReservation` | `gryviareservations` | Cluster | quota-operator | `owner`, `resources`, `schedule` | `billing`, `guarantees`, `notifications` |
 | `GryviaRetryPolicy` | `gryviaretrypolicies` | Cluster | none | none | `backoff`, `budget`, `circuitBreaker`, `maxRetries`, `noRetryOn`, `resourceAdjustment`, `retryOn` |
@@ -60,6 +60,6 @@ Gryvia defines 53 custom resources in the `gryvia.io` API group (version `v1alph
 | `GryviaTrainingInsight` | `gryviatraininginsights` | Namespaced | network-intelligence | none | `analysisWindow`, `metrics`, `targetJob` |
 | `GryviaTrainingProfiler` | `gryviatrainingprofilers` | Namespaced | ai-operator | `target` | `analysis`, `metrics`, `output` |
 | `GryviaTrainingTimeMachine` | `gryviatrainingtimemachines` | Namespaced | ai-operator | `sourceJob` | `forks`, `retention`, `timeline` |
-| `GryviaUsageRecord` | `gryviausagerecords` | Namespaced | quota-operator | `cost`, `final`, `gpuHours`, `gpus`, `job`, `jobUID`, `rate`, `start`, `tenant` | `currency`, `end`, `gpuType`, `sku` |
+| `GryviaUsageRecord` | `gryviausagerecords` | Namespaced | quota-operator | `cost`, `final`, `gpuHours`, `gpus`, `job`, `jobUID`, `rate`, `start`, `tenant` | `currency`, `end`, `gpuType`, `inputTokens`, `kind`, `model`, `outputTokens`, `sku` |
 | `GryviaWorkflow` | `gryviaworkflows` | Namespaced | ai-operator | `steps` | `parameters`, `schedule` |
 | `GryviaWorkspace` | `gryviaworkspaces` | Namespaced | ai-operator | `type` | `cpuLimit`, `cpuRequest`, `env`, `gpuCount`, `gpuType`, `idleTimeoutMinutes`, `image`, `maxLifetimeHours`, … |

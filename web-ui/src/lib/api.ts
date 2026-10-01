@@ -10,6 +10,7 @@ import type { Sku, SkuBody, TenantResource, CreateTenantBody, UsageReport } from
 import type { InvoiceReport } from '@/lib/invoices'
 import type { ModelWatch, ModelWatchRun } from '@/lib/modelWatches'
 import type { Dataset } from '@/lib/datasets'
+import type { CreatedLlmKey, LlmKey, LlmModels, LlmUsage } from '@/lib/llm'
 
 export interface ClusterStats {
   totalGPUs: number
@@ -973,6 +974,31 @@ export const api = {
 
   deleteDataset: async (name: string): Promise<void> => {
     await apiClient.delete(`/datasets/${encodeURIComponent(name)}`)
+  },
+
+  // LLM gateway
+  getLlmModels: async (): Promise<LlmModels> => {
+    const { data } = await apiClient.get('/llm/models')
+    return { items: data.items || [], gatewayURL: data.gatewayURL || '', enabled: !!data.enabled }
+  },
+
+  getLlmUsage: async (groupBy: LlmUsage['groupBy'] = 'model'): Promise<LlmUsage> => {
+    const { data } = await apiClient.get('/llm/usage', { params: { groupBy } })
+    return data
+  },
+
+  getLlmKeys: async (): Promise<LlmKey[]> => {
+    const { data } = await apiClient.get('/llm-keys')
+    return data.items || []
+  },
+
+  createLlmKey: async (body: { name: string; namespace?: string; description?: string }): Promise<CreatedLlmKey> => {
+    const { data } = await apiClient.post('/llm-keys', body)
+    return data
+  },
+
+  deleteLlmKey: async (id: string): Promise<void> => {
+    await apiClient.delete(`/llm-keys/${encodeURIComponent(id)}`)
   },
 }
 

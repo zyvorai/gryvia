@@ -786,6 +786,7 @@ dependencies = [
  "kube",
  "predicates",
  "rcgen",
+ "ring",
  "rustls",
  "rustls-native-certs",
  "rustls-pki-types",

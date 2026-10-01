@@ -56,7 +56,8 @@ spec:
             description: |-
               GryviaUsageRecordSpec is the metered usage of one GryviaAIJob. The quota operator
               owns and rewrites it until final is true. Values are estimates from job wall-clock
-              time (start to end); they are not invoices.
+              time (start to end); they are not invoices. Records of kind tokens are written by the
+              LLM gateway instead (job "llm:<model>", gpus and gpuHours 0, cost from token prices).
             properties:
               cost:
                 description: Cost is gpuHours multiplied by rate
@@ -82,12 +83,31 @@ spec:
                 description: Gpus is the number of GPUs the job holds
                 format: int32
                 type: integer
+              inputTokens:
+                description: InputTokens is the prompt tokens of a tokens record
+                format: int64
+                type: integer
               job:
                 description: Job is the GryviaAIJob name
                 type: string
               jobUID:
                 description: JobUID is the GryviaAIJob UID (the record is named usage-<jobUID>)
                 type: string
+              kind:
+                description: |-
+                  Kind is what the record meters: gpu (a GryviaAIJob; also when empty) or tokens (the LLM gateway's requests
+                  of one tenant to one model during one hour, from start to end)
+                enum:
+                - gpu
+                - tokens
+                type: string
+              model:
+                description: Model is the LLM gateway model of a tokens record
+                type: string
+              outputTokens:
+                description: OutputTokens is the completion tokens of a tokens record
+                format: int64
+                type: integer
               rate:
                 description: Rate is the price per GPU-hour used for cost
                 type: number

@@ -105,6 +105,13 @@ spec:
               team:
                 description: Team is the name of the team this quota applies to
                 type: string
+              tokensPerDay:
+                description: |-
+                  TokensPerDay caps the LLM gateway tokens (input plus output) requested with keys of the listed namespaces
+                  per UTC day; further requests get HTTP 429. Enforced by the LLM gateway, not by this operator.
+                format: int64
+                minimum: 1
+                type: integer
             required:
             - gpuQuota
             - namespaces

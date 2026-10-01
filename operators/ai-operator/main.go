@@ -21,6 +21,7 @@ import (
 
 	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 	"github.com/zyvorai/gryvia/operators/ai-operator/controllers"
+	"github.com/zyvorai/gryvia/operators/ai-operator/pkg/llmgateway"
 	"github.com/zyvorai/gryvia/operators/ai-operator/pkg/modelhub"
 	"github.com/zyvorai/gryvia/operators/ai-operator/pkg/timemachine"
 	jobwebhook "github.com/zyvorai/gryvia/operators/ai-operator/pkg/webhook"
@@ -40,6 +41,13 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "inference-proxy" {
 		if err := servingproxy.Run(); err != nil {
 			setupLog.Error(err, "inference proxy")
+			os.Exit(1)
+		}
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "llm-gateway" {
+		if err := llmgateway.Run(os.Args[2:]); err != nil {
+			setupLog.Error(err, "llm gateway")
 			os.Exit(1)
 		}
 		return

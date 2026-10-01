@@ -28,6 +28,7 @@ export const NAVIGATION: NavItem[] = [
       { name: 'Model factory', href: '/model-factory', blurb: 'Fine-tune and serve new open models' },
       { name: 'Datasets', href: '/datasets', blurb: 'Versioned data downloaded into PVCs' },
       { name: 'Inference', href: '/inference', blurb: 'Serving and autoscaling' },
+      { name: 'LLM gateway', href: '/llm', blurb: 'OpenAI endpoint, API keys and tokens' },
     ],
   },
   {
