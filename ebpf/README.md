@@ -4,8 +4,8 @@ Kernel-space eBPF programs that form the data-plane of the Gryvia
 network intelligence layer.  They run inside the Linux kernel and feed
 structured events to the userspace flow collector (`../collector/`).
 
-**Status: experimental.** There are 39 programs (`ls *.c`). The first 35 build and load through the kernel verifier on
-Linux 7.0 x86_64 (the last four, `xdp_mux`, `nccl_transport`, `p2p_fallback` and `capture_gate`, build for x86_64 and arm64
+**Status: experimental.** There are 47 programs (`ls *.c`). The first 35 build and load through the kernel verifier on
+Linux 7.0 x86_64 (the last twelve, from `xdp_mux` to `ucx_complete` in the table below, build for x86_64 and arm64
 with `-Wall -Werror` but have not been through the verifier or run on hardware, and the collector does not load them yet); the collector attached the kprobe/tracepoint subset there and decoded real TCP flows. GPU, NCCL,
 RDMA and GPUDirect Storage behaviour, arm64 loading and the gated XDP/TCX/sockops attachments have not been verified on
 hardware. Nothing in the rest of the platform depends on them, and the collector is off by default.
@@ -52,6 +52,14 @@ hardware. Nothing in the rest of the platform depends on them, and the collector
 | `nccl_transport.c` | uprobe/uretprobe (`ncclCommInitRank`, `ncclCommInitRankConfig`, `ncclGetUniqueId`) | `FABRIC_SIG_NCCL_XPORT` (11) per successful communicator init (rank, world size, init duration; `retry_count` = transport hint read from `transport_hint[pid]`, which the collector would fill from `NCCL_P2P_DISABLE` / `NCCL_SHM_DISABLE` / `NCCL_NET`; 0 = unknown). Not loaded by the collector yet |
 | `p2p_fallback.c` | uprobe/uretprobe (`cudaDeviceEnablePeerAccess`, `cudaMemcpyAsync`) | `FABRIC_SIG_P2P_FALLBACK` (12): a failed peer-access enable (not "already enabled") followed within 30 s by a device-to-device copy of >= 8 MiB from the same process. A heuristic, not proof of a host bounce buffer. Not loaded by the collector yet |
 | `capture_gate.c` | kprobe (`tcp_sendmsg`) | Observe only. `capture_lease[cgroup_id]` holds an expiry; a missing or expired lease means "not armed" (fail open). Counts consultations in `gate_hits`; captures nothing itself. Not loaded by the collector yet |
+| `roce_ecn.c` | XDP | RoCEv2 (UDP 4791) packets over IPv4 and IPv6 by ECN codepoint: per-CPU counters `ecn_count` (0 seen, 1 CE, 2 ECT), always `XDP_PASS`, no ring buffer. IPv6 extension headers are not walked. Slot 4 of `xdp_mux`. Not loaded by the collector yet |
+| `gpu_oom.c` | uprobe/uretprobe (`cudaMalloc`, `cudaMallocAsync`, `cudaMallocFromPoolAsync`) | `FABRIC_SIG_GPU_OOM` (15) when the call returns `cudaErrorMemoryAllocation`; `bytes` = request. Routine in PyTorch\'s caching allocator, so a burst means memory pressure, one is not an incident |
+| `graph_stall.c` | uprobe/uretprobe (`cudaStreamBeginCapture`, `cudaStreamEndCapture`, `cudaDeviceSynchronize`) | `FABRIC_SIG_GRAPH_STALL` (16): a device-wide sync while a CUDA graph capture is open on the thread (normally invalidates the capture); `latency_ns` = time since the capture began |
+| `gdr_fail.c` | kretprobe (`nvidia_p2p_get_pages`) | `FABRIC_SIG_GDR_FAIL` (17) when GPUDirect RDMA page pinning returns non-zero; attaches only while the nvidia module is loaded. There is no kernel `ib_reg_mr`, so memory-registration failures are not covered |
+| `infer_ttft.c` | kretprobe (`inet_csk_accept`), kprobe (`tcp_sendmsg`) | On the ports in `infer_ports` (same contract as `infer_latency`): `FABRIC_SIG_INFER_TTFT` (18) accept to first send, and `FABRIC_SIG_INFER_GAP` (19) once per connection for a send gap >= 50 ms. Not tokenizer TTFT; the gap cannot tell a mid-response stall from an idle keep-alive connection |
+| `weight_mmap.c` | kprobe (`security_mmap_file`, `tcp_v4_connect`) | `FABRIC_SIG_WEIGHT_MMAP` (20): mmap of a model-weight file (same name list as `weight_exfil`), then a connect to a public IPv4 within 30 s. Name-based, IPv4 only |
+| `gpu_dev.c` | kprobe (`security_file_open`) | `FABRIC_SIG_GPU_DEV` (21): open of a character device named `nvidia*` or `renderD*` from a cgroup not in `allowed_cg`, only while `gpu_dev_cfg[0]` enforces (fails open by default) |
+| `ucx_complete.c` | uprobe/uretprobe (`ucp_tag_send_nbx`, `ucp_worker_progress` in `libucp.so`) | `FABRIC_SIG_UCX_WAIT` (22): `ucp_worker_progress` ran >= 5 ms after a send that returned a request. Completion is not observed, so this is a hint, not a stalled-transfer proof |
 
 ## Overhead
 

@@ -24,6 +24,7 @@
 //   1  pfc_pause
 //   2  dns_tracker
 //   3  packet_filter   (observe-only build; a drop rule still belongs in Cilium)
+//   4  roce_ecn
 
 #include "headers/gryvia_core.h"
 
@@ -31,7 +32,8 @@
 #define XDP_SLOT_PFC_PAUSE     1
 #define XDP_SLOT_DNS           2
 #define XDP_SLOT_PACKET_FILTER 3
-#define XDP_SLOT_MAX           4
+#define XDP_SLOT_ROCE_ECN      4
+#define XDP_SLOT_MAX           5
 
 struct {
 	__uint(type, BPF_MAP_TYPE_PROG_ARRAY);
@@ -65,6 +67,7 @@ int gryvia_xdp_mux(struct xdp_md *ctx)
 	bpf_tail_call(ctx, &xdp_features, XDP_SLOT_PFC_PAUSE);
 	bpf_tail_call(ctx, &xdp_features, XDP_SLOT_DNS);
 	bpf_tail_call(ctx, &xdp_features, XDP_SLOT_PACKET_FILTER);
+	bpf_tail_call(ctx, &xdp_features, XDP_SLOT_ROCE_ECN);
 	bump(1);
 	return XDP_PASS;
 }
