@@ -2,7 +2,8 @@ name: Upgrade and rollback
 
 # Installs the previous Gryvia (the newest released chart if one can be pulled from ghcr.io, otherwise the chart and
 # images built from origin/main, or origin/main~1 when this checkout is origin/main) on a kind cluster, creates the
-# demo data plus a tenant and a quota, then upgrades to this checkout the way website/docs/guides/OPERATIONS.md says
+# demo data plus a tenant and a quota (a released base older than that data keeps only the objects it accepts; a
+# git-ref base must accept all of it), then upgrades to this checkout the way website/docs/guides/OPERATIONS.md says
 # (CRDs applied server-side, then `helm upgrade --reuse-values`), and asserts:
 #   - every gryvia.io object still has the same spec
 #   - `gryvia status --brief` prints OK and the gateway login works

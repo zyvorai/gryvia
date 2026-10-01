@@ -300,7 +300,24 @@ run_step "prepare head chart" prep_chart "$HEAD_CHART"
 kc create namespace "$NS" --dry-run=client -o yaml | kc apply -f - >/dev/null
 run_step "install base chart" hm upgrade --install gryvia "$BASE_CHART_DIR" -n "$NS" "${DEMO_VALUES[@]}" ${BASE_SET[@]+"${BASE_SET[@]}"} --wait --timeout 300s
 run_step "base deployments rolled out" wait_deployments
-run_step "apply demo data, a tenant and a quota" kc apply -f "$ROOT/examples/demo/demo.yaml" -f "$ROOT/scripts/tests/upgrade-fixtures.yaml"
+# Today's demo data goes into the base release. kubectl applies each object on its own, so a base older than the
+# data (a released chart predates newer kinds and fields) accepts what it can and rejects the rest. For a released
+# or explicit chart that is expected: the objects it rejects are left out of the snapshot, listed below, and the
+# snapshot-size check after this step still fails the test if too little was applied. A git-ref base is the
+# previous main, which must accept today's demo data, so any rejection fails there.
+apply_demo_data() {
+	local out rc=0
+	out="$(kc apply -f "$ROOT/examples/demo/demo.yaml" -f "$ROOT/scripts/tests/upgrade-fixtures.yaml" 2>&1)" || rc=$?
+	printf '%s\n' "$out"
+	[ "$rc" -eq 0 ] && return 0
+	if [ "$BASE_MODE" = ref ]; then return 1; fi
+	{
+		echo "note: the base release did not accept every demo object; they are not part of the snapshot:"
+		printf '%s\n' "$out" | grep -E '^(Error from server|error:)|resource mapping not found' | sed 's/^/  /' | cut -c1-200 || true
+	} >&2
+	return 0
+}
+run_step "apply demo data, a tenant and a quota" apply_demo_data
 sleep "${UPGRADE_TEST_SETTLE:-10}" # let the controllers reconcile before the snapshot, so their own writes are not mistaken for changes
 say "snapshot before the upgrade"
 snapshot "$WORK/before.json"
@@ -332,7 +349,15 @@ say "backup and restore round trip"
 export_ok=0
 if "$ROOT/scripts/backup-crs.sh" export "$WORK/backup.yaml" 2>&1; then export_ok=1; fi
 if [ "$export_ok" = 1 ]; then
-	run_step "delete a quota and a SKU" kc delete gryviaquota/upgrade-test gryviagpusku/l40 --wait=true
+	# Delete whichever of the two the base release could hold (an older base may have no SKU kind, or reject the fixture).
+	to_delete=()
+	for obj in gryviaquota/upgrade-test gryviagpusku/l40; do kc get "$obj" >/dev/null 2>&1 && to_delete+=("$obj"); done
+	if [ "${#to_delete[@]}" -eq 0 ]; then
+		step_fail "delete a quota and a SKU" "neither gryviaquota/upgrade-test nor gryviagpusku/l40 exists to delete"
+		summary
+		exit 1
+	fi
+	run_step "delete a quota and a SKU" kc delete "${to_delete[@]}" --wait=true
 	snapshot "$WORK/after.json"
 	if same_snapshot "$WORK/before.json" "$WORK/after.json" >/dev/null 2>&1; then step_fail "deleted objects are really gone" "the snapshot did not change after deleting"; else step_ok "deleted objects are really gone"; fi
 	if "$ROOT/scripts/backup-crs.sh" restore "$WORK/backup.yaml"; then check_snapshot "restore from the export recreates the objects"; else step_fail "restore from the export recreates the objects" "restore failed"; fi
