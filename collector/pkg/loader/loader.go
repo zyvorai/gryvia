@@ -34,9 +34,25 @@ type ProgramStatus struct {
 	Target   string `json:"target,omitempty"`
 	Attached bool   `json:"attached"`
 	Reason   string `json:"reason,omitempty"` // why not attached
-	// OptIn marks a program of an opt-in object (see optin.go) that was not enabled: not requested rather
-	// than failed, so it has no gryvia_ebpf_program_attached series (that gauge drives GryviaEbpfProgramNotAttached).
-	OptIn bool `json:"optIn,omitempty"`
+	// NotRequested marks a program that was not attached because the configuration did not ask for it: an
+	// opt-in program that was not enabled (optin.go), an opt-in feature that is off (quota pacing, the
+	// libibverbs probes, -xdp-mux, no -infer-ports), or XDP/TCX without -iface and sockops/sk_msg without
+	// -cgroup-path. That is not a failure to attach, so it gets no gryvia_ebpf_program_attached series (the
+	// gauge that drives GryviaEbpfProgramNotAttached). A missing library or symbol, an interface that is
+	// already taken and an attach error are not "not requested": they still export 0.
+	NotRequested bool `json:"notRequested,omitempty"`
+}
+
+// AttachGauge is the value of gryvia_ebpf_program_attached for this program, and whether the series
+// should exist at all.
+func (s ProgramStatus) AttachGauge() (value float64, export bool) {
+	switch {
+	case s.NotRequested:
+		return 0, false
+	case s.Attached:
+		return 1, true
+	}
+	return 0, true
 }
 
 // MapReader is an opened event reader plus its dispatch class.
@@ -148,7 +164,7 @@ func (m *Manager) loadObject(file, path string) error {
 		}
 		sort.Strings(names)
 		for _, name := range names {
-			st := ProgramStatus{Object: file, Program: name, Section: spec.Programs[name].SectionName, Reason: "skipped: " + reason, OptIn: true}
+			st := ProgramStatus{Object: file, Program: name, Section: spec.Programs[name].SectionName, Reason: "skipped: " + reason, NotRequested: true}
 			if as, err := ParseSection(st.Section); err == nil {
 				st.Kind, st.Target = string(as.Kind), as.Symbol
 			}
@@ -227,11 +243,14 @@ func (m *Manager) loadObject(file, path string) error {
 		st.Kind = string(as.Kind)
 		st.Target = as.Symbol
 		reason := skipAll
+		notRequested := skipAll != "" // every skipAll reason is a switch that is off or an input that is not set
 		if reason == "" {
 			reason = SkipReason(as, m.cfg)
+			notRequested = reason != "" && SkipIsNotRequested(as, m.cfg)
 		}
 		if reason != "" {
 			st.Reason = "skipped: " + reason
+			st.NotRequested = notRequested
 			m.log.Infow("skipping program", "object", file, "program", name, "reason", reason)
 			m.addStatus(st)
 			continue

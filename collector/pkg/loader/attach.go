@@ -270,6 +270,19 @@ func SkipReason(spec AttachSpec, cfg Config) string {
 	return ""
 }
 
+// SkipIsNotRequested reports whether SkipReason skipped the program because a setting is empty
+// (XDP/TCX need -iface, sockops/sk_msg need -cgroup-path), as opposed to the node lacking something it
+// would need (a library for a uprobe), which is a gap the operator may want to hear about.
+func SkipIsNotRequested(spec AttachSpec, cfg Config) bool {
+	switch spec.Kind {
+	case KindXDP, KindTCXIngress, KindTCXEgress:
+		return cfg.Iface == ""
+	case KindSockOps, KindSkMsg:
+		return cfg.CgroupPath == ""
+	}
+	return false
+}
+
 // LibraryFor picks the configured library for a user-space symbol.
 func LibraryFor(symbol string, cfg Config) string {
 	switch {
