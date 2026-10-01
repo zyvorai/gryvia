@@ -698,6 +698,7 @@ rules:
       - events
     verbs:
       - create
+      - get
       - patch
 
 ---

@@ -21,6 +21,7 @@ import (
 	"github.com/zyvorai/gryvia/operators/quota-operator/controllers"
 	usageadmission "github.com/zyvorai/gryvia/operators/quota-operator/pkg/admission"
 	quotametrics "github.com/zyvorai/gryvia/operators/quota-operator/pkg/metrics"
+	"github.com/zyvorai/gryvia/operators/quota-operator/pkg/notify"
 )
 
 var (
@@ -44,6 +45,7 @@ func main() {
 	var tenantRBAC, enableReservations bool
 	var enableWebhooks bool
 	var webhookCertDir string
+	var budgetWebhookURL string
 
 	flag.BoolVar(&reportUnsupportedAPIs, "report-unsupported-apis", false, "Report unsupported legacy APIs with Ready=False instead of silently leaving them pending.")
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
@@ -65,6 +67,8 @@ func main() {
 	flag.BoolVar(&enableReservations, "enable-reservations", false,
 		"Run the GryviaReservation controller, which taints and labels reserved nodes (gryvia.io/reserved:NoSchedule). Off by default: an existing GryviaReservation object starts reserving nodes as soon as this is on.")
 
+	flag.StringVar(&budgetWebhookURL, "budget-webhook-url", "",
+		"POST every GryviaBudget threshold alert as JSON to this URL (https, or loopback). HMAC-SHA256 signed with the secret in the environment variable GRYVIA_BUDGET_WEBHOOK_SECRET when set. Delivery is at least once. Empty = Kubernetes Events only.")
 	flag.BoolVar(&enableWebhooks, "enable-webhooks", false,
 		"Serve the GryviaUsageRecord validating webhook that rejects spec changes once spec.final is true (needs TLS certs in --webhook-cert-dir).")
 	flag.StringVar(&webhookCertDir, "webhook-cert-dir", "/tmp/k8s-webhook-server/serving-certs",
@@ -150,10 +154,19 @@ func main() {
 		setupLog.Error(err, "chargeback controller")
 		os.Exit(1)
 	}
-	if err = (&controllers.GryviaBudgetReconciler{
+	budgetReconciler := &controllers.GryviaBudgetReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
+		Reader: mgr.GetAPIReader(),
+	}
+	if budgetWebhookURL != "" {
+		if err := notify.CheckURL(budgetWebhookURL); err != nil {
+			setupLog.Error(err, "invalid --budget-webhook-url")
+			os.Exit(1)
+		}
+		budgetReconciler.Webhook = &notify.Webhook{URL: budgetWebhookURL, Secret: os.Getenv("GRYVIA_BUDGET_WEBHOOK_SECRET")}
+	}
+	if err = budgetReconciler.SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "GryviaBudget")
 		os.Exit(1)
 	}

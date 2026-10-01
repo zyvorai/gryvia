@@ -110,6 +110,9 @@ spec:
             - --admission-gate=true
             - --admission-default-hours={{ $.Values.aiOperator.admissionDefaultHours }}
             {{- end }}
+            {{- if and (eq $name "quota-operator") $.Values.quotaOperator.budgetWebhook.url }}
+            - {{ printf "--budget-webhook-url=%s" $.Values.quotaOperator.budgetWebhook.url | quote }}
+            {{- end }}
             {{- if and (eq $name "quota-operator") $.Values.quotaOperator.tenantRbac }}
             - --tenant-rbac=true
             {{- end }}
@@ -126,6 +129,14 @@ spec:
             - --enable-webhooks=true
             - --webhook-cert-dir=/tmp/k8s-webhook-server/serving-certs
             {{- end }}
+          {{- if and (eq $name "quota-operator") $.Values.quotaOperator.budgetWebhook.url $.Values.quotaOperator.budgetWebhook.secretName }}
+          env:
+            - name: GRYVIA_BUDGET_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.quotaOperator.budgetWebhook.secretName | quote }}
+                  key: {{ $.Values.quotaOperator.budgetWebhook.secretKey | quote }}
+          {{- end }}
           ports:
             - name: metrics
               containerPort: 8080
