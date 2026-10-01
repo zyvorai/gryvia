@@ -34,7 +34,11 @@ helm upgrade --install gryvia oci://ghcr.io/zyvorai/charts/gryvia -n gryvia-syst
   --set auth.existingSecret=my-gryvia-key
 ```
 
-`./scripts/install.sh` and `./scripts/deploy-remote.sh` read `GRYVIA_API_KEY` from the environment.
+`./scripts/install.sh` reads `GRYVIA_API_KEY` from the environment (default: the lab key). `./scripts/deploy-remote.sh`
+reads it too, but when it is unset a redeploy **keeps the key that is already installed**: the `gryvia-api-key` Secret,
+then `~/.gryvia/api-key` on the host. The lab default is used only on a first install, so rotating the key with
+`helm upgrade --set auth.apiKey=...` is not undone by the next deploy. The key in use is saved to `~/.gryvia/api-key`
+(mode 600), and the script prints it only when it is the lab default.
 
 ### Rate limiting
 

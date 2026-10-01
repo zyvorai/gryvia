@@ -74,7 +74,8 @@ installs the same chart:
 
 It finishes with a smoke test (deployments, dashboard, API authentication, every dashboard endpoint and a
 custom-resource round trip) and prints the dashboard URL, `https://<host>:32443`. Use
-`GRYVIA_API_KEY='...' ./scripts/deploy-remote.sh <host> <user>` to set your own key.
+`GRYVIA_API_KEY='...' ./scripts/deploy-remote.sh <host> <user>` to set your own key; a later run without it keeps the
+installed key.
 
 ## Access the Dashboard
 

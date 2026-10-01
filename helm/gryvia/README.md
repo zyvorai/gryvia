@@ -101,9 +101,31 @@ serving certificate, generated once and reused on upgrades; independent of `tls.
 | `webhook.enabled` | `true` by default; `false` removes the webhook objects and the operator's extra port, volume and flag |
 | `webhook.failurePolicy` | `Ignore` (default): if the operator is down, jobs are still admitted. `Fail`: jobs are rejected while the webhook is unreachable (hardening) |
 | `webhook.timeoutSeconds` | Admission call timeout (default 5) |
+| `quotaOperator.usageRecordWebhook.enabled` | `true` by default, needs `webhook.enabled`: the usage-record webhook below |
 
 To rotate the certificate, delete the `<release>-webhook-tls` Secret and run `helm upgrade`, then restart the
 ai-operator.
+
+### Usage-record immutability
+
+The quota-operator serves a second validating webhook, on UPDATE of `gryviausagerecords`. Once a record is sealed
+(`spec.final: true`, set when its job finishes) it rejects any change to `spec`, including clearing `final`. While
+`final` is false growth is allowed, and creates, deletes, labels and annotations are never checked. It has its own
+`<release>-usage-webhook` Service, `<release>-usage-webhook-tls` Secret and `<release>-usagerecord`
+`ValidatingWebhookConfiguration`, separate from the `GryviaAIJob` webhook, and its failure policy is `Fail` (not
+configurable): while the quota-operator is down, updates to usage records are rejected. Turn it off with
+`quotaOperator.usageRecordWebhook.enabled=false` (or `webhook.enabled=false`, which removes both webhooks).
+
+## Opt-in features
+
+Off by default unless noted. None of them has been run on real GPUs or fabrics; each doc says what it needs.
+
+| Values | What it turns on | Doc |
+|---|---|---|
+| `aiOperator.kueueIntegration`, `aiOperator.kueueStrictAdmission` | Kueue queues; strict mode fails closed for tenant batch jobs whose queue is missing | [kueue-integration](../../docs/kueue-integration.md), [admission-recovery](../../docs/admission-recovery.md) |
+| `aiOperator.inferenceGatewayRouting`, `aiOperator.inferencePrometheusURL` | Weighted Gateway API canaries; Prometheus error-rate and latency gating of canary promotion | [inference-serving](../../docs/inference-serving.md) |
+| `nvidia.*`, `nvidiaPlatform.*`, `nvidiaNetwork.*`, `nvidiaNim.*` | GPU Operator (RDMA, GDS, MIG), time-slicing config and validator job, Network Operator (optional `NicClusterPolicy`), NIM Operator | [NVIDIA one-click](../../website/docs/guides/NVIDIA_ONE_CLICK.md) |
+| `quotaOperator.usageRecordWebhook.enabled` | **On by default.** Sealed usage records cannot be edited | above |
 
 ## Common settings
 

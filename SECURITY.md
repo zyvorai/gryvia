@@ -41,22 +41,28 @@ penetration tested, and the OIDC and tenant paths have only been tested against 
   `GRYVIA_JOB_NAMESPACE` (the release namespace in the chart) for the admin; that is a convenience, not a security
   boundary, since the admin can read everything else through other routes or `kubectl`.
 - **Metering is an estimate.** `GryviaUsageRecord` objects are computed by the quota operator from job wall-clock time
-  and are ordinary custom resources: anyone allowed to write them can change them. Invoices are computed on demand
-  from them and there is no payment processing.
+  and are custom resources. Once a record is sealed (`spec.final: true`, set when its job finishes) a validating webhook
+  (`quotaOperator.usageRecordWebhook.enabled`, on by default) rejects any change to its `spec`, including clearing
+  `final`; creates, deletes, labels and annotations are not checked. That protects a finished record from edits, not
+  from being deleted and recreated by someone allowed to do both, and a running record can still be changed until it is
+  sealed. Invoices are computed on demand from the records and there is no payment processing.
 - **Admission checks fail open.** The `GryviaAIJob` validating webhook (`webhook.failurePolicy=Ignore` by default)
   admits jobs when the operator is down, and its quota and catalog policy admits a job when the quotas cannot be read.
   The quota operator's reactive enforcement rejects a violating job shortly after. Set `webhook.failurePolicy=Fail` if
-  you prefer to block instead.
+  you prefer to block instead. The usage-record webhook is the exception: its failure policy is `Fail`, so while the
+  quota operator is down, updates to usage records are rejected.
 
 ### The shared key and sessions
 
 - **Well-known lab default.** Installs default to the key `Admin@321` so a quick start works. The dashboard shows a
   warning while it is in use. **Change it** for anything reachable from an untrusted network: `--set auth.apiKey=<secret>`,
-  an existing Secret, or `auth.apiKey=""` to generate a random one.
+  an existing Secret, or `auth.apiKey=""` to generate a random one. `scripts/deploy-remote.sh` keeps the key that is
+  already installed on a redeploy and uses the default only on a first install.
 - **Login hardening.** `POST /api/auth/login` compares credentials in constant time, slows failed attempts and is rate
   limited per client address (10 per minute). It returns a signed session token that expires after 8 hours
   (`GRYVIA_SESSION_TTL_SECONDS`), so the browser never stores the API key; rotating the key (or `GRYVIA_SESSION_SECRET`)
-  ends all sessions. There is no server-side session revocation for a single session.
+  ends all sessions. The signing key is derived from the API key (or the session secret) with PBKDF2-HMAC-SHA256.
+  There is no server-side session revocation for a single session.
 - **Rate limiting** trusts `X-Forwarded-For` only when the connecting peer is a private or loopback address.
 
 ### Transport

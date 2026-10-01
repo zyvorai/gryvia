@@ -81,7 +81,7 @@ controller.<br>
 <td valign="top" width="33%">
 
 **Network Intelligence (NetPredator) and eBPF**<br>
-Experimental. 35 CO-RE eBPF programs and a privileged collector (off by default), a node-local Flight Recorder, and
+Experimental. 47 CO-RE eBPF programs and a privileged collector (off by default), a node-local Flight Recorder, and
 an operator whose Cilium policy actions are real but whose live measurements are not wired. Real flows can come from
 Netra.<br>
 [Network Intelligence guide](website/docs/guides/NETWORK_INTELLIGENCE.md)
@@ -307,8 +307,11 @@ Storage and network throughput depend on the hardware, filesystem and fabric you
 | ML workflows, integrations, playbooks | [guides/ML_WORKFLOWS.md](website/docs/guides/ML_WORKFLOWS.md) · [guides/INTEGRATIONS.md](website/docs/guides/INTEGRATIONS.md) · [guides/OPERATIONAL_PLAYBOOKS.md](website/docs/guides/OPERATIONAL_PLAYBOOKS.md) |
 | GPU as a Service (tenants, catalog, usage, invoices) | [guides/GPU_AS_A_SERVICE.md](website/docs/guides/GPU_AS_A_SERVICE.md) |
 | GPU nodes (NVIDIA GPU Operator, k3s bootstrap) | [guides/GPU_NODES.md](website/docs/guides/GPU_NODES.md) · [docs/gpu-validation.md](docs/gpu-validation.md) |
+| NVIDIA one-click (RDMA, GDS, MIG, Network and NIM operators) | [guides/NVIDIA_ONE_CLICK.md](website/docs/guides/NVIDIA_ONE_CLICK.md) |
+| Admission and recovery (strict Kueue admission, checkpoint hooks) | [docs/admission-recovery.md](docs/admission-recovery.md) |
+| Inference serving (GPU/RPS autoscaling, Gateway canaries, SLO gating) | [docs/inference-serving.md](docs/inference-serving.md) |
 | Operations (upgrade, uninstall, backup) | [guides/OPERATIONS.md](website/docs/guides/OPERATIONS.md) |
-| CRD reference (all 49 kinds and their controllers) | [reference/crds.md](website/docs/reference/crds.md) |
+| CRD reference (all 52 kinds and their controllers) | [reference/crds.md](website/docs/reference/crds.md) |
 | eBPF programs, collector, Flight Recorder | [ebpf/README.md](ebpf/README.md) · [collector/README.md](collector/README.md) · [docs/flight-recorder.md](docs/flight-recorder.md) |
 | Helm charts | [helm/gryvia](helm/gryvia/README.md) · [helm/network-intelligence](helm/network-intelligence/README.md) |
 | Advanced features, FAQ, roadmap | [guides/ADVANCED_FEATURES.md](website/docs/guides/ADVANCED_FEATURES.md) · [guides/FAQ.md](website/docs/guides/FAQ.md) · [guides/ROADMAP.md](website/docs/guides/ROADMAP.md) |
@@ -329,12 +332,16 @@ guarantee yet; see the [changelog](CHANGELOG.md). What exists today:
 - Non-root containers with a read-only root filesystem for the operators, gateway and dashboard.
 - `GryviaTenant` creates per-tenant namespaces, ResourceQuotas, LimitRanges and optional NetworkPolicies; the chart
   offers an opt-in NetworkPolicy for the gateway. The `GryviaAIJob` admission webhook enforces quota and SKU policy and
-  fails open when the quotas cannot be read.
+  fails open when the quotas cannot be read. A second webhook rejects edits to the `spec` of a finished
+  `GryviaUsageRecord` (opt out with `quotaOperator.usageRecordWebhook.enabled=false`); it fails closed.
 - Release images and the Helm charts are signed with cosign; images ship SBOM and provenance attestations.
 
-**Experimental:** the 35 CO-RE eBPF programs (24 original, plus the fabric-signal programs `straggler`, `rdma_health`,
-`gds_trace`, `overlap`, `roce_cnp`, `infer_latency`, `ucx_gloo`, `pfc_pause`, `weight_exfil`, `quota_pace` and `ibv_verbs`) build and pass the verifier on a Linux 7.0 x86_64 host, the
-only place they have been verified (arm64 is compile-only); there the collector attached the supported
+**Experimental:** the 47 CO-RE eBPF programs (24 original, plus the fabric-signal programs `straggler`, `rdma_health`,
+`gds_trace`, `overlap`, `roce_cnp`, `infer_latency`, `ucx_gloo`, `pfc_pause`, `weight_exfil`, `quota_pace` and `ibv_verbs`,
+and twelve newer ones: `xdp_mux`, `roce_ecn`, `nccl_transport`, `p2p_fallback`, `capture_gate`, `gpu_oom`, `graph_stall`,
+`gdr_fail`, `infer_ttft`, `weight_mmap`, `gpu_dev` and `ucx_complete`, whose signals nothing interprets yet) build and pass the
+verifier on a Linux 7.0 x86_64 host and in CI (arm64 is compile-only). With `-xdp-mux` the collector chains the XDP
+programs behind one attach instead of one XDP program per interface (tested in CI on loopback only). On the x86_64 host the collector attached the supported
 kprobe/tracepoint subset and decoded TCP flows. GPU, NCCL, RDMA and GPUDirect Storage runtime behavior and the gated
 XDP/TCX/sockops attachments have not been validated on hardware. The collector is disabled by default, privileged and
 `hostNetwork` (its image is built by the release workflow, which has not yet run with it), and most of its endpoints are unauthenticated; see

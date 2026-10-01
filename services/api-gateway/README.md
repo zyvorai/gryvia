@@ -181,7 +181,7 @@ The service is configured via environment variables:
 - `PROMETHEUS_URL`: Prometheus endpoint (default: `http://prometheus-operated.gryvia-system:9090`)
 - `GRYVIA_JOB_NAMESPACE`: namespace the admin's job routes read and write (default: `default`; the chart sets the release namespace)
 - `OIDC_ENABLED`, `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_AUDIENCE`, `GRYVIA_OIDC_ADMIN_GROUPS`, `GRYVIA_OIDC_LEGACY_NAMESPACES`: see [Authentication and TLS](../../website/docs/guides/AUTH_AND_TLS.md)
-- `GRYVIA_SESSION_TTL_SECONDS` (default 28800), `GRYVIA_SESSION_SECRET`
+- `GRYVIA_SESSION_TTL_SECONDS` (default 28800), `GRYVIA_SESSION_SECRET` (the token signing key is derived from it, or from `GRYVIA_API_KEY` when unset, with PBKDF2-HMAC-SHA256; changing either ends all sessions)
 - `GRYVIA_COLLECTOR_URLS`, `GRYVIA_FLIGHT_TOKEN`, `GRYVIA_FLIGHT_COLLECTOR_NAMESPACE`, `GRYVIA_NETRA_URL`, `GRYVIA_NETRA_TOKEN`, `GRYVIA_NETRA_INSECURE`
 - `GRYVIA_TLS_CERT`, `GRYVIA_TLS_KEY`: serve HTTPS (the chart sets them)
 - `CORS_ALLOWED_ORIGINS`: comma-separated origins (default: the local dev origins)

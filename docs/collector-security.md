@@ -99,7 +99,7 @@ tls_config: {ca_file: /etc/prometheus/collector-ca.crt, server_name: gryvia-coll
 `collector.hostNetwork` stays `true` by default. From reading the collector and eBPF sources, the
 **only** thing that needs the host network namespace is attaching XDP/TCX programs to a host interface
 (`ebpf.interface` / `-iface`): `packet_filter`, `dns_tracker`, the cost tracker, the trace correlator,
-`roce_cnp` and `pfc_pause`. The loader resolves the interface with `net.InterfaceByName` in the pod's own
+`roce_cnp`, `pfc_pause`, `roce_ecn` and `xdp_mux`. The loader resolves the interface with `net.InterfaceByName` in the pod's own
 network namespace, where the host NIC does not exist. Nothing else depends on it: kprobes/tracepoints and
 uprobes are global to the kernel, `sockops`/`sk_msg` attach to a cgroup path, and no program filters on a
 network namespace. `hostPID` (and `/host/proc`, cgroup and bpffs mounts) are still required for pod
