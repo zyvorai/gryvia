@@ -95,7 +95,9 @@ def read_documents(root):
                     except ValueError:
                         continue
                     if isinstance(obj, dict):
-                        body = next((obj[k] for k in ("text", "content", "document") if isinstance(obj.get(k), str)), "")
+                        body = next(
+                            (obj[k] for k in ("text", "content", "document") if isinstance(obj.get(k), str)), ""
+                        )
                         if body.strip():
                             yield f"{rel}#{n}", body
                 continue
@@ -208,7 +210,7 @@ class Qdrant:
         return [c["name"] for c in (p.get("result") or {}).get("collections", [])]
 
     def aliases(self):
-        _, p = self.call("GET", "/collections/aliases")
+        _, p = self.call("GET", "/aliases")
         return {a["alias_name"]: a["collection_name"] for a in (p.get("result") or {}).get("aliases", [])}
 
     def create(self, name, dim):

@@ -83,7 +83,7 @@ jobs:
       - name: The ai-operator started the six ML controllers
         run: |
           source scripts/e2e-ml-lib.sh
-          check() { kubectl -n "$NS" logs -l app.kubernetes.io/component=ai-operator --tail=-1 | grep -q "\"controllerKind\":\"$1\""; }
+          check() { kubectl -n "$NS" logs -l app.kubernetes.io/component=ai-operator --tail=-1 | grep -c "\"controllerKind\":\"$1\"" >/dev/null; }
           for kind in GryviaWorkspace GryviaInferenceService GryviaModelRegistry GryviaWorkflow GryviaAutoTuner GryviaModelWatch; do
             wait_for "controller $kind started" 90 check "$kind"
           done
@@ -611,7 +611,7 @@ jobs:
             --set storageOperator.datasets.image="$TINY_JOB_IMAGE" --set storageOperator.datasets.defaultSize=64Mi
           kubectl -n gryvia-system rollout status deploy -l app.kubernetes.io/component=storage-operator --timeout=180s
           source scripts/e2e-ml-lib.sh
-          check() { kubectl -n "$NS" logs -l app.kubernetes.io/component=storage-operator --tail=-1 | grep -q '"controllerKind":"GryviaDataset"'; }
+          check() { kubectl -n "$NS" logs -l app.kubernetes.io/component=storage-operator --tail=-1 | grep -c '"controllerKind":"GryviaDataset"' >/dev/null; }
           wait_for "controller GryviaDataset started" 90 check
 
       - name: Datasets - stand-in file server
@@ -811,7 +811,7 @@ jobs:
           wait_for "token usage record written" 60 tokens_recorded
           assert_eq "output tokens" "$(gw /api/llm/usage .total.outputTokens)" 6
           assert_eq "record kind" "$(kubectl -n "$NS" get gryviausagerecords -l gryvia.io/usage-kind=tokens -o jsonpath='{.items[0].spec.job}')" "llm:tiny-chat"
-          curl -s http://localhost:18081/metrics | grep -q 'gryvia_llm_tokens_total{model="tiny-chat",tenant="gryvia-system",type="input"} 14'
+          curl -s http://localhost:18081/metrics | grep -c 'gryvia_llm_tokens_total{model="tiny-chat",tenant="gryvia-system",type="input"} 14' >/dev/null
           echo "ok: metrics"
 
           # A token quota already used up: the next request is refused.
@@ -845,7 +845,7 @@ jobs:
             --set aiOperator.rag.enabled=true --set aiOperator.rag.ingestImage=ghcr.io/zyvorai/gryvia-rag-ingest:dev
           kubectl -n gryvia-system rollout status deploy -l app.kubernetes.io/component=ai-operator --timeout=180s
           source scripts/e2e-ml-lib.sh
-          check() { kubectl -n "$NS" logs -l app.kubernetes.io/component=ai-operator --tail=-1 | grep -q '"controllerKind":"GryviaVectorIndex"'; }
+          check() { kubectl -n "$NS" logs -l app.kubernetes.io/component=ai-operator --tail=-1 | grep -c '"controllerKind":"GryviaVectorIndex"' >/dev/null; }
           wait_for "controller GryviaVectorIndex started" 90 check
 
           cat <<'EOF' > /tmp/e2e-embed.yaml
@@ -991,7 +991,7 @@ jobs:
             --set aiOperator.agents.enabled=true --set aiOperator.agents.image=ghcr.io/zyvorai/gryvia-agent-runtime:dev
           kubectl -n gryvia-system rollout status deploy -l app.kubernetes.io/component=ai-operator --timeout=180s
           source scripts/e2e-ml-lib.sh
-          check() { kubectl -n "$NS" logs -l app.kubernetes.io/component=ai-operator --tail=-1 | grep -q '"controllerKind":"GryviaAgent"'; }
+          check() { kubectl -n "$NS" logs -l app.kubernetes.io/component=ai-operator --tail=-1 | grep -c '"controllerKind":"GryviaAgent"' >/dev/null; }
           wait_for "controller GryviaAgent started" 90 check
 
           cat <<'EOF' > /tmp/e2e-agent-llm.yaml

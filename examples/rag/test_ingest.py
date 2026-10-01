@@ -84,9 +84,12 @@ def handler(fake):
             path = urlparse(self.path).path
             if path == "/collections":
                 return self.reply(200, {"result": {"collections": [{"name": n} for n in fake.collections]}})
-            if path == "/collections/aliases":
+            if path == "/aliases":
                 aliases = [{"alias_name": a, "collection_name": c} for a, c in fake.aliases.items()]
                 return self.reply(200, {"result": {"aliases": aliases}})
+            if path.startswith("/collections/"):
+                name = path.split("/")[2]
+                return self.reply(404, {"status": {"error": f"Not found: Collection `{name}` doesn't exist!"}})
             self.reply(404, {})
 
         def do_PUT(self):
@@ -175,7 +178,9 @@ class IngestTest(unittest.TestCase):
         points = self.fake.collections[target]["points"]
         self.assertEqual(len(points), out["chunks"])
         sources = {p["payload"]["source"] for p in points.values()}
-        self.assertEqual(sources, {"guide.md", "faq/answers.txt", "faq/page.html", "records.jsonl#1", "records.jsonl#4"})
+        self.assertEqual(
+            sources, {"guide.md", "faq/answers.txt", "faq/page.html", "records.jsonl#1", "records.jsonl#4"}
+        )
         page = next(p for p in points.values() if p["payload"]["source"] == "faq/page.html")
         self.assertEqual(page["payload"]["text"], "Budgets & chargeback")
         for p in points.values():
