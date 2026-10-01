@@ -23,6 +23,18 @@ gpuOperator:
   # ConfigMap (nvidiaPlatform.timeSlicing.configName, in the release namespace) and label nodes with it, so a policy's
   # maxPodsPerGPU is what the plugin is told. Off: nodes get the fixed key gryvia-time-slicing (the chart's replicas).
   devicePluginConfig: false
+  # Node-local GPU reset agent (DaemonSet on nodes labelled nvidia.com/gpu.present=true). A person annotates a cordoned,
+  # drained node with gryvia.io/gpu-reset-request=<id> (and optionally gryvia.io/gpu-reset-gpus=0,1); the agent records
+  # the outcome in gryvia.io/gpu-reset-result. DRY-RUN unless execute is true: then it runs `<nvidiaSmi> --gpu-reset`,
+  # which needs a runnable nvidia-smi (hostPath driverRoot) and a privileged container. Never cordons, drains or
+  # uncordons. Unverified on real GPUs. See docs/gpu-reset-agent.md.
+  resetAgent:
+    enabled: false
+    execute: false
+    pollInterval: 15s
+    # With execute: path of nvidia-smi inside the container and the host directory that provides it (mounted read-only).
+    nvidiaSmi: ""
+    driverRoot: ""
   image: {name: gryvia-gpu-operator, tag: ""}
   replicas: 1
   resources:

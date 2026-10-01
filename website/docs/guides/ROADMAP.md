@@ -42,7 +42,7 @@ Dormant simulation controllers have been removed for `GryviaSLA`, `GryviaAutoSca
 - Multi-cluster control plane and global scheduler
 - Verified inference serving (Triton, vLLM, TensorRT-LLM) managed by Gryvia: the controller exists, with a pod-count canary, but opt-in Gateway API weighted routing, custom GPU/RPS HPA metrics and Prometheus SLO gating of canaries are implemented; real-image/data-plane behaviour is not verified (see [inference serving](https://github.com/zyvorai/gryvia/blob/main/docs/inference-serving.md))
 - E-mail/PDF/pager delivery and payment-grade billing (budget Events, an opt-in signed budget-alert webhook (`quotaOperator.budgetWebhook`), the signed invoice webhook and metered showback/chargeback estimates are implemented)
-- GPU reset/driver reload/reboot via a verified node agent (opt-in quarantine and PDB-respecting drain are implemented)
+- A *verified* GPU reset, and driver reload/reboot (opt-in quarantine, PDB-respecting drain and an opt-in node-local reset agent, dry-run by default and unit-tested only, are implemented; see [docs/gpu-reset-agent.md](https://github.com/zyvorai/gryvia/blob/main/docs/gpu-reset-agent.md))
 - Payment processing and billing
 
 ## Open work

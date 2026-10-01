@@ -1,0 +1,117 @@
+{{- if and .Values.gpuOperator.enabled .Values.gpuOperator.resetAgent.enabled }}
+{{- if and .Values.gpuOperator.resetAgent.execute (not .Values.gpuOperator.resetAgent.nvidiaSmi) }}
+{{- fail "gpuOperator.resetAgent.execute requires gpuOperator.resetAgent.nvidiaSmi (and driverRoot to provide it)" }}
+{{- end }}
+# Node-local GPU reset agent. Dry-run unless resetAgent.execute. See docs/gpu-reset-agent.md.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "gryvia.fullname" . }}-gpu-reset-agent
+  namespace: {{ include "gryvia.namespace" . }}
+  labels:
+    {{- include "gryvia.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gpu-reset-agent
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "gryvia.fullname" . }}-gpu-reset-agent
+  labels:
+    {{- include "gryvia.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gpu-reset-agent
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "patch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "gryvia.fullname" . }}-gpu-reset-agent
+  labels:
+    {{- include "gryvia.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gpu-reset-agent
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "gryvia.fullname" . }}-gpu-reset-agent
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "gryvia.fullname" . }}-gpu-reset-agent
+    namespace: {{ include "gryvia.namespace" . }}
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "gryvia.fullname" . }}-gpu-reset-agent
+  namespace: {{ include "gryvia.namespace" . }}
+  labels:
+    {{- include "gryvia.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gpu-reset-agent
+spec:
+  selector:
+    matchLabels:
+      {{- include "gryvia.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: gpu-reset-agent
+  template:
+    metadata:
+      labels:
+        {{- include "gryvia.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: gpu-reset-agent
+    spec:
+      serviceAccountName: {{ include "gryvia.fullname" . }}-gpu-reset-agent
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+      tolerations:
+        # the node is cordoned/tainted when a reset is wanted; the agent must still run there
+        - operator: Exists
+      containers:
+        - name: agent
+          image: {{ include "gryvia.image" (dict "root" . "image" .Values.gpuOperator.image) | quote }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          command:
+            - /gpu-reset-agent
+          args:
+            - {{ printf "--poll=%s" .Values.gpuOperator.resetAgent.pollInterval | quote }}
+            {{- if .Values.gpuOperator.resetAgent.execute }}
+            - --execute=true
+            - {{ printf "--nvidia-smi=%s" .Values.gpuOperator.resetAgent.nvidiaSmi | quote }}
+            {{- end }}
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          resources:
+            limits: {cpu: 100m, memory: 64Mi}
+            requests: {cpu: 10m, memory: 32Mi}
+          securityContext:
+            {{- if .Values.gpuOperator.resetAgent.execute }}
+            privileged: true
+            {{- else }}
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+            {{- end }}
+          {{- if and .Values.gpuOperator.resetAgent.execute .Values.gpuOperator.resetAgent.driverRoot }}
+          volumeMounts:
+            - name: driver-root
+              mountPath: {{ .Values.gpuOperator.resetAgent.driverRoot | quote }}
+              readOnly: true
+          {{- end }}
+      {{- if and .Values.gpuOperator.resetAgent.execute .Values.gpuOperator.resetAgent.driverRoot }}
+      volumes:
+        - name: driver-root
+          hostPath:
+            path: {{ .Values.gpuOperator.resetAgent.driverRoot | quote }}
+      {{- end }}
+{{- end }}
