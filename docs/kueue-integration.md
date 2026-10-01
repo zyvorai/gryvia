@@ -205,7 +205,7 @@ and never holds part of the quota. Limits:
 - Multi-cluster (MultiKueue) is out of scope.
 - CPU and memory are not accounted (see above); only the quota resource is.
 - Kueue's DRF/fair-sharing modes, `admissionFairSharing` and hierarchical cohorts are not configured.
-- The in-tree `pkg/scheduler/gang.go` and `pkg/queue` are unused library code, superseded by this.
+- The unused in-tree gang scheduler and queue packages were removed; Kueue replaces them.
 
 ## Troubleshooting
 

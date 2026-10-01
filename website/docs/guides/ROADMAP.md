@@ -28,7 +28,7 @@ The project is alpha: the API is `gryvia.io/v1alpha1` and can change. For what e
 - **eBPF collector.** 47 CO-RE programs. Compile and pass the kernel verifier on Linux 7.0 x86_64 and in CI; arm64 is compile-only. XDP chaining (`-xdp-mux`) is tested in CI on the loopback interface only. Off by default, runs privileged with host networking, and its image is not part of the release images. GPU, NCCL, RDMA and GPUDirect Storage behaviour is unverified on hardware. Flight Recorder and fabric signals are node-local previews.
 - **Fabric signal CRD (`gryviafabricsignals`).** CRD and collector endpoint exist; the collector can patch its status (`-publish-fabric-status`, opt-in) and, with `-fabric-status-per-node` and the ai-operator's `--merge-fabric-signals`, per-node entries are folded into the top-level status. The penalty function in the scheduler package is used only by the opt-in fabric-aware scheduling. None of it has run on real GPU or RDMA hardware.
 - **Terraform and Ansible automation** under the repository's infrastructure directories: marked experimental and incomplete; they do not install Kubernetes, a CNI or GPU drivers.
-- **Scheduling library code.** The in-tree gang scheduler (`pkg/scheduler/gang.go`), the DRF queue (`pkg/queue`) and elastic scaling exist as Go packages, but nothing calls them. Gang admission, queueing and preemption are done by Kueue instead, opt-in ([Kueue integration](https://github.com/zyvorai/gryvia/blob/main/docs/kueue-integration.md)): unit-tested with fake clients, kind workflow written but not yet run, never run on GPUs.
+- **No in-tree gang, queue or elastic scheduler.** The unused gang scheduler, DRF queue and elastic helpers were removed. Gang admission, queueing and preemption are done by Kueue instead, opt-in ([Kueue integration](https://github.com/zyvorai/gryvia/blob/main/docs/kueue-integration.md)): unit-tested with fake clients, kind workflow written but not yet run, never run on GPUs.
 
 ### Legacy APIs without supported runtime behavior
 
@@ -50,7 +50,7 @@ Dormant simulation controllers have been removed for `GryviaSLA`, `GryviaAutoSca
 Listed roughly in the order they would make the platform more useful; no dates.
 
 1. **Verify on real hardware.** Run the operators, the eBPF collector and the RDMA paths on GPU and InfiniBand or RoCE nodes and record measured results. Until then storage, NCCL and training performance are unknown: the earlier targets (for example 20 GB/s storage, 30 percent faster training, 99.9 percent uptime) were goals, never measurements.
-2. **Prove the Kueue integration** (run the kind workflow, then a GPU cluster) and wire what is still library code (the fabric penalty; topology-aware placement; elastic training). The decision to integrate Kueue rather than build queueing in-tree is made.
+2. **Prove the Kueue integration** (run the kind workflow, then a GPU cluster) and wire what is still unwired (the fabric penalty; topology-aware placement); elastic training is not implemented. The decision to integrate Kueue rather than build queueing in-tree is made.
 3. **Prove the ML controllers** (run `e2e-ml.yml`, then real Jupyter, vLLM and Triton images on GPUs) and decide the kinds that have no controller: build them or remove them.
 4. **Reliability of jobs**: validate cooperative checkpoint recovery with real distributed trainers and implement elastic coordination.
 5. **Cost controls**: validate budget Events and actual-usage chargeback on a real cluster, then add external notification/report delivery.

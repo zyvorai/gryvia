@@ -16,7 +16,7 @@ Overview of Gryvia's advanced capability areas, with what is implemented and wha
 | Priority and preemption | `GryviaAIJob.spec.priority`, Kueue | Opt-in via the Kueue integration (`--kueue-integration`): priority maps to a WorkloadPriorityClass and preempts within a queue, victims are requeued; unit-tested, e2e unverified ([details](https://github.com/zyvorai/gryvia/blob/main/docs/kueue-integration.md)). Without it `spec.priority` is validated but not acted on. `GryviaPriority` is CRD only |
 | ML workflows | AutoTuner, Workflow, ModelRegistry, InferenceService, Workspace | Controllers registered in the ai-operator (on by default); unit-tested, kind e2e with tiny CPU images authored and not yet run, nothing on GPUs; see [ML Workflows](ML_WORKFLOWS.md) |
 | Network intelligence | 10 kinds | Running via the network-intelligence operator (own chart); eBPF collector off by default; see [Network Intelligence](NETWORK_INTELLIGENCE.md) |
-| Advanced scheduling | | Mostly library code; see [Scheduling](SCHEDULING.md) |
+| Advanced scheduling | | Kueue-backed and opt-in; see [Scheduling](SCHEDULING.md) |
 | OIDC/SSO | gateway | Implemented in the gateway; not verified against a real identity provider |
 | SDKs | | Python REST client and Go Kubernetes client, from source |
 
@@ -407,7 +407,7 @@ For full documentation, CRD examples, and CLI commands, see the **[Network Intel
 
 ## Advanced Scheduling
 
-What runs: GPU-aware node selection and a validating admission webhook (quota and SKU policy, fails open). Opt-in and Kueue-backed (`--kueue-integration`; unit-tested, kind e2e written but unverified): gang admission, per-tenant queues and quota with borrowing, priority preemption ([Kueue integration](https://github.com/zyvorai/gryvia/blob/main/docs/kueue-integration.md)). Library code only, not called by anything: the in-tree gang scheduler, the DRF queue, elastic scaling and the mutating NCCL-injection webhook. Backfill is not implemented.
+What runs: GPU-aware node selection and a validating admission webhook (quota and SKU policy, fails open). Opt-in and Kueue-backed (`--kueue-integration`; unit-tested, kind e2e written but unverified): gang admission, per-tenant queues and quota with borrowing, priority preemption ([Kueue integration](https://github.com/zyvorai/gryvia/blob/main/docs/kueue-integration.md)). Not called by anything: the mutating NCCL-injection webhook. Not implemented: an in-tree gang scheduler, DRF queue and elastic scaling (unused code for these was removed). Backfill is not implemented.
 
 For details, see the **[Scheduling Guide](SCHEDULING.md)**.
 

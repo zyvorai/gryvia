@@ -46,8 +46,7 @@ running containers. It is early: see [What works today](#what-works-today) befor
 Jobs are checked and scored against GPU type, RDMA/SR-IOV labels, NVLink/NVSwitch interconnect and free GPUs, then run
 as an Indexed batch Job (training, fine-tuning, evaluation: they complete) or a StatefulSet (inference), pinned by node
 selector. Gang admission, quota borrowing and priority preemption come from the opt-in Kueue integration (off by default;
-kind e2e fixed after a failed first run, not yet confirmed green, nothing on GPUs); the operator's own gang, DRF and preemption library code is still not
-called.<br>
+kind e2e fixed after a failed first run, not yet confirmed green, nothing on GPUs); the operator has no in-tree gang, DRF or preemption scheduler.<br>
 [Scheduling guide](website/docs/guides/SCHEDULING.md)
 
 </td>
@@ -251,8 +250,8 @@ ready, have the wrong `gryvia.io/gpu` type, lack the requested RDMA/SR-IOV label
 memory, plus CPU/memory) and takes the top `distributed.nodes`. It records that choice in `status.nodesAllocated` (and
 keeps the job Pending, retrying every 30 s, when no node qualifies); the workload's pods (Job or StatefulSet) are constrained by node
 selector (`gryvia.io/gpu`, `gryvia.io/rdma`, `spec.nodeSelector`) and placed by the default Kubernetes scheduler. The
-gang scheduler, DRF queues, preemption and elastic scaling in `operators/ai-operator/pkg/` (Kueue, when its integration is on, does gang admission, borrowing and priority preemption instead; unverified on a cluster) and the standalone NVLink/NUMA
-topology optimizer in `scheduler/` are not called by the running operator. `FabricPenalty` (eBPF fabric signals) is a helper that nothing calls yet. Detail:
+There is no in-tree gang scheduler, DRF queue, preemption or elastic scaling (Kueue, when its integration is on, does gang admission, borrowing and priority preemption instead; unverified on a cluster), and the standalone NVLink/NUMA
+topology optimizer in `scheduler/` is not called by the running operator. `FabricPenalty` (eBPF fabric signals) is a helper that nothing calls yet. Detail:
 [Scheduling guide](website/docs/guides/SCHEDULING.md).
 
 ---
