@@ -122,6 +122,27 @@ type DistributedConfig struct {
 
 	// Backend (nccl, gloo, mpi)
 	Backend string `json:"backend,omitempty"`
+
+	// Elastic lets a PyTorch (torchrun / torchelastic) job run with fewer workers than requested.
+	// Run-to-completion Jobs only. See docs/elastic-training.md for what this does and does not do.
+	Elastic *ElasticConfig `json:"elastic,omitempty"`
+}
+
+// ElasticConfig sets the lower bound of an elastic job; the upper bound is distributed.nodes (so
+// quota and admission, which count distributed.nodes, stay correct). The Indexed Job asks for
+// distributed.nodes workers, the launcher gets NNODES=minNodes:nodes, and the Job is declared
+// successful once minNodes indexes have succeeded.
+type ElasticConfig struct {
+	// MinNodes is the fewest workers the training can run with (at least 1, at most distributed.nodes).
+	MinNodes int32 `json:"minNodes"`
+}
+
+// ElasticBounds returns the worker bounds and true when the job is elastic. max is Distributed.Nodes.
+func (d *DistributedConfig) ElasticBounds() (min, max int32, ok bool) {
+	if d == nil || !d.Enabled || d.Elastic == nil {
+		return 0, 0, false
+	}
+	return d.Elastic.MinNodes, d.Nodes, true
 }
 
 // GryviaAIJobStatus defines the observed state of GryviaAIJob

@@ -160,3 +160,31 @@ func TestGPUsPerPlacedNodeMatchesThePlacement(t *testing.T) {
 		t.Errorf("distributed without GpusPerNode: %d, want spec.gpus (2), as findOptimalNodes always did", got)
 	}
 }
+
+// Elastic placement starts as soon as minNodes qualify and takes as many as are free up to maxNodes.
+func TestElasticPlacementTakesBetweenMinAndMax(t *testing.T) {
+	ctx := context.Background()
+	job := distributedJob("el", 4, 8)
+	job.Spec.Distributed.Elastic = &gryviav1.ElasticConfig{MinNodes: 2}
+
+	three := heldClient(t, heldNode("n1", "8"), heldNode("n2", "8"), heldNode("n3", "8")).Build()
+	if nodes, err := FindOptimalNodes(ctx, three, job); err != nil || len(nodes) != 3 {
+		t.Errorf("3 free nodes: got %v err=%v, want 3 (between min 2 and max 4)", nodes, err)
+	}
+	two := heldClient(t, heldNode("n1", "8"), heldNode("n2", "8")).Build()
+	if nodes, err := FindOptimalNodes(ctx, two, job); err != nil || len(nodes) != 2 {
+		t.Errorf("2 free nodes: got %v err=%v, want 2 (the minimum)", nodes, err)
+	}
+	one := heldClient(t, heldNode("n1", "8")).Build()
+	if _, err := FindOptimalNodes(ctx, one, job); err == nil {
+		t.Error("1 node is below minNodes and must not place")
+	}
+	five := heldClient(t, heldNode("n1", "8"), heldNode("n2", "8"), heldNode("n3", "8"), heldNode("n4", "8"), heldNode("n5", "8")).Build()
+	if nodes, _ := FindOptimalNodes(ctx, five, job); len(nodes) != 4 {
+		t.Errorf("5 free nodes: got %d, want the maximum 4", len(nodes))
+	}
+	fixed := distributedJob("fx", 4, 8)
+	if _, err := FindOptimalNodes(ctx, three, fixed); err == nil {
+		t.Error("a non-elastic job needing 4 nodes must still fail with 3")
+	}
+}

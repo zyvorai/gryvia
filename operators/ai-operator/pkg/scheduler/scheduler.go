@@ -107,6 +107,16 @@ func findOptimalNodes(ctx context.Context, k8sClient client.Client, job *gryviav
 	if job.Spec.Distributed != nil && job.Spec.Distributed.Enabled {
 		requiredNodes = int(job.Spec.Distributed.Nodes)
 	}
+	if min, max, ok := job.Spec.Distributed.ElasticBounds(); ok {
+		// Elastic: start as soon as minNodes qualify, and take as many as are available up to maxNodes.
+		requiredNodes = int(min)
+		if want := int(max); len(scoredNodes) > requiredNodes {
+			requiredNodes = len(scoredNodes)
+			if requiredNodes > want {
+				requiredNodes = want
+			}
+		}
+	}
 
 	if len(scoredNodes) < requiredNodes {
 		return Placement{}, fmt.Errorf("not enough nodes: need %d, found %d", requiredNodes, len(scoredNodes))

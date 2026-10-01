@@ -147,6 +147,7 @@ func (r *GryviaAIJobReconciler) buildJob(job *gryviav1.GryviaAIJob) (*batchv1.Jo
 			BackoffLimit:          &backoff,
 			ActiveDeadlineSeconds: deadline,
 			Suspend:               &suspend,
+			SuccessPolicy:         elasticSuccessPolicy(job),
 			// Evictions, drains and preemptions (DisruptionTarget) are not the job's fault:
 			// they replace the pod without consuming backoffLimit. Needs Kubernetes >= 1.26
 			// (podFailurePolicy is unverified on older clusters).

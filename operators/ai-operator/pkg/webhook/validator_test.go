@@ -60,6 +60,18 @@ func TestValidateJob(t *testing.T) {
 		{"distributed too big", func(j *gryviav1.GryviaAIJob) {
 			j.Spec.Distributed = &gryviav1.DistributedConfig{Enabled: true, Nodes: 200, GpusPerNode: 8}
 		}, "unreasonably large"},
+		{"elastic ok", func(j *gryviav1.GryviaAIJob) {
+			j.Spec.Distributed = &gryviav1.DistributedConfig{Enabled: true, Nodes: 4, Elastic: &gryviav1.ElasticConfig{MinNodes: 2}}
+		}, ""},
+		{"elastic min zero", func(j *gryviav1.GryviaAIJob) {
+			j.Spec.Distributed = &gryviav1.DistributedConfig{Enabled: true, Nodes: 4, Elastic: &gryviav1.ElasticConfig{}}
+		}, "distributed.elastic.minNodes must be between 1 and distributed.nodes (4)"},
+		{"elastic min above nodes", func(j *gryviav1.GryviaAIJob) {
+			j.Spec.Distributed = &gryviav1.DistributedConfig{Enabled: true, Nodes: 4, Elastic: &gryviav1.ElasticConfig{MinNodes: 5}}
+		}, "distributed.elastic.minNodes must be between 1 and distributed.nodes (4)"},
+		{"elastic tensorflow", func(j *gryviav1.GryviaAIJob) {
+			j.Spec.Distributed = &gryviav1.DistributedConfig{Enabled: true, Nodes: 4, Framework: "tensorflow", Elastic: &gryviav1.ElasticConfig{MinNodes: 1}}
+		}, "distributed.elastic is for PyTorch"},
 		{"distributed disabled ignored", func(j *gryviav1.GryviaAIJob) {
 			j.Spec.Distributed = &gryviav1.DistributedConfig{Framework: "caffe"}
 		}, ""},
