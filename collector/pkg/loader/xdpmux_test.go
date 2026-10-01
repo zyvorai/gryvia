@@ -223,7 +223,14 @@ func TestManagerXDPChainOnLoopback(t *testing.T) {
 		}
 	}
 
-	// Real packets: UDP to 4791 over loopback, first payload byte 0x81 (a CNP opcode).
+	// Real packets: UDP to 4791 over loopback, first payload byte 0x81 (a CNP opcode). A listener on
+	// the port keeps the kernel from answering with ICMP port-unreachable, which would make the
+	// connected sender's later writes fail with "connection refused".
+	listener, err := net.ListenPacket("udp", "127.0.0.1:4791")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
 	conn, err := net.Dial("udp", "127.0.0.1:4791")
 	if err != nil {
 		t.Fatal(err)
