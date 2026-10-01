@@ -95,19 +95,19 @@ func (r *GryviaGPUSharingPolicyReconciler) reconcileGPUSharing(ctx context.Conte
 	policy.Status.EffectiveGPUs = r.calculateEffectiveGPUs(policy, totalGPUs)
 
 	// Configure sharing on matching nodes based on strategy
+	var res sharingResult
 	switch policy.Spec.Strategy {
 	case "time-slicing":
-		if err := r.configureTimeSlicing(ctx, policy, matchingNodes); err != nil {
-			log.Error(err, "Failed to configure time-slicing")
-		}
+		res = r.configureTimeSlicing(ctx, policy, matchingNodes)
 	case "mig":
-		if err := r.configureMIG(ctx, policy, matchingNodes); err != nil {
-			log.Error(err, "Failed to configure MIG")
-		}
+		res = r.configureMIG(ctx, policy, matchingNodes)
 	case "fractional":
-		if err := r.configureFractional(ctx, policy, matchingNodes); err != nil {
-			log.Error(err, "Failed to configure fractional GPU")
-		}
+		res = r.configureFractional(ctx, policy, matchingNodes)
+	default:
+		res = sharingResult{Disabled: true}
+	}
+	if err := res.err(); err != nil {
+		log.Error(err, "Failed to configure GPU sharing", "strategy", policy.Spec.Strategy)
 	}
 
 	// Track per-pod GPU utilization
@@ -119,10 +119,9 @@ func (r *GryviaGPUSharingPolicyReconciler) reconcileGPUSharing(ctx context.Conte
 	// Enforce fair sharing with utilization limits
 	r.enforceFairSharing(ctx, policy, matchingNodes)
 
-	// Update condition
-	r.updateSharingCondition(policy, "Ready", metav1.ConditionTrue, "SharingActive",
-		fmt.Sprintf("GPU sharing policy applied: %d physical GPUs -> %d effective GPUs",
-			policy.Status.TotalGPUs, policy.Status.EffectiveGPUs))
+	// Update condition from what was actually written to the nodes
+	status, reason, msg := sharingCondition(policy, res, len(matchingNodes))
+	r.updateSharingCondition(policy, "Ready", status, reason, msg)
 
 	// Update status
 	if err := r.Status().Update(ctx, policy); err != nil {
@@ -131,6 +130,31 @@ func (r *GryviaGPUSharingPolicyReconciler) reconcileGPUSharing(ctx context.Conte
 	}
 
 	return ctrl.Result{RequeueAfter: defaultSharingReconcileInterval}, nil
+}
+
+// sharingCondition maps a configure outcome to the Ready condition. Ready is
+// True only when every matching node was labelled; the effective-GPU figure is
+// an estimate computed from the policy, not a measurement of the device plugin.
+func sharingCondition(policy *gryviav1.GryviaGPUSharingPolicy, res sharingResult, matched int) (metav1.ConditionStatus, string, string) {
+	switch {
+	case res.Disabled:
+		return metav1.ConditionFalse, "StrategyNotEnabled",
+			fmt.Sprintf("strategy %q is not enabled in the policy; no node labels were written", policy.Spec.Strategy)
+	case len(res.Failed) > 0:
+		return metav1.ConditionFalse, "LabelWriteFailed",
+			fmt.Sprintf("labelled %d of %d nodes; write failed on %v", res.Applied, matched, res.Failed)
+	case matched == 0:
+		return metav1.ConditionFalse, "NoMatchingNodes", "no GryviaGpuNode matches the policy nodeSelector"
+	case res.Applied == 0:
+		return metav1.ConditionFalse, "NodesNotFound",
+			fmt.Sprintf("none of the %d matching GryviaGpuNodes has a Kubernetes Node", matched)
+	}
+	msg := fmt.Sprintf("labelled %d of %d nodes; estimated %d effective GPUs from %d physical (computed from the policy; the NVIDIA device plugin must apply the matching config)",
+		res.Applied, matched, policy.Status.EffectiveGPUs, policy.Status.TotalGPUs)
+	if len(res.Missing) > 0 {
+		msg += fmt.Sprintf("; no Kubernetes Node for %v", res.Missing)
+	}
+	return metav1.ConditionTrue, "LabelsApplied", msg
 }
 
 func (r *GryviaGPUSharingPolicyReconciler) findMatchingNodes(ctx context.Context, policy *gryviav1.GryviaGPUSharingPolicy) ([]gryviav1.GryviaGpuNode, error) {
@@ -216,119 +240,96 @@ func (r *GryviaGPUSharingPolicyReconciler) calculateEffectiveGPUs(policy *gryvia
 	}
 }
 
-func (r *GryviaGPUSharingPolicyReconciler) configureTimeSlicing(ctx context.Context, policy *gryviav1.GryviaGPUSharingPolicy, nodes []gryviav1.GryviaGpuNode) error {
-	log := r.Log.WithValues("policy", policy.Name, "strategy", "time-slicing")
+// sharingResult says how many nodes a configure step labelled and why the rest
+// were not, so the policy condition reflects what was actually written.
+type sharingResult struct {
+	Applied  int
+	Missing  []string // GryviaGpuNodes whose Kubernetes Node does not exist
+	Failed   []string // nodes where the label write failed
+	Disabled bool     // the strategy block is absent or not enabled
+}
 
+func (res sharingResult) err() error {
+	if len(res.Failed) == 0 {
+		return nil
+	}
+	return fmt.Errorf("label write failed on %d node(s): %v", len(res.Failed), res.Failed)
+}
+
+// labelNodes applies mutate to the Kubernetes Node behind each GryviaGpuNode and
+// records the outcome per node.
+func (r *GryviaGPUSharingPolicyReconciler) labelNodes(ctx context.Context, log logr.Logger, nodes []gryviav1.GryviaGpuNode, mutate func(map[string]string)) sharingResult {
+	var res sharingResult
+	for _, node := range nodes {
+		k8sNode := &corev1.Node{}
+		if err := r.Get(ctx, client.ObjectKey{Name: node.Spec.NodeName}, k8sNode); err != nil {
+			if errors.IsNotFound(err) {
+				res.Missing = append(res.Missing, node.Spec.NodeName)
+				continue
+			}
+			log.Error(err, "Failed to get node", "node", node.Spec.NodeName)
+			res.Failed = append(res.Failed, node.Spec.NodeName)
+			continue
+		}
+		if k8sNode.Labels == nil {
+			k8sNode.Labels = make(map[string]string)
+		}
+		mutate(k8sNode.Labels)
+		if err := r.Update(ctx, k8sNode); err != nil {
+			log.Error(err, "Failed to label node", "node", node.Spec.NodeName)
+			res.Failed = append(res.Failed, node.Spec.NodeName)
+			continue
+		}
+		res.Applied++
+	}
+	return res
+}
+
+func (r *GryviaGPUSharingPolicyReconciler) configureTimeSlicing(ctx context.Context, policy *gryviav1.GryviaGPUSharingPolicy, nodes []gryviav1.GryviaGpuNode) sharingResult {
 	if policy.Spec.TimeSlicing == nil || !policy.Spec.TimeSlicing.Enabled {
-		return nil
+		return sharingResult{Disabled: true}
 	}
-
-	for _, node := range nodes {
-		// Label the node with time-slicing configuration
-		k8sNode := &corev1.Node{}
-		if err := r.Get(ctx, client.ObjectKey{Name: node.Spec.NodeName}, k8sNode); err != nil {
-			if errors.IsNotFound(err) {
-				continue
-			}
-			log.Error(err, "Failed to get node", "node", node.Spec.NodeName)
-			continue
-		}
-
-		if k8sNode.Labels == nil {
-			k8sNode.Labels = make(map[string]string)
-		}
-
-		// Apply time-slicing labels. The NVIDIA device plugin reads nvidia.com/device-plugin.config.
-		k8sNode.Labels["gryvia.io/gpu-sharing"] = "time-slicing"
-		k8sNode.Labels["gryvia.io/max-pods-per-gpu"] = fmt.Sprintf("%d", policy.Spec.TimeSlicing.MaxPodsPerGPU)
-		k8sNode.Labels["nvidia.com/device-plugin.config"] = "gryvia-time-slicing"
-
-		if err := r.Update(ctx, k8sNode); err != nil {
-			log.Error(err, "Failed to label node for time-slicing", "node", node.Spec.NodeName)
-		}
-	}
-
-	return nil
+	log := r.Log.WithValues("policy", policy.Name, "strategy", "time-slicing")
+	return r.labelNodes(ctx, log, nodes, func(l map[string]string) {
+		// The NVIDIA device plugin reads nvidia.com/device-plugin.config.
+		l["gryvia.io/gpu-sharing"] = "time-slicing"
+		l["gryvia.io/max-pods-per-gpu"] = fmt.Sprintf("%d", policy.Spec.TimeSlicing.MaxPodsPerGPU)
+		l["nvidia.com/device-plugin.config"] = "gryvia-time-slicing"
+	})
 }
 
-func (r *GryviaGPUSharingPolicyReconciler) configureMIG(ctx context.Context, policy *gryviav1.GryviaGPUSharingPolicy, nodes []gryviav1.GryviaGpuNode) error {
-	log := r.Log.WithValues("policy", policy.Name, "strategy", "mig")
-
+func (r *GryviaGPUSharingPolicyReconciler) configureMIG(ctx context.Context, policy *gryviav1.GryviaGPUSharingPolicy, nodes []gryviav1.GryviaGpuNode) sharingResult {
 	if policy.Spec.MIG == nil || !policy.Spec.MIG.Enabled {
-		return nil
+		return sharingResult{Disabled: true}
 	}
-
-	for _, node := range nodes {
-		k8sNode := &corev1.Node{}
-		if err := r.Get(ctx, client.ObjectKey{Name: node.Spec.NodeName}, k8sNode); err != nil {
-			if errors.IsNotFound(err) {
-				continue
-			}
-			log.Error(err, "Failed to get node", "node", node.Spec.NodeName)
-			continue
-		}
-
-		if k8sNode.Labels == nil {
-			k8sNode.Labels = make(map[string]string)
-		}
-
-		// Apply MIG labels. nvidia.com/mig.config is what the GPU Operator MIG manager acts on.
+	log := r.Log.WithValues("policy", policy.Name, "strategy", "mig")
+	return r.labelNodes(ctx, log, nodes, func(l map[string]string) {
+		// nvidia.com/mig.config is what the GPU Operator MIG manager acts on.
 		// The first profile name must be a mig-parted config (for example all-1g.10gb).
-		k8sNode.Labels["gryvia.io/gpu-sharing"] = "mig"
-		k8sNode.Labels["gryvia.io/mig-enabled"] = "true"
-
+		l["gryvia.io/gpu-sharing"] = "mig"
+		l["gryvia.io/mig-enabled"] = "true"
 		for i, profile := range policy.Spec.MIG.Profiles {
-			labelKey := fmt.Sprintf("gryvia.io/mig-%s", profile.Name)
-			k8sNode.Labels[labelKey] = fmt.Sprintf("%d", profile.Count)
+			l[fmt.Sprintf("gryvia.io/mig-%s", profile.Name)] = fmt.Sprintf("%d", profile.Count)
 			if i == 0 && profile.Name != "" {
-				k8sNode.Labels["nvidia.com/mig.config"] = profile.Name
+				l["nvidia.com/mig.config"] = profile.Name
 			}
 		}
-
-		if err := r.Update(ctx, k8sNode); err != nil {
-			log.Error(err, "Failed to label node for MIG", "node", node.Spec.NodeName)
-		}
-	}
-
-	return nil
+	})
 }
 
-func (r *GryviaGPUSharingPolicyReconciler) configureFractional(ctx context.Context, policy *gryviav1.GryviaGPUSharingPolicy, nodes []gryviav1.GryviaGpuNode) error {
-	log := r.Log.WithValues("policy", policy.Name, "strategy", "fractional")
-
+func (r *GryviaGPUSharingPolicyReconciler) configureFractional(ctx context.Context, policy *gryviav1.GryviaGPUSharingPolicy, nodes []gryviav1.GryviaGpuNode) sharingResult {
 	if policy.Spec.FractionalGPU == nil || !policy.Spec.FractionalGPU.Enabled {
-		return nil
+		return sharingResult{Disabled: true}
 	}
-
-	for _, node := range nodes {
-		k8sNode := &corev1.Node{}
-		if err := r.Get(ctx, client.ObjectKey{Name: node.Spec.NodeName}, k8sNode); err != nil {
-			if errors.IsNotFound(err) {
-				continue
-			}
-			log.Error(err, "Failed to get node", "node", node.Spec.NodeName)
-			continue
+	log := r.Log.WithValues("policy", policy.Name, "strategy", "fractional")
+	return r.labelNodes(ctx, log, nodes, func(l map[string]string) {
+		l["gryvia.io/gpu-sharing"] = "fractional"
+		l["gryvia.io/gpu-granularity"] = policy.Spec.FractionalGPU.Granularity
+		if o := policy.Spec.FractionalGPU.Oversubscription; o != nil && o.Enabled {
+			l["gryvia.io/gpu-oversubscription"] = "true"
+			l["gryvia.io/gpu-oversubscription-ratio"] = fmt.Sprintf("%.1f", o.MaxRatio)
 		}
-
-		if k8sNode.Labels == nil {
-			k8sNode.Labels = make(map[string]string)
-		}
-
-		// Apply fractional GPU labels
-		k8sNode.Labels["gryvia.io/gpu-sharing"] = "fractional"
-		k8sNode.Labels["gryvia.io/gpu-granularity"] = policy.Spec.FractionalGPU.Granularity
-
-		if policy.Spec.FractionalGPU.Oversubscription != nil && policy.Spec.FractionalGPU.Oversubscription.Enabled {
-			k8sNode.Labels["gryvia.io/gpu-oversubscription"] = "true"
-			k8sNode.Labels["gryvia.io/gpu-oversubscription-ratio"] = fmt.Sprintf("%.1f", policy.Spec.FractionalGPU.Oversubscription.MaxRatio)
-		}
-
-		if err := r.Update(ctx, k8sNode); err != nil {
-			log.Error(err, "Failed to label node for fractional GPU", "node", node.Spec.NodeName)
-		}
-	}
-
-	return nil
+	})
 }
 
 func (r *GryviaGPUSharingPolicyReconciler) trackPerPodUtilization(ctx context.Context, policy *gryviav1.GryviaGPUSharingPolicy, nodes []gryviav1.GryviaGpuNode) {

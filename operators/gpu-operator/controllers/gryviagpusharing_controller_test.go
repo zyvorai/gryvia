@@ -2,6 +2,8 @@ package controllers
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -10,6 +12,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	gryviav1 "github.com/zyvorai/gryvia/operators/gpu-operator/api/v1"
 )
@@ -135,5 +138,93 @@ func TestSharingDisabledBlockWritesNoLabels(t *testing.T) {
 	)
 	if l := nodeLabels(t, c, "node-1"); len(l) != 0 {
 		t.Errorf("a disabled policy labelled the node: %v", l)
+	}
+}
+
+func readyCondition(t *testing.T, p *gryviav1.GryviaGPUSharingPolicy) metav1.Condition {
+	t.Helper()
+	for _, c := range p.Status.Conditions {
+		if c.Type == "Ready" {
+			return c
+		}
+	}
+	t.Fatalf("no Ready condition: %v", p.Status.Conditions)
+	return metav1.Condition{}
+}
+
+func timeSlicingPolicy(name string, enabled bool) *gryviav1.GryviaGPUSharingPolicy {
+	return &gryviav1.GryviaGPUSharingPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Spec: gryviav1.GryviaGPUSharingPolicySpec{
+			Strategy:    "time-slicing",
+			TimeSlicing: &gryviav1.GPUTimeSlicingConfig{Enabled: enabled, MaxPodsPerGPU: 4},
+		},
+	}
+}
+
+// Ready=True only after the labels were written, and the message says the GPU figure is an estimate.
+func TestSharingReadyTrueWhenLabelsWritten(t *testing.T) {
+	_, got := reconcileSharing(t, timeSlicingPolicy("ok", true),
+		sharingGpuNode("gpu-1", "node-1", "A100", 2),
+		&corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1"}},
+	)
+	c := readyCondition(t, got)
+	if c.Status != metav1.ConditionTrue || c.Reason != "LabelsApplied" {
+		t.Errorf("Ready = %s/%s, want True/LabelsApplied (%s)", c.Status, c.Reason, c.Message)
+	}
+	if !strings.Contains(c.Message, "estimated") {
+		t.Errorf("message should call the GPU figure an estimate: %q", c.Message)
+	}
+}
+
+// A disabled strategy block must not report Ready.
+func TestSharingNotReadyWhenStrategyDisabled(t *testing.T) {
+	_, got := reconcileSharing(t, timeSlicingPolicy("off", false),
+		sharingGpuNode("gpu-1", "node-1", "A100", 1),
+		&corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1"}},
+	)
+	if c := readyCondition(t, got); c.Status != metav1.ConditionFalse || c.Reason != "StrategyNotEnabled" {
+		t.Errorf("Ready = %s/%s, want False/StrategyNotEnabled", c.Status, c.Reason)
+	}
+}
+
+// No Kubernetes Node behind the GryviaGpuNode means nothing was labelled, so not Ready.
+func TestSharingNotReadyWhenNodeMissing(t *testing.T) {
+	_, got := reconcileSharing(t, timeSlicingPolicy("missing", true),
+		sharingGpuNode("gpu-1", "ghost", "A100", 1),
+	)
+	if c := readyCondition(t, got); c.Status != metav1.ConditionFalse || c.Reason != "NodesNotFound" {
+		t.Errorf("Ready = %s/%s, want False/NodesNotFound", c.Status, c.Reason)
+	}
+}
+
+// A failed label write must surface as Ready=False, not be swallowed.
+func TestSharingNotReadyWhenLabelWriteFails(t *testing.T) {
+	policy := timeSlicingPolicy("fail", true)
+	scheme := newGpuNodeTestScheme()
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(policy, sharingGpuNode("gpu-1", "node-1", "A100", 1),
+			&corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1"}}).
+		WithStatusSubresource(&gryviav1.GryviaGPUSharingPolicy{}).
+		WithInterceptorFuncs(interceptor.Funcs{
+			Update: func(ctx context.Context, cl client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
+				if _, ok := obj.(*corev1.Node); ok {
+					return fmt.Errorf("forbidden: nodes is forbidden")
+				}
+				return cl.Update(ctx, obj, opts...)
+			},
+		}).
+		Build()
+	r := &GryviaGPUSharingPolicyReconciler{Client: c, Scheme: scheme, Log: ctrl.Log.WithName("test")}
+	if _, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Name: "fail"}}); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	got := &gryviav1.GryviaGPUSharingPolicy{}
+	if err := c.Get(context.Background(), types.NamespacedName{Name: "fail"}, got); err != nil {
+		t.Fatal(err)
+	}
+	if cond := readyCondition(t, got); cond.Status != metav1.ConditionFalse || cond.Reason != "LabelWriteFailed" {
+		t.Errorf("Ready = %s/%s, want False/LabelWriteFailed (%s)", cond.Status, cond.Reason, cond.Message)
 	}
 }
