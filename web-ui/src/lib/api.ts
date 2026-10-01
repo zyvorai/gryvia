@@ -8,6 +8,7 @@ import type { Budget } from '@/lib/budgets'
 import type { Experiment } from '@/lib/experiments'
 import type { Sku, SkuBody, TenantResource, CreateTenantBody, UsageReport } from '@/lib/cloud'
 import type { InvoiceReport } from '@/lib/invoices'
+import type { ModelWatch, ModelWatchRun } from '@/lib/modelWatches'
 
 export interface ClusterStats {
   totalGPUs: number
@@ -938,6 +939,29 @@ export const api = {
   getTunerTrials: async (name: string): Promise<TunerTrial[]> => {
     const { data } = await apiClient.get(`/tuners/${encodeURIComponent(name)}/trials`)
     return data.items || []
+  },
+
+  // Model watches (model factory)
+  getModelWatches: async (): Promise<ModelWatch[]> => {
+    const { data } = await apiClient.get('/model-watches')
+    return data.items || []
+  },
+
+  getModelWatchRuns: async (name: string): Promise<ModelWatchRun[]> => {
+    const { data } = await apiClient.get(`/model-watches/${encodeURIComponent(name)}/runs`)
+    return data.items || []
+  },
+
+  suspendModelWatch: async (name: string): Promise<void> => {
+    await apiClient.post(`/model-watches/${encodeURIComponent(name)}/suspend`)
+  },
+
+  resumeModelWatch: async (name: string): Promise<void> => {
+    await apiClient.post(`/model-watches/${encodeURIComponent(name)}/resume`)
+  },
+
+  deleteModelWatch: async (name: string): Promise<void> => {
+    await apiClient.delete(`/model-watches/${encodeURIComponent(name)}`)
   },
 }
 

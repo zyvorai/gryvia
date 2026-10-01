@@ -411,7 +411,8 @@ rules:
       - update
       - watch
 
-  # ML controllers (GryviaWorkspace, GryviaInferenceService, GryviaModelRegistry, GryviaWorkflow, GryviaAutoTuner)
+  # ML controllers (GryviaWorkspace, GryviaInferenceService, GryviaModelRegistry, GryviaWorkflow, GryviaAutoTuner,
+  # GryviaModelWatch)
   - apiGroups:
       - gryvia.io
     resources:
@@ -420,6 +421,7 @@ rules:
       - gryviamodelregistries
       - gryviaworkflows
       - gryviaautotuners
+      - gryviamodelwatches
     verbs:
       - create
       - delete
@@ -436,6 +438,7 @@ rules:
       - gryviamodelregistries/status
       - gryviaworkflows/status
       - gryviaautotuners/status
+      - gryviamodelwatches/status
     verbs:
       - get
       - patch
@@ -448,6 +451,7 @@ rules:
       - gryviamodelregistries/finalizers
       - gryviaworkflows/finalizers
       - gryviaautotuners/finalizers
+      - gryviamodelwatches/finalizers
     verbs:
       - update
   {{- if .Values.aiOperator.inferenceGatewayRouting }}

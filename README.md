@@ -72,7 +72,7 @@ NVIDIA feature-discovery labels. Not yet validated on real GPUs.<br>
 
 **Six Kubernetes operators**<br>
 GPU, AI workload and quota operators (plus optional storage and network operators for RDMA/SR-IOV and
-parallel-filesystem CSI backends) in the main chart; network intelligence in its own. 38 of the 52 CRDs have a
+parallel-filesystem CSI backends) in the main chart; network intelligence in its own. 39 of the 53 CRDs have a
 registered runtime controller (some are opt-in).<br>
 [Core components](#core-components)
 
@@ -104,7 +104,7 @@ for the custom resources.<br>
 | State | What |
 |---|---|
 | **Implemented and tested in CI** (unit tests, chart rendering, a kind install with demo data read back through the API and CLI) | The Helm chart; GPU, AI workload and quota operators; `GryviaAIJob` placement, run-to-completion Job and StatefulSet creation and the admission webhook; per-namespace quotas and budgets; tenants, SKU catalog, usage metering and estimate invoices; the API gateway with API-key, session and OIDC roles; the dashboard; the CLI |
-| **Implemented, tests are unit-level or a kind e2e (AIJob lifecycle, ML controllers, Kueue, GPUaaS, the kind demo and the fake-collector network-intelligence e2e pass in CI; the last one flaked until its fake collectors shared one detection time); unverified on real clusters, GPUs and services** | The ML controllers for workspaces, inference services, the model registry, workflows and the auto tuner (on by default in the ai-operator, `--enable-ml-controllers`; only unit tests with a fake client and `e2e-ml.yml`, tiny CPU images, no GPU or real model server); opt-in Kueue integration (`kueue.enabled`, `aiOperator.kueueIntegration`, `quotaOperator.kueueIntegration`); opt-in admission gate for quotas and hard budgets (`aiOperator.admissionGate`), node reservations (`quotaOperator.reservations`), per-tenant Kubernetes RBAC (`quotaOperator.tenantRbac`) and the signed invoice webhook; opt-in gateway and quota-operator Prometheus metrics with dashboards, alerts and runbooks (`monitoring.enabled`, `apiGateway.metrics.*`; never rendered against a live Prometheus or Grafana); the network-intelligence operator's real collector and Netra sources (`operator.sources.*`; e2e against a fake collector only); opt-in per-node fabric status merge (`aiOperator.mergeFabricSignals`); NVIDIA GPU Operator sub-chart, `install-k3s-gpu.sh` and node auto-registration (GPU-less k3s in CI only); storage and network operators (off by default); OIDC against a real identity provider; anything that needs GPUs, RDMA or a parallel filesystem |
+| **Implemented, tests are unit-level or a kind e2e (AIJob lifecycle, ML controllers, Kueue, GPUaaS, the kind demo and the fake-collector network-intelligence e2e pass in CI; the last one flaked until its fake collectors shared one detection time); unverified on real clusters, GPUs and services** | The ML controllers for workspaces, inference services, the model registry, workflows and the auto tuner (on by default in the ai-operator, `--enable-ml-controllers`) and the opt-in model factory (`aiOperator.modelWatch.enabled`: fine-tune, evaluate and canary new open models from the Hugging Face Hub; no real fine-tune has run), all with only unit tests with a fake client and `e2e-ml.yml` (tiny CPU images, no GPU or real model server); opt-in Kueue integration (`kueue.enabled`, `aiOperator.kueueIntegration`, `quotaOperator.kueueIntegration`); opt-in admission gate for quotas and hard budgets (`aiOperator.admissionGate`), node reservations (`quotaOperator.reservations`), per-tenant Kubernetes RBAC (`quotaOperator.tenantRbac`) and the signed invoice webhook; opt-in gateway and quota-operator Prometheus metrics with dashboards, alerts and runbooks (`monitoring.enabled`, `apiGateway.metrics.*`; never rendered against a live Prometheus or Grafana); the network-intelligence operator's real collector and Netra sources (`operator.sources.*`; e2e against a fake collector only); opt-in per-node fabric status merge (`aiOperator.mergeFabricSignals`); NVIDIA GPU Operator sub-chart, `install-k3s-gpu.sh` and node auto-registration (GPU-less k3s in CI only); storage and network operators (off by default); OIDC against a real identity provider; anything that needs GPUs, RDMA or a parallel filesystem |
 | **Experimental** | The eBPF collector, the 47 eBPF programs, fabric signals and the Flight Recorder (verified on Linux 7.0 x86_64 only); the network-intelligence operator |
 | **Legacy APIs without supported runtime behavior** | SLA, audit, auto-scaler, retry policy, job hooks, DR tests, benchmarks, metrics, quota policies and datasets retain readable CRDs for migration. Opt-in capability reporting marks them unsupported. The operator's own gang scheduling, DRF queues, preemption and elastic scaling are library code that no controller calls (Kueue provides gang admission and preemption when its integration is switched on) |
 | **Not implemented** | Payments or tax invoices, multi-cluster federation, a mutating quota-pacing eBPF program |
@@ -219,14 +219,14 @@ operator's node selection (filter, score, select), not a separate scheduler.
 ## Core Components
 
 <details>
-<summary><b>52 CRDs, 38 of them with a runtime controller (the CRD reference has the full table)</b></summary>
+<summary><b>53 CRDs, 39 of them with a runtime controller (the CRD reference has the full table)</b></summary>
 
-**Reconciled by a runtime controller (38; some opt-in).**
+**Reconciled by a runtime controller (39; some opt-in).**
 GPU operator: `GryviaHealthCheck` (opt-in health/remediation flags), `GryviaGpuNode` (also auto-created from GPU feature-discovery labels), `GryviaGpuMemoryOptimizer`, `GryviaGPUSharingPolicy` (opt-in `--enable-gpu-sharing`, chart `gpuOperator.gpuSharing`: writes the node labels for time-slicing and MIG) ·
 AI operator: `GryviaAIJob`, `GryviaCheckpointGuard`, `GryviaLiveExperiment`, `GryviaModelLineage`,
 `GryviaTrainingProfiler`, `GryviaTrainingTimeMachine`, and the ML kinds `GryviaWorkspace`, `GryviaInferenceService`,
 `GryviaModelRegistry`, `GryviaWorkflow`, `GryviaAutoTuner`, `GryviaPriority`, `GryviaTemplate` (on by default, `--enable-ml-controllers`), plus
-`GryviaFederation` (only with an administrator server allowlist), `GryviaFabricSignal` (only with `--merge-fabric-signals`) · Quota operator: `GryviaQuota`, `GryviaTenant`,
+`GryviaModelWatch` (only with `--enable-model-watch`, see [Model factory](docs/model-factory.md)), `GryviaFederation` (only with an administrator server allowlist), `GryviaFabricSignal` (only with `--merge-fabric-signals`) · Quota operator: `GryviaQuota`, `GryviaTenant`,
 `GryviaUsageRecord`, `GryviaCostPredictor`, `GryviaBudget`, `GryviaChargeback`, `GryviaReservation` (only with `--enable-reservations`) · Storage operator: `GryviaStorage` · Network operator: `GryviaNetwork` ·
 Network-intelligence operator: `GryviaFlowPolicy`, `GryviaTrafficInsight`, `GryviaAutoPolicy`, `GryviaTraceSession`,
 `GryviaServiceGraph`, `GryviaNetworkAnomaly`, `GryviaSecurityPolicy`, `GryviaNetworkCost`, `GryviaTrainingInsight`,
@@ -304,7 +304,7 @@ Storage and network throughput depend on the hardware, filesystem and fabric you
 | Admission and recovery (strict Kueue admission, checkpoint hooks) | [docs/admission-recovery.md](docs/admission-recovery.md) |
 | Inference serving (GPU/RPS autoscaling, Gateway canaries, SLO gating) | [docs/inference-serving.md](docs/inference-serving.md) |
 | Operations (upgrade, uninstall, backup) | [guides/OPERATIONS.md](website/docs/guides/OPERATIONS.md) |
-| CRD reference (all 52 kinds and their controllers) | [reference/crds.md](website/docs/reference/crds.md) |
+| CRD reference (all 53 kinds and their controllers) | [reference/crds.md](website/docs/reference/crds.md) |
 | eBPF programs, collector, Flight Recorder | [ebpf/README.md](ebpf/README.md) · [collector/README.md](collector/README.md) · [docs/flight-recorder.md](docs/flight-recorder.md) |
 | Helm charts | [helm/gryvia](helm/gryvia/README.md) · [helm/network-intelligence](helm/network-intelligence/README.md) |
 | Advanced features, FAQ, roadmap | [guides/ADVANCED_FEATURES.md](website/docs/guides/ADVANCED_FEATURES.md) · [guides/FAQ.md](website/docs/guides/FAQ.md) · [guides/ROADMAP.md](website/docs/guides/ROADMAP.md) |

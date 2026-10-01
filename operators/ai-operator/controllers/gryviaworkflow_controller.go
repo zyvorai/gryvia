@@ -2,11 +2,13 @@ package controllers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -22,6 +24,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
+	"github.com/zyvorai/gryvia/operators/ai-operator/pkg/cron"
 )
 
 const (
@@ -36,12 +39,23 @@ const (
 	maxStepRetries                  = 10
 
 	webhookTimeout = 10 * time.Second
+
+	// PhaseScheduled is a scheduled workflow waiting for its next fire time.
+	PhaseScheduled = "Scheduled"
+
+	// annotationOutputPrefix marks a step output written on a step's GryviaAIJob.
+	annotationOutputPrefix = "gryvia.io/output-"
+	maxStepOutputs         = 32
+	maxStepOutputBytes     = 4096
 )
 
 var (
 	stepNameRE     = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
 	conditionRE    = regexp.MustCompile(`^steps\.([a-z0-9]([-a-z0-9]*[a-z0-9])?)\.status\s*(==|!=)\s*['"]([A-Za-z]+)['"]$`)
 	webhookStatusR = regexp.MustCompile(`^status\s*==\s*([1-5][0-9][0-9])$`)
+	outputKeyRE    = regexp.MustCompile(`^[A-Za-z0-9_-]{1,63}$`)
+	// unresolvedRE finds workflow placeholders left after rendering (an output the step never reported).
+	unresolvedRE = regexp.MustCompile(`\{\{\s*(steps|parameters|workflow)\.[A-Za-z0-9_.\-]+\s*\}\}`)
 )
 
 // GryviaWorkflowReconciler reconciles a GryviaWorkflow object.
@@ -53,10 +67,17 @@ var (
 //   - script steps run as a Pod owned by the workflow (non-root, no privilege escalation, capabilities dropped,
 //     no service-account token, bounded resources), independent of the AIJob controller;
 //   - webhook steps make one HTTP call from the operator; they are off unless AllowWebhooks is set, because they
-//     let anyone who can create a workflow make the operator issue requests inside the cluster network.
+//     let anyone who can create a workflow make the operator issue requests inside the cluster network;
+//   - register steps create a GryviaModelRegistry entry inline (not owned by the workflow, so deleting the workflow
+//     does not remove a model that may be serving).
+//
+// A finished job or script step's outputs ("gryvia.io/output-<key>" annotations on the GryviaAIJob, or a JSON
+// object in the termination message of its rank-0 pod) are kept in status and fill {{steps.<name>.outputs.<key>}}
+// placeholders in later steps, next to {{parameters.<key>}}, {{workflow.name}} and {{workflow.run}}.
 //
 // A failed step is retried up to spec.retries times (new child object per attempt, optional backoff). A step whose
-// dependency failed or was skipped is skipped, unless it has a condition that says otherwise.
+// dependency failed or was skipped is skipped, unless it has a condition that says otherwise. With spec.schedule the
+// whole DAG runs again at each fire time after the previous run finished; each run's children carry the run number.
 type GryviaWorkflowReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
@@ -76,6 +97,7 @@ type GryviaWorkflowReconciler struct {
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviaworkflows/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviaworkflows/finalizers,verbs=update
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviamodelregistries,verbs=get;list;watch;create
 //+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile drives one GryviaWorkflow.
@@ -92,12 +114,18 @@ func (r *GryviaWorkflowReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if !wf.DeletionTimestamp.IsZero() {
 		return ctrl.Result{}, nil // children are garbage-collected through their owner reference
 	}
-	if wf.Status.Phase == PhaseSucceeded || wf.Status.Phase == PhaseFailed {
+	if wf.Spec.Schedule == "" && (wf.Status.Phase == PhaseSucceeded || wf.Status.Phase == PhaseFailed) {
 		return ctrl.Result{}, nil
 	}
 
 	orig := wf.DeepCopy()
-	res, err := r.reconcileWorkflow(ctx, wf)
+	var res ctrl.Result
+	var err error
+	if wf.Spec.Schedule != "" {
+		res, err = r.reconcileScheduled(ctx, wf)
+	} else {
+		res, err = r.reconcileWorkflow(ctx, wf)
+	}
 	if perr := patchStatus(ctx, r.Client, wf, orig); perr != nil {
 		log.Error(perr, "Failed to patch workflow status")
 		if err == nil {
@@ -156,6 +184,8 @@ func stepKind(s *gryviav1.WorkflowStep) gryviav1.StepType {
 		return gryviav1.StepTypeScript
 	case s.Webhook != nil:
 		return gryviav1.StepTypeWebhook
+	case s.Register != nil:
+		return gryviav1.StepTypeRegister
 	}
 	return ""
 }
@@ -168,6 +198,11 @@ func validateWorkflow(wf *gryviav1.GryviaWorkflow) error {
 	}
 	if len(wf.Spec.Steps) > maxWorkflowSteps {
 		return fmt.Errorf("%d steps exceeds the limit of %d", len(wf.Spec.Steps), maxWorkflowSteps)
+	}
+	if wf.Spec.Schedule != "" {
+		if _, err := cron.Parse(wf.Spec.Schedule); err != nil {
+			return fmt.Errorf("schedule: %w", err)
+		}
 	}
 	deps := make(map[string][]string, len(wf.Spec.Steps))
 	for i := range wf.Spec.Steps {
@@ -197,6 +232,19 @@ func validateWorkflow(wf *gryviav1.GryviaWorkflow) error {
 			}
 			if sc := s.Webhook.SuccessCondition; sc != "" && !webhookStatusR.MatchString(strings.TrimSpace(sc)) {
 				return fmt.Errorf("step %q: unsupported successCondition %q (use: status == 200)", s.Name, sc)
+			}
+		case gryviav1.StepTypeRegister:
+			reg := s.Register
+			if reg == nil || reg.ModelName == "" || reg.Version == "" {
+				return fmt.Errorf("step %q has type 'register' but no register modelName and version", s.Name)
+			}
+			if reg.Artifacts.S3Path == "" && reg.Artifacts.PVCName == "" {
+				return fmt.Errorf("step %q: register artifacts need an s3Path or a pvcName", s.Name)
+			}
+			switch reg.Stage {
+			case "", gryviav1.ModelStageDev, gryviav1.ModelStageStaging:
+			default:
+				return fmt.Errorf("step %q: register stage must be dev or staging (use a promotionPolicy to reach production)", s.Name)
 			}
 		default:
 			return fmt.Errorf("step %q has no recognised type or payload", s.Name)
@@ -354,6 +402,11 @@ func (r *GryviaWorkflowReconciler) reconcileWorkflow(ctx context.Context, wf *gr
 			continue
 		}
 		if ok {
+			outputs, err := r.collectOutputs(ctx, wf, spec, ss)
+			if err != nil {
+				return ctrl.Result{RequeueAfter: 5 * time.Second}, err
+			}
+			ss.Outputs = outputs
 			ss.Phase = gryviav1.StepPhaseSucceeded
 			ss.Message = ""
 			t := metav1.NewTime(now)
@@ -420,7 +473,7 @@ func (r *GryviaWorkflowReconciler) reconcileWorkflow(ctx context.Context, wf *gr
 			if running >= maxParallel {
 				continue
 			}
-			if err := r.launchStep(ctx, wf, spec, ss, now); err != nil {
+			if err := r.launchStep(ctx, wf, spec, ss, now, workflowLookup(wf, byName)); err != nil {
 				log.Error(err, "Failed to launch step", "step", ss.Name)
 				return ctrl.Result{RequeueAfter: 5 * time.Second}, err
 			}
@@ -489,25 +542,71 @@ func (r *GryviaWorkflowReconciler) failStep(ss *gryviav1.StepStatus, spec *gryvi
 	ss.Message = msg
 }
 
-// attemptName is the child object name for the step's current attempt.
+// attemptName is the child object name for the step's current attempt (and run, for a scheduled workflow).
 func attemptName(wf *gryviav1.GryviaWorkflow, step string, attempt int32) string {
-	if attempt == 0 {
-		return childName(wf.Name, step)
+	parts := []string{wf.Name, step}
+	if wf.Status.Run > 0 {
+		parts = append(parts, fmt.Sprintf("n%d", wf.Status.Run))
 	}
-	return childName(wf.Name, step, fmt.Sprintf("r%d", attempt))
+	if attempt > 0 {
+		parts = append(parts, fmt.Sprintf("r%d", attempt))
+	}
+	return childName(parts...)
 }
 
 func stepLabels(wf *gryviav1.GryviaWorkflow, step, component string) map[string]string {
-	return map[string]string{
+	l := map[string]string{
 		"gryvia.io/workflow":  childName(wf.Name),
 		"gryvia.io/step":      childName(step),
 		"gryvia.io/component": component,
 	}
+	if wf.Status.Run > 0 {
+		l["gryvia.io/run"] = strconv.Itoa(int(wf.Status.Run))
+	}
+	return l
 }
 
-// launchStep starts one step. For a webhook step the outcome is set directly.
+// workflowLookup resolves {{workflow.name}}, {{workflow.run}}, {{parameters.<key>}} and
+// {{steps.<name>.outputs.<key>}}.
+func workflowLookup(wf *gryviav1.GryviaWorkflow, byName map[string]*gryviav1.StepStatus) func(string) (string, bool) {
+	return func(k string) (string, bool) {
+		switch {
+		case k == "workflow.name":
+			return wf.Name, true
+		case k == "workflow.run":
+			return strconv.Itoa(int(wf.Status.Run)), true
+		case strings.HasPrefix(k, "parameters."):
+			v, ok := wf.Spec.Parameters[strings.TrimPrefix(k, "parameters.")]
+			return v, ok
+		case strings.HasPrefix(k, "steps."):
+			parts := strings.SplitN(k, ".", 4)
+			if len(parts) == 4 && parts[2] == "outputs" {
+				if ss := byName[parts[1]]; ss != nil {
+					v, ok := ss.Outputs[parts[3]]
+					return v, ok
+				}
+			}
+		}
+		return "", false
+	}
+}
+
+// renderStep fills the placeholders of a step payload. A workflow placeholder that stays unresolved (an output
+// the step it names never reported) is an error, so a job never starts with a literal "{{steps...}}" argument.
+func renderStep(in, out interface{}, lookup func(string) (string, bool)) error {
+	if err := renderInto(in, out, lookup); err != nil {
+		return fmt.Errorf("rendering placeholders: %w", err)
+	}
+	b, _ := json.Marshal(out)
+	if m := unresolvedRE.Find(b); m != nil {
+		return fmt.Errorf("unresolved placeholder %s", m)
+	}
+	return nil
+}
+
+// launchStep starts one step. For a webhook or register step the outcome is set directly.
 func (r *GryviaWorkflowReconciler) launchStep(ctx context.Context, wf *gryviav1.GryviaWorkflow, step *gryviav1.WorkflowStep,
-	ss *gryviav1.StepStatus, now time.Time) error {
+	ss *gryviav1.StepStatus, now time.Time, lookup func(string) (string, bool)) error {
 	name := attemptName(wf, step.Name, ss.RetriesAttempted)
 	started := func() {
 		ss.Phase = gryviav1.StepPhaseRunning
@@ -520,9 +619,14 @@ func (r *GryviaWorkflowReconciler) launchStep(ctx context.Context, wf *gryviav1.
 
 	switch stepKind(step) {
 	case gryviav1.StepTypeJob:
+		var spec gryviav1.GryviaAIJobSpec
+		if err := renderStep(step.JobTemplate, &spec, lookup); err != nil {
+			r.failStep(ss, step, err.Error(), now)
+			return nil
+		}
 		job := &gryviav1.GryviaAIJob{
 			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: wf.Namespace, Labels: stepLabels(wf, step.Name, "workflow-step")},
-			Spec:       *step.JobTemplate.DeepCopy(),
+			Spec:       spec,
 		}
 		job.Spec.Env = r.stepEnv(wf, step, job.Spec.Env)
 		if err := controllerutil.SetControllerReference(wf, job, r.Scheme); err != nil {
@@ -547,7 +651,12 @@ func (r *GryviaWorkflowReconciler) launchStep(ctx context.Context, wf *gryviav1.
 		}
 		started()
 	case gryviav1.StepTypeScript:
-		pod, err := r.buildScriptPod(wf, step, name)
+		rendered := step.DeepCopy()
+		if err := renderStep(step.Script, &rendered.Script, lookup); err != nil {
+			r.failStep(ss, step, err.Error(), now)
+			return nil
+		}
+		pod, err := r.buildScriptPod(wf, rendered, name)
 		if err != nil {
 			r.failStep(ss, step, err.Error(), now)
 			return nil
@@ -592,10 +701,269 @@ func (r *GryviaWorkflowReconciler) launchStep(ctx context.Context, wf *gryviav1.
 		} else {
 			r.failStep(ss, step, msg, now)
 		}
+	case gryviav1.StepTypeRegister:
+		started()
+		ss.JobName = ""
+		entry, msg, err := r.registerModel(ctx, wf, step, lookup)
+		if err != nil {
+			return err
+		}
+		if entry == "" {
+			r.failStep(ss, step, msg, now)
+			return nil
+		}
+		ss.Phase = gryviav1.StepPhaseSucceeded
+		ss.JobName = entry
+		ss.Message = msg
+		ss.Outputs = map[string]string{"name": entry}
+		t := metav1.NewTime(now)
+		ss.CompletionTime = &t
 	default:
 		r.failStep(ss, step, "step has no recognised type", now)
 	}
 	return nil
+}
+
+// registerModel creates the GryviaModelRegistry entry of a register step. It returns the entry name, or "" and
+// a failure message; err is for transient API errors. The entry is not owned by the workflow: deleting a run must
+// not remove a model that may be serving.
+func (r *GryviaWorkflowReconciler) registerModel(ctx context.Context, wf *gryviav1.GryviaWorkflow, step *gryviav1.WorkflowStep,
+	lookup func(string) (string, bool)) (string, string, error) {
+	var reg gryviav1.RegisterStep
+	if err := renderStep(step.Register, &reg, lookup); err != nil {
+		return "", err.Error(), nil
+	}
+	name := reg.Name
+	if name == "" {
+		name = attemptName(wf, step.Name, 0)
+	}
+	if !stepNameRE.MatchString(name) || len(name) > maxDNSLabel {
+		return "", fmt.Sprintf("register name %q is not a lowercase DNS label", name), nil
+	}
+	stage := reg.Stage
+	if stage == "" {
+		stage = gryviav1.ModelStageStaging
+	}
+	meta := map[string]string{}
+	for k, v := range reg.Metadata {
+		meta[k] = v
+	}
+	if src := wf.Annotations[annotationSourceModel]; src != "" {
+		if _, set := meta["base_model"]; !set {
+			meta["base_model"] = src
+		}
+		if rev := wf.Annotations[annotationSourceRevision]; rev != "" {
+			if _, set := meta["base_revision"]; !set {
+				meta["base_revision"] = rev
+			}
+		}
+	}
+	labels := stepLabels(wf, step.Name, "workflow-register")
+	entry := &gryviav1.GryviaModelRegistry{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: wf.Namespace, Labels: labels},
+		Spec: gryviav1.GryviaModelRegistrySpec{
+			ModelName:       reg.ModelName,
+			Version:         reg.Version,
+			Source:          gryviav1.ModelSource{WorkflowRef: wf.Name},
+			Artifacts:       reg.Artifacts,
+			Stage:           stage,
+			Description:     reg.Description,
+			Metadata:        meta,
+			AutoServe:       reg.AutoServe,
+			ServingConfig:   reg.ServingConfig,
+			PromotionPolicy: reg.PromotionPolicy,
+		},
+	}
+	if err := r.Create(ctx, entry); err != nil {
+		if !errors.IsAlreadyExists(err) {
+			if errors.IsInvalid(err) || errors.IsForbidden(err) || errors.IsBadRequest(err) {
+				return "", fmt.Sprintf("cannot create the model registry entry: %v", err), nil
+			}
+			return "", "", err
+		}
+		existing := &gryviav1.GryviaModelRegistry{}
+		if gerr := r.Get(ctx, types.NamespacedName{Namespace: wf.Namespace, Name: name}, existing); gerr != nil {
+			return "", "", gerr
+		}
+		if existing.Spec.Source.WorkflowRef != wf.Name || existing.Labels["gryvia.io/run"] != labels["gryvia.io/run"] {
+			return "", fmt.Sprintf("model registry entry %q already exists and was not registered by this run", name), nil
+		}
+	}
+	return name, fmt.Sprintf("Registered %s version %s as %s", reg.ModelName, reg.Version, name), nil
+}
+
+// collectOutputs reads what a finished job or script step reported: "gryvia.io/output-<key>" annotations on the
+// GryviaAIJob win over the JSON object in the termination message of the step's (rank 0) pod.
+func (r *GryviaWorkflowReconciler) collectOutputs(ctx context.Context, wf *gryviav1.GryviaWorkflow, step *gryviav1.WorkflowStep,
+	ss *gryviav1.StepStatus) (map[string]string, error) {
+	out := map[string]string{}
+	var pods []corev1.Pod
+	switch stepKind(step) {
+	case gryviav1.StepTypeJob:
+		list := &corev1.PodList{}
+		if err := r.List(ctx, list, client.InNamespace(wf.Namespace), client.MatchingLabels{"gryvia.io/job": ss.JobName}); err != nil {
+			return nil, err
+		}
+		pods = list.Items
+	case gryviav1.StepTypeScript:
+		pod := &corev1.Pod{}
+		if err := r.Get(ctx, types.NamespacedName{Namespace: wf.Namespace, Name: ss.JobName}, pod); err == nil {
+			pods = []corev1.Pod{*pod}
+		} else if !errors.IsNotFound(err) {
+			return nil, err
+		}
+	default:
+		return nil, nil
+	}
+	if pod := outputPod(pods); pod != nil {
+		for k, v := range parseTerminationOutputs(pod) {
+			out[k] = v
+		}
+	}
+	if stepKind(step) == gryviav1.StepTypeJob {
+		job := &gryviav1.GryviaAIJob{}
+		if err := r.Get(ctx, types.NamespacedName{Namespace: wf.Namespace, Name: ss.JobName}, job); err == nil {
+			for k, v := range job.Annotations {
+				if key := strings.TrimPrefix(k, annotationOutputPrefix); key != k {
+					addOutput(out, key, v)
+				}
+			}
+		} else if !errors.IsNotFound(err) {
+			return nil, err
+		}
+	}
+	if len(out) == 0 {
+		return nil, nil
+	}
+	return out, nil
+}
+
+// outputPod picks the succeeded pod whose termination message holds the outputs: completion index 0 first.
+func outputPod(pods []corev1.Pod) *corev1.Pod {
+	sort.Slice(pods, func(i, j int) bool { return pods[i].Name < pods[j].Name })
+	var first *corev1.Pod
+	for i := range pods {
+		p := &pods[i]
+		if p.Status.Phase != corev1.PodSucceeded {
+			continue
+		}
+		if p.Labels["batch.kubernetes.io/job-completion-index"] == "0" || p.Annotations["batch.kubernetes.io/job-completion-index"] == "0" {
+			return p
+		}
+		if first == nil {
+			first = p
+		}
+	}
+	return first
+}
+
+// parseTerminationOutputs reads a JSON object from the first terminated container's message. Strings are kept,
+// numbers and booleans are formatted; anything else is ignored.
+func parseTerminationOutputs(pod *corev1.Pod) map[string]string {
+	for _, cs := range pod.Status.ContainerStatuses {
+		t := cs.State.Terminated
+		if t == nil || strings.TrimSpace(t.Message) == "" {
+			continue
+		}
+		var raw map[string]interface{}
+		if err := json.Unmarshal([]byte(t.Message), &raw); err != nil {
+			return nil
+		}
+		out := map[string]string{}
+		keys := make([]string, 0, len(raw))
+		for k := range raw {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			switch v := raw[k].(type) {
+			case string:
+				addOutput(out, k, v)
+			case float64:
+				addOutput(out, k, strconv.FormatFloat(v, 'f', -1, 64))
+			case bool:
+				addOutput(out, k, strconv.FormatBool(v))
+			}
+		}
+		return out
+	}
+	return nil
+}
+
+func addOutput(out map[string]string, k, v string) {
+	if !outputKeyRE.MatchString(k) || len(v) > maxStepOutputBytes {
+		return
+	}
+	if _, exists := out[k]; !exists && len(out) >= maxStepOutputs {
+		return
+	}
+	out[k] = v
+}
+
+// reconcileScheduled runs a scheduled workflow: it waits for the next fire time after the last run started,
+// resets the status for a new run, and drives that run like an unscheduled workflow.
+func (r *GryviaWorkflowReconciler) reconcileScheduled(ctx context.Context, wf *gryviav1.GryviaWorkflow) (ctrl.Result, error) {
+	now := clock(r.Clock)
+	if err := validateWorkflow(wf); err != nil {
+		if wf.Status.Phase != PhaseFailed || wf.Status.NextScheduleTime != nil {
+			setCondition(&wf.Status.Conditions, wf.Generation, ConditionDAGValid, metav1.ConditionFalse, "Invalid", err.Error())
+			r.finish(wf, PhaseFailed, fmt.Sprintf("Invalid workflow: %v", err), now)
+			wf.Status.NextScheduleTime = nil
+		}
+		return ctrl.Result{}, nil
+	}
+	switch wf.Status.Phase {
+	case PhasePending, PhaseRunning:
+		return r.runScheduled(ctx, wf, now)
+	}
+
+	sched, _ := cron.Parse(wf.Spec.Schedule) // validated
+	from := wf.CreationTimestamp.Time
+	if wf.Status.LastScheduleTime != nil {
+		from = wf.Status.LastScheduleTime.Time
+	}
+	next, ok := sched.Next(from)
+	if !ok {
+		wf.Status.NextScheduleTime = nil
+		wf.Status.Message = "The schedule has no fire time in the next five years"
+		return ctrl.Result{}, nil
+	}
+	if now.Before(next) {
+		if wf.Status.Phase == "" {
+			wf.Status.Phase = PhaseScheduled
+			wf.Status.Message = "Waiting for the first scheduled run"
+			setCondition(&wf.Status.Conditions, wf.Generation, ConditionDAGValid, metav1.ConditionTrue, "Valid", "The step graph is a valid DAG")
+		}
+		t := metav1.NewTime(next)
+		wf.Status.NextScheduleTime = &t
+		return ctrl.Result{RequeueAfter: next.Sub(now) + time.Second}, nil
+	}
+
+	// Fire: a new run starts from a clean status; the previous run's children stay (owned by the workflow).
+	t := metav1.NewTime(now)
+	wf.Status = gryviav1.GryviaWorkflowStatus{
+		Run:              wf.Status.Run + 1,
+		LastScheduleTime: &t,
+		Conditions:       wf.Status.Conditions,
+	}
+	removeCondition(&wf.Status.Conditions, ConditionWorkflowDone)
+	if n, ok := sched.Next(now); ok {
+		nt := metav1.NewTime(n)
+		wf.Status.NextScheduleTime = &nt
+	}
+	return r.runScheduled(ctx, wf, now)
+}
+
+// runScheduled drives the current run and, once it is finished, wakes up for the next fire time.
+func (r *GryviaWorkflowReconciler) runScheduled(ctx context.Context, wf *gryviav1.GryviaWorkflow, now time.Time) (ctrl.Result, error) {
+	res, err := r.reconcileWorkflow(ctx, wf)
+	if err == nil && (wf.Status.Phase == PhaseSucceeded || wf.Status.Phase == PhaseFailed) && wf.Status.NextScheduleTime != nil {
+		res.RequeueAfter = wf.Status.NextScheduleTime.Sub(now) + time.Second
+		if res.RequeueAfter < time.Second {
+			res.RequeueAfter = time.Second
+		}
+	}
+	return res, err
 }
 
 // stepEnv adds the workflow parameters (sorted, without overriding variables the step sets itself) and the

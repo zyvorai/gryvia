@@ -16,6 +16,7 @@ pub mod invoice;
 pub mod list;
 pub mod logs;
 pub mod maintenance;
+pub mod models;
 pub mod network;
 pub mod network_usage;
 pub mod platform_status;

@@ -11,6 +11,8 @@ const (
 	StepTypeJob     StepType = "job"
 	StepTypeScript  StepType = "script"
 	StepTypeWebhook StepType = "webhook"
+	// StepTypeRegister creates a GryviaModelRegistry entry from earlier step outputs.
+	StepTypeRegister StepType = "register"
 )
 
 // GryviaWorkflowSpec defines the desired state of GryviaWorkflow
@@ -20,6 +22,11 @@ type GryviaWorkflowSpec struct {
 
 	// Parameters are global parameters passed to all steps
 	Parameters map[string]string `json:"parameters,omitempty"`
+
+	// Schedule is an optional five-field cron expression (UTC). With a schedule the workflow waits for the next
+	// fire time, runs, and when the run is finished waits for the next fire time again. A run is never started
+	// while the previous one is still going.
+	Schedule string `json:"schedule,omitempty"`
 }
 
 // WorkflowStep defines a single step in the workflow DAG
@@ -46,6 +53,9 @@ type WorkflowStep struct {
 
 	// Webhook is the HTTP request to make for webhook-type steps
 	Webhook *WebhookStep `json:"webhook,omitempty"`
+
+	// Register is the model registry entry to create for register-type steps
+	Register *RegisterStep `json:"register,omitempty"`
 
 	// Retries is the number of times to retry this step on failure
 	Retries int32 `json:"retries,omitempty"`
@@ -87,6 +97,36 @@ type WebhookStep struct {
 	SuccessCondition string `json:"successCondition,omitempty"`
 }
 
+// RegisterStep creates a GryviaModelRegistry entry. Its string fields may use {{steps.<name>.outputs.<key>}},
+// {{parameters.<key>}}, {{workflow.name}} and {{workflow.run}} placeholders.
+type RegisterStep struct {
+	// Name is the registry object name (default "<workflow>-<step>", with the run number for scheduled workflows)
+	Name string `json:"name,omitempty"`
+
+	// ModelName is the model name of the entry
+	ModelName string `json:"modelName"`
+
+	// Version is the version of the entry
+	Version string `json:"version"`
+
+	// Artifacts is where the model files are
+	Artifacts ModelArtifacts `json:"artifacts"`
+
+	// Stage is the stage the entry starts in (dev or staging; default staging)
+	Stage ModelStage `json:"stage,omitempty"`
+
+	// Description of the entry
+	Description string `json:"description,omitempty"`
+
+	// Metadata is copied into the entry (for example the evaluation score a promotionPolicy compares)
+	Metadata map[string]string `json:"metadata,omitempty"`
+
+	// AutoServe, ServingConfig and PromotionPolicy are copied into the entry
+	AutoServe       bool             `json:"autoServe,omitempty"`
+	ServingConfig   *ServingConfig   `json:"servingConfig,omitempty"`
+	PromotionPolicy *PromotionPolicy `json:"promotionPolicy,omitempty"`
+}
+
 // StepPhase represents the current state of a workflow step
 type StepPhase string
 
@@ -118,6 +158,10 @@ type StepStatus struct {
 	// RetriesAttempted is the number of retries attempted so far
 	RetriesAttempted int32 `json:"retriesAttempted,omitempty"`
 
+	// Outputs are the values the step reported: "gryvia.io/output-<key>" annotations on its GryviaAIJob, or a
+	// JSON object of strings in the termination message of its pod (rank 0 for a job step)
+	Outputs map[string]string `json:"outputs,omitempty"`
+
 	// Message provides additional status information
 	Message string `json:"message,omitempty"`
 }
@@ -141,6 +185,15 @@ type GryviaWorkflowStatus struct {
 
 	// Message provides additional information about the current phase
 	Message string `json:"message,omitempty"`
+
+	// Run counts the runs of a scheduled workflow (0 for the only run of an unscheduled one)
+	Run int32 `json:"run,omitempty"`
+
+	// LastScheduleTime is when the schedule last started a run
+	LastScheduleTime *metav1.Time `json:"lastScheduleTime,omitempty"`
+
+	// NextScheduleTime is when the schedule starts the next run
+	NextScheduleTime *metav1.Time `json:"nextScheduleTime,omitempty"`
 }
 
 //+kubebuilder:object:root=true

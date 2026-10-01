@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Helpers for .github/workflows/e2e-ml.yml (source this file). Not meant to be run on its own.
 #
-# The ML controllers (workspace, inference, model registry, workflow, auto tuner) are exercised on a kind cluster
-# with tiny CPU images, so no GPU is involved. What is NOT proven by this e2e: real Jupyter/code-server/vLLM/Triton
-# images, GPUs, and an HPA reacting to real metrics (kind has no metrics-server here).
+# The ML controllers (workspace, inference, model registry, workflow, auto tuner, model watch) are exercised on a kind
+# cluster with tiny CPU images, so no GPU is involved. What is NOT proven by this e2e: real Jupyter/code-server/vLLM/
+# Triton images, GPUs, an HPA reacting to real metrics (kind has no metrics-server here), the real Hugging Face API and
+# a real download/fine-tune/evaluation (the model factory steps are busybox stand-ins that only emit outputs).
 
 NS="${E2E_NS:-gryvia-system}"
 API="${E2E_API:-https://localhost:8443}"
@@ -49,3 +50,25 @@ assert_nonempty() { # assert_nonempty "what" VALUE
 }
 
 gw() { api "$1" | jq -r "$2"; } # gw PATH JQ_FILTER: a field of a gateway answer
+
+# --- Model factory: a stand-in Hugging Face hub (deploy/e2e-fake-hf) serving /tmp/models.json at /api/models.
+
+hf_model() { # hf_model NAME N [LICENSE] [PARAMS]: one hub entry for e2e-org/NAME with revision N (as 40 hex digits)
+  jq -nc --arg id "e2e-org/$1" --arg sha "$(printf '%040d' "$2")" --arg lic "${3:-apache-2.0}" --argjson p "${4:-135000000}" \
+    '{id: $id, sha: $sha, lastModified: "2026-01-01T00:00:00Z", downloads: 5000, gated: false,
+      pipeline_tag: "text-generation", tags: ["text-generation", ("license:" + $lic)], safetensors: {total: $p}}'
+}
+
+hub_models() { # hub_models ENTRY...: replace what the fake hub lists
+  printf '%s\n' "$@" | jq -sc . | kubectl -n "$NS" exec -i deploy/e2e-fake-hf -- \
+    sh -c 'cat > /tmp/models.json.new && mv /tmp/models.json.new /tmp/models.json'
+}
+
+run_field() { # run_field WATCH MODEL_ID FIELD: a field of one candidate in the watch status
+  jp "gryviamodelwatch/$1" "{.status.candidates[?(@.id==\"$2\")].$3}"
+}
+run_is() { [ "$(run_field "$1" "$2" "$3")" = "$4" ]; } # run_is WATCH MODEL_ID FIELD VALUE
+
+entry_of() { # entry_of WORKFLOW: the GryviaModelRegistry entry a workflow's register step created
+  kubectl -n "$NS" get gryviamodelregistries -o "jsonpath={.items[?(@.spec.source.workflowRef==\"$1\")].metadata.name}"
+}

@@ -165,8 +165,8 @@ unmanaged object of the same name is refused, not overwritten).
 
 | Rule | viewer | member | admin |
 |---|---|---|---|
-| get/list/watch `gryviaaijobs`, `gryviaworkspaces`, `gryviainferenceservices`, `gryviaworkflows`, `gryviaautotuners`, `gryviamodelregistries`, `gryviausagerecords`, `gryvianetworkusagerecords`, `gryviafabricsignals` | yes | yes | yes |
-| create/update/patch/delete `gryviaaijobs`, `gryviaworkspaces`, `gryviainferenceservices`, `gryviaworkflows`, `gryviaautotuners`, `gryviamodelregistries` | no | yes | yes |
+| get/list/watch `gryviaaijobs`, `gryviaworkspaces`, `gryviainferenceservices`, `gryviaworkflows`, `gryviaautotuners`, `gryviamodelwatches`, `gryviamodelregistries`, `gryviausagerecords`, `gryvianetworkusagerecords`, `gryviafabricsignals` | yes | yes | yes |
+| create/update/patch/delete `gryviaaijobs`, `gryviaworkspaces`, `gryviainferenceservices`, `gryviaworkflows`, `gryviaautotuners`, `gryviamodelwatches`, `gryviamodelregistries` | no | yes | yes |
 | get/list/watch `pods`, `pods/log`, `events`, `services`, `configmaps` | yes | yes | yes |
 | create `pods/portforward` | no | yes | yes |
 | create/update/patch/delete `configmaps`, `services` | no | no | yes |

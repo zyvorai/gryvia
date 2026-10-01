@@ -34,6 +34,7 @@ const SecurityOverview = lazy(() => import('./pages/SecurityOverview'))
 const GpuCommunication = lazy(() => import('./pages/GpuCommunication'))
 const Workspaces = lazy(() => import('./pages/Workspaces'))
 const ModelRegistry = lazy(() => import('./pages/ModelRegistry'))
+const ModelFactory = lazy(() => import('./pages/ModelFactory'))
 const InferenceServices = lazy(() => import('./pages/InferenceServices'))
 const Workflows = lazy(() => import('./pages/Workflows'))
 const AutoTuner = lazy(() => import('./pages/AutoTuner'))
@@ -170,6 +171,7 @@ function App() {
               <Route path="/tenants" element={<Tenants />} />
               <Route path="/workspaces" element={<Workspaces />} />
               <Route path="/models" element={<ModelRegistry />} />
+              <Route path="/model-factory" element={<ModelFactory />} />
               <Route path="/inference" element={<InferenceServices />} />
               <Route path="/workflows" element={<Workflows />} />
               <Route path="/experiments" element={<Experiments />} />

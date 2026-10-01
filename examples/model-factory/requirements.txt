@@ -1,0 +1,8 @@
+accelerate>=1.10
+bitsandbytes>=0.47; platform_machine == "x86_64"
+datasets>=3.0
+huggingface_hub>=0.34
+lm-eval>=0.4.9
+peft>=0.17
+transformers>=4.56
+trl>=0.23

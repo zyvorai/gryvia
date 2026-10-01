@@ -6,6 +6,7 @@ import (
 
 	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 	"github.com/zyvorai/gryvia/operators/ai-operator/controllers"
+	"github.com/zyvorai/gryvia/operators/ai-operator/pkg/modelhub"
 )
 
 // mlOptions are the flags of the ML controllers: GryviaWorkspace, GryviaInferenceService, GryviaModelRegistry,
@@ -33,6 +34,10 @@ type mlOptions struct {
 
 	tunerMaxTrials      int
 	tunerMaxParallelism int
+
+	modelWatchEnabled      bool
+	modelWatchHubURL       string
+	modelWatchMinPollEvery time.Duration
 }
 
 func (o *mlOptions) bind(fs *flag.FlagSet) {
@@ -67,4 +72,10 @@ func (o *mlOptions) bind(fs *flag.FlagSet) {
 		"Largest spec.maxTrials a GryviaAutoTuner may ask for; larger tuners are marked Failed.")
 	fs.IntVar(&o.tunerMaxParallelism, "tuner-max-parallelism", controllers.DefaultMaxParallelismCap,
 		"Most trials of one GryviaAutoTuner that run at the same time (lowers spec.parallelism).")
+	fs.BoolVar(&o.modelWatchEnabled, "enable-model-watch", false,
+		"Run the GryviaModelWatch controller, which polls a model hub and creates a GryviaWorkflow per new model. Off by default: it makes outbound requests to the hub. Needs --enable-ml-controllers.")
+	fs.StringVar(&o.modelWatchHubURL, "model-watch-hub-url", modelhub.DefaultHuggingFaceURL,
+		"Base URL of the Hugging Face compatible hub GryviaModelWatch polls (a mirror or proxy may be used).")
+	fs.DurationVar(&o.modelWatchMinPollEvery, "model-watch-min-poll-interval", controllers.MinModelWatchPollInterval,
+		"Shortest spec.pollInterval a GryviaModelWatch may use.")
 }

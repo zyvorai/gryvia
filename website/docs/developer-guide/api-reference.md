@@ -115,6 +115,7 @@ shown but nothing runs them.
 | `GET/POST /api/inference`, `GET/DELETE /api/inference/{name}` | any (scoped) | Inference services |
 | `GET/POST /api/workflows`, `GET/DELETE /api/workflows/{name}` | any (scoped) | Workflows |
 | `GET/POST /api/tuners`, `GET/DELETE /api/tuners/{name}`, `GET /api/tuners/{name}/trials` | any (scoped) | Auto tuners and their trials |
+| `GET/POST /api/model-watches`, `GET/DELETE /api/model-watches/{name}`, `GET /api/model-watches/{name}/runs`, `POST /api/model-watches/{name}/suspend`, `POST /api/model-watches/{name}/resume` | any (scoped) | Model watches (model factory) and the models each one found |
 
 ## GPU as a Service
 
