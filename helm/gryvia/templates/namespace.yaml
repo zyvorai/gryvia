@@ -5,7 +5,7 @@ metadata:
   name: {{ .Values.namespace.name }}
   labels:
     {{- include "gryvia.labels" . | nindent 4 }}
-    {{- if .Values.nvidia.enabled }}
+    {{- if (dig "nvidia" "enabled" nil .Values.AsMap) }}
     # NVIDIA's driver and toolkit pods are privileged and mount the host.
     pod-security.kubernetes.io/enforce: privileged
     {{- end }}

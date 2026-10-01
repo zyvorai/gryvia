@@ -142,6 +142,44 @@ func TestModel_ServingConfigChangeIsApplied(t *testing.T) {
 	}
 }
 
+// A server moved off its backend default port (vLLM --port=8080) must be probed and served on that port.
+func TestModel_ServicePortIsPassedThrough(t *testing.T) {
+	c := mlClient(newModel("m", func(m *gryviav1.GryviaModelRegistry) {
+		m.Spec.Stage = gryviav1.ModelStageProduction
+		m.Spec.AutoServe = true
+		m.Spec.ServingConfig = &gryviav1.ServingConfig{Args: []string{"--port=8080"}, ServicePort: 8080}
+	}))
+	r := newModelReconciler(c, 0)
+	reconcileOnce(t, r, "ns", "m")
+	svc := &gryviav1.GryviaInferenceService{}
+	mustGet(t, c, "ns", "m-serving", svc)
+	if svc.Spec.ServicePort != 8080 {
+		t.Fatalf("servicePort = %d, want 8080", svc.Spec.ServicePort)
+	}
+	m := getModel(t, c, "m")
+	m.Spec.ServingConfig.ServicePort = 9000
+	if err := c.Update(context.Background(), m); err != nil {
+		t.Fatal(err)
+	}
+	reconcileOnce(t, r, "ns", "m")
+	mustGet(t, c, "ns", "m-serving", svc)
+	if svc.Spec.ServicePort != 9000 {
+		t.Errorf("servicePort change not applied: %d", svc.Spec.ServicePort)
+	}
+
+	// Shared service: the first version creates it with the port.
+	c = mlClient(newModel("v1", func(m *gryviav1.GryviaModelRegistry) {
+		m.Spec.Stage = gryviav1.ModelStageProduction
+		m.Spec.AutoServe = true
+		m.Spec.ServingConfig = &gryviav1.ServingConfig{ServiceName: "chat", ServicePort: 8080}
+	}))
+	reconcileOnce(t, newModelReconciler(c, 0), "ns", "v1")
+	mustGet(t, c, "ns", "chat", svc)
+	if svc.Spec.ServicePort != 8080 {
+		t.Errorf("shared servicePort = %d, want 8080", svc.Spec.ServicePort)
+	}
+}
+
 func TestModel_ArchivingStopsServing(t *testing.T) {
 	c := mlClient(newModel("m", func(m *gryviav1.GryviaModelRegistry) {
 		m.Spec.Stage = gryviav1.ModelStageProduction

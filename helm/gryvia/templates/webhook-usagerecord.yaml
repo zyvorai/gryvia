@@ -1,4 +1,4 @@
-{{- if and .Values.webhook.enabled .Values.quotaOperator.enabled .Values.quotaOperator.usageRecordWebhook.enabled }}
+{{- if and .Values.webhook.enabled .Values.quotaOperator.enabled (dig "quotaOperator" "usageRecordWebhook" "enabled" nil .Values.AsMap) }}
 {{- /* Serving cert (own CA) for the quota-operator's GryviaUsageRecord webhook, minted once and reused on upgrades. */ -}}
 {{- $ns := include "gryvia.namespace" . }}
 {{- $svc := include "gryvia.usageWebhookServiceName" . }}

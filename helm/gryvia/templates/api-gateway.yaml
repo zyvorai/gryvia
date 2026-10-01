@@ -45,15 +45,15 @@ spec:
               name: {{ .Values.apiGateway.flightTokenSecret | quote }}
               key: {{ .Values.apiGateway.flightTokenKey | quote }}
         {{- end }}
-        {{- if .Values.apiGateway.metrics.enabled }}
-        {{- if not .Values.apiGateway.metrics.tokenSecret }}
+        {{- if (dig "apiGateway" "metrics" "enabled" nil .Values.AsMap) }}
+        {{- if not (dig "apiGateway" "metrics" "tokenSecret" nil .Values.AsMap) }}
         {{- fail "apiGateway.metrics.enabled requires apiGateway.metrics.tokenSecret (an existing Secret with a token of at least 32 characters): /metrics is never served unauthenticated" }}
         {{- end }}
         - name: GRYVIA_METRICS_TOKEN
           valueFrom:
             secretKeyRef:
-              name: {{ .Values.apiGateway.metrics.tokenSecret | quote }}
-              key: {{ .Values.apiGateway.metrics.tokenKey | quote }}
+              name: {{ (dig "apiGateway" "metrics" "tokenSecret" nil .Values.AsMap) | quote }}
+              key: {{ (dig "apiGateway" "metrics" "tokenKey" nil .Values.AsMap) | quote }}
         {{- end }}
         {{- with .Values.apiGateway.collector }}
         {{- if .tlsSecret }}
@@ -80,26 +80,26 @@ spec:
         - name: PROMETHEUS_URL
           value: {{ .Values.apiGateway.prometheusUrl | quote }}
         {{- end }}
-        {{- if .Values.apiGateway.netra.url }}
+        {{- if (dig "apiGateway" "netra" "url" nil .Values.AsMap) }}
         - name: GRYVIA_NETRA_URL
-          value: {{ .Values.apiGateway.netra.url | quote }}
-        {{- if .Values.apiGateway.netra.tokenSecret }}
+          value: {{ (dig "apiGateway" "netra" "url" nil .Values.AsMap) | quote }}
+        {{- if (dig "apiGateway" "netra" "tokenSecret" nil .Values.AsMap) }}
         - name: GRYVIA_NETRA_TOKEN
           valueFrom:
             secretKeyRef:
-              name: {{ .Values.apiGateway.netra.tokenSecret | quote }}
-              key: {{ .Values.apiGateway.netra.tokenKey | quote }}
+              name: {{ (dig "apiGateway" "netra" "tokenSecret" nil .Values.AsMap) | quote }}
+              key: {{ (dig "apiGateway" "netra" "tokenKey" nil .Values.AsMap) | quote }}
         {{- end }}
-        {{- if .Values.apiGateway.netra.insecureTLS }}
+        {{- if (dig "apiGateway" "netra" "insecureTLS" nil .Values.AsMap) }}
         - name: GRYVIA_NETRA_INSECURE
           value: "1"
         {{- end }}
         {{- end }}
-        {{- if .Values.apiGateway.oidc.adminGroups }}
+        {{- if (dig "apiGateway" "oidc" "adminGroups" nil .Values.AsMap) }}
         - name: GRYVIA_OIDC_ADMIN_GROUPS
-          value: {{ .Values.apiGateway.oidc.adminGroups | quote }}
+          value: {{ (dig "apiGateway" "oidc" "adminGroups" nil .Values.AsMap) | quote }}
         {{- end }}
-        {{- if .Values.apiGateway.oidc.legacyNamespaces }}
+        {{- if (dig "apiGateway" "oidc" "legacyNamespaces" nil .Values.AsMap) }}
         - name: GRYVIA_OIDC_LEGACY_NAMESPACES
           value: "1"
         {{- end }}
@@ -148,7 +148,7 @@ spec:
         - name: tls
           mountPath: /tls
           readOnly: true
-        {{- if .Values.apiGateway.collector.tlsSecret }}
+        {{- if (dig "apiGateway" "collector" "tlsSecret" nil .Values.AsMap) }}
         - name: collector-tls
           mountPath: /collector-tls
           readOnly: true
@@ -160,10 +160,10 @@ spec:
         secret:
           secretName: {{ .Values.tls.secretName }}
           defaultMode: 0440
-      {{- if .Values.apiGateway.collector.tlsSecret }}
+      {{- if (dig "apiGateway" "collector" "tlsSecret" nil .Values.AsMap) }}
       - name: collector-tls
         secret:
-          secretName: {{ .Values.apiGateway.collector.tlsSecret | quote }}
+          secretName: {{ (dig "apiGateway" "collector" "tlsSecret" nil .Values.AsMap) | quote }}
           defaultMode: 0440
       {{- end }}
 ---
@@ -229,7 +229,7 @@ rules:
   - gryviausagerecords
   - gryviafabricsignals
   verbs: ["get", "list", "watch"]
-{{- if .Values.apiGateway.networkCost.enabled }}
+{{- if (dig "apiGateway" "networkCost" "enabled" nil .Values.AsMap) }}
 # apiGateway.networkCost.enabled: read the measured network usage and its price list.
 - apiGroups: ["gryvia.io"]
   resources:

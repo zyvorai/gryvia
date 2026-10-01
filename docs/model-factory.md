@@ -135,6 +135,10 @@ condition `PromotionGate`.
 
 Both the stable and the canary Deployment load the artifacts of their own version's registry entry.
 
+`servingConfig.servicePort` is the port the serving container is served and probed on. Set it whenever `args` move the
+server off its backend default (vLLM and Triton 8000, TorchServe 8080); for example vLLM with `--port=8080` needs
+`servicePort: 8080`, otherwise the pods never pass their probes.
+
 ## Surfaces
 
 * Gateway: `GET/POST /api/model-watches`, `GET /api/model-watches/{name}`, `GET /api/model-watches/{name}/runs`

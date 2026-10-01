@@ -9,7 +9,7 @@
 {{- $webhookSecret := "" }}
 {{- if and (eq $name "ai-operator") $.Values.webhook.enabled }}
 {{- $webhookSecret = include "gryvia.webhookSecretName" $ }}
-{{- else if and (eq $name "quota-operator") $.Values.webhook.enabled $.Values.quotaOperator.usageRecordWebhook.enabled }}
+{{- else if and (eq $name "quota-operator") $.Values.webhook.enabled (dig "quotaOperator" "usageRecordWebhook" "enabled" nil $.Values.AsMap) }}
 {{- $webhookSecret = include "gryvia.usageWebhookSecretName" $ }}
 {{- end }}
 {{- $webhook := ne $webhookSecret "" }}
@@ -54,33 +54,33 @@ spec:
             {{- if eq $name "gpu-operator" }}
             - --auto-register={{ $.Values.gpuOperator.autoRegister }}
             {{- end }}
-            {{- if and $.Values.platformCompletion.reportUnsupportedAPIs (has $name (list "ai-operator" "gpu-operator" "quota-operator" "storage-operator")) }}
+            {{- if and (dig "platformCompletion" "reportUnsupportedAPIs" nil $.Values.AsMap) (has $name (list "ai-operator" "gpu-operator" "quota-operator" "storage-operator")) }}
             - --report-unsupported-apis=true
             {{- end }}
-            {{- if and (eq $name "ai-operator") $.Values.platformCompletion.inferenceTelemetry }}
+            {{- if and (eq $name "ai-operator") (dig "platformCompletion" "inferenceTelemetry" nil $.Values.AsMap) }}
             - {{ printf "--inference-telemetry-image=%s" (include "gryvia.image" (dict "root" $ "image" $op.image)) | quote }}
             {{- end }}
             {{- if and (eq $name "gpu-operator") $.Values.gpuOperator.gpuSharing }}
             - --enable-gpu-sharing=true
             {{- end }}
             {{- if and (eq $name "gpu-operator") $.Values.gpuOperator.gpuSharing $.Values.gpuOperator.devicePluginConfig }}
-            - {{ printf "--device-plugin-config-name=%s" $.Values.nvidiaPlatform.timeSlicing.configName | quote }}
+            - {{ printf "--device-plugin-config-name=%s" (dig "nvidiaPlatform" "timeSlicing" "configName" nil $.Values.AsMap) | quote }}
             - {{ printf "--device-plugin-config-namespace=%s" $.Release.Namespace | quote }}
             {{- end }}
-            {{- if and (eq $name "gpu-operator") $.Values.platformCompletion.gpuHealth }}
+            {{- if and (eq $name "gpu-operator") (dig "platformCompletion" "gpuHealth" nil $.Values.AsMap) }}
             - --enable-gpu-health-controller=true
             {{- end }}
-            {{- if and (eq $name "gpu-operator") $.Values.platformCompletion.gpuRemediation }}
+            {{- if and (eq $name "gpu-operator") (dig "platformCompletion" "gpuRemediation" nil $.Values.AsMap) }}
             - --enable-gpu-remediation=true
             {{- end }}
-            {{- if and (eq $name "quota-operator") $.Values.platformCompletion.kueueFairSharing }}
+            {{- if and (eq $name "quota-operator") (dig "platformCompletion" "kueueFairSharing" nil $.Values.AsMap) }}
             - --kueue-fair-sharing=true
             {{- end }}
-            {{- if and (eq $name "quota-operator") $.Values.platformCompletion.kueueTopologyName }}
-            - {{ printf "--kueue-topology-name=%s" $.Values.platformCompletion.kueueTopologyName | quote }}
+            {{- if and (eq $name "quota-operator") (dig "platformCompletion" "kueueTopologyName" nil $.Values.AsMap) }}
+            - {{ printf "--kueue-topology-name=%s" (dig "platformCompletion" "kueueTopologyName" nil $.Values.AsMap) | quote }}
             {{- end }}
-            {{- if and (eq $name "quota-operator") $.Values.platformCompletion.kueueAdmissionCheck }}
-            - {{ printf "--kueue-admission-check=%s" $.Values.platformCompletion.kueueAdmissionCheck | quote }}
+            {{- if and (eq $name "quota-operator") (dig "platformCompletion" "kueueAdmissionCheck" nil $.Values.AsMap) }}
+            - {{ printf "--kueue-admission-check=%s" (dig "platformCompletion" "kueueAdmissionCheck" nil $.Values.AsMap) | quote }}
             {{- end }}
             {{- if and (eq $name "ai-operator") $.Values.aiOperator.inferenceGatewayRouting }}
             - --inference-gateway-routing=true
@@ -88,10 +88,10 @@ spec:
             {{- if and (eq $name "ai-operator") $.Values.aiOperator.inferencePrometheusURL }}
             - {{ printf "--inference-prometheus-url=%s" $.Values.aiOperator.inferencePrometheusURL | quote }}
             {{- end }}
-            {{- if and (eq $name "ai-operator") $.Values.aiOperator.modelWatch.enabled }}
+            {{- if and (eq $name "ai-operator") (dig "aiOperator" "modelWatch" "enabled" nil $.Values.AsMap) }}
             - --enable-model-watch=true
-            - {{ printf "--model-watch-hub-url=%s" $.Values.aiOperator.modelWatch.hubURL | quote }}
-            - {{ printf "--model-watch-min-poll-interval=%s" $.Values.aiOperator.modelWatch.minPollInterval | quote }}
+            - {{ printf "--model-watch-hub-url=%s" (dig "aiOperator" "modelWatch" "hubURL" nil $.Values.AsMap) | quote }}
+            - {{ printf "--model-watch-min-poll-interval=%s" (dig "aiOperator" "modelWatch" "minPollInterval" nil $.Values.AsMap) | quote }}
             {{- end }}
             {{- if and (eq $name "ai-operator") $.Values.aiOperator.placementHolds }}
             - --placement-holds=true
@@ -115,8 +115,8 @@ spec:
             - --admission-gate=true
             - --admission-default-hours={{ $.Values.aiOperator.admissionDefaultHours }}
             {{- end }}
-            {{- if and (eq $name "quota-operator") $.Values.quotaOperator.budgetWebhook.url }}
-            - {{ printf "--budget-webhook-url=%s" $.Values.quotaOperator.budgetWebhook.url | quote }}
+            {{- if and (eq $name "quota-operator") (dig "quotaOperator" "budgetWebhook" "url" nil $.Values.AsMap) }}
+            - {{ printf "--budget-webhook-url=%s" (dig "quotaOperator" "budgetWebhook" "url" nil $.Values.AsMap) | quote }}
             {{- end }}
             {{- if and (eq $name "quota-operator") $.Values.quotaOperator.tenantRbac }}
             - --tenant-rbac=true
@@ -134,13 +134,13 @@ spec:
             - --enable-webhooks=true
             - --webhook-cert-dir=/tmp/k8s-webhook-server/serving-certs
             {{- end }}
-          {{- if and (eq $name "quota-operator") $.Values.quotaOperator.budgetWebhook.url $.Values.quotaOperator.budgetWebhook.secretName }}
+          {{- if and (eq $name "quota-operator") (dig "quotaOperator" "budgetWebhook" "url" nil $.Values.AsMap) (dig "quotaOperator" "budgetWebhook" "secretName" nil $.Values.AsMap) }}
           env:
             - name: GRYVIA_BUDGET_WEBHOOK_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ $.Values.quotaOperator.budgetWebhook.secretName | quote }}
-                  key: {{ $.Values.quotaOperator.budgetWebhook.secretKey | quote }}
+                  name: {{ (dig "quotaOperator" "budgetWebhook" "secretName" nil $.Values.AsMap) | quote }}
+                  key: {{ (dig "quotaOperator" "budgetWebhook" "secretKey" nil $.Values.AsMap) | quote }}
           {{- end }}
           ports:
             - name: metrics

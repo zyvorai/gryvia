@@ -122,6 +122,12 @@ type ServingConfig struct {
 
 	// Args are extra arguments of the serving container (for example vLLM's --max-model-len)
 	Args []string `json:"args,omitempty"`
+
+	// ServicePort is the port the serving container listens on and is probed on. Set it when Args move the
+	// server off its backend default (vLLM 8000, Triton 8000, TorchServe 8080).
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=65535
+	ServicePort int32 `json:"servicePort,omitempty"`
 }
 
 // GryviaModelRegistryStatus defines the observed state of GryviaModelRegistry

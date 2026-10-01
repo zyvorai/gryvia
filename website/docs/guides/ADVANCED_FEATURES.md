@@ -8,11 +8,11 @@ Overview of Gryvia's advanced capability areas, with what is implemented and wha
 |------|---------|-------|
 | GPU health monitoring | `GryviaHealthCheck` | CRD only, no controller registered. `gryvia health` is separate and reads `GryviaGpuNode`, `GryviaStorage` and `GryviaNetwork` status |
 | Retry policies | `GryviaRetryPolicy` | CRD only, no controller |
-| Reservations | `GryviaReservation` | Opt-in (`quotaOperator.reservations`, off by default): the quota-operator taints and labels the reserved nodes; jobs annotated `gryvia.io/reservation` tolerate the taint. Unit-tested, kind e2e authored and not yet run, never run on GPUs; see [GPUaaS completion](https://github.com/zyvorai/gryvia/blob/main/docs/gpuaas-completion.md) |
+| Reservations | `GryviaReservation` | Opt-in (`quotaOperator.reservations`, off by default): the quota-operator taints and labels the reserved nodes; jobs annotated `gryvia.io/reservation` tolerate the taint. Unit-tested, the kind e2e passes in CI, never run on GPUs; see [GPUaaS completion](https://github.com/zyvorai/gryvia/blob/main/docs/gpuaas-completion.md) |
 | Multi-tenancy | `GryviaTenant`, `GryviaQuota` | Running: quota-operator creates the `tenant-<name>` namespace, ResourceQuota, LimitRange and an optional NetworkPolicy; opt-in per-tenant RoleBindings (`quotaOperator.tenantRbac`) |
 | Job templates | `GryviaTemplate` | CRD only, no controller |
 | Auto-scaling | `GryviaAutoScaler` | CRD only, no controller; no node provisioning exists |
-| Budgets | `GryviaBudget` | Controller registered: spend from `GryviaUsageRecord`s sets a `status.state`; blocking new jobs needs the opt-in admission gate (`aiOperator.admissionGate`). Estimates only; unit-tested, kind e2e authored and not yet run |
+| Budgets | `GryviaBudget` | Controller registered: spend from `GryviaUsageRecord`s sets a `status.state`; blocking new jobs needs the opt-in admission gate (`aiOperator.admissionGate`). Estimates only; unit-tested, the kind e2e passes in CI |
 | Priority and preemption | `GryviaAIJob.spec.priority`, Kueue | Opt-in via the Kueue integration (`--kueue-integration`): priority maps to a WorkloadPriorityClass and preempts within a queue, victims are requeued; unit-tested, e2e unverified ([details](https://github.com/zyvorai/gryvia/blob/main/docs/kueue-integration.md)). Without it `spec.priority` is validated but not acted on. `GryviaPriority` is CRD only |
 | ML workflows | AutoTuner, Workflow, ModelRegistry, InferenceService, Workspace | Controllers registered in the ai-operator (on by default); unit-tested, kind e2e with tiny CPU images passes in CI, nothing on GPUs; see [ML Workflows](ML_WORKFLOWS.md) |
 | Network intelligence | 10 kinds | Running via the network-intelligence operator (own chart); eBPF collector off by default; see [Network Intelligence](NETWORK_INTELLIGENCE.md) |
@@ -129,7 +129,7 @@ spec:
 
 ## Resource Reservations
 
-Status: opt-in, off by default (`quotaOperator.reservations` / `--enable-reservations`; turning it on makes existing `GryviaReservation` objects start tainting nodes). The controller reserves nodes matching `resources` with the taint `gryvia.io/reserved:NoSchedule` plus labels, so only jobs annotated `gryvia.io/reservation` (which get the toleration and node selector) land there; recurring `schedule` windows are supported. It does not bill for a reservation. Unit-tested; the kind workflow `e2e-gpuaas.yml` is authored and not yet run; never run on GPUs. Details and limits: [GPUaaS completion](https://github.com/zyvorai/gryvia/blob/main/docs/gpuaas-completion.md).
+Status: opt-in, off by default (`quotaOperator.reservations` / `--enable-reservations`; turning it on makes existing `GryviaReservation` objects start tainting nodes). The controller reserves nodes matching `resources` with the taint `gryvia.io/reserved:NoSchedule` plus labels, so only jobs annotated `gryvia.io/reservation` (which get the toleration and node selector) land there; recurring `schedule` windows are supported. It does not bill for a reservation. Unit-tested; the kind workflow `e2e-gpuaas.yml` passes in CI; never run on GPUs. Details and limits: [GPUaaS completion](https://github.com/zyvorai/gryvia/blob/main/docs/gpuaas-completion.md).
 
 ### Schema examples
 
@@ -407,7 +407,7 @@ For full documentation, CRD examples, and CLI commands, see the **[Network Intel
 
 ## Advanced Scheduling
 
-What runs: GPU-aware node selection and a validating admission webhook (quota and SKU policy, fails open). Opt-in and Kueue-backed (`--kueue-integration`; unit-tested, kind e2e written but unverified): gang admission, per-tenant queues and quota with borrowing, priority preemption ([Kueue integration](https://github.com/zyvorai/gryvia/blob/main/docs/kueue-integration.md)). Not called by anything: the mutating NCCL-injection webhook. Not implemented: an in-tree gang scheduler, DRF queue and elastic scaling (unused code for these was removed). Backfill is not implemented.
+What runs: GPU-aware node selection and a validating admission webhook (quota and SKU policy, fails open). Opt-in and Kueue-backed (`--kueue-integration`; unit-tested, the kind e2e with CPU pods passes in CI): gang admission, per-tenant queues and quota with borrowing, priority preemption ([Kueue integration](https://github.com/zyvorai/gryvia/blob/main/docs/kueue-integration.md)). Not called by anything: the mutating NCCL-injection webhook. Not implemented: an in-tree gang scheduler, DRF queue and elastic scaling (unused code for these was removed). Backfill is not implemented.
 
 For details, see the **[Scheduling Guide](SCHEDULING.md)**.
 

@@ -3,7 +3,6 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -193,11 +192,9 @@ func (r *GryviaModelRegistryReconciler) reconcileShared(ctx context.Context, mod
 
 	if svc.Spec.ModelRef == model.Name {
 		desired := r.servingSpec(model)
-		if svc.Spec.Backend != desired.Backend || svc.Spec.Replicas != desired.Replicas || svc.Spec.GPUCount != desired.GPUCount ||
-			svc.Spec.GPUType != desired.GPUType || !reflect.DeepEqual(svc.Spec.Args, desired.Args) {
+		if servingSettingsDiffer(svc.Spec, desired) {
 			base := svc.DeepCopy()
-			svc.Spec.Backend, svc.Spec.Replicas, svc.Spec.Args = desired.Backend, desired.Replicas, desired.Args
-			svc.Spec.GPUCount, svc.Spec.GPUType = desired.GPUCount, desired.GPUType
+			copyServingSettings(&svc.Spec, desired)
 			if err := r.Patch(ctx, svc, client.MergeFrom(base)); err != nil {
 				return err
 			}

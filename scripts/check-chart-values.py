@@ -9,6 +9,7 @@ templates/ (every file, including _helpers.tpl):
   .Values.a.b              a parent used as a whole (toYaml, range, with, index, a variable assignment):
                            the leaf is then read through it
   $x := .Values.a.b ; $x.c the same, through a variable
+  dig "a" "b" "c" nil .Values.AsMap   the leaf, read nil-safe (a map missing from reused values is off)
 
 `$ops := dict "a" .Values.x "b" .Values.y` followed by `range $n, $o := $ops` reads `x.f` for every `$o.f` (the
 dict does not count as reading x whole). A leaf under a parent that is only ever read key by key must be read itself.
@@ -38,6 +39,7 @@ INDEX = re.compile(r"index\s+\$?\.Values\s+((?:\"[^\"]+\"\s*)+)")
 DICT = re.compile(r"(\$[A-Za-z_][A-Za-z0-9_]*)\s*:?=\s*dict\b([^}]*)")
 RANGE = re.compile(r"range\s+\$[A-Za-z_][A-Za-z0-9_]*\s*,\s*(\$[A-Za-z_][A-Za-z0-9_]*)\s*:?=\s*(\$[A-Za-z_][A-Za-z0-9_]*)")
 VAR = re.compile(r"(\$[A-Za-z_][A-Za-z0-9_]*)\s*:?=\s*\$?\.Values((?:\.[A-Za-z_][A-Za-z0-9_-]*)+)")
+DIG = re.compile(r"dig\s+((?:\"[^\"]+\"\s+)+)\S+\s+\$?\.Values\.AsMap")
 
 
 def leaves(node, prefix=()):
@@ -65,6 +67,8 @@ def reads(text):
     for m in REF.finditer(text):
         out.add(tuple(m.group(1).strip(".").split(".")))
     for m in INDEX.finditer(text):
+        out.add(tuple(re.findall(r'"([^"]+)"', m.group(1))))
+    for m in DIG.finditer(text):
         out.add(tuple(re.findall(r'"([^"]+)"', m.group(1))))
     for m in VAR.finditer(text):
         var, base = m.group(1), tuple(m.group(2).strip(".").split("."))

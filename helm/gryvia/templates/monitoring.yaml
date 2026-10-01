@@ -44,7 +44,7 @@ spec:
       path: /metrics
       interval: {{ $mon.prometheus.serviceMonitor.interval }}
 {{- end }}
-{{- if and .Values.apiGateway.enabled .Values.apiGateway.metrics.enabled }}
+{{- if and .Values.apiGateway.enabled (dig "apiGateway" "metrics" "enabled" nil .Values.AsMap) }}
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
@@ -69,11 +69,11 @@ spec:
       scheme: https
       interval: {{ $mon.prometheus.serviceMonitor.interval }}
       tlsConfig:
-        insecureSkipVerify: {{ .Values.apiGateway.metrics.insecureSkipVerify }}
+        insecureSkipVerify: {{ (dig "apiGateway" "metrics" "insecureSkipVerify" nil .Values.AsMap) }}
       # The Secret must exist in the ServiceMonitor's namespace ({{ $ns }}).
       bearerTokenSecret:
-        name: {{ .Values.apiGateway.metrics.tokenSecret | quote }}
-        key: {{ .Values.apiGateway.metrics.tokenKey | quote }}
+        name: {{ (dig "apiGateway" "metrics" "tokenSecret" nil .Values.AsMap) | quote }}
+        key: {{ (dig "apiGateway" "metrics" "tokenKey" nil .Values.AsMap) | quote }}
 {{- end }}
 {{- end }}
 {{- if and $hasCRD $mon.prometheus.enabled $mon.prometheus.rules.enabled }}
