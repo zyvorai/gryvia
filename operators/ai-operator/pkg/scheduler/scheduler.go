@@ -21,8 +21,23 @@ type NodeScore struct {
 
 // FindOptimalNodes finds the best nodes for running an AI job
 func FindOptimalNodes(ctx context.Context, k8sClient client.Client, job *gryviav1.GryviaAIJob) ([]string, error) {
-	p, err := findOptimalNodes(ctx, k8sClient, job, nil)
+	p, err := findOptimalNodes(ctx, k8sClient, job, nil, nil)
 	return p.Nodes, err
+}
+
+// FindOptimalNodesHeld is FindOptimalNodes that also counts held GPUs per node (see Reservations) as used.
+func FindOptimalNodesHeld(ctx context.Context, k8sClient client.Client, job *gryviav1.GryviaAIJob, held map[string]int64) ([]string, error) {
+	p, err := findOptimalNodes(ctx, k8sClient, job, nil, held)
+	return p.Nodes, err
+}
+
+// GPUsPerPlacedNode is how many GPUs the placement looks for on each node it picks: GpusPerNode for a
+// distributed job that sets it, otherwise spec.gpus.
+func GPUsPerPlacedNode(job *gryviav1.GryviaAIJob) int32 {
+	if job.Spec.Distributed != nil && job.Spec.Distributed.Enabled && job.Spec.Distributed.GpusPerNode > 0 {
+		return job.Spec.Distributed.GpusPerNode
+	}
+	return job.Spec.GPUs
 }
 
 // FindOptimalNodesFabric is FindOptimalNodes with fabric-aware ranking: fresh
@@ -30,10 +45,15 @@ func FindOptimalNodes(ctx context.Context, k8sClient client.Client, job *gryviav
 // scores before the node choice, and the changes are returned as an explanation.
 // The caller decides the opt-in (see FabricEnabled).
 func FindOptimalNodesFabric(ctx context.Context, k8sClient client.Client, job *gryviav1.GryviaAIJob, opt FabricOptions) (Placement, error) {
-	return findOptimalNodes(ctx, k8sClient, job, &opt)
+	return findOptimalNodes(ctx, k8sClient, job, &opt, nil)
 }
 
-func findOptimalNodes(ctx context.Context, k8sClient client.Client, job *gryviav1.GryviaAIJob, fab *FabricOptions) (Placement, error) {
+// FindOptimalNodesFabricHeld is FindOptimalNodesFabric that also counts held GPUs per node as used.
+func FindOptimalNodesFabricHeld(ctx context.Context, k8sClient client.Client, job *gryviav1.GryviaAIJob, opt FabricOptions, held map[string]int64) (Placement, error) {
+	return findOptimalNodes(ctx, k8sClient, job, &opt, held)
+}
+
+func findOptimalNodes(ctx context.Context, k8sClient client.Client, job *gryviav1.GryviaAIJob, fab *FabricOptions, held map[string]int64) (Placement, error) {
 	// Get all nodes
 	nodes := &corev1.NodeList{}
 	if err := k8sClient.List(ctx, nodes); err != nil {
@@ -54,12 +74,13 @@ func findOptimalNodes(ctx context.Context, k8sClient client.Client, job *gryviav
 	}
 
 	gpuUsagePerNode := calculateGPUUsagePerNode(pods.Items)
+	// GPUs reserved for jobs placed but not yet bound count as used.
+	for node, h := range held {
+		gpuUsagePerNode[node] += h
+	}
 
 	// Determine GPUs needed per node
-	gpusNeeded := job.Spec.GPUs
-	if job.Spec.Distributed != nil && job.Spec.Distributed.Enabled && job.Spec.Distributed.GpusPerNode > 0 {
-		gpusNeeded = job.Spec.Distributed.GpusPerNode
-	}
+	gpusNeeded := GPUsPerPlacedNode(job)
 
 	// Filter nodes based on job requirements
 	eligibleNodes := filterNodes(nodes.Items, job, gpuUsagePerNode, gpusNeeded)

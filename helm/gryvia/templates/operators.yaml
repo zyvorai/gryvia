@@ -84,6 +84,9 @@ spec:
             {{- if and (eq $name "ai-operator") $.Values.aiOperator.inferencePrometheusURL }}
             - {{ printf "--inference-prometheus-url=%s" $.Values.aiOperator.inferencePrometheusURL | quote }}
             {{- end }}
+            {{- if and (eq $name "ai-operator") $.Values.aiOperator.placementHolds }}
+            - --placement-holds=true
+            {{- end }}
             {{- if and (eq $name "ai-operator") $.Values.aiOperator.fabricAwareScheduling }}
             - --fabric-aware-scheduling=true
             {{- end }}

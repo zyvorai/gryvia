@@ -59,6 +59,7 @@ func main() {
 	var admissionDefaultHours float64
 	var ml mlOptions
 	var mergeFabricSignals bool
+	var placementHolds bool
 
 	flag.StringVar(&federationServers, "federation-allowed-servers", "", "Comma-separated administrator-allowed HTTPS Kubernetes API servers; empty disables federation probes.")
 	flag.StringVar(&federationNamespace, "federation-credentials-namespace", "gryvia-system", "Namespace containing trusted inline federation kubeconfig secrets.")
@@ -86,6 +87,8 @@ func main() {
 		"Before creating a job's workload, check the quotas and hard budgets covering its namespace (spend from usage records plus a forecast for the job) and reject it instead of creating it. Fails open on lookup errors. Off by default.")
 	flag.Float64Var(&admissionDefaultHours, "admission-default-hours", 1,
 		"Hours a job without spec.timeout is assumed to run for the admission gate's cost forecast.")
+	flag.BoolVar(&placementHolds, "placement-holds", false,
+		"Hold the GPUs of a job's chosen nodes until its pods are up, so two jobs placed in the same window cannot pick the same free GPUs. A single job is already placed all-or-nothing; this closes the race between jobs. In memory, expires after 5 minutes, off by default.")
 	ml.bind(flag.CommandLine)
 	flag.BoolVar(&mergeFabricSignals, "merge-fabric-signals", false,
 		"Fold the per-node entries collectors write into GryviaFabricSignal status.nodes[] into the top-level status (max for degradation metrics, sample-weighted means for ratios, stale entries ignored). Off by default.")
@@ -137,6 +140,7 @@ func main() {
 
 		AdmissionGate:         admissionGate,
 		AdmissionDefaultHours: admissionDefaultHours,
+		PlacementHolds:        placementHolds,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "GryviaAIJob")
 		os.Exit(1)

@@ -11,6 +11,7 @@ What Gryvia does today when a `GryviaAIJob` is submitted, and which of the more 
 | Validating admission webhook (job sanity, quota and SKU policy) | Implemented, served by the ai-operator when enabled; fails open by default |
 | Gang admission, queueing, quotas, borrowing between tenants, priority preemption | **Opt-in, backed by Kueue** (`--kueue-integration`, off by default): the Job is created suspended and Kueue admits all its pods together. Unit-tested with fake clients; the kind workflow `e2e-kueue.yml` is written but unverified until it has passed; not run on GPUs. See the [Kueue integration](https://github.com/zyvorai/gryvia/blob/main/docs/kueue-integration.md) |
 | Gang scheduling in-tree (`pkg/scheduler/gang.go`), DRF queue (`pkg/queue`) | Library code, not called by anything; superseded by Kueue when it is enabled |
+| Placement holds (`--placement-holds`) | **Opt-in, off by default.** While a job's pods come up, the GPUs of the nodes it was placed on count as used for other jobs' placement, so two jobs placed at the same moment do not both take the same free GPUs. In memory, expires after 5 minutes. It does not pin pods; see [Placement holds](#placement-holds-opt-in). Unit-tested with fake clients; nothing on GPUs |
 | Backfill | Not implemented (Kueue's `BestEffortFIFO` lets smaller jobs run past a blocked one, which is not time-based backfill) |
 | Elastic training | Library code in `operators/ai-operator/pkg/elastic`, not called by the controller |
 | Mutating webhook (NCCL injection and defaults) | Code exists in `pkg/webhook/mutator.go`; not registered in `main.go`, so it does not run |
@@ -76,6 +77,16 @@ With `--kueue-integration` on both operators (and Kueue installed, for example `
 **Unverified:** this has unit tests against fake clients and a kind workflow (`.github/workflows/e2e-kueue.yml`) that has not been run yet; nothing was run on GPUs or with real multi-node NCCL.
 
 The in-tree `GangScheduler` in `operators/ai-operator/pkg/scheduler/gang.go` (a `PodGroup` with all-or-nothing GPU reservation) is library code that nothing calls and that is superseded by Kueue; there is no `spec.scheduling` field on `GryviaAIJob`. Volcano is not integrated.
+
+### Placement holds (opt-in)
+
+A single distributed job is already placed all-or-nothing: if fewer than `distributed.nodes` nodes qualify, the placement fails, `Scheduled` is false and the job stays `Pending` (retried after 30 seconds), so a placement never starts a partial set. What placement did not do is account for a job placed a moment earlier: GPUs count as used only once a pod is bound to a node, so two jobs placed within seconds of each other were both told the same GPUs were free.
+
+With `--placement-holds` (chart `aiOperator.placementHolds`, off by default) the operator remembers, in memory, the nodes it placed each job on and counts those GPUs as used for every other job's placement until the job's pods are all ready, the job ends or is deleted, or five minutes pass. A job's own placement never counts its own hold. Fabric-aware ranking and every filter are unchanged; holds only change what other jobs see as free. Kueue-managed jobs do not use it.
+
+**Limit.** The operator's choice is advisory. The pods carry a label node selector (GPU type, RDMA, your own `spec.nodeSelector`), not the names of the chosen nodes, and kube-scheduler decides among the nodes that match. When free GPUs are scarce the pods can only go to the nodes the operator picked, and the hold is accurate. With spare matching nodes the pods may land elsewhere, and two jobs can still compete for the same ones. Pinning pods to the chosen nodes would remove that gap and is not done. Unit-tested with fake clients; not run on GPUs.
+
+This is not the in-tree `GangScheduler`, which is still not called: it re-implements node selection without the fabric-aware ranking, and no caller releases the GPUs it holds.
 
 ### Design sketch
 

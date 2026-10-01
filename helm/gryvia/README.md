@@ -123,6 +123,7 @@ Off by default unless noted. None of them has been run on real GPUs or fabrics; 
 | Values | What it turns on | Doc |
 |---|---|---|
 | `aiOperator.kueueIntegration`, `aiOperator.kueueStrictAdmission` | Kueue queues; strict mode fails closed for tenant batch jobs whose queue is missing | [kueue-integration](../../docs/kueue-integration.md), [admission-recovery](../../docs/admission-recovery.md) |
+| `aiOperator.placementHolds` | Hold the GPUs of a job's chosen nodes while its pods come up, so two jobs placed at the same moment do not count the same free GPUs (advisory, in memory, 5-minute expiry) | [SCHEDULING](../../website/docs/guides/SCHEDULING.md#placement-holds-opt-in) |
 | `aiOperator.inferenceGatewayRouting`, `aiOperator.inferencePrometheusURL` | Weighted Gateway API canaries; Prometheus error-rate and latency gating of canary promotion | [inference-serving](../../docs/inference-serving.md) |
 | `nvidia.*`, `nvidiaPlatform.*`, `nvidiaNetwork.*`, `nvidiaNim.*` | GPU Operator (RDMA, GDS, MIG), time-slicing config and validator job, Network Operator (optional `NicClusterPolicy`), NIM Operator | [NVIDIA one-click](../../website/docs/guides/NVIDIA_ONE_CLICK.md) |
 | `quotaOperator.usageRecordWebhook.enabled` | **On by default.** Sealed usage records cannot be edited | above |
