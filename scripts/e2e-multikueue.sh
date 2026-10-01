@@ -50,7 +50,7 @@ scenario_worker() {
   kw create namespace "$NS" --dry-run=client -o yaml | kw apply -f - >/dev/null
   wait_for 120 "Kueue CRDs on the worker" kw get crd clusterqueues.kueue.x-k8s.io localqueues.kueue.x-k8s.io
   # The manager's queue name is "gryvia" in $NS (the default the ai-operator uses); the worker must have the same.
-  for i in $(seq 1 30); do
+  for _ in $(seq 1 30); do
     if cat <<YAML | kw apply -f - >/dev/null 2>&1; then break; fi
 apiVersion: kueue.x-k8s.io/v1beta1
 kind: ResourceFlavor
