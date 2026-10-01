@@ -10,6 +10,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
+	"github.com/zyvorai/gryvia/operators/ai-operator/pkg/scheduler"
 )
 
 func holdNode(name string) *corev1.Node {
@@ -144,5 +145,18 @@ func TestHoldHelpersAreInertWhenOff(t *testing.T) {
 	r.holdPlacement(job, []string{"n1"})
 	if got := r.placementHeld(holdJob("other")); got != nil {
 		t.Errorf("held = %v with holds off, want nil", got)
+	}
+}
+
+func TestBuildAffinityPinsOnlyWhenAnnotated(t *testing.T) {
+	r := &GryviaAIJobReconciler{}
+	job := &gryviav1.GryviaAIJob{Status: gryviav1.GryviaAIJobStatus{NodesAllocated: []string{"n1"}}}
+	if aff := r.buildAffinity(job); aff != nil {
+		t.Fatalf("unannotated job got affinity: %+v", aff)
+	}
+	job.Annotations = map[string]string{scheduler.AnnotationPinPlacement: "true"}
+	aff := r.buildAffinity(job)
+	if aff == nil || aff.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0].MatchFields[0].Values[0] != "n1" {
+		t.Fatalf("annotated job not pinned: %+v", aff)
 	}
 }

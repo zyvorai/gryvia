@@ -268,3 +268,37 @@ func PreferredNodeTerms(selected []string, expl []gryviav1.PlacementExplanation)
 	}
 	return terms
 }
+
+// AnnotationPinPlacement opts a job in to REQUIRED node affinity on the nodes the operator
+// placed it on ("true"). Without it placement stays advisory (label selectors only).
+const AnnotationPinPlacement = "gryvia.io/pin-placement"
+
+// PinToNodes returns a copy of aff whose required node affinity also demands one of the given
+// nodes. NodeSelectorTerms are ORed, so the node requirement is added to every existing term
+// (a user's own required terms keep applying); with no terms one is created. nil/empty nodes
+// returns aff unchanged. The input is never mutated.
+func PinToNodes(aff *corev1.Affinity, nodes []string) *corev1.Affinity {
+	if len(nodes) == 0 {
+		return aff
+	}
+	out := aff.DeepCopy()
+	if out == nil {
+		out = &corev1.Affinity{}
+	}
+	if out.NodeAffinity == nil {
+		out.NodeAffinity = &corev1.NodeAffinity{}
+	}
+	req := corev1.NodeSelectorRequirement{Key: "metadata.name", Operator: corev1.NodeSelectorOpIn, Values: append([]string(nil), nodes...)}
+	na := out.NodeAffinity
+	if na.RequiredDuringSchedulingIgnoredDuringExecution == nil {
+		na.RequiredDuringSchedulingIgnoredDuringExecution = &corev1.NodeSelector{}
+	}
+	sel := na.RequiredDuringSchedulingIgnoredDuringExecution
+	if len(sel.NodeSelectorTerms) == 0 {
+		sel.NodeSelectorTerms = []corev1.NodeSelectorTerm{{}}
+	}
+	for i := range sel.NodeSelectorTerms {
+		sel.NodeSelectorTerms[i].MatchFields = append(sel.NodeSelectorTerms[i].MatchFields, req)
+	}
+	return out
+}
