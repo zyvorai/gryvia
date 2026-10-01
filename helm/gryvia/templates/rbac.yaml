@@ -67,7 +67,7 @@ rules:
   - apiGroups: ["scheduling.k8s.io"]
     resources: ["priorityclasses"]
     verbs: ["get", "list", "watch", "create", "patch", "update"]
-  {{- if .Values.platformCompletion.gpuRemediation }}
+  {{- if (dig "platformCompletion" "gpuRemediation" nil .Values.AsMap) }}
   - apiGroups: [""]
     resources: ["pods/eviction"]
     verbs: ["create"]

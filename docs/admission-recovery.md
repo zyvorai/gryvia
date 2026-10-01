@@ -91,5 +91,5 @@ before submitting a job; later edits do not retrofit hooks or placement constrai
 - `scripts/tests/kueue-chart.test.sh` renders strict flags and rejects invalid combinations.
 - The kind Kueue workflow now exercises missing tenant queues and checks non-terminal
   pod clearance during preemption. The high-priority job runs long enough to observe
-  eviction before re-admission. Run this workflow on the PR; it has not run locally.
+  eviction before re-admission. The workflow passes in CI; it has not run locally.
 - No GPU/RDMA, real model checkpoint or cluster validation is claimed by this patch.

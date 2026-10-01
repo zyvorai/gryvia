@@ -3786,6 +3786,14 @@ spec:
                                     version creates it; a later one is rolled out as its canary (autoPromote, autoRollback) and, once promoted,
                                     becomes its modelRef while the version it replaced is archived. Empty keeps one "<entry>-serving" per entry.
                                   type: string
+                                servicePort:
+                                  description: |-
+                                    ServicePort is the port the serving container listens on and is probed on. Set it when Args move the
+                                    server off its backend default (vLLM 8000, Triton 8000, TorchServe 8080).
+                                  format: int32
+                                  maximum: 65535
+                                  minimum: 1
+                                  type: integer
                               type: object
                             stage:
                               description: Stage is the stage the entry starts in

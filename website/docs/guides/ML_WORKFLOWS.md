@@ -4,7 +4,7 @@ Gryvia's machine learning workflow kinds: hyperparameter tuning, DAG pipelines, 
 
 ## Status: read this first
 
-The ai-operator registers a controller for each of the five kinds this guide is mostly about (on by default; `--enable-ml-controllers=false` turns them off). What they do, their status fields, flags and RBAC are in [docs/ml-controllers.md](https://github.com/zyvorai/gryvia/blob/main/docs/ml-controllers.md). **Verification is limited:** unit tests with a fake client, and a kind workflow (`.github/workflows/e2e-ml.yml`, tiny CPU images in place of Jupyter, vLLM and Triton) that is authored but had not been run when this was written. Nothing has run on GPUs, with a real model server image or with an HPA on real metrics.
+The ai-operator registers a controller for each of the five kinds this guide is mostly about (on by default; `--enable-ml-controllers=false` turns them off). What they do, their status fields, flags and RBAC are in [docs/ml-controllers.md](https://github.com/zyvorai/gryvia/blob/main/docs/ml-controllers.md). **Verification is limited:** unit tests with a fake client, and a kind workflow (`.github/workflows/e2e-ml.yml`, tiny CPU images in place of Jupyter, vLLM and Triton) that passes in CI. Nothing has run on GPUs, with a real model server image or with an HPA on real metrics.
 
 | Kind | CRD | Gateway/dashboard | Controller registered |
 |------|-----|-------------------|-----------------------|
@@ -48,7 +48,7 @@ The gpu-operator adds `GryviaGpuMemoryOptimizer`. All of these are exercised by 
 
 ## Hyperparameter Tuning (GryviaAutoTuner)
 
-Status: the ai-operator runs the study: each trial is a child `GryviaAIJob` (`<tuner>-trial-<n>`), capped by `--tuner-max-trials` and `--tuner-max-parallelism`. A trial's metric is read from the annotation `gryvia.io/metric-<name>` that your training code (or whatever runs the trial) must set; unit-tested, e2e authored, not verified on GPUs. See [docs/ml-controllers.md](https://github.com/zyvorai/gryvia/blob/main/docs/ml-controllers.md).
+Status: the ai-operator runs the study: each trial is a child `GryviaAIJob` (`<tuner>-trial-<n>`), capped by `--tuner-max-trials` and `--tuner-max-parallelism`. A trial's metric is read from the annotation `gryvia.io/metric-<name>` that your training code (or whatever runs the trial) must set; unit-tested, the kind e2e (CPU pods) passes in CI, not verified on GPUs. See [docs/ml-controllers.md](https://github.com/zyvorai/gryvia/blob/main/docs/ml-controllers.md).
 
 ### Overview
 
@@ -115,7 +115,7 @@ The schema defines `status.phase`, `trialsCompleted`, `trialsRunning`, `trialsFa
 
 ## DAG-Based Pipelines (GryviaWorkflow)
 
-Status: the ai-operator executes the DAG: `job` steps create child `GryviaAIJob`s, `script` steps run a Pod, `webhook` steps are off unless the operator runs with `--workflow-allow-webhooks`. Validated first (at most 100 steps, no cycles); retries, timeouts, skip-on-failure and the `condition` form `steps.<name>.status == 'Succeeded'` are implemented. Unit-tested, e2e authored, not verified on GPUs.
+Status: the ai-operator executes the DAG: `job` steps create child `GryviaAIJob`s, `script` steps run a Pod, `webhook` steps are off unless the operator runs with `--workflow-allow-webhooks`. Validated first (at most 100 steps, no cycles); retries, timeouts, skip-on-failure and the `condition` form `steps.<name>.status == 'Succeeded'` are implemented. Unit-tested, the kind e2e (CPU pods) passes in CI, not verified on GPUs.
 
 ### Overview
 
@@ -206,7 +206,7 @@ Watch it with `kubectl get gryviaworkflow pipeline -n ml-team -o jsonpath='{.sta
 
 ## Model Registry (GryviaModelRegistry)
 
-Status: the controller mirrors serving state; with `spec.autoServe: true` and `spec.stage: production` it creates a `GryviaInferenceService` named `<entry>-serving`. The gateway lists, gets, registers (`POST /api/models`) and promotes entries. Unit-tested, e2e authored, not verified with a real model server.
+Status: the controller mirrors serving state; with `spec.autoServe: true` and `spec.stage: production` it creates a `GryviaInferenceService` named `<entry>-serving`. The gateway lists, gets, registers (`POST /api/models`) and promotes entries. Unit-tested, the kind e2e (tiny CPU images) passes in CI, not verified with a real model server.
 
 ### Overview
 

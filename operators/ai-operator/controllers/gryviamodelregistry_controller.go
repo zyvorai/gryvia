@@ -179,8 +179,21 @@ func (r *GryviaModelRegistryReconciler) servingSpec(model *gryviav1.GryviaModelR
 		}
 		spec.GPUType = sc.GPUType
 		spec.Args = sc.Args
+		spec.ServicePort = sc.ServicePort
 	}
 	return spec
+}
+
+// servingSettingsDiffer reports whether the serving settings the registry owns differ between two specs.
+func servingSettingsDiffer(a, b gryviav1.GryviaInferenceServiceSpec) bool {
+	return a.Backend != b.Backend || a.Replicas != b.Replicas || a.GPUCount != b.GPUCount ||
+		a.GPUType != b.GPUType || a.ServicePort != b.ServicePort || !reflect.DeepEqual(a.Args, b.Args)
+}
+
+// copyServingSettings copies the serving settings the registry owns from desired into spec.
+func copyServingSettings(spec *gryviav1.GryviaInferenceServiceSpec, desired gryviav1.GryviaInferenceServiceSpec) {
+	spec.Backend, spec.Replicas, spec.Args = desired.Backend, desired.Replicas, desired.Args
+	spec.GPUCount, spec.GPUType, spec.ServicePort = desired.GPUCount, desired.GPUType, desired.ServicePort
 }
 
 // ensureInferenceService creates the serving GryviaInferenceService, or updates it when servingConfig changed.
@@ -195,13 +208,9 @@ func (r *GryviaModelRegistryReconciler) ensureInferenceService(ctx context.Conte
 		if !metav1.IsControlledBy(existing, model) {
 			return configError{fmt.Errorf("inference service %q already exists and is not owned by this model", name)}
 		}
-		if existing.Spec.Backend != desired.Backend || existing.Spec.Replicas != desired.Replicas ||
-			existing.Spec.GPUCount != desired.GPUCount || existing.Spec.GPUType != desired.GPUType ||
-			!reflect.DeepEqual(existing.Spec.Args, desired.Args) {
+		if servingSettingsDiffer(existing.Spec, desired) {
 			base := existing.DeepCopy()
-			existing.Spec.Backend, existing.Spec.Replicas = desired.Backend, desired.Replicas
-			existing.Spec.GPUCount, existing.Spec.GPUType = desired.GPUCount, desired.GPUType
-			existing.Spec.Args = desired.Args
+			copyServingSettings(&existing.Spec, desired)
 			if err := r.Patch(ctx, existing, client.MergeFrom(base)); err != nil {
 				return err
 			}

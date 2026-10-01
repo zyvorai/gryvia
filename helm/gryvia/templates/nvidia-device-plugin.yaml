@@ -1,5 +1,5 @@
 {{- /* Gryvia's own add-on: only when the NVIDIA GPU Operator sub-chart is not installed. */ -}}
-{{- if and .Values.nvidiaDevicePlugin.enabled (not .Values.nvidia.enabled) }}
+{{- if and .Values.nvidiaDevicePlugin.enabled (not (dig "nvidia" "enabled" nil .Values.AsMap)) }}
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:

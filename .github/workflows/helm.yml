@@ -8,6 +8,7 @@ on:
       - 'crds/**'
       - '.github/ct.yaml'
       - '.github/workflows/helm.yml'
+      - 'scripts/tests/chart-reuse-values.test.sh'
   pull_request:
     branches: [ main ]
     paths:
@@ -15,6 +16,7 @@ on:
       - 'crds/**'
       - '.github/ct.yaml'
       - '.github/workflows/helm.yml'
+      - 'scripts/tests/chart-reuse-values.test.sh'
   workflow_dispatch:
 
 permissions:
@@ -49,6 +51,9 @@ jobs:
         run: |
           helm dependency build helm/gryvia
           bash scripts/tests/kueue-chart.test.sh
+
+      - name: Head chart renders with the oldest release's values (helm upgrade --reuse-values)
+        run: bash scripts/tests/chart-reuse-values.test.sh
 
       - name: Create kind cluster
         uses: helm/kind-action@0025e74a8c7512023d06dc019c617aa3cf561fde # v1.10.0

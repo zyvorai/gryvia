@@ -4,8 +4,8 @@ Sophisticated job priority system with preemption support for efficient resource
 
 > **Status: mostly design. Priority classes and preemption are not running behaviour.**
 > The one real exception is the opt-in Kueue integration (`--kueue-integration`, off by default): `spec.priority` then maps to a Kueue
-> `WorkloadPriorityClass` and preempts within a queue, victims requeued, no checkpointing. It is unit-tested only; its kind e2e is
-> written but unverified. See [docs/kueue-integration.md](../docs/kueue-integration.md). Everything below is the design.
+> `WorkloadPriorityClass` and preempts within a queue, victims requeued, no checkpointing. It is unit-tested and its kind e2e
+> (real Kueue, CPU pods) passes in CI; never run on GPUs. See [docs/kueue-integration.md](../docs/kueue-integration.md). Everything below is the design.
 >
 > `GryviaPriority` is a CRD with no controller wired yet (a reconciler exists in
 > `operators/ai-operator/controllers/` but `main.go` does not register it), so the named

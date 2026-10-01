@@ -13,7 +13,7 @@ these), the flags that set default images and limits, and what is **not** verifi
 | Verified | How |
 | --- | --- |
 | Object creation, owner references, idempotent re-reconcile, status fields and their JSON, pause/resume, idle and lifetime handling, canary promotion and rollback, autoServe, DAG order, failure propagation, retries, timeouts, trial launching, parallelism and trial caps, best-trial selection, ASHA and early stopping | Unit tests with a fake client in `operators/ai-operator/controllers/*_test.go` (`go test -race`) |
-| The same against a real API server on kind, with tiny CPU images, plus what the gateway returns for each kind | `.github/workflows/e2e-ml.yml` (see "End-to-end test" below). **Authored without being able to run it; its first CI run is its first execution.** |
+| The same against a real API server on kind, with tiny CPU images, plus what the gateway returns for each kind | `.github/workflows/e2e-ml.yml` (see "End-to-end test" below). Passes in CI; it also passed on a single-node k3s cluster without GPUs. This covers `GryviaAutoTuner` trials and job-type `GryviaWorkflow` steps running as real batch Jobs |
 
 | Not verified anywhere | Why |
 | --- | --- |
@@ -22,8 +22,6 @@ these), the flags that set default images and limits, and what is **not** verifi
 | An HPA scaling on real metrics | kind has no metrics-server in the e2e; the HPA object is only checked to exist with the right range |
 | Weighted canary routing | The canary split is by pod count, see below |
 | The model factory's real download, fine-tune and evaluation, and the real Hugging Face API | No GPU or model weights in CI; see [Model factory](model-factory.md) |
-| `GryviaAutoTuner` and job-type `GryviaWorkflow` steps end to end on a real cluster | They create `GryviaAIJob`s that the AIJob controller runs as batch Jobs (docs/aijob-lifecycle.md); the e2e steps for them are authored but have not been run |
-
 ## GryviaWorkspace
 
 Creates, all named `<workspace>-workspace` and owned by the workspace: a PVC (only when `spec.storage` is set), a bare

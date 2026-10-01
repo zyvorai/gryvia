@@ -1,5 +1,5 @@
-{{- if and .Values.gpuOperator.enabled .Values.gpuOperator.resetAgent.enabled }}
-{{- if and .Values.gpuOperator.resetAgent.execute (not .Values.gpuOperator.resetAgent.nvidiaSmi) }}
+{{- if and .Values.gpuOperator.enabled (dig "gpuOperator" "resetAgent" "enabled" nil .Values.AsMap) }}
+{{- if and (dig "gpuOperator" "resetAgent" "execute" nil .Values.AsMap) (not (dig "gpuOperator" "resetAgent" "nvidiaSmi" nil .Values.AsMap)) }}
 {{- fail "gpuOperator.resetAgent.execute requires gpuOperator.resetAgent.nvidiaSmi (and driverRoot to provide it)" }}
 {{- end }}
 # Node-local GPU reset agent. Dry-run unless resetAgent.execute. See docs/gpu-reset-agent.md.
@@ -79,10 +79,10 @@ spec:
           command:
             - /gpu-reset-agent
           args:
-            - {{ printf "--poll=%s" .Values.gpuOperator.resetAgent.pollInterval | quote }}
-            {{- if .Values.gpuOperator.resetAgent.execute }}
+            - {{ printf "--poll=%s" (dig "gpuOperator" "resetAgent" "pollInterval" nil .Values.AsMap) | quote }}
+            {{- if (dig "gpuOperator" "resetAgent" "execute" nil .Values.AsMap) }}
             - --execute=true
-            - {{ printf "--nvidia-smi=%s" .Values.gpuOperator.resetAgent.nvidiaSmi | quote }}
+            - {{ printf "--nvidia-smi=%s" (dig "gpuOperator" "resetAgent" "nvidiaSmi" nil .Values.AsMap) | quote }}
             {{- end }}
           env:
             - name: NODE_NAME
@@ -93,7 +93,7 @@ spec:
             limits: {cpu: 100m, memory: 64Mi}
             requests: {cpu: 10m, memory: 32Mi}
           securityContext:
-            {{- if .Values.gpuOperator.resetAgent.execute }}
+            {{- if (dig "gpuOperator" "resetAgent" "execute" nil .Values.AsMap) }}
             privileged: true
             {{- else }}
             allowPrivilegeEscalation: false
@@ -102,16 +102,16 @@ spec:
             capabilities:
               drop: ["ALL"]
             {{- end }}
-          {{- if and .Values.gpuOperator.resetAgent.execute .Values.gpuOperator.resetAgent.driverRoot }}
+          {{- if and (dig "gpuOperator" "resetAgent" "execute" nil .Values.AsMap) (dig "gpuOperator" "resetAgent" "driverRoot" nil .Values.AsMap) }}
           volumeMounts:
             - name: driver-root
-              mountPath: {{ .Values.gpuOperator.resetAgent.driverRoot | quote }}
+              mountPath: {{ (dig "gpuOperator" "resetAgent" "driverRoot" nil .Values.AsMap) | quote }}
               readOnly: true
           {{- end }}
-      {{- if and .Values.gpuOperator.resetAgent.execute .Values.gpuOperator.resetAgent.driverRoot }}
+      {{- if and (dig "gpuOperator" "resetAgent" "execute" nil .Values.AsMap) (dig "gpuOperator" "resetAgent" "driverRoot" nil .Values.AsMap) }}
       volumes:
         - name: driver-root
           hostPath:
-            path: {{ .Values.gpuOperator.resetAgent.driverRoot | quote }}
+            path: {{ (dig "gpuOperator" "resetAgent" "driverRoot" nil .Values.AsMap) | quote }}
       {{- end }}
 {{- end }}

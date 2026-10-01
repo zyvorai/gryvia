@@ -1,4 +1,4 @@
-{{- if and .Values.nvidia.enabled .Values.nvidiaPlatform.timeSlicing.enabled }}
+{{- if and (dig "nvidia" "enabled" nil .Values.AsMap) (dig "nvidiaPlatform" "timeSlicing" "enabled" nil .Values.AsMap) }}
 # Device-plugin time-slicing config. The NVIDIA device plugin picks the data key named by the node label
 # nvidia.com/device-plugin.config, which the gpu-operator sets to "gryvia-time-slicing" for a time-slicing
 # GryviaGPUSharingPolicy, so the key below must keep that name. The GPU Operator reads this ConfigMap once
@@ -6,7 +6,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ .Values.nvidiaPlatform.timeSlicing.configName }}
+  name: {{ (dig "nvidiaPlatform" "timeSlicing" "configName" nil .Values.AsMap) }}
   namespace: {{ .Release.Namespace }}
   labels:
     app.kubernetes.io/name: gryvia
@@ -21,10 +21,10 @@ data:
         renameByDefault: false
         resources:
           - name: nvidia.com/gpu
-            replicas: {{ .Values.nvidiaPlatform.timeSlicing.replicas }}
+            replicas: {{ (dig "nvidiaPlatform" "timeSlicing" "replicas" nil .Values.AsMap) }}
 {{- end }}
 ---
-{{- if and .Values.nvidia.enabled .Values.nvidiaPlatform.validate.enabled }}
+{{- if and (dig "nvidia" "enabled" nil .Values.AsMap) (dig "nvidiaPlatform" "validate" "enabled" nil .Values.AsMap) }}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -47,14 +47,14 @@ spec:
       restartPolicy: Never
       containers:
         - name: nvidia-smi
-          image: {{ .Values.nvidiaPlatform.validate.image }}
+          image: {{ (dig "nvidiaPlatform" "validate" "image" nil .Values.AsMap) }}
           command: ["nvidia-smi"]
           resources:
             limits:
               nvidia.com/gpu: 1
 {{- end }}
 ---
-{{- if and .Values.nvidiaNetwork.enabled .Values.nvidiaNetwork.nicClusterPolicy.enabled }}
+{{- if and (dig "nvidiaNetwork" "enabled" nil .Values.AsMap) (dig "nvidiaNetwork" "nicClusterPolicy" "enabled" nil .Values.AsMap) }}
 apiVersion: mellanox.com/v1alpha1
 kind: NicClusterPolicy
 metadata:
@@ -63,7 +63,7 @@ metadata:
     app.kubernetes.io/name: gryvia
     app.kubernetes.io/component: nvidia-network
 spec:
-  {{- if .Values.nvidiaNetwork.nicClusterPolicy.ofedDriver }}
+  {{- if (dig "nvidiaNetwork" "nicClusterPolicy" "ofedDriver" nil .Values.AsMap) }}
   ofedDriver:
     image: doca-driver
     repository: nvcr.io/nvidia/mellanox
@@ -78,7 +78,7 @@ spec:
       initialDelaySeconds: 10
       periodSeconds: 30
   {{- end }}
-  {{- if .Values.nvidiaNetwork.nicClusterPolicy.rdmaSharedDevicePlugin }}
+  {{- if (dig "nvidiaNetwork" "nicClusterPolicy" "rdmaSharedDevicePlugin" nil .Values.AsMap) }}
   rdmaSharedDevicePlugin:
     image: k8s-rdma-shared-dev-plugin
     repository: ghcr.io/mellanox
@@ -94,7 +94,7 @@ spec:
         ]
       }
   {{- end }}
-  {{- if .Values.nvidiaNetwork.nicClusterPolicy.sriovDevicePlugin }}
+  {{- if (dig "nvidiaNetwork" "nicClusterPolicy" "sriovDevicePlugin" nil .Values.AsMap) }}
   sriovDevicePlugin:
     image: sriov-network-device-plugin
     repository: ghcr.io/k8snetworkplumbingwg
@@ -109,7 +109,7 @@ spec:
         ]
       }
   {{- end }}
-  {{- if .Values.nvidiaNetwork.nicClusterPolicy.secondaryNetwork }}
+  {{- if (dig "nvidiaNetwork" "nicClusterPolicy" "secondaryNetwork" nil .Values.AsMap) }}
   secondaryNetwork:
     cniPlugins:
       image: plugins
@@ -122,7 +122,7 @@ spec:
   {{- end }}
 {{- end }}
 ---
-{{- if and .Values.nvidiaNim.enabled .Values.nvidiaNim.ngcApiKey }}
+{{- if and (dig "nvidiaNim" "enabled" nil .Values.AsMap) (dig "nvidiaNim" "ngcApiKey" nil .Values.AsMap) }}
 apiVersion: v1
 kind: Secret
 metadata:
@@ -133,5 +133,5 @@ metadata:
     app.kubernetes.io/component: nvidia-nim
 type: Opaque
 stringData:
-  NGC_API_KEY: {{ .Values.nvidiaNim.ngcApiKey | quote }}
+  NGC_API_KEY: {{ (dig "nvidiaNim" "ngcApiKey" nil .Values.AsMap) | quote }}
 {{- end }}
