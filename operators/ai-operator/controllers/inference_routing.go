@@ -69,8 +69,13 @@ func validateRoutingOptions(svc *gryviav1.GryviaInferenceService) error {
 
 func routeWeight(svc *gryviav1.GryviaInferenceService) int32 {
 	cs := svc.Status.CanaryStatus
-	if svc.Spec.Canary == nil || !svc.Spec.Canary.Enabled || cs == nil || !cs.Active || cs.ReadyReplicas == 0 || cs.Health != canaryHealthHealthy {
+	if svc.Spec.Canary == nil || !svc.Spec.Canary.Enabled || cs == nil || !cs.Active || cs.ReadyReplicas == 0 {
 		return 0
+	}
+	if cs.Health != canaryHealthHealthy {
+		if cfg, _ := analysisConfig(svc); cfg == nil {
+			return 0
+		}
 	}
 	return svc.Spec.Canary.Weight
 }

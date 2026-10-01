@@ -90,6 +90,8 @@ type GryviaInferenceServiceReconciler struct {
 	Clock func() time.Time
 	// GatewayRouting allows opt-in HTTPRoute reconciliation; off by default.
 	GatewayRouting bool
+	// PrometheusURL is administrator configured; empty disables SLO evaluation.
+	PrometheusURL string
 }
 
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviainferenceservices,verbs=get;list;watch;create;update;patch;delete
@@ -192,6 +194,10 @@ func (r *GryviaInferenceServiceReconciler) reconcileService(ctx context.Context,
 	}
 
 	if err := validateRoutingOptions(svc); err != nil {
+		r.failSvc(svc, err)
+		return ctrl.Result{}, nil
+	}
+	if _, err := analysisConfig(svc); err != nil {
 		r.failSvc(svc, err)
 		return ctrl.Result{}, nil
 	}
@@ -660,6 +666,9 @@ func (r *GryviaInferenceServiceReconciler) reconcileCanary(ctx context.Context, 
 	}
 
 	c := svc.Spec.Canary
+	if cfg, _ := analysisConfig(svc); cfg == nil || c == nil || !c.Enabled || primary.Annotations[annotationPromoted] == c.ModelVersion || primary.Annotations[annotationRolledBack] == c.ModelVersion {
+		removeCondition(&svc.Status.Conditions, ConditionCanaryAnalysis)
+	}
 	if c == nil || !c.Enabled {
 		if err := deleteCanary(); err != nil {
 			return 0, err
@@ -741,11 +750,19 @@ func (r *GryviaInferenceServiceReconciler) reconcileCanary(ctx context.Context, 
 		interval = time.Duration(svc.Spec.HealthCheck.IntervalSeconds) * time.Second
 	}
 
+	cfg, _ := analysisConfig(svc) // validated before resource reconciliation
+	analysisHealthy, analysisFailed := true, false
+	if cfg != nil {
+		analysisHealthy, analysisFailed = r.evaluateCanary(ctx, svc, existing, cfg, now)
+	}
 	switch {
-	case cs.ReadyReplicas > 0:
+	case cs.ReadyReplicas > 0 && !analysisHealthy && !analysisFailed:
+		cs.Health = canaryHealthPending
+		svc.Status.ConsecutiveFailures = 0
+	case cs.ReadyReplicas > 0 && analysisHealthy:
 		cs.Health = canaryHealthHealthy
 		svc.Status.ConsecutiveFailures = 0
-	case age <= r.CanaryStartupGrace:
+	case !analysisFailed && age <= r.CanaryStartupGrace:
 		cs.Health = canaryHealthPending
 	default:
 		cs.Health = canaryHealthUnhealthy
@@ -780,8 +797,16 @@ func (r *GryviaInferenceServiceReconciler) reconcileCanary(ctx context.Context, 
 	}
 
 	promotionReady := true
+	if cfg != nil {
+		promotionReady, err = r.analysisPromotionReady(ctx, svc, existing, cfg, analysisHealthy, now)
+		if err != nil {
+			return 0, err
+		}
+	}
 	if routingRequested(svc) {
-		promotionReady, err = r.routePromotionReady(ctx, svc, existing, now)
+		routeReady, routeErr := r.routePromotionReady(ctx, svc, existing, now)
+		promotionReady = promotionReady && routeReady
+		err = routeErr
 		if err != nil {
 			return 0, err
 		}
@@ -801,7 +826,7 @@ func (r *GryviaInferenceServiceReconciler) reconcileCanary(ctx context.Context, 
 		return time.Second, nil // the next pass rolls the promoted version out to the stable Deployment
 	}
 
-	if cs.Health == canaryHealthHealthy && c.AutoPromote && !routingRequested(svc) {
+	if cs.Health == canaryHealthHealthy && c.AutoPromote && !routingRequested(svc) && cfg == nil {
 		if left := time.Duration(c.PromoteAfterSeconds)*time.Second - age; left > 0 {
 			return left + time.Second, nil
 		}

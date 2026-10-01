@@ -201,3 +201,8 @@ the ai-operator with the tiny-image flags above and checks, on the cluster and t
 * Workflow: two script steps run in order (timestamps compared) and succeed; a failing step skips its dependent; the gateway
   shows the phases, steps and order. A two-step DAG of CPU **jobs** runs through the AIJob controller's batch Jobs.
 * AutoTuner: 3 trials with parallelism 2, best trial and gateway fields (trials are batch-Job-backed `GryviaAIJob`s).
+
+Opt-in canary SLO evaluation uses the administrator-configured `--inference-prometheus-url` (Helm
+`aiOperator.inferencePrometheusURL`) and per-service error-rate/latency threshold annotations. It requires
+normalized request/error counters and a duration histogram. Missing telemetry blocks promotion; measured
+breaches follow `healthCheck` rollback policy. See [Inference serving](inference-serving.md).
