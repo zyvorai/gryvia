@@ -65,3 +65,19 @@ func TestSpreadingScoreFragmentsWholeNodeJobs(t *testing.T) {
 		t.Errorf("expected whole-node job to wait for a node to drain (makespan 110), got %v", res.Makespan)
 	}
 }
+
+// The pack strategy keeps a node free, so the same workload finishes at 100 s, not 110 s.
+func TestPackStrategyKeepsWholeNodeFree(t *testing.T) {
+	jobs := []Job{
+		{ID: "s1", Arrival: 0, Runtime: 100, GPUCount: 1},
+		{ID: "s2", Arrival: 0, Runtime: 100, GPUCount: 1},
+		{ID: "whole", Arrival: 1, Runtime: 10, GPUCount: 4},
+	}
+	res, err := Run(nodes(2, 4), jobs, Options{Backfill: true, Strategy: "pack"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Makespan != 100 || res.MeanWait != 0 {
+		t.Errorf("pack: got makespan %v mean wait %v, want 100 and 0", res.Makespan, res.MeanWait)
+	}
+}

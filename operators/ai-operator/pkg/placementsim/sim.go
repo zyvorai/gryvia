@@ -112,6 +112,8 @@ type running struct {
 type Options struct {
 	// Backfill lets a later job start when an earlier one does not fit (Janus' fifo does).
 	Backfill bool
+	// Strategy is the gryvia.io/placement-strategy annotation put on every job ("" = default spread).
+	Strategy string
 }
 
 // Run simulates the workload on the cluster.
@@ -163,6 +165,9 @@ func Run(nodes []Node, jobs []Job, opt Options) (Result, error) {
 			per = maxPer
 		}
 		job := &gryviav1.GryviaAIJob{ObjectMeta: metav1.ObjectMeta{Name: j.ID, Namespace: "sim"}, Spec: spec}
+		if opt.Strategy != "" {
+			job.Annotations = map[string]string{scheduler.AnnotationPlacementStrategy: opt.Strategy}
+		}
 		chosen, err := scheduler.FindOptimalNodesHeld(ctx, c, job, nil)
 		if err != nil {
 			return nil, err
