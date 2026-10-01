@@ -50,7 +50,7 @@ Dormant simulation controllers have been removed for `GryviaSLA`, `GryviaAutoSca
 Listed roughly in the order they would make the platform more useful; no dates.
 
 1. **Verify on real hardware.** Run the operators, the eBPF collector and the RDMA paths on GPU and InfiniBand or RoCE nodes and record measured results. Until then storage, NCCL and training performance are unknown: the earlier targets (for example 20 GB/s storage, 30 percent faster training, 99.9 percent uptime) were goals, never measurements.
-2. **Prove the Kueue integration** (run the kind workflow, then a GPU cluster) and wire what is still unwired (the fabric penalty; topology-aware placement); elastic training is not implemented. The decision to integrate Kueue rather than build queueing in-tree is made.
+2. **Prove the Kueue integration** (run the kind workflow, then a GPU cluster) and wire what is still unwired (topology-aware placement beyond the opt-in fabric penalty, which is wired); elastic training is not implemented. The decision to integrate Kueue rather than build queueing in-tree is made.
 3. **Prove the ML controllers** (run `e2e-ml.yml`, then real Jupyter, vLLM and Triton images on GPUs) and decide the kinds that have no controller: build them or remove them.
 4. **Reliability of jobs**: validate cooperative checkpoint recovery with real distributed trainers and implement elastic coordination.
 5. **Cost controls**: validate budget Events and actual-usage chargeback on a real cluster, then add external notification/report delivery.
