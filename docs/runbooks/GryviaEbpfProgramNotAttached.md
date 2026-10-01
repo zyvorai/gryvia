@@ -29,9 +29,16 @@ To query the collector directly see [Calling a collector](README.md#calling-a-co
 - Program needs hardware absent on the node (RDMA, NVIDIA userspace libraries for uprobes): expected on such nodes.
 - Interface/driver without XDP support (PFC/CNP programs).
 
-Programs that are opt-in and were not enabled (`-enable-programs`, chart `ebpf.enablePrograms`) are not failures: they
-have no `gryvia_ebpf_program_attached` series and do not fire this alert. They show in `GET /api/v1/ebpf/status` as
-skipped with `optIn: true`.
+Programs the configuration did not ask for are not failures: they have no `gryvia_ebpf_program_attached` series and
+do not fire this alert. They show in `GET /api/v1/ebpf/status` as skipped with `notRequested: true`. That covers:
+
+- opt-in programs that were not enabled (`-enable-programs`, chart `ebpf.enablePrograms`);
+- opt-in features that are off: quota pacing (`-quota-pace`), the libibverbs probes (`-ibverbs-probes`), `xdp_mux`
+  (`-xdp-mux`), and `infer_latency` / `infer_ttft` with an empty `-infer-ports`;
+- XDP and TCX programs when no `-iface` is set, and sockops / sk_msg programs when no `-cgroup-path` is set.
+
+A program whose node lacks a library or symbol, whose interface already has another XDP program, or whose attach
+failed is not "not requested": it exports 0 and can fire this alert, which is what the causes above describe.
 
 ## Mitigation
 

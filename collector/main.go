@@ -176,12 +176,9 @@ func main() {
 	}, []string{"object", "program", "kind"})
 	prometheus.MustRegister(attachGauge)
 	for _, s := range mgr.Status() {
-		if s.OptIn {
-			continue // not requested (-enable-programs), so not a failure to attach: no series, no alert
-		}
-		v := 0.0
-		if s.Attached {
-			v = 1
+		v, export := s.AttachGauge()
+		if !export {
+			continue // not requested by the configuration: not a failure to attach, so no series and no alert
 		}
 		attachGauge.WithLabelValues(s.Object, s.Program, s.Kind).Set(v)
 	}

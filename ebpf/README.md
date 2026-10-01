@@ -11,7 +11,8 @@ resolve (libraries and symbols present, `-iface` for XDP), except the ten of the
 yet, which are opt-in: `nccl_transport`, `p2p_fallback`, `capture_gate`, `gpu_oom`, `graph_stall`, `gdr_fail`, `infer_ttft`,
 `weight_mmap`, `gpu_dev` and `ucx_complete` attach only when named in `-enable-programs` (chart `ebpf.enablePrograms`;
 `all` enables every one). Without it they are not loaded into the kernel, and `/api/v1/ebpf/status` lists them as skipped
-with `optIn: true` and no `gryvia_ebpf_program_attached` series (so they do not trigger `GryviaEbpfProgramNotAttached`).
+with `notRequested: true` and no `gryvia_ebpf_program_attached` series (so they do not trigger `GryviaEbpfProgramNotAttached`;
+the same goes for any program the configuration did not ask for, such as XDP without `-iface` or quota pacing while off).
 Even enabled, their signals are not interpreted yet (the fabric folder has no case for types 11 to 22, so the events are
 read and dropped) and the maps that steer `nccl_transport`, `capture_gate` and `gpu_dev` (`transport_hint`,
 `capture_lease`, `allowed_cg`, `gpu_dev_cfg`) are never written. `xdp_mux` and `roce_ecn` are governed by `-xdp-mux`
