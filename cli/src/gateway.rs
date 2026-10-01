@@ -4,7 +4,8 @@
 //! Authentication is the gateway's API key sent as a bearer token (`GRYVIA_API_KEY`), the same way the
 //! docs use `curl -H "Authorization: Bearer $GRYVIA_API_KEY"`. TLS is verified against the system roots or
 //! `GRYVIA_CA_FILE`; `--insecure` (or `GRYVIA_INSECURE=1`) turns verification off and says so on stderr.
-//! Only GET is implemented: the CLI never changes anything through the gateway.
+//! Requests are GET, plus the read-only POST of `gryvia rag query` (the LLM gateway's /v1/retrieve): the CLI never
+//! changes anything through the gateway.
 //!
 //! Verified against an in-process mock gateway (plain HTTP, and TLS with a test CA); not run against a real
 //! gateway deployment.
@@ -13,7 +14,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{anyhow, bail, Context, Result};
-use http_body_util::{BodyExt, Empty, Limited};
+use http_body_util::{BodyExt, Full, Limited};
 use hyper::body::Bytes;
 use hyper::{Method, Request, Uri};
 use hyper_rustls::HttpsConnectorBuilder;
@@ -77,7 +78,7 @@ impl GatewayConfig {
     }
 }
 
-/// A GET-only gateway client.
+/// A read-only gateway client.
 #[derive(Clone, Debug)]
 pub struct GatewayClient {
     cfg: GatewayConfig,
@@ -90,12 +91,30 @@ impl GatewayClient {
 
     /// GET `path` (starting with `/`, may carry a query) and parse the JSON body.
     pub async fn get_json(&self, path: &str) -> Result<serde_json::Value> {
+        self.request_json(Method::GET, path, None).await
+    }
+
+    /// POST a JSON body to `path` and parse the JSON reply.
+    pub async fn post_json(
+        &self,
+        path: &str,
+        body: &serde_json::Value,
+    ) -> Result<serde_json::Value> {
+        self.request_json(Method::POST, path, Some(body)).await
+    }
+
+    async fn request_json(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<&serde_json::Value>,
+    ) -> Result<serde_json::Value> {
         let url = format!("{}{}", self.cfg.base_url, path);
         let uri: Uri = url
             .parse()
             .with_context(|| format!("invalid gateway URL {url}"))?;
         let mut req = Request::builder()
-            .method(Method::GET)
+            .method(method)
             .uri(uri)
             .header("accept", "application/json")
             .header(
@@ -105,15 +124,21 @@ impl GatewayClient {
         if let Some(key) = &self.cfg.api_key {
             req = req.header("authorization", format!("Bearer {key}"));
         }
-        let req = req.body(Empty::<Bytes>::new())?;
+        let payload = match body {
+            Some(v) => {
+                req = req.header("content-type", "application/json");
+                Bytes::from(serde_json::to_vec(v)?)
+            }
+            None => Bytes::new(),
+        };
+        let req = req.body(Full::new(payload))?;
 
         let connector = HttpsConnectorBuilder::new()
             .with_tls_config(self.tls_config()?)
             .https_or_http()
             .enable_http1()
             .build();
-        let client: Client<_, Empty<Bytes>> =
-            Client::builder(TokioExecutor::new()).build(connector);
+        let client: Client<_, Full<Bytes>> = Client::builder(TokioExecutor::new()).build(connector);
 
         let fut = async {
             let resp = client
@@ -409,6 +434,32 @@ mod tests {
         assert_eq!(
             gw.auth_seen.lock().unwrap()[0].as_deref(),
             Some("Bearer secret-key")
+        );
+    }
+
+    #[tokio::test]
+    async fn post_json_sends_bearer_and_parses() {
+        let gw = mock::start(vec![(
+            "/v1/retrieve",
+            200,
+            "{\"data\":[{\"score\":1}]}".into(),
+        )])
+        .await;
+        let client = GatewayClient::new(GatewayConfig {
+            base_url: gw.url.clone(),
+            api_key: Some("gk-1".into()),
+            insecure: false,
+            ca_file: None,
+            timeout: Duration::from_secs(5),
+        });
+        let v = client
+            .post_json("/v1/retrieve", &serde_json::json!({"index": "kb"}))
+            .await
+            .unwrap();
+        assert_eq!(v["data"][0]["score"], 1);
+        assert_eq!(
+            gw.auth_seen.lock().unwrap()[0].as_deref(),
+            Some("Bearer gk-1")
         );
     }
 

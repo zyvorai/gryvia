@@ -315,8 +315,26 @@ func main() {
 				os.Exit(1)
 			}
 		}
-	} else if ml.modelWatchEnabled {
-		setupLog.Error(nil, "--enable-model-watch needs --enable-ml-controllers (its runs are GryviaWorkflows)")
+		if ml.ragEnabled {
+			if ml.llmGatewayURL == "" {
+				setupLog.Error(nil, "--enable-rag needs --llm-gateway-url (ingestion embeds through the LLM gateway)")
+				os.Exit(1)
+			}
+			if err = (&controllers.GryviaVectorIndexReconciler{
+				Client:       mgr.GetClient(),
+				Scheme:       mgr.GetScheme(),
+				Log:          ctrl.Log.WithName("controllers").WithName("GryviaVectorIndex"),
+				QdrantImage:  ml.ragQdrantImage,
+				IngestImage:  ml.ragIngestImage,
+				GatewayURL:   ml.llmGatewayURL,
+				KeyNamespace: ml.llmKeyNamespace,
+			}).SetupWithManager(mgr); err != nil {
+				setupLog.Error(err, "unable to create controller", "controller", "GryviaVectorIndex")
+				os.Exit(1)
+			}
+		}
+	} else if ml.modelWatchEnabled || ml.ragEnabled {
+		setupLog.Error(nil, "--enable-model-watch and --enable-rag need --enable-ml-controllers")
 		os.Exit(1)
 	}
 

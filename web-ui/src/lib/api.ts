@@ -11,6 +11,7 @@ import type { InvoiceReport } from '@/lib/invoices'
 import type { ModelWatch, ModelWatchRun } from '@/lib/modelWatches'
 import type { Dataset } from '@/lib/datasets'
 import type { CreatedLlmKey, LlmKey, LlmModels, LlmUsage } from '@/lib/llm'
+import type { VectorIndexList } from '@/lib/rag'
 
 export interface ClusterStats {
   totalGPUs: number
@@ -999,6 +1000,24 @@ export const api = {
 
   deleteLlmKey: async (id: string): Promise<void> => {
     await apiClient.delete(`/llm-keys/${encodeURIComponent(id)}`)
+  },
+
+  // Vector indexes (RAG)
+  getVectorIndexes: async (): Promise<VectorIndexList> => {
+    const { data } = await apiClient.get('/vector-indexes')
+    return { items: data.items || [], retrieveURL: data.retrieveURL || '' }
+  },
+
+  reingestVectorIndex: async (name: string): Promise<void> => {
+    await apiClient.post(`/vector-indexes/${encodeURIComponent(name)}/reingest`)
+  },
+
+  suspendVectorIndex: async (name: string, suspend: boolean): Promise<void> => {
+    await apiClient.post(`/vector-indexes/${encodeURIComponent(name)}/${suspend ? 'suspend' : 'resume'}`)
+  },
+
+  deleteVectorIndex: async (name: string): Promise<void> => {
+    await apiClient.delete(`/vector-indexes/${encodeURIComponent(name)}`)
   },
 }
 

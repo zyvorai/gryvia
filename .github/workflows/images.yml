@@ -14,6 +14,7 @@ on:
       - 'services/api-gateway/**'
       - 'docker/**'
       - 'web-ui/**'
+      - 'examples/rag/**'
       - '.github/workflows/images.yml'
   workflow_dispatch:
 
@@ -45,6 +46,7 @@ jobs:
           - ebpf-collector
           - api-gateway
           - ui
+          - rag-ingest
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -67,6 +69,9 @@ jobs:
             ui)
               echo "context=." >> "$GITHUB_OUTPUT"
               echo "file=docker/Dockerfile.ui" >> "$GITHUB_OUTPUT" ;;
+            rag-ingest)
+              echo "context=examples/rag" >> "$GITHUB_OUTPUT"
+              echo "file=examples/rag/Dockerfile" >> "$GITHUB_OUTPUT" ;;
           esac
       - name: Build (no push)
         uses: docker/build-push-action@v6

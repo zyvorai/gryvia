@@ -26,6 +26,7 @@ pub mod platform_status;
 pub mod policy;
 pub mod queue;
 pub mod quota;
+pub mod rag;
 pub mod reservation;
 pub mod security;
 pub mod status;

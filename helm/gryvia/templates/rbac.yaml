@@ -422,6 +422,7 @@ rules:
       - gryviaworkflows
       - gryviaautotuners
       - gryviamodelwatches
+      - gryviavectorindexes
     verbs:
       - create
       - delete
@@ -439,6 +440,7 @@ rules:
       - gryviaworkflows/status
       - gryviaautotuners/status
       - gryviamodelwatches/status
+      - gryviavectorindexes/status
     verbs:
       - get
       - patch
@@ -452,6 +454,7 @@ rules:
       - gryviaworkflows/finalizers
       - gryviaautotuners/finalizers
       - gryviamodelwatches/finalizers
+      - gryviavectorindexes/finalizers
     verbs:
       - update
   {{- if .Values.aiOperator.inferenceGatewayRouting }}

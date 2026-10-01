@@ -41,7 +41,7 @@ The chart adds the Deployment and Service `<release>-llm-gateway` in the release
 
 | Who | Access |
 | --- | --- |
-| llm-gateway ServiceAccount (ClusterRole) | get/list/watch `gryviainferenceservices`, `gryviaquotas`; get/list/create/update `gryviausagerecords` |
+| llm-gateway ServiceAccount (ClusterRole) | get/list/watch `gryviainferenceservices`, `gryviaquotas`, `gryviavectorindexes`; get/list/create/update `gryviausagerecords` |
 | llm-gateway ServiceAccount (Role in keyNamespace) | get/list/watch `secrets` |
 | api-gateway ServiceAccount (Role in keyNamespace) | get/list/create/delete `secrets` (key issue and revoke) |
 
@@ -81,6 +81,11 @@ The CLI writes the Secret directly, so it needs create rights on Secrets in `key
 through the dashboard ("LLM gateway" page) or `POST /api/llm-keys` instead; the api-gateway only lets them pick one
 of their own namespaces. Revoking takes effect as soon as the gateway's informer sees the deletion (seconds).
 
+Vector indexes ([RAG](rag.md)) get keys of their own from the ai-operator: Secrets `<namespace>.index-<name>` with the
+label `gryvia.io/llm-key-owner=index`, listed with the tenant's keys. The operator writes them back on its next
+reconcile, so suspend or delete the index rather than revoking its key. The gateway also caches the copies of external
+vector-store API keys kept in `keyNamespace` (label `gryvia.io/llm-key=store`); they are not API keys.
+
 ## Calling it
 
 ```bash
@@ -93,6 +98,7 @@ curl http://<release>-llm-gateway.gryvia-system.svc.cluster.local:8080/v1/chat/c
 | --- | --- |
 | `GET /v1/models` | The models the key may call |
 | `POST /v1/chat/completions`, `/v1/completions`, `/v1/embeddings` | Proxied to the model's endpoint; streaming responses are relayed event by event |
+| `POST /v1/retrieve` | Nearest chunks of a `GryviaVectorIndex` of the key's namespace; the query embedding is metered (see [RAG](rag.md)) |
 | `GET /healthz` | No key needed |
 
 Errors use the OpenAI shape `{"error": {"message", "type", "code"}}`: 401 (missing or unknown key), 404 (unknown model

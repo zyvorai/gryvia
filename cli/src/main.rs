@@ -391,6 +391,17 @@ enum Commands {
         action: LlmCommands,
     },
 
+    /// RAG: vector indexes built from datasets, and retrieval through the LLM gateway
+    ///
+    /// A GryviaVectorIndex (namespaced, -n) names a GryviaDataset, an embedding model published on the LLM gateway
+    /// and a store (a managed Qdrant or an external one). The ai-operator (chart value aiOperator.rag.enabled)
+    /// ingests each dataset version; `query` calls the gateway's /v1/retrieve with a key of the same namespace.
+    #[command(after_help = examples(&["gryvia rag index create -f examples/rag/vector-index.yaml -n tenant-alpha", "gryvia rag index list -n tenant-alpha", "gryvia rag reingest handbook -n tenant-alpha", "gryvia rag query handbook quotas --top-k 3", "gryvia rag index delete handbook -n tenant-alpha --yes"]))]
+    Rag {
+        #[command(subcommand)]
+        action: RagCommands,
+    },
+
     /// Interactive job creation wizard
     #[command(after_help = examples(&["gryvia create job"]))]
     Create {
@@ -556,6 +567,46 @@ enum ModelsCommands {
         /// Skip the confirmation prompt
         #[arg(short, long)]
         yes: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum RagCommands {
+    /// Manage vector indexes: list, get, create, delete
+    Index {
+        #[command(subcommand)]
+        action: CrdCommands,
+    },
+
+    /// Run a fresh ingestion of an index (sets the gryvia.io/reingest annotation)
+    Reingest {
+        /// Index name
+        name: String,
+    },
+
+    /// Retrieve the chunks nearest to a query through the LLM gateway's /v1/retrieve
+    Query {
+        /// Index name (in the namespace of the key)
+        index: String,
+
+        /// Query text
+        query: String,
+
+        /// Number of chunks (at most 50)
+        #[arg(long, default_value_t = 4)]
+        top_k: u32,
+
+        /// LLM gateway base URL
+        #[arg(long, env = "GRYVIA_LLM_GATEWAY_URL")]
+        llm_gateway_url: Option<String>,
+
+        /// LLM gateway key of the index's namespace
+        #[arg(long, env = "GRYVIA_LLM_KEY", hide_env_values = true)]
+        key: Option<String>,
+
+        /// Output format
+        #[arg(short, long, value_enum, default_value_t = OutputFormat::Table, env = "GRYVIA_OUTPUT")]
+        output: OutputFormat,
     },
 }
 
@@ -1139,6 +1190,22 @@ async fn run() -> Result<()> {
             commands::version::print_client();
             return Ok(());
         }
+        // Talks only to the LLM gateway.
+        Commands::Rag {
+            action:
+                RagCommands::Query {
+                    index,
+                    query,
+                    top_k,
+                    llm_gateway_url,
+                    key,
+                    output,
+                },
+        } => {
+            let cfg = commands::rag::llm_gateway(llm_gateway_url.as_deref(), key.as_deref())?;
+            commands::rag::query(cfg, index, query, *top_k, output.as_str()).await?;
+            return Ok(());
+        }
         _ => {}
     }
 
@@ -1374,6 +1441,20 @@ async fn run() -> Result<()> {
             )
             .await?;
         }
+        Commands::Rag { action } => match action {
+            RagCommands::Index { action } => {
+                run_crd(
+                    &client,
+                    &commands::rag::VECTOR_INDEXES,
+                    action,
+                    "follow it with: gryvia rag index list",
+                    "Its managed Qdrant (with its volume), ingestion Jobs and gateway key are deleted",
+                )
+                .await?;
+            }
+            RagCommands::Reingest { name } => commands::rag::reingest(&client, &name).await?,
+            RagCommands::Query { .. } => unreachable!("handled before the kube client is created"),
+        },
         Commands::Llm { action } => match action {
             LlmCommands::Keys {
                 key_namespace,

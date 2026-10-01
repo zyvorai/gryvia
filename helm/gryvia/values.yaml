@@ -97,6 +97,13 @@ aiOperator:
     enabled: false
     hubURL: https://huggingface.co
     minPollInterval: 5m
+  # GryviaVectorIndex (--enable-rag): a managed Qdrant (or an external store) per index and ingestion Jobs that chunk
+  # a GryviaDataset version and embed it through the LLM gateway; the gateway answers POST /v1/retrieve. Needs
+  # llmGateway.enabled (the gateway URL and key namespace are taken from it). See docs/rag.md.
+  rag:
+    enabled: false
+    qdrantImage: qdrant/qdrant:v1.12.6-unprivileged
+    ingestImage: ghcr.io/zyvorai/gryvia-rag-ingest:latest
   extraArgs: []
   # Fold the per-node entries collectors write into GryviaFabricSignal status.nodes[] (network-intelligence
   # ebpf.fabricStatusPerNode) into the top-level status: max for degradation metrics, sample-weighted means for ratios,

@@ -131,9 +131,9 @@ metadata:
   labels:
     {{- include "gryvia.labels" . | nindent 4 }}
 rules:
-# Published models (annotation gryvia.io/llm-model) and the tokensPerDay limits.
+# Published models (annotation gryvia.io/llm-model), the tokensPerDay limits and the indexes /v1/retrieve queries.
 - apiGroups: ["gryvia.io"]
-  resources: ["gryviainferenceservices", "gryviaquotas"]
+  resources: ["gryviainferenceservices", "gryviaquotas", "gryviavectorindexes"]
   verbs: ["get", "list", "watch"]
 # Hourly token records in the namespace of each key.
 - apiGroups: ["gryvia.io"]

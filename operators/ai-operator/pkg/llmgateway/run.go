@@ -17,6 +17,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/selection"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -77,12 +78,17 @@ func Run(args []string) error {
 	if err != nil {
 		return err
 	}
+	// Key Secrets (gryvia.io/llm-key=true) and mirrored vector-store credentials (gryvia.io/llm-key=store).
+	keyLabel, err := labels.NewRequirement(LabelKey, selection.Exists, nil)
+	if err != nil {
+		return err
+	}
 	informers, err := cache.New(cfg, cache.Options{
 		Scheme: scheme,
 		ByObject: map[client.Object]cache.ByObject{
 			&corev1.Secret{}: {
 				Namespaces: map[string]cache.Config{*keyNamespace: {}},
-				Label:      labels.SelectorFromSet(labels.Set{LabelKey: "true"}),
+				Label:      labels.NewSelector().Add(*keyLabel),
 			},
 		},
 	})
@@ -96,12 +102,11 @@ func Run(args []string) error {
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
-	// Register both informers before the cache starts so the first request does not wait for a lazy start.
-	if _, err := informers.GetInformer(ctx, &corev1.Secret{}); err != nil {
-		return err
-	}
-	if _, err := informers.GetInformer(ctx, &gryviav1.GryviaInferenceService{}); err != nil {
-		return err
+	// Register the informers before the cache starts so the first request does not wait for a lazy start.
+	for _, obj := range []client.Object{&corev1.Secret{}, &gryviav1.GryviaInferenceService{}, &gryviav1.GryviaVectorIndex{}} {
+		if _, err := informers.GetInformer(ctx, obj); err != nil {
+			return err
+		}
 	}
 	go func() {
 		if err := informers.Start(ctx); err != nil {
@@ -127,8 +132,10 @@ func Run(args []string) error {
 		log.Error(err, "loading quotas; tokensPerDay is not enforced until a refresh succeeds")
 	}
 
+	source := &CacheSource{Reader: informers, KeyNamespace: *keyNamespace, PriceIn: *priceIn, PriceOut: *priceOut}
 	gw := &Gateway{
-		Source:  &CacheSource{Reader: informers, KeyNamespace: *keyNamespace, PriceIn: *priceIn, PriceOut: *priceOut},
+		Source:  source,
+		Indexes: source,
 		Meter:   meter,
 		Quotas:  quotas,
 		Client:  &http.Client{Timeout: *timeout},

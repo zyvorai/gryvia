@@ -33,8 +33,8 @@ type Gateway struct {
 	Client  *http.Client
 	Now     func() time.Time
 	MaxBody int64
-	// Extra handles additional authenticated routes (for example /v1/retrieve); nil leaves them 404.
-	Extra map[string]func(w http.ResponseWriter, r *http.Request, k Key)
+	// Indexes serves POST /v1/retrieve; nil leaves it 404.
+	Indexes IndexSource
 }
 
 const (
@@ -68,8 +68,8 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		g.models(w, r, key)
 	case proxied[r.URL.Path] && r.Method == http.MethodPost:
 		g.proxy(w, r, key)
-	case g.Extra[r.URL.Path] != nil:
-		g.Extra[r.URL.Path](w, r, key)
+	case r.URL.Path == "/v1/retrieve" && r.Method == http.MethodPost && g.Indexes != nil:
+		g.retrieve(w, r, key)
 	default:
 		WriteError(w, http.StatusNotFound, openAIErrorInvalid, "unknown route "+r.Method+" "+r.URL.Path)
 	}
@@ -121,7 +121,8 @@ type Usage struct {
 	CompletionTokens int64 `json:"completion_tokens"`
 }
 
-func (g *Gateway) proxy(w http.ResponseWriter, r *http.Request, k Key) {
+// readBody decodes a JSON object request body of at most MaxBody bytes into v, writing the error reply on failure.
+func (g *Gateway) readBody(w http.ResponseWriter, r *http.Request, v interface{}) bool {
 	limit := g.MaxBody
 	if limit <= 0 {
 		limit = defaultMaxBody
@@ -129,11 +130,45 @@ func (g *Gateway) proxy(w http.ResponseWriter, r *http.Request, k Key) {
 	raw, err := io.ReadAll(io.LimitReader(r.Body, limit+1))
 	if err != nil || int64(len(raw)) > limit {
 		WriteError(w, http.StatusRequestEntityTooLarge, openAIErrorInvalid, fmt.Sprintf("request body over %d bytes", limit))
-		return
+		return false
 	}
-	var body map[string]interface{}
-	if err := json.Unmarshal(raw, &body); err != nil {
+	if err := json.Unmarshal(raw, v); err != nil {
 		WriteError(w, http.StatusBadRequest, openAIErrorInvalid, "request body is not a JSON object")
+		return false
+	}
+	return true
+}
+
+// allowed checks the key's token quota, writing the 429 or 503 reply when the request may not proceed.
+func (g *Gateway) allowed(w http.ResponseWriter, r *http.Request, k Key, model string) bool {
+	if g.Quotas == nil {
+		return true
+	}
+	ok, quota, perDay, used, err := g.Quotas.Check(r.Context(), k.Namespace, g.now())
+	if err != nil {
+		WriteError(w, http.StatusServiceUnavailable, "api_error", "cannot read the token quota")
+		return false
+	}
+	if !ok {
+		g.Meter.Rejected(k.Tenant)
+		g.Meter.Request(k.Tenant, model, http.StatusTooManyRequests)
+		WriteError(w, http.StatusTooManyRequests, "rate_limit_error",
+			fmt.Sprintf("quota %s: %d of %d tokens per day used", quota, used, perDay))
+		return false
+	}
+	return true
+}
+
+func (g *Gateway) client() *http.Client {
+	if g.Client != nil {
+		return g.Client
+	}
+	return http.DefaultClient
+}
+
+func (g *Gateway) proxy(w http.ResponseWriter, r *http.Request, k Key) {
+	var body map[string]interface{}
+	if !g.readBody(w, r, &body) {
 		return
 	}
 	model, _ := body["model"].(string)
@@ -152,19 +187,8 @@ func (g *Gateway) proxy(w http.ResponseWriter, r *http.Request, k Key) {
 		WriteError(w, http.StatusNotFound, openAIErrorInvalid, fmt.Sprintf("model %q does not exist or is not available to this key", model))
 		return
 	}
-	if g.Quotas != nil {
-		allowed, quota, perDay, used, err := g.Quotas.Check(r.Context(), k.Namespace, g.now())
-		if err != nil {
-			WriteError(w, http.StatusServiceUnavailable, "api_error", "cannot read the token quota")
-			return
-		}
-		if !allowed {
-			g.Meter.Rejected(k.Tenant)
-			g.Meter.Request(k.Tenant, model, http.StatusTooManyRequests)
-			WriteError(w, http.StatusTooManyRequests, "rate_limit_error",
-				fmt.Sprintf("quota %s: %d of %d tokens per day used", quota, used, perDay))
-			return
-		}
+	if !g.allowed(w, r, k, model) {
+		return
 	}
 
 	stream, _ := body["stream"].(bool)
@@ -187,11 +211,7 @@ func (g *Gateway) proxy(w http.ResponseWriter, r *http.Request, k Key) {
 	if a := r.Header.Get("Accept"); a != "" {
 		req.Header.Set("Accept", a)
 	}
-	client := g.Client
-	if client == nil {
-		client = http.DefaultClient
-	}
-	resp, err := client.Do(req)
+	resp, err := g.client().Do(req)
 	if err != nil {
 		g.Meter.Request(k.Tenant, model, http.StatusBadGateway)
 		WriteError(w, http.StatusBadGateway, "api_error", "upstream unavailable")
