@@ -9,9 +9,8 @@
 // mux's, so that all of them share one array. A feature whose object is missing is
 // skipped (its slot stays empty and the chain passes over it).
 //
-// Not called from the collector yet: Manager still attaches XDP objects one at a time
-// and skips a second one (XDPConflictReason). Wiring it in means loading the objects
-// through XDPMux when -iface is set and attaching only Mux.
+// LoadXDPMux is the standalone form, used by the tests. The collector's Manager does the same
+// with Config.XDPMux (-xdp-mux, chart ebpf.xdpMux) while it loads the object directory.
 
 package loader
 
@@ -57,6 +56,32 @@ func DefaultXDPFeatures() []XDPFeature {
 		{XDPSlotPacketFilter, "packet_filter.o", "xdp_packet_filter"},
 		{XDPSlotRoceECN, "roce_ecn.o", "gryvia_roce_ecn"},
 	}
+}
+
+// XDPMuxObject is the object file of the mux; XDPFeaturesMap the prog array it shares with the features.
+const (
+	XDPMuxObject   = muxObject
+	XDPFeaturesMap = muxMapName
+)
+
+// XDPChainSlot returns the slot of a feature program, and whether (object, program) is one.
+func XDPChainSlot(object, program string) (uint32, bool) {
+	for _, f := range DefaultXDPFeatures() {
+		if f.Object == object && f.Program == program {
+			return f.Slot, true
+		}
+	}
+	return 0, false
+}
+
+// xdpFeatureObject reports whether an object file holds an XDP chain feature.
+func xdpFeatureObject(object string) (XDPFeature, bool) {
+	for _, f := range DefaultXDPFeatures() {
+		if f.Object == object {
+			return f, true
+		}
+	}
+	return XDPFeature{}, false
 }
 
 // XDPMux is a loaded mux with its feature chain. Close releases everything.

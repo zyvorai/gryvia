@@ -229,6 +229,11 @@ ebpf:
   # Paths of libnccl.so / libcudart.so for the GPU uprobes. Empty tries to discover them from running processes.
   ncclLib: ""
   cudaLib: ""
+  # Attach xdp_mux as the interface's only XDP program and chain the XDP features (roce_cnp, pfc_pause, dns_tracker,
+  # packet_filter, roce_ecn) behind it, so they all run on one interface (flag -xdp-mux; without it only one XDP
+  # program can attach per interface). Needs ebpf.interface. Off by default. Verified with BPF_PROG_TEST_RUN and
+  # on the loopback interface in CI; UNVERIFIED on a NIC. See ebpf/README.md.
+  xdpMux: false
   # RDMA NIC hardware counters from /sys/class/infiniband (flag -nic-counters): retry/error/CNP/pause rates
   # folded into the fabric status and exported as gryvia_nic_counter_rate. Off by default; a node without RDMA
   # devices is skipped. UNVERIFIED on real RDMA hardware. See docs/nccl-rdma-gpu-correlation.md.

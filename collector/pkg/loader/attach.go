@@ -111,6 +111,18 @@ type Config struct {
 	QuotaPace bool
 	// IBVerbs lets ibv_verbs.c (libibverbs control-path uprobes) attach. Default false.
 	IBVerbs bool
+	// XDPMux attaches xdp_mux.o as the interface's only XDP program and chains the XDP
+	// feature programs (roce_cnp, pfc_pause, dns_tracker, packet_filter, roce_ecn) behind it,
+	// so they all run, instead of one XDP program per interface. Needs Iface. Default false.
+	XDPMux bool
+}
+
+// XDPMuxSkipReason explains why xdp_mux.o must not attach ("" = it may).
+func XDPMuxSkipReason(cfg Config) string {
+	if !cfg.XDPMux {
+		return "XDP chaining is off (set -xdp-mux together with -iface)"
+	}
+	return ""
 }
 
 // IBVCountsMap is the counter map of ibv_verbs.c; an object that has it is
@@ -175,7 +187,7 @@ func (x *xdpOwners) release(iface string) {
 // XDPConflictReason is the skip message for a second XDP program on an interface.
 func XDPConflictReason(iface, owner string) string {
 	return "interface " + iface + " already has XDP program " + owner +
-		" attached (one XDP program per interface: roce_cnp, pfc_pause, packet_filter and dns_tracker conflict; use a separate -iface or run one collector per program)"
+		" attached (one XDP program per interface: roce_cnp, pfc_pause, packet_filter, dns_tracker and roce_ecn conflict; use -xdp-mux to chain them behind xdp_mux, a separate -iface, or one collector per program)"
 }
 
 // InferPortsMap is the array map infer_latency.c reads its watched ports from.

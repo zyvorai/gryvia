@@ -58,6 +58,10 @@ type Manager struct {
 	exes        map[string]*link.Executable
 	objMaps     map[string]map[string]*ebpf.Map // object file -> map name -> map
 	xdp         xdpOwners
+	// muxFeatures is xdp_mux's xdp_features prog array once the mux is attached (Config.XDPMux).
+	// XDP feature programs loaded after that share it and are placed in their slot instead of being
+	// attached on their own.
+	muxFeatures *ebpf.Map
 }
 
 // New creates a Manager for the given configuration.
@@ -83,8 +87,23 @@ func (m *Manager) LoadAndAttach() error {
 	m.cfg = ResolveLibraries(m.cfg, NewUprobeResolver(""), nil)
 	m.log.Infow("uprobe libraries", "nccl", m.cfg.NCCLLib, "cuda", m.cfg.CUDALib, "cufile", m.cfg.CuFileLib, "ucx", m.cfg.UCXLib, "ibverbs", m.cfg.IBVerbsLib)
 
+	// The mux goes first: the XDP features loaded after it need its prog array.
+	muxDone := false
+	if m.cfg.XDPMux && m.cfg.Iface != "" {
+		if _, err := os.Stat(filepath.Join(m.cfg.Dir, XDPMuxObject)); err == nil {
+			muxDone = true
+			if err := m.loadObject(XDPMuxObject, filepath.Join(m.cfg.Dir, XDPMuxObject)); err != nil {
+				m.log.Warnw("failed to load object, continuing", "path", XDPMuxObject, "error", err)
+				m.addStatus(ProgramStatus{Object: XDPMuxObject, Kind: "object", Reason: err.Error()})
+			}
+		}
+	}
+
 	for _, entry := range entries {
 		if entry.IsDir() || filepath.Ext(entry.Name()) != ".o" {
+			continue
+		}
+		if muxDone && entry.Name() == XDPMuxObject {
 			continue
 		}
 		objPath := filepath.Join(m.cfg.Dir, entry.Name())
@@ -118,7 +137,15 @@ func (m *Manager) loadObject(file, path string) error {
 	if err != nil {
 		return fmt.Errorf("parse collection spec: %w", err)
 	}
-	coll, err := ebpf.NewCollection(spec)
+	// An XDP feature behind an attached mux shares the mux's prog array: every object declares its
+	// own xdp_features map (headers/xdp_chain.h), replaced here by the mux's.
+	var copts ebpf.CollectionOptions
+	if m.muxFeatures != nil {
+		if _, isFeature := xdpFeatureObject(file); isFeature {
+			copts.MapReplacements = map[string]*ebpf.Map{XDPFeaturesMap: m.muxFeatures}
+		}
+	}
+	coll, err := ebpf.NewCollectionWithOptions(spec, copts)
 	if err != nil {
 		return fmt.Errorf("create collection: %w", err)
 	}
@@ -155,6 +182,11 @@ func (m *Manager) loadObject(file, path string) error {
 		}
 	}
 
+	// xdp_mux.c is only attached when chaining is on.
+	if file == XDPMuxObject && skipAll == "" {
+		skipAll = XDPMuxSkipReason(m.cfg)
+	}
+
 	names := make([]string, 0, len(coll.Programs))
 	for n := range coll.Programs {
 		names = append(names, n)
@@ -185,6 +217,23 @@ func (m *Manager) loadObject(file, path string) error {
 			continue
 		}
 		owner := file + "/" + name
+		// Behind an attached mux an XDP feature is not attached: it goes into its slot of the shared
+		// prog array and the chain calls it.
+		if as.Kind == KindXDP && m.muxFeatures != nil {
+			if slot, ok := XDPChainSlot(file, name); ok {
+				if err := m.muxFeatures.Put(slot, coll.Programs[name]); err != nil {
+					st.Reason = fmt.Sprintf("place in %s slot %d: %v", XDPMuxObject, slot, err)
+					m.log.Warnw("failed to place program in the xdp_mux chain", "object", file, "program", name, "slot", slot, "error", err)
+					m.addStatus(st)
+					continue
+				}
+				st.Attached = true
+				st.Target = fmt.Sprintf("%s slot %d", XDPMuxObject, slot)
+				m.addStatus(st)
+				m.log.Infow("placed program in the xdp_mux chain", "object", file, "program", name, "slot", slot)
+				continue
+			}
+		}
 		if as.Kind == KindXDP {
 			if cur, ok := m.xdp.claim(m.cfg.Iface, owner); !ok {
 				st.Reason = "skipped: " + XDPConflictReason(m.cfg.Iface, cur)
@@ -226,6 +275,10 @@ func (m *Manager) loadObject(file, path string) error {
 		st.Attached = true
 		m.addStatus(st)
 		m.log.Infow("attached program", "object", file, "program", name, "section", ps.SectionName)
+		if file == XDPMuxObject {
+			// From here on, XDP features load against the mux's prog array.
+			m.muxFeatures = coll.Maps[XDPFeaturesMap]
+		}
 	}
 
 	// Open a reader of the matching type for each event map.
