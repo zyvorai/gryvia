@@ -23,6 +23,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: python3 examples/training/test_checkpoint_worker.py
+      - run: python3 examples/training/test_coordinated_checkpoint.py
       - run: bash scripts/tests/e2e-kueue-pods.test.sh
 
   legacy-names:

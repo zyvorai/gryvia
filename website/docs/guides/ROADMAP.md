@@ -36,7 +36,7 @@ Dormant simulation controllers have been removed for `GryviaSLA`, `GryviaAutoSca
 
 ### Not implemented
 
-- Distributed checkpoint coordination, elastic rank resharding and guaranteed checkpoints on abrupt node loss. Cooperative preStop requests and a durable single-process recovery example are implemented.
+- Elastic rank resharding and guaranteed checkpoints on abrupt node loss. Cooperative preStop requests, a durable single-process recovery example and a file-based all-ranks commit protocol (`examples/training/coordinated_checkpoint.py`, multi-process tested on CPU, not wired into a real distributed trainer) are implemented.
 - A separate hierarchical/DRF/global scheduler. Native Kueue fair-sharing, topology and MultiKueue configuration is available; real multi-cluster execution and GPU placement remain unverified.
 - Cilium as the default CNI or any cluster-wide CNI replacement
 - Multi-cluster control plane and global scheduler
