@@ -232,7 +232,7 @@ Network-intelligence operator: `GryviaFlowPolicy`, `GryviaTrafficInsight`, `Gryv
 `GryviaServiceGraph`, `GryviaNetworkAnomaly`, `GryviaSecurityPolicy`, `GryviaNetworkCost`, `GryviaTrainingInsight`,
 `GryviaInferenceInsight`.
 
-**Data or legacy APIs without runtime actions (14).** `GryviaGpuSku`, `GryviaNetworkRate`, `GryviaNetworkUsageRecord` and `GryviaNodeFabric` are catalog/telemetry data. `GryviaDataset`, `GryviaAutoScaler`, `GryviaJobHook`, `GryviaRetryPolicy`, `GryviaSLA`, `GryviaAudit`, `GryviaQuotaPolicy`, `GryviaMetric`, `GryviaBenchmark` and `GryviaDRTest` have no supported runtime implementation. The platform completion flags can report them unsupported without executing their specs.
+**Data or legacy APIs without runtime actions (14).** `GryviaGpuSku`, `GryviaNetworkRate`, `GryviaNetworkUsageRecord` and `GryviaNodeFabric` are catalog/telemetry data. `GryviaDataset`, `GryviaAutoScaler`, `GryviaJobHook`, `GryviaRetryPolicy`, `GryviaSLA`, `GryviaAudit`, `GryviaQuotaPolicy`, `GryviaMetric`, `GryviaBenchmark` and `GryviaDRTest` have no supported runtime implementation; their CRD version is marked `deprecated` so `kubectl` warns on use, and they will be removed in a future release (existing objects stay readable until then). The platform completion flags can report them unsupported without executing their specs.
 
 </details>
 

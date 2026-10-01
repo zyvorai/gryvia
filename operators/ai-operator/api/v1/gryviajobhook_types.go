@@ -121,6 +121,7 @@ type GryviaJobHookStatus struct {
 	LastStatus string `json:"lastStatus,omitempty"`
 }
 
+//+kubebuilder:deprecatedversion:warning="no controller reconciles this kind and its spec is not executed; it is kept readable for migration and will be removed in a future release"
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 //+kubebuilder:resource:scope=Cluster
