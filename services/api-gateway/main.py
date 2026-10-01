@@ -71,6 +71,9 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # Request metrics; /metrics itself exists only when GRYVIA_METRICS_TOKEN is set (routers/observability.py).
 observability.install(app)
+from routers import audit  # noqa: E402
+
+audit.install(app)  # who changed what; see routers/audit.py
 
 # CORS middleware - restrict origins via environment variable
 ALLOWED_ORIGINS = os.environ.get("CORS_ALLOWED_ORIGINS", "").split(",")

@@ -49,6 +49,12 @@ AUTH_RESULTS = Counter(
     ["method", "result"],
     registry=REGISTRY,
 )
+AUDIT_EVENTS = Counter(
+    "gryvia_gateway_audit_events_total",
+    "State-changing requests recorded in the audit trail, by HTTP method and outcome (success, denied, error).",
+    ["method", "outcome"],
+    registry=REGISTRY,
+)
 RATE_LIMIT_HITS = Counter(
     "gryvia_gateway_rate_limit_hits_total",
     "Requests rejected with 429 by the rate limiter.",
@@ -79,6 +85,10 @@ def route_template(request: Request) -> str:
     route = request.scope.get("route")
     path = getattr(route, "path", None)
     return path if isinstance(path, str) else "unmatched"
+
+
+def record_audit(method: str, outcome: str) -> None:
+    AUDIT_EVENTS.labels(method, outcome).inc()
 
 
 def record_auth(method: str, ok: bool) -> None:
