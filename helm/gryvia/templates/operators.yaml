@@ -63,6 +63,10 @@ spec:
             {{- if and (eq $name "gpu-operator") $.Values.gpuOperator.gpuSharing }}
             - --enable-gpu-sharing=true
             {{- end }}
+            {{- if and (eq $name "gpu-operator") $.Values.gpuOperator.gpuSharing $.Values.gpuOperator.devicePluginConfig }}
+            - {{ printf "--device-plugin-config-name=%s" $.Values.nvidiaPlatform.timeSlicing.configName | quote }}
+            - {{ printf "--device-plugin-config-namespace=%s" $.Release.Namespace | quote }}
+            {{- end }}
             {{- if and (eq $name "gpu-operator") $.Values.platformCompletion.gpuHealth }}
             - --enable-gpu-health-controller=true
             {{- end }}

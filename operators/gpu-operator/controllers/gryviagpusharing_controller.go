@@ -25,6 +25,14 @@ type GryviaGPUSharingPolicyReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Log    logr.Logger
+
+	// DevicePluginConfigName / DevicePluginConfigNamespace name the ConfigMap the NVIDIA device
+	// plugin reads (the GPU Operator's devicePlugin.config.name). When both are set, a time-slicing
+	// policy writes the data key "gryvia-ts-<replicas>" there and labels nodes with that key, so a
+	// policy's maxPodsPerGPU is what the plugin is told. When empty the node label is the fixed
+	// "gryvia-time-slicing" key and the replica count comes from whatever the chart put there.
+	DevicePluginConfigName      string
+	DevicePluginConfigNamespace string
 }
 
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviagpusharingpolicies,verbs=get;list;watch;create;update;patch;delete
@@ -137,6 +145,8 @@ func (r *GryviaGPUSharingPolicyReconciler) reconcileGPUSharing(ctx context.Conte
 // an estimate computed from the policy, not a measurement of the device plugin.
 func sharingCondition(policy *gryviav1.GryviaGPUSharingPolicy, res sharingResult, matched int) (metav1.ConditionStatus, string, string) {
 	switch {
+	case res.ConfigErr != nil:
+		return metav1.ConditionFalse, "ConfigWriteFailed", res.ConfigErr.Error()
 	case res.Disabled:
 		return metav1.ConditionFalse, "StrategyNotEnabled",
 			fmt.Sprintf("strategy %q is not enabled in the policy; no node labels were written", policy.Spec.Strategy)
@@ -243,13 +253,17 @@ func (r *GryviaGPUSharingPolicyReconciler) calculateEffectiveGPUs(policy *gryvia
 // sharingResult says how many nodes a configure step labelled and why the rest
 // were not, so the policy condition reflects what was actually written.
 type sharingResult struct {
-	Applied  int
-	Missing  []string // GryviaGpuNodes whose Kubernetes Node does not exist
-	Failed   []string // nodes where the label write failed
-	Disabled bool     // the strategy block is absent or not enabled
+	Applied   int
+	Missing   []string // GryviaGpuNodes whose Kubernetes Node does not exist
+	Failed    []string // nodes where the label write failed
+	Disabled  bool     // the strategy block is absent or not enabled
+	ConfigErr error    // the device-plugin ConfigMap could not be written
 }
 
 func (res sharingResult) err() error {
+	if res.ConfigErr != nil {
+		return res.ConfigErr
+	}
 	if len(res.Failed) == 0 {
 		return nil
 	}
@@ -290,12 +304,61 @@ func (r *GryviaGPUSharingPolicyReconciler) configureTimeSlicing(ctx context.Cont
 		return sharingResult{Disabled: true}
 	}
 	log := r.Log.WithValues("policy", policy.Name, "strategy", "time-slicing")
+	key := "gryvia-time-slicing"
+	if r.DevicePluginConfigName != "" && r.DevicePluginConfigNamespace != "" {
+		k, err := r.ensureTimeSlicingConfig(ctx, timeSlicingReplicas(policy))
+		if err != nil {
+			log.Error(err, "Failed to write the device-plugin time-slicing ConfigMap")
+			return sharingResult{ConfigErr: fmt.Errorf("device-plugin ConfigMap %s/%s: %w", r.DevicePluginConfigNamespace, r.DevicePluginConfigName, err)}
+		}
+		key = k
+	}
 	return r.labelNodes(ctx, log, nodes, func(l map[string]string) {
 		// The NVIDIA device plugin reads nvidia.com/device-plugin.config.
 		l["gryvia.io/gpu-sharing"] = "time-slicing"
 		l["gryvia.io/max-pods-per-gpu"] = fmt.Sprintf("%d", policy.Spec.TimeSlicing.MaxPodsPerGPU)
-		l["nvidia.com/device-plugin.config"] = "gryvia-time-slicing"
+		l["nvidia.com/device-plugin.config"] = key
 	})
+}
+
+// timeSlicingReplicas is the replica count a time-slicing policy asks the device plugin for
+// (the same default as calculateEffectiveGPUs).
+func timeSlicingReplicas(policy *gryviav1.GryviaGPUSharingPolicy) int {
+	if policy.Spec.TimeSlicing != nil && policy.Spec.TimeSlicing.MaxPodsPerGPU > 0 {
+		return policy.Spec.TimeSlicing.MaxPodsPerGPU
+	}
+	return 4
+}
+
+// ensureTimeSlicingConfig makes sure the device-plugin ConfigMap has the data key for the
+// replica count and returns the key. It only adds or corrects its own "gryvia-ts-<n>" keys; other
+// keys (including the chart's "gryvia-time-slicing") are left alone. A missing ConfigMap is
+// created.
+func (r *GryviaGPUSharingPolicyReconciler) ensureTimeSlicingConfig(ctx context.Context, replicas int) (string, error) {
+	key := fmt.Sprintf("gryvia-ts-%d", replicas)
+	body := fmt.Sprintf("version: v1\nflags:\n  migStrategy: none\nsharing:\n  timeSlicing:\n    renameByDefault: false\n    resources:\n      - name: nvidia.com/gpu\n        replicas: %d\n", replicas)
+	nn := client.ObjectKey{Namespace: r.DevicePluginConfigNamespace, Name: r.DevicePluginConfigName}
+	cm := &corev1.ConfigMap{}
+	err := r.Get(ctx, nn, cm)
+	if errors.IsNotFound(err) {
+		cm = &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Namespace: nn.Namespace, Name: nn.Name,
+				Labels: map[string]string{"app.kubernetes.io/managed-by": "gryvia-gpu-operator"}},
+			Data: map[string]string{key: body},
+		}
+		return key, r.Create(ctx, cm)
+	}
+	if err != nil {
+		return "", err
+	}
+	if cm.Data[key] == body {
+		return key, nil
+	}
+	if cm.Data == nil {
+		cm.Data = map[string]string{}
+	}
+	cm.Data[key] = body
+	return key, r.Update(ctx, cm)
 }
 
 func (r *GryviaGPUSharingPolicyReconciler) configureMIG(ctx context.Context, policy *gryviav1.GryviaGPUSharingPolicy, nodes []gryviav1.GryviaGpuNode) sharingResult {
