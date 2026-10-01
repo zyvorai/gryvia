@@ -14,7 +14,7 @@ Overview of Gryvia's advanced capability areas, with what is implemented and wha
 | Auto-scaling | `GryviaAutoScaler` | CRD only, no controller; no node provisioning exists |
 | Budgets | `GryviaBudget` | Controller registered: spend from `GryviaUsageRecord`s sets a `status.state`; blocking new jobs needs the opt-in admission gate (`aiOperator.admissionGate`). Estimates only; unit-tested, kind e2e authored and not yet run |
 | Priority and preemption | `GryviaAIJob.spec.priority`, Kueue | Opt-in via the Kueue integration (`--kueue-integration`): priority maps to a WorkloadPriorityClass and preempts within a queue, victims are requeued; unit-tested, e2e unverified ([details](https://github.com/zyvorai/gryvia/blob/main/docs/kueue-integration.md)). Without it `spec.priority` is validated but not acted on. `GryviaPriority` is CRD only |
-| ML workflows | AutoTuner, Workflow, ModelRegistry, InferenceService, Workspace | Controllers registered in the ai-operator (on by default); unit-tested, kind e2e with tiny CPU images authored and not yet run, nothing on GPUs; see [ML Workflows](ML_WORKFLOWS.md) |
+| ML workflows | AutoTuner, Workflow, ModelRegistry, InferenceService, Workspace | Controllers registered in the ai-operator (on by default); unit-tested, kind e2e with tiny CPU images passes in CI, nothing on GPUs; see [ML Workflows](ML_WORKFLOWS.md) |
 | Network intelligence | 10 kinds | Running via the network-intelligence operator (own chart); eBPF collector off by default; see [Network Intelligence](NETWORK_INTELLIGENCE.md) |
 | Advanced scheduling | | Kueue-backed and opt-in; see [Scheduling](SCHEDULING.md) |
 | OIDC/SSO | gateway | Implemented in the gateway; not verified against a real identity provider |
@@ -369,7 +369,7 @@ spec:
 
 ## Priority & Preemption
 
-Status: opt-in through Kueue (`--kueue-integration`, see [Kueue integration](https://github.com/zyvorai/gryvia/blob/main/docs/kueue-integration.md); unit-tested, kind e2e written but unverified), otherwise not implemented. A `GryviaPriority` CRD (`value` required, plus `preemptionPolicy`, `quotaOverride`, `sla`) exists but no controller is registered for it. `GryviaAIJob.spec.priority` is an integer from 0 to 100 that the admission webhook range-checks; without the Kueue integration the scheduler and controller do not order or preempt by it, and there is no `priorityClassName` on the job. The seven-tier table with quota override percentages that earlier versions showed was a proposal.
+Status: opt-in through Kueue (`--kueue-integration`, see [Kueue integration](https://github.com/zyvorai/gryvia/blob/main/docs/kueue-integration.md); unit-tested; the kind e2e with real Kueue and CPU pods passes in CI; never run on GPUs), otherwise not implemented. A `GryviaPriority` CRD (`value` required, plus `preemptionPolicy`, `quotaOverride`, `sla`) exists but no controller is registered for it. `GryviaAIJob.spec.priority` is an integer from 0 to 100 that the admission webhook range-checks; without the Kueue integration the scheduler and controller do not order or preempt by it, and there is no `priorityClassName` on the job. The seven-tier table with quota override percentages that earlier versions showed was a proposal.
 
 See [Scheduling](SCHEDULING.md#priority-preemption) for the details.
 
@@ -377,7 +377,7 @@ See [Scheduling](SCHEDULING.md#priority-preemption) for the details.
 
 ## ML Workflows
 
-The ML workflow kinds have CRDs, gateway/dashboard CRUD and a controller each in the ai-operator (on by default): trials as child jobs, DAG execution, model serving with a pod-count canary, workspace pods. Unit-tested with fake clients; the kind e2e (tiny CPU images) is authored and not yet run; nothing has run on GPUs or with real Jupyter/vLLM/Triton images. See [docs/ml-controllers.md](https://github.com/zyvorai/gryvia/blob/main/docs/ml-controllers.md).
+The ML workflow kinds have CRDs, gateway/dashboard CRUD and a controller each in the ai-operator (on by default): trials as child jobs, DAG execution, model serving with a pod-count canary, workspace pods. Unit-tested with fake clients; the kind e2e (tiny CPU images) passes in CI; nothing has run on GPUs or with real Jupyter/vLLM/Triton images. See [docs/ml-controllers.md](https://github.com/zyvorai/gryvia/blob/main/docs/ml-controllers.md).
 
 - **GryviaAutoTuner**: hyperparameter study spec (grid, random, bayesian, asha).
 - **GryviaWorkflow**: DAG step spec with `dependsOn`.

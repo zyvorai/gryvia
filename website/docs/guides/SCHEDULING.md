@@ -222,7 +222,7 @@ kubectl describe gryviaaijob my-job
 | Feature | Real state |
 |---------|-----------|
 | Node selection | Runs; recorded in status, pods are placed by the Kubernetes scheduler using selectors |
-| Gang admission (all pods together) | Kueue-backed, opt-in (`--kueue-integration`); unit-tested, e2e written but unverified. |
+| Gang admission (all pods together) | Kueue-backed, opt-in (`--kueue-integration`); unit-tested; the kind e2e (real Kueue, CPU pods) passes in CI; never on GPUs. |
 | Queues, per-tenant quota, borrowing | Kueue-backed, opt-in; nominal quota + cohort borrowing, not DRF. |
 | Hierarchical queues, backfill | Not implemented |
 | Elastic training | Not implemented, no CRD field |

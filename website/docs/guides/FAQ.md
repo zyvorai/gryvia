@@ -15,7 +15,7 @@ An alpha, Kubernetes-native platform for GPU workloads. What runs today:
 - Storage and network operators, and network intelligence (eBPF collector, off by default)
 - A REST API gateway, a dashboard and a Rust CLI, plus Python and Go SDKs
 
-Workflows, tuners, workspaces, inference services and the model registry have controllers in the ai-operator (unit-tested; the kind e2e is authored and not yet run; nothing on GPUs), budgets and reservations have controllers in the quota-operator (reservations are opt-in), and Kueue-based queueing is opt-in. Many other kinds (auto-scaling, chargeback, SLA, templates and so on) have a CRD but no controller yet.
+Workflows, tuners, workspaces, inference services and the model registry have controllers in the ai-operator (unit-tested; the kind e2e with tiny CPU images passes in CI; nothing on GPUs), budgets and reservations have controllers in the quota-operator (reservations are opt-in), and Kueue-based queueing is opt-in. Many other kinds (auto-scaling, chargeback, SLA, templates and so on) have a CRD but no controller yet.
 
 ### Who should use it?
 

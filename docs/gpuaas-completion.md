@@ -3,8 +3,7 @@
 What was added on top of tenants, the SKU catalog and usage metering, how it behaves, and where it stops.
 Everything below is covered by Go/Python/TypeScript/Rust unit tests against fake clients. Nothing has run on GPUs or
 against a real identity provider; the Kubernetes-level behaviour (taints, RoleBindings, the admission gate) is
-exercised only by the kind workflow `.github/workflows/e2e-gpuaas.yml` (`scripts/e2e-gpuaas.sh`), which was authored
-without being run, so its first CI run is its first run.
+exercised only by the kind workflow `.github/workflows/e2e-gpuaas.yml` (`scripts/e2e-gpuaas.sh`), which passes in CI.
 
 ## What is opt-in
 
