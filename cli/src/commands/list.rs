@@ -39,9 +39,12 @@ pub async fn execute(
             }
             list_nodes(client, output).await?
         }
+        "experiments" | "experiment" => {
+            super::experiment::list(client, all_namespaces, output).await?
+        }
         _ => {
             anyhow::bail!(
-                "Unknown resource type: {}. Valid types: jobs, quotas, nodes",
+                "Unknown resource type: {}. Valid types: jobs, quotas, nodes, experiments",
                 resource
             );
         }

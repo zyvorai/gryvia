@@ -122,6 +122,7 @@ shown but nothing runs them.
 |---|---|---|
 | `GET /api/skus`, `GET /api/skus/{name}` | tenant-filtered | The catalog. A tenant sees enabled SKUs, limited to the `allowedSkus` of its tenant(s) |
 | `POST /api/skus`, `PUT /api/skus/{name}`, `DELETE /api/skus/{name}` | admin | Manage SKUs (`gpuType`, `gpusPerUnit`, `hourlyRate`, `currency`, `spotDiscount`, `description`, `enabled`) |
+| `GET /api/experiments`, `GET /api/experiments/{name}` | tenant-filtered | `GryviaLiveExperiment`: spec summary and the leaderboard re-ranked by the experiment's direction, with `deltaToBest` / `deltaPct` per run. Read-only |
 | `GET /api/tenants`, `GET /api/tenants/{name}` | tenant-filtered | The admin sees every tenant, a tenant user only its own |
 | `GET /api/audit` | admin | Recent state-changing requests (newest first; `limit`, `outcome`, `method`). Per-replica buffer lost on restart; the `gryvia.audit` log is the durable record |
 | `POST /api/tenants`, `DELETE /api/tenants/{name}` | admin | Create (`name`, `displayName`, `allowedSkus`, `maxGPUs`, `isolated`) or delete a tenant |

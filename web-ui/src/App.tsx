@@ -41,6 +41,7 @@ const Catalog = lazy(() => import('./pages/Catalog'))
 const Usage = lazy(() => import('./pages/Usage'))
 const Reservations = lazy(() => import('./pages/Reservations'))
 const Budgets = lazy(() => import('./pages/Budgets'))
+const Experiments = lazy(() => import('./pages/Experiments'))
 const Invoices = lazy(() => import('./pages/Invoices'))
 const Tenants = lazy(() => import('./pages/Tenants'))
 
@@ -171,6 +172,7 @@ function App() {
               <Route path="/models" element={<ModelRegistry />} />
               <Route path="/inference" element={<InferenceServices />} />
               <Route path="/workflows" element={<Workflows />} />
+              <Route path="/experiments" element={<Experiments />} />
               <Route path="/tuner" element={<AutoTuner />} />
               <Route path="*" element={<NotFound />} />
             </Route>

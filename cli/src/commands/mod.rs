@@ -6,6 +6,7 @@ pub mod cluster;
 pub mod cost;
 pub mod create;
 pub mod delete;
+pub mod experiment;
 pub mod flows;
 pub mod get;
 pub mod gpu_trace;

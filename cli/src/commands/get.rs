@@ -23,9 +23,10 @@ pub async fn execute(
         "job" => get_job(client, name, output).await?,
         "quota" => get_quota(client, name, output).await?,
         "node" => get_node(client, name, output).await?,
+        "experiment" => super::experiment::get(client, name, output).await?,
         _ => {
             anyhow::bail!(
-                "Unknown resource type: {}. Valid types: job, quota, node",
+                "Unknown resource type: {}. Valid types: job, quota, node, experiment",
                 resource
             );
         }
