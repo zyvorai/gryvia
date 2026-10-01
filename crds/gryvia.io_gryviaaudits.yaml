@@ -14,7 +14,10 @@ spec:
     singular: gryviaaudit
   scope: Cluster
   versions:
-  - name: v1alpha1
+  - deprecated: true
+    deprecationWarning: no controller reconciles this kind and its spec is not executed;
+      it is kept readable for migration and will be removed in a future release
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: GryviaAudit is the Schema for the gryviaaudits API
