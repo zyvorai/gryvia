@@ -13,6 +13,7 @@ The ai-operator registers a controller for each of the five kinds this guide is 
 | `GryviaModelRegistry` | yes | list, get, register (`POST /api/models`), promote | yes (`autoServe` at stage `production` creates a `GryviaInferenceService`) |
 | `GryviaInferenceService` | yes | create, list, delete | yes (Deployment, Service, CPU-based HPA, pod-count canary) |
 | `GryviaWorkspace` | yes | create, list, delete, pause and resume | yes (Pod, Service, optional PVC) |
+| `GryviaModelWatch` | yes | create, list, delete, runs, suspend and resume | opt-in (`aiOperator.modelWatch.enabled`): one workflow per new hub model, see [Model factory](#model-factory-gryviamodelwatch) |
 
 Job steps and tuner trials create `GryviaAIJob`s, which the AIJob controller runs to completion as Indexed batch Jobs ([AIJob lifecycle](https://github.com/zyvorai/gryvia/blob/main/docs/aijob-lifecycle.md)). The sections below keep the schema examples; where a paragraph is still labelled design, the behaviour it describes is not implemented (for example weighted canary routing, or an HPA on GPU utilisation or requests per second). All YAML uses the real schema (`crds/`) and is checked in CI; the examples in `examples/ml-workflow/` are the source models.
 
@@ -26,6 +27,7 @@ The API routes are in the [API reference](../developer-guide/api-reference.md). 
 3. [Model Registry (GryviaModelRegistry)](#model-registry-gryviamodelregistry)
 4. [Inference Serving (GryviaInferenceService)](#inference-serving-gryviainferenceservice)
 5. [Interactive Workspaces (GryviaWorkspace)](#interactive-workspaces-gryviaworkspace)
+6. [Model factory (GryviaModelWatch)](#model-factory-gryviamodelwatch)
 
 ---
 
@@ -185,7 +187,11 @@ train -> evaluate ---\
 train -> benchmark ---> publish
 ```
 
-The controller implements the ordering and fan-out shown here; artifact passing between steps is not implemented.
+The controller implements the ordering and fan-out shown here. Steps pass small values (paths, scores) to later steps
+as outputs: a step writes a JSON object to its termination message (or the `gryvia.io/output-<key>` annotations on its
+`GryviaAIJob`) and later steps use `{{steps.<step>.outputs.<key>}}`. A `register` step creates a registry entry and
+`spec.schedule` (cron, UTC) reruns the workflow; see [docs/model-factory.md](https://github.com/zyvorai/gryvia/blob/main/docs/model-factory.md#workflow-additions).
+Artifacts themselves are not moved: steps share a PVC or object storage.
 
 ### Working with it today
 
@@ -204,7 +210,7 @@ Status: the controller mirrors serving state; with `spec.autoServe: true` and `s
 
 ### Overview
 
-`GryviaModelRegistry` records a model version: `modelName`, `version`, `artifacts` (`s3Path` or `pvcName`/`subPath`, `format`, `sizeBytes`), `stage`, `source` (`jobRef`, `tunerRef` or `workflowRef`), free-form string `metadata`, and optional `autoServe` with a `servingConfig` (`backend`, `replicas`, `gpuCount`, `gpuType`). The dashboard and gateway treat `stage` as dev, staging and production. Promotion through the gateway (`POST /api/models/{name}/promote`) patches `spec.stage` and validates the transition; it does not deploy anything. `autoServe` would be acted on by a controller that does not exist yet, so promoting to production does not create an inference service. There is no approval workflow, canary block or metrics block on this kind.
+`GryviaModelRegistry` records a model version: `modelName`, `version`, `artifacts` (`s3Path` or `pvcName`/`subPath`, `format`, `sizeBytes`), `stage`, `source` (`jobRef`, `tunerRef` or `workflowRef`), free-form string `metadata`, and optional `autoServe` with a `servingConfig` (`backend`, `replicas`, `gpuCount`, `gpuType`). The dashboard and gateway treat `stage` as dev, staging and production. Promotion through the gateway (`POST /api/models/{name}/promote`) patches `spec.stage` and validates the transition; with `autoServe` the controller then creates or removes the inference service. `promotionPolicy` promotes a `staging` entry automatically when a metric in `metadata` beats the production version, and `servingConfig.serviceName` rolls each promoted version out as a canary of one shared service ([Model factory](#model-factory-gryviamodelwatch)). There is no human approval workflow.
 
 ### Example (schema-valid)
 
@@ -242,7 +248,7 @@ kubectl patch gryviamodelregistry resnet50-v2-1-0 -n ml-team \
   --type merge -p '{"spec":{"stage":"production"}}'
 ```
 
-The status fields (`phase`, `servingEndpoint`, `inferenceServiceName`, ...) are defined by the CRD but not populated. Rollback is re-applying an earlier manifest; nothing automates it.
+The controller writes `phase`, `servingEndpoint`, `inferenceServiceName` and the other status fields (see [docs/ml-controllers.md](https://github.com/zyvorai/gryvia/blob/main/docs/ml-controllers.md#gryviamodelregistry)). With shared serving a failing canary is rolled back automatically; otherwise rollback is promoting an earlier entry by hand.
 
 ---
 
@@ -356,6 +362,55 @@ kubectl delete gryviaworkspace research-notebook -n ml-team
 ```
 
 Status fields (`phase`, `url`, `podName`, `lastActivity`) are written by the controller. `url` is cluster-internal: there is no ingress, TLS or authentication in front of the workspace Service.
+
+---
+
+## Model factory (GryviaModelWatch)
+
+Status: opt-in (`aiOperator.modelWatch.enabled`). Unit-tested; the e2e control-plane flow (stand-in hub, busybox steps) passed on a k3s cluster without GPUs. No real download, fine-tune or evaluation has run. Full reference: [docs/model-factory.md](https://github.com/zyvorai/gryvia/blob/main/docs/model-factory.md).
+
+A watch polls the Hugging Face Hub. The first poll records existing models as the baseline; each later model that passes the filters gets a workflow rendered from `workflowTemplate`, with `{{model.id}}`, `{{model.revision}}`, `{{model.slug}}`, `{{model.gpus}}` and similar filled in. A typical template downloads, fine-tunes, evaluates and registers; the registry's `promotionPolicy` and `servingConfig.serviceName` then decide whether the new version replaces the served one.
+
+```yaml
+apiVersion: gryvia.io/v1alpha1
+kind: GryviaModelWatch
+metadata:
+  name: small-qwen
+  namespace: ml-team
+spec:
+  sources:
+    - provider: huggingface
+      author: Qwen
+      nameRegex: '-Instruct$'
+  licenseAllowlist: [apache-2.0]
+  maxParamsB: 8
+  pollInterval: 6h
+  workflowTemplate:
+    steps:
+      - name: finetune
+        type: job
+        jobTemplate:
+          type: fine-tuning
+          image: registry.example.com/gryvia-model-factory:1.0
+          gpus: 1
+          command: [python3, /app/finetune_lora.py]
+          args: ["--base={{model.id}}", "--revision={{model.revision}}", "--name={{model.slug}}"]
+      - name: register
+        type: register
+        dependsOn: [finetune]
+        register:
+          modelName: chat-assistant
+          version: "{{model.slug}}-{{model.revision}}"
+          artifacts: {pvcName: models, subPath: "{{steps.finetune.outputs.subPath}}"}
+          metadata: {train_loss: "{{steps.finetune.outputs.train_loss}}"}
+```
+
+The complete pipeline (download, LoRA fine-tune, lm-eval, register, shared vLLM serving) is [examples/model-factory/model-watch.yaml](https://github.com/zyvorai/gryvia/blob/main/examples/model-factory/model-watch.yaml).
+
+```bash
+gryvia models watch create -f watch.yaml -n ml-team
+gryvia models watch runs small-qwen -n ml-team
+```
 
 ---
 

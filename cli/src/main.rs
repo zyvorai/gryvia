@@ -361,6 +361,16 @@ enum Commands {
         output: UsageFormat,
     },
 
+    /// Model factory: watch a model hub and fine-tune, evaluate and serve new models
+    ///
+    /// A model watch is a GryviaModelWatch object. The ai-operator (with --enable-model-watch) polls the hub
+    /// and starts one GryviaWorkflow per new model that passes the license and size filters.
+    #[command(after_help = examples(&["gryvia models watch list", "gryvia models watch create -f examples/model-factory/model-watch.yaml -n ml-team", "gryvia models watch runs open-llms -n ml-team", "gryvia models watch suspend open-llms"]))]
+    Models {
+        #[command(subcommand)]
+        action: ModelsCommands,
+    },
+
     /// Interactive job creation wizard
     #[command(after_help = examples(&["gryvia create job"]))]
     Create {
@@ -450,6 +460,68 @@ enum Commands {
     Gpu {
         #[command(subcommand)]
         action: GpuCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum ModelsCommands {
+    /// Manage model watches: list, runs, create, suspend, resume, delete
+    Watch {
+        #[command(subcommand)]
+        action: WatchCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum WatchCommands {
+    /// List model watches in the namespace
+    List {
+        /// Output format
+        #[arg(short, long, value_enum, default_value_t = OutputFormat::Table, env = "GRYVIA_OUTPUT")]
+        output: OutputFormat,
+    },
+
+    /// Show the models a watch found and the workflow started for each, newest first
+    Runs {
+        /// Model watch name
+        name: String,
+
+        /// Also show baseline models (those that existed before the watch)
+        #[arg(long)]
+        all: bool,
+
+        /// Output format
+        #[arg(short, long, value_enum, default_value_t = OutputFormat::Table, env = "GRYVIA_OUTPUT")]
+        output: OutputFormat,
+    },
+
+    /// Create the GryviaModelWatch objects in a YAML file (other kinds in the file are skipped)
+    Create {
+        /// Path to the YAML file
+        #[arg(short, long)]
+        file: String,
+    },
+
+    /// Stop polling the hub; running workflows continue
+    Suspend {
+        /// Model watch name
+        name: String,
+    },
+
+    /// Resume polling the hub
+    Resume {
+        /// Model watch name
+        name: String,
+    },
+
+    /// Delete a model watch and its workflows (registered models are kept)
+    Delete {
+        /// Model watch name
+        name: String,
+
+        /// Skip confirmation
+        #[arg(short, long)]
+        yes: bool,
     },
 }
 
@@ -1090,6 +1162,28 @@ async fn run() -> Result<()> {
             }
             ReservationCommands::Cancel { name, yes } => {
                 commands::reservation::cancel(&client, &name, yes).await?;
+            }
+        },
+        Commands::Models {
+            action: ModelsCommands::Watch { action },
+        } => match action {
+            WatchCommands::List { output } => {
+                commands::models::list(&client, output.as_str()).await?;
+            }
+            WatchCommands::Runs { name, all, output } => {
+                commands::models::runs(&client, &name, all, output.as_str()).await?;
+            }
+            WatchCommands::Create { file } => {
+                commands::models::create(&client, &file).await?;
+            }
+            WatchCommands::Suspend { name } => {
+                commands::models::set_suspend(&client, &name, true).await?;
+            }
+            WatchCommands::Resume { name } => {
+                commands::models::set_suspend(&client, &name, false).await?;
+            }
+            WatchCommands::Delete { name, yes } => {
+                commands::models::delete(&client, &name, yes).await?;
             }
         },
         Commands::Budget { scope, output } => {

@@ -25,6 +25,7 @@ export const NAVIGATION: NavItem[] = [
     name: 'Models',
     children: [
       { name: 'Models', href: '/models', blurb: 'Registry, stages and promotion' },
+      { name: 'Model factory', href: '/model-factory', blurb: 'Fine-tune and serve new open models' },
       { name: 'Inference', href: '/inference', blurb: 'Serving and autoscaling' },
     ],
   },

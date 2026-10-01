@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"sort"
 	"time"
 
@@ -14,6 +15,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 )
@@ -34,6 +37,10 @@ const (
 // A registry entry is metadata. Only when spec.autoServe is true and spec.stage is "production" does the controller
 // create a GryviaInferenceService "<entry>-serving" (owned by the entry) and mirror its endpoint into
 // status.servingEndpoint. Moving the entry to "archived" (or turning autoServe off) removes that service.
+//
+// With servingConfig.serviceName the versions of a model share one service instead, and a new production version is
+// rolled out as its canary (see reconcileShared). With a promotionPolicy a staging entry whose metric beats every
+// production entry of the same modelName is moved to production by the controller.
 type GryviaModelRegistryReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
@@ -48,6 +55,7 @@ type GryviaModelRegistryReconciler struct {
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviamodelregistries/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviamodelregistries/finalizers,verbs=update
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviainferenceservices,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch
 
 func servingName(model *gryviav1.GryviaModelRegistry) string { return childName(model.Name, "serving") }
 
@@ -88,6 +96,10 @@ func (r *GryviaModelRegistryReconciler) reconcileModel(ctx context.Context, mode
 	setCondition(&model.Status.Conditions, model.Generation, ConditionModelRegistered, metav1.ConditionTrue, "Registered",
 		fmt.Sprintf("Model %s version %s registered", model.Spec.ModelName, model.Spec.Version))
 
+	if err := r.applyPromotionPolicy(ctx, model); err != nil {
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, err
+	}
+
 	serve := model.Spec.AutoServe && model.Spec.Stage == gryviav1.ModelStageProduction
 	if model.Spec.Stage == gryviav1.ModelStageProduction {
 		r.trackPreviousVersion(ctx, model)
@@ -97,7 +109,13 @@ func (r *GryviaModelRegistryReconciler) reconcileModel(ctx context.Context, mode
 		return ctrl.Result{}, r.stopServing(ctx, model)
 	}
 
-	if err := r.ensureInferenceService(ctx, model); err != nil {
+	ensure := r.ensureInferenceService
+	if shared := sharedServiceName(model); shared != "" {
+		ensure = func(ctx context.Context, m *gryviav1.GryviaModelRegistry) error {
+			return r.reconcileShared(ctx, m, shared)
+		}
+	}
+	if err := ensure(ctx, model); err != nil {
 		if isConfigError(err) {
 			model.Status.Phase = PhaseFailed
 			model.Status.Message = err.Error()
@@ -106,9 +124,11 @@ func (r *GryviaModelRegistryReconciler) reconcileModel(ctx context.Context, mode
 		}
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
 	}
-	r.syncInferenceHealth(ctx, model)
+	if sharedServiceName(model) == "" {
+		r.syncInferenceHealth(ctx, model)
+	}
 
-	if model.Status.Phase == PhaseServing {
+	if model.Status.Phase == PhaseServing || model.Status.Phase == PhaseRolledBack {
 		return ctrl.Result{RequeueAfter: 60 * time.Second}, nil
 	}
 	return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
@@ -158,6 +178,7 @@ func (r *GryviaModelRegistryReconciler) servingSpec(model *gryviav1.GryviaModelR
 			spec.GPUCount = sc.GPUCount
 		}
 		spec.GPUType = sc.GPUType
+		spec.Args = sc.Args
 	}
 	return spec
 }
@@ -175,10 +196,12 @@ func (r *GryviaModelRegistryReconciler) ensureInferenceService(ctx context.Conte
 			return configError{fmt.Errorf("inference service %q already exists and is not owned by this model", name)}
 		}
 		if existing.Spec.Backend != desired.Backend || existing.Spec.Replicas != desired.Replicas ||
-			existing.Spec.GPUCount != desired.GPUCount || existing.Spec.GPUType != desired.GPUType {
+			existing.Spec.GPUCount != desired.GPUCount || existing.Spec.GPUType != desired.GPUType ||
+			!reflect.DeepEqual(existing.Spec.Args, desired.Args) {
 			base := existing.DeepCopy()
 			existing.Spec.Backend, existing.Spec.Replicas = desired.Backend, desired.Replicas
 			existing.Spec.GPUCount, existing.Spec.GPUType = desired.GPUCount, desired.GPUType
+			existing.Spec.Args = desired.Args
 			if err := r.Patch(ctx, existing, client.MergeFrom(base)); err != nil {
 				return err
 			}
@@ -268,10 +291,30 @@ func (r *GryviaModelRegistryReconciler) trackPreviousVersion(ctx context.Context
 	}
 }
 
+// entriesOfSharedService maps a shared GryviaInferenceService to the entries that name it in
+// servingConfig.serviceName.
+func (r *GryviaModelRegistryReconciler) entriesOfSharedService(ctx context.Context, obj client.Object) []reconcile.Request {
+	if obj.GetLabels()[labelManagedBy] != managedByRegistry {
+		return nil
+	}
+	list := &gryviav1.GryviaModelRegistryList{}
+	if err := r.List(ctx, list, client.InNamespace(obj.GetNamespace())); err != nil {
+		return nil
+	}
+	var out []reconcile.Request
+	for _, m := range list.Items {
+		if sharedServiceName(&m) == obj.GetName() {
+			out = append(out, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: m.Namespace, Name: m.Name}})
+		}
+	}
+	return out
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *GryviaModelRegistryReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&gryviav1.GryviaModelRegistry{}).
 		Owns(&gryviav1.GryviaInferenceService{}).
+		Watches(&gryviav1.GryviaInferenceService{}, handler.EnqueueRequestsFromMapFunc(r.entriesOfSharedService)).
 		Complete(r)
 }

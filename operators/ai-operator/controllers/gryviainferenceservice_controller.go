@@ -254,6 +254,20 @@ func (r *GryviaInferenceServiceReconciler) lookupModel(ctx context.Context, svc 
 	return m
 }
 
+// modelForVersion is the registry entry whose artifacts pods serving version should load: the entry named by
+// version when it is one (a canary or promoted GryviaModelRegistry name), else the service's own model.
+func (r *GryviaInferenceServiceReconciler) modelForVersion(ctx context.Context, svc *gryviav1.GryviaInferenceService,
+	model *gryviav1.GryviaModelRegistry, version string) *gryviav1.GryviaModelRegistry {
+	if version == "" || version == svc.Spec.ModelRef {
+		return model
+	}
+	m := &gryviav1.GryviaModelRegistry{}
+	if err := r.Get(ctx, types.NamespacedName{Namespace: svc.Namespace, Name: version}, m); err != nil {
+		return model
+	}
+	return m
+}
+
 // ensureDeployment creates the stable Deployment or brings it back to the desired pod template.
 func (r *GryviaInferenceServiceReconciler) ensureDeployment(ctx context.Context, svc *gryviav1.GryviaInferenceService, model *gryviav1.GryviaModelRegistry) (*appsv1.Deployment, error) {
 	name := inferPrimaryName(svc)
@@ -271,6 +285,7 @@ func (r *GryviaInferenceServiceReconciler) ensureDeployment(ctx context.Context,
 	if !notFound {
 		version = deploy.Annotations[annotationPromoted]
 	}
+	model = r.modelForVersion(ctx, svc, model, version)
 	desired, err := r.buildDeployment(svc, model, name, trackStable, version, r.primaryReplicas(svc))
 	if err != nil {
 		return nil, configError{err}
@@ -706,6 +721,7 @@ func (r *GryviaInferenceServiceReconciler) reconcileCanary(ctx context.Context, 
 	}
 
 	replicas := canaryReplicas(r.primaryReplicas(svc), c.Weight)
+	model = r.modelForVersion(ctx, svc, model, version)
 	desired, err := r.buildDeployment(svc, model, name, trackCanary, version, replicas)
 	if err != nil {
 		return 0, err

@@ -88,6 +88,11 @@ spec:
             {{- if and (eq $name "ai-operator") $.Values.aiOperator.inferencePrometheusURL }}
             - {{ printf "--inference-prometheus-url=%s" $.Values.aiOperator.inferencePrometheusURL | quote }}
             {{- end }}
+            {{- if and (eq $name "ai-operator") $.Values.aiOperator.modelWatch.enabled }}
+            - --enable-model-watch=true
+            - {{ printf "--model-watch-hub-url=%s" $.Values.aiOperator.modelWatch.hubURL | quote }}
+            - {{ printf "--model-watch-min-poll-interval=%s" $.Values.aiOperator.modelWatch.minPollInterval | quote }}
+            {{- end }}
             {{- if and (eq $name "ai-operator") $.Values.aiOperator.placementHolds }}
             - --placement-holds=true
             {{- end }}

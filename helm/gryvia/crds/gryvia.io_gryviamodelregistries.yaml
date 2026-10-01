@@ -96,14 +96,51 @@ spec:
               modelName:
                 description: ModelName is the name of the model
                 type: string
+              promotionPolicy:
+                description: |-
+                  PromotionPolicy lets the controller move a staging entry to production when its evaluation metric beats
+                  every production entry of the same modelName
+                properties:
+                  direction:
+                    description: Direction is maximize (default) or minimize
+                    enum:
+                    - maximize
+                    - minimize
+                    type: string
+                  metric:
+                    description: Metric is the spec.metadata key holding the evaluation
+                      result (for example "eval_score")
+                    type: string
+                  minDelta:
+                    description: MinDelta is how much the metric must improve on the
+                      best production entry (default "0")
+                    type: string
+                  threshold:
+                    description: Threshold is an absolute bound the metric must reach
+                      (at least for maximize, at most for minimize)
+                    type: string
+                required:
+                - metric
+                type: object
               servingConfig:
                 description: ServingConfig defines the configuration for auto-serving
                   when stage is production
                 properties:
+                  args:
+                    description: Args are extra arguments of the serving container
+                      (for example vLLM's --max-model-len)
+                    items:
+                      type: string
+                    type: array
                   backend:
                     description: Backend is the inference backend to use (triton,
                       vllm, tensorrt-llm, torchserve)
                     type: string
+                  canaryWeight:
+                    description: CanaryWeight is the share of pods, in percent, a
+                      new version gets as canary (default 10)
+                    format: int32
+                    type: integer
                   gpuCount:
                     description: GPUCount is the number of GPUs per replica
                     format: int32
@@ -111,10 +148,21 @@ spec:
                   gpuType:
                     description: GPUType is the preferred GPU type for serving
                     type: string
+                  promoteAfterSeconds:
+                    description: PromoteAfterSeconds is how long a healthy canary
+                      runs before it is promoted (default 300)
+                    format: int64
+                    type: integer
                   replicas:
                     description: Replicas is the number of serving replicas
                     format: int32
                     type: integer
+                  serviceName:
+                    description: |-
+                      ServiceName shares one GryviaInferenceService between the versions of a model. The first production
+                      version creates it; a later one is rolled out as its canary (autoPromote, autoRollback) and, once promoted,
+                      becomes its modelRef while the version it replaced is archived. Empty keeps one "<entry>-serving" per entry.
+                    type: string
                 type: object
               source:
                 description: Source identifies where this model was produced
@@ -226,6 +274,10 @@ spec:
               previousVersion:
                 description: PreviousVersion is the version that was previously in
                   production (for rollback)
+                type: string
+              promotionDecision:
+                description: PromotionDecision is the last promotionPolicy outcome
+                  (Promoted, Rejected, Waiting)
                 type: string
               registeredAt:
                 description: RegisteredAt is when the model was first registered

@@ -89,6 +89,14 @@ aiOperator:
   inferenceGatewayRouting: false
   # Optional administrator-configured Prometheus base URL for canary SLO evaluation.
   inferencePrometheusURL: ""
+  # GryviaModelWatch (--enable-model-watch): poll a Hugging Face compatible hub and run a GryviaWorkflow (download,
+  # fine-tune, evaluate, register) for each new model that passes the watch's filters. Off by default: the operator
+  # makes outbound requests to hubURL. A watch's spec.tokenSecretRef is read with the secrets access the operators
+  # ClusterRole already has. See docs/model-factory.md.
+  modelWatch:
+    enabled: false
+    hubURL: https://huggingface.co
+    minPollInterval: 5m
   extraArgs: []
   # Fold the per-node entries collectors write into GryviaFabricSignal status.nodes[] (network-intelligence
   # ebpf.fabricStatusPerNode) into the top-level status: max for degradation metrics, sample-weighted means for ratios,

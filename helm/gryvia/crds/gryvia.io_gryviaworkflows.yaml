@@ -54,6 +54,12 @@ spec:
                   type: string
                 description: Parameters are global parameters passed to all steps
                 type: object
+              schedule:
+                description: |-
+                  Schedule is an optional five-field cron expression (UTC). With a schedule the workflow waits for the next
+                  fire time, runs, and when the run is finished waits for the next fire time again. A run is never started
+                  while the previous one is still going.
+                type: string
               steps:
                 description: Steps is the list of workflow steps
                 items:
@@ -3509,6 +3515,134 @@ spec:
                       description: Name is the unique name of this step within the
                         workflow
                       type: string
+                    register:
+                      description: Register is the model registry entry to create
+                        for register-type steps
+                      properties:
+                        artifacts:
+                          description: Artifacts is where the model files are
+                          properties:
+                            format:
+                              description: Format is the model format (pytorch, onnx,
+                                tensorrt, safetensors)
+                              type: string
+                            pvcName:
+                              description: PVCName is the PersistentVolumeClaim storing
+                                the model
+                              type: string
+                            s3Path:
+                              description: S3Path is the S3 URI (e.g., s3://bucket/path/to/model)
+                              type: string
+                            sizeBytes:
+                              description: SizeBytes is the total size of the model
+                                artifacts in bytes
+                              format: int64
+                              type: integer
+                            subPath:
+                              description: SubPath is the path within the PVC or S3
+                                bucket
+                              type: string
+                          type: object
+                        autoServe:
+                          description: AutoServe, ServingConfig and PromotionPolicy
+                            are copied into the entry
+                          type: boolean
+                        description:
+                          description: Description of the entry
+                          type: string
+                        metadata:
+                          additionalProperties:
+                            type: string
+                          description: Metadata is copied into the entry (for example
+                            the evaluation score a promotionPolicy compares)
+                          type: object
+                        modelName:
+                          description: ModelName is the model name of the entry
+                          type: string
+                        name:
+                          description: Name is the registry object name (default "<workflow>-<step>",
+                            with the run number for scheduled workflows)
+                          type: string
+                        promotionPolicy:
+                          description: |-
+                            PromotionPolicy compares a metric from spec.metadata against the production entries of the same modelName.
+                            Numbers are decimal strings, so the schema needs no floating-point type.
+                          properties:
+                            direction:
+                              description: Direction is maximize (default) or minimize
+                              enum:
+                              - maximize
+                              - minimize
+                              type: string
+                            metric:
+                              description: Metric is the spec.metadata key holding
+                                the evaluation result (for example "eval_score")
+                              type: string
+                            minDelta:
+                              description: MinDelta is how much the metric must improve
+                                on the best production entry (default "0")
+                              type: string
+                            threshold:
+                              description: Threshold is an absolute bound the metric
+                                must reach (at least for maximize, at most for minimize)
+                              type: string
+                          required:
+                          - metric
+                          type: object
+                        servingConfig:
+                          description: ServingConfig defines how a model should be
+                            served when auto-deployed
+                          properties:
+                            args:
+                              description: Args are extra arguments of the serving
+                                container (for example vLLM's --max-model-len)
+                              items:
+                                type: string
+                              type: array
+                            backend:
+                              description: Backend is the inference backend to use
+                                (triton, vllm, tensorrt-llm, torchserve)
+                              type: string
+                            canaryWeight:
+                              description: CanaryWeight is the share of pods, in percent,
+                                a new version gets as canary (default 10)
+                              format: int32
+                              type: integer
+                            gpuCount:
+                              description: GPUCount is the number of GPUs per replica
+                              format: int32
+                              type: integer
+                            gpuType:
+                              description: GPUType is the preferred GPU type for serving
+                              type: string
+                            promoteAfterSeconds:
+                              description: PromoteAfterSeconds is how long a healthy
+                                canary runs before it is promoted (default 300)
+                              format: int64
+                              type: integer
+                            replicas:
+                              description: Replicas is the number of serving replicas
+                              format: int32
+                              type: integer
+                            serviceName:
+                              description: |-
+                                ServiceName shares one GryviaInferenceService between the versions of a model. The first production
+                                version creates it; a later one is rolled out as its canary (autoPromote, autoRollback) and, once promoted,
+                                becomes its modelRef while the version it replaced is archived. Empty keeps one "<entry>-serving" per entry.
+                              type: string
+                          type: object
+                        stage:
+                          description: Stage is the stage the entry starts in (dev
+                            or staging; default staging)
+                          type: string
+                        version:
+                          description: Version is the version of the entry
+                          type: string
+                      required:
+                      - artifacts
+                      - modelName
+                      - version
+                      type: object
                     retries:
                       description: Retries is the number of times to retry this step
                         on failure
@@ -3645,14 +3779,29 @@ spec:
                   - type
                   type: object
                 type: array
+              lastScheduleTime:
+                description: LastScheduleTime is when the schedule last started a
+                  run
+                format: date-time
+                type: string
               message:
                 description: Message provides additional information about the current
                   phase
+                type: string
+              nextScheduleTime:
+                description: NextScheduleTime is when the schedule starts the next
+                  run
+                format: date-time
                 type: string
               phase:
                 description: Phase is the overall workflow phase (Pending, Running,
                   Succeeded, Failed)
                 type: string
+              run:
+                description: Run counts the runs of a scheduled workflow (0 for the
+                  only run of an unscheduled one)
+                format: int32
+                type: integer
               startTime:
                 description: StartTime is when the workflow started
                 format: date-time
@@ -3676,6 +3825,13 @@ spec:
                     name:
                       description: Name is the step name
                       type: string
+                    outputs:
+                      additionalProperties:
+                        type: string
+                      description: |-
+                        Outputs are the values the step reported: "gryvia.io/output-<key>" annotations on its GryviaAIJob, or a
+                        JSON object of strings in the termination message of its pod (rank 0 for a job step)
+                      type: object
                     phase:
                       description: Phase is the current phase of this step
                       type: string

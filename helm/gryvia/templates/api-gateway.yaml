@@ -214,6 +214,7 @@ rules:
   - gryviainferenceservices
   - gryviaworkflows
   - gryviaautotuners
+  - gryviamodelwatches
   - gryviaflowpolicies
   - gryviatrafficinsights
   - gryviaservicegraphs
@@ -244,6 +245,7 @@ rules:
   - gryviainferenceservices
   - gryviaworkflows
   - gryviaautotuners
+  - gryviamodelwatches
   - gryviaflowpolicies
   - gryviatracesessions
   - gryviasecuritypolicies

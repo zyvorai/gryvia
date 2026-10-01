@@ -21,6 +21,7 @@ import (
 
 	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 	"github.com/zyvorai/gryvia/operators/ai-operator/controllers"
+	"github.com/zyvorai/gryvia/operators/ai-operator/pkg/modelhub"
 	"github.com/zyvorai/gryvia/operators/ai-operator/pkg/timemachine"
 	jobwebhook "github.com/zyvorai/gryvia/operators/ai-operator/pkg/webhook"
 )
@@ -292,6 +293,22 @@ func main() {
 			setupLog.Error(err, "unable to create controller", "controller", "GryviaAutoTuner")
 			os.Exit(1)
 		}
+
+		if ml.modelWatchEnabled {
+			if err = (&controllers.GryviaModelWatchReconciler{
+				Client:          mgr.GetClient(),
+				Scheme:          mgr.GetScheme(),
+				Log:             ctrl.Log.WithName("controllers").WithName("GryviaModelWatch"),
+				Hub:             &modelhub.Client{BaseURL: ml.modelWatchHubURL},
+				MinPollInterval: ml.modelWatchMinPollEvery,
+			}).SetupWithManager(mgr); err != nil {
+				setupLog.Error(err, "unable to create controller", "controller", "GryviaModelWatch")
+				os.Exit(1)
+			}
+		}
+	} else if ml.modelWatchEnabled {
+		setupLog.Error(nil, "--enable-model-watch needs --enable-ml-controllers (its runs are GryviaWorkflows)")
+		os.Exit(1)
 	}
 
 	if enableWebhooks {

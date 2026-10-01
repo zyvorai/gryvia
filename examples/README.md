@@ -40,6 +40,16 @@ curl http://localhost:8000/v1/completions \
   }'
 ```
 
+### Model factory
+
+Fine-tune, evaluate and serve every new open model that passes your filters (opt-in: `aiOperator.modelWatch.enabled`).
+See [model-factory/README.md](model-factory/README.md); unverified on GPUs.
+
+```bash
+kubectl apply -f model-factory/model-watch.yaml
+gryvia models watch runs open-llms -n ml-team
+```
+
 ### GPU Node Configuration
 
 #### Register a GPU Node

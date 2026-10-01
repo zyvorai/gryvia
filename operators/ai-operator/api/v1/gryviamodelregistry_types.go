@@ -42,6 +42,27 @@ type GryviaModelRegistrySpec struct {
 
 	// ServingConfig defines the configuration for auto-serving when stage is production
 	ServingConfig *ServingConfig `json:"servingConfig,omitempty"`
+
+	// PromotionPolicy lets the controller move a staging entry to production when its evaluation metric beats
+	// every production entry of the same modelName
+	PromotionPolicy *PromotionPolicy `json:"promotionPolicy,omitempty"`
+}
+
+// PromotionPolicy compares a metric from spec.metadata against the production entries of the same modelName.
+// Numbers are decimal strings, so the schema needs no floating-point type.
+type PromotionPolicy struct {
+	// Metric is the spec.metadata key holding the evaluation result (for example "eval_score")
+	Metric string `json:"metric"`
+
+	// Direction is maximize (default) or minimize
+	// +kubebuilder:validation:Enum=maximize;minimize
+	Direction string `json:"direction,omitempty"`
+
+	// MinDelta is how much the metric must improve on the best production entry (default "0")
+	MinDelta string `json:"minDelta,omitempty"`
+
+	// Threshold is an absolute bound the metric must reach (at least for maximize, at most for minimize)
+	Threshold string `json:"threshold,omitempty"`
 }
 
 // ModelSource identifies the training job or pipeline that produced the model
@@ -87,6 +108,20 @@ type ServingConfig struct {
 
 	// GPUType is the preferred GPU type for serving
 	GPUType string `json:"gpuType,omitempty"`
+
+	// ServiceName shares one GryviaInferenceService between the versions of a model. The first production
+	// version creates it; a later one is rolled out as its canary (autoPromote, autoRollback) and, once promoted,
+	// becomes its modelRef while the version it replaced is archived. Empty keeps one "<entry>-serving" per entry.
+	ServiceName string `json:"serviceName,omitempty"`
+
+	// CanaryWeight is the share of pods, in percent, a new version gets as canary (default 10)
+	CanaryWeight int32 `json:"canaryWeight,omitempty"`
+
+	// PromoteAfterSeconds is how long a healthy canary runs before it is promoted (default 300)
+	PromoteAfterSeconds int64 `json:"promoteAfterSeconds,omitempty"`
+
+	// Args are extra arguments of the serving container (for example vLLM's --max-model-len)
+	Args []string `json:"args,omitempty"`
 }
 
 // GryviaModelRegistryStatus defines the observed state of GryviaModelRegistry
@@ -117,6 +152,9 @@ type GryviaModelRegistryStatus struct {
 
 	// Message provides additional status information
 	Message string `json:"message,omitempty"`
+
+	// PromotionDecision is the last promotionPolicy outcome (Promoted, Rejected, Waiting)
+	PromotionDecision string `json:"promotionDecision,omitempty"`
 }
 
 //+kubebuilder:object:root=true

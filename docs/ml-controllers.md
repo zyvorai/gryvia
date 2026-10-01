@@ -1,7 +1,8 @@
 # ML controllers
 
 The ai-operator runs five controllers for the ML kinds: `GryviaWorkspace`, `GryviaInferenceService`, `GryviaModelRegistry`,
-`GryviaWorkflow` and `GryviaAutoTuner`. They are registered in `operators/ai-operator/main.go` (turn them all off with
+`GryviaWorkflow` and `GryviaAutoTuner`, plus an opt-in sixth, `GryviaModelWatch` (`--enable-model-watch`, see
+[Model factory](model-factory.md)). They are registered in `operators/ai-operator/main.go` (turn them all off with
 `--enable-ml-controllers=false`) and the chart's manager ClusterRole carries the permissions they need.
 
 This page says what each one creates, which status fields it writes (the API gateway and the dashboard read exactly
@@ -20,6 +21,7 @@ these), the flags that set default images and limits, and what is **not** verifi
 | GPU scheduling (`nvidia.com/gpu` limits, `gryvia.io/gpu` node selectors, `/dev/shm` for GPU pods) | No GPU |
 | An HPA scaling on real metrics | kind has no metrics-server in the e2e; the HPA object is only checked to exist with the right range |
 | Weighted canary routing | The canary split is by pod count, see below |
+| The model factory's real download, fine-tune and evaluation, and the real Hugging Face API | No GPU or model weights in CI; see [Model factory](model-factory.md) |
 | `GryviaAutoTuner` and job-type `GryviaWorkflow` steps end to end on a real cluster | They create `GryviaAIJob`s that the AIJob controller runs as batch Jobs (docs/aijob-lifecycle.md); the e2e steps for them are authored but have not been run |
 
 ## GryviaWorkspace
@@ -90,11 +92,16 @@ A registry entry is metadata. With `spec.autoServe: true` **and** `spec.stage: p
 promoting to `archived`) deletes the service and clears the serving status. An unowned service with that name is
 never touched (`Failed`, message).
 
+With `servingConfig.serviceName` all production versions share one service instead, and a newly promoted version is
+rolled out as its canary; `spec.promotionPolicy` promotes a `staging` entry to production when its metric beats the
+current production version. Both are described in [Model factory](model-factory.md).
+
 `servingConfig.gpuCount` unset or 0 uses `--autoserve-default-gpu-count` (default 1; 0 serves on CPU).
 
 Status written: `phase` (`Registered`, `Deploying`, `Serving`, `Failed`), `servingEndpoint`, `health`,
 `inferenceServiceName`, `deployedAt`, `registeredAt`, `previousVersion` (another production version of the same
-`modelName`), `message`.
+`modelName`, or the version a shared-service canary replaced), `promotionDecision` (`Promoted`, `Rejected`, `Waiting`),
+`message`; phases `Canary` and `RolledBack` for shared serving.
 
 The gateway's `POST /api/models` registers an entry (`name`, `version`, `artifacts` with an `s3Path` and/or `pvcName`,
 optional `modelName`, `stage` (`dev`, `staging`, `production`), `sourceJob`, `description`, `autoServe`,
@@ -111,6 +118,7 @@ goes straight to `Failed` and creates nothing.
 | --- | --- |
 | `job` | A child `GryviaAIJob` `<workflow>-<step>` from `jobTemplate`, with the workflow `parameters` and `WORKFLOW_NAME`/`WORKFLOW_STEP` as env. **Needs the AIJob controller to run it** |
 | `script` | A Pod `<workflow>-<step>` owned by the workflow: `runAsNonRoot` (uid 65534), no privilege escalation, all capabilities dropped, seccomp runtime default, no service-account token, CPU/memory requests and limits (100m/128Mi and 1/1Gi), `activeDeadlineSeconds` from `timeoutSeconds`. Does not need the AIJob controller |
+| `register` | Creates a `GryviaModelRegistry` entry from the step's `register` fields; see [Model factory](model-factory.md) |
 | `webhook` | One HTTP call from the operator. **Off unless `--workflow-allow-webhooks`** (a webhook step lets whoever can create a workflow make the operator send requests inside the cluster network); off means the step fails with a message. Success is a 2xx answer or `status == <code>` in `successCondition` |
 
 * A step whose dependency failed or was skipped is skipped (the skip cascades), unless it has a `condition`.
@@ -121,10 +129,15 @@ goes straight to `Failed` and creates nothing.
 * At most `--workflow-max-parallel-steps` (default 10) steps of one workflow run at a time. A failed step does not
   cancel steps that already run.
 * The workflow is `Failed` when any step failed and nothing is left to run, else `Succeeded`.
+* Steps report outputs (termination message JSON or `gryvia.io/output-<key>` annotations) that later steps use as
+  `{{steps.<step>.outputs.<key>}}`; `{{parameters.<name>}}`, `{{workflow.name}}` and `{{workflow.run}}` are filled too.
+  `spec.schedule` (5-field cron, UTC) reruns the workflow (phase `Scheduled` in between). Details in
+  [Model factory](model-factory.md#workflow-additions).
 
 Status written: `phase` (`Pending`, `Running`, `Succeeded`, `Failed`), `startTime`, `completionTime`, `message`,
 `stepStatuses[]` with `name`, `phase` (`Pending`, `Running`, `Succeeded`, `Failed`, `Skipped`), `jobName` (the child
-object, a Pod for script steps), `startTime`, `completionTime`, `retriesAttempted`, `message`. A step waiting for a
+object, a Pod for script steps), `startTime`, `completionTime`, `retriesAttempted`, `outputs`, `message`; with a
+schedule also `run`, `lastScheduleTime`, `nextScheduleTime`. A step waiting for a
 retry is `Pending` and keeps the failed attempt's `completionTime`.
 
 ## GryviaAutoTuner
@@ -171,6 +184,9 @@ Pass them with the chart value `aiOperator.extraArgs` (a list of strings, empty 
 | `--workflow-allow-webhooks` | `false` | |
 | `--tuner-max-trials` | `1000` | |
 | `--tuner-max-parallelism` | `32` | |
+| `--enable-model-watch` | `false` | Run the `GryviaModelWatch` controller (chart: `aiOperator.modelWatch.enabled`) |
+| `--model-watch-hub-url` | `https://huggingface.co` | Hub every watch polls (chart: `aiOperator.modelWatch.hubURL`) |
+| `--model-watch-min-poll-interval` | `5m` | Shortest `pollInterval` honoured (chart: `aiOperator.modelWatch.minPollInterval`) |
 
 Example for a cluster without GPUs (what the e2e uses):
 `aiOperator.extraArgs={--workspace-code-image=nginxinc/nginx-unprivileged:1.27-alpine,--inference-image-torchserve=nginxinc/nginx-unprivileged:1.27-alpine,--inference-health-path=/,--autoserve-default-gpu-count=0}`.
@@ -184,6 +200,8 @@ them (pause and resume are a patch of `spec.paused`, promote a patch of `spec.st
 Job steps and tuner trials use the existing `gryviaaijobs` permissions. `GryviaTemplate` and `GryviaPriority`
 controllers stay unregistered: templates only matter once something instantiates them, and the priority controller
 evaluates preemption of jobs, which is done by the opt-in Kueue integration instead (docs/kueue-integration.md).
+For the model factory it also has `gryviamodelwatches` (with `/status` and `/finalizers`), and the gateway and tenant
+roles carry the same verbs on it as on `gryviaautotuners`.
 
 ## End-to-end test
 
@@ -201,6 +219,9 @@ the ai-operator with the tiny-image flags above and checks, on the cluster and t
 * Workflow: two script steps run in order (timestamps compared) and succeed; a failing step skips its dependent; the gateway
   shows the phases, steps and order. A two-step DAG of CPU **jobs** runs through the AIJob controller's batch Jobs.
 * AutoTuner: 3 trials with parallelism 2, best trial and gateway fields (trials are batch-Job-backed `GryviaAIJob`s).
+* Model factory: a stand-in hub, baseline and license/size filters, step outputs from a script pod and from a
+  `GryviaAIJob`, a register step, auto-promotion onto a shared service, a better version canaried and promoted (the
+  replaced one archived), a worse one rejected, suspend through the gateway. The steps are busybox stand-ins.
 
 Opt-in canary SLO evaluation uses the administrator-configured `--inference-prometheus-url` (Helm
 `aiOperator.inferencePrometheusURL`) and per-service error-rate/latency threshold annotations. It requires
