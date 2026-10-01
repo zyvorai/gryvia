@@ -150,9 +150,11 @@ YAML
   wait_for 300 "the Job appears on the worker cluster" kw -n "$NS" get job remote1
   wait_for 300 "a pod of the job runs on the worker" \
     bash -c "kubectl --context $WORKER_CTX -n $NS get pods -l job-name=remote1 -o jsonpath='{.items[*].status.phase}' | grep -Eq 'Running|Succeeded'"
+  # Read the log while the pod exists: after the job finishes Kueue removes the remote Job and its pods.
+  wait_for 60 "the worker pod printed its marker line" \
+    bash -c "kubectl --context $WORKER_CTX -n $NS logs -l job-name=remote1 | grep -q ran-on-worker"
   [[ "$(km -n "$NS" get pods -o name | grep -c remote1 || true)" == "0" ]] || fail "the manager cluster ran a pod of remote1; it must run on the worker only"
   wait_for 300 "the GryviaAIJob on the manager reaches Succeeded (status came back from the worker)" is_phase remote1 Succeeded
-  kw -n "$NS" logs job/remote1 | grep -q ran-on-worker || fail "worker pod log missing"
   km -n "$NS" delete gryviaaijob remote1 --wait=true >/dev/null
 }
 
