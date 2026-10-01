@@ -44,6 +44,9 @@ const (
 	PhaseScheduled = "Scheduled"
 
 	// annotationOutputPrefix marks a step output written on a step's GryviaAIJob.
+	registryActionUpdate   = "updateMetadata"
+	registryActionRollback = "rollback"
+
 	annotationOutputPrefix = "gryvia.io/output-"
 	maxStepOutputs         = 32
 	maxStepOutputBytes     = 4096
@@ -97,7 +100,8 @@ type GryviaWorkflowReconciler struct {
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviaworkflows/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviaworkflows/finalizers,verbs=update
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=gryvia.io,resources=gryviamodelregistries,verbs=get;list;watch;create
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviamodelregistries,verbs=get;list;watch;create;patch
+//+kubebuilder:rbac:groups=gryvia.io,resources=gryviainferenceservices,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile drives one GryviaWorkflow.
@@ -186,6 +190,8 @@ func stepKind(s *gryviav1.WorkflowStep) gryviav1.StepType {
 		return gryviav1.StepTypeWebhook
 	case s.Register != nil:
 		return gryviav1.StepTypeRegister
+	case s.Registry != nil:
+		return gryviav1.StepTypeRegistry
 	}
 	return ""
 }
@@ -245,6 +251,20 @@ func validateWorkflow(wf *gryviav1.GryviaWorkflow) error {
 			case "", gryviav1.ModelStageDev, gryviav1.ModelStageStaging:
 			default:
 				return fmt.Errorf("step %q: register stage must be dev or staging (use a promotionPolicy to reach production)", s.Name)
+			}
+		case gryviav1.StepTypeRegistry:
+			reg := s.Registry
+			if reg == nil || (reg.Entry == "") == (reg.ServiceName == "") {
+				return fmt.Errorf("step %q has type 'registry' but not exactly one of registry entry and serviceName", s.Name)
+			}
+			switch reg.Action {
+			case registryActionUpdate:
+				if len(reg.Metadata) == 0 {
+					return fmt.Errorf("step %q: registry action updateMetadata needs metadata", s.Name)
+				}
+			case registryActionRollback:
+			default:
+				return fmt.Errorf("step %q: registry action must be updateMetadata or rollback", s.Name)
 			}
 		default:
 			return fmt.Errorf("step %q has no recognised type or payload", s.Name)
@@ -718,6 +738,23 @@ func (r *GryviaWorkflowReconciler) launchStep(ctx context.Context, wf *gryviav1.
 		ss.Outputs = map[string]string{"name": entry}
 		t := metav1.NewTime(now)
 		ss.CompletionTime = &t
+	case gryviav1.StepTypeRegistry:
+		started()
+		ss.JobName = ""
+		entry, msg, err := r.updateRegistry(ctx, wf, step, lookup, now)
+		if err != nil {
+			return err
+		}
+		if entry == "" {
+			r.failStep(ss, step, msg, now)
+			return nil
+		}
+		ss.Phase = gryviav1.StepPhaseSucceeded
+		ss.JobName = entry
+		ss.Message = msg
+		ss.Outputs = map[string]string{"name": entry}
+		t := metav1.NewTime(now)
+		ss.CompletionTime = &t
 	default:
 		r.failStep(ss, step, "step has no recognised type", now)
 	}
@@ -772,6 +809,7 @@ func (r *GryviaWorkflowReconciler) registerModel(ctx context.Context, wf *gryvia
 			AutoServe:       reg.AutoServe,
 			ServingConfig:   reg.ServingConfig,
 			PromotionPolicy: reg.PromotionPolicy,
+			RollbackPolicy:  reg.RollbackPolicy,
 		},
 	}
 	if err := r.Create(ctx, entry); err != nil {
@@ -790,6 +828,68 @@ func (r *GryviaWorkflowReconciler) registerModel(ctx context.Context, wf *gryvia
 		}
 	}
 	return name, fmt.Sprintf("Registered %s version %s as %s", reg.ModelName, reg.Version, name), nil
+}
+
+// updateRegistry applies a registry step to an existing entry: merges metadata, or sets the rollback annotation
+// the model registry controller acts on. It returns the entry name, or "" and a failure message; err is for
+// transient API errors.
+func (r *GryviaWorkflowReconciler) updateRegistry(ctx context.Context, wf *gryviav1.GryviaWorkflow, step *gryviav1.WorkflowStep,
+	lookup func(string) (string, bool), now time.Time) (string, string, error) {
+	var reg gryviav1.RegistryStep
+	if err := renderStep(step.Registry, &reg, lookup); err != nil {
+		return "", err.Error(), nil
+	}
+	if reg.ServiceName != "" {
+		svc := &gryviav1.GryviaInferenceService{}
+		if err := r.Get(ctx, types.NamespacedName{Namespace: wf.Namespace, Name: reg.ServiceName}, svc); err != nil {
+			if errors.IsNotFound(err) {
+				return "", fmt.Sprintf("inference service %q not found", reg.ServiceName), nil
+			}
+			return "", "", err
+		}
+		if svc.Labels[labelManagedBy] != managedByRegistry || svc.Spec.ModelRef == "" {
+			return "", fmt.Sprintf("inference service %q is not a shared service of the model registry", reg.ServiceName), nil
+		}
+		reg.Entry = svc.Spec.ModelRef
+	}
+	if !stepNameRE.MatchString(reg.Entry) || len(reg.Entry) > maxDNSLabel {
+		return "", fmt.Sprintf("registry entry %q is not a lowercase DNS label", reg.Entry), nil
+	}
+	entry := &gryviav1.GryviaModelRegistry{}
+	if err := r.Get(ctx, types.NamespacedName{Namespace: wf.Namespace, Name: reg.Entry}, entry); err != nil {
+		if errors.IsNotFound(err) {
+			return "", fmt.Sprintf("model registry entry %q not found", reg.Entry), nil
+		}
+		return "", "", err
+	}
+	base := entry.DeepCopy()
+	var msg string
+	switch reg.Action {
+	case registryActionUpdate:
+		if entry.Spec.Metadata == nil {
+			entry.Spec.Metadata = map[string]string{}
+		}
+		keys := make([]string, 0, len(reg.Metadata))
+		for k, v := range reg.Metadata {
+			entry.Spec.Metadata[k] = v
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		msg = fmt.Sprintf("Updated %s metadata: %s", reg.Entry, strings.Join(keys, ", "))
+	case registryActionRollback:
+		if entry.Annotations == nil {
+			entry.Annotations = map[string]string{}
+		}
+		entry.Annotations[annotationRollbackRequested] = fmt.Sprintf("workflow %s/%s at %s", wf.Name, step.Name, now.UTC().Format(time.RFC3339))
+		msg = fmt.Sprintf("Asked for a rollback of %s", reg.Entry)
+	}
+	if err := r.Patch(ctx, entry, client.MergeFrom(base)); err != nil {
+		if errors.IsInvalid(err) || errors.IsForbidden(err) || errors.IsBadRequest(err) {
+			return "", fmt.Sprintf("cannot update the model registry entry: %v", err), nil
+		}
+		return "", "", err
+	}
+	return reg.Entry, msg, nil
 }
 
 // collectOutputs reads what a finished job or script step reported: "gryvia.io/output-<key>" annotations on the

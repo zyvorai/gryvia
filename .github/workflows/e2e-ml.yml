@@ -540,6 +540,51 @@ jobs:
           sleep 25
           assert_eq "no run while suspended" "$(run_field e2e-watch e2e-org/tiny-4 phase)" ""
 
+      - name: Model factory - a scheduled evaluation drops the score and the previous version comes back
+        run: |
+          source scripts/e2e-ml-lib.sh
+          e1="$(entry_of "$(run_field e2e-watch e2e-org/tiny-1 workflow)")"
+          e2="$(entry_of "$(run_field e2e-watch e2e-org/tiny-2 workflow)")"
+          assert_eq "e2 serves before" "$(jp gryviainferenceservice/e2e-chat '{.spec.modelRef}')" "$e2"
+          kubectl -n "$NS" patch "gryviamodelregistry/$e2" --type=merge -p '{"spec":{"rollbackPolicy":{"metric":"live_score","threshold":"0.5"}}}'
+          # The evaluation stand-in reports 0.3; the registry step writes it onto whatever the service serves.
+          cat <<'EOF' | kubectl apply -f -
+          apiVersion: gryvia.io/v1alpha1
+          kind: GryviaWorkflow
+          metadata: {name: e2e-live-eval, namespace: gryvia-system}
+          spec:
+            steps:
+              - name: evaluate
+                type: script
+                script:
+                  image: busybox:1.36
+                  command: [sh, -c]
+                  args: ['printf "{\"score\":\"0.3\"}" > /dev/termination-log']
+              - name: record
+                type: registry
+                dependsOn: [evaluate]
+                registry:
+                  serviceName: e2e-chat
+                  action: updateMetadata
+                  metadata: {live_score: "{{steps.evaluate.outputs.score}}"}
+          EOF
+          wait_for "evaluation workflow Succeeded" 180 field_is gryviaworkflow/e2e-live-eval '{.status.phase}' Succeeded
+          assert_eq "registry step picked the serving entry" "$(jp gryviaworkflow/e2e-live-eval '{.status.stepStatuses[?(@.name=="record")].outputs.name}')" "$e2"
+          assert_eq "live_score written" "$(jp "gryviamodelregistry/$e2" '{.spec.metadata.live_score}')" 0.3
+          wait_for "service back on the previous version" 120 field_is gryviainferenceservice/e2e-chat '{.spec.modelRef}' "$e1"
+          wait_for "rolled-back version archived" 60 field_is "gryviamodelregistry/$e2" '{.spec.stage}' archived
+          assert_eq "RolledBack condition" "$(jp "gryviamodelregistry/$e2" '{.status.conditions[?(@.type=="RolledBack")].reason}')" PolicyBreached
+          assert_eq "rolled-back phase" "$(jp "gryviamodelregistry/$e2" '{.status.phase}')" RolledBack
+          assert_eq "previous version back in production" "$(jp "gryviamodelregistry/$e1" '{.spec.stage}')" production
+          kubectl -n "$NS" get events --field-selector "involvedObject.name=$e2,reason=RolledBack" -o name | grep -q .
+          echo "ok: RolledBack event"
+          wait_for "previous version Serving again" 240 field_is "gryviamodelregistry/$e1" '{.status.phase}' Serving
+          # The worse staging version is still not promoted against the restored one.
+          e3="$(entry_of "$(run_field e2e-watch e2e-org/tiny-3 workflow)")"
+          assert_eq "worse version still in staging" "$(jp "gryviamodelregistry/$e3" '{.spec.stage}')" staging
+          # The gateway refuses a rollback of the archived entry.
+          assert_eq "gateway rollback of an archived entry" "$(api_status "/api/models/$e2/rollback" -X POST)" 409
+
       # ------------------------------------------------------------------ Datasets (storage-operator)
       # A stand-in file server holds data.csv and its sha256; the dataset controller downloads it into a PVC, one
       # directory per version, and keeps the last two versions.

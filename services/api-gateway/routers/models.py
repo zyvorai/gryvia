@@ -1,4 +1,5 @@
 """Model registry routes (GryviaModelRegistry, namespaced) for the dashboard."""
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -9,6 +10,7 @@ from .uiutil import NAME_MAX, NAME_PATTERN, find_one, list_all, meta, namespaces
 
 PLURAL = "gryviamodelregistries"
 KIND = "GryviaModelRegistry"
+ROLLBACK_ANNOTATION = "gryvia.io/rollback-requested"
 
 # Same promotion ladder the UI offers.
 NEXT_STAGE = {"dev": ["staging"], "staging": ["production"], "production": ["archived"]}
@@ -86,7 +88,12 @@ def to_ui(obj: Dict[str, Any]) -> Dict[str, Any]:
             "sourceJob": src.get("jobRef") or None,
             "artifacts": _artifacts(spec.get("artifacts") or {}),
         }),
-        "status": prune({"servingEndpoint": st.get("servingEndpoint") or None}),
+        "status": prune({
+            "servingEndpoint": st.get("servingEndpoint") or None,
+            "phase": st.get("phase") or None,
+            "previousVersion": st.get("previousVersion") or None,
+            "message": st.get("message") or None,
+        }),
     }
 
 
@@ -137,5 +144,21 @@ def build_router(deps: Deps) -> APIRouter:
                                 detail=f"Cannot promote model from '{current}' to '{body.targetStage}'")
         updated = await patch_item(deps, PLURAL, name, {"spec": {"stage": body.targetStage}}, namespace=ns)
         return to_ui(updated)
+
+    @router.post("/api/models/{name}/rollback", status_code=202)
+    @deps.limiter.limit("10/minute")
+    async def rollback_model(request: Request, name: str, _=Depends(deps.verify_auth)):
+        """Ask the operator to put status.previousVersion back on the entry's shared service and archive this
+        entry. The operator acts on the annotation (see the RolledBack condition)."""
+        obj, ns = await find_one(request, deps, PLURAL, name)
+        spec, st = obj.get("spec") or {}, obj.get("status") or {}
+        if spec.get("stage") != "production" or not (spec.get("servingConfig") or {}).get("serviceName"):
+            raise HTTPException(status_code=409,
+                                detail="Only a production entry with servingConfig.serviceName can be rolled back")
+        if not st.get("previousVersion"):
+            raise HTTPException(status_code=409, detail=f"Model '{name}' has no previous version to roll back to")
+        when = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        patch = {"metadata": {"annotations": {ROLLBACK_ANNOTATION: f"api at {when}"}}}
+        return to_ui(await patch_item(deps, PLURAL, name, patch, namespace=ns))
 
     return router

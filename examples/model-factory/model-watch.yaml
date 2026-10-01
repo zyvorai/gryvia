@@ -152,3 +152,7 @@ spec:
             metric: eval_score
             direction: maximize
             minDelta: "0.01"
+          # eval-schedule.yaml writes live_score nightly; below 0.5 the previous version comes back.
+          rollbackPolicy:
+            metric: live_score
+            threshold: "0.5"

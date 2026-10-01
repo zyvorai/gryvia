@@ -13,6 +13,8 @@ inference service. It is four pieces of the ai-operator working together:
 4. **`servingConfig.serviceName`** makes all versions share one `GryviaInferenceService`: a newly promoted version is
    started as its canary, promoted after `promoteAfterSeconds` of health (the replaced version is archived) or rolled
    back.
+5. **`rollbackPolicy`** and a scheduled evaluation keep checking the served version and bring the previous one back
+   when its score drops (see [Continuous evaluation and rollback](#continuous-evaluation-and-rollback)).
 
 A ready-made watch, image and scripts (download, TRL/PEFT LoRA fine-tune, lm-evaluation-harness) are in
 [examples/model-factory](../examples/model-factory/README.md).
@@ -104,6 +106,12 @@ policy judges; `dev` keeps the entry out of automatic promotion. The entry gets 
 `base_model`/`base_revision` from a model watch run, and the step output `name`. An existing entry with that name that
 this run did not create fails the step (no overwrite). Entries are not owned by the workflow.
 
+**`registry` step.** Changes an existing `GryviaModelRegistry` entry in the workflow's namespace: `entry` names it,
+or `serviceName` picks the entry a shared service serves when the step runs (its `modelRef`). `action: updateMetadata`
+merges `metadata` into `spec.metadata` (values may use placeholders, for example `{{steps.evaluate.outputs.score}}`);
+`action: rollback` asks the registry controller for a rollback (below). The step output `name` is the entry. A missing
+entry or service fails the step.
+
 **`schedule`.** A 5-field cron expression in UTC. The workflow waits in phase `Scheduled` (`status.nextScheduleTime`)
 and then runs; each run starts from a clean status with `status.run` incremented, and children are named with an
 `-n<run>` suffix. Runs never overlap: a fire time that passes during a run starts the next run as soon as it ends.
@@ -139,16 +147,46 @@ Both the stable and the canary Deployment load the artifacts of their own versio
 server off its backend default (vLLM and Triton 8000, TorchServe 8080); for example vLLM with `--port=8080` needs
 `servicePort: 8080`, otherwise the pods never pass their probes.
 
+## Continuous evaluation and rollback
+
+```yaml
+rollbackPolicy: {metric: live_score, threshold: "0.5", direction: maximize}
+```
+
+A promoted version can get worse in production (data drift, a serving regression). A scheduled workflow re-scores
+the served version and a `registry` step writes the score onto its entry;
+[eval-schedule.yaml](../examples/model-factory/eval-schedule.yaml) runs `evaluate.py --endpoint` against the shared
+service every night and writes `live_score`.
+
+The registry controller rolls the shared service back when the entry it serves has a `rollbackPolicy` and
+`spec.metadata[metric]` is below `threshold` (`maximize`, the default) or above it (`minimize`), or when the entry has
+the annotation `gryvia.io/rollback-requested` (set by `POST /api/models/{name}/rollback`, `gryvia models rollback`
+and `registry` steps with `action: rollback`):
+
+1. The entry in `status.previousVersion` (an entry name, or a version of the same `modelName`, on the same
+   `serviceName`) is moved back to `production`.
+2. The service's `modelRef` becomes that entry and any canary is dropped.
+3. The rolled-back entry is archived, keeps phase `RolledBack`, gets the condition `RolledBack=True` (reason
+   `PolicyBreached` or `Requested`) and an Event `RolledBack`; the annotation is removed.
+
+A missing or non-numeric metric is not a breach. The policy only acts on the entry the service serves (or on a
+canary, which is then archived). A requested rollback that cannot be done (not an auto-served production entry with a
+`serviceName`, no previous version on that service) sets `RolledBack=False` with the reason (`NotServing`,
+`NoPreviousVersion`, `NotStable`) and an Event `RollbackRefused`, removes the annotation and changes nothing else.
+The restored version is judged by its own `rollbackPolicy`, with its own metadata, from then on.
+
 ## Surfaces
 
 * Gateway: `GET/POST /api/model-watches`, `GET /api/model-watches/{name}`, `GET /api/model-watches/{name}/runs`
-  (newest first), `POST /api/model-watches/{name}/suspend|resume`, `DELETE /api/model-watches/{name}`.
-* CLI: `gryvia models watch list|runs|create -f|suspend|resume|delete`.
+  (newest first), `POST /api/model-watches/{name}/suspend|resume`, `DELETE /api/model-watches/{name}`;
+  `POST /api/models/{name}/rollback` (202; 409 when the entry cannot be rolled back).
+* CLI: `gryvia models watch list|runs|create -f|suspend|resume|delete`, `gryvia models rollback <entry>`.
 * Dashboard: **Models → Model factory** lists watches and the runs of the selected one.
 
 ## RBAC
 
 The operator ClusterRole gains `gryviamodelwatches` (with `/status` and `/finalizers`). The workflow controller gains
-create on `gryviamodelregistries` (register steps), the registry controller get/list/watch on `apps/deployments` (to
-read canary decisions). Reading the token Secret uses the secrets access the ClusterRole already had. The gateway and
+create and patch on `gryviamodelregistries` (register and registry steps) and get on `gryviainferenceservices`
+(`registry` steps with `serviceName`), the registry controller get/list/watch on `apps/deployments` (to read canary
+decisions) and create on `events`. Reading the token Secret uses the secrets access the ClusterRole already had. The gateway and
 the tenant roles get the same verbs on `gryviamodelwatches` as on `gryviaautotuners`.

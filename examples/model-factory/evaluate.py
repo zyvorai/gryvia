@@ -7,9 +7,16 @@
 Each task contributes its primary metric (acc_norm, acc, exact_match or f1, in that order); --custom is a JSONL
 of {"prompt": ..., "expected": ...} scored by exact match on the generated continuation. score is the mean of
 everything, which a GryviaModelRegistry promotionPolicy compares. Rank 0 reports score and one key per task.
+
+  python3 evaluate.py --endpoint http://chat-assistant-inference.ml-team.svc.cluster.local:8080 \\
+      --served-model chat-assistant --custom /data/eval.jsonl
+
+scores the model a server is serving instead (OpenAI-compatible /v1/completions; OPENAI_API_KEY is sent as a
+bearer token when set), as the scheduled evaluation in eval-schedule.yaml does.
 """
 import argparse
 import json
+import os
 import re
 import sys
 
@@ -76,9 +83,29 @@ def hf_generator(model_path, max_new_tokens=64, cpu=False):
     return generate
 
 
+def openai_generator(endpoint, model, max_tokens=64, opener=None, timeout=120):
+    """Greedy completions from an OpenAI-compatible server (vLLM, the Gryvia LLM gateway): POST /v1/completions."""
+    import urllib.request
+    opener = opener or urllib.request.urlopen
+    url = endpoint.rstrip("/") + "/v1/completions"
+    headers = {"Content-Type": "application/json"}
+    key = os.environ.get("OPENAI_API_KEY", "")
+    if key:
+        headers["Authorization"] = f"Bearer {key}"
+
+    def generate(prompt):
+        body = json.dumps({"model": model, "prompt": prompt, "max_tokens": max_tokens, "temperature": 0}).encode()
+        with opener(urllib.request.Request(url, data=body, headers=headers, method="POST"), timeout=timeout) as resp:
+            return json.loads(resp.read())["choices"][0]["text"]
+    return generate
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("--model", required=True)
+    target = p.add_mutually_exclusive_group(required=True)
+    target.add_argument("--model", help="local model directory")
+    target.add_argument("--endpoint", help="OpenAI-compatible server to evaluate instead, e.g. a serving endpoint")
+    p.add_argument("--served-model", default="", help="model name to send with --endpoint")
     p.add_argument("--tasks", default="", help="comma-separated lm-eval tasks")
     p.add_argument("--limit", type=int, default=None, help="examples per task")
     p.add_argument("--custom", default="", help="JSONL of prompt/expected pairs")
@@ -90,11 +117,19 @@ def main(argv=None):
     tasks = [t for t in a.tasks.split(",") if t]
     if tasks:
         import lm_eval
-        model_args = f"pretrained={a.model},dtype={'float32' if a.cpu else 'bfloat16'}"
-        out = lm_eval.simple_evaluate(model="hf", model_args=model_args, tasks=tasks, limit=a.limit,
-                                      batch_size=a.batch_size, device="cpu" if a.cpu else None)
+        if a.endpoint:
+            out = lm_eval.simple_evaluate(
+                model="local-completions", tasks=tasks, limit=a.limit,
+                model_args=f"model={a.served_model},base_url={a.endpoint.rstrip('/')}/v1/completions,tokenized_requests=False")
+        else:
+            model_args = f"pretrained={a.model},dtype={'float32' if a.cpu else 'bfloat16'}"
+            out = lm_eval.simple_evaluate(model="hf", model_args=model_args, tasks=tasks, limit=a.limit,
+                                          batch_size=a.batch_size, device="cpu" if a.cpu else None)
         results = out["results"]
-    custom = exact_match(hf_generator(a.model, cpu=a.cpu), a.custom, a.limit) if a.custom else None
+    custom = None
+    if a.custom:
+        gen = openai_generator(a.endpoint, a.served_model) if a.endpoint else hf_generator(a.model, cpu=a.cpu)
+        custom = exact_match(gen, a.custom, a.limit)
     score, per = aggregate(results, custom)
     print(json.dumps({"score": score, "tasks": per}, indent=2), flush=True)
     if is_rank_zero():

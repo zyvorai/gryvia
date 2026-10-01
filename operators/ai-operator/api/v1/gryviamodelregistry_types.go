@@ -46,6 +46,26 @@ type GryviaModelRegistrySpec struct {
 	// PromotionPolicy lets the controller move a staging entry to production when its evaluation metric beats
 	// every production entry of the same modelName
 	PromotionPolicy *PromotionPolicy `json:"promotionPolicy,omitempty"`
+
+	// RollbackPolicy lets the controller roll a production entry that serves a shared service back to
+	// status.previousVersion when its metric crosses a threshold (for example after a scheduled evaluation wrote a
+	// new score into spec.metadata)
+	RollbackPolicy *RollbackPolicy `json:"rollbackPolicy,omitempty"`
+}
+
+// RollbackPolicy archives the serving entry and brings back the version it replaced when spec.metadata[metric]
+// falls below threshold (maximize) or rises above it (minimize).
+type RollbackPolicy struct {
+	// Metric is the spec.metadata key holding the latest evaluation result
+	Metric string `json:"metric"`
+
+	// Threshold is the bound the metric must stay at or above (maximize) or at or below (minimize)
+	// +kubebuilder:validation:Pattern=`^-?[0-9]+(\.[0-9]+)?$`
+	Threshold string `json:"threshold"`
+
+	// Direction is maximize (default) or minimize
+	// +kubebuilder:validation:Enum=maximize;minimize
+	Direction string `json:"direction,omitempty"`
 }
 
 // PromotionPolicy compares a metric from spec.metadata against the production entries of the same modelName.

@@ -365,7 +365,7 @@ enum Commands {
     ///
     /// A model watch is a GryviaModelWatch object. The ai-operator (with --enable-model-watch) polls the hub
     /// and starts one GryviaWorkflow per new model that passes the license and size filters.
-    #[command(after_help = examples(&["gryvia models watch list", "gryvia models watch create -f examples/model-factory/model-watch.yaml -n ml-team", "gryvia models watch runs open-llms -n ml-team", "gryvia models watch suspend open-llms"]))]
+    #[command(after_help = examples(&["gryvia models watch list", "gryvia models watch create -f examples/model-factory/model-watch.yaml -n ml-team", "gryvia models watch runs open-llms -n ml-team", "gryvia models watch suspend open-llms", "gryvia models rollback chat-v2 -n ml-team"]))]
     Models {
         #[command(subcommand)]
         action: ModelsCommands,
@@ -536,6 +536,16 @@ enum ModelsCommands {
     Watch {
         #[command(subcommand)]
         action: WatchCommands,
+    },
+
+    /// Roll a model's shared service back to the version it replaced; the entry is archived
+    Rollback {
+        /// Model registry entry (a production entry with servingConfig.serviceName)
+        name: String,
+
+        /// Skip the confirmation prompt
+        #[arg(short, long)]
+        yes: bool,
     },
 }
 
@@ -1253,6 +1263,11 @@ async fn run() -> Result<()> {
                 commands::models::delete(&client, &name, yes).await?;
             }
         },
+        Commands::Models {
+            action: ModelsCommands::Rollback { name, yes },
+        } => {
+            commands::models::rollback(&client, &name, yes).await?;
+        }
         Commands::Datasets { action } => {
             run_crd(
                 &client,

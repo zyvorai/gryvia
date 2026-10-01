@@ -104,7 +104,9 @@ Status written: `phase` (`Registered`, `Deploying`, `Serving`, `Failed`), `servi
 The gateway's `POST /api/models` registers an entry (`name`, `version`, `artifacts` with an `s3Path` and/or `pvcName`,
 optional `modelName`, `stage` (`dev`, `staging`, `production`), `sourceJob`, `description`, `autoServe`,
 `servingConfig`) in the caller's namespace; `POST /api/models/{name}/promote` walks `dev` to `staging` to `production`
-to `archived`.
+to `archived`; `POST /api/models/{name}/rollback` asks for a rollback of a shared service to `previousVersion`
+(`spec.rollbackPolicy` does it automatically when a metric drops; see
+[Model factory](model-factory.md#continuous-evaluation-and-rollback)).
 
 ## GryviaWorkflow
 
@@ -117,6 +119,7 @@ goes straight to `Failed` and creates nothing.
 | `job` | A child `GryviaAIJob` `<workflow>-<step>` from `jobTemplate`, with the workflow `parameters` and `WORKFLOW_NAME`/`WORKFLOW_STEP` as env. **Needs the AIJob controller to run it** |
 | `script` | A Pod `<workflow>-<step>` owned by the workflow: `runAsNonRoot` (uid 65534), no privilege escalation, all capabilities dropped, seccomp runtime default, no service-account token, CPU/memory requests and limits (100m/128Mi and 1/1Gi), `activeDeadlineSeconds` from `timeoutSeconds`. Does not need the AIJob controller |
 | `register` | Creates a `GryviaModelRegistry` entry from the step's `register` fields; see [Model factory](model-factory.md) |
+| `registry` | Merges metadata into an existing entry, or requests its rollback (`entry`, or `serviceName` for the entry a shared service serves); see [Model factory](model-factory.md) |
 | `webhook` | One HTTP call from the operator. **Off unless `--workflow-allow-webhooks`** (a webhook step lets whoever can create a workflow make the operator send requests inside the cluster network); off means the step fails with a message. Success is a 2xx answer or `status == <code>` in `successCondition` |
 
 * A step whose dependency failed or was skipped is skipped (the skip cascades), unless it has a `condition`.

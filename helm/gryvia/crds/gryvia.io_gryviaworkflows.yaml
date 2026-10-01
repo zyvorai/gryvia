@@ -3544,8 +3544,8 @@ spec:
                               type: string
                           type: object
                         autoServe:
-                          description: AutoServe, ServingConfig and PromotionPolicy
-                            are copied into the entry
+                          description: AutoServe, ServingConfig, PromotionPolicy and
+                            RollbackPolicy are copied into the entry
                           type: boolean
                         description:
                           description: Description of the entry
@@ -3588,6 +3588,30 @@ spec:
                               type: string
                           required:
                           - metric
+                          type: object
+                        rollbackPolicy:
+                          description: |-
+                            RollbackPolicy archives the serving entry and brings back the version it replaced when spec.metadata[metric]
+                            falls below threshold (maximize) or rises above it (minimize).
+                          properties:
+                            direction:
+                              description: Direction is maximize (default) or minimize
+                              enum:
+                              - maximize
+                              - minimize
+                              type: string
+                            metric:
+                              description: Metric is the spec.metadata key holding
+                                the latest evaluation result
+                              type: string
+                            threshold:
+                              description: Threshold is the bound the metric must
+                                stay at or above (maximize) or at or below (minimize)
+                              pattern: ^-?[0-9]+(\.[0-9]+)?$
+                              type: string
+                          required:
+                          - metric
+                          - threshold
                           type: object
                         servingConfig:
                           description: ServingConfig defines how a model should be
@@ -3651,6 +3675,35 @@ spec:
                       - modelName
                       - version
                       type: object
+                    registry:
+                      description: Registry is the change to an existing model registry
+                        entry for registry-type steps
+                      properties:
+                        action:
+                          description: |-
+                            Action is updateMetadata (merge metadata into spec.metadata) or rollback (ask the controller to roll the
+                            entry back to status.previousVersion on its shared service)
+                          enum:
+                          - updateMetadata
+                          - rollback
+                          type: string
+                        entry:
+                          description: Entry is the registry object name. Set entry
+                            or serviceName.
+                          type: string
+                        metadata:
+                          additionalProperties:
+                            type: string
+                          description: Metadata is merged into spec.metadata for updateMetadata
+                          type: object
+                        serviceName:
+                          description: |-
+                            ServiceName picks the entry a shared GryviaInferenceService (servingConfig.serviceName) serves when the step
+                            runs: its spec.modelRef. A scheduled evaluation of the live service uses this.
+                          type: string
+                      required:
+                      - action
+                      type: object
                     retries:
                       description: Retries is the number of times to retry this step
                         on failure
@@ -3689,7 +3742,8 @@ spec:
                       format: int64
                       type: integer
                     type:
-                      description: 'Type of step: job, script, or webhook'
+                      description: 'Type of step: job, script, webhook, register or
+                        registry'
                       type: string
                     webhook:
                       description: Webhook is the HTTP request to make for webhook-type

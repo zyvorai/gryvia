@@ -36,7 +36,7 @@ Gryvia defines 53 custom resources in the `gryvia.io` API group (version `v1alph
 | `GryviaLiveExperiment` | `gryvialiveexperiments` | Namespaced | ai-operator | `comparison`, `jobs` | `description`, `notifications`, `strategy` |
 | `GryviaMetric` | `gryviametrics` | Cluster | none | `name`, `source` | `description`, `labels`, `retention`, `thresholds`, `type`, `unit`, `visualization` |
 | `GryviaModelLineage` | `gryviamodellineages` | Namespaced | ai-operator | `model` | `compliance`, `provenance` |
-| `GryviaModelRegistry` | `gryviamodelregistries` | Namespaced | ai-operator | `artifacts`, `modelName`, `version` | `autoServe`, `description`, `metadata`, `promotionPolicy`, `servingConfig`, `source`, `stage` |
+| `GryviaModelRegistry` | `gryviamodelregistries` | Namespaced | ai-operator | `artifacts`, `modelName`, `version` | `autoServe`, `description`, `metadata`, `promotionPolicy`, `rollbackPolicy`, `servingConfig`, `source`, `stage` |
 | `GryviaModelWatch` | `gryviamodelwatches` | Namespaced | ai-operator | `sources`, `workflowTemplate` | `includeExisting`, `licenseAllowlist`, `maxConcurrentRuns`, `maxParamsB`, `pollInterval`, `retrainOnNewRevision`, `sizing`, `suspend`, … |
 | `GryviaNetwork` | `gryvianetworks` | Cluster | network-operator | `networkType` | `mtu`, `nodeSelector`, `rdma`, `sriov`, `targetNamespace` |
 | `GryviaNetworkAnomaly` | `gryvianetworkanomalies` | Namespaced | network-intelligence | none | `alertWebhook`, `autoMitigate`, `detectionRules`, `targetService` |

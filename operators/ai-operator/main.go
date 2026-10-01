@@ -267,6 +267,7 @@ func main() {
 			Scheme:            mgr.GetScheme(),
 			Log:               ctrl.Log.WithName("controllers").WithName("GryviaModelRegistry"),
 			AutoServeGPUCount: int32(ml.autoServeGPUCount),
+			Recorder:          mgr.GetEventRecorderFor("gryviamodelregistry-controller"),
 		}).SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "GryviaModelRegistry")
 			os.Exit(1)

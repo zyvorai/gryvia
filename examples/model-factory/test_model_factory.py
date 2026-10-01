@@ -4,7 +4,8 @@ import tempfile
 import unittest
 
 from download import download, target_dir
-from evaluate import aggregate, exact_match, output_key
+import evaluate
+from evaluate import aggregate, exact_match, openai_generator, output_key
 from finetune_lora import filter_kwargs, output_dir, validate_jsonl
 from outputs import write_outputs
 
@@ -86,6 +87,55 @@ class EvaluateTests(unittest.TestCase):
             answers = {"2+2=": " 4, of course", "3+3=": "7"}
             self.assertEqual(exact_match(answers.get, path), 0.5)
         self.assertEqual(output_key("mmlu/abstract algebra"), "mmlu_abstract_algebra")
+
+    def test_endpoint_generator_and_main(self):
+        seen = []
+
+        class Resp:
+            def __init__(self, body):
+                self.body = body
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def read(self):
+                return self.body
+
+        def opener(req, timeout):
+            body = json.loads(req.data)
+            seen.append((req.full_url, req.get_header("Authorization"), body))
+            answer = "4" if body["prompt"] == "2+2=" else "5"
+            return Resp(json.dumps({"choices": [{"text": " " + answer}]}).encode())
+
+        os.environ["OPENAI_API_KEY"] = "sk-test"
+        try:
+            gen = openai_generator("http://svc:8080/", "chat", opener=opener)
+            self.assertEqual(gen("2+2="), " 4")
+        finally:
+            del os.environ["OPENAI_API_KEY"]
+        url, auth, body = seen[0]
+        self.assertEqual(url, "http://svc:8080/v1/completions")
+        self.assertEqual(auth, "Bearer sk-test")
+        self.assertEqual((body["model"], body["temperature"]), ("chat", 0))
+
+        with tempfile.TemporaryDirectory() as d:
+            data = os.path.join(d, "eval.jsonl")
+            open(data, "w").write('{"prompt": "2+2=", "expected": "4"}\n{"prompt": "3+3=", "expected": "6"}\n')
+            written = {}
+            orig_gen, orig_write = evaluate.openai_generator, evaluate.write_outputs
+            evaluate.openai_generator = lambda e, m: openai_generator(e, m, opener=opener)
+            evaluate.write_outputs = written.update
+            try:
+                self.assertEqual(evaluate.main(["--endpoint", "http://svc:8080", "--served-model", "chat",
+                                                "--custom", data]), 0)
+            finally:
+                evaluate.openai_generator, evaluate.write_outputs = orig_gen, orig_write
+            self.assertEqual(written["score"], "0.500000")
+        with self.assertRaises(SystemExit):
+            evaluate.main(["--model", "/m", "--endpoint", "http://x"])
 
 
 if __name__ == "__main__":
