@@ -41,6 +41,10 @@ aiOperator:
   # fabric, and record why in status.placementExplanation. Off by default; adds get/list/watch on
   # gryvianodefabrics to the operators ClusterRole. Per-job override: annotation gryvia.io/fabric-aware.
   fabricAwareScheduling: false
+  # Hold the GPUs of a job's chosen nodes until its pods are up (--placement-holds), so two jobs placed in the
+  # same window cannot pick the same free GPUs. A single job is already placed all-or-nothing (too few nodes means it
+  # stays Pending); this closes the race between jobs. In memory, expires after 5 minutes. Unverified on GPUs.
+  placementHolds: false
   # Kueue integration (--kueue-integration, off by default): a job with a queue (spec.queueName, annotation
   # gryvia.io/queue-name, or the default LocalQueue in tenant-* namespaces) gets its batch Job created suspended with
   # the label kueue.x-k8s.io/queue-name; Kueue admits all its pods together (gang) against the queue's quota and

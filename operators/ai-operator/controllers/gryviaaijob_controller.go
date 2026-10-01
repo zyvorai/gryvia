@@ -78,6 +78,13 @@ type GryviaAIJobReconciler struct {
 	AdmissionGate bool
 	// AdmissionDefaultHours is the forecast duration of a job without spec.timeout (0 = 1h).
 	AdmissionDefaultHours float64
+	// PlacementHolds (flag --placement-holds, default false) holds the GPUs of a job's chosen
+	// nodes until its pods are up, so two jobs placed in the same window cannot pick the same free GPUs.
+	// A single job is already placed all-or-nothing (a placement that finds too few nodes fails and the job
+	// stays Pending); this closes the race between jobs. See gryviaaijob_holds.go.
+	PlacementHolds bool
+	gpuHolds       *scheduler.GPUHolds
+	gpuHoldsOnce   sync.Once
 }
 
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviaaijobs,verbs=get;list;watch;create;update;patch;delete
@@ -102,6 +109,7 @@ func (r *GryviaAIJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			log.Info("GryviaAIJob resource not found. Ignoring since object must be deleted")
+			r.releasePlacement(req.NamespacedName)
 			return ctrl.Result{}, nil
 		}
 		log.Error(err, "Failed to get GryviaAIJob")
@@ -111,6 +119,7 @@ func (r *GryviaAIJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Handle deletion - owned resources (StatefulSet, Service, PVC) are
 	// garbage-collected via controller references, so no finalizer is needed.
 	if !job.ObjectMeta.DeletionTimestamp.IsZero() {
+		r.releasePlacement(req.NamespacedName)
 		return ctrl.Result{}, nil
 	}
 
@@ -126,6 +135,7 @@ func (r *GryviaAIJobReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	// Reconcile the AI job
 	result, err := r.reconcileAIJob(ctx, job)
+	r.releaseIfSettled(job)
 	if err != nil {
 		log.Error(err, "Failed to reconcile AI job")
 		return result, err
@@ -241,21 +251,22 @@ func (r *GryviaAIJobReconciler) reconcileAIJob(ctx context.Context, job *gryviav
 			// Use GPU-aware scheduler to find optimal nodes
 			var nodes []string
 			var err error
+			held := r.placementHeld(job) // GPUs other jobs hold and have not bound yet (nil when off)
 			if scheduler.FabricEnabled(job, r.FabricAware) {
 				var p scheduler.Placement
-				p, err = scheduler.FindOptimalNodesFabric(ctx, r.Client, job, scheduler.FabricOptions{
+				p, err = scheduler.FindOptimalNodesFabricHeld(ctx, r.Client, job, scheduler.FabricOptions{
 					MaxPenalty: r.FabricMaxPenalty,
 					OnError: func(e error) {
 						log.Info("fabric-aware scheduling: node signals unavailable, ranking unchanged", "reason", e.Error())
 					},
-				})
+				}, held)
 				nodes = p.Nodes
 				if err == nil {
 					job.Status.PlacementExplanation = p.Explanation
 					r.recordFabricPlacement(job, p)
 				}
 			} else {
-				nodes, err = scheduler.FindOptimalNodes(ctx, r.Client, job)
+				nodes, err = scheduler.FindOptimalNodesHeld(ctx, r.Client, job, held)
 			}
 			if err != nil {
 				log.Error(err, "Failed to schedule job")
@@ -269,6 +280,7 @@ func (r *GryviaAIJobReconciler) reconcileAIJob(ctx context.Context, job *gryviav
 
 			job.Status.NodesAllocated = nodes
 			job.Status.GpusAllocated = job.Spec.GPUs
+			r.holdPlacement(job, nodes)
 			r.updateCondition(job, ConditionScheduled, metav1.ConditionTrue, "Scheduled", "Job scheduled successfully")
 
 			if err := r.Status().Update(ctx, job); err != nil {
