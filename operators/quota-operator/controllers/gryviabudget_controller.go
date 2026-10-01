@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 
 	gryviav1 "github.com/zyvorai/gryvia/operators/quota-operator/api/v1"
 	"github.com/zyvorai/gryvia/operators/quota-operator/pkg/budget"
+	"github.com/zyvorai/gryvia/operators/quota-operator/pkg/notify"
 	"github.com/zyvorai/gryvia/operators/quota-operator/pkg/spend"
 )
 
@@ -37,6 +39,26 @@ type GryviaBudgetReconciler struct {
 	// Now returns the current time; tests override it. Defaults to time.Now.
 	Now            func() time.Time
 	EventNamespace string
+
+	// Webhook, when set, receives every budget threshold alert (see publishAlerts). nil = Events only.
+	Webhook *notify.Webhook
+	// Reader reads alert Events without the informer cache (the operator has no list/watch on events). nil = Client.
+	Reader client.Reader
+}
+
+// annotationWebhookDelivered marks an alert Event whose webhook delivery succeeded, so a retry after a
+// failed delivery re-sends (at least once) and a delivered alert is never sent twice.
+const annotationWebhookDelivered = "gryvia.io/webhook-delivered"
+
+// budgetAlertPayload is the JSON body POSTed to the webhook.
+type budgetAlertPayload struct {
+	Type       string    `json:"type"`
+	Budget     string    `json:"budget"`
+	Namespace  string    `json:"namespace,omitempty"`
+	Threshold  float64   `json:"threshold"`
+	Message    string    `json:"message"`
+	Timestamp  time.Time `json:"timestamp"`
+	Recipients []string  `json:"recipients,omitempty"`
 }
 
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviabudgets,verbs=get;list;watch
@@ -257,9 +279,58 @@ func (r *GryviaBudgetReconciler) publishAlerts(ctx context.Context, fb *gryviav1
 		}
 		digest := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s/%s/%g", fb.UID, a.Timestamp.Time.Format(time.RFC3339Nano), a.Threshold))))[:24]
 		e := &corev1.Event{ObjectMeta: metav1.ObjectMeta{Name: "gryvia-budget-" + digest, Namespace: ns}, InvolvedObject: corev1.ObjectReference{APIVersion: "gryvia.io/v1", Kind: "GryviaBudget", Name: fb.Name, Namespace: fb.Namespace, UID: types.UID(fb.UID)}, Reason: "BudgetThresholdCrossed", Message: a.Message, Type: corev1.EventTypeWarning, FirstTimestamp: a.Timestamp, LastTimestamp: a.Timestamp, Count: 1, Source: corev1.EventSource{Component: "gryvia-quota-operator"}}
-		if err := r.Create(ctx, e); err != nil && !errors.IsAlreadyExists(err) {
+		err := r.Create(ctx, e)
+		switch {
+		case err == nil:
+			// new alert: fall through to delivery
+		case errors.IsAlreadyExists(err):
+			if r.Webhook == nil {
+				continue
+			}
+			var rd client.Reader = r.Client
+			if r.Reader != nil {
+				rd = r.Reader
+			}
+			if err := rd.Get(ctx, client.ObjectKeyFromObject(e), e); err != nil {
+				return err
+			}
+			if e.Annotations[annotationWebhookDelivered] == "true" {
+				continue
+			}
+		default:
+			return err
+		}
+		if err := r.deliverAlert(ctx, fb, a, e); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// deliverAlert POSTs one alert to the webhook and then marks its Event delivered. A failure is returned so
+// the budget is reconciled again (at most a minute later) and the delivery retried.
+func (r *GryviaBudgetReconciler) deliverAlert(ctx context.Context, fb *gryviav1.GryviaBudget, a gryviav1.BudgetAlertEvent, e *corev1.Event) error {
+	if r.Webhook == nil {
+		return nil
+	}
+	p := budgetAlertPayload{Type: "budget.threshold", Budget: fb.Name, Namespace: fb.Namespace,
+		Threshold: a.Threshold, Message: a.Message, Timestamp: a.Timestamp.Time}
+	for _, rule := range fb.Spec.Alerts {
+		if rule.Threshold == a.Threshold {
+			p.Recipients = append(p.Recipients, rule.Recipients...)
+		}
+	}
+	body, err := json.Marshal(p)
+	if err != nil {
+		return err
+	}
+	if err := r.Webhook.Post(ctx, body); err != nil {
+		return fmt.Errorf("budget %s alert %g%%: webhook delivery failed: %w", fb.Name, a.Threshold, err)
+	}
+	patch := client.MergeFrom(e.DeepCopy())
+	if e.Annotations == nil {
+		e.Annotations = map[string]string{}
+	}
+	e.Annotations[annotationWebhookDelivered] = "true"
+	return r.Patch(ctx, e, patch)
 }

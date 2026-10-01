@@ -41,7 +41,7 @@ Dormant simulation controllers have been removed for `GryviaSLA`, `GryviaAutoSca
 - Cilium as the default CNI or any cluster-wide CNI replacement
 - Multi-cluster control plane and global scheduler
 - Verified inference serving (Triton, vLLM, TensorRT-LLM) managed by Gryvia: the controller exists, with a pod-count canary, but opt-in Gateway API weighted routing, custom GPU/RPS HPA metrics and Prometheus SLO gating of canaries are implemented; real-image/data-plane behaviour is not verified (see [inference serving](https://github.com/zyvorai/gryvia/blob/main/docs/inference-serving.md))
-- External notification delivery and payment-grade billing (budget Events and metered showback/chargeback estimates are implemented)
+- E-mail/PDF/pager delivery and payment-grade billing (budget Events, an opt-in signed budget-alert webhook (`quotaOperator.budgetWebhook`), the signed invoice webhook and metered showback/chargeback estimates are implemented)
 - GPU reset/driver reload/reboot via a verified node agent (opt-in quarantine and PDB-respecting drain are implemented)
 - Payment processing and billing
 
