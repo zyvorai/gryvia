@@ -1,6 +1,6 @@
 # Scheduling Guide
 
-What Gryvia does today when a `GryviaAIJob` is submitted, and which of the more advanced scheduling ideas (gang scheduling, DRF fair share, backfill, elastic training, preemption) exist only as library code or design.
+What Gryvia does today when a `GryviaAIJob` is submitted, and which of the more advanced scheduling ideas (gang scheduling, DRF fair share, backfill, elastic training, preemption) are Kueue-backed, opt-in, or only a design.
 
 ## Status at a glance
 
@@ -10,10 +10,10 @@ What Gryvia does today when a `GryviaAIJob` is submitted, and which of the more 
 | Indexed batch Job (training, fine-tuning, evaluation) or StatefulSet (inference), headless Service and PVC creation, NCCL/`MASTER_ADDR`/`WORLD_SIZE`/`RANK` env for distributed jobs | Implemented; unit-tested against fake clients, kind end-to-end in CI, not run on GPUs. See [AIJob lifecycle](https://github.com/zyvorai/gryvia/blob/main/docs/aijob-lifecycle.md) |
 | Validating admission webhook (job sanity, quota and SKU policy) | Implemented, served by the ai-operator when enabled; fails open by default |
 | Gang admission, queueing, quotas, borrowing between tenants, priority preemption | **Opt-in, backed by Kueue** (`--kueue-integration`, off by default): the Job is created suspended and Kueue admits all its pods together. Unit-tested with fake clients; the kind workflow `e2e-kueue.yml` is written but unverified until it has passed; not run on GPUs. See the [Kueue integration](https://github.com/zyvorai/gryvia/blob/main/docs/kueue-integration.md) |
-| Gang scheduling in-tree (`pkg/scheduler/gang.go`), DRF queue (`pkg/queue`) | Library code, not called by anything; superseded by Kueue when it is enabled |
+| In-tree gang scheduler and DRF queue | Removed (they were never called); Kueue does gang admission and queueing when enabled |
 | Placement holds (`--placement-holds`) | **Opt-in, off by default.** While a job's pods come up, the GPUs of the nodes it was placed on count as used for other jobs' placement, so two jobs placed at the same moment do not both take the same free GPUs. In memory, expires after 5 minutes. It does not pin pods; see [Placement holds](#placement-holds-opt-in). Unit-tested with fake clients; nothing on GPUs |
 | Backfill | Not implemented (Kueue's `BestEffortFIFO` lets smaller jobs run past a blocked one, which is not time-based backfill) |
-| Elastic training | Library code in `operators/ai-operator/pkg/elastic`, not called by the controller |
+| Elastic training | Not implemented (the unused helper package was removed) |
 | Mutating webhook (NCCL injection and defaults) | Code exists in `pkg/webhook/mutator.go`; not registered in `main.go`, so it does not run |
 | Priority preemption | With Kueue integration: a higher `spec.priority` job preempts lower-priority jobs of the same ClusterQueue (and of borrowing tenants in the cohort); the victim is requeued (`Queued`), not lost. Without Kueue: none. `GryviaPriority` classes: CRD only, no controller |
 | Fabric-health penalty on node scores | Function exists (`pkg/scheduler/fabric_score.go`), marked NOT WIRED in the code |
@@ -76,7 +76,7 @@ With `--kueue-integration` on both operators (and Kueue installed, for example `
 
 **Unverified:** this has unit tests against fake clients and a kind workflow (`.github/workflows/e2e-kueue.yml`) that has not been run yet; nothing was run on GPUs or with real multi-node NCCL.
 
-The in-tree `GangScheduler` in `operators/ai-operator/pkg/scheduler/gang.go` (a `PodGroup` with all-or-nothing GPU reservation) is library code that nothing calls and that is superseded by Kueue; there is no `spec.scheduling` field on `GryviaAIJob`. Volcano is not integrated.
+There is no in-tree gang scheduler (an unused one was removed in favour of Kueue) and no `spec.scheduling` field on `GryviaAIJob`. Volcano is not integrated.
 
 ### Placement holds (opt-in)
 
@@ -85,8 +85,6 @@ A single distributed job is already placed all-or-nothing: if fewer than `distri
 With `--placement-holds` (chart `aiOperator.placementHolds`, off by default) the operator remembers, in memory, the nodes it placed each job on and counts those GPUs as used for every other job's placement until the job's pods are all ready, the job ends or is deleted, or five minutes pass. A job's own placement never counts its own hold. Fabric-aware ranking and every filter are unchanged; holds only change what other jobs see as free. Kueue-managed jobs do not use it.
 
 **Limit.** The operator's choice is advisory. The pods carry a label node selector (GPU type, RDMA, your own `spec.nodeSelector`), not the names of the chosen nodes, and kube-scheduler decides among the nodes that match. When free GPUs are scarce the pods can only go to the nodes the operator picked, and the hold is accurate. With spare matching nodes the pods may land elsewhere, and two jobs can still compete for the same ones. Pinning pods to the chosen nodes would remove that gap and is not done. Unit-tested with fake clients; not run on GPUs.
-
-This is not the in-tree `GangScheduler`, which is still not called: it re-implements node selection without the fabric-aware ranking, and no caller releases the GPUs it holds.
 
 ### Design sketch
 
@@ -109,7 +107,7 @@ spec:
 
 Status: **Kueue-backed and opt-in** (same switch as above; no in-tree fair-share queue runs). With the quota operator's `--kueue-integration`, every `GryviaTenant` gets a LocalQueue `gryvia` in `tenant-<name>` and a ClusterQueue `gryvia-<tenant>` whose nominal quota comes from `spec.quotas.concurrentGPUs` (else the `maxGPUs` of a `GryviaQuota` covering the namespace, else unlimited). All tenant ClusterQueues share the cohort `gryvia`: idle quota is borrowed between tenants and reclaimed by preemption, with `BestEffortFIFO` ordering. Kueue's own fair-sharing modes and DRF are **not** enabled; what you get is nominal quota + borrowing + preemption. Details, limits and the exact objects: [Kueue integration](https://github.com/zyvorai/gryvia/blob/main/docs/kueue-integration.md).
 
-The in-tree DRF calculator and priority queue (`operators/ai-operator/pkg/queue`) are library code that nothing calls. There is no `GryviaQueue` kind, no hierarchical queues and no time-based backfill.
+There is no in-tree DRF calculator or priority queue (an unused one was removed). There is no `GryviaQueue` kind, no hierarchical queues and no time-based backfill.
 
 Other multi-tenant limits, independent of Kueue:
 
@@ -149,7 +147,7 @@ Intended semantics: weighted DRF ordering across teams, guaranteed minimums with
 
 ## Elastic Training
 
-Status: library code only, with no schema field to enable it. `operators/ai-operator/pkg/elastic` has helpers for min/max node annotations and scaling a StatefulSet, but the GryviaAIJob controller never calls them, and `GryviaAIJob` has no `elastic` field. A job's replica count is fixed at `distributed.nodes`.
+Status: not implemented. `GryviaAIJob` has no `elastic` field and the controller never scales workers (an unused helper package was removed). A job's replica count is fixed at `distributed.nodes`.
 
 You can still run a torchelastic-style job by putting the elastic launcher flags in `command` (for example `--nnodes=2:8` with a c10d rendezvous); that is entirely the job's own behaviour, and Gryvia will not add or remove workers.
 
@@ -224,10 +222,10 @@ kubectl describe gryviaaijob my-job
 | Feature | Real state |
 |---------|-----------|
 | Node selection | Runs; recorded in status, pods are placed by the Kubernetes scheduler using selectors |
-| Gang admission (all pods together) | Kueue-backed, opt-in (`--kueue-integration`); unit-tested, e2e written but unverified. In-tree `gang.go` is unused library code |
-| Queues, per-tenant quota, borrowing | Kueue-backed, opt-in; nominal quota + cohort borrowing, not DRF. In-tree DRF/queue packages are unused library code |
+| Gang admission (all pods together) | Kueue-backed, opt-in (`--kueue-integration`); unit-tested, e2e written but unverified. |
+| Queues, per-tenant quota, borrowing | Kueue-backed, opt-in; nominal quota + cohort borrowing, not DRF. |
 | Hierarchical queues, backfill | Not implemented |
-| Elastic training | Library code, not wired, no CRD field |
+| Elastic training | Not implemented, no CRD field |
 | Validating webhook | Runs when enabled; quota and SKU policy; fails open by default |
 | Mutating webhook (NCCL injection) | Code only, not registered |
 | Priority preemption | Kueue-backed, opt-in: evicted jobs are requeued, no checkpointing. Off without the integration |

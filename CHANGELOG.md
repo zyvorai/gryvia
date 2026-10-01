@@ -63,6 +63,9 @@ current numbers are 52 CRDs (32 with a registered controller) and 47 eBPF progra
   the service graph, heat map and charts.
 - Open tabs recover automatically after a redeploy.
 
+### Removed
+- Unused ai-operator packages `pkg/scheduler/gang.go`, `pkg/queue` and `pkg/elastic`: nothing called them (checked with `go build`, `go vet` and the test suites). Gang admission, queueing and preemption come from the opt-in Kueue integration; elastic training is not implemented. Docs updated to say so.
+
 ### Changed
 - `GryviaEbpfProgramNotAttached` no longer fires for programs the configuration did not ask for. The collector exported `gryvia_ebpf_program_attached = 0` for every skipped program, so quota pacing, the libibverbs probes, `xdp_mux`, `infer_latency` without `-infer-ports`, XDP/TCX without `-iface` and sockops without `-cgroup-path` all alerted on every node by default. Those are now marked `notRequested: true` in `/api/v1/ebpf/status` and get no series. A missing library or symbol, an interface that already has an XDP program, and a failed attach still export 0 and can alert. The `count(gryvia_ebpf_program_attached == 0)` dashboard panels show fewer zeros accordingly.
 - `scripts/deploy-remote.sh` keeps the installed API key on a redeploy: an explicit `GRYVIA_API_KEY`, else the `gryvia-api-key` Secret, else `~/.gryvia/api-key`, and the lab default only on a first install; it prints the key only when it is the default. Before, every deploy reset the key to `GRYVIA_API_KEY` or the lab default.

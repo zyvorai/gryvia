@@ -12,10 +12,9 @@ Sophisticated job priority system with preemption support for efficient resource
 > classes and values below (`system-critical` ... `spot`), quota overrides and SLA
 > guarantees are not enforced. `GryviaAIJob` has no `priorityClassName` field: its only
 > priority field is the integer `spec.priority` (0-100, higher is more important),
-> range-checked by the admission webhook. A priority-queue with DRF fair-share and a
-> preemption-candidate finder exist as a library (`operators/ai-operator/pkg/queue`) and are
-> unit-tested, but the AIJob controller does not call them, so jobs are not reordered and no
-> job is preempted by priority today. Also not implemented: the `kfctl` CLI (it does not
+> range-checked by the admission webhook. There is no in-tree priority queue,
+> DRF fair-share or preemption finder (an unused one was removed), so jobs are not reordered and no
+> job is preempted by priority today unless Kueue is enabled. Also not implemented: the `kfctl` CLI (it does not
 > exist), `--priority` on `gryvia submit`, the `resources.gpuCount` / `checkpointing`
 > job fields used in the examples (use `spec.gpus`, `spec.gpuType`, and a
 > `GryviaCheckpointGuard` for checkpointing), the priority Grafana dashboard, and the
