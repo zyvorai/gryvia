@@ -212,6 +212,18 @@ func filterNodes(nodes []corev1.Node, job *gryviav1.GryviaAIJob, gpuUsage map[st
 	return eligible
 }
 
+// AnnotationPlacementStrategy selects the node-scoring strategy for one job: "pack" (best-fit,
+// keeps whole nodes free) or anything else for the default spread.
+const (
+	AnnotationPlacementStrategy = "gryvia.io/placement-strategy"
+	StrategyPack                = "pack"
+)
+
+// totalGPUsOf is the node's GPU count (label first, then nvidia.com/gpu allocatable).
+func totalGPUsOf(node corev1.Node) int64 {
+	return getAvailableGPUs(node, nil)
+}
+
 // getAvailableGPUs returns the number of GPUs available on a node.
 // It checks both the gryvia.io/gpu-count label and the
 // nvidia.com/gpu allocatable resource, then subtracts current usage.
@@ -271,9 +283,15 @@ func scoreNodes(nodes []corev1.Node, job *gryviav1.GryviaAIJob, gpuUsage map[str
 			}
 		}
 
-		// Score based on available GPU count (prefer nodes with more free GPUs)
+		// Score based on available GPU count. Default spreads (more free GPUs wins); the
+		// "pack" strategy is best-fit (fewer free GPUs that still fit wins), which keeps
+		// whole nodes free for large jobs. See AnnotationPlacementStrategy.
 		availableGPUs := getAvailableGPUs(node, gpuUsage)
-		score += int(availableGPUs) * 5
+		if job.Annotations[AnnotationPlacementStrategy] == StrategyPack {
+			score += int(totalGPUsOf(node)-availableGPUs) * 5
+		} else {
+			score += int(availableGPUs) * 5
+		}
 
 		// Score based on GPU memory (from gryvia label)
 		if memStr, exists := node.Labels["gryvia.io/gpu-memory"]; exists {
