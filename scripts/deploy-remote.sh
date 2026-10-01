@@ -20,10 +20,10 @@
 #   ./scripts/deploy-remote.sh user@10.0.1.5 --dry-run      # print the remote script
 #
 # Environment:
-#   GRYVIA_API_KEY          Gateway bearer / dashboard password (default: Admin@321, so
-#                           you can sign in as admin / Admin@321). Set your own for
-#                           anything reachable from an untrusted network. Written to
-#                           ~/.gryvia/api-key on the host (mode 600).
+#   GRYVIA_API_KEY          Gateway bearer / dashboard password. Unset: the installed key is kept (the
+#                           gryvia-api-key Secret, then ~/.gryvia/api-key on the host), and a first install
+#                           uses the lab default Admin@321, so set your own for anything reachable from an
+#                           untrusted network. The key in use is saved to ~/.gryvia/api-key (mode 600).
 #   GRYVIA_REMOTE_SUBDIR    checkout dir relative to the remote $HOME
 #                           (default: .deployments/gryvia)
 #   GRYVIA_NETRA_URL        Netra controller for real network flows, e.g. https://<netra-public-ip>:30870
@@ -202,11 +202,10 @@ REG="ghcr.io/zyvorai"
 source scripts/lib/deploy-guards.sh
 deploy_disk_guard /
 
-# API key (dashboard password for user "admin"): explicit env, else the lab default.
-mkdir -p "\$HOME/.gryvia"
-API_KEY="${API_KEY_LOCAL:-Admin@321}"
-printf '%s\n' "\$API_KEY" > "\$HOME/.gryvia/api-key"
-chmod 600 "\$HOME/.gryvia/api-key"
+# API key (dashboard password for user "admin"): explicit GRYVIA_API_KEY, else the key already
+# installed (so a redeploy does not reset a rotated key), else the lab default on a first install.
+deploy_resolve_api_key $(printf '%q' "${API_KEY_LOCAL}")
+echo "API key source: \$API_KEY_SOURCE"
 
 if command -v podman >/dev/null 2>&1; then RT=podman
 elif command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then RT=docker
@@ -347,7 +346,11 @@ for spec in "\${WORKLOADS[@]}"; do
 done
 
 echo "GRYVIA_UI=https://\$(hostname -I | awk '{print \$1}'):\$UI_NODEPORT"
-echo "Sign in as: admin / \$API_KEY  (stored in ~/.gryvia/api-key on the host)"
+if [[ "\$API_KEY" == "Admin@321" ]]; then
+  echo "Sign in as: admin / \$API_KEY  (the lab default; saved in ~/.gryvia/api-key on the host)"
+else
+  echo "Sign in as: admin  (key saved in ~/.gryvia/api-key on the host; not printed)"
+fi
 if [[ "\$API_KEY" == "Admin@321" ]]; then
   echo "WARNING: this is the default lab credential. Set GRYVIA_API_KEY for anything reachable from an untrusted network."
 fi

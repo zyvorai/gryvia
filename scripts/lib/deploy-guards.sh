@@ -128,3 +128,39 @@ deploy_wait_ready() {
   kubectl -n "$DEPLOY_NAMESPACE" get pods -l "$selector" >&2 || true
   return 1
 }
+
+# deploy_resolve_api_key <explicit>
+#   Decides the gateway key (dashboard password for "admin") for this deploy and sets
+#   API_KEY and API_KEY_SOURCE. Never prints the key. In order:
+#     1. <explicit> (GRYVIA_API_KEY on the machine running deploy-remote.sh)
+#     2. the key already installed: the GRYVIA_API_KEY field of the gryvia-api-key Secret
+#        (the source of truth: `helm upgrade --set auth.apiKey=...` changes it directly)
+#     3. ~/.gryvia/api-key on this host, if it is not empty
+#     4. the lab default, for a first install only
+#   Without 2 and 3 a plain redeploy would reset a rotated key to the lab default, because
+#   the key is always handed to helm. The result is written back to ~/.gryvia/api-key
+#   (mode 600) so the smoke test and a person on the host read the key that is installed.
+API_KEY=""
+API_KEY_SOURCE=""
+DEPLOY_LAB_API_KEY="Admin@321"
+# shellcheck disable=SC2034 # API_KEY and API_KEY_SOURCE are read by the remote script deploy-remote.sh generates
+deploy_resolve_api_key() {
+  local explicit="${1:-}" installed="" saved=""
+  local file="$HOME/.gryvia/api-key"
+  if [[ -n "$explicit" ]]; then
+    API_KEY="$explicit"; API_KEY_SOURCE="GRYVIA_API_KEY"
+  else
+    installed="$(kubectl -n "$DEPLOY_NAMESPACE" get secret gryvia-api-key \
+      -o jsonpath='{.data.GRYVIA_API_KEY}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+    [[ -s "$file" ]] && saved="$(<"$file")"
+    if [[ -n "$installed" ]]; then
+      API_KEY="$installed"; API_KEY_SOURCE="the installed gryvia-api-key Secret"
+    elif [[ -n "$saved" ]]; then
+      API_KEY="$saved"; API_KEY_SOURCE="$file"
+    else
+      API_KEY="$DEPLOY_LAB_API_KEY"; API_KEY_SOURCE="the lab default (first install)"
+    fi
+  fi
+  ( umask 077; mkdir -p "$(dirname "$file")"; printf '%s\n' "$API_KEY" > "$file.tmp" ) \
+    && chmod 600 "$file.tmp" && mv "$file.tmp" "$file"
+}
