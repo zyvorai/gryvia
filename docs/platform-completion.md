@@ -84,7 +84,7 @@ level label to the PodSet. They are mutually exclusive. No topology is inferred 
 Prepare worker kubeconfig Secrets in the Kueue manager namespace and configure manager/
 worker job integration following the pinned Kueue documentation. Set
 `platformCompletion.kueueAdmissionCheck=multikueue` to bind managed queues. This is native
-MultiKueue integration, not proof of tested multi-cluster execution or data replication.
+MultiKueue integration. A two-kind-cluster CPU e2e (`e2e-multikueue.yml`) passes in CI; GPUs, data replication and failover across clusters are untested.
 
 GryviaPriority now creates an owned Kubernetes PriorityClass. Set the AIJob annotation
 `gryvia.io/priority-class` to its name. Kubernetes handles pod preemption; Kueue's existing

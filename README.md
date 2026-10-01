@@ -211,7 +211,7 @@ See [GPU as a Service](website/docs/guides/GPU_AS_A_SERVICE.md).
    Observability:  DCGM exporter · optional eBPF collector DaemonSet (experimental) · optional Netra flows
 ```
 
-One cluster is managed per install. Opt-in federation probes verify remote readiness, and native Kueue MultiKueue configuration is available; real multi-cluster execution remains unverified. The GPU-aware scheduling is the ai
+One cluster is managed per install. Opt-in federation probes verify remote readiness, and native Kueue MultiKueue configuration is available; a two-kind-cluster MultiKueue e2e (CPU pods) passes in CI, but GPUs, data replication and failover across clusters remain unverified. The GPU-aware scheduling is the ai
 operator's node selection (filter, score, select), not a separate scheduler.
 
 ---

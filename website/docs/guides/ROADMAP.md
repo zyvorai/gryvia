@@ -37,7 +37,7 @@ Dormant simulation controllers have been removed for `GryviaSLA`, `GryviaAutoSca
 ### Not implemented
 
 - Live resizing of a running job, elastic rank resharding and guaranteed checkpoints on abrupt node loss. Cooperative preStop requests, a durable single-process recovery example and a file-based all-ranks commit protocol (`examples/training/coordinated_checkpoint.py`, multi-process tested on CPU, not wired into a real distributed trainer) are implemented.
-- A separate hierarchical/DRF/global scheduler. Native Kueue fair-sharing, topology and MultiKueue configuration is available; real multi-cluster execution and GPU placement remain unverified.
+- A separate hierarchical/DRF/global scheduler. Native Kueue fair-sharing, topology and MultiKueue configuration is available; a two-kind-cluster MultiKueue e2e with CPU pods passes in CI (a job submitted on the manager runs on the worker and reports back); GPU placement, data replication and failover across clusters remain unverified and unimplemented.
 - Cilium as the default CNI or any cluster-wide CNI replacement
 - Multi-cluster control plane and global scheduler
 - Verified inference serving (Triton, vLLM, TensorRT-LLM) managed by Gryvia: the controller exists, with a pod-count canary, but opt-in Gateway API weighted routing, custom GPU/RPS HPA metrics and Prometheus SLO gating of canaries are implemented; real-image/data-plane behaviour is not verified (see [inference serving](https://github.com/zyvorai/gryvia/blob/main/docs/inference-serving.md))
