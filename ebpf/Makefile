@@ -39,7 +39,7 @@ CHECK_DIR ?= /sys/fs/bpf/gryvia-check-$(shell echo $$PPID)
 
 all: $(PROGS:%=%.o)
 
-HDRS = headers/gryvia_core.h headers/common.h headers/gpu_common.h headers/security_common.h headers/fabric_signal.h
+HDRS = headers/gryvia_core.h headers/common.h headers/gpu_common.h headers/security_common.h headers/fabric_signal.h headers/xdp_chain.h
 
 %.o: %.c $(HDRS)
 	$(CLANG) $(CFLAGS) -c $< -o $@

@@ -54,7 +54,7 @@ func TestSignalExtConstantsMatchC(t *testing.T) {
 			t.Errorf("%s: C %d, Go %d", name, got, want)
 		}
 	}
-	mux := "../../../ebpf/xdp_mux.c"
+	mux := "../../../ebpf/headers/xdp_chain.h"
 	for name, want := range map[string]uint32{
 		"XDP_SLOT_ROCE_CNP": XDPSlotRoceCNP, "XDP_SLOT_PFC_PAUSE": XDPSlotPFCPause,
 		"XDP_SLOT_DNS": XDPSlotDNS, "XDP_SLOT_PACKET_FILTER": XDPSlotPacketFilter,

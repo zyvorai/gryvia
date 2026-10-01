@@ -8,6 +8,7 @@
 // transaction IDs.
 
 #include "headers/common.h"
+#include "headers/xdp_chain.h"
 
 /* DNS header (RFC 1035 section 4.1.1) */
 struct dns_header {
@@ -76,8 +77,7 @@ struct {
 
 /* ---- XDP DNS tracker -------------------------------------------------- */
 
-SEC("xdp")
-int xdp_dns_tracker(struct xdp_md *ctx)
+static __always_inline int xdp_dns_tracker_body(struct xdp_md *ctx)
 {
     void *data     = (void *)(long)ctx->data;
     void *data_end = (void *)(long)ctx->data_end;
@@ -165,6 +165,14 @@ int xdp_dns_tracker(struct xdp_md *ctx)
     }
 
     return XDP_PASS;
+}
+
+/* Entry point.  With xdp_mux this continues the chain to the next populated slot (see
+ * headers/xdp_chain.h); attached on its own it simply returns the verdict. */
+SEC("xdp")
+int xdp_dns_tracker(struct xdp_md *ctx)
+{
+	return xdp_chain_next(ctx, XDP_SLOT_DNS, xdp_dns_tracker_body(ctx));
 }
 
 char LICENSE[] SEC("license") = "Dual BSD/GPL";
