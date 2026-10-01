@@ -32,6 +32,14 @@ func TestSignalExtConstantsMatchC(t *testing.T) {
 		"FABRIC_SIG_NCCL_XPORT":    SigNCCLTransport,
 		"FABRIC_SIG_P2P_FALLBACK":  SigP2PFallback,
 		"FABRIC_SIG_CAPTURE_ARMED": SigCaptureArmed,
+		"FABRIC_SIG_GPU_OOM":       SigGPUOOM,
+		"FABRIC_SIG_GRAPH_STALL":   SigGraphStall,
+		"FABRIC_SIG_GDR_FAIL":      SigGDRFail,
+		"FABRIC_SIG_INFER_TTFT":    SigInferTTFT,
+		"FABRIC_SIG_INFER_GAP":     SigInferGap,
+		"FABRIC_SIG_WEIGHT_MMAP":   SigWeightMmap,
+		"FABRIC_SIG_GPU_DEV":       SigGPUDev,
+		"FABRIC_SIG_UCX_WAIT":      SigUCXWait,
 	} {
 		if got := grabNum(t, hdr, name+`\s*=\s*(\d+)`); got != uint64(want) {
 			t.Errorf("%s: header %d, Go %d", name, got, want)
@@ -50,6 +58,7 @@ func TestSignalExtConstantsMatchC(t *testing.T) {
 	for name, want := range map[string]uint32{
 		"XDP_SLOT_ROCE_CNP": XDPSlotRoceCNP, "XDP_SLOT_PFC_PAUSE": XDPSlotPFCPause,
 		"XDP_SLOT_DNS": XDPSlotDNS, "XDP_SLOT_PACKET_FILTER": XDPSlotPacketFilter,
+		"XDP_SLOT_ROCE_ECN": XDPSlotRoceECN,
 	} {
 		if got := grabNum(t, mux, `#define `+name+`\s+(\d+)`); got != uint64(want) {
 			t.Errorf("%s: C %d, Go %d", name, got, want)

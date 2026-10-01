@@ -20,6 +20,25 @@ const (
 	// SigCaptureArmed is synthesised by the collector from capture_lease.
 	// The kernel program does not write it to a ring buffer.
 	SigCaptureArmed uint8 = 13
+	// 14 is reserved (no program emits it).
+
+	// SigGPUOOM: cudaMalloc* returned out-of-memory (gpu_oom.c). Bytes is the request,
+	// RetryCount 0 malloc / 1 async / 2 pool. Routine in PyTorch's caching allocator.
+	SigGPUOOM uint8 = 15
+	// SigGraphStall: cudaDeviceSynchronize inside an open CUDA graph capture (graph_stall.c).
+	SigGraphStall uint8 = 16
+	// SigGDRFail: nvidia_p2p_get_pages failed (gdr_fail.c). RetryCount is its return value.
+	SigGDRFail uint8 = 17
+	// SigInferTTFT / SigInferGap: accept -> first send, and a later send gap (infer_ttft.c).
+	SigInferTTFT uint8 = 18
+	SigInferGap  uint8 = 19
+	// SigWeightMmap: mmap of a weight file, then a public IPv4 connect (weight_mmap.c).
+	SigWeightMmap uint8 = 20
+	// SigGPUDev: GPU device open from a cgroup not in allowed_cg (gpu_dev.c).
+	SigGPUDev uint8 = 21
+	// SigUCXWait: progress ran >= 5 ms after a UCX send returned a request (ucx_complete.c).
+	SigUCXWait uint8 = 22
+	// 23 is reserved (no program emits it).
 )
 
 // Transport hints written into nccl_transport's transport_hint map
@@ -40,4 +59,5 @@ const (
 	XDPSlotPFCPause     uint32 = 1
 	XDPSlotDNS          uint32 = 2
 	XDPSlotPacketFilter uint32 = 3
+	XDPSlotRoceECN      uint32 = 4
 )

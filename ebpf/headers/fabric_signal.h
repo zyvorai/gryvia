@@ -48,6 +48,38 @@ enum fabric_signal_type {
 	/* Reserved: collector synthesises from capture_lease / gate_hits.
 	 * Not emitted on a ring buffer. */
 	FABRIC_SIG_CAPTURE_ARMED = 13,
+	/* 14 is reserved: a RoCE GID/QP-modify signal was proposed but cannot be observed
+	 * from the kernel for userspace verbs, so no program emits it. */
+	/* cudaMalloc / cudaMallocAsync / cudaMallocFromPoolAsync returned
+	 * cudaErrorMemoryAllocation.  bytes = requested size,
+	 * retry_count = 0 malloc, 1 async, 2 pool.  Routine in PyTorch's caching
+	 * allocator, which retries after freeing cached blocks. */
+	FABRIC_SIG_GPU_OOM     = 15,
+	/* cudaDeviceSynchronize returned while a CUDA graph capture was open on
+	 * the thread.  latency_ns = time since the capture began,
+	 * retry_count = syncs seen in this capture. */
+	FABRIC_SIG_GRAPH_STALL = 16,
+	/* nvidia_p2p_get_pages returned non-zero.  retry_count = its return value. */
+	FABRIC_SIG_GDR_FAIL    = 17,
+	/* infer_ttft.c: accept -> first tcp_sendmsg on an inference port.
+	 * latency_ns, bytes = first send size, rank = local port. */
+	FABRIC_SIG_INFER_TTFT  = 18,
+	/* infer_ttft.c: a gap >= 50 ms between two later sends on that
+	 * connection, once per connection.  latency_ns = the gap. */
+	FABRIC_SIG_INFER_GAP   = 19,
+	/* weight_mmap.c: mmap of a model-weight file, then a connect to a public
+	 * IPv4 within 30 s.  latency_ns = mmap -> connect, rank = remote port,
+	 * peer_rank = remote IPv4 (host order). */
+	FABRIC_SIG_WEIGHT_MMAP = 20,
+	/* gpu_dev.c: open of a GPU device node from a cgroup not in allowed_cg,
+	 * while gpu_dev_cfg[0] enforces.  cgroup_id_lo = low 32 bits of the id. */
+	FABRIC_SIG_GPU_DEV     = 21,
+	/* ucx_complete.c: ucp_worker_progress ran >= 5 ms after a send that
+	 * returned a request.  latency_ns = post -> progress, bytes = send size.
+	 * Completion is not observed. */
+	FABRIC_SIG_UCX_WAIT    = 22,
+	/* 23 is reserved: a LoRA-load signal (large read then H2D copy) was
+	 * proposed but is indistinguishable from ordinary data loading. */
 };
 
 /* FABRIC_SIG_COLLECTIVE retry_count bits. */
