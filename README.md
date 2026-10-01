@@ -318,8 +318,9 @@ guarantee yet; see the [changelog](CHANGELOG.md). What exists today:
 - Two roles in the API gateway: the API key and dashboard sessions are the provider **admin**; OIDC users (JWT
   validation, PKCE in the dashboard) are **tenant** users limited to the namespaces of the `GryviaTenant` they match
   (`GRYVIA_OIDC_ADMIN_GROUPS` promotes a group). Isolation is enforced by the gateway; per-tenant Kubernetes RBAC
-  (RoleBindings from `GryviaTenant` members and OIDC groups) is opt-in (`quotaOperator.tenantRbac`) and unverified, and OIDC has only been tested against a fake identity provider. There is one shared admin identity, so no
-  per-user audit trail for key-based sessions.
+  (RoleBindings from `GryviaTenant` members and OIDC groups) is opt-in (`quotaOperator.tenantRbac`) and unverified, and OIDC has only been tested against a fake identity provider. There is one shared admin identity, so key-based sessions are
+  not attributable to a person. State-changing requests (and refused ones) are audited with the auth method, role, tenant and
+  OIDC subject (`gryvia.audit` log, optional file, `GET /api/audit`; see the gateway README).
 - A shared-key login (constant-time compare, rate limited) issuing signed, expiring session tokens.
 - HTTPS for the dashboard and gateway (self-signed by default; cert-manager or your own certificate supported).
 - Non-root containers with a read-only root filesystem for the operators, gateway and dashboard.

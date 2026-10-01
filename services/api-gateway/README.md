@@ -91,12 +91,24 @@ Returns GPU node health status (admin only).
   `/api/quotas`, `/api/quota/usage` (quotas whose `spec.namespaces` intersect), `/api/metrics/costs`,
   `/api/metrics/jobs`, `/api/cluster/stats` (jobs only, no node capacity), `/api/usage`.
 
+### Audit trail
+
+Every `POST`/`PUT`/`PATCH`/`DELETE` is recorded after it completes, including failed logins and 401/403 refusals: time, request id, auth method, role, tenant, OIDC subject, method, route, path, status, outcome (`success`, `denied`, `error`), peer address and duration. Never the `Authorization` header, query string or body. The client address is the socket peer, not `X-Forwarded-For`.
+
+- **Log:** one JSON object per line on the `gryvia.audit` logger. This is the durable record; ship it with your log collector.
+- **File:** `GRYVIA_AUDIT_FILE=/path/audit.jsonl` also appends the lines (mode 0600). An unwritable file is logged, never fails a request.
+- **API:** `GET /api/audit?limit=&outcome=&method=` (admin) reads a bounded buffer (`GRYVIA_AUDIT_BUFFER`, default 1000). The buffer is per replica and lost on restart.
+- **Metric:** `gryvia_gateway_audit_events_total{method,outcome}`.
+
+The API key and dashboard sessions are one shared admin identity, so those entries say "admin via api_key/session", not who.
+
 ### GPU catalog, tenants, usage
 ```
 GET    /api/skus[/{name}]        # any user; tenants see enabled SKUs, limited to spec.allowedSkus of their tenant
 POST   /api/skus                 # admin: {name, gpuType, gpusPerUnit, hourlyRate, currency, spotDiscount, description, enabled}
 PUT    /api/skus/{name}          # admin: same fields without name
 DELETE /api/skus/{name}          # admin
+GET    /api/audit                # admin: recent state-changing requests (?limit&outcome&method)
 GET    /api/tenants[/{name}]     # admin: all; tenant: its own
 POST   /api/tenants              # admin: {name, displayName, allowedSkus, maxGPUs, isolated}
 DELETE /api/tenants/{name}       # admin

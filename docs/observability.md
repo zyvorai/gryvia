@@ -58,6 +58,7 @@ registered (404). The API key is deliberately not reused. Helm: `apiGateway.metr
 | Metric | Labels |
 |---|---|
 | `gryvia_gateway_http_requests_total`, `gryvia_gateway_http_request_duration_seconds` | `method, route (template such as /api/jobs/{name}), status` |
+| `gryvia_gateway_audit_events_total` | `method (POST, PUT, PATCH, DELETE), outcome (success, denied, error)`; never identity |
 | `gryvia_gateway_auth_attempts_total` | `method (session, oidc, api_key, login), result (success, failure)`; never user identity |
 | `gryvia_gateway_rate_limit_hits_total` | `route` (429 responses) |
 | `gryvia_gateway_collector_targets`, `gryvia_gateway_collector_reachable` (gauges, last fan-out), `gryvia_gateway_collector_fanout_total{outcome}` | |

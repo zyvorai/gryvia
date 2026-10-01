@@ -123,6 +123,7 @@ shown but nothing runs them.
 | `GET /api/skus`, `GET /api/skus/{name}` | tenant-filtered | The catalog. A tenant sees enabled SKUs, limited to the `allowedSkus` of its tenant(s) |
 | `POST /api/skus`, `PUT /api/skus/{name}`, `DELETE /api/skus/{name}` | admin | Manage SKUs (`gpuType`, `gpusPerUnit`, `hourlyRate`, `currency`, `spotDiscount`, `description`, `enabled`) |
 | `GET /api/tenants`, `GET /api/tenants/{name}` | tenant-filtered | The admin sees every tenant, a tenant user only its own |
+| `GET /api/audit` | admin | Recent state-changing requests (newest first; `limit`, `outcome`, `method`). Per-replica buffer lost on restart; the `gryvia.audit` log is the durable record |
 | `POST /api/tenants`, `DELETE /api/tenants/{name}` | admin | Create (`name`, `displayName`, `allowedSkus`, `maxGPUs`, `isolated`) or delete a tenant |
 | `GET /api/usage?tenant=&from=&to=&groupBy=tenant\|sku\|day` | tenant-filtered | Metered GPU hours and cost from `GryviaUsageRecord`s. A tenant user is always limited to its own namespaces, whatever `tenant` says |
 | `GET /api/usage/export?format=csv\|json&tenant=&from=&to=` | tenant-filtered | Per-record export as an attachment |
