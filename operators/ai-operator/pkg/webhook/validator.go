@@ -232,6 +232,15 @@ func validateDistributedConfig(job *gryviav1.GryviaAIJob) error {
 		return fmt.Errorf("distributed.gpusPerNode must be non-negative, got %d", dist.GpusPerNode)
 	}
 
+	if e := dist.Elastic; e != nil {
+		if e.MinNodes < 1 || e.MinNodes > dist.Nodes {
+			return fmt.Errorf("distributed.elastic.minNodes must be between 1 and distributed.nodes (%d), got %d", dist.Nodes, e.MinNodes)
+		}
+		if dist.Framework != "" && dist.Framework != "pytorch" {
+			return fmt.Errorf("distributed.elastic is for PyTorch (torchrun); framework %q is not supported", dist.Framework)
+		}
+	}
+
 	// Validate framework.
 	validFrameworks := map[string]bool{
 		"pytorch":    true,

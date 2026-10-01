@@ -210,6 +210,11 @@ func (r *GryviaAIJobReconciler) reconcileAIJob(ctx context.Context, job *gryviav
 	if err != nil {
 		return ctrl.Result{}, err
 	}
+	if job.Status.Phase == PhasePending || (job.Status.Phase == PhaseScheduling && !conditionTrue(job, ConditionScheduled)) {
+		if err := validateElastic(job, kind); err != nil {
+			return ctrl.Result{}, r.failJob(ctx, job, "InvalidElasticConfig", err.Error())
+		}
+	}
 	var queue string
 	if job.Status.Phase == PhasePending || (job.Status.Phase == PhaseScheduling && !conditionTrue(job, ConditionScheduled)) {
 		queue, _, err = r.resolveKueueQueue(ctx, job)
@@ -785,6 +790,16 @@ func (r *GryviaAIJobReconciler) buildEnvVarsFor(job *gryviav1.GryviaAIJob, kind 
 		corev1.EnvVar{Name: "NNODES", Value: fmt.Sprintf("%d", nodes)},
 		corev1.EnvVar{Name: "NPROC_PER_NODE", Value: fmt.Sprintf("%d", procsPerNode)},
 	)
+	if min, max, ok := dist.ElasticBounds(); ok {
+		// torchrun --nnodes accepts "min:max". WORLD_SIZE above is the upper bound; the launcher recomputes it
+		// after each rendezvous.
+		envVars = replaceEnv(envVars, "NNODES", fmt.Sprintf("%d:%d", min, max))
+		envVars = append(envVars,
+			corev1.EnvVar{Name: "GRYVIA_ELASTIC", Value: "true"},
+			corev1.EnvVar{Name: "GRYVIA_ELASTIC_MIN_NODES", Value: fmt.Sprintf("%d", min)},
+			corev1.EnvVar{Name: "GRYVIA_ELASTIC_MAX_NODES", Value: fmt.Sprintf("%d", max)},
+		)
+	}
 	if dist.Framework != "" {
 		envVars = append(envVars, corev1.EnvVar{Name: "GRYVIA_DIST_FRAMEWORK", Value: dist.Framework})
 	}
@@ -899,6 +914,9 @@ func (r *GryviaAIJobReconciler) getStatefulSetName(job *gryviav1.GryviaAIJob) st
 
 func (r *GryviaAIJobReconciler) getReplicaCount(job *gryviav1.GryviaAIJob) int32 {
 	if job.Spec.Distributed != nil && job.Spec.Distributed.Enabled {
+		if _, max, ok := job.Spec.Distributed.ElasticBounds(); ok && max > 0 {
+			return max
+		}
 		if job.Spec.Distributed.Nodes > 0 {
 			return job.Spec.Distributed.Nodes
 		}

@@ -8,7 +8,8 @@ Example YAML manifests for Gryvia GPU scheduling CRDs covering elastic training,
 
 ## Examples
 
-- **[elastic-training.yaml](elastic-training.yaml)** - `GryviaAIJob` with elastic annotations scaling between 2 and 8 nodes
+- **[elastic-job-example.yaml](elastic-job-example.yaml)** - the real schema: `distributed.elastic.minNodes` (see docs/elastic-training.md)
+- **[elastic-training.yaml](elastic-training.yaml)** (old design example, annotations not implemented) - `GryviaAIJob` with elastic annotations scaling between 2 and 8 nodes
 - **[gang-scheduling.yaml](gang-scheduling.yaml)** - `GryviaAIJob` distributed job requiring atomic allocation of all 4 nodes
 - **[priority-preemption.yaml](priority-preemption.yaml)** - `GryviaPriority` defining critical, normal, and preemptible scheduling tiers
 

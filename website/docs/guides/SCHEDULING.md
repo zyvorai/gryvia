@@ -13,7 +13,7 @@ What Gryvia does today when a `GryviaAIJob` is submitted, and which of the more 
 | In-tree gang scheduler and DRF queue | Removed (they were never called); Kueue does gang admission and queueing when enabled |
 | Placement holds (`--placement-holds`) | **Opt-in, off by default.** While a job's pods come up, the GPUs of the nodes it was placed on count as used for other jobs' placement, so two jobs placed at the same moment do not both take the same free GPUs. In memory, expires after 5 minutes. It does not pin pods; see [Placement holds](#placement-holds-opt-in). Unit-tested with fake clients; nothing on GPUs |
 | Backfill | Not implemented (Kueue's `BestEffortFIFO` lets smaller jobs run past a blocked one, which is not time-based backfill) |
-| Elastic training | Not implemented (the unused helper package was removed) |
+| Elastic training | Partial, unit-tested only: `distributed.elastic.minNodes` bounds the worker count (launcher `NNODES=min:max`, Job success at `minNodes`, placement between min and max); no resizing of a running job. See [Elastic training](https://github.com/zyvorai/gryvia/blob/main/docs/elastic-training.md) |
 | Mutating webhook (NCCL injection and defaults) | Code exists in `pkg/webhook/mutator.go`; not registered in `main.go`, so it does not run |
 | Priority preemption | With Kueue integration: a higher `spec.priority` job preempts lower-priority jobs of the same ClusterQueue (and of borrowing tenants in the cohort); the victim is requeued (`Queued`), not lost. Without Kueue: none. `GryviaPriority` classes: CRD only, no controller |
 | Fabric-health penalty on node scores | Function exists (`pkg/scheduler/fabric_score.go`), marked NOT WIRED in the code |
@@ -147,13 +147,11 @@ Intended semantics: weighted DRF ordering across teams, guaranteed minimums with
 
 ## Elastic Training
 
-Status: not implemented. `GryviaAIJob` has no `elastic` field and the controller never scales workers (an unused helper package was removed). A job's replica count is fixed at `distributed.nodes`.
+Status: partial and unit-tested only. `spec.distributed.elastic.minNodes` lets a PyTorch batch job run with between `minNodes` and `distributed.nodes` workers: the launcher gets `NNODES=min:max`, the Job succeeds once `minNodes` indexes did, and placement starts as soon as `minNodes` nodes qualify. The operator does **not** resize a running job (the Job's `completions` is fixed), does not tolerate losing rendezvous host 0, and nothing has run on a cluster or GPUs. See [docs/elastic-training.md](https://github.com/zyvorai/gryvia/blob/main/docs/elastic-training.md) and the example `examples/scheduling/elastic-job-example.yaml`.
 
-You can still run a torchelastic-style job by putting the elastic launcher flags in `command` (for example `--nnodes=2:8` with a c10d rendezvous); that is entirely the job's own behaviour, and Gryvia will not add or remove workers.
+The old design sketch below (`minWorkers`/`maxWorkers`/`checkpointOnScale`) is **not** the schema that exists; use `distributed.elastic`.
 
-### Design sketch
-
-Design sketch, not accepted by the current CRD schema:
+### Design sketch (not implemented)
 
 ```text
 spec:
@@ -164,7 +162,7 @@ spec:
     checkpointOnScale: true
 ```
 
-Intended behaviour: scale workers up when GPUs are free, scale down instead of killing the job when GPUs are needed elsewhere, and checkpoint before removing a worker. This would need the checkpoint machinery (see `GryviaCheckpointGuard` in the ML workflows guide) and a rendezvous backend in the cluster.
+Intended behaviour of the full design: scale workers up when GPUs are free, scale down instead of killing the job when GPUs are needed elsewhere, and checkpoint before removing a worker. This would need a controller that resizes the workload, the checkpoint machinery (see `GryviaCheckpointGuard` and the coordinated-checkpoint example) and a rendezvous backend in the cluster.
 
 ---
 
@@ -225,7 +223,7 @@ kubectl describe gryviaaijob my-job
 | Gang admission (all pods together) | Kueue-backed, opt-in (`--kueue-integration`); unit-tested; the kind e2e (real Kueue, CPU pods) passes in CI; never on GPUs. |
 | Queues, per-tenant quota, borrowing | Kueue-backed, opt-in; nominal quota + cohort borrowing, not DRF. |
 | Hierarchical queues, backfill | Not implemented |
-| Elastic training | Not implemented, no CRD field |
+| Elastic training | Partial: `distributed.elastic.minNodes`, unit-tested, not run on a cluster; no live resize |
 | Validating webhook | Runs when enabled; quota and SKU policy; fails open by default |
 | Mutating webhook (NCCL injection) | Code only, not registered |
 | Priority preemption | Kueue-backed, opt-in: evicted jobs are requeued, no checkpointing. Off without the integration |

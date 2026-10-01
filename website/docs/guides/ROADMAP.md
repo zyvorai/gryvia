@@ -36,7 +36,7 @@ Dormant simulation controllers have been removed for `GryviaSLA`, `GryviaAutoSca
 
 ### Not implemented
 
-- Elastic rank resharding and guaranteed checkpoints on abrupt node loss. Cooperative preStop requests, a durable single-process recovery example and a file-based all-ranks commit protocol (`examples/training/coordinated_checkpoint.py`, multi-process tested on CPU, not wired into a real distributed trainer) are implemented.
+- Live resizing of a running job, elastic rank resharding and guaranteed checkpoints on abrupt node loss. Cooperative preStop requests, a durable single-process recovery example and a file-based all-ranks commit protocol (`examples/training/coordinated_checkpoint.py`, multi-process tested on CPU, not wired into a real distributed trainer) are implemented.
 - A separate hierarchical/DRF/global scheduler. Native Kueue fair-sharing, topology and MultiKueue configuration is available; real multi-cluster execution and GPU placement remain unverified.
 - Cilium as the default CNI or any cluster-wide CNI replacement
 - Multi-cluster control plane and global scheduler
@@ -52,7 +52,7 @@ Listed roughly in the order they would make the platform more useful; no dates.
 1. **Verify on real hardware.** Run the operators, the eBPF collector and the RDMA paths on GPU and InfiniBand or RoCE nodes and record measured results. Until then storage, NCCL and training performance are unknown: the earlier targets (for example 20 GB/s storage, 30 percent faster training, 99.9 percent uptime) were goals, never measurements.
 2. **Prove the Kueue integration** (the kind workflow already passes in CI; next a GPU cluster) and wire what is still unwired (topology-aware placement beyond the opt-in fabric penalty, which is wired); elastic training is not implemented. The decision to integrate Kueue rather than build queueing in-tree is made.
 3. **Prove the ML controllers** on real workloads (`e2e-ml.yml` already passes in CI with tiny CPU images; next real Jupyter, vLLM and Triton images on GPUs) and decide the kinds that have no controller: build them or remove them.
-4. **Reliability of jobs**: validate cooperative checkpoint recovery with real distributed trainers and implement elastic coordination.
+4. **Reliability of jobs**: validate cooperative checkpoint recovery with real distributed trainers and run the new elastic bounds (`distributed.elastic.minNodes`, unit-tested only) with a real `torchrun`.
 5. **Cost controls**: validate budget Events and actual-usage chargeback on a real cluster, then add external notification/report delivery.
 6. **Multi-cluster** and federation, if demand justifies it.
 7. **Release quality**: publish the collector image once the eBPF programs are verified on more kernels and on arm64, add end-to-end tests that exercise GPUs, and broaden CI.
