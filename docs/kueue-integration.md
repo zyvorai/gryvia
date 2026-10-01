@@ -6,8 +6,8 @@ quota, and a higher `spec.priority` job preempts a lower-priority one. Without i
 changes.
 
 **Status: unit-tested with fake clients; the kind end-to-end workflow (`.github/workflows/e2e-kueue.yml`,
-`scripts/e2e-kueue.sh`) is written but had not been run when this document was written. Nothing has run on GPUs.**
-Treat every statement about Kueue's runtime behaviour as unverified until that workflow has passed.
+`scripts/e2e-kueue.sh`) installs real Kueue on kind and passes in CI with CPU pods. Nothing has run on GPUs.**
+Statements about Kueue's runtime behaviour are verified only as far as that workflow goes; anything about GPUs, MultiKueue across real clusters or topology on real hardware is unverified.
 
 > The pinned Kueue (0.19) serves `ClusterQueue` as `v1beta2`, where the cohort field is `spec.cohortName` (`v1beta1` calls it
 > `spec.cohort`). The operator's objects join the `gryvia` cohort either way; use the field name of the version you query.

@@ -170,5 +170,5 @@ decision (documented at `reconcileAIJob` in `gryviaaijob_controller.go`):
 
 - Everything on GPU and RDMA nodes, and multi-node NCCL rendezvous over the Job pod DNS names.
 - `podFailurePolicy` on clusters older than 1.26 and `RANK` from the StatefulSet label before 1.28.
-- Kueue interaction: unit-tested with fake clients; the kind workflow `.github/workflows/e2e-kueue.yml` is written but was not run when this was written. Never run on GPUs.
+- Kueue interaction: unit-tested with fake clients; the kind workflow `.github/workflows/e2e-kueue.yml` passes in CI (real Kueue, CPU pods). Never run on GPUs.
 - Operator behaviour under concurrent writers beyond what optimistic locking and the fake-client tests show.
