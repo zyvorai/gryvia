@@ -365,6 +365,8 @@ We welcome contributions — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
+Commercial subscriptions and support: see [docs/SUBSCRIPTION-MODEL.md](docs/SUBSCRIPTION-MODEL.md).
+
 Apache License 2.0 — see [LICENSE](LICENSE).
 
 ---
