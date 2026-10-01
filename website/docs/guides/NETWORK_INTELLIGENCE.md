@@ -136,7 +136,7 @@ The fabric score penalty (`scoreDelta`, capped at 1) adds 0.15 when `overlapIdle
 `cnpRate` exceeds 100 packets per second and 0.10 when `pfcRate` exceeds 1000 pause frames per second, on top of the
 straggler, RDMA and GDS terms. `exfilEvents`, `ucxSlowP99ms` and `inferWaitP99ms` are informational. The thresholds are heuristics
 that have not been calibrated on real fabrics. `FabricPenalty` in the ai-operator scheduler package turns `scoreDelta`
-into up to 25 points to subtract, and `RescoreNodes` applies a per-node map of them, but nothing calls either yet and nothing produces a per-node map.
+into up to 25 points to subtract. With `--fabric-aware-scheduling` (or the per-job annotation `gryvia.io/fabric-aware`) the job controller reads the fresh per-node `GryviaNodeFabric` objects the collector publishes (`-publish-node-fabric`) and applies the penalty before choosing nodes; stale signals are ignored and a lookup failure leaves the ranking unchanged. Off by default; unit-tested with fake signals, never run on a real fabric.
 
 :::caution Unverified on hardware
 These programs compile and pass the kernel verifier (Linux 7.0 x86_64; arm64 compiles only). `roce_cnp` and

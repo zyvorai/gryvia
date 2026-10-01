@@ -251,7 +251,7 @@ memory, plus CPU/memory) and takes the top `distributed.nodes`. It records that 
 keeps the job Pending, retrying every 30 s, when no node qualifies); the workload's pods (Job or StatefulSet) are constrained by node
 selector (`gryvia.io/gpu`, `gryvia.io/rdma`, `spec.nodeSelector`) and placed by the default Kubernetes scheduler. The
 There is no in-tree gang scheduler, DRF queue, preemption or elastic scaling (Kueue, when its integration is on, does gang admission, borrowing and priority preemption instead; unverified on a cluster), and the standalone NVLink/NUMA
-topology optimizer in `scheduler/` is not called by the running operator. `FabricPenalty` (eBPF fabric signals) is a helper that nothing calls yet. Detail:
+topology optimizer in `scheduler/` is not called by the running operator. Opt-in fabric-aware ranking (`--fabric-aware-scheduling`, chart `aiOperator.fabricAwareScheduling`, or the per-job annotation `gryvia.io/fabric-aware`) subtracts up to 25 points from nodes whose fresh `GryviaNodeFabric` signal reports a sick fabric; it is off by default, unit-tested, and never run on a real fabric. Detail:
 [Scheduling guide](website/docs/guides/SCHEDULING.md).
 
 ---
