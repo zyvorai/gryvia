@@ -74,6 +74,21 @@ gryvia queue
 On a machine that already has a working driver (`nvidia-smi` works), the installer should detect it and set
 `nvidia.driver.enabled=false`. Confirm with `helm -n gryvia-system get values gryvia`.
 
+## Smoke job and evidence file
+
+For a short, scripted record that the device plugin scheduled a pod on the GPU, without the full checklist above:
+
+```bash
+kubectl apply -f examples/validation/gpu-smoke.yaml     # ConfigMap and Job gryvia-gpu-smoke in gryvia-system, requests nvidia.com/gpu: 1
+kubectl -n gryvia-system wait --for=condition=complete job/gryvia-gpu-smoke --timeout=300s
+./scripts/record-gpu-validation.sh report.txt           # NS=<namespace> if not gryvia-system
+```
+
+The job runs `nvidia-smi -L` and prints the GPU name, driver version and memory. `record-gpu-validation.sh` writes one
+text file with the nodes, each node's allocatable `nvidia.com/gpu`, the `GryviaGpuNode` objects, and the job's YAML and
+log. It is evidence that the GPU path scheduled a pod, not a benchmark: it checks no RDMA, NCCL, DCGM or NVSwitch, and it
+has not been run on a GPU. Attach the report to whatever claims the GPU path is validated.
+
 ## Report
 
 Paste the script's summary table and `gpu-validation-report.json` into an issue, plus the GPU model, driver version

@@ -19,8 +19,8 @@ For a single k3s host you can reach over SSH:
 ```
 
 The script uses SSH (there is no password argument), rsyncs the repo, builds the images with podman on the host,
-installs the CRDs and the `gryvia` chart, and smoke-tests the dashboard and API. Set `GRYVIA_API_KEY` first; the default
-is a well-known development key. See the [Quick Start](../getting-started/quickstart.md) and `scripts/deploy-remote.sh --help`.
+installs the CRDs and the `gryvia` chart, and smoke-tests the dashboard and API. Set `GRYVIA_API_KEY` on a first install (the default
+is a well-known development key); a redeploy keeps the key that is installed. See the [Quick Start](../getting-started/quickstart.md) and `scripts/deploy-remote.sh --help`.
 
 ## Full Production Deployment
 

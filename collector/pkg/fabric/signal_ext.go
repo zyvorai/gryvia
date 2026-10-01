@@ -5,8 +5,9 @@
 // ebpf/headers/fabric_signal.h and ebpf/headers/xdp_chain.h (signal_ext_test.go checks it).
 // struct fabric_signal stays 80 bytes; do not add fields.
 //
-// Not yet decoded or loaded: signal.go's Decode does not interpret these types
-// and nothing in the operator attaches the new programs or writes their maps.
+// Not interpreted yet: the collector's loader attaches these programs when their hooks resolve and
+// reads their ring, but Folder has no case for these types (they are read and dropped), and
+// nothing writes the maps that steer them (transport_hint, capture_lease, allowed_cg, gpu_dev_cfg).
 
 package fabric
 
