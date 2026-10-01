@@ -22,3 +22,5 @@ This checks placement quality only. It says nothing about NCCL, RDMA, eBPF or tr
 ## Finding
 
 The default scoring prefers the node with the most free GPUs, so it spreads single-GPU jobs and a later whole-node job waits for a node to drain (`TestSpreadingScoreFragmentsWholeNodeJobs`: two 1-GPU jobs plus a 4-GPU job on 2x4 GPUs gives makespan 110 s instead of 100 s).
+
+Annotate a job `gryvia.io/placement-strategy: pack` for best-fit scoring (fewer free GPUs that still fit wins); the same workload then finishes at 100 s (`-strategy pack` in the simulator). Default stays spread. Simulated only, not measured on a cluster.

@@ -21,19 +21,20 @@ func main() {
 	hw := flag.String("hardware", "", "Janus hardware profile dir (default: hardware_profiles_dir from the config)")
 	workload := flag.String("workload", "", "workload YAML (default: workload.path from the config)")
 	backfill := flag.Bool("backfill", true, "skip a job that does not fit and start later ones (Janus fifo does)")
+	strategy := flag.String("strategy", "", "placement strategy annotation for every job: pack | (empty = default spread)")
 	asJSON := flag.Bool("json", false, "print JSON")
 	flag.Parse()
 	if *cfg == "" {
 		flag.Usage()
 		os.Exit(2)
 	}
-	if err := run(*cfg, *hw, *workload, *asJSON, *backfill); err != nil {
+	if err := run(*cfg, *hw, *workload, *asJSON, *backfill, *strategy); err != nil {
 		fmt.Fprintln(os.Stderr, "placement-sim:", err)
 		os.Exit(1)
 	}
 }
 
-func run(cfgPath, hwDir, wlPath string, asJSON, backfill bool) error {
+func run(cfgPath, hwDir, wlPath string, asJSON, backfill bool, strategy string) error {
 	raw, err := os.ReadFile(cfgPath)
 	if err != nil {
 		return err
@@ -78,7 +79,7 @@ func run(cfgPath, hwDir, wlPath string, asJSON, backfill bool) error {
 	if err != nil {
 		return err
 	}
-	res, err := placementsim.Run(nodes, jobs, placementsim.Options{Backfill: backfill})
+	res, err := placementsim.Run(nodes, jobs, placementsim.Options{Backfill: backfill, Strategy: strategy})
 	if err != nil {
 		return err
 	}
