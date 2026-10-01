@@ -138,6 +138,9 @@ type MetricHistoryEntry struct {
 
 // GryviaMetricStatus defines the observed state of GryviaMetric
 type GryviaMetricStatus struct {
+	// Conditions report runtime capability and remediation state.
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
 	// CurrentValue is the latest metric value
 	CurrentValue float64 `json:"currentValue,omitempty"`
 

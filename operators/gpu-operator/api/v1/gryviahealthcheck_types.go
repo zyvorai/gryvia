@@ -141,6 +141,9 @@ type RemediationEvent struct {
 
 // GryviaHealthCheckStatus defines the observed state of GryviaHealthCheck
 type GryviaHealthCheckStatus struct {
+	// Conditions report runtime capability and remediation state.
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
 	// LastCheckTime is when the last health check ran
 	LastCheckTime *metav1.Time `json:"lastCheckTime,omitempty"`
 

@@ -63,6 +63,16 @@ rules:
     verbs:
       - update
 
+  # Priority classes are reconciled from cluster-scoped GryviaPriority.
+  - apiGroups: ["scheduling.k8s.io"]
+    resources: ["priorityclasses"]
+    verbs: ["get", "list", "watch", "create", "patch", "update"]
+  {{- if .Values.platformCompletion.gpuRemediation }}
+  - apiGroups: [""]
+    resources: ["pods/eviction"]
+    verbs: ["create"]
+  {{- end }}
+
   # Manage Kubernetes nodes
   - apiGroups:
       - ""

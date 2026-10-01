@@ -44,6 +44,7 @@ func TestInferenceServingAPIServer(t *testing.T) {
 		t.Fatal(err)
 	}
 	svc := routedInfer()
+	svc.Annotations[AnnotationInferenceTelemetry] = "true"
 	svc.UID = ""
 	svc.ResourceVersion = ""
 	svc.Spec.Autoscaling = &gryviav1.AutoscalingConfig{Enabled: true, MaxReplicas: 5, TargetGPUUtilization: 70, TargetRequestsPerSecond: 20}
@@ -52,6 +53,7 @@ func TestInferenceServingAPIServer(t *testing.T) {
 	}
 	r := newInferReconciler(c, newClock())
 	r.GatewayRouting = true
+	r.TelemetryImage = "example/operator:test"
 	reconcileOnce(t, r, "ns", "chat")
 	hpa := &autoscalingv2.HorizontalPodAutoscaler{}
 	mustGet(t, c, "ns", "chat-inference-hpa", hpa)
@@ -64,6 +66,16 @@ func TestInferenceServingAPIServer(t *testing.T) {
 	}
 	canary := &appsv1.Deployment{}
 	mustGet(t, c, "ns", "chat-canary", canary)
+	if len(canary.Spec.Template.Spec.Containers) != 2 {
+		t.Fatal("API did not preserve telemetry sidecar")
+	}
+	identity := map[string]string{}
+	for _, e := range canary.Spec.Template.Spec.Containers[1].Env {
+		identity[e.Name] = e.Value
+	}
+	if identity["GRYVIA_DEPLOYMENT_UID"] != string(canary.UID) || identity["GRYVIA_REVISION"] != canary.Annotations[annotationSpecHash] {
+		t.Fatal("sidecar identity differs from analysis selector")
+	}
 	canary.Status.ObservedGeneration = canary.Generation
 	canary.Status.Replicas = *canary.Spec.Replicas
 	canary.Status.ReadyReplicas = *canary.Spec.Replicas

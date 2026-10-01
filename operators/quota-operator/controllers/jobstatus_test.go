@@ -204,34 +204,8 @@ func TestBudgetEnforcement_PatchesOnlyOwnedFields(t *testing.T) {
 	assertOwnedFieldsSurvive(t, applied(t, rec, "Queued"), "Rejected")
 }
 
-func TestQuotaPolicyEnforcement_PatchesOnlyOwnedFields(t *testing.T) {
-	for _, action := range []string{"block", "queue"} {
-		t.Run(action, func(t *testing.T) {
-			policy := &gryviav1.GryviaQuotaPolicy{
-				ObjectMeta: metav1.ObjectMeta{Name: "p"},
-				Spec: gryviav1.GryviaQuotaPolicySpec{
-					Scope:       gryviav1.QuotaPolicyScope{Type: "namespace", Name: "ml-prod"},
-					Enforcement: &gryviav1.QuotaPolicyEnforcement{OnExceeded: action},
-				},
-			}
-			rec := &patchRecorder{}
-			c := recordingClient(rec, typedJob("j", "ml-prod", "Pending"))
-			r := &GryviaQuotaPolicyReconciler{Client: c, Scheme: newQuotaTestScheme()}
-			if err := r.enforcePolicy(context.Background(), policy); err != nil {
-				t.Fatal(err)
-			}
-			want := "Rejected"
-			if action == "queue" {
-				want = "Queued"
-			}
-			st := applied(t, rec, "Pending")
-			assertOwnedFieldsSurvive(t, st, want)
-			if action == "queue" && st["message"] != "waiting for nodes" {
-				t.Errorf("queueing must not touch the message: %v", st["message"])
-			}
-		})
-	}
-}
+// Legacy QuotaPolicy behavior is covered by api_contracts_test.go: it reports
+// UnsupportedAPI and no longer performs dormant job-state mutations.
 
 func TestUsageRecord_PreemptedIsTerminal(t *testing.T) {
 	for _, p := range []string{"Succeeded", "Failed", "Cancelled", "Preempted"} {

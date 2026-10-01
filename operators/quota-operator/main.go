@@ -34,15 +34,18 @@ func init() {
 }
 
 func main() {
+	var reportUnsupportedAPIs bool
 	var metricsAddr string
 	var enableLeaderElection bool
 	var probeAddr string
 	var kueueIntegration, kueueGPUTypeFlavors bool
-	var kueueQuotaResources string
+	var kueueQuotaResources, kueueTopology, kueueAdmissionCheck string
+	var kueueFairSharing bool
 	var tenantRBAC, enableReservations bool
 	var enableWebhooks bool
 	var webhookCertDir string
 
+	flag.BoolVar(&reportUnsupportedAPIs, "report-unsupported-apis", false, "Report unsupported legacy APIs with Ready=False instead of silently leaving them pending.")
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", true,
@@ -50,6 +53,9 @@ func main() {
 			"Enabling this will ensure there is only one active controller manager.")
 	flag.BoolVar(&kueueIntegration, "kueue-integration", false,
 		"Create a Kueue LocalQueue (tenant-<name>/gryvia), ClusterQueue (gryvia-<tenant>, cohort gryvia) and ResourceFlavors for every GryviaTenant. Needs Kueue installed. Off by default.")
+	flag.BoolVar(&kueueFairSharing, "kueue-fair-sharing", false, "Configure equal-weight Kueue fair sharing; enable fairSharing in Kueue manager configuration too.")
+	flag.StringVar(&kueueTopology, "kueue-topology-name", "", "Existing Kueue Topology for managed ResourceFlavors.")
+	flag.StringVar(&kueueAdmissionCheck, "kueue-admission-check", "", "Existing administrator-owned admission check, e.g. MultiKueue dispatcher.")
 	flag.StringVar(&kueueQuotaResources, "kueue-quota-resources", controllers.DefaultKueueQuotaResources,
 		"With --kueue-integration: comma-separated resources the tenant's nominal quota (concurrentGPUs, else the GryviaQuota maxGPUs) is applied to. The kind e2e sets cpu.")
 	flag.BoolVar(&kueueGPUTypeFlavors, "kueue-gpu-type-flavors", false,
@@ -133,12 +139,17 @@ func main() {
 			Scheme:         mgr.GetScheme(),
 			QuotaResources: resources,
 			GPUTypeFlavors: kueueGPUTypeFlavors,
+			FairSharing:    kueueFairSharing, TopologyName: kueueTopology, AdmissionCheck: kueueAdmissionCheck,
 		}).SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "GryviaKueue")
 			os.Exit(1)
 		}
 	}
 
+	if err = (&controllers.GryviaChargebackReconciler{Client: mgr.GetClient(), Scheme: mgr.GetScheme()}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "chargeback controller")
+		os.Exit(1)
+	}
 	if err = (&controllers.GryviaBudgetReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
@@ -168,6 +179,12 @@ func main() {
 		setupLog.Info("registered validating webhook", "path", usageadmission.UsageRecordPath, "certDir", webhookCertDir)
 	}
 
+	if reportUnsupportedAPIs {
+		if err := controllers.RegisterAPIContracts(mgr); err != nil {
+			setupLog.Error(err, "API capability contracts")
+			os.Exit(1)
+		}
+	}
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up health check")
 		os.Exit(1)

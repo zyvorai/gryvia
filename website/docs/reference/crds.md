@@ -17,19 +17,19 @@ Gryvia defines 52 custom resources in the `gryvia.io` API group (version `v1alph
 | `GryviaAutoTuner` | `gryviaautotuners` | Namespaced | ai-operator | `jobTemplate`, `maxTrials`, `objective`, `parameterSpace`, `searchAlgorithm` | `ashaConfig`, `earlyStoppingRounds`, `parallelism` |
 | `GryviaBenchmark` | `gryviabenchmarks` | Namespaced | none | `target`, `type` | `baseline`, `custom`, `gpuMemory`, `ioThroughput`, `mlperf`, `nccl`, `schedule` |
 | `GryviaBudget` | `gryviabudgets` | Cluster | quota-operator | `period`, `scope` | `alerts`, `enforcement`, `limits`, `priority`, `rollover` |
-| `GryviaChargeback` | `gryviachargebacks` | Cluster | none | none | `allocationModel`, `costCenters`, `mode`, `period`, `pricing`, `reports` |
+| `GryviaChargeback` | `gryviachargebacks` | Cluster | quota-operator | none | `allocationModel`, `costCenters`, `mode`, `period`, `pricing`, `reports` |
 | `GryviaCheckpointGuard` | `gryviacheckpointguards` | Namespaced | ai-operator | `checkpointPolicy`, `jobSelector` | `monitoring`, `restore`, `validation` |
 | `GryviaCostPredictor` | `gryviacostpredictors` | Cluster | quota-operator | none | `alternatives`, `historicalData`, `integration`, `models`, `pricing` |
 | `GryviaDRTest` | `gryviadrtests` | Cluster | none | `type` | `approvalRequired`, `backupRestore`, `chaosEngineering`, `dataIntegrity`, `failover`, `fullDrill`, `notifications`, `rpoRto`, … |
 | `GryviaDataset` | `gryviadatasets` | Cluster | none | `source` | `access`, `cache`, `description`, `license`, `statistics`, `tags`, `type`, `version`, … |
 | `GryviaFabricSignal` | `gryviafabricsignals` | Namespaced | ai-operator | none | `jobRef`, `observeOnly` |
-| `GryviaFederation` | `gryviafederations` | Cluster | none | none | `clusters`, `costManagement`, `distribution`, `failover`, `loadBalancing`, `resourceSharing` |
+| `GryviaFederation` | `gryviafederations` | Cluster | ai-operator | none | `clusters`, `costManagement`, `distribution`, `failover`, `loadBalancing`, `resourceSharing` |
 | `GryviaFlowPolicy` | `gryviaflowpolicies` | Namespaced | network-intelligence | none | `action`, `destination`, `intent`, `priority`, `protocol`, `source` |
 | `GryviaGPUSharingPolicy` | `gryviagpusharingpolicies` | Cluster | none | `strategy` | `fractionalGPU`, `mig`, `nodeSelector`, `priority`, `qos`, `tenantQuotas`, `timeSlicing` |
 | `GryviaGpuMemoryOptimizer` | `gryviagpumemoryoptimizers` | Cluster | gpu-operator | `scope` | `inferencePacking`, `oomPrevention`, `rightSizing` |
 | `GryviaGpuNode` | `gryviagpunodes` | Cluster | gpu-operator | `gpuCount`, `gpuType`, `nodeName` | `bandwidth`, `computeCapability`, `drivers`, `healthCheck`, `interconnect`, `labels`, `memoryGB`, `rdma`, … |
 | `GryviaGpuSku` | `gryviagpuskus` | Cluster | none | `gpuType`, `hourlyRate` | `currency`, `description`, `enabled`, `gpusPerUnit`, `spotDiscount` |
-| `GryviaHealthCheck` | `gryviahealthchecks` | Cluster | none | `target` | `checks`, `onFailure`, `remediation`, `schedule` |
+| `GryviaHealthCheck` | `gryviahealthchecks` | Cluster | gpu-operator | `target` | `checks`, `onFailure`, `remediation`, `schedule` |
 | `GryviaInferenceInsight` | `gryviainferenceinsights` | Namespaced | network-intelligence | none | `analysisWindow`, `targetService` |
 | `GryviaInferenceService` | `gryviainferenceservices` | Namespaced | ai-operator | `backend`, `modelRef` | `args`, `autoscaling`, `canary`, `gpuCount`, `gpuType`, `healthCheck`, `image`, `replicas`, … |
 | `GryviaJobHook` | `gryviajobhooks` | Cluster | none | `action`, `trigger` | `condition`, `failurePolicy`, `retry`, `selector` |
@@ -43,7 +43,7 @@ Gryvia defines 52 custom resources in the `gryvia.io` API group (version `v1alph
 | `GryviaNetworkRate` | `gryvianetworkrates` | Cluster | none | none | `crossZone`, `currency`, `internetEgress`, `sameZone` |
 | `GryviaNetworkUsageRecord` | `gryvianetworkusagerecords` | Namespaced | none | `egressBytes`, `final`, `hour`, `node`, `peerClass`, `tenant`, `zoneClass` | `ingressBytes`, `source` |
 | `GryviaNodeFabric` | `gryvianodefabrics` | Cluster | none | `measuredAt`, `nodeName`, `scoreDelta` | `expiresAt`, `reasons`, `ttlSeconds` |
-| `GryviaPriority` | `gryviapriorities` | Cluster | none | `value` | `description`, `preemptionPolicy`, `quotaOverride`, `sla` |
+| `GryviaPriority` | `gryviapriorities` | Cluster | ai-operator | `value` | `description`, `preemptionPolicy`, `quotaOverride`, `sla` |
 | `GryviaQuota` | `gryviaquotas` | Cluster | quota-operator | `gpuQuota`, `namespaces`, `team` | `budget`, `network`, `priority` |
 | `GryviaQuotaPolicy` | `gryviaquotapolicies` | Cluster | none | none | `alerts`, `allocation`, `enforcement`, `hierarchy`, `limits`, `scope`, `timeBased` |
 | `GryviaReservation` | `gryviareservations` | Cluster | quota-operator | `owner`, `resources`, `schedule` | `billing`, `guarantees`, `notifications` |
@@ -52,7 +52,7 @@ Gryvia defines 52 custom resources in the `gryvia.io` API group (version `v1alph
 | `GryviaSecurityPolicy` | `gryviasecuritypolicies` | Namespaced | network-intelligence | none | `alertWebhook`, `autoBlock`, `detectionRules`, `targetNamespaces` |
 | `GryviaServiceGraph` | `gryviaservicegraphs` | Namespaced | network-intelligence | none | `depth`, `includeExternal`, `namespaces`, `refreshInterval` |
 | `GryviaStorage` | `gryviastorages` | Cluster | storage-operator | `backend`, `capacity`, `endpoint` | `credentials`, `iops`, `mountOptions`, `performance`, `protocol`, `quotas`, `rdma`, `storageClass`, … |
-| `GryviaTemplate` | `gryviatemplates` | Cluster | none | `category`, `defaults` | `description`, `parameters`, `tags` |
+| `GryviaTemplate` | `gryviatemplates` | Cluster | ai-operator | `category`, `defaults` | `description`, `parameters`, `tags` |
 | `GryviaTenant` | `gryviatenants` | Cluster | quota-operator | none | `allowedSkus`, `billing`, `description`, `displayName`, `governance`, `jobDefaults`, `members`, `networkPolicy`, … |
 | `GryviaTraceSession` | `gryviatracesessions` | Namespaced | network-intelligence | none | `captureHeaders`, `duration`, `filters`, `level`, `namespace`, `service` |
 | `GryviaTrafficInsight` | `gryviatrafficinsights` | Namespaced | network-intelligence | none | `metrics`, `namespace`, `service`, `window` |

@@ -10,6 +10,7 @@ import (
 	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/validation"
 )
 
 const (
@@ -30,6 +31,9 @@ type recoveryOptions struct {
 // The command is an argv array; a preStop hook cannot checkpoint a failed node.
 func parseRecoveryOptions(job *gryviav1.GryviaAIJob) (recoveryOptions, error) {
 	o := recoveryOptions{grace: 120}
+	if _, _, err := topologyAnnotation(job); err != nil {
+		return o, err
+	}
 	a := job.Annotations
 	if v := a[AnnotationSpreadWorkers]; v != "" {
 		if v != "true" && v != "false" {
@@ -113,4 +117,20 @@ func applyRecoveryOptions(job *gryviav1.GryviaAIJob, spec *corev1.PodSpec) {
 			corev1.PodAffinityTerm{LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"gryvia.io/job": job.Name}}, Namespaces: []string{job.Namespace}, TopologyKey: "kubernetes.io/hostname"})
 		spec.Affinity = aff
 	}
+}
+
+// Kueue owns topology placement; annotations refer to administrator-defined topology labels.
+func topologyAnnotation(job *gryviav1.GryviaAIJob) (string, string, error) {
+	required, preferred := job.Annotations["gryvia.io/required-topology"], job.Annotations["gryvia.io/preferred-topology"]
+	if required != "" && preferred != "" {
+		return "", "", fmt.Errorf("required and preferred topology are mutually exclusive")
+	}
+	key, val := "kueue.x-k8s.io/podset-required-topology", required
+	if preferred != "" {
+		key, val = "kueue.x-k8s.io/podset-preferred-topology", preferred
+	}
+	if val != "" && len(validation.IsQualifiedName(val)) != 0 {
+		return "", "", fmt.Errorf("invalid topology label")
+	}
+	return key, val, nil
 }

@@ -91,7 +91,8 @@ type GryviaInferenceServiceReconciler struct {
 	// GatewayRouting allows opt-in HTTPRoute reconciliation; off by default.
 	GatewayRouting bool
 	// PrometheusURL is administrator configured; empty disables SLO evaluation.
-	PrometheusURL string
+	PrometheusURL  string
+	TelemetryImage string
 }
 
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviainferenceservices,verbs=get;list;watch;create;update;patch;delete
@@ -275,11 +276,17 @@ func (r *GryviaInferenceServiceReconciler) ensureDeployment(ctx context.Context,
 		return nil, configError{err}
 	}
 
+	if err := r.enrichTelemetry(svc, desired, deploy.UID); err != nil {
+		return nil, configError{err}
+	}
 	if notFound {
 		if err := controllerutil.SetControllerReference(svc, desired, r.Scheme); err != nil {
 			return nil, err
 		}
 		if err := r.Create(ctx, desired); err != nil {
+			return nil, err
+		}
+		if err := r.persistTelemetryUID(ctx, svc, desired, model); err != nil {
 			return nil, err
 		}
 		svc.Status.DeploymentName = name
@@ -703,6 +710,9 @@ func (r *GryviaInferenceServiceReconciler) reconcileCanary(ctx context.Context, 
 	if err != nil {
 		return 0, err
 	}
+	if err := r.enrichTelemetry(svc, desired, existing.UID); err != nil {
+		return 0, err
+	}
 	newCanary := !exists || existing.Annotations[annotationModelVersion] != version
 	switch {
 	case !exists:
@@ -710,6 +720,9 @@ func (r *GryviaInferenceServiceReconciler) reconcileCanary(ctx context.Context, 
 			return 0, err
 		}
 		if err := r.Create(ctx, desired); err != nil {
+			return 0, err
+		}
+		if err := r.persistTelemetryUID(ctx, svc, desired, model); err != nil {
 			return 0, err
 		}
 		existing = desired

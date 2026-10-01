@@ -114,6 +114,9 @@ type CircuitBreaker struct {
 
 // GryviaRetryPolicyStatus defines the observed state of GryviaRetryPolicy
 type GryviaRetryPolicyStatus struct {
+	// Conditions report runtime capability and remediation state.
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
 	// Attempts is the total number of retry attempts
 	Attempts int32 `json:"attempts,omitempty"`
 

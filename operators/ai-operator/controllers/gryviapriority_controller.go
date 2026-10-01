@@ -3,23 +3,20 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"sort"
 	"time"
 
 	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
+	schedulingv1 "k8s.io/api/scheduling/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
-)
-
-const (
-	maxPreemptionHistory = 50
-	// Default grace period for preempted jobs to checkpoint (seconds)
-	defaultGracePeriodSeconds = 60
 )
 
 // GryviaPriorityReconciler reconciles a GryviaPriority object
@@ -70,6 +67,46 @@ func (r *GryviaPriorityReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 func (r *GryviaPriorityReconciler) reconcilePriority(ctx context.Context, priority *gryviav1.GryviaPriority) (ctrl.Result, error) {
 	log := r.Log.WithValues("priority", priority.Name)
 
+	if priority.Spec.QuotaOverride != nil || priority.Spec.SLA != nil {
+		r.updatePriorityCondition(priority, "Ready", metav1.ConditionFalse, "UnsupportedOptions", "Quota override and SLA guarantees are unsupported; use native quota/admission controls")
+		return ctrl.Result{}, r.Status().Update(ctx, priority)
+	}
+
+	if priority.Spec.Value < 0 || priority.Spec.Value > 1000000 {
+		return ctrl.Result{}, fmt.Errorf("priority value must be 0-1000000")
+	}
+	policy := corev1.PreemptNever
+	if priority.Spec.PreemptionPolicy == "PreemptLowerPriority" {
+		policy = corev1.PreemptLowerPriority
+	} else if priority.Spec.PreemptionPolicy != "" && priority.Spec.PreemptionPolicy != "Never" {
+		return ctrl.Result{}, fmt.Errorf("invalid preemptionPolicy")
+	}
+	pc := &schedulingv1.PriorityClass{}
+	err := r.Get(ctx, types.NamespacedName{Name: priority.Name}, pc)
+	if err != nil && !errors.IsNotFound(err) {
+		return ctrl.Result{}, err
+	}
+	if errors.IsNotFound(err) {
+		pc = &schedulingv1.PriorityClass{ObjectMeta: metav1.ObjectMeta{Name: priority.Name}, Value: int32(priority.Spec.Value), Description: priority.Spec.Description, PreemptionPolicy: &policy}
+		if err := controllerutil.SetControllerReference(priority, pc, r.Scheme); err != nil {
+			return ctrl.Result{}, err
+		}
+		if err := r.Create(ctx, pc); err != nil {
+			return ctrl.Result{}, err
+		}
+	} else {
+		if !metav1.IsControlledBy(pc, priority) {
+			return ctrl.Result{}, fmt.Errorf("PriorityClass name collision")
+		}
+		if pc.Value != int32(priority.Spec.Value) || pc.PreemptionPolicy == nil || *pc.PreemptionPolicy != policy {
+			return ctrl.Result{}, fmt.Errorf("PriorityClass value and preemptionPolicy are immutable; create a new priority name")
+		}
+		base := pc.DeepCopy()
+		pc.Description = priority.Spec.Description
+		if err := r.Patch(ctx, pc, client.MergeFrom(base)); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
 	// List all jobs
 	jobList := &gryviav1.GryviaAIJobList{}
 	if err := r.List(ctx, jobList); err != nil {
@@ -112,10 +149,7 @@ func (r *GryviaPriorityReconciler) reconcilePriority(ctx context.Context, priori
 		priority.Status.AvgQueueTime = "0s"
 	}
 
-	// Check if preemption is needed
-	if priority.Spec.PreemptionPolicy == "PreemptLowerPriority" {
-		r.evaluatePreemption(ctx, priority, jobList)
-	}
+	// Kubernetes/Kueue own preemption. Never invent a Preempted status without terminating a workload.
 
 	// Update condition
 	r.updatePriorityCondition(priority, "Ready", metav1.ConditionTrue, "PriorityActive",
@@ -141,127 +175,6 @@ func (r *GryviaPriorityReconciler) getJobPriorityClass(job gryviav1.GryviaAIJob)
 	}
 	// Default to "normal"
 	return "normal"
-}
-
-func (r *GryviaPriorityReconciler) evaluatePreemption(ctx context.Context, priority *gryviav1.GryviaPriority, jobList *gryviav1.GryviaAIJobList) {
-	log := r.Log.WithValues("priority", priority.Name)
-
-	// Get all priority classes to build priority value map
-	priorityList := &gryviav1.GryviaPriorityList{}
-	if err := r.List(ctx, priorityList); err != nil {
-		log.Error(err, "Failed to list priority classes")
-		return
-	}
-
-	priorityValues := make(map[string]int)
-	for _, p := range priorityList.Items {
-		priorityValues[p.Name] = p.Spec.Value
-	}
-
-	// Find pending jobs with this priority that need resources
-	var pendingHighPriJobs []gryviav1.GryviaAIJob
-	for _, job := range jobList.Items {
-		jobPriority := r.getJobPriorityClass(job)
-		if jobPriority == priority.Name && (job.Status.Phase == "Pending" || job.Status.Phase == "Queued") {
-			// Check SLA queue time
-			if priority.Spec.SLA != nil && priority.Spec.SLA.MaxQueueTimeMinutes > 0 {
-				queueTime := time.Since(job.CreationTimestamp.Time)
-				maxQueueTime := time.Duration(priority.Spec.SLA.MaxQueueTimeMinutes) * time.Minute
-				if queueTime > maxQueueTime {
-					pendingHighPriJobs = append(pendingHighPriJobs, job)
-				}
-			}
-		}
-	}
-
-	if len(pendingHighPriJobs) == 0 {
-		return
-	}
-
-	// Find running lower-priority jobs that can be preempted
-	var preemptCandidates []gryviav1.GryviaAIJob
-	for _, job := range jobList.Items {
-		if job.Status.Phase != "Running" {
-			continue
-		}
-		jobPriority := r.getJobPriorityClass(job)
-		jobPriorityValue := priorityValues[jobPriority]
-
-		// Only preempt jobs with strictly lower priority
-		if jobPriorityValue < priority.Spec.Value {
-			preemptCandidates = append(preemptCandidates, job)
-		}
-	}
-
-	if len(preemptCandidates) == 0 {
-		return
-	}
-
-	// Sort candidates by priority value (lowest first = preempt first)
-	sort.Slice(preemptCandidates, func(i, j int) bool {
-		pi := priorityValues[r.getJobPriorityClass(preemptCandidates[i])]
-		pj := priorityValues[r.getJobPriorityClass(preemptCandidates[j])]
-		return pi < pj
-	})
-
-	// Preempt jobs to make room for pending high-priority jobs
-	for _, pendingJob := range pendingHighPriJobs {
-		gpusNeeded := int(pendingJob.Spec.GPUs)
-		gpusFreed := 0
-
-		for i := range preemptCandidates {
-			if gpusFreed >= gpusNeeded {
-				break
-			}
-
-			candidate := &preemptCandidates[i]
-			if candidate.Status.Phase != "Running" {
-				continue // Already preempted
-			}
-
-			log.Info("Preempting job for higher priority job",
-				"preemptedJob", candidate.Name,
-				"preemptingJob", pendingJob.Name,
-				"preemptedPriority", r.getJobPriorityClass(*candidate),
-				"preemptingPriority", priority.Name,
-			)
-
-			// Record preemption event
-			preemptionEvent := gryviav1.PreemptionEvent{
-				Timestamp:            metav1.Now(),
-				PreemptedJob:         candidate.Name,
-				PreemptedJobPriority: priorityValues[r.getJobPriorityClass(*candidate)],
-				PreemptingJob:        pendingJob.Name,
-				Reason:               fmt.Sprintf("Higher priority job %s needs %d GPUs", pendingJob.Name, pendingJob.Spec.GPUs),
-				GracePeriodUsed:      true,
-			}
-			r.addPreemptionEvent(priority, preemptionEvent)
-
-			// Mark the candidate as preempted (in practice, this would
-			// signal the job to checkpoint and then terminate it)
-			// Merge patch: only phase and message change, so status fields owned by
-			// the AIJob controller (and a newer resourceVersion) are never overwritten.
-			base := candidate.DeepCopy()
-			candidate.Status.Phase = PhasePreempted
-			candidate.Status.Message = fmt.Sprintf("Preempted by higher priority job %s", pendingJob.Name)
-			if err := r.Status().Patch(ctx, candidate, client.MergeFrom(base)); err != nil {
-				log.Error(err, "Failed to preempt job", "job", candidate.Name)
-				continue
-			}
-
-			gpusFreed += int(candidate.Spec.GPUs)
-			priority.Status.PreemptionEvents++
-		}
-	}
-}
-
-func (r *GryviaPriorityReconciler) addPreemptionEvent(priority *gryviav1.GryviaPriority, event gryviav1.PreemptionEvent) {
-	priority.Status.PreemptionHistory = append(priority.Status.PreemptionHistory, event)
-
-	// Maintain rolling buffer
-	if len(priority.Status.PreemptionHistory) > maxPreemptionHistory {
-		priority.Status.PreemptionHistory = priority.Status.PreemptionHistory[len(priority.Status.PreemptionHistory)-maxPreemptionHistory:]
-	}
 }
 
 func (r *GryviaPriorityReconciler) updatePriorityCondition(priority *gryviav1.GryviaPriority, condType string, status metav1.ConditionStatus, reason, message string) {

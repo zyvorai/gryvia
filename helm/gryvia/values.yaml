@@ -449,3 +449,15 @@ podSecurityContext:
 nameOverride: ""
 fullnameOverride: ""
 imagePullSecrets: []
+
+# Optional capabilities added by the platform completion bundle.
+platformCompletion:
+  # Mark unsupported legacy APIs explicitly; does not run their dormant controllers.
+  reportUnsupportedAPIs: false
+  inferenceTelemetry: false
+  gpuHealth: false
+  gpuRemediation: false
+  kueueFairSharing: false
+  # Existing administrator-created Topology and AdmissionCheck objects.
+  kueueTopologyName: ""
+  kueueAdmissionCheck: ""
