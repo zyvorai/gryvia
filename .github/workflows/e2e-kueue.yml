@@ -86,6 +86,8 @@ jobs:
         run: ./scripts/e2e-kueue.sh gang
       - name: A higher-priority job preempts a running lower-priority one, which is requeued
         run: ./scripts/e2e-kueue.sh preempt
+      - name: A preempted job checkpoints in its preStop hook while Kueue evicts it and resumes from that checkpoint
+        run: ./scripts/e2e-kueue.sh preempt-checkpoint
       - name: An elastic job is admitted with fewer workers than asked, and its success policy completes it under Kueue
         run: ./scripts/e2e-kueue.sh elastic
       - name: The elastic trainer image (CPU torch)

@@ -70,8 +70,10 @@ independent per-rank files are not proof of a consistent global checkpoint.
 acknowledgement, atomic persistence and resume protocol, not a model training benchmark.
 Package it in your job image as `/app/checkpoint.py` to exercise the annotation above.
 
-Kueue suspension deletes the running pods; graceful deletion can run this hook. The
+Kueue suspension deletes the running pods; graceful deletion runs this hook. The
 same batch Job and PVC remain, and replacement pods read the checkpoint on startup.
+`scripts/e2e-kueue.sh preempt-checkpoint` checks this with a real Kueue preemption on kind
+(busybox trainer that saves only on the hook's request, two workers, both resume).
 A crash, OOM kill, unreachable node, forced deletion or exhausted grace period can
 prevent a hook from running or finishing. Periodic framework checkpoints are still
 required. Gryvia does not verify checkpoint contents or wait for a global checkpoint
