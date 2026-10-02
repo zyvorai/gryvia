@@ -9,6 +9,18 @@ no credential and the long-lived API key is never stored in the browser. Session
 returns you to the sign-in page) and also when the API key is rotated. Tune them on the gateway with
 `GRYVIA_SESSION_TTL_SECONDS`, and set `GRYVIA_SESSION_SECRET` to sign sessions with a key of their own.
 
+### Finding the password
+
+The sign-in page says where the key is stored and shows the command that prints it, with the Secret and namespace of
+your install (from `GET /api/auth/config`; the page never shows the key itself). With the chart defaults:
+
+```bash
+kubectl -n gryvia-system get secret gryvia-api-key -o jsonpath='{.data.GRYVIA_API_KEY}' | base64 -d
+```
+
+With `auth.existingSecret`, the page names that Secret instead. `scripts/deploy-remote.sh` also keeps a copy in
+`~/.gryvia/api-key` on the host.
+
 Scripts and `curl` can skip the login and send the key directly:
 
 ```bash

@@ -40,7 +40,12 @@ The chart installs the operators, the API gateway and the dashboard. See the
 
 Sign in as **`admin`**; the password is the API key you set with `auth.apiKey` (or `GRYVIA_API_KEY`
 for the scripts). If you set nothing, the key is the well-known lab default **`Admin@321`**, so always
-set your own for anything reachable from an untrusted network.
+set your own for anything reachable from an untrusted network. The sign-in page shows the command that reads the key
+from its Secret:
+
+```bash
+kubectl -n gryvia-system get secret gryvia-api-key -o jsonpath='{.data.GRYVIA_API_KEY}' | base64 -d
+```
 
 ## Option 3: A fresh GPU server (k3s, drivers and Gryvia in one step)
 

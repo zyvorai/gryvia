@@ -113,6 +113,17 @@ with the agents' viewer and proposer token), and Netra's health. Each card links
 `gryvia.apiGateway.sovereign.zyntraConsoleURL` and `netraConsoleURL` are set. On the Agents page, an answer that names
 a proposal links to its decision page in Zyntra.
 
+A Gryvia installed on its own can point the page at a Zyntra and a Netra installed separately. Netra is checked with
+the gateway's Netra TLS setting, so a self-signed Netra needs `apiGateway.netra.insecureTLS` or a CA. Without a viewer
+token, Zyntra shows as healthy but the gaps and proposals counts stay empty. With `scripts/deploy-remote.sh`:
+
+```bash
+GRYVIA_ZYNTRA_URL=http://zyntra.zyntra.svc:8080 GRYVIA_ZYNTRA_CONSOLE_URL=http://<host>:<zyntra-nodeport> \
+GRYVIA_NETRA_URL=https://netra.netra-system.svc:30870 GRYVIA_NETRA_INSECURE=1 \
+GRYVIA_NETRA_CONSOLE_URL=https://<host>:30870 \
+  ./scripts/deploy-remote.sh <host> <user>   # GRYVIA_ZYNTRA_TOKEN_SECRET: Secret (key `token`) with a viewer token
+```
+
 ## Hardening
 
 All off by default; each needs its operator (and CRDs) installed first. [`deploy/argocd/sovereign-aios`](../deploy/argocd/sovereign-aios)
@@ -171,7 +182,8 @@ host network under it.
 | The Falco rules load with Falco's default rules | `falco -V` in the Falco 0.45.0 image, same workflow |
 | The air-gap artifacts agree: `images.txt` holds every image (add-ons included, regenerated in CI), `values-airgap.yaml` sends all of them to Harbor and no URL leaves the cluster, the Zarf package carries exactly that list, Zarf and Argo CD pin the same versions; Zarf lints the package | [`scripts/tests/sovereign-aios-airgap.test.sh`](../scripts/tests/sovereign-aios-airgap.test.sh), `scripts/sovereign-aios-images.sh --check`, `zarf dev lint`, same workflow |
 | The RKE2 role passes `ansible-lint` (production profile) and its templates render the CIS, Pod Security, audit and mirror settings for a first server, a joining server and an agent | [`ansible/tests/rke2_hardened_templates.yaml`](../ansible/tests/rke2_hardened_templates.yaml), same workflow |
-| The console's overview: the gateway endpoint (healthy, no token, unreachable, unhealthy) and the page | `services/api-gateway/tests/test_sovereign.py`, `web-ui/src/pages/Sovereign.test.tsx` |
+| The console's overview: the gateway endpoint (healthy, no token, unreachable, unhealthy, Netra probed with its own TLS setting) and the page | `services/api-gateway/tests/test_sovereign.py`, `web-ui/src/pages/Sovereign.test.tsx` |
+| The overview against a standalone Zyntra and Netra on k3s: both healthy, Zyntra's version, mode and 6 of 6 sources, console links | `scripts/deploy-remote.sh` to a lab host with the variables above (manual, not in CI) |
 | The pack is valid for Zyntra 0.4: 8 KPIs, 6 object types, 3 link types, 2 typed actions, 3 views | `zyntra pack validate helm/sovereign-aios/files/zyntra-pack` |
 
 | Not verified | Why |
