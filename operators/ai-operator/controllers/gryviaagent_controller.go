@@ -429,8 +429,8 @@ func egressRule(raw, agentNS string) (networkingv1.NetworkPolicyEgressRule, stri
 	if u.Scheme == "https" {
 		port = 443
 	}
-	if p, err := strconv.Atoi(u.Port()); err == nil {
-		port = p
+	if p, err := strconv.ParseUint(u.Port(), 10, 16); err == nil && p > 0 {
+		port = int(p)
 	}
 	if ip := net.ParseIP(host); ip != nil {
 		cidr := ip.String() + "/32"

@@ -267,9 +267,13 @@ func TestDataset_InvalidSpecs(t *testing.T) {
 		"gcs":         func(ds *gryviav1.GryviaDataset) { ds.Spec.Source = gryviav1.DatasetSource{Type: "gcs"} },
 		"no-url":      func(ds *gryviav1.GryviaDataset) { ds.Spec.Source.HTTP.URL = "ftp://x" },
 		"bad-version": func(ds *gryviav1.GryviaDataset) { ds.Spec.Version = "../etc" },
-		"s3-bucket":   func(ds *gryviav1.GryviaDataset) { ds.Spec.Source = gryviav1.DatasetSource{Type: "s3", S3: &gryviav1.S3Source{}} },
-		"nfs-path":    func(ds *gryviav1.GryviaDataset) { ds.Spec.Source = gryviav1.DatasetSource{Type: "nfs", NFS: &gryviav1.NFSSource{Server: "s", Path: "rel"}} },
-		"size":        func(ds *gryviav1.GryviaDataset) { ds.Spec.Cache = &gryviav1.DatasetCache{Size: "lots"} },
+		"s3-bucket": func(ds *gryviav1.GryviaDataset) {
+			ds.Spec.Source = gryviav1.DatasetSource{Type: "s3", S3: &gryviav1.S3Source{}}
+		},
+		"nfs-path": func(ds *gryviav1.GryviaDataset) {
+			ds.Spec.Source = gryviav1.DatasetSource{Type: "nfs", NFS: &gryviav1.NFSSource{Server: "s", Path: "rel"}}
+		},
+		"size": func(ds *gryviav1.GryviaDataset) { ds.Spec.Cache = &gryviav1.DatasetCache{Size: "lots"} },
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {
