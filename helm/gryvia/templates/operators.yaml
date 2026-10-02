@@ -110,6 +110,7 @@ spec:
             {{- end }}
             {{- if and (eq $name "ai-operator") (dig "aiOperator" "jobHooks" "enabled" nil $.Values.AsMap) }}
             - --enable-job-hooks=true
+            - {{ printf "--job-hook-workers=%v" (dig "aiOperator" "jobHooks" "workers" 8 $.Values.AsMap) | quote }}
             {{- with (dig "aiOperator" "jobHooks" "allowedCIDRs" list $.Values.AsMap) }}
             - {{ printf "--job-hook-allowed-cidrs=%s" (join "," .) | quote }}
             {{- end }}

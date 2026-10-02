@@ -117,6 +117,8 @@ aiOperator:
   jobHooks:
     enabled: false
     allowedCIDRs: []
+    # Goroutines that POST deliveries (--job-hook-workers); a slow receiver holds one of them, not a reconcile.
+    workers: 8
   extraArgs: []
   # Fold the per-node entries collectors write into GryviaFabricSignal status.nodes[] (network-intelligence
   # ebpf.fabricStatusPerNode) into the top-level status: max for degradation metrics, sample-weighted means for ratios,

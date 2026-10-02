@@ -72,11 +72,13 @@ func main() {
 	var placementHolds bool
 	var enableJobHooks bool
 	var jobHookAllowedCIDRs string
+	var jobHookWorkers int
 
 	flag.StringVar(&federationServers, "federation-allowed-servers", "", "Comma-separated administrator-allowed HTTPS Kubernetes API servers; empty disables federation probes.")
 	flag.StringVar(&federationNamespace, "federation-credentials-namespace", "gryvia-system", "Namespace containing trusted inline federation kubeconfig secrets.")
 	flag.BoolVar(&reportUnsupportedAPIs, "report-unsupported-apis", false, "Report unsupported legacy APIs with Ready=False instead of silently leaving them pending.")
 	flag.BoolVar(&enableJobHooks, "enable-job-hooks", false, "Run the GryviaJobHook controller: webhooks when GryviaAIJobs and GryviaWorkflows change phase.")
+	flag.IntVar(&jobHookWorkers, "job-hook-workers", 8, "Goroutines that POST job hook deliveries; reconciles only queue them.")
 	flag.StringVar(&jobHookAllowedCIDRs, "job-hook-allowed-cidrs", "", "Comma-separated CIDRs job hooks may reach although private (and over plain http), e.g. the cluster's service CIDR; empty allows public https receivers only.")
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -373,10 +375,11 @@ func main() {
 			os.Exit(1)
 		}
 		if err = (&controllers.GryviaJobHookReconciler{
-			Client: mgr.GetClient(),
-			Scheme: mgr.GetScheme(),
-			Log:    ctrl.Log.WithName("controllers").WithName("GryviaJobHook"),
-			Guard:  jobhook.Guard{Allowed: allowed},
+			Client:  mgr.GetClient(),
+			Scheme:  mgr.GetScheme(),
+			Log:     ctrl.Log.WithName("controllers").WithName("GryviaJobHook"),
+			Guard:   jobhook.Guard{Allowed: allowed},
+			Workers: jobHookWorkers,
 		}).SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "GryviaJobHook")
 			os.Exit(1)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -136,6 +137,125 @@ func TestJobHook_DeliversOncePerTransition(t *testing.T) {
 	reconcileAIJob(t, r, "train")
 	if len(p.reqs) != 2 || p.reqs[1].Delivery == req.Delivery {
 		t.Fatalf("second transition: %d deliveries", len(p.reqs))
+	}
+	reconcileAIJob(t, r, "train")
+	if len(p.reqs) != 2 {
+		t.Fatalf("second transition delivered again: %d deliveries", len(p.reqs))
+	}
+}
+
+// blockingPost holds the POSTs to slowURL until release is closed and records every request.
+type blockingPost struct {
+	mu      sync.Mutex
+	urls    []string
+	slowURL string
+	started chan struct{}
+	release chan struct{}
+}
+
+func (b *blockingPost) post(ctx context.Context, r jobhook.Request) (int, error) {
+	if r.URL == b.slowURL {
+		b.started <- struct{}{}
+		select {
+		case <-b.release:
+		case <-ctx.Done():
+			return 0, ctx.Err()
+		}
+	}
+	b.mu.Lock()
+	b.urls = append(b.urls, r.URL)
+	b.mu.Unlock()
+	return 204, nil
+}
+
+func (b *blockingPost) delivered() []string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return append([]string(nil), b.urls...)
+}
+
+func waitFor(t *testing.T, what string, ok func() bool) {
+	t.Helper()
+	for i := 0; i < 200; i++ {
+		if ok() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %s", what)
+}
+
+func TestJobHook_WorkersDoNotBlockOnASlowReceiver(t *testing.T) {
+	slow, fast := testHook("a-slow", "Failed"), testHook("b-fast", "Failed")
+	slow.Spec.Webhook.URL = "https://slow.example.com/"
+	r, _, _ := hookEnv(t, slow, fast, failedJob("train", nil), failedJob("eval", nil))
+	b := &blockingPost{slowURL: slow.Spec.Webhook.URL, started: make(chan struct{}, 4), release: make(chan struct{})}
+	r.Post, r.Workers = b.post, 3
+	r.initQueue()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	for i := 0; i < r.Workers; i++ {
+		go r.work(ctx)
+	}
+
+	start := time.Now()
+	reconcileAIJob(t, r, "train")
+	reconcileAIJob(t, r, "eval")
+	if d := time.Since(start); d > time.Second {
+		t.Fatalf("reconciles waited for the receivers: %v", d)
+	}
+	<-b.started
+	<-b.started
+	waitFor(t, "the fast hook for both jobs", func() bool { return len(b.delivered()) == 2 })
+
+	// Queued or in-flight deliveries are not queued twice.
+	reconcileAIJob(t, r, "train")
+	if n := len(r.tasks); n != 0 {
+		t.Fatalf("a delivery in flight was queued again (%d queued)", n)
+	}
+	close(b.release)
+	waitFor(t, "the slow hook", func() bool { return len(b.delivered()) == 4 })
+
+	// Each finished delivery enqueues its job again, and the records stop further POSTs.
+	waitFor(t, "four job events", func() bool { return len(r.events["GryviaAIJob"]) == 4 })
+	reconcileAIJob(t, r, "train")
+	reconcileAIJob(t, r, "eval")
+	time.Sleep(50 * time.Millisecond)
+	if n := len(b.delivered()); n != 4 {
+		t.Fatalf("deliveries = %d, want 4", n)
+	}
+	if got := getHook(t, r, "a-slow"); got.Status.Deliveries != 2 {
+		t.Fatalf("slow hook status = %+v", got.Status)
+	}
+}
+
+func TestJobHook_FullQueueRetriesSoon(t *testing.T) {
+	r, _, _ := hookEnv(t, testHook("a", "Failed"), testHook("b", "Failed"), failedJob("train", nil))
+	r.Workers, r.QueueSize = 1, 1
+	r.initQueue()
+	res := reconcileAIJob(t, r, "train")
+	if len(r.tasks) != 1 || res.RequeueAfter != queueRetry {
+		t.Fatalf("queued %d, requeue %v", len(r.tasks), res.RequeueAfter)
+	}
+}
+
+func TestJobHook_OutcomeOfAnOldTransitionIsNotRecorded(t *testing.T) {
+	h := testHook("notify", "Failed")
+	r, p, _ := hookEnv(t, h, failedJob("train", nil))
+	var j gryviav1.GryviaAIJob
+	_ = r.Get(context.Background(), types.NamespacedName{Namespace: "team", Name: "train"}, &j)
+	stale := aiJobView(j.DeepCopy())
+	// The job is retried before the delivery for its first failure finishes.
+	j.Status.Phase = "Running"
+	if err := r.Status().Update(context.Background(), &j); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.run(context.Background(), hookTask{hook: h, view: stale, attempt: 1}); err != nil {
+		t.Fatal(err)
+	}
+	_ = r.Get(context.Background(), types.NamespacedName{Namespace: "team", Name: "train"}, &j)
+	if len(p.reqs) != 1 || j.Annotations[AnnotationJobHooks] != "" {
+		t.Fatalf("posts %d, records %q", len(p.reqs), j.Annotations[AnnotationJobHooks])
 	}
 }
 

@@ -17,13 +17,14 @@ The feature is opt-in.
 | Matching by event, kind and label selector; suspended and invalid hooks skipped; one delivery per transition, again for a new transition (a retried job, the next run of a scheduled workflow); no backfill of transitions older than the hook; retries with doubling backoff, then giving up; the signing Secret (a missing one counts as a failed attempt); Slack format; delivery records pruned when a hook is deleted; the Ready condition | Fake-client tests in `operators/ai-operator/controllers/gryviajobhook_controller_test.go` |
 | The address guard (loopback, RFC 1918, CGNAT, link-local and metadata, multicast, reserved, IPv6 ULA; allowed CIDRs; a public name resolving to a private address; plain http only to allowed CIDRs), refused redirects, signature and headers | `operators/ai-operator/pkg/jobhook/deliver_test.go` against a local HTTP server |
 | Gateway routes (validation, header values never returned, suspend, tenant scoping) and the CLI table | `services/api-gateway/tests/test_jobhooks.py`, `cli/src/commands/jobhooks.rs` |
+| The delivery workers: reconciles return while receivers are slow, a slow receiver does not hold up another hook, a delivery queued or in flight is not queued twice, a full queue retries the job after a second, a finished delivery enqueues its job again, and the outcome of a transition the job has left is not recorded | `operators/ai-operator/controllers/gryviajobhook_controller_test.go` (`go test -race`) |
 | A real cluster: a stand-in receiver gets a signed delivery for a failed workflow and for a succeeded one, the hook's counters move, and a hook pointed at a non-allowed address records a refused attempt | The "Job hooks" steps of `.github/workflows/e2e-ml.yml`; these steps also passed on a single-node k3s host (2026-10-02) |
 
 | Not verified | Why |
 | --- | --- |
 | Slack itself, or any other third-party receiver | The e2e receiver is a stand-in that checks the signature |
 | Exactly-once delivery | Delivery is at least once (see Delivery); receivers should deduplicate on `X-Gryvia-Delivery` |
-| Many hooks or a high job churn | Each delivery runs inside the operator's reconcile with a bounded timeout and four workers per kind; not load-tested |
+| Many hooks or a high job churn | Deliveries are POSTed by a bounded pool of workers (below); not load-tested |
 
 ## Turning it on
 
@@ -142,6 +143,10 @@ followed.
   `X-Gryvia-Delivery`.
 - **Retries.** A failed attempt is retried after `backoffSeconds`, then twice that, and so on, until `attempts` POSTs
   have been made. Then the transition counts in `status.failures` and is not retried.
+- **Workers.** The operator's job reconciles only decide which deliveries are due and queue them. `aiOperator.jobHooks.workers`
+  (`--job-hook-workers`, default 8) goroutines POST them, record the outcome on the job, and have the job looked at
+  again. A slow receiver holds one worker for at most its `timeoutSeconds`. When the queue (256 deliveries) is full,
+  the job is looked at again after a second.
 - **Missed phases.** A hook sees the phase the job is in when the operator reconciles it. A job that passes through a
   phase faster than that (for example `Running` for a job that fails at once) may not be seen in it.
 
