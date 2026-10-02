@@ -30,8 +30,7 @@ permissions:
   contents: read
 
 env:
-  # TEMPORARY: zyvorai/zyntra#28 (in-cluster actions, fullnameOverride); back to main once it merges.
-  ZYNTRA_REF: feat/kube-actions
+  ZYNTRA_REF: main
   KYVERNO_VERSION: v1.19.1
   FALCO_IMAGE: falcosecurity/falco:0.45.0
   ZARF_VERSION: v0.87.0

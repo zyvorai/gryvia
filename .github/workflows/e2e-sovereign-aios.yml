@@ -41,7 +41,7 @@ env:
   TINY_PY_IMAGE: python:3.12-alpine
   LLAMA_IMAGE: ghcr.io/ggml-org/llama.cpp:server-b11347
   LLAMA_MODEL: Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M
-  ZYNTRA_REF: ${{ inputs.zyntra_ref || 'feat/kube-actions' }}
+  ZYNTRA_REF: ${{ inputs.zyntra_ref || 'main' }}
   E2E_NS: gryvia-system
 
 jobs:
