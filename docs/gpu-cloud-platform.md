@@ -33,12 +33,13 @@ lists what Gryvia does not provide.
 | Fabric and network | RDMA/NVLink-aware scheduling, network intelligence, per-tenant network cost | [Scheduling](../website/docs/guides/SCHEDULING.md), [Network intelligence](../website/docs/guides/NETWORK_INTELLIGENCE.md) |
 | Sovereign deployment, no lock-in | Runs on your own clusters; one release with Zyntra and Netra; Apache-licensed, standard Kubernetes objects | [Sovereign AIOS](sovereign-aios.md) |
 | Several clusters or regions | MultiKueue admission check binding | [Kueue integration](kueue-integration.md) (`e2e-multikueue.yml`, [run 36875403171](https://github.com/zyvorai/gryvia/actions/runs/36875403171)) |
+| Slurm users | `gryvia submit --sbatch` runs batch scripts as jobs with `SLURM_*` set; opt-in real Slurm (SchedMD's Slinky operator) with a partition per tenant and finished jobs metered as usage records | [Slurm](slurm.md); `scripts/e2e-jobs.sh sbatch` in `e2e-jobs.yml` (passes on kind); `e2e-slurm.yml` for Slinky (not yet passed) |
 | Upgrades without losing state | CRDs applied server-side (scope changes handled), Helm upgrade, rollback, backup and restore | [Operations](../website/docs/guides/OPERATIONS.md); `upgrade.yml` |
 
 ## What Gryvia does not provide
 
 - Hardware, facilities, provisioning of machines, or VM and bare-metal instance products (see above).
-- Inference that scales to zero and wakes on traffic, a prompt playground in the console, and Slurm (an `sbatch`
-  importer or Slurm on Kubernetes) are planned, not shipped.
+- Inference that scales to zero and wakes on traffic, and a prompt playground in the console, are planned, not
+  shipped.
 - Most end-to-end checks run on kind with CPU stand-ins. What has and has not run on GPUs is stated on each page
   (for example [GPU validation](gpu-validation.md)); nothing here claims GPU throughput or latency numbers.
