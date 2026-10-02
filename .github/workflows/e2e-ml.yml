@@ -1287,6 +1287,59 @@ jobs:
           wait_for "revoked key refused" 60 is_401
           kubectl -n "$NS" delete gryviainferenceservice/e2e-llm
 
+      # The same stand-in model with spec.scaleToZero (idleSeconds 60, the minimum): it goes to zero replicas after a
+      # minute without gateway traffic, and the next gateway request wakes it and waits for it.
+      - name: LLM gateway - scale to zero and a cold start through the gateway
+        run: |
+          source scripts/e2e-ml-lib.sh
+          sed -e 's/name: e2e-llm/name: e2e-s2z/' -e 's/llm-model: tiny-chat/llm-model: tiny-s2z/' \
+            -e 's/modelRef: e2e-llm/modelRef: e2e-s2z/' \
+            -e 's/^  replicas: 1$/  replicas: 1\n  scaleToZero: {enabled: true, idleSeconds: 60, coldStartTimeoutSeconds: 240}/' \
+            /tmp/e2e-llm.yaml > /tmp/e2e-s2z.yaml
+          grep -q 'scaleToZero: {enabled: true' /tmp/e2e-s2z.yaml
+          kubectl apply -f /tmp/e2e-s2z.yaml
+          wait_for "scale-to-zero model Ready" 240 field_is gryviainferenceservice/e2e-s2z '{.status.phase}' Ready
+          assert_nonempty "idle clock started" "$(jp gryviainferenceservice/e2e-s2z '{.status.lastWakeAt}')"
+
+          # One replica, pinned, so its metrics hold every request of this step.
+          pod="$(kubectl -n "$NS" get pods -l app.kubernetes.io/component=llm-gateway -o jsonpath='{.items[0].metadata.name}')"
+          kubectl -n "$NS" port-forward "pod/$pod" 18180:8080 18181:8081 &
+          sleep 3
+          LLM=http://localhost:18180
+          key="$(api /api/llm-keys -X POST -d '{"name":"e2e-s2z","namespace":"gryvia-system","description":"e2e"}' | jq -r .key)"
+          case "$key" in gk-*) echo "ok: key issued";; *) echo "no key: $key"; exit 1;; esac
+          llm() { curl -s -H "Authorization: Bearer $key" -H 'Content-Type: application/json' "$@"; }
+          visible() { llm "$LLM/v1/models" | jq -e '.data[] | select(.id=="tiny-s2z")' >/dev/null; }
+          wait_for "key and model visible to the gateway" 60 visible
+          chat='{"model":"tiny-s2z","messages":[{"role":"user","content":"hello"}]}'
+
+          assert_eq "warm request served" "$(llm "$LLM/v1/chat/completions" -d "$chat" | jq -r .model)" stand-in
+          wait_for "gateway wrote gryvia.io/last-request" 30 field_set gryviainferenceservice/e2e-s2z '{.metadata.annotations.gryvia\.io/last-request}'
+
+          wait_for "scaled to zero after a minute idle" 240 field_is gryviainferenceservice/e2e-s2z '{.status.phase}' ScaledToZero
+          assert_eq "Deployment at 0 replicas" "$(jp deploy/e2e-s2z-inference '{.spec.replicas}')" 0
+          assert_eq "ScaleToZero condition" "$(jp gryviainferenceservice/e2e-s2z '{.status.conditions[?(@.type=="ScaleToZero")].reason}')" Idle
+          assert_nonempty "endpoint kept at zero" "$(jp gryviainferenceservice/e2e-s2z '{.status.endpoint}')"
+          no_pods() { ! kubectl -n "$NS" get pods -o name | grep -q e2e-s2z-inference; }
+          wait_for "model pods gone" 120 no_pods
+
+          # The cold start: this request wakes the service and is held until a replica is ready.
+          start=$(date +%s)
+          out="$(llm -m 300 -w '\n%{http_code}' "$LLM/v1/chat/completions" -d "$chat")"
+          echo "$out"
+          assert_eq "cold-start request answered" "$(echo "$out" | tail -1)" 200
+          assert_eq "served by the stand-in" "$(echo "$out" | head -n -1 | jq -r .model)" stand-in
+          echo "cold start took $(( $(date +%s) - start ))s"
+          assert_eq "phase after the cold start" "$(jp gryviainferenceservice/e2e-s2z '{.status.phase}')" Ready
+          assert_eq "wake annotation consumed" "$(jp gryviainferenceservice/e2e-s2z '{.metadata.annotations.gryvia\.io/wake-requested}')" ""
+          assert_nonempty "scaledToZeroAt recorded" "$(jp gryviainferenceservice/e2e-s2z '{.status.scaledToZeroAt}')"
+          # Two requests of 7 input tokens, the cold-started one included.
+          metered() { curl -s http://localhost:18181/metrics | grep -q 'gryvia_llm_tokens_total{model="tiny-s2z",tenant="gryvia-system",type="input"} 14'; }
+          wait_for "cold-started request metered" 30 metered
+
+          api /api/llm-keys/e2e-s2z -X DELETE >/dev/null
+          kubectl -n "$NS" delete gryviainferenceservice/e2e-s2z
+
       # ------------------------------------------------------------------ RAG (GryviaVectorIndex, managed Qdrant)
       # The real Qdrant image and the real ingestion image (examples/rag, built here); embeddings come from a stand-in
       # OpenAI server published on the LLM gateway (hashed bag of words, 64 dimensions), so retrieval is deterministic.

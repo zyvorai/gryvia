@@ -13,6 +13,8 @@ It runs as `/manager llm-gateway`, a mode of the ai-operator binary (same image)
 | Key authentication, routing by model (own namespace first, then shared), the model rewrite, the Authorization header not being forwarded, `/v1/models` scoped to the key, streaming with `stream_options.include_usage` and usage read from the last SSE chunk, OpenAI error bodies, 400/404/413/502 | Unit tests with `httptest` upstreams (`operators/ai-operator/pkg/llmgateway/llmgateway_test.go`) |
 | Hourly token records (create, update while open, final after the hour), 429 | Same tests with a fake client |
 | The shared daily counter: two replicas seeing each other's traffic after a sync, no double counting, seeding from today's records, 503 before the first read, the UTC day reset, deleting old counters, 30 concurrent syncs from three replicas losing no tokens | `TestQuotaIsSharedAcrossReplicasAndRejectsWith429` and `TestQuotaSyncsConcurrentReplicasWithoutLosingTokens` (fake client, race detector) |
+| Scale to zero: a request for a `ScaledToZero` model sets `gryvia.io/wake-requested` once and is held until the service is ready, then proxied and metered; a `Deploying` service is waited on without a new wake; 503 with `Retry-After` after the cold-start timeout; no upstream call after the caller leaves; `gryvia.io/last-request` throttled per service; services without `scaleToZero` never annotated | `operators/ai-operator/pkg/llmgateway/activator_test.go` (race detector) |
+| A real cold start on kind: a stand-in model with `idleSeconds: 60` gets `gryvia.io/last-request`, scales to zero (Deployment at 0, no pods), and the next request through the gateway wakes it, waits, gets 200 and is metered | The "LLM gateway - scale to zero and a cold start through the gateway" step of `.github/workflows/e2e-ml.yml` |
 | Key create/list/revoke with tenant scoping, the key shown once and only its hash stored, models and usage routes | `services/api-gateway/tests/test_llm.py` |
 | CLI key Secret, hashing, model and usage tables | `cli/src/commands/llm.rs` tests |
 | The gateway on a real cluster against a stand-in OpenAI server: key, model list, a chat completion, a streamed one, the usage record and a 429; with two replicas, the shared counter and a 429 from the replica that served no traffic | The "LLM gateway" step of `.github/workflows/e2e-ml.yml`; the single-replica steps also passed on a single-node k3s host (2026-10-01) |
@@ -44,7 +46,7 @@ The chart adds the Deployment and Service `<release>-llm-gateway` in the release
 
 | Who | Access |
 | --- | --- |
-| llm-gateway ServiceAccount (ClusterRole) | get/list/watch `gryviainferenceservices`, `gryviaquotas`, `gryviavectorindexes`; get/list/create/update `gryviausagerecords` |
+| llm-gateway ServiceAccount (ClusterRole) | get/list/watch `gryviainferenceservices`, `gryviaquotas`, `gryviavectorindexes`; patch `gryviainferenceservices` (scale-to-zero annotations); get/list/create/update `gryviausagerecords` |
 | llm-gateway ServiceAccount (Role in keyNamespace) | get/list/watch `secrets` |
 | llm-gateway ServiceAccount (Role in the release namespace) | get/list/create/update/delete `configmaps` (the daily token counters) |
 | api-gateway ServiceAccount (Role in keyNamespace) | get/list/create/delete `secrets` (key issue and revoke) |
@@ -163,6 +165,24 @@ against those totals plus this replica's tokens not yet synced:
 - If the counter cannot be read, a replica keeps checking against its last totals plus its own traffic, and logs the
   error. Before the first successful read, keys under a `tokensPerDay` quota get 503.
 - Counters older than yesterday are deleted when a new day's counter is created.
+
+## Scale to zero
+
+For a model whose service sets `spec.scaleToZero.enabled` ([inference serving](inference-serving.md#scale-to-zero)):
+
+- After each request it proxies (any status below 500), the gateway writes `gryvia.io/last-request` on the service,
+  at most once a minute per service and replica (every `idleSeconds / 3` when that is shorter), so a service in use
+  is not scaled down.
+- A request for a service in phase `ScaledToZero` sets `gryvia.io/wake-requested` (repeated at most every 5 seconds
+  while requests wait) and is held, re-reading the services every second, until the phase is no longer
+  `ScaledToZero` or `Deploying`. It is then proxied and metered as usual. Requests arriving while the service is
+  `Deploying` wait the same way. A refused connection right after the wake-up (the Service's endpoints can trail
+  the ready replica) is retried for up to 30 seconds; nothing reached the model, so nothing runs twice.
+- If the service is not ready within `coldStartTimeoutSeconds` (default 300), the request gets 503 with
+  `Retry-After: 30`. A caller that disconnects while waiting is dropped; the wake-up still goes ahead.
+
+The quota check runs before the wait, so a key over its `tokensPerDay` limit does not wake a model. Keep client and
+proxy timeouts above the cold-start time: the api-gateway playground allows 300 seconds.
 
 ## Flags
 

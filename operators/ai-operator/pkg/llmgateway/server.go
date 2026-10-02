@@ -35,6 +35,12 @@ type Gateway struct {
 	MaxBody int64
 	// Indexes serves POST /v1/retrieve; nil leaves it 404.
 	Indexes IndexSource
+	// Activator wakes scale-to-zero services and records their traffic; nil disables both.
+	Activator Activator
+	// WakePoll is how often a held request re-reads the routes (default 1s).
+	WakePoll time.Duration
+
+	wakes, touches throttle
 }
 
 const (
@@ -190,6 +196,12 @@ func (g *Gateway) proxy(w http.ResponseWriter, r *http.Request, k Key) {
 	if !g.allowed(w, r, k, model) {
 		return
 	}
+	woke := route.Waking()
+	if woke {
+		if route, ok = g.awaitReady(w, r, k, model, route); !ok {
+			return
+		}
+	}
 
 	stream, _ := body["stream"].(bool)
 	body["model"] = route.ServedModel
@@ -202,16 +214,21 @@ func (g *Gateway) proxy(w http.ResponseWriter, r *http.Request, k Key) {
 		body["stream_options"] = opts
 	}
 	out, _ := json.Marshal(body)
-	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, route.Upstream+r.URL.Path, bytes.NewReader(out))
-	if err != nil {
-		WriteError(w, http.StatusBadGateway, "api_error", "bad upstream")
-		return
+	send := func() (*http.Response, error) {
+		req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, route.Upstream+r.URL.Path, bytes.NewReader(out))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		if a := r.Header.Get("Accept"); a != "" {
+			req.Header.Set("Accept", a)
+		}
+		return g.client().Do(req)
 	}
-	req.Header.Set("Content-Type", "application/json")
-	if a := r.Header.Get("Accept"); a != "" {
-		req.Header.Set("Accept", a)
+	resp, err := send()
+	if woke {
+		resp, err = g.retryRefused(r.Context(), resp, err, send)
 	}
-	resp, err := g.client().Do(req)
 	if err != nil {
 		g.Meter.Request(k.Tenant, model, http.StatusBadGateway)
 		WriteError(w, http.StatusBadGateway, "api_error", "upstream unavailable")
@@ -236,6 +253,9 @@ func (g *Gateway) proxy(w http.ResponseWriter, r *http.Request, k Key) {
 		usage = usageOf(reply)
 	}
 	now := g.now()
+	if resp.StatusCode < http.StatusInternalServerError {
+		g.touch(route)
+	}
 	g.Meter.Request(k.Tenant, model, resp.StatusCode)
 	g.Meter.Record(k, route, usage.PromptTokens, usage.CompletionTokens, now)
 	if g.Quotas != nil {

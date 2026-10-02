@@ -27,12 +27,14 @@ const (
 	PhaseDeployingInfer = "Deploying"
 	PhaseReady          = "Ready"
 	PhaseRollingBack    = "RollingBack"
+	PhaseScaledToZero   = "ScaledToZero"
 
 	// Condition types for inference service
 	ConditionInferenceReady   = "InferenceReady"
 	ConditionCanaryActive     = "CanaryActive"
 	ConditionHealthy          = "Healthy"
 	ConditionAutoscalingValid = "AutoscalingValid"
+	ConditionScaleToZero      = "ScaleToZero"
 
 	annotationSpecHash        = "gryvia.io/spec-hash"
 	annotationModelVersion    = "gryvia.io/model-version"
@@ -204,7 +206,13 @@ func (r *GryviaInferenceServiceReconciler) reconcileService(ctx context.Context,
 	}
 	model := r.lookupModel(ctx, svc)
 
-	primary, err := r.ensureDeployment(ctx, svc, model)
+	wasZero := svc.Status.ScaledToZeroAt != nil
+	atZero, idleWait, err := r.reconcileScaleToZero(ctx, svc)
+	if err != nil {
+		return ctrl.Result{RequeueAfter: 15 * time.Second}, err
+	}
+
+	primary, err := r.ensureDeployment(ctx, svc, model, atZero, wasZero)
 	if err != nil {
 		if isConfigError(err) {
 			r.failSvc(svc, err)
@@ -219,11 +227,17 @@ func (r *GryviaInferenceServiceReconciler) reconcileService(ctx context.Context,
 		}
 		return ctrl.Result{RequeueAfter: 15 * time.Second}, err
 	}
-	if err := r.reconcileHPA(ctx, svc); err != nil {
-		return ctrl.Result{RequeueAfter: 15 * time.Second}, err
+	// At zero the HPA is left as it is: it does not scale a Deployment with 0 replicas.
+	if !atZero {
+		if err := r.reconcileHPA(ctx, svc); err != nil {
+			return ctrl.Result{RequeueAfter: 15 * time.Second}, err
+		}
 	}
 
 	next := 30 * time.Second
+	if idleWait > 0 {
+		next = minDuration(next, idleWait)
+	}
 	canaryWait, err := r.reconcileCanary(ctx, svc, primary, model)
 	if err != nil {
 		return ctrl.Result{RequeueAfter: 15 * time.Second}, err
@@ -241,8 +255,87 @@ func (r *GryviaInferenceServiceReconciler) reconcileService(ctx context.Context,
 	if err := r.Get(ctx, types.NamespacedName{Namespace: svc.Namespace, Name: inferPrimaryName(svc)}, live); err == nil {
 		primary = live
 	}
-	r.syncStatus(svc, primary)
+	r.syncStatus(svc, primary, atZero)
 	return ctrl.Result{RequeueAfter: next}, nil
+}
+
+// scaleToZeroEnabled reports whether idle scale-down applies; a canary rules it out.
+func scaleToZeroEnabled(svc *gryviav1.GryviaInferenceService) bool {
+	z := svc.Spec.ScaleToZero
+	return z != nil && z.Enabled && !(svc.Spec.Canary != nil && svc.Spec.Canary.Enabled)
+}
+
+// annotationTime parses an RFC 3339 annotation; the zero time when it is missing or malformed.
+func annotationTime(svc *gryviav1.GryviaInferenceService, key string) time.Time {
+	t, err := time.Parse(time.RFC3339, svc.Annotations[key])
+	if err != nil {
+		return time.Time{}
+	}
+	return t
+}
+
+// reconcileScaleToZero decides whether the service should be at zero replicas now. It consumes a wake request
+// (removing the annotation), scales an idle service down, and returns how long until the idle deadline.
+func (r *GryviaInferenceServiceReconciler) reconcileScaleToZero(ctx context.Context, svc *gryviav1.GryviaInferenceService) (bool, time.Duration, error) {
+	z := svc.Spec.ScaleToZero
+	if z == nil || !z.Enabled {
+		svc.Status.ScaledToZeroAt = nil
+		svc.Status.LastWakeAt = nil
+		removeCondition(&svc.Status.Conditions, ConditionScaleToZero)
+		return false, 0, nil
+	}
+	if !scaleToZeroEnabled(svc) {
+		svc.Status.ScaledToZeroAt = nil
+		setCondition(&svc.Status.Conditions, svc.Generation, ConditionScaleToZero, metav1.ConditionFalse, "Unsupported",
+			"scaleToZero is not applied while a canary is enabled")
+		return false, 0, nil
+	}
+	now := clock(r.Clock)
+	if _, ok := svc.Annotations[gryviav1.AnnotationWakeRequested]; ok {
+		patch := []byte(fmt.Sprintf(`{"metadata":{"annotations":{%q:null}}}`, gryviav1.AnnotationWakeRequested))
+		target := &gryviav1.GryviaInferenceService{ObjectMeta: metav1.ObjectMeta{Name: svc.Name, Namespace: svc.Namespace}}
+		if err := r.Patch(ctx, target, client.RawPatch(types.MergePatchType, patch)); err != nil && !errors.IsNotFound(err) {
+			return false, 0, err
+		}
+		t := metav1.NewTime(now)
+		svc.Status.LastWakeAt = &t
+		if svc.Status.ScaledToZeroAt != nil {
+			svc.Status.ScaledToZeroAt = nil
+			svc.Status.Message = "Woken by a request through the LLM gateway"
+		}
+	}
+	if svc.Status.ScaledToZeroAt != nil {
+		setCondition(&svc.Status.Conditions, svc.Generation, ConditionScaleToZero, metav1.ConditionTrue, "Idle",
+			"Scaled to zero; a request through the LLM gateway wakes it")
+		return true, 0, nil
+	}
+
+	// The idle clock runs from the later of the last proxied request and the last wake-up, which is first set when
+	// scale-to-zero is turned on (so enabling it on a long-idle service does not scale it down at once).
+	if svc.Status.LastWakeAt == nil {
+		t := metav1.NewTime(now)
+		svc.Status.LastWakeAt = &t
+	}
+	activity := svc.Status.LastWakeAt.Time
+	if t := annotationTime(svc, gryviav1.AnnotationLastRequest); t.After(activity) {
+		activity = t
+	}
+	deadline := activity.Add(z.Idle())
+	// A service that is not serving yet gets the cold-start time on top, so a slow start is not cut short.
+	if svc.Status.ReadyReplicas == 0 {
+		deadline = deadline.Add(z.ColdStart())
+	}
+	if now.Before(deadline) {
+		setCondition(&svc.Status.Conditions, svc.Generation, ConditionScaleToZero, metav1.ConditionFalse, "Active",
+			fmt.Sprintf("Scales to zero after %s without requests", z.Idle()))
+		return false, deadline.Sub(now) + time.Second, nil
+	}
+	t := metav1.NewTime(now)
+	svc.Status.ScaledToZeroAt = &t
+	svc.Status.Message = fmt.Sprintf("Scaled to zero after %s without requests", z.Idle())
+	setCondition(&svc.Status.Conditions, svc.Generation, ConditionScaleToZero, metav1.ConditionTrue, "Idle",
+		"Scaled to zero; a request through the LLM gateway wakes it")
+	return true, 0, nil
 }
 
 // lookupModel returns the registry entry the service serves (nil when it is missing: the service still runs).
@@ -269,7 +362,7 @@ func (r *GryviaInferenceServiceReconciler) modelForVersion(ctx context.Context, 
 }
 
 // ensureDeployment creates the stable Deployment or brings it back to the desired pod template.
-func (r *GryviaInferenceServiceReconciler) ensureDeployment(ctx context.Context, svc *gryviav1.GryviaInferenceService, model *gryviav1.GryviaModelRegistry) (*appsv1.Deployment, error) {
+func (r *GryviaInferenceServiceReconciler) ensureDeployment(ctx context.Context, svc *gryviav1.GryviaInferenceService, model *gryviav1.GryviaModelRegistry, atZero, wasZero bool) (*appsv1.Deployment, error) {
 	name := inferPrimaryName(svc)
 	deploy := &appsv1.Deployment{}
 	err := r.Get(ctx, types.NamespacedName{Namespace: svc.Namespace, Name: name}, deploy)
@@ -286,7 +379,11 @@ func (r *GryviaInferenceServiceReconciler) ensureDeployment(ctx context.Context,
 		version = deploy.Annotations[annotationPromoted]
 	}
 	model = r.modelForVersion(ctx, svc, model, version)
-	desired, err := r.buildDeployment(svc, model, name, trackStable, version, r.primaryReplicas(svc))
+	replicas := r.primaryReplicas(svc)
+	if atZero {
+		replicas = 0
+	}
+	desired, err := r.buildDeployment(svc, model, name, trackStable, version, replicas)
 	if err != nil {
 		return nil, configError{err}
 	}
@@ -319,8 +416,14 @@ func (r *GryviaInferenceServiceReconciler) ensureDeployment(ctx context.Context,
 		deploy.Annotations[annotationSpecHash] = desired.Annotations[annotationSpecHash]
 		changed = true
 	}
-	// With an HPA the autoscaler owns the replica count: only reset it when there is none.
-	if !autoscalingEnabled(svc) && (deploy.Spec.Replicas == nil || *deploy.Spec.Replicas != *desired.Spec.Replicas) {
+	// With an HPA the autoscaler owns the replica count: only reset it when there is none, when scaling to zero,
+	// or when waking from zero (the HPA does not scale a Deployment up from 0).
+	current := int32(-1)
+	if deploy.Spec.Replicas != nil {
+		current = *deploy.Spec.Replicas
+	}
+	owned := !autoscalingEnabled(svc) || atZero || (current == 0 && (wasZero || scaleToZeroEnabled(svc)))
+	if owned && current != *desired.Spec.Replicas {
 		deploy.Spec.Replicas = desired.Spec.Replicas
 		changed = true
 	}
@@ -874,7 +977,15 @@ func (r *GryviaInferenceServiceReconciler) annotatePrimary(ctx context.Context, 
 }
 
 // syncStatus fills phase, readyReplicas and health from the stable Deployment.
-func (r *GryviaInferenceServiceReconciler) syncStatus(svc *gryviav1.GryviaInferenceService, primary *appsv1.Deployment) {
+func (r *GryviaInferenceServiceReconciler) syncStatus(svc *gryviav1.GryviaInferenceService, primary *appsv1.Deployment, atZero bool) {
+	if atZero {
+		svc.Status.ReadyReplicas = primary.Status.ReadyReplicas
+		svc.Status.Phase = PhaseScaledToZero
+		svc.Status.HealthStatus = "Unknown"
+		setCondition(&svc.Status.Conditions, svc.Generation, ConditionInferenceReady, metav1.ConditionFalse, "ScaledToZero",
+			"Scaled to zero for being idle")
+		return
+	}
 	want := int32(1)
 	if primary.Spec.Replicas != nil {
 		want = *primary.Spec.Replicas

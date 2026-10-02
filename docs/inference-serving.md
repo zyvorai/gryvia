@@ -26,6 +26,41 @@ be rewritten to zero. The adapter and metrics pipeline need your usual access co
 Unknown. It is not proof that every GPU metric is accurate or every desired replica is ready.
 The HPA controls the stable Deployment only; the existing canary replica calculation is retained.
 
+## Scale to zero
+
+`spec.scaleToZero` scales an idle service down to zero replicas and back up when a request arrives through the
+[LLM gateway](llm-gateway.md):
+
+```yaml
+spec:
+  scaleToZero:
+    enabled: true
+    idleSeconds: 900               # default 900, at least 60
+    coldStartTimeoutSeconds: 300   # default 300, 10 to 3600
+```
+
+- **Idle.** The idle period counts from the later of the last request the gateway proxied (annotation
+  `gryvia.io/last-request`, written at most once a minute, or every `idleSeconds / 3` when that is shorter) and the last wake-up (`status.lastWakeAt`, first set when
+  scale-to-zero is turned on, so enabling it on a long-idle service does not scale it down at once). A service with
+  no ready replica gets `coldStartTimeoutSeconds` on top, so a slow model load is not cut short. Past the deadline
+  the stable Deployment goes to 0 replicas, `status.phase` becomes `ScaledToZero`, `status.scaledToZeroAt` is set
+  and the condition `ScaleToZero` is True (`Idle`). The Service and `status.endpoint` stay.
+- **Wake.** The annotation `gryvia.io/wake-requested` (any value) scales it back to `max(1, autoscaling.minReplicas)`
+  (or `spec.replicas` without autoscaling); the controller removes the annotation and sets `status.lastWakeAt`.
+  The phase is `Deploying` until a replica is ready, then `Ready`. The gateway sets this annotation when a request
+  for a scaled-to-zero model arrives and holds the request until the service is ready (see
+  [LLM gateway: scale to zero](llm-gateway.md#scale-to-zero)); you can also wake a service by hand:
+  `kubectl annotate gryviainferenceservice chat gryvia.io/wake-requested=now`.
+- **Autoscaling.** At zero the HPA is left untouched (Kubernetes does not scale a Deployment with 0 replicas, and
+  `minReplicas` stays at least 1). After a wake-up the HPA owns the replica count again.
+- **Not with a canary.** While `spec.canary.enabled` is true, scale-to-zero is not applied and `ScaleToZero` is
+  False (`Unsupported`).
+- Turning scale-to-zero off while at zero scales the service back up.
+
+Only traffic through the LLM gateway counts as activity and wakes the service. A caller of `status.endpoint` (or
+the Service) gets no activator: its connections fail while the service is at zero, and its requests do not keep it
+up.
+
 ## Weighted HTTP routing
 
 Enable the operator's optional capability:
@@ -148,6 +183,17 @@ health interval (at least 60 seconds) reset the hold. These are checks at reconc
 health between samples. The feature evaluates serving reliability; it does not assess output quality.
 
 ## Validation and limits
+
+Scale-to-zero: fake-client tests of the controller cover idle scale-down at the deadline (and the requeue for it),
+a request annotation postponing it, staying at zero without a wake request, the wake annotation consumed and the
+replicas restored, the cold-start allowance for a service that never became ready, the HPA left alone at zero and
+woken into its range, turning the feature off at zero, the canary exclusion, and a malformed annotation
+(`operators/ai-operator/controllers/inference_scaletozero_test.go`). On kind, the step "LLM gateway - scale to zero
+and a cold start through the gateway" of `.github/workflows/e2e-ml.yml` publishes a stand-in model with
+`idleSeconds: 60` and checks that a gateway request writes `gryvia.io/last-request`, that after a minute idle the
+service is `ScaledToZero` with its Deployment at 0 and no pods, and that the next gateway request wakes it, waits
+and is answered (200) and metered. Not covered end to end: a real engine's model load time (the stand-in starts in
+seconds) and the 503 after the cold-start timeout (unit-tested in the gateway).
 
 Unit tests cover HPA targets/errors, status freshness, route weighting, cold/unready canaries, defaults,
 cleanup, ownership and promotion gating. An `integration` Go test runs against envtest with Kubernetes

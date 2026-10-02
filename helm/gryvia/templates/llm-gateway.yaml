@@ -140,6 +140,10 @@ rules:
 - apiGroups: ["gryvia.io"]
   resources: ["gryviainferenceservices", "gryviaquotas", "gryviavectorindexes"]
   verbs: ["get", "list", "watch"]
+# Scale to zero: the gryvia.io/wake-requested and gryvia.io/last-request annotations.
+- apiGroups: ["gryvia.io"]
+  resources: ["gryviainferenceservices"]
+  verbs: ["patch"]
 # Hourly token records in the namespace of each key.
 - apiGroups: ["gryvia.io"]
   resources: ["gryviausagerecords"]

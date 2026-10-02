@@ -161,6 +161,32 @@ spec:
                 description: Replicas is the desired number of serving replicas
                 format: int32
                 type: integer
+              scaleToZero:
+                description: |-
+                  ScaleToZero scales the service to zero replicas after a period without requests and back up when the LLM
+                  gateway receives a request for it. Only traffic through the gateway counts and wakes it: callers of
+                  status.endpoint get no activator. Not supported together with an enabled canary.
+                properties:
+                  coldStartTimeoutSeconds:
+                    description: |-
+                      ColdStartTimeoutSeconds is how long the LLM gateway holds a request while the service starts, and how much
+                      longer a service that is not ready may run idle before it is scaled to zero. Default 300.
+                    format: int32
+                    maximum: 3600
+                    minimum: 10
+                    type: integer
+                  enabled:
+                    description: Enabled turns idle scale-down on.
+                    type: boolean
+                  idleSeconds:
+                    description: IdleSeconds without a request (or since the last
+                      wake-up) before the service is scaled to zero. Default 900.
+                    format: int32
+                    minimum: 60
+                    type: integer
+                required:
+                - enabled
+                type: object
               servicePort:
                 description: 'ServicePort is the port the inference service listens
                   on (default: 8080)'
@@ -278,17 +304,28 @@ spec:
                 description: LastHealthCheck is the timestamp of the last health check
                 format: date-time
                 type: string
+              lastWakeAt:
+                description: |-
+                  LastWakeAt is when the service was last woken (scaled up from zero, or a wake request while running), or when
+                  scale-to-zero was turned on; the idle period is counted from it or from the last request, whichever is later.
+                format: date-time
+                type: string
               message:
                 description: Message provides additional status information
                 type: string
               phase:
                 description: Phase is the current phase (Pending, Deploying, Ready,
-                  Failed, RollingBack)
+                  ScaledToZero, Failed, RollingBack)
                 type: string
               readyReplicas:
                 description: ReadyReplicas is the number of ready serving replicas
                 format: int32
                 type: integer
+              scaledToZeroAt:
+                description: ScaledToZeroAt is when the service was scaled to zero
+                  for being idle; unset while it runs.
+                format: date-time
+                type: string
               serviceName:
                 description: ServiceName is the name of the Kubernetes Service
                 type: string
