@@ -60,6 +60,8 @@ gryvia:
   aiOperator:
     agents:
       enabled: true
+      # A released tag, not latest, so the air-gap image list (deploy/airgap/images.txt) is exact.
+      image: ghcr.io/zyvorai/gryvia-agent-runtime:1.0.0
 
 zyntra:
   enabled: true
@@ -118,3 +120,60 @@ netra:
     baseURL: http://gryvia-llm-gateway:8080/v1
     model: ""
     existingSecret: sovereign-aios-netra-ai
+
+# Hardening integrations, all off by default. Each needs its operator installed first (its CRDs), see
+# docs/sovereign-aios.md#hardening; deploy/argocd/sovereign-aios installs them in order.
+hardening:
+  # Kyverno >= 1.13 admission policies.
+  kyverno:
+    enabled: false
+    # Audit records violations in PolicyReports; Enforce rejects the Pod.
+    failureAction: Audit
+    # Namespaces the policies apply to; empty means every namespace not excluded.
+    namespaces: []
+    # The add-ons run their own upstream images (deploy/airgap/images.txt).
+    excludeNamespaces: [kube-system, kyverno, external-secrets, openbao, spire-server, spire-system, falco]
+    # Images must come from these registry prefixes (set to your Harbor mirror in an air gap).
+    allowedRegistries: [ghcr.io/zyvorai/, nvcr.io/nvidia/, docker.io/alpine/, alpine/]
+    # Cosign signatures on the Zyvor images.
+    verifyImages:
+      enabled: true
+      # Image patterns checked; in an air gap list the mirrored names (harbor.example/zyvorai/*).
+      images: [ghcr.io/zyvorai/*]
+      # keyless: the release workflows' GitHub OIDC identities (needs Rekor and the Sigstore roots, so online).
+      # key: a cosign public key, for images you re-signed after mirroring (scripts/airgap-mirror.sh --sign-key).
+      mode: keyless
+      keyless:
+        issuer: https://token.actions.githubusercontent.com
+        subjects:
+          - https://github.com/zyvorai/gryvia/.github/workflows/release.yml@*
+          - https://github.com/zyvorai/zyntra/.github/workflows/image.yml@*
+          - https://github.com/zyvorai/netra/.github/workflows/release.yml@*
+      publicKey: ""
+  # Falco rules for the platform (files/falco/sovereign-aios-rules.yaml) as a ConfigMap in Falco's namespace; mount it
+  # with deploy/hardening/falco-values.yaml.
+  falco:
+    enabled: false
+    namespace: falco
+  # SPIRE (spire-controller-manager) issues every pod in Gryvia's namespace and every agent an X.509 SVID.
+  spire:
+    enabled: false
+    trustDomain: sovereign.local
+    className: ""                 # spire-controller-manager className, if it runs with one
+    # Agent namespaces: their agent pods get spiffe://<trust domain>/agent/<namespace>/<agent>.
+    agentNamespaces: []
+  # Keys from OpenBao instead of generated ones: External Secrets Operator reads one KV v2 entry with the fields
+  # gryviaApiKey, llmKey (gk- and 64 hex), netraApiKey, netraAgentKey and agentZyntraToken (zst_ and 64 hex), and
+  # writes every Secret this chart would otherwise write, hashes included.
+  openbao:
+    enabled: false
+    esoApiVersion: external-secrets.io/v1
+    server: https://openbao.openbao.svc:8200
+    mount: secret
+    key: sovereign-aios
+    # OpenBao's Kubernetes auth: the role is bound to ESO's ServiceAccount.
+    authMountPath: kubernetes
+    role: sovereign-aios
+    serviceAccount: {name: external-secrets, namespace: external-secrets}
+    caBundle: ""                  # base64 PEM of OpenBao's CA
+    refreshInterval: 1h

@@ -207,7 +207,8 @@ jobs:
       - name: An agent searches Zyntra and proposes; a person approves; Zyntra creates the GryviaPriority
         working-directory: gryvia
         run: |
-          export E2E_KEY="$(kubectl -n "$E2E_NS" get secret sovereign-aios-credentials -o jsonpath='{.data.GRYVIA_API_KEY}' | base64 -d)"
+          E2E_KEY="$(kubectl -n "$E2E_NS" get secret sovereign-aios-credentials -o jsonpath='{.data.GRYVIA_API_KEY}' | base64 -d)"
+          export E2E_KEY
           source scripts/e2e-ml-lib.sh
           kubectl -n "$NS" port-forward svc/gryvia-ui 8443:443 &
           sleep 3
@@ -254,7 +255,8 @@ jobs:
       - name: A real model calls the Zyntra search tool
         working-directory: gryvia
         run: |
-          export E2E_KEY="$(kubectl -n "$E2E_NS" get secret sovereign-aios-credentials -o jsonpath='{.data.GRYVIA_API_KEY}' | base64 -d)"
+          E2E_KEY="$(kubectl -n "$E2E_NS" get secret sovereign-aios-credentials -o jsonpath='{.data.GRYVIA_API_KEY}' | base64 -d)"
+          export E2E_KEY
           source scripts/e2e-ml-lib.sh
           ZURL=http://zyntra.gryvia-system.svc:8080
           api /api/agents -X POST -d "{\"name\":\"e2e-real-ops\",\"model\":\"real-qwen\",\"maxSteps\":3,

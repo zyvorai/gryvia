@@ -73,6 +73,7 @@ hosts already have drivers; `nvidia.toolkit.env` for k3s). The Gryvia GPU operat
 | `apiGateway.oidc.adminGroups` | Comma-separated OIDC `groups` values that are provider admins; every other OIDC user is a tenant user |
 | `apiGateway.oidc.legacyNamespaces` | Only while no `GryviaTenant` exists: trust the token claim as a namespace (old behaviour) |
 | `apiGateway.netra.url`, `.tokenSecret`, `.tokenKey`, `.insecureTLS` | Take `/api/network/flows` from [Netra](https://github.com/zyvorai/netra) |
+| `apiGateway.sovereign.zyntraURL`, `.zyntraTokenSecret`, `.zyntraTokenKey`, `.zyntraConsoleURL`, `.netraConsoleURL`, `.trustGryviaCert` | The console's Sovereign AI OS page: Zyntra's health, open gaps and pending proposals, and links to the Zyntra and Netra consoles ([Sovereign AI OS](../../docs/sovereign-aios.md)) |
 | `apiGateway.flightTokenSecret`, `.flightTokenKey`, `.flightCollectorNamespace` | Flight Recorder cluster view (needs the same token on the collector; see [docs/flight-recorder.md](../../docs/flight-recorder.md)) |
 | `aiOperator.mergeFabricSignals` | Fold per-node entries of `GryviaFabricSignal` `status.nodes[]` into the top-level status (`--merge-fabric-signals`; default `false`; see `docs/fabric-status.md`) |
 | `apiGateway.prometheusUrl` | Prometheus for cost and metric history |

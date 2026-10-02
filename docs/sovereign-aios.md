@@ -18,8 +18,8 @@ components you can read and run disconnected. It is early: see
 | Layer | Vendor stack | Here |
 | --- | --- | --- |
 | Hardware | NVIDIA HGX B300, Spectrum-X | Same hardware; [`ansible/`](../ansible), [`terraform/bare-metal`](../terraform/bare-metal), NVIDIA GPU and Network Operator sub-charts |
-| Hardened Kubernetes | Rubix | Any Kubernetes >= 1.30; Netra for network visibility and policy. RKE2 CIS hardening, Kyverno, Falco, SPIRE and OpenBao are not wired yet |
-| Delivery and air gap | Apollo | Helm. Offline bundles (Zarf, Harbor mirror) are not built yet |
+| Hardened Kubernetes | Rubix | RKE2 with the CIS profile and FIPS checks ([`ansible/roles/rke2_hardened`](../ansible/roles/rke2_hardened)), or any Kubernetes >= 1.30; Netra for network visibility and policy; opt-in Kyverno, cosign, Falco, SPIRE and OpenBao ([Hardening](#hardening)) |
+| Delivery and air gap | Apollo | Helm; a Zarf package, a Harbor mirror with signatures and an Argo CD app of apps ([Air gap](#air-gap)) |
 | Models, agents, retrieval | AIP | Gryvia LLM gateway, `GryviaInferenceService` (vLLM, llama.cpp), `GryviaAgent`, `GryviaVectorIndex` (Qdrant) |
 | Model hub | AIP Hub | `GryviaModelRegistry`, the [model factory](model-factory.md) |
 | Ontology and decisions | Foundry ontology, actions | Zyntra: objects with provenance, typed actions, approvals, signed decisions |
@@ -32,8 +32,10 @@ components you can read and run disconnected. It is early: see
    │  ──KPIs: /api/cluster/stats, /api/metrics/costs ─┘
    │  ──KPIs: /api/v1/ebpf/health, /metrics ─────────▶ Netra
    │  ──Ask, drafts (platform LLM key) ──────────────▶ Gryvia LLM gateway ──▶ vLLM / llama.cpp
-   └──approved actions: GryviaPriority, GryviaGPUSharingPolicy (kubectl) ──▶ Kubernetes API
+   └──approved actions: GryviaPriority, GryviaGPUSharingPolicy, job suspend ──▶ Kubernetes API
  Netra ──AI briefs (platform LLM key) ───────────────▶ Gryvia LLM gateway
+ Gryvia console ──/api/sovereign (agents' viewer token) ─▶ Zyntra, Netra
+ GryviaAgent ──zyntra tool (service token: search, propose) ─▶ Zyntra
 ```
 
 The chart does this wiring:
@@ -53,6 +55,13 @@ The chart does this wiring:
 
 Zyntra's in-cluster Kubernetes client only reads built-in kinds, so it reads Gryvia's custom resources through the
 Gryvia gateway, which also applies Gryvia's tenant scoping.
+
+Approved changes are written by Zyntra itself (`zyntra.execute: apply`, the default here): its image has no
+`kubectl`, so it sends the server-side apply, merge patch or delete to the Kubernetes API with its service account.
+`zyntra.kubernetes.actions` grants exactly that: create, patch and delete `gryviapriorities` and
+`gryviagpusharingpolicies`, and patch `gryviaaijobs` (suspend). Deletes only touch objects labelled
+`app.kubernetes.io/managed-by=zyntra`. Set `zyntra.execute: dry-run` to have approvals validated by the API server
+without changing anything.
 
 ## Install
 
@@ -90,10 +99,52 @@ agentToken:
   tenant: ""                      # bind the token to one Zyntra tenant
 ```
 
-The tool's `url` is `http://<release>-zyntra.gryvia-system.svc:8080`, as the install notes print. The agent's
+The tool's `url` is `http://zyntra.gryvia-system.svc:8080` (the chart names Zyntra's objects `zyntra`). The agent's
 NetworkPolicy opens egress to it; if `zyntra.networkPolicy.enabled` is set, add the agent's namespace to
 `zyntra.networkPolicy.ingressFrom`. Zyntra does not restart when only the token's roles or tenant change; restart its
 Deployment. Service tokens and `policyExistingSecret` are in Zyntra's 0.4.0 chart and image from `main`.
+
+## Console
+
+The Gryvia console has a **Sovereign AI OS** page (Platform, `/sovereign`, admins only). The gateway probes Zyntra and
+Netra from inside the cluster (`GET /api/sovereign`), so the browser needs neither their addresses nor their tokens:
+Zyntra's version, whether it applies approved changes, its sources, open gaps and proposals waiting for approval (read
+with the agents' viewer and proposer token), and Netra's health. Each card links to the product's console when
+`gryvia.apiGateway.sovereign.zyntraConsoleURL` and `netraConsoleURL` are set. On the Agents page, an answer that names
+a proposal links to its decision page in Zyntra.
+
+## Hardening
+
+All off by default; each needs its operator (and CRDs) installed first. [`deploy/argocd/sovereign-aios`](../deploy/argocd/sovereign-aios)
+installs them in order, at the versions pinned in [`deploy/airgap/charts.yaml`](../deploy/airgap/charts.yaml).
+
+| Piece | Values | What it does |
+| --- | --- | --- |
+| RKE2 | [`ansible/playbooks/sovereign-aios-rke2.yaml`](../ansible/playbooks/sovereign-aios-rke2.yaml) | RKE2 with `profile: cis` (its sysctls, the etcd user, `protect-kernel-defaults`), encrypted Secrets, Pod Security `restricted` with the node agents' namespaces exempt, API audit logs (full bodies for `gryvia.io` writes, metadata for Secrets), etcd snapshots, a Harbor registry mirror, online or air-gapped install. FIPS: RKE2's binaries use a FIPS 140 validated module; the role requires the host kernel in FIPS mode and can switch RHEL-family hosts (`rke2_fips_enable_os`) |
+| Kyverno and cosign | `hardening.kyverno` | `sovereign-aios-allowed-registries` (images only from `allowedRegistries`) and `sovereign-aios-verify-images`: Gryvia, Zyntra and Netra images must carry the cosign signature of their release workflow (keyless, GitHub OIDC), or of your key after mirroring (`mode: key`). Audit by default, `failureAction: Enforce` to reject |
+| Falco | `hardening.falco`, [`deploy/hardening/falco-values.yaml`](../deploy/hardening/falco-values.yaml) | Rules for a shell in a platform container, an agent runtime starting a program or connecting to a public address or reading a service account token, and Zyntra starting a program ([rules](../helm/sovereign-aios/files/falco/sovereign-aios-rules.yaml)). falcoctl is off: no rule downloads |
+| SPIRE | `hardening.spire` | `ClusterSPIFFEID`s: platform pods get `spiffe://<trust domain>/ns/<ns>/sa/<sa>`, agents `spiffe://<trust domain>/agent/<ns>/<agent>`. The services do not use the SVIDs for mTLS yet |
+| OpenBao | `hardening.openbao` | The keys come from one OpenBao KV v2 entry (`gryviaApiKey`, `llmKey`, `netraApiKey`, `netraAgentKey`, `agentZyntraToken`) instead of being generated: External Secrets writes every Secret the chart would, the hashes in Zyntra's policy and the LLM gateway included. Gryvia's TLS certificates and Zyntra's admin Secret are still generated by their charts |
+
+## Air gap
+
+[`deploy/airgap/images.txt`](../deploy/airgap/images.txt) lists every image the release and the add-ons run
+(`make sovereign-aios-images` regenerates it). Images that workloads pull at run time (training jobs, model servers you
+deploy) are yours to add. Two ways in:
+
+- **Zarf**: [`deploy/airgap/zarf.yaml`](../deploy/airgap/zarf.yaml), the platform plus optional add-on components.
+  `zarf package create deploy/airgap` on the connected side, `zarf package deploy` on the other after `zarf init`.
+- **Harbor and Argo CD**: `scripts/airgap-mirror.sh pull DIR` saves the images with their cosign signatures and the
+  charts; `scripts/airgap-mirror.sh push DIR <harbor> --sign-key cosign.key` loads them as
+  `<harbor>/<path without the registry host>`, re-signs the Zyvor images with your key, and pushes the charts to
+  `oci://<harbor>/charts`. The platform uses [`values-airgap.yaml`](../deploy/airgap/values-airgap.yaml) (every image
+  from Harbor, Kyverno enforcing the mirror and your key); the add-ons pull through the nodes' registry mirror
+  (`rke2_registry_mirror`). [`deploy/argocd/sovereign-aios/root.yaml`](../deploy/argocd/sovereign-aios/root.yaml) syncs
+  it all from Harbor and your Git mirror.
+
+`make sovereign-aios-airgap-test` checks offline that these agree: with `values-airgap.yaml` every image is the
+mirrored path of a listed image and no URL leaves the cluster, the Zarf package carries exactly `images.txt`, and
+Zarf and Argo CD pin the same chart versions.
 
 ## Hardware tiers
 
@@ -111,19 +162,26 @@ host network under it.
 
 | Verified | How |
 | --- | --- |
-| The chart renders with all three products: the shared credentials, the gateway key hash (SHA-256 of a `gk-` key), Zyntra's pack, URLs, certificate and keys, the agents' service token (its hash in Zyntra's policy merged with `zyntra.policy`, the token in each agent namespace), Netra's certificate and keys, Netra and Zyntra switched off, and the namespace guard | [`scripts/tests/sovereign-aios-chart.test.sh`](../scripts/tests/sovereign-aios-chart.test.sh) (`make sovereign-aios-test`), in the Sovereign AI OS workflow |
-| An agent's zyntra tool against a real Zyntra wired by the chart: Zyntra built from source serves the pack against a stand-in Gryvia gateway with the policy and token the chart rendered; the reference runtime, driven by a scripted model, finds and reads Gryvia objects, proposes `raise-inference-priority` (recorded as `service:gryvia-agents`, pending), is refused the approver-only `enable-mig-sharing`, gets 403 approving its own proposal, and a person's approval succeeds; an unknown token gets 401 | [`scripts/tests/sovereign-aios-agent-zyntra.sh`](../scripts/tests/sovereign-aios-agent-zyntra.sh) (`make sovereign-aios-agent-test`), in the Sovereign AI OS workflow; passed locally (2026-10-02) |
+| The whole loop on a cluster: the release installed on kind (Gryvia and Zyntra built from source); Zyntra reads Gryvia's objects through the real gateway over TLS with the shared key; a `GryviaAgent` with the chart's token Secret, through its NetworkPolicy, searches the ontology and proposes `raise-inference-priority` (recorded as `service:gryvia-agents`, pending); its token gets 403 approving; a person's approval makes Zyntra create the `GryviaPriority` through the Kubernetes API, labelled managed by Zyntra; the console's `/api/sovereign` reads Zyntra with the viewer token; a real model (Qwen2.5-0.5B on llama.cpp, CPU) behind the LLM gateway calls the Zyntra search tool and names a GPU node from the ontology | [`.github/workflows/e2e-sovereign-aios.yml`](../.github/workflows/e2e-sovereign-aios.yml) on every pull request touching the platform |
+| The chart renders with all three products: the shared credentials, the gateway key hash (SHA-256 of a `gk-` key), Zyntra's pack, URLs, certificate and keys, the agents' service token (its hash in Zyntra's policy merged with `zyntra.policy`, the token in each agent namespace), Netra's certificate and keys, the console's wiring to Zyntra and Netra, Zyntra applying approved changes with its RBAC, Netra and Zyntra switched off, and the namespace guard | [`scripts/tests/sovereign-aios-chart.test.sh`](../scripts/tests/sovereign-aios-chart.test.sh) (`make sovereign-aios-test`), in the Sovereign AI OS workflow |
+| An agent's zyntra tool against a real Zyntra wired by the chart, without a cluster: Zyntra built from source serves the pack against a stand-in Gryvia gateway with the policy and token the chart rendered; the reference runtime, driven by a scripted model, finds and reads Gryvia objects, proposes `raise-inference-priority`, is refused the approver-only `enable-mig-sharing`, gets 403 approving its own proposal, and a person's approval succeeds; an unknown token gets 401 | [`scripts/tests/sovereign-aios-agent-zyntra.sh`](../scripts/tests/sovereign-aios-agent-zyntra.sh) (`make sovereign-aios-agent-test`), in the Sovereign AI OS workflow |
+| Hardening renders correctly: with OpenBao, External Secrets templates produce exactly the Secrets the chart would generate (same data and labels, hashes included); the Kyverno policies, Falco ConfigMap and SPIRE IDs; key mode needs a key | the same test |
+| Zyntra's in-cluster actions: server-side apply, merge patch, labelled delete and server dry run against a fake API server, refusal of other kinds, verbs and unlabelled objects | `go test ./internal/executor` in Zyntra |
+| The Kyverno registry policy passes every workload the chart renders and refuses a Docker Hub image | Kyverno CLI 1.19.1 in the Sovereign AI OS workflow |
+| The Falco rules load with Falco's default rules | `falco -V` in the Falco 0.45.0 image, same workflow |
+| The air-gap artifacts agree: `images.txt` holds every image (add-ons included, regenerated in CI), `values-airgap.yaml` sends all of them to Harbor and no URL leaves the cluster, the Zarf package carries exactly that list, Zarf and Argo CD pin the same versions; Zarf lints the package | [`scripts/tests/sovereign-aios-airgap.test.sh`](../scripts/tests/sovereign-aios-airgap.test.sh), `scripts/sovereign-aios-images.sh --check`, `zarf dev lint`, same workflow |
+| The RKE2 role passes `ansible-lint` (production profile) and its templates render the CIS, Pod Security, audit and mirror settings for a first server, a joining server and an agent | [`ansible/tests/rke2_hardened_templates.yaml`](../ansible/tests/rke2_hardened_templates.yaml), same workflow |
+| The console's overview: the gateway endpoint (healthy, no token, unreachable, unhealthy) and the page | `services/api-gateway/tests/test_sovereign.py`, `web-ui/src/pages/Sovereign.test.tsx` |
 | The pack is valid for Zyntra 0.4: 8 KPIs, 6 object types, 3 link types, 2 typed actions, 3 views | `zyntra pack validate helm/sovereign-aios/files/zyntra-pack` |
-| Zyntra reads Gryvia through the pack: all six REST connectors ingest objects with their provenance and resolve the three links, and Gryvia's stats become KPIs and gaps (5 pending jobs against a target of 2, 42.5% utilization against 60%) | Zyntra 0.4.0-dev serving the pack against a stand-in Gryvia gateway with the same response shapes and bearer auth (2026-10-02) |
 
 | Not verified | Why |
 | --- | --- |
-| The release installed on a cluster: Zyntra reaching Gryvia's real gateway over TLS, the gateway accepting the platform key, Netra serving Gryvia's certificate | Not run yet; only rendered |
-| Approved actions running | Zyntra runs Gryvia actions with `kubectl`, which its image does not carry; proposals show the rendered object but running one fails until `kubectl` is provided |
+| Netra in the end-to-end run | Its eBPF agent is not run on the CI runner's kind; Netra is installed by the chart but switched off there |
+| The hardening add-ons running: Kyverno admitting or rejecting pods, signature checks against the registry, Falco raising alerts, SPIRE issuing SVIDs, External Secrets syncing from OpenBao | Rendered and checked by each tool's validator, not installed on a cluster |
+| The RKE2 role on real hosts, FIPS mode on real kernels | Linted and rendered only; CI has no VMs to provision |
+| Building and deploying the Zarf package, the mirror script against a real Harbor, an Argo CD sync | Linted and cross-checked offline; not run end to end |
 | Per-object actions (suspend this job) | Zyntra typed actions take fixed parameters; passing the chosen object's name and namespace into a Gryvia template needs a Zyntra change |
 | Objects with the same name in two tenants | AI jobs and datasets are keyed by name, so two tenants' jobs of the same name are one object |
-| A real model choosing the Zyntra tools, and the agent inside a cluster | The agent test scripts the model and runs the runtime as a process; the in-cluster path (Secret, env var, NetworkPolicy) is covered by the controller tests only |
-| Hardening (RKE2 CIS, Kyverno, Falco, SPIRE, OpenBao, image signatures) and the offline bundle | Not built yet |
 | Anything on GPUs, RDMA or at the scale of the tiers above | No GPU hardware in CI, as for the rest of Gryvia |
 
 ## Licenses

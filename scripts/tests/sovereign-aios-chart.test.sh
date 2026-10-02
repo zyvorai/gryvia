@@ -160,6 +160,94 @@ if grep -qE 'name: (netra|sovereign-aios-netra|sovereign-aios-zyntra-pack)$' "$O
 else
   echo "  ok   only Gryvia and the credentials"
 fi
+echo "hardening: OpenBao keys through External Secrets give the same Secrets"
+KV=(--set credentials.gryviaApiKey=apikey0123 --set credentials.llmKey=gk-$(printf 'a%.0s' {1..64})
+    --set credentials.netraApiKey=netra0123 --set credentials.netraAgentKey=agent0123
+    --set agentToken.token=zst_$(printf 'b%.0s' {1..64}) --set 'agentToken.namespaces={tenant-alpha}')
+PLAIN="$(mktemp)"
+render "${KV[@]}" >"$PLAIN" || { echo "  FAIL render"; cat "$PLAIN"; exit 1; }
+render "${KV[@]}" --set hardening.openbao.enabled=true >"$OUT" || { echo "  FAIL render"; cat "$OUT"; exit 1; }
+python3 - "$PLAIN" "$OUT" <<'EOF' || FAILED=1
+import hashlib, re, sys, yaml
+plain = [d for d in yaml.safe_load_all(open(sys.argv[1])) if d]
+bao = [d for d in yaml.safe_load_all(open(sys.argv[2])) if d]
+kv = {"gryviaApiKey": "apikey0123", "llmKey": "gk-" + "a" * 64, "netraApiKey": "netra0123",
+      "netraAgentKey": "agent0123", "agentZyntraToken": "zst_" + "b" * 64}
+failed = 0
+def ok(cond, msg):
+    global failed
+    print(("  ok   " if cond else "  FAIL ") + msg)
+    failed |= not cond
+def eso(text):  # the two forms the chart emits: {{ .field }} and {{ .field | sha256sum }}
+    def sub(m):
+        v = kv[m.group(1)]
+        return hashlib.sha256(v.encode()).hexdigest() if m.group(2) else v
+    return re.sub(r"\{\{ \.(\w+)( \| sha256sum)? \}\}", sub, text)
+mine = lambda d: d["metadata"].get("labels", {}).get("app.kubernetes.io/name") == "sovereign-aios"
+want = {(d["metadata"]["namespace"], d["metadata"]["name"]): d for d in plain if d["kind"] == "Secret" and mine(d)}
+got = {(d["metadata"]["namespace"], d["metadata"]["name"]): d for d in bao if d["kind"] == "ExternalSecret"}
+ok(set(got) == set(want) and len(want) == 6, f"every chart Secret becomes an ExternalSecret ({len(want)})")
+ok(not [d for d in bao if d["kind"] == "Secret" and mine(d)], "no generated key is rendered")
+for k, w in want.items():
+    g = got.get(k)
+    if not g:
+        continue
+    t = g["spec"]["target"]
+    norm = lambda d: {f: yaml.safe_load(v) if f.endswith(".yaml") else v for f, v in d.items()}
+    data = {f: eso(v) for f, v in t["template"]["data"].items()}
+    ok(norm(data) == norm(w["stringData"]), f"{k[0]}/{k[1]}: External Secrets writes the same data")
+    ok(t["template"]["metadata"]["labels"] == w["metadata"]["labels"], f"{k[0]}/{k[1]}: and the same labels")
+    ok(g["spec"]["dataFrom"] == [{"extract": {"key": "sovereign-aios"}}] and
+       g["spec"]["secretStoreRef"] == {"kind": "ClusterSecretStore", "name": "sovereign-aios-openbao"}, f"{k[0]}/{k[1]}: from OpenBao")
+st = [d for d in bao if d["kind"] == "ClusterSecretStore"][0]["spec"]
+ok(st["provider"]["vault"]["version"] == "v2" and st["provider"]["vault"]["auth"]["kubernetes"]["role"] == "sovereign-aios",
+   "the store reads KV v2 with OpenBao's Kubernetes auth")
+ok(set(st["conditions"][0]["namespaces"]) == {"gryvia-system", "gryvia-llm-keys", "tenant-alpha"}, "only the chart's namespaces may use it")
+sys.exit(failed)
+EOF
+rm -f "$PLAIN"
+
+echo "hardening: Kyverno, Falco and SPIRE"
+render --set hardening.kyverno.enabled=true --set hardening.falco.enabled=true --set hardening.spire.enabled=true \
+  --set 'hardening.spire.agentNamespaces={tenant-alpha}' >"$OUT" || { echo "  FAIL render"; cat "$OUT"; exit 1; }
+python3 - "$OUT" <<'EOF' || FAILED=1
+import sys, yaml
+docs = [d for d in yaml.safe_load_all(open(sys.argv[1])) if d]
+by = {(d["kind"], d["metadata"]["name"]): d for d in docs}
+failed = 0
+def ok(cond, msg):
+    global failed
+    print(("  ok   " if cond else "  FAIL ") + msg)
+    failed |= not cond
+reg = by[("ClusterPolicy", "sovereign-aios-allowed-registries")]["spec"]["rules"][0]
+ok(reg["validate"]["failureAction"] == "Audit", "policies audit by default")
+ok(reg["validate"]["pattern"]["spec"]["containers"][0]["image"].startswith("ghcr.io/zyvorai/* | nvcr.io/nvidia/*"), "registry allowlist")
+ok({"kube-system", "kyverno", "falco"} <= set(reg["exclude"]["any"][0]["resources"]["namespaces"]), "kube-system and the add-ons are exempt")
+vi = by[("ClusterPolicy", "sovereign-aios-verify-images")]["spec"]["rules"][0]["verifyImages"][0]
+subs = [e["keyless"]["subject"] for e in vi["attestors"][0]["entries"]]
+ok(vi["imageReferences"] == ["ghcr.io/zyvorai/*"] and len(subs) == 3 and all("/.github/workflows/" in s for s in subs),
+   "Zyvor images need a signature from one of the three release workflows")
+ok(vi["attestors"][0]["count"] == 1, "any one of them")
+images = [c["image"] for d in docs if d["kind"] in ("Deployment", "DaemonSet", "StatefulSet")
+          for c in d["spec"]["template"]["spec"].get("containers", []) + d["spec"]["template"]["spec"].get("initContainers", [])]
+import fnmatch
+alts = [a.strip() for a in reg["validate"]["pattern"]["spec"]["containers"][0]["image"].split("|")]
+bad = [i for i in images if not any(fnmatch.fnmatch(i, a) for a in alts)]
+ok(images and not bad, f"the chart's own {len(images)} containers pass the allowlist {bad or ''}")
+fr = by[("ConfigMap", "sovereign-aios-falco-rules")]
+ok(fr["metadata"]["namespace"] == "falco" and "GryviaAgent runtime started a program" in fr["data"]["sovereign-aios-rules.yaml"], "Falco rules ConfigMap")
+ag = by[("ClusterSPIFFEID", "sovereign-aios-agents")]["spec"]
+ok(ag["spiffeIDTemplate"].startswith("spiffe://sovereign.local/agent/") and ag["podSelector"] == {"matchLabels": {"gryvia.io/component": "agent"}}, "agents get their own SPIFFE IDs")
+ok(ag["namespaceSelector"]["matchExpressions"][0]["values"] == ["gryvia-system", "tenant-alpha"], "in the agent namespaces")
+pl = by[("ClusterSPIFFEID", "sovereign-aios-platform")]["spec"]
+ok("/ns/{{ .PodMeta.Namespace }}/sa/{{ .PodSpec.ServiceAccountName }}" in pl["spiffeIDTemplate"], "platform pods by service account")
+sys.exit(failed)
+EOF
+if render --set hardening.kyverno.enabled=true --set hardening.kyverno.verifyImages.mode=key >/dev/null; then
+  echo "  FAIL key mode without a public key"; FAILED=1
+else
+  echo "  ok   key mode needs a public key"
+fi
 rm -f "$OUT"
 
 [[ $FAILED -eq 0 ]] && echo "PASS" || { echo "FAIL"; exit 1; }
