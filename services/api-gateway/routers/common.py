@@ -59,7 +59,7 @@ class Deps:
     zyntra_console_url: Optional[str] = None                                   # GRYVIA_ZYNTRA_CONSOLE_URL
     netra_console_url: Optional[str] = None                                    # GRYVIA_NETRA_CONSOLE_URL
     sovereign_ca_file: Optional[str] = None                                    # GRYVIA_SOVEREIGN_CA_FILE
-    sovereign_client: Optional[Callable[[], Any]] = None                       # tests: returns an httpx.AsyncClient
+    sovereign_client: Optional[Callable[[Any], Any]] = None                    # tests: verify -> an httpx.AsyncClient
     # tests inject this: returns a list of bodies, or (bodies, total_collectors)
     collector_fetch: Optional[Callable[[str], Awaitable[Any]]] = None
     # tests inject this: (agent chat URL, body) -> (status, JSON body)
