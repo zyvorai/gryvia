@@ -26,6 +26,7 @@ lists what Gryvia does not provide.
 | Transparent billing | One usage record per admitted run (requeued time is not billed), SKU rates, budgets that can block, chargeback, invoices | [GPU as a Service](../website/docs/guides/GPU_AS_A_SERVICE.md), [Kueue integration](kueue-integration.md#priorities-and-preemption); quota-operator unit tests, `e2e-kueue.sh preempt` |
 | One CLI, API and console | `gryvia` CLI (jobs, queues, quotas, usage, invoices, models, LLM keys, datasets, logs), the API gateway, the web UI | [CLI guide](../website/docs/guides/CLI_GUIDE.md), [API reference](../website/docs/developer-guide/api-reference.md) |
 | Inference endpoints, autoscaling, canaries | `GryviaInferenceService` (any serving image, such as vLLM or llama.cpp), HPA on GPU or requests per second, Gateway API canaries with SLO gating | [Inference serving](inference-serving.md) |
+| Serverless inference (scale to zero) | `spec.scaleToZero`: idle services go to 0 replicas; a request through the LLM gateway wakes the service and waits for it (503 with `Retry-After` after the cold-start timeout) | [Inference serving](inference-serving.md#scale-to-zero), [LLM gateway](llm-gateway.md#scale-to-zero); controller and gateway unit tests; the scale-to-zero step of `e2e-ml.yml` (not yet passed) |
 | Model APIs (OpenAI-compatible, streaming, per-key metering) | LLM gateway: per-tenant keys, routing by model, streaming with usage, token quotas, token usage records | [LLM gateway](llm-gateway.md); `e2e-ml.yml` with llama.cpp ([run 36990962579](https://github.com/zyvorai/gryvia/actions/runs/36990962579)) |
 | Fine-tuning | Model factory: download, LoRA fine-tune, lm-eval, GGUF conversion, registry, serving from the registry, scoring the live endpoint | [Model factory](model-factory.md); `e2e-ml.yml` ([run 37016697378](https://github.com/zyvorai/gryvia/actions/runs/37016697378)) |
 | Agents and RAG | `GryviaAgent` (tool-calling runtime behind the gateway), `GryviaVectorIndex` | [Agents](agents.md), [RAG](rag.md) |
@@ -39,7 +40,6 @@ lists what Gryvia does not provide.
 ## What Gryvia does not provide
 
 - Hardware, facilities, provisioning of machines, or VM and bare-metal instance products (see above).
-- Inference that scales to zero and wakes on traffic, and a prompt playground in the console, are planned, not
-  shipped.
+- A prompt playground in the console is planned, not shipped.
 - Most end-to-end checks run on kind with CPU stand-ins. What has and has not run on GPUs is stated on each page
   (for example [GPU validation](gpu-validation.md)); nothing here claims GPU throughput or latency numbers.
