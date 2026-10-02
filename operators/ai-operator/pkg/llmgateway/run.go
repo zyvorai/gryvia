@@ -63,10 +63,15 @@ func Run(args []string) error {
 	currency := fs.String("currency", "USD", "Currency written on token usage records.")
 	flush := fs.Duration("flush-interval", 5*time.Minute, "How often token buckets are written as GryviaUsageRecords.")
 	quotaEvery := fs.Duration("quota-refresh-interval", 30*time.Second, "How often GryviaQuotas are reloaded.")
+	syncEvery := fs.Duration("quota-sync-interval", time.Second, "How often this replica's token counts are added to the shared daily counter and the totals read back.")
+	counterNs := fs.String("counter-namespace", os.Getenv("POD_NAMESPACE"), "Namespace of the shared daily token counter ConfigMaps (default $POD_NAMESPACE).")
 	maxBody := fs.Int64("max-body-bytes", defaultMaxBody, "Largest accepted request body.")
 	timeout := fs.Duration("upstream-timeout", 10*time.Minute, "Longest upstream request, streaming included.")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	if *counterNs == "" {
+		return errors.New("set --counter-namespace or POD_NAMESPACE")
 	}
 	ctrl.SetLogger(zap.New())
 	log := ctrl.Log.WithName("llm-gateway")
@@ -127,9 +132,12 @@ func Run(args []string) error {
 	instance := Instance(pod, time.Now())
 	meter := NewMeter(reg, instance)
 	meter.currency = *currency
-	quotas := NewQuotas(direct, instance)
+	quotas := NewQuotas(direct, *counterNs)
 	if err := quotas.Refresh(ctx); err != nil {
 		log.Error(err, "loading quotas; tokensPerDay is not enforced until a refresh succeeds")
+	}
+	if err := quotas.Sync(ctx, time.Now()); err != nil {
+		log.Error(err, "reading the shared token counter; keys under a tokensPerDay quota get 503 until a sync succeeds")
 	}
 
 	source := &CacheSource{Reader: informers, KeyNamespace: *keyNamespace, PriceIn: *priceIn, PriceOut: *priceOut}
@@ -146,6 +154,11 @@ func Run(args []string) error {
 			log.Error(err, "refreshing quotas")
 		}
 	})
+	go every(ctx, *syncEvery, func() {
+		if err := quotas.Sync(ctx, time.Now()); err != nil {
+			log.Error(err, "syncing the shared token counter")
+		}
+	})
 	go every(ctx, *flush, func() {
 		if err := meter.Flush(ctx, direct, time.Now()); err != nil {
 			log.Error(err, "writing token usage records")
@@ -160,7 +173,7 @@ func Run(args []string) error {
 	errs := make(chan error, 2)
 	go func() { errs <- serving.ListenAndServe() }()
 	go func() { errs <- monitoring.ListenAndServe() }()
-	log.Info("serving", "address", *listen, "keyNamespace", *keyNamespace, "instance", instance)
+	log.Info("serving", "address", *listen, "keyNamespace", *keyNamespace, "instance", instance, "counterNamespace", *counterNs)
 	select {
 	case <-ctx.Done():
 	case err = <-errs:
@@ -170,6 +183,9 @@ func Run(args []string) error {
 	defer c()
 	_ = serving.Shutdown(drain)
 	_ = monitoring.Shutdown(drain)
+	if serr := quotas.Sync(drain, time.Now()); serr != nil {
+		log.Error(serr, "final sync of the shared token counter")
+	}
 	if ferr := meter.Flush(drain, direct, time.Now()); ferr != nil {
 		log.Error(ferr, "final flush of token usage records")
 	}
