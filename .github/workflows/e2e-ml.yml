@@ -49,6 +49,8 @@ env:
   MF_MODEL_REVISION: 93efa2f097d58c2a74874c7e644dbc9b0cee75a2
   S3_SERVER_IMAGE: versity/versitygw:v1.8.0
   AWS_CLI_IMAGE: amazon/aws-cli:2.17.0
+  LLAMA_IMAGE: ghcr.io/ggml-org/llama.cpp:server-b11347
+  LLAMA_MODEL: Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M
   KIND_CLUSTER: gryvia-demo
 
 jobs:
@@ -1476,6 +1478,87 @@ jobs:
           key_gone() { ! kubectl -n gryvia-llm-keys get secret gryvia-system.agent-e2e-agent >/dev/null 2>&1; }
           wait_for "agent key removed" 60 key_gone
           kubectl -n "$NS" delete gryviainferenceservice/e2e-agent-llm
+
+      # ------------------------------------------------------------------ A real model engine on CPU
+      # llama.cpp's server (OpenAI-compatible, tool calls through its chat template with --jinja) serves Qwen2.5-0.5B
+      # Instruct (Q4_K_M GGUF, downloaded from Hugging Face at startup) as a GryviaInferenceService on the LLM gateway.
+      # Greedy decoding (--temp 0) keeps the answers repeatable. The gateway and the agent runtime are the same as
+      # above; only the stand-in models are replaced.
+      - name: Real model - llama.cpp on CPU behind the LLM gateway, chat, streaming and an agent with a tool
+        run: |
+          source scripts/e2e-ml-lib.sh
+          docker pull -q "$LLAMA_IMAGE" && kind load docker-image --name "$KIND_CLUSTER" "$LLAMA_IMAGE"
+          cat <<EOF | kubectl apply -f -
+          apiVersion: gryvia.io/v1alpha1
+          kind: GryviaInferenceService
+          metadata:
+            name: e2e-qwen
+            namespace: gryvia-system
+            annotations: {gryvia.io/llm-model: real-qwen}
+          spec:
+            modelRef: e2e-qwen
+            backend: torchserve
+            image: ${LLAMA_IMAGE}
+            replicas: 1
+            servicePort: 8080
+            healthCheck: {path: /health}
+            args: [-hf, "${LLAMA_MODEL}", --host, 0.0.0.0, --port, "8080", --jinja, --temp, "0", -c, "4096", -t, "2"]
+          EOF
+          wait_for "llama.cpp service Ready (model downloaded and loaded)" 900 field_is gryviainferenceservice/e2e-qwen '{.status.phase}' Ready
+
+          kubectl -n "$NS" port-forward svc/gryvia-llm-gateway 18082:8080 &
+          sleep 3
+          LLM=http://localhost:18082
+          key="$(api /api/llm-keys -X POST -d '{"name":"e2e-real","namespace":"gryvia-system","description":"real model"}' | jq -r .key)"
+          llm() { curl -s -H "Authorization: Bearer $key" -H 'Content-Type: application/json' "$@"; }
+          listed() { llm "$LLM/v1/models" | jq -e '.data[] | select(.id=="real-qwen")' >/dev/null; }
+          wait_for "real model listed by the gateway" 60 listed
+
+          out="$(llm "$LLM/v1/chat/completions" -d '{"model":"real-qwen","max_tokens":40,
+            "messages":[{"role":"user","content":"What is the capital of France? Answer with one word."}]}')"
+          echo "$out" | jq .
+          echo "$out" | jq -e '.choices[0].message.content | test("Paris")' >/dev/null || { echo "ASSERT FAILED: no Paris"; exit 1; }
+          echo "$out" | jq -e '.usage.prompt_tokens > 0 and .usage.completion_tokens > 0' >/dev/null || { echo "ASSERT FAILED: no usage"; exit 1; }
+          echo "ok: a real completion with usage"
+
+          llm -N "$LLM/v1/chat/completions" -d '{"model":"real-qwen","stream":true,"max_tokens":40,
+            "messages":[{"role":"user","content":"Count from one to five in words."}]}' > /tmp/real-stream.txt
+          assert_eq "stream ends with [DONE]" "$(grep '^data: ' /tmp/real-stream.txt | tail -1)" "data: [DONE]"
+          grep '^data: {' /tmp/real-stream.txt | sed 's/^data: //' > /tmp/real-events.jsonl
+          chunks="$(jq -s '[.[] | select((.choices[0].delta.content // "") != "")] | length' /tmp/real-events.jsonl)"
+          [ "$chunks" -gt 3 ] || { echo "ASSERT FAILED: only $chunks content chunks"; exit 1; }
+          jq -rsj '[.[] | .choices[0].delta.content // empty] | join("")' /tmp/real-events.jsonl | grep -qi three \
+            || { echo "ASSERT FAILED: streamed text"; cat /tmp/real-stream.txt; exit 1; }
+          jq -se '[.[] | select(.usage != null)] | last | .usage.completion_tokens > 0' /tmp/real-events.jsonl >/dev/null \
+            || { echo "ASSERT FAILED: no usage chunk (the gateway asks for stream usage)"; exit 1; }
+          echo "ok: streamed $chunks content chunks and a usage chunk"
+          metered() { [ "$(gw '/api/llm/usage?groupBy=model' '.items[] | select(.model=="real-qwen") | .inputTokens // 0')" -gt 0 ]; }
+          wait_for "real model tokens metered" 60 metered
+
+          # An agent on the real model: it has to call the tool, read the handbook and answer from it.
+          api /api/agents -X POST -d '{"name":"e2e-real-agent","model":"real-qwen","systemPrompt":"Answer questions using the handbook tool.",
+            "maxSteps":3,"tools":[{"name":"read_handbook","type":"http","urls":["http://e2e-files.gryvia-system.svc:8080/kb.md"]}]}' \
+            | jq -e '.metadata.name == "e2e-real-agent"'
+          wait_for "real agent Ready" 240 field_is gryviaagent/e2e-real-agent '{.status.phase}' Ready
+          question='{"messages":[{"role":"user","content":"How often are checkpoints saved? Read the handbook first."}]}'
+          out="$(api /api/agents/e2e-real-agent/chat -X POST -d "$question")"
+          echo "$out" | jq .
+          assert_eq "real model called the tool" "$(echo "$out" | jq -c '[.gryvia.toolCalls[] | {tool, ok}]')" '[{"tool":"read_handbook","ok":true}]'
+          echo "$out" | jq -e '.choices[0].message.content | test("thirty|30"; "i")' >/dev/null \
+            || { echo "ASSERT FAILED: the answer does not use the handbook"; exit 1; }
+          echo "ok: the real model answered from the tool result"
+
+          api /api/agents/e2e-real-agent/chat -X POST -N -d "$(jq -c '. + {stream: true}' <<<"$question")" > /tmp/real-agent-stream.txt
+          grep '^data: {' /tmp/real-agent-stream.txt | sed 's/^data: //' > /tmp/real-agent-events.jsonl
+          assert_eq "streamed tool call" "$(jq -sc '[.[] | .gryvia.toolCall // empty | {tool, ok}]' /tmp/real-agent-events.jsonl)" '[{"tool":"read_handbook","ok":true}]'
+          jq -rsj '[.[] | .choices[0].delta.content // empty] | join("")' /tmp/real-agent-events.jsonl | grep -qiE "thirty|30" \
+            || { echo "ASSERT FAILED: streamed answer"; cat /tmp/real-agent-stream.txt; exit 1; }
+          echo "ok: streamed agent answer with the tool call"
+
+          api /api/agents/e2e-real-agent -X DELETE >/dev/null
+          wait_for "real agent deleted" 120 gone gryviaagent/e2e-real-agent
+          api /api/llm-keys/e2e-real -X DELETE >/dev/null
+          kubectl -n "$NS" delete gryviainferenceservice/e2e-qwen
 
       - name: Job hooks - stand-in receiver and enable the controller
         run: |

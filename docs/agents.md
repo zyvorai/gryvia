@@ -20,12 +20,13 @@ The feature is opt-in and needs the LLM gateway.
 | Routes (including the chat proxy, which ignores a `status.endpoint` outside the agent's namespace, and the streamed proxy with its error mapping), CLI and dashboard helpers | `services/api-gateway/tests/test_agents.py`, `cli/src/commands/agents.rs`, `web-ui/src/lib/agents.test.ts` |
 | NetworkPolicy enforcement on kind (kindnet enforces NetworkPolicy since kind v0.24): the agent reaches its allowlisted tool host but not a server in another namespace that a pod there can reach, and that namespace cannot reach the agent | The "Agents" steps of `.github/workflows/e2e-ml.yml` |
 | The whole path on kind: the real runtime image, a stand-in tool-calling model published on the gateway, chat through the api-gateway with an HTTP tool fetching a file (also streamed), a refused URL, metering, scale to zero and deletion | The "Agents" steps of `.github/workflows/e2e-ml.yml`; the non-streamed steps also passed on a single-node k3s host (2026-10-01) |
+| A real model deciding to call a tool: Qwen2.5-0.5B Instruct on llama.cpp's server (CPU, greedy decoding) behind the gateway; the agent runtime offers an HTTP tool, the model calls it, the runtime fetches the handbook and the model answers from it, non-streamed and streamed (the tool-call deltas come from the real engine) | The "Real model" step of `.github/workflows/e2e-ml.yml`; the same runtime loop also passed 5 of 5 runs locally against llama.cpp b11146 |
 
 | Not verified | Why |
 | --- | --- |
-| A real tool-calling model served by vLLM | No GPU in CI; the stand-in returns OpenAI-shaped `tool_calls` |
+| A tool-calling model served by vLLM, or larger models and multi-tool plans | No GPU in CI. The real-model run uses llama.cpp on CPU with a 0.5B model and one tool |
 | NetworkPolicy enforcement with other CNIs (Calico, Cilium) | Only kind's kindnet was run; any CNI that implements NetworkPolicy should behave the same |
-| Streaming through vLLM | The stand-in model streams OpenAI-shaped chunks; vLLM's tool-call deltas follow the same format but were not run |
+| Streaming through vLLM | Streaming tool-call deltas were run with llama.cpp only; vLLM's follow the same format |
 
 ## Turning it on
 
