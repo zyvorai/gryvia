@@ -3,7 +3,8 @@ remote: origin
 target-branch: main
 chart-dirs:
   - helm
-# Needs the Zyntra and Netra charts from sibling checkouts; scripts/tests/sovereign-aios-chart.test.sh renders it.
+# Needs the Zyntra and Netra charts from sibling checkouts; the Sovereign AI OS workflow (sovereign-aios.yml) checks
+# them out and runs its render tests.
 excluded-charts:
   - sovereign-aios
 chart-repos:

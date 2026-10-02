@@ -28,7 +28,7 @@ The feature is opt-in and needs the LLM gateway.
 | A tool-calling model served by vLLM, or larger models and multi-tool plans | No GPU in CI. The real-model run uses llama.cpp on CPU with a 0.5B model and one tool |
 | NetworkPolicy enforcement with other CNIs (Calico, Cilium) | Only kind's kindnet was run; any CNI that implements NetworkPolicy should behave the same |
 | Streaming through vLLM | Streaming tool-call deltas were run with llama.cpp only; vLLM's follow the same format |
-| Zyntra tools against a running Zyntra, or a real model choosing them | Only the fake Zyntra in `test_runtime.py`. Zyntra's side (service tokens may read and propose but get 403 on approve) is tested in Zyntra's `internal/api/service_test.go` |
+| A real model choosing the Zyntra tools | The runtime ran against a real Zyntra with a scripted model ([`scripts/tests/sovereign-aios-agent-zyntra.sh`](../scripts/tests/sovereign-aios-agent-zyntra.sh), see [Sovereign AI OS](sovereign-aios.md#what-is-verified-and-what-is-not)); no real model has picked them yet |
 
 ## Turning it on
 
@@ -107,7 +107,8 @@ tenants, GPU nodes, jobs, models, inference services and datasets).
 | `<name>_propose` (`action`, `inputs`) | `POST /api/v1/proposals`. Zyntra checks the action's contract, constraints and preconditions; a refusal and its reasons go back to the model |
 
 The token is a Zyntra service token, made with `zyntra service-token -name agent -roles viewer,proposer` and listed
-under `service_tokens` in Zyntra's policy file. Zyntra gives service tokens the viewer and proposer roles only, so an
+under `service_tokens` in Zyntra's policy file. The [Sovereign AI OS](sovereign-aios.md#agents-on-the-ontology)
+chart generates one and puts it in the agent namespaces you list. Zyntra gives service tokens the viewer and proposer roles only, so an
 agent can draft a proposal but never approve it: approval stays with people in Zyntra, and typed actions marked
 `permissions: [approver]` refuse proposals from the agent. A token bound to a tenant sees only that tenant's objects.
 The controller puts the token in the runtime's environment (`ZYNTRA_TOKEN_<NAME>`), not in the config ConfigMap.

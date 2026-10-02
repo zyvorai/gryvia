@@ -17,6 +17,20 @@ credentials:
   netraApiKey: ""
   netraAgentKey: ""
 
+# A Zyntra service token for the zyntra tools of GryviaAgents (docs/agents.md). Zyntra gives service tokens the viewer
+# and proposer roles only, so agents can draft proposals but people approve them. The token is generated once and
+# kept in the credentials Secret (AGENT_ZYNTRA_TOKEN); its SHA-256 goes into Zyntra's policy, which this chart renders
+# into the Secret zyntra.policyExistingSecret, merged with zyntra.policy. Each namespace listed gets a copy of the
+# token in Secret secretName (key token) for its agents' tokenSecretRef.
+agentToken:
+  enabled: true
+  name: gryvia-agents             # shown in Zyntra's audit as service:<name>
+  roles: [viewer, proposer]       # viewer alone for read-only agents
+  tenant: ""                      # bind to one Zyntra tenant; empty sees every object
+  token: ""                       # leave empty to generate (zst_ and 64 hex digits)
+  secretName: zyntra-agent-token
+  namespaces: []                  # e.g. [tenant-alpha]
+
 gryvia:
   # Fixed service names (gryvia-llm-gateway) so the URLs below do not depend on the release name.
   fullnameOverride: gryvia
@@ -39,6 +53,11 @@ zyntra:
   modelPath: /etc/zyntra-pack
   # Approved changes are Gryvia custom resources run through kubectl, which the Zyntra image does not carry.
   execute: dry-run
+  # Approval policy (quorum, users, ...) as inline YAML. This chart merges it with the agents' service token and
+  # writes the result to policyExistingSecret, which Zyntra reads instead. Zyntra does not restart when only the
+  # token's roles or tenant change: kubectl rollout restart deployment/<release>-zyntra.
+  policy: ""
+  policyExistingSecret: sovereign-aios-zyntra-policy
   ai:
     # Gryvia's LLM gateway: OpenAI-compatible, metered, local models only.
     baseURL: http://gryvia-llm-gateway:8080/v1

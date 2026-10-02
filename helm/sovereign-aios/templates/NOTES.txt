@@ -19,4 +19,15 @@ Keys (Secret {{ .Values.credentials.secretName }}):
 Zyntra signs in as admin with the password in ZYNTRA_ADMIN_PASSWORD of its own Secret, or Admin@321 until you set
 zyntra.auth.adminPassword. Its AI answers need a model published on the Gryvia LLM gateway: set zyntra.ai.model.
 Approved Gryvia changes are rendered for review but need kubectl, which the Zyntra image does not carry.
+{{- if .Values.agentToken.enabled }}
+
+GryviaAgents reach Zyntra with a zyntra tool (docs/agents.md):
+  url: http://{{ .Release.Name }}-zyntra.{{ .Release.Namespace }}.svc:8080
+  tokenSecretRef: {name: {{ .Values.agentToken.secretName }}, key: token}
+{{- if .Values.agentToken.namespaces }}
+  The token Secret is in: {{ join ", " .Values.agentToken.namespaces }}
+{{- else }}
+  No namespace has the token Secret yet: list agent namespaces in agentToken.namespaces.
+{{- end }}
+{{- end }}
 {{- end }}
