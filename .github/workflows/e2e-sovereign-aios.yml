@@ -191,7 +191,8 @@ jobs:
           kubectl -n "$NS" rollout status deploy/zyntra --timeout=180s
           kubectl -n "$NS" port-forward svc/zyntra 18080:8080 &
           sleep 3
-          ZKEY="$(kubectl -n "$NS" get secret zyntra -o jsonpath='{.data.ZYNTRA_API_KEY}' | base64 -d)"
+          ZKEY="$(kubectl -n "$NS" get secret zyntra-auth -o jsonpath='{.data.ZYNTRA_API_KEY}' | base64 -d)"
+          assert_nonempty "Zyntra API key" "$ZKEY"
           echo "ZKEY=$ZKEY" >> "$GITHUB_ENV"
           z() { curl -sf -H "Authorization: Bearer $ZKEY" "http://localhost:18080$1"; }
           has() { z "/api/v1/ontology/objects?type=$1&limit=50" | jq -e --arg n "$2" '.objects[] | select(.props.name.v == $n)' >/dev/null; }
