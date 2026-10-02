@@ -193,7 +193,8 @@ gryvia invoice --month 2026-09         # estimate: JSON or CSV, no payments
 
 Also in the dashboard (Catalog, Usage, Tenants, Invoices) and under `/api/skus`, `/api/tenants`, `/api/usage`,
 `/api/invoices`. It has been tested with unit tests and fake clusters, not against a real identity provider or GPUs.
-See [GPU as a Service](website/docs/guides/GPU_AS_A_SERVICE.md).
+See [GPU as a Service](website/docs/guides/GPU_AS_A_SERVICE.md), and [GPU cloud platform](docs/gpu-cloud-platform.md)
+for what GPU clouds advertise mapped to what Gryvia has and how each part is tested.
 
 ---
 
@@ -299,6 +300,7 @@ Storage and network throughput depend on the hardware, filesystem and fabric you
 | API reference | [developer-guide/api-reference.md](website/docs/developer-guide/api-reference.md) |
 | ML workflows, integrations, playbooks | [guides/ML_WORKFLOWS.md](website/docs/guides/ML_WORKFLOWS.md) · [guides/INTEGRATIONS.md](website/docs/guides/INTEGRATIONS.md) · [guides/OPERATIONAL_PLAYBOOKS.md](website/docs/guides/OPERATIONAL_PLAYBOOKS.md) |
 | GPU as a Service (tenants, catalog, usage, invoices) | [guides/GPU_AS_A_SERVICE.md](website/docs/guides/GPU_AS_A_SERVICE.md) |
+| Gryvia as a GPU cloud's platform (capability map, what it does not provide) | [docs/gpu-cloud-platform.md](docs/gpu-cloud-platform.md) |
 | GPU nodes (NVIDIA GPU Operator, k3s bootstrap) | [guides/GPU_NODES.md](website/docs/guides/GPU_NODES.md) · [docs/gpu-validation.md](docs/gpu-validation.md) |
 | NVIDIA one-click (RDMA, GDS, MIG, Network and NIM operators) | [guides/NVIDIA_ONE_CLICK.md](website/docs/guides/NVIDIA_ONE_CLICK.md) |
 | Admission and recovery (strict Kueue admission, checkpoint hooks) | [docs/admission-recovery.md](docs/admission-recovery.md) |

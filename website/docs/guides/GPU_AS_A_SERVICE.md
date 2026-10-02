@@ -10,6 +10,9 @@ Costs are **metered estimates** from job run time (GPUs x hours x the SKU's hour
 It can reserve nodes for a tenant (opt-in, see below). Feed the invoice or usage export to your billing and payment system.
 :::
 
+For how this fits next to what a GPU cloud provider supplies (hardware, facilities, provisioning), see
+[GPU cloud platform](https://github.com/zyvorai/gryvia/blob/main/docs/gpu-cloud-platform.md).
+
 ```
 provider (API key / admin group)                tenant user (OIDC token)
   create tenants, publish SKUs                    sees only its own jobs, usage and quotas
