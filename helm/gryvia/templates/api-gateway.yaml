@@ -9,6 +9,14 @@ metadata:
     app: gryvia-api-gateway
 spec:
   replicas: {{ .Values.apiGateway.replicas }}
+  {{- if (dig "apiGateway" "audit" "database" "enabled" nil .Values.AsMap) }}
+  {{- if gt (int .Values.apiGateway.replicas) 1 }}
+  {{- fail "apiGateway.audit.database.enabled stores the audit trail in SQLite, which has one writer: set apiGateway.replicas to 1" }}
+  {{- end }}
+  # One writer on a ReadWriteOnce volume: stop the old pod before starting the new one.
+  strategy:
+    type: Recreate
+  {{- end }}
   selector:
     matchLabels:
       app: gryvia-api-gateway
@@ -145,6 +153,14 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
+        {{- if (dig "apiGateway" "audit" "database" "enabled" nil .Values.AsMap) }}
+        - name: GRYVIA_AUDIT_DB
+          value: /audit/audit.db
+        {{- with (dig "apiGateway" "audit" "database" "retentionDays" nil .Values.AsMap) }}
+        - name: GRYVIA_AUDIT_RETENTION_DAYS
+          value: {{ . | quote }}
+        {{- end }}
+        {{- end }}
         - name: LOG_LEVEL
           value: "INFO"
         - name: GRYVIA_TLS_CERT
@@ -186,6 +202,10 @@ spec:
           mountPath: /collector-tls
           readOnly: true
         {{- end }}
+        {{- if (dig "apiGateway" "audit" "database" "enabled" nil .Values.AsMap) }}
+        - name: audit
+          mountPath: /audit
+        {{- end }}
       volumes:
       - name: tmp
         emptyDir: {}
@@ -199,6 +219,29 @@ spec:
           secretName: {{ (dig "apiGateway" "collector" "tlsSecret" nil .Values.AsMap) | quote }}
           defaultMode: 0440
       {{- end }}
+      {{- if (dig "apiGateway" "audit" "database" "enabled" nil .Values.AsMap) }}
+      - name: audit
+        persistentVolumeClaim:
+          claimName: {{ (dig "apiGateway" "audit" "database" "existingClaim" "gryvia-api-gateway-audit" .Values.AsMap) | quote }}
+      {{- end }}
+{{- if and (dig "apiGateway" "audit" "database" "enabled" nil .Values.AsMap) (not (dig "apiGateway" "audit" "database" "existingClaim" nil .Values.AsMap)) }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gryvia-api-gateway-audit
+  namespace: {{ include "gryvia.namespace" . }}
+  labels:
+    {{- include "gryvia.labels" . | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- with (dig "apiGateway" "audit" "database" "storageClass" nil .Values.AsMap) }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ (dig "apiGateway" "audit" "database" "size" "1Gi" .Values.AsMap) | quote }}
+{{- end }}
 ---
 apiVersion: v1
 kind: Service

@@ -315,6 +315,18 @@ apiGateway:
   # two kinds to the gateway ClusterRole (without it the endpoints return no data and invoices are unchanged).
   networkCost:
     enabled: false
+  # Durable, searchable audit trail (GET /api/audit, /api/audit/export.csv): stores entries in SQLite on a
+  # PersistentVolumeClaim. OFF by default (the audit log on stdout is the durable record without it). SQLite has one
+  # writer, so enabling this requires apiGateway.replicas: 1 (the chart fails otherwise) and rolls out with Recreate.
+  audit:
+    database:
+      enabled: false
+      size: 1Gi
+      storageClass: ""
+      # Use your own claim instead of creating one.
+      existingClaim: ""
+      # Delete entries older than this many days; 0 keeps everything.
+      retentionDays: 0
   netra:
     url: ""
     # Secret holding a Netra API token (viewer role is enough).

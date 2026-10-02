@@ -38,7 +38,7 @@ describe('canAccessPath', () => {
     for (const p of ['/nodes', '/quotas/x', '/network/flows', '/security', '/gpu/communication', '/costs']) expect(canAccessPath(p, true)).toBe(true)
   })
   it('blocks tenants from admin pages and their subpaths only', () => {
-    for (const p of ['/sovereign', '/nodes', '/quotas', '/network', '/network/flows', '/gpu/communication', '/security', '/costs']) expect(canAccessPath(p, false)).toBe(false)
+    for (const p of ['/sovereign', '/nodes', '/quotas', '/network', '/network/flows', '/gpu/communication', '/security', '/audit', '/costs']) expect(canAccessPath(p, false)).toBe(false)
     for (const p of ['/catalog', '/usage', '/invoices', '/tenants', '/jobs', '/jobs/new', '/networking-docs', '/dashboard']) expect(canAccessPath(p, false)).toBe(true)
   })
   it('sends tenants to the catalog', () => {

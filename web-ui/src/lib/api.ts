@@ -1,4 +1,5 @@
 import type { LineageGraph } from './lineage'
+import type { AuditResponse } from './audit'
 import axios from 'axios'
 import toast from 'react-hot-toast'
 import { notifyUnauthorized } from '@/lib/authEvents'
@@ -1063,6 +1064,15 @@ export const api = {
         onChunk(c)
       }
     }
+  },
+
+  getAudit: async (params: Record<string, string | number>): Promise<AuditResponse> => {
+    const { data } = await apiClient.get('/audit', { params })
+    return data
+  },
+  exportAudit: async (params: Record<string, string | number>): Promise<Blob> => {
+    const { data } = await apiClient.get('/audit/export.csv', { params, responseType: 'blob' })
+    return data
   },
 
   getLineage: async (): Promise<LineageGraph> => {
