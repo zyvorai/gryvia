@@ -139,8 +139,8 @@ type RegistryStep struct {
 	// Entry is the registry object name. Set entry or serviceName.
 	Entry string `json:"entry,omitempty"`
 
-	// ServiceName picks the entry a shared GryviaInferenceService (servingConfig.serviceName) serves when the step
-	// runs: its spec.modelRef. A scheduled evaluation of the live service uses this.
+	// ServiceName picks the entry a GryviaInferenceService serves when the step runs: its spec.modelRef (a shared
+	// service of servingConfig.serviceName or one created by hand). A scheduled evaluation of the live service uses this.
 	ServiceName string `json:"serviceName,omitempty"`
 
 	// Action is updateMetadata (merge metadata into spec.metadata) or rollback (ask the controller to roll the

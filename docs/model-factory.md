@@ -115,7 +115,7 @@ policy judges; `dev` keeps the entry out of automatic promotion. The entry gets 
 this run did not create fails the step (no overwrite). Entries are not owned by the workflow.
 
 **`registry` step.** Changes an existing `GryviaModelRegistry` entry in the workflow's namespace: `entry` names it,
-or `serviceName` picks the entry a shared service serves when the step runs (its `modelRef`). `action: updateMetadata`
+or `serviceName` picks the entry a `GryviaInferenceService` serves when the step runs (its `modelRef`; a shared service or one created by hand). `action: updateMetadata`
 merges `metadata` into `spec.metadata` (values may use placeholders, for example `{{steps.evaluate.outputs.score}}`);
 `action: rollback` asks the registry controller for a rollback (below). The step output `name` is the entry. A missing
 entry or service fails the step.

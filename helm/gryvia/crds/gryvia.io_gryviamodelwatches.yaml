@@ -3856,8 +3856,8 @@ spec:
                               type: object
                             serviceName:
                               description: |-
-                                ServiceName picks the entry a shared GryviaInferenceService (servingConfig.serviceName) serves when the step
-                                runs: its spec.modelRef. A scheduled evaluation of the live service uses this.
+                                ServiceName picks the entry a GryviaInferenceService serves when the step runs: its spec.modelRef (a shared
+                                service of servingConfig.serviceName or one created by hand). A scheduled evaluation of the live service uses this.
                               type: string
                           required:
                           - action
