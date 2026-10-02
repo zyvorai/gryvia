@@ -4,6 +4,10 @@ Keys are Secrets in the gateway's key namespace (chart value llmGateway.keyNames
 gryvia.io/llm-key=true, holding only the sha256 of the key; the key itself is returned once, on create. A key
 belongs to one namespace: a tenant creates, sees and revokes keys of its own namespaces only, and a key reaches the
 models of its namespace plus the shared ones (annotation gryvia.io/llm-shared=true).
+
+POST /api/llm/chat (the dashboard's playground) forwards a chat completion to the LLM gateway with the caller's LLM
+key from the X-LLM-Key header, so the gateway's key scoping, token quotas and metering apply. The key is neither
+stored nor logged. A rejected key answers 400, not 401, so the dashboard session is not ended.
 """
 import hashlib
 import re
@@ -12,10 +16,12 @@ from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+import httpx
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from kubernetes.client.exceptions import ApiException
 from pydantic import BaseModel, ConfigDict, Field
 
+from . import sse
 from .common import Deps, http_error, list_items, run
 from .uiutil import NAME_PATTERN
 from .usage import fetch_records, parse_bound
@@ -33,6 +39,8 @@ PRICE_IN_ANNOTATION = "gryvia.io/llm-price-input-per-1m"
 PRICE_OUT_ANNOTATION = "gryvia.io/llm-price-output-per-1m"
 _MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$")
 _DNS = r"^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$"
+_KEY_RE = re.compile(r"^gk-[A-Za-z0-9_-]{20,128}$")
+CHAT_TIMEOUT_SECONDS = 300.0
 
 
 class CreateKey(BaseModel):
@@ -40,6 +48,30 @@ class CreateKey(BaseModel):
     name: str = Field(min_length=1, max_length=63, pattern=NAME_PATTERN)
     namespace: str = Field(default="", max_length=63, pattern=r"^(" + _DNS[1:-1] + r")?$")
     description: str = Field(default="", max_length=256)
+
+
+class PlaygroundMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    role: Literal["system", "user", "assistant"]
+    content: str = Field(max_length=32000)
+
+
+class PlaygroundChat(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    model: str = Field(min_length=1, max_length=63, pattern=_MODEL_RE.pattern)
+    messages: List[PlaygroundMessage] = Field(min_length=1, max_length=100)
+    temperature: Optional[float] = Field(default=None, ge=0, le=2)
+    max_tokens: Optional[int] = Field(default=None, ge=1, le=32768)
+    stream: bool = False
+
+
+def gateway_error(status: int, data: Any) -> HTTPException:
+    err = (data or {}).get("error") if isinstance(data, dict) else None
+    msg = err.get("message") if isinstance(err, dict) else str(err or "")
+    if status == 401:
+        return HTTPException(status_code=400, detail=f"the LLM gateway rejected the key: {msg}"[:500])
+    code = status if status in (400, 404, 413, 429, 503) else 502
+    return HTTPException(status_code=code, detail=f"LLM gateway answered {status}: {msg}"[:500])
 
 
 def hash_key(raw: str) -> str:
@@ -275,5 +307,36 @@ def build_router(deps: Deps) -> APIRouter:
             out.append({"name": (q.get("metadata") or {}).get("name", ""), "namespaces": nss, "tokensPerDay": per,
                         "usedToday": sum(used_by_ns.get(n, 0) for n in nss)})
         return out
+
+    @router.post("/api/llm/chat")
+    @deps.limiter.limit("30/minute")
+    async def chat(request: Request, body: PlaygroundChat, _=Depends(deps.verify_auth),
+                   key: str = Header("", alias="X-LLM-Key", max_length=200)):
+        if not deps.llm_key_namespace or not deps.llm_gateway_url:
+            raise HTTPException(status_code=503,
+                                detail="The LLM gateway is not enabled (chart value llmGateway.enabled)")
+        if not _KEY_RE.match(key):
+            raise HTTPException(status_code=400, detail="send an LLM key (gk-...) in the X-LLM-Key header")
+        url = f"{deps.llm_gateway_url}/v1/chat/completions"
+        payload = body.model_dump(exclude_none=True)
+        if not body.stream:
+            payload.pop("stream")
+        headers = {"Authorization": f"Bearer {key}"}
+        if body.stream:
+            return await sse.relay(url, payload, timeout=CHAT_TIMEOUT_SECONDS, label="the LLM gateway",
+                                   error=gateway_error, headers=headers, transport=deps.llm_transport)
+        try:
+            async with httpx.AsyncClient(timeout=CHAT_TIMEOUT_SECONDS, follow_redirects=False, trust_env=False,
+                                         transport=deps.llm_transport) as client:
+                resp = await client.post(url, json=payload, headers=headers)
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=502, detail=f"the LLM gateway is unreachable: {type(exc).__name__}")
+        try:
+            data = resp.json()
+        except ValueError:
+            data = {"error": {"message": resp.text[:300]}}
+        if resp.status_code != 200:
+            raise gateway_error(resp.status_code, data)
+        return data
 
     return router
