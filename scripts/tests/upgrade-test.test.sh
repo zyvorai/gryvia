@@ -119,15 +119,16 @@ OUT="$(bash "$SCRIPT" --dry-run --base-ref origin/main~2 2>&1)"; CODE=$?
 code "succeeds" 0
 has "names the base ref" "git ref origin/main~2"
 has "applies CRDs server-side" "kubectl apply --server-side --force-conflicts -f"
-has "reuses values by default" "--reuse-values"
+has "resets then reuses values by default" "--reset-then-reuse-values"
 has "rolls back" "helm rollback gryvia 1"
 has "round trips the backup" "backup-crs.sh export"
 OUT="$(bash "$SCRIPT" --dry-run --base-version v1.2.3 2>&1)"; CODE=$?
 has "released chart mode" "released chart v1.2.3 from oci://ghcr.io/zyvorai/charts/gryvia"
 lacks "released chart needs no base images" "and for the base worktree"
-OUT="$(bash "$SCRIPT" --dry-run --base-chart ./old --values-mode reset-then-reuse 2>&1)"; CODE=$?
+OUT="$(bash "$SCRIPT" --dry-run --base-chart ./old --values-mode reuse 2>&1)"; CODE=$?
 has "explicit chart" "chart ./old"
-has "reset-then-reuse-values" "--reset-then-reuse-values"
+has "reuse-values on request" "--reuse-values"
+lacks "no reset with reuse" "--reset-then-reuse-values"
 
 echo "full run, nothing lost"
 run -- --base-chart "$TMP/base-chart" --base-image-tag old
