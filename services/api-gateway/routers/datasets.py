@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .common import Deps, create_item, delete_item, get_item, list_items
+from .markings import can_see
 from .uiutil import NAME_MAX, NAME_PATTERN, meta, prune
 
 PLURAL = "gryviadatasets"
@@ -134,7 +135,7 @@ def build_router(deps: Deps) -> APIRouter:
 
     def visible(request: Request, obj: Dict[str, Any]) -> bool:
         allowed = tenant_namespaces(request)
-        return allowed is None or dataset_namespace(obj, deps.job_namespace) in allowed
+        return can_see(request, obj) and (allowed is None or dataset_namespace(obj, deps.job_namespace) in allowed)
 
     async def get_visible(request: Request, name: str) -> Dict[str, Any]:
         obj = await get_item(deps, PLURAL, name)
