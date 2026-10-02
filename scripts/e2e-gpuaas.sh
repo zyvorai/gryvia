@@ -7,7 +7,7 @@
 #   scripts/e2e-gpuaas.sh budget        # hard budget: over-forecast job Rejected with no workload, affordable job Succeeds
 #   scripts/e2e-gpuaas.sh reservation   # reservation taints the worker; owner's job lands, others cannot; expiry frees it
 #
-# ASSUMPTIONS (this script has NOT been run by the author; the first CI run is its first run):
+# ASSUMPTIONS (they hold in CI, where e2e-gpuaas.yml passes on kind; check them first on other clusters):
 #  - kind has no GPUs. The worker advertises fake `nvidia.com/gpu: 8` by patching its node status (the documented
 #    "advertise extended resources for a node" technique; kubelet keeps extended resources it does not manage) and
 #    is labelled gryvia.io/gpu=E2EGPU so the AIJob controller's GPU node selector matches. Pods only *request* the

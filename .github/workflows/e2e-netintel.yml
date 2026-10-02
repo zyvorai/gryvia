@@ -6,7 +6,7 @@ name: Network intelligence e2e (fake collector)
 # stands in for it. THIS PROVES THE OPERATOR SIDE ONLY: pod discovery by label, request signing with a mounted
 # token Secret, merging across collector pods, statuses, conditions, GryviaFlowPolicy suggestions, and the
 # kube-native sources (usage records, network rates, fabric signals). It says nothing about the eBPF collector,
-# Hubble or Netra. Not run by its author (no Docker on the machine that wrote it): the first CI run is the first run.
+# Hubble or Netra. Passes in CI on kind.
 
 on:
   pull_request:

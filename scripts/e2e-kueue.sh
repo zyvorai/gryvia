@@ -7,8 +7,8 @@
 #   scripts/e2e-kueue.sh gang      # a gang bigger than the quota never starts partially (zero pods), then starts whole
 #   scripts/e2e-kueue.sh preempt   # a higher-priority job preempts a running lower-priority one, which is requeued
 #
-# NOTHING HERE HAS BEEN RUN: the author had no cluster. Assumptions that could not be checked offline are marked
-# "ASSUMPTION" and are the first things to look at if a step fails.
+# Passes in CI (e2e-kueue.yml) with real Kueue on kind. The lines marked "ASSUMPTION" held there; they are still the
+# first things to look at if a step fails on another Kueue or Kubernetes version.
 #
 # Quota resource: kind has no GPUs and its CPU is too small to give a nominal quota that means something, so the
 # quota operator runs with --kueue-quota-resources=example.com/slot and the node advertises 100 fake slots (the

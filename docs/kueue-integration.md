@@ -230,7 +230,7 @@ kubectl -n gryvia-system logs deploy/kueue-controller-manager
 
 ## Limits and what is unverified
 
-- **Not verified on a real cluster** until `.github/workflows/e2e-kueue.yml` passes; no GPUs, no multi-node NCCL.
+- **Verified on kind only**: `.github/workflows/e2e-kueue.yml` passes in CI (queueing, gang admission without partial starts, priority preemption with requeue) with CPU pods and a fake extended resource as the quota. No GPUs, no multi-node clusters, no NCCL.
 - **Kueue version**: pinned 0.19.6 (`v1beta1` API and `v1beta2` Configuration). Other versions untested.
 - Kueue fields relied on (all `kueue.x-k8s.io/v1beta1` unless noted): ClusterQueue `spec.cohort`, `namespaceSelector`,
   `queueingStrategy`, `preemption.{withinClusterQueue,reclaimWithinCohort,borrowWithinCohort.policy}`,
