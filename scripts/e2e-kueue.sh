@@ -318,7 +318,8 @@ YAML
   wait_for 300 "eltr reaches Running" is_phase eltr Running
   [[ "$(job_field eltr '{.spec.parallelism}/{.spec.completions}')" == 2/2 ]] || fail "eltr: parallelism/completions $(job_field eltr '{.spec.parallelism}/{.spec.completions}'), want 2/2"
   eltr_logs() { kubectl -n "$NS" logs -l gryvia.io/job=eltr --tail=-1 --max-log-requests=10 2>/dev/null; }
-  eltr_grouped() { eltr_logs | grep -q 'of 2: starting after step 0 '; }
+  # Not "eltr_logs | grep -q": grep exits at the first match and pipefail turns kubectl's SIGPIPE into a failure.
+  eltr_grouped() { grep -q 'of 2: starting after step 0 ' <<<"$(eltr_logs)"; }
   wait_for 300 "the 2 admitted workers form one group" eltr_grouped
   wait_for 600 "eltr reaches Succeeded" is_phase eltr Succeeded
   out="$(eltr_logs)"

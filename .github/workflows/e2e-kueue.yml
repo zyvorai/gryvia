@@ -103,3 +103,4 @@ jobs:
           kubectl -n gryvia-system logs deploy/kueue-controller-manager --tail=300 || true
           kubectl -n gryvia-system logs -l app.kubernetes.io/component=ai-operator --tail=300 || true
           kubectl -n gryvia-system logs -l app.kubernetes.io/component=quota-operator --tail=300 || true
+          kubectl -n tenant-q1 logs -l gryvia.io/job --prefix --tail=60 --max-log-requests=20 || true
