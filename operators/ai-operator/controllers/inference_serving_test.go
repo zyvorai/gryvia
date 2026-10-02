@@ -87,6 +87,16 @@ func TestInferenceHPAMissingMetricsVisible(t *testing.T) {
 	if findCond(getInfer(t, c, "chat").Status.Conditions, ConditionAutoscalingReady).Status != metav1.ConditionUnknown {
 		t.Fatal("stale HPA status accepted")
 	}
+	// kube-controller-manager never sets observedGeneration: the conditions are read as they are.
+	h.Status.ObservedGeneration = nil
+	h.Status.Conditions[0] = autoscalingv2.HorizontalPodAutoscalerCondition{Type: autoscalingv2.ScalingActive, Status: corev1.ConditionTrue, Reason: "ValidMetricFound"}
+	if err := c.Status().Update(context.Background(), h); err != nil {
+		t.Fatal(err)
+	}
+	reconcileOnce(t, r, "ns", "chat")
+	if cond := findCond(getInfer(t, c, "chat").Status.Conditions, ConditionAutoscalingReady); cond.Status != metav1.ConditionTrue || cond.Reason != "ValidMetricFound" {
+		t.Fatalf("HPA without observedGeneration: %+v", cond)
+	}
 }
 
 func routingTestClient(objs ...client.Object) client.Client {
