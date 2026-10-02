@@ -72,12 +72,33 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Submit an AI training or inference job
-    #[command(after_help = examples(&["gryvia submit --file job.yaml", "gryvia submit --file job.yaml --wait --logs"]))]
+    /// Submit an AI training or inference job, or import a Slurm batch script
+    #[command(after_help = examples(&[
+        "gryvia submit --file job.yaml",
+        "gryvia submit --file job.yaml --wait --logs",
+        "gryvia submit --sbatch train.sh --image pytorch/pytorch:2.4.0-cuda12.1-cudnn9-runtime --dry-run",
+    ]))]
     Submit {
         /// Path to job YAML file
-        #[arg(short, long)]
-        file: String,
+        #[arg(
+            short,
+            long,
+            required_unless_present = "sbatch",
+            conflicts_with = "sbatch"
+        )]
+        file: Option<String>,
+
+        /// A Slurm batch script: #SBATCH directives become GryviaAIJob fields (see docs/slurm.md)
+        #[arg(long, value_name = "SCRIPT")]
+        sbatch: Option<String>,
+
+        /// Container image for --sbatch (overrides #SBATCH --container-image)
+        #[arg(long, requires = "sbatch")]
+        image: Option<String>,
+
+        /// With --sbatch: print the GryviaAIJob YAML and warnings without submitting
+        #[arg(long, requires = "sbatch")]
+        dry_run: bool,
 
         /// Wait for job to complete
         #[arg(short, long)]
@@ -1325,6 +1346,18 @@ async fn run() -> Result<()> {
         }
     }
 
+    // An sbatch dry run only converts the script: no cluster needed.
+    if let Commands::Submit {
+        sbatch: Some(script),
+        image,
+        dry_run: true,
+        ..
+    } = &cli.command
+    {
+        commands::submit::print_sbatch(script, image.clone(), cli.namespace.clone())?;
+        return Ok(());
+    }
+
     // Save namespace flag before passing ownership to client
     let namespace_flag = cli.namespace.clone();
 
@@ -1333,9 +1366,20 @@ async fn run() -> Result<()> {
 
     // Execute command
     match cli.command {
-        Commands::Submit { file, wait, logs } => {
-            commands::submit::execute(&client, &file, wait, logs).await?;
-        }
+        Commands::Submit {
+            file,
+            sbatch,
+            image,
+            wait,
+            logs,
+            ..
+        } => match (file, sbatch) {
+            (_, Some(script)) => {
+                commands::submit::execute_sbatch(&client, &script, image, wait, logs).await?
+            }
+            (Some(file), None) => commands::submit::execute(&client, &file, wait, logs).await?,
+            (None, None) => unreachable!("clap requires --file or --sbatch"),
+        },
         Commands::List {
             resource,
             all_namespaces,

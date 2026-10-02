@@ -296,7 +296,7 @@ spec:
 
 ### From Slurm
 
-There is no importer. Translate each `srun`/`sbatch` job into a `GryviaAIJob` by hand, for example `--gres=gpu:8` becomes `gpus: 8`, and the command becomes `command`/`args`.
+`gryvia submit --sbatch job.sh --image <image>` imports a batch script: `#SBATCH` directives become `GryviaAIJob` fields (`--gres=gpu:8` becomes `gpus: 8`, `--nodes=4` a 4-node distributed job, `--array` one job per index), the script runs as the command, and `SLURM_PROCID`, `SLURM_NTASKS`, `srun` and `scontrol show hostnames` work inside it. Add `--dry-run` to see the YAML first. Directives without an equivalent are reported and ignored. See [Slurm batch scripts](https://github.com/zyvorai/gryvia/blob/main/docs/slurm.md) for the mapping and its limits (one task per pod, no job steps). If you need Slurm itself, the chart can also run a real Slurm cluster with SchedMD's Slinky operator and a partition per tenant, metered like any other job; see [Real Slurm (Slinky)](https://github.com/zyvorai/gryvia/blob/main/docs/slurm.md#real-slurm-slinky).
 
 ### From Kubernetes Jobs
 

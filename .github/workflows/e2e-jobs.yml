@@ -3,7 +3,7 @@ name: Kind e2e (AIJob lifecycle)
 # Runs real GryviaAIJobs on a kind cluster without GPUs: the run-to-completion batch Job workload,
 # Succeeded / Failed / Rejected / Cancelled phases and the metering record that depends on them.
 # Images are built from the checkout like kind-e2e.yml (scripts/kind-demo.sh with GRYVIA_LOCAL_IMAGES=1).
-# The scenarios live in scripts/e2e-jobs.sh.
+# The scenarios live in scripts/e2e-jobs.sh. The sbatch scenario uses the CLI built from the checkout.
 
 on:
   pull_request:
@@ -15,6 +15,8 @@ on:
       - 'crds/**'
       - 'scripts/e2e-jobs.sh'
       - 'scripts/kind-demo.sh'
+      - 'cli/src/commands/sbatch.rs'
+      - 'cli/src/commands/submit.rs'
       - '.github/workflows/e2e-jobs.yml'
   workflow_dispatch:
 
@@ -54,6 +56,15 @@ jobs:
         run: ./scripts/e2e-jobs.sh reject
       - name: Cancelling running jobs deletes their Jobs
         run: ./scripts/e2e-jobs.sh cancel
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cli
+      - name: Build the CLI
+        run: cargo build --release --locked
+        working-directory: cli
+      - name: gryvia submit --sbatch runs a 2-node Slurm script and an array
+        run: ./scripts/e2e-jobs.sh sbatch
       - name: Dump state on failure
         if: failure()
         run: |

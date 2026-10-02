@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use colored::Colorize;
 use futures::{AsyncBufReadExt, StreamExt};
 use indicatif::{ProgressBar, ProgressStyle};
 use k8s_openapi::api::core::v1::Pod;
@@ -6,8 +7,10 @@ use kube::api::{Api, ApiResource, ListParams, LogParams, PostParams};
 use kube::core::DynamicObject;
 use serde_yaml;
 use std::fs;
+use std::path::Path;
 use tokio::time::{sleep, Duration};
 
+use super::sbatch;
 use crate::client::GryviaClient;
 use crate::display;
 
@@ -58,6 +61,84 @@ pub async fn execute(
         follow_job_logs(client, &job_name).await?;
     }
 
+    Ok(())
+}
+
+fn read_sbatch(
+    script: &str,
+    image: Option<String>,
+    namespace: Option<String>,
+) -> Result<sbatch::Imported> {
+    let contents =
+        fs::read_to_string(script).with_context(|| format!("Failed to read file: {}", script))?;
+    let stem = Path::new(script)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("sbatch-job")
+        .to_string();
+    let out = sbatch::import(
+        &contents,
+        &sbatch::Options {
+            image,
+            default_name: stem,
+            namespace,
+        },
+    )
+    .with_context(|| format!("Cannot import {}", script))?;
+    for w in &out.warnings {
+        // stderr, so the --dry-run YAML on stdout can be piped to kubectl
+        eprintln!("{} {}", "⚠".yellow().bold(), w);
+    }
+    Ok(out)
+}
+
+/// `gryvia submit --sbatch SCRIPT --dry-run`: the GryviaAIJobs as YAML on stdout, warnings on stderr.
+pub fn print_sbatch(script: &str, image: Option<String>, namespace: Option<String>) -> Result<()> {
+    let out = read_sbatch(script, image, namespace)?;
+    for job in &out.jobs {
+        print!("---\n{}", serde_yaml::to_string(job)?);
+    }
+    Ok(())
+}
+
+/// `gryvia submit --sbatch SCRIPT`: submits one GryviaAIJob (one per array index).
+pub async fn execute_sbatch(
+    client: &GryviaClient,
+    script: &str,
+    image: Option<String>,
+    wait: bool,
+    follow_logs: bool,
+) -> Result<()> {
+    let out = read_sbatch(script, image, Some(client.namespace().to_string()))?;
+    let ar = ApiResource::from_gvk(&kube::api::GroupVersionKind::gvk(
+        "gryvia.io",
+        "v1alpha1",
+        "GryviaAIJob",
+    ));
+    let api: Api<DynamicObject> =
+        Api::namespaced_with(client.kube_client.clone(), client.namespace(), &ar);
+    let mut names = Vec::new();
+    for job in out.jobs {
+        let obj: DynamicObject = serde_json::from_value(job).context("Invalid GryviaAIJob")?;
+        let name = obj.metadata.name.clone().unwrap_or_default();
+        api.create(&PostParams::default(), &obj)
+            .await
+            .with_context(|| format!("Failed to submit job {}", name))?;
+        display::print_success(&format!("Job {} submitted", name));
+        names.push(name);
+    }
+    if wait {
+        for name in &names {
+            display::print_info(&format!("Waiting for {} to complete...", name));
+            wait_for_completion(client, name).await?;
+        }
+    }
+    if follow_logs {
+        if names.len() > 1 {
+            display::print_info("Following the logs of the first array job only");
+        }
+        follow_job_logs(client, &names[0]).await?;
+    }
     Ok(())
 }
 

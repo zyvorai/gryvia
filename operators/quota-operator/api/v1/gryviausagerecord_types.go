@@ -49,9 +49,10 @@ type GryviaUsageRecordSpec struct {
 	// Final is true once the run finished; a final record is never modified again
 	Final bool `json:"final"`
 
-	// Kind is what the record meters: gpu (a GryviaAIJob; also when empty) or tokens (the LLM gateway's requests
-	// of one tenant to one model during one hour, from start to end)
-	// +kubebuilder:validation:Enum=gpu;tokens
+	// Kind is what the record meters: gpu (a GryviaAIJob; also when empty), tokens (the LLM gateway's requests
+	// of one tenant to one model during one hour, from start to end) or slurm (one finished Slurm job in the
+	// tenant's partition, named slurm-<cluster>-<job id>)
+	// +kubebuilder:validation:Enum=gpu;tokens;slurm
 	Kind string `json:"kind,omitempty"`
 
 	// Model is the LLM gateway model of a tokens record

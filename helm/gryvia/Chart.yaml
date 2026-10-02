@@ -51,6 +51,18 @@ dependencies:
     version: 0.19.6
     repository: oci://registry.k8s.io/kueue/charts
     condition: kueue.enabled
+  # SchedMD's Slinky slurm-operator (Controller, NodeSet, RestApi, Token... CRDs under slinky.slurm.net), off unless
+  # slurmOperator.enabled. The Slurm cluster itself (slurm.enabled) is templated by this chart
+  # (templates/slurm-cluster.yaml, mirroring Slinky's slurm chart 1.2.3 defaults) because that chart and this one
+  # cannot both be sub-charts: they define the same template helper (slurm.format-image) with different arguments.
+  # With quotaOperator.slurmIntegration each GryviaTenant gets its own partition (see docs/slurm.md). Pinned to the
+  # newest published chart (1.2.3, Slurm 26.05) after inspecting its values and CRDs; run on kind by
+  # .github/workflows/e2e-slurm.yml (CPU only).
+  - name: slurm-operator
+    alias: slurmOperator
+    version: 1.2.3
+    repository: oci://ghcr.io/slinkyproject/charts
+    condition: slurmOperator.enabled
 maintainers:
   - name: Gryvia Team
     email: team@gryvia.io

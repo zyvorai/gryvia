@@ -11,5 +11,8 @@ dependencies:
 - name: kueue
   repository: oci://registry.k8s.io/kueue/charts
   version: 0.19.6
-digest: sha256:881aabd242c065677c51f5e7aa79916623c3d875b91346f7ffb9a2e54898f563
-generated: "2026-09-30T23:31:27.562579+05:30"
+- name: slurm-operator
+  repository: oci://ghcr.io/slinkyproject/charts
+  version: 1.2.3
+digest: sha256:2d0fbde6704f716be720e17ea622479272a88228a51297963077a310adaa1f54
+generated: "2026-10-02T21:07:43.334856+05:30"

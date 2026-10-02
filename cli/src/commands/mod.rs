@@ -30,6 +30,7 @@ pub mod queue;
 pub mod quota;
 pub mod rag;
 pub mod reservation;
+pub mod sbatch;
 pub mod security;
 pub mod status;
 pub mod submit;
