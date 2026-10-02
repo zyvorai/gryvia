@@ -3,6 +3,6 @@ FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 HOME=/tmp
 RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.8.0
 WORKDIR /app
-COPY coordinated_checkpoint.py elastic_train.py ./
+COPY coordinated_checkpoint.py elastic_train.py rendezvous_store.py ./
 USER 65534
 CMD ["torchrun", "--help"]

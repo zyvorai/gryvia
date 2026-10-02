@@ -19,7 +19,7 @@ spec:
 For such a job the operator:
 
 - creates the Indexed batch Job with `completions = parallelism = nodes`;
-- gives the launcher `NNODES=2:4` (the form `torchrun --nnodes` accepts) plus `GRYVIA_ELASTIC=true`, `GRYVIA_ELASTIC_MIN_NODES` and `GRYVIA_ELASTIC_MAX_NODES`. `WORLD_SIZE` stays the upper bound; the launcher recomputes it after each rendezvous;
+- gives the launcher `NNODES=2:4` (the form `torchrun --nnodes` accepts) plus `GRYVIA_ELASTIC=true`, `GRYVIA_ELASTIC_MIN_NODES` and `GRYVIA_ELASTIC_MAX_NODES`, and `TORCH_DISABLE_SHARE_RDZV_TCP_STORE=1` unless `env` sets it ([why](#losing-index-0)). `WORLD_SIZE` stays the upper bound; the launcher recomputes it after each rendezvous;
 - sets a Job `successPolicy` with `succeededCount: minNodes`, so the Job completes when `minNodes` workers succeeded even if the others never got scheduled (without it a Pending worker would keep the Job from ever completing). Needs Kubernetes with `batch/v1` Job success policy (beta and on by default in 1.31, GA in 1.33). With `minNodes == nodes` no policy is set;
 - places the job as soon as `minNodes` nodes qualify and takes as many as are free up to `nodes`.
 
@@ -50,6 +50,8 @@ spec:
   volumeMounts: [{name: ckpt, mountPath: /ckpt}]
 ```
 
+The operator also sets `TORCH_DISABLE_SHARE_RDZV_TCP_STORE=1` on elastic jobs. Since torch 2.4 the agent caches the workers' store address from its first rendezvous round. When another node becomes rank 0 after a loss, that agent fails `assert self._shared_tcp_store_server is not None` in `_restart_workers`; we hit this with torch 2.8 when index 0 was lost. With the variable set, the store address is rebuilt every round. If `env` sets the variable, the operator leaves it alone.
+
 What the kind e2e checks: after worker 1 is deleted, the survivor's all-reduce fails, torchrun restarts its worker, the group re-forms (alone, or with the replacement pod the Job creates for index 1) and training continues from the last committed step. Rank 0 writes `DONE` (steps, final loss, world size, restarts, resumed step) next to the checkpoints. In the first kind run the Job's replacement pod joined in time: both ranks resumed after step 10 with world size 2 and finished all 60 steps. `restarts` stayed 0 because torchrun counts only failure restarts, not a group re-formed because a node joined; the e2e asserts the resumed step instead.
 
 ## Across nodes, a lost node
@@ -61,9 +63,20 @@ What the kind e2e checks: after worker 1 is deleted, the survivor's all-reduce f
 - `DONE` to record world size 1, and the Job to complete through the success policy (`succeededCount: minNodes`) with the Pending pod still unscheduled;
 - a pod on a third node to read `DONE` from the same volume.
 
+The e2e is a matrix and runs this twice: once losing index 1, once losing index 0.
+
 The first run on main ([run 36990965624](https://github.com/zyvorai/gryvia/actions/runs/36990965624), 2026-10-02) passed: the workers ran on `worker3` (index 0) and `worker2` (index 1), `worker2` was stopped and deleted, the replacement for index 1 stayed Pending, the survivor re-formed the group alone and resumed from step 10 with one failure restart (`TORCHELASTIC_RESTART_COUNT` 1: here the worker really failed, on the collective timeout, unlike the single-node run where the replacement joined), and the reader on `worker` read `DONE`.
 
 Use these mount options for the checkpoint volume on NFS: `noac` and `lookupcache=none` (the e2e uses both, with `nfsvers=4.2`). The commit protocol polls for files another node just created; with the default attribute and lookup caches a rank can miss them for up to a minute, past the commit timeout.
+
+### Losing index 0
+
+With `--rdzv_endpoint=$(MASTER_ADDR):$(MASTER_PORT)` the c10d rendezvous store lives in the torchrun agent of pod 0, so losing index 0 loses the rendezvous for everyone. To survive that, run the store on its own and make every agent a client:
+
+- [`examples/training/rendezvous_store.py`](../examples/training/rendezvous_store.py) is a plain `TCPStore` server (port `RDZV_PORT`, 29400). It is in the elastic image; run it as a Deployment with a Service, on a node outside the training pool.
+- Pass `--rdzv_endpoint=<service>:29400 --rdzv_conf=is_host=0` to torchrun. The process group's master is then the rank 0 of each round, not `MASTER_ADDR`.
+
+The `lose index 0` e2e does this: the store runs on Gryvia's worker, index 0's node is stopped and deleted, and the survivor (index 1) re-forms the group as `rank 0 of 1`, resumes from the committed step and completes the Job. The store is in memory with a single replica, so losing the store itself still loses the rendezvous of running jobs. Before the shared-store fix above, the same test failed on the survivor with the `_shared_tcp_store_server` assertion (reproduced locally with torch 2.8).
 
 ```yaml
 apiVersion: v1
@@ -94,11 +107,11 @@ torchrun takes whatever group size forms within `NNODES=min:max`. The Ready cond
 ## What it does not do
 
 - **It does not add or remove workers while the job runs.** The Indexed Job's `completions` is fixed at creation. Workers lost to a node failure are replaced by the Job controller (same index, same DNS name) when capacity exists; if it does not, the others carry on only if the launcher's rendezvous accepts a smaller group. There is no controller loop that resizes the Job.
-- **Losing the rendezvous host (index 0) is not tolerated.** `MASTER_ADDR` is pod 0. Use an external rendezvous (for example etcd) if you need that.
+- **Losing index 0 needs a standalone rendezvous store.** With the default `MASTER_ADDR` endpoint the store is in pod 0 and losing it ends the job. See [Losing index 0](#losing-index-0).
 - **The Job can finish early.** Once `minNodes` indexes succeed the remaining pods are removed. In a healthy elastic run all workers finish together; if some finish a moment later they may be stopped mid-exit.
 - No resharding of optimizer or data-loader state, no scale-up of a running job, no resize of a Kueue-admitted job after admission (Kueue's partial admission picks the size once, at admission).
-- Unverified: Kueue partial admission with a real torchrun (the Kueue e2e uses busybox workers), losing the node of index 0 (not supported, above), storage other than NFS, and any NCCL behaviour on a resized group.
+- Unverified: Kueue partial admission with a real torchrun (the Kueue e2e uses busybox workers), a replicated rendezvous store (etcd), storage other than NFS, and any NCCL behaviour on a resized group.
 
 ## Tests
 
-`controllers/gryviaaijob_elastic_test.go` (Job shape, env, success policy, defaults, validation), `pkg/scheduler/holds_test.go` (placement between min and max), `pkg/webhook/validator_test.go`, `examples/training/test_coordinated_checkpoint.py` (commit protocol, `load_replicated`, `discard_uncommitted`), the "Elastic training" step of `e2e-ml.yml` (one node, a deleted pod) and `e2e-elastic.yml` (two nodes, a lost node, NFS).
+`controllers/gryviaaijob_elastic_test.go` (Job shape, env, success policy, defaults, validation), `pkg/scheduler/holds_test.go` (placement between min and max), `pkg/webhook/validator_test.go`, `examples/training/test_coordinated_checkpoint.py` (commit protocol, `load_replicated`, `discard_uncommitted`), the "Elastic training" step of `e2e-ml.yml` (one node, a deleted pod) and `e2e-elastic.yml` (two nodes, NFS, losing the node of index 1 or of index 0).

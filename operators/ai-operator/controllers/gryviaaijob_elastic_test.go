@@ -43,7 +43,8 @@ func TestElasticJobShape(t *testing.T) {
 	if v, _ := envValue(env, "NNODES"); v != "2:4" {
 		t.Errorf("NNODES = %q, want 2:4", v)
 	}
-	for k, want := range map[string]string{"GRYVIA_ELASTIC": "true", "GRYVIA_ELASTIC_MIN_NODES": "2", "GRYVIA_ELASTIC_MAX_NODES": "4"} {
+	for k, want := range map[string]string{"GRYVIA_ELASTIC": "true", "GRYVIA_ELASTIC_MIN_NODES": "2", "GRYVIA_ELASTIC_MAX_NODES": "4",
+		"TORCH_DISABLE_SHARE_RDZV_TCP_STORE": "1"} {
 		if v, _ := envValue(env, k); v != want {
 			t.Errorf("%s = %q, want %q", k, v, want)
 		}
@@ -56,6 +57,26 @@ func TestElasticJobShape(t *testing.T) {
 	}
 	if n != 1 {
 		t.Errorf("NNODES appears %d times", n)
+	}
+}
+
+// A TORCH_DISABLE_SHARE_RDZV_TCP_STORE in the spec wins over the operator's default.
+func TestElasticSharedStoreUserOverride(t *testing.T) {
+	r, _ := newAIJobReconciler()
+	j := elasticJob(1, 2)
+	j.Spec.Env = []corev1.EnvVar{{Name: "TORCH_DISABLE_SHARE_RDZV_TCP_STORE", Value: "0"}}
+	bj, err := r.buildJob(j)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vals []string
+	for _, e := range bj.Spec.Template.Spec.Containers[0].Env {
+		if e.Name == "TORCH_DISABLE_SHARE_RDZV_TCP_STORE" {
+			vals = append(vals, e.Value)
+		}
+	}
+	if len(vals) != 1 || vals[0] != "0" {
+		t.Errorf("TORCH_DISABLE_SHARE_RDZV_TCP_STORE = %v, want [0]", vals)
 	}
 }
 
@@ -79,8 +100,10 @@ func TestElasticDefaultsAndNonElastic(t *testing.T) {
 	if v, _ := envValue(pj.Spec.Template.Spec.Containers[0].Env, "NNODES"); v != "2" {
 		t.Errorf("non-elastic NNODES = %q, want 2", v)
 	}
-	if _, ok := envValue(pj.Spec.Template.Spec.Containers[0].Env, "GRYVIA_ELASTIC"); ok {
-		t.Error("non-elastic job got elastic env")
+	for _, k := range []string{"GRYVIA_ELASTIC", "TORCH_DISABLE_SHARE_RDZV_TCP_STORE"} {
+		if _, ok := envValue(pj.Spec.Template.Spec.Containers[0].Env, k); ok {
+			t.Errorf("non-elastic job got %s", k)
+		}
 	}
 }
 
