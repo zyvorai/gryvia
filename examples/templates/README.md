@@ -2,7 +2,7 @@
 
 Pre-configured templates for common ML workloads.
 
-> **Status: design sketches, not implemented.** This directory contains only this README; the referenced template files (`pytorch-ddp.yaml` and so on) do not exist. There is no `kfctl` tool (the CLI is `gryvia`, and it has no `templates` command), and `GryviaAIJob` does not do `${VAR:-default}` substitution, so the snippets below are not applicable manifests. The fields `framework`, `distributed.strategy`, `resources.gpuType` and `resources.gpuCount` shown in them are not in the `GryviaAIJob` schema (use `spec.type`, `spec.gpus`, `spec.gpuType`, `spec.distributed.framework`; see `examples/jobs/` for valid manifests). A `GryviaTemplate` CRD exists, but no controller is wired yet. `GryviaJobTemplate` (below) is not a real kind.
+> **Status: design sketches, not implemented.** This directory contains only this README; the referenced template files (`pytorch-ddp.yaml` and so on) do not exist. There is no `kfctl` tool (the CLI is `gryvia`, and it has no `templates` command), and `GryviaAIJob` does not do `${VAR:-default}` substitution, so the snippets below are not applicable manifests. The fields `framework`, `distributed.strategy`, `resources.gpuType` and `resources.gpuCount` shown in them are not in the `GryviaAIJob` schema (use `spec.type`, `spec.gpus`, `spec.gpuType`, `spec.distributed.framework`; see `examples/jobs/` for valid manifests). `GryviaTemplate` has a controller that only validates a template and counts the jobs labelled `gryvia.io/template: <name>`; it does not render templates or create jobs. `GryviaJobTemplate` (below) is not a real kind.
 
 ## Available Templates
 
@@ -344,7 +344,7 @@ spec:
 
 ### 1. Define Template
 
-`GryviaJobTemplate` does not exist; the closest real kind is `GryviaTemplate` (CRD only, no controller).
+`GryviaJobTemplate` does not exist; the closest real kind is `GryviaTemplate` (validated and counted, never rendered; see the status note above).
 
 Design sketch, not accepted by the current CRD schema:
 

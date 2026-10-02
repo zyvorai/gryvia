@@ -1,11 +1,12 @@
 # GPU Advanced Features
 
-> **Status: guidance built on NVIDIA tooling; Gryvia itself does not manage MIG or GPU sharing.** MIG
-> partitioning is done by NVIDIA's GPU Operator / mig-manager (the optional `nvidia.enabled` sub-chart
-> in `helm/gryvia`, or your own install). The Gryvia GPU operator only reads the `nvidia.com/mig.capable`
-> node label during discovery. `GryviaGPUSharingPolicy` (the real name of the CRD shown as
-> `GPUSharingPolicy` below) is a CRD with no controller wired yet (a reconciler for `mig`/time-slicing/MPS
-> exists in `operators/gpu-operator/controllers/` but is not registered), and `GryviaAIJob` has no `mig`
+> **Status: guidance built on NVIDIA tooling; Gryvia only labels nodes, NVIDIA's components partition the GPUs.**
+> MIG partitioning is done by NVIDIA's GPU Operator / mig-manager (the optional `nvidia.enabled` sub-chart
+> in `helm/gryvia`, or your own install). `GryviaGPUSharingPolicy` (the real name of the CRD shown as
+> `GPUSharingPolicy` below) has an opt-in controller in the gpu-operator (`gpuOperator.gpuSharing`, flag
+> `--enable-gpu-sharing`) that labels matching GPU nodes for NVIDIA's device plugin and mig-manager
+> (`nvidia.com/device-plugin.config`, `nvidia.com/mig.config`; see
+> [NVIDIA one-click](../website/docs/guides/NVIDIA_ONE_CLICK.md)). `GryviaAIJob` has no `mig`
 > field (only `spec.gpus` and `spec.gpuType`). Design-sketch snippets are marked as such. The MIG profile
 > table follows NVIDIA's A100/H100 80GB documentation. All dollar figures and savings percentages (for
 > example "$3.43/hour", "86%") are made-up worked examples, not Gryvia pricing or measurements. Unverified

@@ -46,7 +46,7 @@ there are no reconciler hooks and no stale series after an object is deleted. Re
 Limits: the `*_total` usage series are sums over records that currently exist, so deleting old records lowers them and `rate()` will
 see a reset; they are estimates from job wall-clock time, not invoices. Cardinality is bounded: quotas by team, usage by (tenant, sku,
 currency) with never a job or namespace label; beyond 1000 combinations the surplus is folded into `tenant="_other"`. `GryviaBudget`
-objects are not exported (that controller is not registered in the operator).
+objects are not exported here; their spend and state are in each object's status (`gryvia budget`).
 
 ### API gateway (`services/api-gateway/routers/observability.py`)
 

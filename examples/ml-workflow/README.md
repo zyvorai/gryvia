@@ -2,7 +2,7 @@
 
 Example YAML manifests for Gryvia ML workflow CRDs.
 
-> **Status.** None of these five kinds (`GryviaAutoTuner`, `GryviaWorkflow`, `GryviaModelRegistry`, `GryviaInferenceService`, `GryviaWorkspace`) has a registered controller. The CRDs and gateway/dashboard CRUD exist, so the manifests apply and can be listed, but nothing reconciles them. Treat these as schema examples.
+> **Status.** All five kinds (`GryviaAutoTuner`, `GryviaWorkflow`, `GryviaModelRegistry`, `GryviaInferenceService`, `GryviaWorkspace`) are run by the ai-operator's ML controllers (on by default, `--enable-ml-controllers`), so applying these manifests creates real pods, PVCs, Services and child jobs. They are written for GPU clusters (A100s, large images) and have not been run as written; the e2e (`e2e-ml.yml`) uses tiny CPU images. See [ML controllers](../../docs/ml-controllers.md) for what each controller does.
 
 ## Examples
 

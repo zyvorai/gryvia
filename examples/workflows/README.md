@@ -2,7 +2,7 @@
 
 Argo Workflows integration for complex ML pipelines.
 
-> **Status.** These are Argo `Workflow` manifests, not Gryvia's own `GryviaWorkflow` CRD (which has no controller yet). They have not been run against a live Argo and Gryvia install here, and Gryvia ships no Argo integration code. The MLflow server they mention is an example sketch (`services/mlflow/`), not something Gryvia deploys. Argo's install URL and version are pinned to what the README author used; check them before use.
+> **Status.** These are Argo `Workflow` manifests, not Gryvia's own `GryviaWorkflow` (which the ai-operator runs; see [ML workflow examples](../ml-workflow/README.md) and [ML controllers](../../docs/ml-controllers.md)). They have not been run against a live Argo and Gryvia install here, and Gryvia ships no Argo integration code. The MLflow server they mention is an example sketch (`services/mlflow/`), not something Gryvia deploys. Argo's install URL and version are pinned to what the README author used; check them before use.
 
 ## Prerequisites
 

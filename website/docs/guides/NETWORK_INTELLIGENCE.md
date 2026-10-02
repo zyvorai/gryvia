@@ -105,7 +105,7 @@ Ten programs are listed here. Nine feed the scheduler-facing fabric signals and 
 emit `struct fabric_signal` on their own `fabric_events` ring buffer instead of extending the frozen 72-byte `gpu_event`.
 The collector folds the signals per job over a 5-minute window and serves them, with a `[0,1]` score penalty, at
 `GET :9090/api/v1/fabric` and as `gryvia_fabric_*` Prometheus gauges. The `GryviaFabricSignal` CRD (short name `gfs`)
-carries the same fields in its status. With `-publish-fabric-status` (off by default) the collector patches the status of an existing `GryviaFabricSignal` whose `spec.jobRef` names the job; nothing else fills it, and the score is not wired into the scheduler.
+carries the same fields in its status. With `-publish-fabric-status` (off by default) the collector patches the status of an existing `GryviaFabricSignal` whose `spec.jobRef` names the job; with `-fabric-status-per-node` and the ai-operator's `--merge-fabric-signals`, per-node entries are folded in. The scheduler does not read this per-job score; opt-in fabric-aware scheduling reads the per-node `GryviaNodeFabric` instead (see [Scheduling](SCHEDULING.md)).
 
 | Program | Hook Type | Description |
 |---------|-----------|-------------|

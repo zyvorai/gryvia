@@ -320,11 +320,11 @@ kubectl get gryviainferenceservices -n ml-serving
 
 ## Interactive Workspaces (GryviaWorkspace)
 
-Status: CRD and gateway/dashboard CRUD (including pause and resume routes that toggle `spec.paused`). No controller creates a pod, PVC or URL.
+Status: the ai-operator creates a Pod, a ClusterIP Service and (with `spec.storage`) a PVC per workspace; `spec.paused` (also toggled by the gateway's pause and resume routes) deletes the Pod and keeps the PVC. Unit-tested, the kind e2e passes in CI with a CPU image, not verified with the real Jupyter or code-server images on GPUs. Details: [ML controllers](https://github.com/zyvorai/gryvia/blob/main/docs/ml-controllers.md#gryviaworkspace).
 
 ### Overview
 
-`GryviaWorkspace` declares an environment `type` (required, for example `jupyter`), `gpuCount`, `gpuType`, `image`, `storage` (a size string) and `storageClassName`, CPU and memory requests and limits (`cpuRequest`, `cpuLimit`, `memRequest`, `memLimit`), `idleTimeoutMinutes`, `maxLifetimeHours`, `paused` and `env` (a string map). Idle detection, pause, automatic termination, package installation and git cloning would be workspace-controller behaviour and are not implemented; the earlier `packages`, `git`, `idleAction` and structured `storage` blocks are not in the schema.
+`GryviaWorkspace` declares an environment `type` (required, for example `jupyter`), `gpuCount`, `gpuType`, `image`, `storage` (a size string) and `storageClassName`, CPU and memory requests and limits (`cpuRequest`, `cpuLimit`, `memRequest`, `memLimit`), `idleTimeoutMinutes`, `maxLifetimeHours`, `paused` and `env` (a string map). `idleTimeoutMinutes` marks the workspace `Idle` from the `gryvia.io/last-activity` annotation (nothing watches notebook traffic), and `maxLifetimeHours` pauses it; package installation and git cloning are not implemented; the earlier `packages`, `git`, `idleAction` and structured `storage` blocks are not in the schema.
 
 ### Example (schema-valid)
 

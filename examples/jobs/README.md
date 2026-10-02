@@ -167,7 +167,7 @@ spec:
 
 ### Resource Preemption
 
-There is no `preemptionPolicy` field on `GryviaAIJob`, and the `GryviaPriority` CRD has no controller yet, so preemption is not implemented.
+There is no `preemptionPolicy` field on `GryviaAIJob`. Preemption comes from Kubernetes or Kueue: a `GryviaPriority` makes the ai-operator create a Kubernetes PriorityClass of the same name, which a job uses through the annotation `gryvia.io/priority-class: <name>` (batch Job workloads only), and with the opt-in Kueue integration `spec.priority` preempts within a queue.
 
 Design sketch, not accepted by the current CRD schema:
 
