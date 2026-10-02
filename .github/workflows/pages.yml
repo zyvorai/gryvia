@@ -28,6 +28,8 @@ jobs:
         helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
         helm repo add nvidia https://helm.ngc.nvidia.com/nvidia
         for chart in helm/*/; do
+          # Its Zyntra and Netra dependencies come from sibling checkouts (scripts/sovereign-aios-deps.sh).
+          [ "$chart" = helm/sovereign-aios/ ] && continue
           # Charts with dependencies (observability) need them fetched before packaging.
           if grep -q '^dependencies:' "$chart/Chart.yaml"; then helm dependency build "$chart"; fi
           helm package "$chart" -d website/build/charts
