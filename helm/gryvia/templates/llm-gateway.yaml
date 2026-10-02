@@ -53,11 +53,16 @@ spec:
             - {{ printf "--currency=%s" ($gw.currency | default "USD") | quote }}
             - {{ printf "--flush-interval=%s" ($gw.flushInterval | default "5m") | quote }}
             - {{ printf "--quota-refresh-interval=%s" ($gw.quotaRefreshInterval | default "30s") | quote }}
+            - {{ printf "--quota-sync-interval=%s" ($gw.quotaSyncInterval | default "1s") | quote }}
           env:
             - name: POD_NAME
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
           ports:
             - name: http
               containerPort: 8080
@@ -150,6 +155,35 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: {{ include "gryvia.fullname" . }}-llm-gateway
+subjects:
+- kind: ServiceAccount
+  name: {{ include "gryvia.fullname" . }}-llm-gateway
+  namespace: {{ include "gryvia.namespace" . }}
+---
+# The shared daily token counters (ConfigMaps gryvia-llm-tokens-<day>, label gryvia.io/llm-token-counter=true).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "gryvia.fullname" . }}-llm-token-counter
+  namespace: {{ include "gryvia.namespace" . }}
+  labels:
+    {{- include "gryvia.labels" . | nindent 4 }}
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list", "create", "update", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "gryvia.fullname" . }}-llm-token-counter
+  namespace: {{ include "gryvia.namespace" . }}
+  labels:
+    {{- include "gryvia.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "gryvia.fullname" . }}-llm-token-counter
 subjects:
 - kind: ServiceAccount
   name: {{ include "gryvia.fullname" . }}-llm-gateway

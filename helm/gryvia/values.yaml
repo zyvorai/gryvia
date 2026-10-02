@@ -143,6 +143,9 @@ llmGateway:
   # How often token counts are written as GryviaUsageRecords, and how often GryviaQuotas are reloaded.
   flushInterval: 5m
   quotaRefreshInterval: 30s
+  # How often each replica adds its token counts to the shared daily counter (a ConfigMap in the release namespace)
+  # and reads back the totals that tokensPerDay is checked against.
+  quotaSyncInterval: 1s
   service:
     type: ClusterIP
     port: 8080

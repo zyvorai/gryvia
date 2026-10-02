@@ -11,15 +11,16 @@ It runs as `/manager llm-gateway`, a mode of the ai-operator binary (same image)
 | Verified | How |
 | --- | --- |
 | Key authentication, routing by model (own namespace first, then shared), the model rewrite, the Authorization header not being forwarded, `/v1/models` scoped to the key, streaming with `stream_options.include_usage` and usage read from the last SSE chunk, OpenAI error bodies, 400/404/413/502 | Unit tests with `httptest` upstreams (`operators/ai-operator/pkg/llmgateway/llmgateway_test.go`) |
-| Hourly token records (create, update while open, final after the hour), the tokensPerDay check seeded from today's records, the UTC day reset, 429 | Same tests with a fake client |
+| Hourly token records (create, update while open, final after the hour), 429 | Same tests with a fake client |
+| The shared daily counter: two replicas seeing each other's traffic after a sync, no double counting, seeding from today's records, 503 before the first read, the UTC day reset, deleting old counters, 30 concurrent syncs from three replicas losing no tokens | `TestQuotaIsSharedAcrossReplicasAndRejectsWith429` and `TestQuotaSyncsConcurrentReplicasWithoutLosingTokens` (fake client, race detector) |
 | Key create/list/revoke with tenant scoping, the key shown once and only its hash stored, models and usage routes | `services/api-gateway/tests/test_llm.py` |
 | CLI key Secret, hashing, model and usage tables | `cli/src/commands/llm.rs` tests |
-| The gateway on a real cluster against a stand-in OpenAI server: key, model list, a chat completion, a streamed one, the usage record and a 429 | The "LLM gateway" step of `.github/workflows/e2e-ml.yml`; these steps also passed on a single-node k3s host (2026-10-01) |
+| The gateway on a real cluster against a stand-in OpenAI server: key, model list, a chat completion, a streamed one, the usage record and a 429; with two replicas, the shared counter and a 429 from the replica that served no traffic | The "LLM gateway" step of `.github/workflows/e2e-ml.yml`; the single-replica steps also passed on a single-node k3s host (2026-10-01) |
 
 | Not verified | Why |
 | --- | --- |
 | vLLM itself behind the gateway | No GPU in CI; the stand-in speaks the same JSON and SSE format |
-| Exact quota enforcement with several replicas | Each replica counts its own traffic after seeding from the records (see Quotas) |
+| The counter under high request rates | One ConfigMap update per replica per second; not load-tested |
 
 ## Turning it on
 
@@ -33,6 +34,7 @@ llmGateway:
   currency: USD
   flushInterval: 5m                 # --flush-interval: how often usage records are written
   quotaRefreshInterval: 30s         # --quota-refresh-interval
+  quotaSyncInterval: 1s             # --quota-sync-interval: how often replicas share their token counts
   service: {type: ClusterIP, port: 8080}
 ```
 
@@ -43,6 +45,7 @@ The chart adds the Deployment and Service `<release>-llm-gateway` in the release
 | --- | --- |
 | llm-gateway ServiceAccount (ClusterRole) | get/list/watch `gryviainferenceservices`, `gryviaquotas`, `gryviavectorindexes`; get/list/create/update `gryviausagerecords` |
 | llm-gateway ServiceAccount (Role in keyNamespace) | get/list/watch `secrets` |
+| llm-gateway ServiceAccount (Role in the release namespace) | get/list/create/update/delete `configmaps` (the daily token counters) |
 | api-gateway ServiceAccount (Role in keyNamespace) | get/list/create/delete `secrets` (key issue and revoke) |
 
 Keep `keyNamespace` dedicated to keys: the api-gateway may create and delete any Secret in it. The namespace has
@@ -144,12 +147,21 @@ spec:
   tokensPerDay: 2000000
 ```
 
-The gateway reloads quotas every 30 seconds. A namespace's count for today is the process's own traffic, counted in
-memory, plus the token records other gateway processes wrote (read once per namespace and day; records carry the
-writer's `gryvia.io/llm-gateway-instance` label, so a process never counts its own traffic twice). A request is
-refused when the count is at or over the limit, so the last request may go over it by its own size. With several
-replicas each sees the others' traffic only as of that read, so the limit is approximate by up to (replicas - 1)
-times the traffic since they started; run one replica where the cap must be tight.
+The gateway reloads quotas every 30 seconds. Today's counts live in a ConfigMap shared by every replica,
+`gryvia-llm-tokens-<YYYY-MM-DD>` in the gateway's namespace (label `gryvia.io/llm-token-counter=true`, data:
+namespace to tokens). Every second (`--quota-sync-interval`) each replica adds the tokens it counted since its last
+sync, with an optimistic-concurrency update that retries on conflict, and reads back the totals. A request is checked
+against those totals plus this replica's tokens not yet synced:
+
+- A replica sees another replica's traffic within about two sync intervals. Over the limit by more than one request
+  therefore takes requests in flight or finished in the last couple of seconds on other replicas.
+- A request is refused when the count is at or over the limit, so the last request may go over it by its own size.
+- The first replica to create a day's ConfigMap seeds it from that day's token records, which covers traffic from
+  before the counter existed (for example, an upgrade during the day).
+- A restarted replica loses at most its last second of counts; the final sync on shutdown writes them.
+- If the counter cannot be read, a replica keeps checking against its last totals plus its own traffic, and logs the
+  error. Before the first successful read, keys under a `tokensPerDay` quota get 503.
+- Counters older than yesterday are deleted when a new day's counter is created.
 
 ## Flags
 
@@ -162,5 +174,7 @@ times the traffic since they started; run one replica where the cap must be tigh
 | `--currency` | `USD` |
 | `--flush-interval` | `5m` |
 | `--quota-refresh-interval` | `30s` |
+| `--quota-sync-interval` | `1s` |
+| `--counter-namespace` | `$POD_NAMESPACE` (the chart sets it) |
 | `--max-body-bytes` | 16 MiB |
 | `--upstream-timeout` | `10m` |
