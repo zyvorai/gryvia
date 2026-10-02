@@ -155,6 +155,66 @@ def test_chat_errors(make_client, fake_k8s):
     assert r.status_code == 502 and "unreachable" in r.json()["detail"]
 
 
+SSE = b'data: {"choices": [{"index": 0, "delta": {"content": "Hi."}}]}\n\ndata: [DONE]\n\n'
+
+
+def runtime(*responses):
+    """A MockTransport answering streamed chats with the given responses in order."""
+    calls = []
+
+    def handle(request):
+        calls.append((str(request.url), request.read()))
+        return responses[len(calls) - 1]
+
+    return httpx.MockTransport(handle), calls
+
+
+def test_chat_stream_relays_events(make_client, fake_k8s):
+    import json
+    seed(fake_k8s, STATUS)
+    transport, calls = runtime(httpx.Response(200, headers={"content-type": "text/event-stream"}, content=SSE))
+    r = make_client("agents", agent_transport=transport).post(
+        "/api/agents/helper/chat", json={"messages": [{"role": "user", "content": "Hello"}], "stream": True})
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"].startswith("text/event-stream")
+    assert r.content == SSE
+    url, body = calls[0]
+    assert url == "http://helper-agent.default.svc.cluster.local:8080/v1/chat/completions"
+    assert json.loads(body) == {"messages": [{"role": "user", "content": "Hello"}], "stream": True}
+
+
+def test_chat_stream_errors(make_client, fake_k8s):
+    seed(fake_k8s, STATUS)
+    msg = {"messages": [{"role": "user", "content": "x"}], "stream": True}
+    for status, body, want, text in ((429, {"error": {"message": "quota exceeded"}}, 429, "quota exceeded"),
+                                     (500, {"error": "boom"}, 502, "boom")):
+        transport, _ = runtime(httpx.Response(status, json=body))
+        r = make_client("agents", agent_transport=transport).post("/api/agents/helper/chat", json=msg)
+        assert r.status_code == want and text in r.json()["detail"]
+
+    def refuse(request):
+        raise httpx.ConnectError("refused")
+
+    r = make_client("agents", agent_transport=httpx.MockTransport(refuse)).post("/api/agents/helper/chat", json=msg)
+    assert r.status_code == 502 and "unreachable" in r.json()["detail"]
+
+
+def test_chat_stream_passes_a_json_reply_through(make_client, fake_k8s):
+    seed(fake_k8s, STATUS)
+    transport, _ = runtime(httpx.Response(200, json=REPLY))
+    r = make_client("agents", agent_transport=transport).post(
+        "/api/agents/helper/chat", json={"messages": [{"role": "user", "content": "x"}], "stream": True})
+    assert r.status_code == 200 and r.json() == REPLY
+
+
+def test_chat_stream_not_ready(make_client, fake_k8s):
+    seed(fake_k8s, {"phase": "Pending"})
+    transport, calls = runtime()
+    r = make_client("agents", agent_transport=transport).post(
+        "/api/agents/helper/chat", json={"messages": [{"role": "user", "content": "x"}], "stream": True})
+    assert r.status_code == 409 and calls == []
+
+
 def test_chat_validation(make_client, fake_k8s):
     seed(fake_k8s, STATUS)
     c = make_client("agents", agent_chat=recorder()[0])

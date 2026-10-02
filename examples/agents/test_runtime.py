@@ -45,6 +45,34 @@ def completion(content=None, calls=None, prompt=10, completion_tokens=5):
     }
 
 
+class Stream:
+    """A streamed model reply: the data events of one SSE response."""
+
+    def __init__(self, *events):
+        self.events = events
+
+
+def delta(content=None, calls=None, finish=None):
+    d = {}
+    if content is not None:
+        d["content"] = content
+    if calls is not None:
+        d["tool_calls"] = calls
+    return {"choices": [{"index": 0, "delta": d, "finish_reason": finish}]}
+
+
+def usage_event(prompt=10, completion_tokens=5):
+    total = prompt + completion_tokens
+    return {"choices": [], "usage": {"prompt_tokens": prompt, "completion_tokens": completion_tokens,
+                                     "total_tokens": total}}
+
+
+def events(resp):
+    lines = [line[6:] for line in resp.text.split("\n\n") if line.startswith("data: ")]
+    assert lines[-1] == "[DONE]", resp.text
+    return [json.loads(line) for line in lines[:-1]]
+
+
 class Fake:
     """A scripted gateway and tool host behind httpx.MockTransport."""
 
@@ -64,6 +92,9 @@ class Fake:
             reply = self.replies.pop(0)
             if isinstance(reply, httpx.Response):
                 return reply
+            if isinstance(reply, Stream):
+                body = "".join(f"data: {json.dumps(e)}\n\n" for e in reply.events) + "data: [DONE]\n\n"
+                return httpx.Response(200, headers={"content-type": "text/event-stream"}, content=body.encode())
             return httpx.Response(200, json=reply)
         if url == GATEWAY + "/v1/retrieve":
             self.retrieve_body = json.loads(request.content)
@@ -169,12 +200,84 @@ def test_gateway_errors(status, want):
     [
         ({"messages": []}, "non-empty"),
         ({"messages": [{"role": "robot", "content": "x"}]}, "role"),
-        ({"messages": [{"role": "user", "content": "x"}], "stream": True}, "streaming"),
+        ({"messages": [], "stream": True}, "non-empty"),
     ],
 )
 def test_bad_requests(body, msg):
     resp = make(Fake([])).post("/v1/chat/completions", json=body)
     assert resp.status_code == 400 and msg in resp.json()["error"]["message"]
+
+
+def stream_chat(client, text="How do quotas work?"):
+    return client.post("/v1/chat/completions", json={"messages": [{"role": "user", "content": text}], "stream": True})
+
+
+def test_stream_relays_content_and_runs_tools_between_steps():
+    first = Stream(
+        delta("Let me check. "),
+        delta(calls=[{"index": 0, "id": "call-9", "type": "function",
+                      "function": {"name": "search", "arguments": ""}}]),
+        delta(calls=[{"index": 0, "function": {"arguments": '{"query": '}}]),
+        delta(calls=[{"index": 0, "function": {"arguments": '"quotas"}'}}], finish="tool_calls"),
+        usage_event(),
+    )
+    second = Stream(delta("Quotas "), delta("reset monthly.", finish="stop"), usage_event(12, 4))
+    fake = Fake([first, second])
+    resp = stream_chat(make(fake))
+    assert resp.status_code == 200 and resp.headers["content-type"].startswith("text/event-stream")
+    evs = events(resp)
+    assert all(e["object"] == "chat.completion.chunk" and e["model"] == "helper" for e in evs)
+    assert len({e["id"] for e in evs}) == 1
+    texts = [e["choices"][0]["delta"].get("content", "") for e in evs if e["choices"]]
+    assert "".join(texts) == "Let me check. Quotas reset monthly."
+    assert evs[0]["choices"][0]["delta"] == {"role": "assistant", "content": "Let me check. "}
+    tool = [e["gryvia"]["toolCall"] for e in evs if "toolCall" in e.get("gryvia", {})]
+    assert tool == [{"step": 1, "tool": "search", "arguments": {"query": "quotas"}, "ok": True}]
+    assert evs[-2]["choices"][0]["finish_reason"] == "stop"
+    assert evs[-1]["choices"] == []
+    assert evs[-1]["usage"] == {"prompt_tokens": 22, "completion_tokens": 9, "total_tokens": 31}
+    assert evs[-1]["gryvia"] == {"steps": 2, "toolCalls": tool}
+    assert all(b["stream"] and b["stream_options"] == {"include_usage": True} for b in fake.model_bodies)
+    assistant = fake.model_bodies[1]["messages"][-2]
+    assert assistant["content"] == "Let me check. "
+    assert assistant["tool_calls"] == [{"id": "call-9", "type": "function",
+                                        "function": {"name": "search", "arguments": '{"query": "quotas"}'}}]
+    assert fake.model_bodies[1]["messages"][-1]["tool_call_id"] == "call-9"
+
+
+def test_stream_last_step_offers_no_tools():
+    call = [{"index": 0, "id": "c", "function": {"name": "search", "arguments": '{"query": "q"}'}}]
+    fake = Fake([Stream(delta(calls=call)), Stream(delta(calls=call)), Stream(delta(calls=call))])
+    evs = events(stream_chat(make(fake)))
+    assert "tools" not in fake.model_bodies[2]
+    assert evs[-2]["choices"][0] == {"index": 0, "delta": {"role": "assistant", "content": ""},
+                                     "finish_reason": "length"}
+    assert evs[-1]["gryvia"]["steps"] == 3
+
+
+@pytest.mark.parametrize("status,want", [(429, 429), (500, 502)])
+def test_stream_error_before_the_first_event_is_an_http_status(status, want):
+    fake = Fake([httpx.Response(status, json={"error": {"message": "quota exceeded"}})])
+    resp = stream_chat(make(fake))
+    assert resp.status_code == want
+    assert "quota exceeded" in resp.json()["error"]["message"]
+
+
+def test_stream_error_after_the_first_event_is_an_error_event():
+    call = [{"index": 0, "id": "c", "function": {"name": "search", "arguments": '{"query": "q"}'}}]
+    fake = Fake([Stream(delta(calls=call), usage_event()), httpx.Response(503, json={"error": {"message": "busy"}})])
+    resp = stream_chat(make(fake))
+    assert resp.status_code == 200
+    evs = events(resp)
+    assert "toolCall" in evs[0]["gryvia"]
+    assert evs[-1]["error"]["code"] == 503 and "busy" in evs[-1]["error"]["message"]
+
+
+def test_stream_accepts_a_non_streamed_reply():
+    fake = Fake([completion("Plain answer.")])
+    evs = events(stream_chat(make(fake, tools=[])))
+    assert evs[0]["choices"][0]["delta"] == {"role": "assistant", "content": "Plain answer."}
+    assert evs[-1]["usage"]["total_tokens"] == 15
 
 
 def test_health_and_models():

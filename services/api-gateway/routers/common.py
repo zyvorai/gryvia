@@ -58,6 +58,8 @@ class Deps:
     collector_fetch: Optional[Callable[[str], Awaitable[Any]]] = None
     # tests inject this: (agent chat URL, body) -> (status, JSON body)
     agent_chat: Optional[Callable[[str, Dict[str, Any]], Awaitable[Any]]] = None
+    # tests inject this: the transport of streamed agent chats (httpx.MockTransport)
+    agent_transport: Optional[Any] = None
 
 
 async def require_admin(request: Request) -> None:

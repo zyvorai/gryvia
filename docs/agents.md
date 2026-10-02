@@ -16,15 +16,15 @@ The feature is opt-in and needs the LLM gateway.
 | Verified | How |
 | --- | --- |
 | Deployment (non-root, read-only root filesystem, no service account token), Service, config ConfigMap, a pod roll on config changes, the agent's own gateway key (raw key in the agent's namespace, hash in the key namespace), NetworkPolicy rules for the gateway, in-cluster, IP and public tool hosts, validation, a missing vector index, scale to zero, finalizer clean-up that leaves a same-named index's store credential alone | Fake-client tests in `operators/ai-operator/controllers/gryviaagent_controller_test.go` |
-| The tool-calling loop, summed usage, the last step without tools, retrieval and HTTP tools, the URL allowlist (scheme, host, port, normalized path; no user info), tool errors handed back to the model, gateway errors, request validation | `examples/agents/test_runtime.py` (scripted gateway on `httpx.MockTransport`) |
-| Routes (including the chat proxy, which ignores a `status.endpoint` outside the agent's namespace), CLI and dashboard helpers | `services/api-gateway/tests/test_agents.py`, `cli/src/commands/agents.rs`, `web-ui/src/lib/agents.test.ts` |
-| The whole path on kind: the real runtime image, a stand-in tool-calling model published on the gateway, chat through the api-gateway with an HTTP tool fetching a file, a refused URL, metering, scale to zero and deletion | The "Agents" steps of `.github/workflows/e2e-ml.yml`; these steps also passed on a single-node k3s host (2026-10-01) |
+| The tool-calling loop, summed usage, the last step without tools, retrieval and HTTP tools, the URL allowlist (scheme, host, port, normalized path; no user info), tool errors handed back to the model, gateway errors, request validation; streaming: relayed content deltas, tool-call deltas assembled across chunks, tool-call events, errors before and after the first event, a gateway that answers without streaming | `examples/agents/test_runtime.py` (scripted gateway on `httpx.MockTransport`) |
+| Routes (including the chat proxy, which ignores a `status.endpoint` outside the agent's namespace, and the streamed proxy with its error mapping), CLI and dashboard helpers | `services/api-gateway/tests/test_agents.py`, `cli/src/commands/agents.rs`, `web-ui/src/lib/agents.test.ts` |
+| The whole path on kind: the real runtime image, a stand-in tool-calling model published on the gateway, chat through the api-gateway with an HTTP tool fetching a file (also streamed), a refused URL, metering, scale to zero and deletion | The "Agents" steps of `.github/workflows/e2e-ml.yml`; the non-streamed steps also passed on a single-node k3s host (2026-10-01) |
 
 | Not verified | Why |
 | --- | --- |
 | A real tool-calling model served by vLLM | No GPU in CI; the stand-in returns OpenAI-shaped `tool_calls` |
 | NetworkPolicy enforcement | It depends on the cluster's CNI; the e2e checks the policy object, and the runtime enforces the URL allowlist itself |
-| Streaming responses | The runtime returns 400 for `"stream": true` |
+| Streaming through vLLM | The stand-in model streams OpenAI-shaped chunks; vLLM's tool-call deltas follow the same format but were not run |
 
 ## Turning it on
 
@@ -138,6 +138,20 @@ and an extra `gryvia` block lists the steps and tool calls:
 `finish_reason` is `length` when the model still asked for tools on the last step. Gateway errors come back in
 the OpenAI error shape: 401, 403, 404, 429 and 503 pass through, and anything else is a 502.
 
+### Streaming
+
+With `"stream": true` the reply is server-sent events in the OpenAI `chat.completion.chunk` format, ending with
+`data: [DONE]`. The runtime streams every model call from the gateway and relays the text as it arrives; the
+tool calls of a step are assembled from their deltas and run before the next model call. Besides the usual content
+chunks there are two kinds of extra chunk, both with an empty `choices` list:
+
+- one per tool call, as soon as it has run: `{"choices": [], "gryvia": {"toolCall": {"step": 1, "tool": "search_handbook", "arguments": {…}, "ok": true}}}`;
+- a last one with the summed `usage` and `"gryvia": {"steps": …, "toolCalls": […]}`, after the chunk that carries
+  `finish_reason`.
+
+A gateway error before the first event is an HTTP error as above. Once events have been sent, an error becomes an
+event `{"error": {"message": …, "type": "gateway_error", "code": 429}}` followed by `[DONE]`.
+
 The runtime does not authenticate callers. Access is limited by the NetworkPolicy, so do not expose the Service
 outside the cluster.
 
@@ -147,7 +161,7 @@ Through the platform API, with a dashboard or API key:
 | --- | --- |
 | `GET /api/agents`, `GET /api/agents/{name}` | List and show agents of the caller's namespaces |
 | `POST /api/agents` | Create one: `name`, `model`, `systemPrompt`, `tools[]` (`name`, `type`, `vectorIndexRef`/`topK` or `urls`/`method`), `maxSteps`, `replicas`, `image`, `cpu`, `memory` |
-| `POST /api/agents/{name}/chat` | `{"messages": [{"role", "content"}]}`; proxied to the runtime (409 unless the agent is `Ready`) |
+| `POST /api/agents/{name}/chat` | `{"messages": [{"role", "content"}], "stream": false}`; proxied to the runtime (409 unless the agent is `Ready`). With `"stream": true` the runtime's events are relayed as they arrive |
 | `POST /api/agents/{name}/scale` | `{"replicas": n}` |
 | `DELETE /api/agents/{name}` | Delete it |
 

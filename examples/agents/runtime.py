@@ -13,6 +13,12 @@ Environment (set by the GryviaAgent controller):
 Tools:
   retrieval  POST {GATEWAY_URL}/v1/retrieve on a GryviaVectorIndex
   http       GET or POST a URL the model picks, which must match one of the allowlisted prefixes
+
+Streaming ("stream": true): every model call is streamed from the gateway and its content is relayed as
+chat.completion.chunk events as it arrives, including text the model writes before it asks for a tool. Tool calls are
+assembled from their deltas and run between steps; each one is reported in a chunk with no choices and a
+"gryvia": {"toolCall": ...} field. The last chunk before [DONE] has no choices and carries the summed usage and
+"gryvia": {"steps", "toolCalls"}. An error after the first event is sent as a data event {"error": ...}.
 """
 
 import json
@@ -25,7 +31,7 @@ from urllib.parse import urlsplit
 import anyio.to_thread
 import httpx
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 MAX_TOOL_RESULT = 8000
 MAX_HTTP_BODY = 65536
@@ -116,6 +122,33 @@ def _error_message(resp):
         return resp.text[:300]
 
 
+def sse_events(lines):
+    """The JSON objects of a server-sent event stream's data lines, up to [DONE]."""
+    for line in lines:
+        if not line.startswith("data:"):
+            continue
+        data = line[5:].strip()
+        if data == "[DONE]":
+            return
+        try:
+            event = json.loads(data)
+        except ValueError:
+            continue
+        if isinstance(event, dict):
+            yield event
+
+
+def _merge_tool_call(calls, delta):
+    slot = calls.setdefault(
+        delta.get("index", len(calls)), {"id": "", "type": "function", "function": {"name": "", "arguments": ""}}
+    )
+    if delta.get("id"):
+        slot["id"] = delta["id"]
+    fn = delta.get("function") or {}
+    slot["function"]["name"] += fn.get("name") or ""
+    slot["function"]["arguments"] += fn.get("arguments") or ""
+
+
 class Agent:
     def __init__(self, config, gateway_url, key, client=None):
         self.config = config
@@ -128,11 +161,57 @@ class Agent:
     def _headers(self):
         return {"Authorization": f"Bearer {self.key}"}
 
-    def _model(self, messages, offer_tools):
+    def _body(self, messages, offer_tools):
         body = {"model": self.config["model"], "messages": messages}
         if offer_tools:
             body["tools"] = self.schemas
             body["tool_choice"] = "auto"
+        return body
+
+    def _model_stream(self, messages, offer_tools):
+        """Yields the content deltas of one streamed model call and returns its message: content, assembled
+        tool_calls, finish_reason and usage. Raises GatewayError before the first yield when the call fails."""
+        body = self._body(messages, offer_tools)
+        body["stream"] = True
+        body["stream_options"] = {"include_usage": True}
+        content, calls, finish, usage = [], {}, None, {}
+        try:
+            with self.client.stream(
+                "POST", self.gateway + "/v1/chat/completions", json=body, headers=self._headers(), timeout=MODEL_TIMEOUT
+            ) as resp:
+                if resp.status_code != 200:
+                    resp.read()
+                    raise GatewayError(
+                        resp.status_code, f"LLM gateway answered {resp.status_code}: {_error_message(resp)}"
+                    )
+                if not resp.headers.get("content-type", "").startswith("text/event-stream"):
+                    resp.read()
+                    data = resp.json()
+                    choice = (data.get("choices") or [{}])[0]
+                    msg = choice.get("message") or {}
+                    if msg.get("content"):
+                        yield msg["content"]
+                    return {"content": msg.get("content") or "", "tool_calls": msg.get("tool_calls") or [],
+                            "finish": choice.get("finish_reason"), "usage": data.get("usage") or {}}
+                for event in sse_events(resp.iter_lines()):
+                    if event.get("usage"):
+                        usage = event["usage"]
+                    for choice in event.get("choices") or []:
+                        delta = choice.get("delta") or {}
+                        if delta.get("content"):
+                            content.append(delta["content"])
+                            yield delta["content"]
+                        for tc in delta.get("tool_calls") or []:
+                            _merge_tool_call(calls, tc)
+                        if choice.get("finish_reason"):
+                            finish = choice["finish_reason"]
+        except httpx.HTTPError as e:
+            raise GatewayError(502, f"LLM gateway unreachable: {e}") from e
+        return {"content": "".join(content), "tool_calls": [calls[k] for k in sorted(calls)], "finish": finish,
+                "usage": usage}
+
+    def _model(self, messages, offer_tools):
+        body = self._body(messages, offer_tools)
         try:
             resp = self.client.post(
                 self.gateway + "/v1/chat/completions", json=body, headers=self._headers(), timeout=MODEL_TIMEOUT
@@ -193,10 +272,67 @@ class Agent:
             return f"error: request failed: {e}"
         return _cap(f"HTTP {status}\n" + data[:MAX_HTTP_BODY].decode("utf-8", "replace"))
 
-    def chat(self, messages):
+    def _start(self, messages):
         msgs = list(messages)
         if self.config.get("systemPrompt"):
             msgs.insert(0, {"role": "system", "content": self.config["systemPrompt"]})
+        return msgs
+
+    def _call_tools(self, step, calls, msgs, trace):
+        """Runs the tool calls of one step, appends their results to msgs and yields their trace entries."""
+        for call in calls:
+            fn = call.get("function") or {}
+            name = fn.get("name", "")
+            try:
+                args = json.loads(fn.get("arguments") or "{}")
+                result = self.run_tool(name, args)
+            except ValueError:
+                args, result = None, "error: arguments are not valid JSON"
+            entry = {"step": step, "tool": name, "arguments": args, "ok": not result.startswith("error:")}
+            trace.append(entry)
+            msgs.append({"role": "tool", "tool_call_id": call.get("id", ""), "content": result})
+            yield entry
+
+    def chat_stream(self, messages):
+        """The streaming form of chat: yields chat.completion.chunk objects."""
+        msgs = self._start(messages)
+        cid, created, model = "chatcmpl-" + uuid.uuid4().hex[:24], int(time.time()), self.config["name"]
+        usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        trace, started, step = [], False, 0
+
+        def chunk(choices, **extra):
+            return {"id": cid, "object": "chat.completion.chunk", "created": created, "model": model,
+                    "choices": choices, **extra}
+
+        while True:
+            step += 1
+            offer = bool(self.schemas) and step < self.config["maxSteps"]
+            call = self._model_stream(msgs, offer)
+            while True:
+                try:
+                    text = next(call)
+                except StopIteration as done:
+                    result = done.value
+                    break
+                delta = {"content": text}
+                if not started:
+                    delta["role"], started = "assistant", True
+                yield chunk([{"index": 0, "delta": delta, "finish_reason": None}])
+            for k in usage:
+                usage[k] += int(result["usage"].get(k) or 0)
+            calls = result["tool_calls"]
+            if not calls or not offer:
+                finish = "length" if calls else (result["finish"] or "stop")
+                delta = {} if started else {"role": "assistant", "content": ""}
+                yield chunk([{"index": 0, "delta": delta, "finish_reason": finish}])
+                yield chunk([], usage=usage, gryvia={"steps": step, "toolCalls": trace})
+                return
+            msgs.append({"role": "assistant", "content": result["content"] or None, "tool_calls": calls})
+            for entry in self._call_tools(step, calls, msgs, trace):
+                yield chunk([], gryvia={"toolCall": entry})
+
+    def chat(self, messages):
+        msgs = self._start(messages)
         usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         trace = []
         max_steps = self.config["maxSteps"]
@@ -214,16 +350,8 @@ class Agent:
                 finish = "length" if calls else choice.get("finish_reason", "stop")
                 return self._completion(msg.get("content") or "", finish, usage, step, trace)
             msgs.append({"role": "assistant", "content": msg.get("content"), "tool_calls": calls})
-            for call in calls:
-                fn = call.get("function") or {}
-                name = fn.get("name", "")
-                try:
-                    args = json.loads(fn.get("arguments") or "{}")
-                    result = self.run_tool(name, args)
-                except ValueError:
-                    args, result = None, "error: arguments are not valid JSON"
-                trace.append({"step": step, "tool": name, "arguments": args, "ok": not result.startswith("error:")})
-                msgs.append({"role": "tool", "tool_call_id": call.get("id", ""), "content": result})
+            for _ in self._call_tools(step, calls, msgs, trace):
+                pass
 
     def _completion(self, content, finish, usage, steps, trace):
         return {
@@ -239,6 +367,34 @@ class Agent:
 
 def error(status, message, kind="invalid_request_error"):
     return JSONResponse({"error": {"message": message, "type": kind}}, status_code=status)
+
+
+def gateway_status(e):
+    return e.status if e.status in (401, 403, 404, 429, 503) else 502
+
+
+_END = object()
+
+
+def _next(gen):
+    try:
+        return next(gen)
+    except StopIteration:
+        return _END
+
+
+def sse_body(first, gen):
+    """Server-sent events: first, the rest of gen, an error event if it fails, then [DONE]."""
+    try:
+        if first is not _END:
+            yield f"data: {json.dumps(first)}\n\n"
+            for item in gen:
+                yield f"data: {json.dumps(item)}\n\n"
+    except GatewayError as e:
+        yield f"data: {json.dumps({'error': {'message': e.message, 'type': 'gateway_error', 'code': e.status}})}\n\n"
+    finally:
+        gen.close()
+    yield "data: [DONE]\n\n"
 
 
 def create_app(agent):
@@ -260,19 +416,27 @@ def create_app(agent):
             return error(400, "body must be JSON")
         if not isinstance(body, dict):
             return error(400, "body must be a JSON object")
-        if body.get("stream"):
-            return error(400, "streaming is not supported by this agent")
         messages = body.get("messages")
         if not isinstance(messages, list) or not messages:
             return error(400, "messages must be a non-empty list")
         for m in messages:
             if not isinstance(m, dict) or m.get("role") not in ROLES:
                 return error(400, "each message needs a role of system, user, assistant or tool")
+        if body.get("stream"):
+            gen = agent.chat_stream(messages)
+            try:
+                first = await anyio.to_thread.run_sync(_next, gen)
+            except GatewayError as e:
+                return error(gateway_status(e), e.message, "gateway_error")
+            return StreamingResponse(
+                sse_body(first, gen),
+                media_type="text/event-stream",
+                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            )
         try:
             return await anyio.to_thread.run_sync(agent.chat, messages)
         except GatewayError as e:
-            status = e.status if e.status in (401, 403, 404, 429, 503) else 502
-            return error(status, e.message, "gateway_error")
+            return error(gateway_status(e), e.message, "gateway_error")
 
     return app
 
