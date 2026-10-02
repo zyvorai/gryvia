@@ -15,6 +15,7 @@ name: ML controllers end-to-end
 #
 # The workflow-with-jobs and auto-tuner steps run GryviaAIJob children, which the AIJob controller runs to completion
 # (indexed batch/v1 Job workload, docs/aijob-lifecycle.md), so a failure of those steps fails the run.
+# The elastic training step runs a real torchrun (CPU, gloo) in an elastic AIJob and deletes a worker mid-run.
 # This file was written without being able to run it (no docker/kind on the authoring machine): the first CI run is
 # its first execution.
 
@@ -31,6 +32,7 @@ on:
       - 'scripts/kind-demo.sh'
       - 'examples/rag/**'
       - 'examples/agents/**'
+      - 'examples/training/**'
       - '.github/workflows/e2e-ml.yml'
   workflow_dispatch:
 
@@ -50,7 +52,7 @@ env:
 jobs:
   ml:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-helm@v5
@@ -1284,6 +1286,99 @@ jobs:
           kubectl -n "$NS" delete deploy,svc,configmap e2e-hook-receiver
           kubectl -n "$NS" delete secret e2e-hook-secret
 
+      # ------------------------------------------------------------------ Elastic training
+      # A real torchrun (c10d rendezvous, gloo on CPU) runs examples/training/elastic_train.py in an elastic AIJob
+      # (nodes 2, minNodes 1). Worker index 1 is deleted after a committed checkpoint: the survivor's collective
+      # fails, torchrun restarts the workers, the group re-forms (with the replacement pod or alone) and every rank
+      # resumes from the last committed step. The checkpoints live on a ReadWriteOnce PVC (one kind node).
+      - name: Elastic training - real torchrun on CPU, a worker is lost, training resumes from the committed step
+        run: |
+          source scripts/e2e-ml-lib.sh
+          docker build -f examples/training/Dockerfile.elastic -t ghcr.io/zyvorai/gryvia-elastic-train:dev examples/training
+          kind load docker-image --name "$KIND_CLUSTER" ghcr.io/zyvorai/gryvia-elastic-train:dev
+          cat <<'EOF' | kubectl apply -f -
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata: {name: e2e-elastic-ckpt, namespace: gryvia-system}
+          spec: {accessModes: [ReadWriteOnce], resources: {requests: {storage: 1Gi}}}
+          ---
+          apiVersion: gryvia.io/v1alpha1
+          kind: GryviaAIJob
+          metadata: {name: e2e-elastic, namespace: gryvia-system}
+          spec:
+            type: training
+            gpus: 0
+            image: ghcr.io/zyvorai/gryvia-elastic-train:dev
+            imagePullPolicy: IfNotPresent
+            retryLimit: 3
+            timeout: 20m
+            distributed: {enabled: true, framework: pytorch, backend: gloo, nodes: 2, elastic: {minNodes: 1}}
+            command: [torchrun]
+            args:
+              - --nnodes=$(NNODES)
+              - --nproc_per_node=$(NPROC_PER_NODE)
+              - --rdzv_backend=c10d
+              - --rdzv_endpoint=$(MASTER_ADDR):$(MASTER_PORT)
+              - --rdzv_id=e2e-elastic
+              - --max_restarts=3
+              - /app/elastic_train.py
+            env:
+              - {name: CHECKPOINT_DIR, value: /ckpt}
+              - {name: TOTAL_STEPS, value: "60"}
+              - {name: STEP_SECONDS, value: "1"}
+              - {name: COLLECTIVE_TIMEOUT, value: "30"}
+            resources:
+              requests: {cpu: 200m, memory: 512Mi}
+              limits: {cpu: "1", memory: 2Gi}
+            volumes: [{name: ckpt, persistentVolumeClaim: {claimName: e2e-elastic-ckpt}}]
+            volumeMounts: [{name: ckpt, mountPath: /ckpt}]
+          EOF
+          wait_for "Job created" 120 kubectl -n "$NS" get job/e2e-elastic
+          assert_eq "launcher NNODES" "$(jp job/e2e-elastic '{.spec.template.spec.containers[0].env[?(@.name=="NNODES")].value}')" 1:2
+          assert_eq "success policy" "$(jp job/e2e-elastic '{.spec.successPolicy.rules[0].succeededCount}')" 1
+
+          logs() { kubectl -n "$NS" logs -l job-name=e2e-elastic --tail=-1 --max-log-requests=10 2>/dev/null; }
+          committed() { logs | grep -q "committed step $1 "; }
+          grouped() { logs | grep -q "of 2: starting after step 0 "; }
+          wait_for "both workers in one group" 300 grouped
+          wait_for "step 10 committed" 180 committed 10
+          victim="$(kubectl -n "$NS" get pod -l job-name=e2e-elastic,batch.kubernetes.io/job-completion-index=1 -o name)"
+          kubectl -n "$NS" delete "$victim" --wait=false
+          echo "deleted worker index 1 ($victim)"
+
+          wait_for "AIJob Succeeded" 600 field_is gryviaaijob/e2e-elastic '{.status.phase}' Succeeded
+          logs | grep -E "starting after|committed step|discarded|done:|Timed out|restart" || true
+
+          cat <<'EOF' | kubectl apply -f -
+          apiVersion: v1
+          kind: Pod
+          metadata: {name: e2e-elastic-read, namespace: gryvia-system}
+          spec:
+            restartPolicy: Never
+            securityContext: {runAsNonRoot: true, runAsUser: 65534, seccompProfile: {type: RuntimeDefault}}
+            containers:
+              - name: read
+                image: busybox:1.36
+                command: [sh, -c, 'cat /ckpt/DONE && echo && cat /ckpt/COMMITTED']
+                securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+                volumeMounts: [{name: ckpt, mountPath: /ckpt}]
+            volumes: [{name: ckpt, persistentVolumeClaim: {claimName: e2e-elastic-ckpt}}]
+          EOF
+          wait_for "reader done" 120 field_is pod/e2e-elastic-read '{.status.phase}' Succeeded
+          out="$(kubectl -n "$NS" logs pod/e2e-elastic-read)"
+          echo "$out"
+          done_json="$(head -1 <<<"$out")"
+          assert_eq "trained every step" "$(jq -r .steps <<<"$done_json")" 60
+          assert_eq "last commit is the final step" "$(tail -1 <<<"$out" | jq -r .step)" 60
+          jq -e '.restarts >= 1' <<<"$done_json" >/dev/null || { echo "ASSERT FAILED: torchrun never restarted the workers"; exit 1; }
+          jq -e '.resumedFrom >= 10' <<<"$done_json" >/dev/null || { echo "ASSERT FAILED: did not resume from a committed step"; exit 1; }
+          echo "ok: resumed from step $(jq -r .resumedFrom <<<"$done_json") after $(jq -r .restarts <<<"$done_json") restart(s), final world size $(jq -r .world <<<"$done_json")"
+
+          kubectl -n "$NS" delete pod/e2e-elastic-read
+          kubectl -n "$NS" delete gryviaaijob/e2e-elastic
+          wait_for "job removed" 120 gone job/e2e-elastic
+          kubectl -n "$NS" delete pvc/e2e-elastic-ckpt
+
       - name: Dump state on failure
         if: failure()
         run: |
@@ -1306,3 +1401,6 @@ jobs:
           kubectl -n gryvia-system get gryviaagents -o yaml || true
           kubectl -n gryvia-system get deploy,networkpolicies -l gryvia.io/component=agent -o yaml || true
           kubectl -n gryvia-system logs -l gryvia.io/component=agent --tail=100 || true
+          kubectl -n gryvia-system get gryviaaijob/e2e-elastic job/e2e-elastic -o yaml || true
+          kubectl -n gryvia-system get pods -l job-name=e2e-elastic -o wide || true
+          kubectl -n gryvia-system logs -l job-name=e2e-elastic --tail=200 --max-log-requests=10 || true
