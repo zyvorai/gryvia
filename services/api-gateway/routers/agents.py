@@ -4,15 +4,14 @@ POST /api/agents/{name}/chat proxies an OpenAI-style chat request to the agent's
 NetworkPolicy admits the api-gateway pods). The agent calls its model through the LLM gateway with its own key.
 With "stream": true the runtime's server-sent events are relayed as they arrive.
 """
-import json
 import re
 from typing import Any, Dict, List, Literal, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from . import sse
 from .common import Deps, create_item, delete_item, patch_item
 from .uiutil import NAME_MAX, NAME_PATTERN, find_one, list_all, meta, namespaces, prune
 
@@ -222,40 +221,8 @@ def _agent_error(name: str, status: int, data: Any) -> HTTPException:
 
 async def _stream(name: str, url: str, body: Dict[str, Any], transport: Optional[httpx.AsyncBaseTransport]) -> Any:
     """Opens the runtime's event stream and relays it; an error status before the stream starts is raised."""
-    client = httpx.AsyncClient(timeout=CHAT_TIMEOUT_SECONDS, follow_redirects=False, trust_env=False,
-                               transport=transport)
-    try:
-        resp = await client.send(client.build_request("POST", url, json=body), stream=True)
-    except httpx.HTTPError as exc:
-        await client.aclose()
-        raise HTTPException(status_code=502, detail=f"agent {name} is unreachable: {type(exc).__name__}")
-    if resp.status_code != 200 or not resp.headers.get("content-type", "").startswith("text/event-stream"):
-        try:
-            raw = await resp.aread()
-        finally:
-            await resp.aclose()
-            await client.aclose()
-        try:
-            data = json.loads(raw) if raw else {}
-        except ValueError:
-            data = {"error": {"message": raw[:300].decode(errors="replace")}}
-        if resp.status_code != 200:
-            raise _agent_error(name, resp.status_code, data)
-        return JSONResponse(data)
-
-    async def relay():
-        try:
-            async for chunk in resp.aiter_bytes():
-                yield chunk
-        except httpx.HTTPError as exc:
-            err = {"error": {"message": f"agent {name} stream interrupted: {type(exc).__name__}"}}
-            yield f"\n\ndata: {json.dumps(err)}\n\ndata: [DONE]\n\n".encode()
-        finally:
-            await resp.aclose()
-            await client.aclose()
-
-    return StreamingResponse(relay(), media_type="text/event-stream",
-                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return await sse.relay(url, body, timeout=CHAT_TIMEOUT_SECONDS, label=f"agent {name}",
+                           error=lambda status, data: _agent_error(name, status, data), transport=transport)
 
 
 def build_router(deps: Deps) -> APIRouter:

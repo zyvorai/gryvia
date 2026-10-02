@@ -16,8 +16,10 @@ It runs as `/manager llm-gateway`, a mode of the ai-operator binary (same image)
 | Scale to zero: a request for a `ScaledToZero` model sets `gryvia.io/wake-requested` once and is held until the service is ready, then proxied and metered; a `Deploying` service is waited on without a new wake; 503 with `Retry-After` after the cold-start timeout; no upstream call after the caller leaves; `gryvia.io/last-request` throttled per service; services without `scaleToZero` never annotated | `operators/ai-operator/pkg/llmgateway/activator_test.go` (race detector) |
 | A real cold start on kind: a stand-in model with `idleSeconds: 60` gets `gryvia.io/last-request`, scales to zero (Deployment at 0, no pods), and the next request through the gateway wakes it, waits, gets 200 and is metered | The "LLM gateway - scale to zero and a cold start through the gateway" step of `.github/workflows/e2e-ml.yml` |
 | Key create/list/revoke with tenant scoping, the key shown once and only its hash stored, models and usage routes | `services/api-gateway/tests/test_llm.py` |
+| The Playground page: only ready models offered, the key required and checked, a streamed reply with its usage, the conversation resent on the next turn, an error kept out of the next request, curl and Python snippets without the key | `web-ui/src/pages/Playground.test.tsx`, `web-ui/src/lib/playground.test.ts` (vitest) |
+| The playground route `POST /api/llm/chat`: forwarding with the caller's key as a bearer token, the key absent from logs and error bodies, streamed and plain replies, a rejected key as 400, 404/429 passed through, 502 when unreachable, validation | `services/api-gateway/tests/test_llm.py` |
 | CLI key Secret, hashing, model and usage tables | `cli/src/commands/llm.rs` tests |
-| The gateway on a real cluster against a stand-in OpenAI server: key, model list, a chat completion, a streamed one, the usage record and a 429; with two replicas, the shared counter and a 429 from the replica that served no traffic | The "LLM gateway" step of `.github/workflows/e2e-ml.yml`; the single-replica steps also passed on a single-node k3s host (2026-10-01) |
+| The gateway on a real cluster against a stand-in OpenAI server: key, model list, a chat completion, a streamed one, the usage record and a 429; with two replicas, the shared counter and a 429 from the replica that served no traffic; the playground route through the dashboard's nginx (a chat, a streamed one with usage, a wrong key as 400, an unknown model as 404, both requests metered, a reply that takes 35 s) and the `/playground` page served | The "LLM gateway" step of `.github/workflows/e2e-ml.yml`; the single-replica steps also passed on a single-node k3s host (2026-10-01) |
 | A real model engine behind the gateway: llama.cpp's server (CPU) with Qwen2.5-0.5B Instruct as a `GryviaInferenceService`, a chat completion with its real usage, a streamed answer with many content chunks and the usage chunk the gateway asks for, and the tokens metered under the model | The "Real model" step of `.github/workflows/e2e-ml.yml`; passed in kind CI on main ([run 36990962579](https://github.com/zyvorai/gryvia/actions/runs/36990962579), 2026-10-02: 22 streamed content chunks plus the usage chunk) |
 
 | Not verified | Why |
@@ -114,6 +116,29 @@ unreachable). The `Authorization` header is not forwarded upstream. For streamed
 gateway sets `stream_options.include_usage` so the final chunk carries the token counts.
 
 The Service is ClusterIP. Expose it with your own Ingress or Gateway and TLS if callers are outside the cluster.
+
+## Playground (through the api-gateway)
+
+The dashboard's **Playground** page (Models → Playground, `/playground`) chats with any ready published model: pick
+the model, paste one of your keys (kept in the page's memory only; reloading forgets it), set a system prompt,
+temperature, `max_tokens` and streaming, and see each reply's token usage. It shows the current settings as a curl
+command or OpenAI Python client code against the gateway, with the key left as `$GRYVIA_LLM_KEY`.
+
+The page calls `POST /api/llm/chat` on the api-gateway with the dashboard session and an LLM key in
+the `X-LLM-Key` header. The api-gateway forwards the request to the gateway with that key as the bearer token, so the
+key's namespace scoping, token quotas and metering apply as for any other caller. The key is not stored or logged.
+
+```bash
+curl -k https://<dashboard>/api/llm/chat -H "Authorization: Bearer $SESSION" -H "X-LLM-Key: $KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"chat","messages":[{"role":"user","content":"Hello"}],"temperature":0.2,"max_tokens":64,"stream":true}'
+```
+
+The body takes `model`, `messages` (roles `system`, `user`, `assistant`), `temperature` (0 to 2), `max_tokens` and
+`stream`; other fields are refused. With `stream: true` the gateway's events are relayed as they arrive. A key the
+gateway rejects answers 400 (not 401, which would end the dashboard session); 404, 429 and 503 pass through; other
+gateway errors are 502. The route is limited to 30 requests a minute per client. The dashboard's nginx gives the chat
+routes (this one and agent chats) 300 s to answer and does not buffer their events; other `/api/` routes keep 30 s.
 
 ## Metering
 

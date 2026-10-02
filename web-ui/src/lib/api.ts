@@ -11,6 +11,7 @@ import type { InvoiceReport } from '@/lib/invoices'
 import type { ModelWatch, ModelWatchRun } from '@/lib/modelWatches'
 import type { Dataset } from '@/lib/datasets'
 import type { CreatedLlmKey, LlmKey, LlmModels, LlmUsage } from '@/lib/llm'
+import { parseSSE, readChunk, replyText, type ChatRequestBody, type StreamChunk } from '@/lib/playground'
 import type { VectorIndexList } from '@/lib/rag'
 import type { Agent, AgentReply, ChatMessage } from '@/lib/agents'
 
@@ -1019,6 +1020,47 @@ export const api = {
 
   deleteVectorIndex: async (name: string): Promise<void> => {
     await apiClient.delete(`/vector-indexes/${encodeURIComponent(name)}`)
+  },
+
+  // Model playground: the caller's LLM key goes in X-LLM-Key and is not kept anywhere but the page's memory.
+  llmChat: async (body: ChatRequestBody, key: string): Promise<{ text: string; usage?: StreamChunk['usage'] }> => {
+    const { data } = await apiClient.post('/llm/chat', { ...body, stream: false }, { headers: { 'X-LLM-Key': key }, timeout: 300_000 })
+    return { text: replyText(data), usage: data.usage }
+  },
+
+  /** Streams a chat completion, calling onChunk for each event; axios cannot read a response stream in the browser. */
+  streamLlmChat: async (body: ChatRequestBody, key: string, onChunk: (c: StreamChunk) => void, signal?: AbortSignal): Promise<void> => {
+    const token = getStoredToken() || ''
+    const resp = await fetch('/api/llm/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-LLM-Key': key, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ ...body, stream: true }),
+      signal,
+    })
+    if (!resp.ok) {
+      const detail = await resp.json().then((d) => d?.detail, () => undefined)
+      throw new Error(resp.status === 401 ? 'Your session expired; sign in again.' : `${resp.status}: ${detail || resp.statusText}`)
+    }
+    if (!(resp.headers.get('content-type') || '').startsWith('text/event-stream') || !resp.body) {
+      const data = await resp.json()
+      onChunk({ delta: replyText(data), usage: data.usage })
+      return
+    }
+    const reader = resp.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    for (;;) {
+      const { value, done } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const parsed = parseSSE(buffer)
+      buffer = parsed.rest
+      for (const d of parsed.data) {
+        const c = readChunk(d)
+        if (c.done) return
+        onChunk(c)
+      }
+    }
   },
 
   // Agents

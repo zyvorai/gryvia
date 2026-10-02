@@ -1,6 +1,9 @@
 import hashlib
+import json
+import logging
 from datetime import datetime, timezone
 
+import httpx
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -126,3 +129,99 @@ def test_usage_groups_token_records_and_reports_quotas(fake_k8s):
     everything = client(fake_k8s, FakeCore()).get("/api/llm/usage?from=2019-01-01&groupBy=day").json()
     assert everything["items"][0]["day"] == "2020-01-01"
     assert client(fake_k8s, FakeCore()).get("/api/llm/usage?from=yesterday").status_code == 400
+
+
+KEY = "gk-" + "a" * 43
+SSE = (b'data: {"choices": [{"index": 0, "delta": {"content": "Hi."}}]}\n\n'
+       b'data: {"choices": [], "usage": {"prompt_tokens": 3, "completion_tokens": 2}}\n\ndata: [DONE]\n\n')
+REPLY = {"choices": [{"message": {"role": "assistant", "content": "Hi."}}],
+         "usage": {"prompt_tokens": 3, "completion_tokens": 2}}
+
+
+def gateway(*responses):
+    """A MockTransport answering gateway calls with the given responses in order, recording each request."""
+    calls = []
+
+    def handle(request):
+        calls.append(request)
+        r = responses[len(calls) - 1]
+        if isinstance(r, Exception):
+            raise r
+        return r
+
+    return httpx.MockTransport(handle), calls
+
+
+def chat_client(fake_k8s, transport, role="tenant", key_ns=KEY_NS, url="http://gw:8080"):
+    deps = Deps(verify_auth=_stub_auth(role, ["alpha"]), k8s_custom=fake_k8s, k8s_core=FakeCore(),
+                limiter=NoopLimiter(), job_namespace="default", llm_key_namespace=key_ns, llm_gateway_url=url,
+                llm_transport=transport)
+    app = FastAPI()
+    app.include_router(llm.build_router(deps))
+    return TestClient(app)
+
+
+MSG = {"model": "chat", "messages": [{"role": "system", "content": "Be brief."}, {"role": "user", "content": "Hello"}]}
+
+
+def test_chat_forwards_with_the_callers_key(fake_k8s, caplog):
+    caplog.set_level(logging.DEBUG)
+    transport, calls = gateway(httpx.Response(200, json=REPLY))
+    r = chat_client(fake_k8s, transport).post("/api/llm/chat", headers={"X-LLM-Key": KEY},
+                                              json={**MSG, "temperature": 0.2, "max_tokens": 64})
+    assert r.status_code == 200, r.text
+    assert r.json() == REPLY
+    req = calls[0]
+    assert str(req.url) == "http://gw:8080/v1/chat/completions"
+    assert req.headers["authorization"] == f"Bearer {KEY}"
+    assert json.loads(req.read()) == {**MSG, "temperature": 0.2, "max_tokens": 64}
+    assert KEY not in caplog.text
+
+
+def test_chat_stream_relays_events(fake_k8s):
+    transport, calls = gateway(httpx.Response(200, headers={"content-type": "text/event-stream"}, content=SSE))
+    r = chat_client(fake_k8s, transport).post("/api/llm/chat", headers={"X-LLM-Key": KEY},
+                                              json={**MSG, "stream": True})
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"].startswith("text/event-stream")
+    assert r.content == SSE
+    assert json.loads(calls[0].read())["stream"] is True
+    assert calls[0].headers["authorization"] == f"Bearer {KEY}"
+
+
+def test_chat_gateway_errors(fake_k8s):
+    cases = ((401, "invalid API key", 400, "rejected the key"),
+             (404, 'model "chat" does not exist', 404, "does not exist"),
+             (429, "token quota exceeded", 429, "quota"),
+             (500, "boom", 502, "boom"))
+    for stream in (False, True):
+        for status, msg, want, text in cases:
+            transport, _ = gateway(httpx.Response(status, json={"error": {"message": msg}}))
+            r = chat_client(fake_k8s, transport).post("/api/llm/chat", headers={"X-LLM-Key": KEY},
+                                                      json={**MSG, "stream": stream})
+            assert r.status_code == want and text in r.json()["detail"], (stream, status, r.text)
+            assert KEY not in r.text
+        transport, _ = gateway(httpx.ConnectError("refused"))
+        r = chat_client(fake_k8s, transport).post("/api/llm/chat", headers={"X-LLM-Key": KEY},
+                                                  json={**MSG, "stream": stream})
+        assert r.status_code == 502 and "unreachable" in r.json()["detail"]
+
+
+def test_chat_requires_a_key_and_the_gateway(fake_k8s):
+    transport, calls = gateway()
+    c = chat_client(fake_k8s, transport)
+    assert c.post("/api/llm/chat", json=MSG).status_code == 400
+    assert c.post("/api/llm/chat", headers={"X-LLM-Key": "sk-other"}, json=MSG).status_code == 400
+    assert chat_client(fake_k8s, transport, key_ns=None).post(
+        "/api/llm/chat", headers={"X-LLM-Key": KEY}, json=MSG).status_code == 503
+    assert calls == []
+
+
+def test_chat_validation(fake_k8s):
+    transport, calls = gateway()
+    c = chat_client(fake_k8s, transport)
+    for bad in ({**MSG, "model": "bad model"}, {**MSG, "messages": []}, {**MSG, "temperature": 3},
+                {**MSG, "max_tokens": 0}, {**MSG, "extra": 1},
+                {**MSG, "messages": [{"role": "tool", "content": "x"}]}):
+        assert c.post("/api/llm/chat", headers={"X-LLM-Key": KEY}, json=bad).status_code == 422, bad
+    assert calls == []
