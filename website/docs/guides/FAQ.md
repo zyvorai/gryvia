@@ -25,6 +25,13 @@ Teams that want to experiment with a GPU platform on Kubernetes and accept alpha
 
 They overlap little today. Kubeflow provides ML pipelines, notebooks and serving that run. Gryvia's DAG workflow, tuning, serving and notebook kinds are CRDs without controllers, so use Kubeflow (or another engine) for those. Gryvia's running parts are the job operator, tenancy and quota, metering, and GPU node and network tooling. They can be installed side by side; that combination has not been tested here.
 
+### Is Gryvia a GPU cloud?
+
+No. It is the platform layer a GPU cloud runs on its own clusters: tenants, quotas, queueing, metering, inference
+endpoints, model APIs and fine-tuning. The provider brings the hardware, facilities and machine provisioning.
+[GPU cloud platform](https://github.com/zyvorai/gryvia/blob/main/docs/gpu-cloud-platform.md) maps what GPU clouds
+advertise to what Gryvia has and how each part is tested.
+
 ---
 
 ## Getting Started
