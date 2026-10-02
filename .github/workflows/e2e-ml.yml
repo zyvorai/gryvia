@@ -1002,7 +1002,12 @@ jobs:
             kill "$pf"
             port=$((port + 1))
           done
-          assert_eq "quota shown with today's use" "$(gw /api/llm/usage '.quotas[] | select(.name=="e2e-tokens") | .usedToday')" 20
+          # Requests polled before the gateway saw the new quota were served, so today's use is 20 or more; the
+          # records the api-gateway sums and the shared counter must agree.
+          used_today() { gw /api/llm/usage '.quotas[] | select(.name=="e2e-tokens") | .usedToday'; }
+          use_shown() { u="$(used_today)"; [ "$u" -ge 20 ] && [ "$u" = "$(shared_tokens)" ]; }
+          wait_for "quota shown with today's use, equal to the shared counter" 60 use_shown
+          echo "used today: $(used_today)"
           kubectl delete gryviaquota e2e-tokens
 
           # Revoked keys stop working.
