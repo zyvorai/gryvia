@@ -37,6 +37,8 @@ lm-evaluation-harness) are in
 | vLLM loading a fine-tuned model from the registry PVC | No GPU; the e2e serves an nginx stand-in |
 | The GPU estimate being enough memory | It is a rule of thumb (below), not a measurement |
 
+The [GPU-cluster runbook](gpu-ai-runbook.md) is the procedure for verifying these rows on a cluster with GPUs.
+
 ## Turn it on
 
 ```bash
