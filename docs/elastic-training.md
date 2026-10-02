@@ -50,7 +50,7 @@ spec:
   volumeMounts: [{name: ckpt, mountPath: /ckpt}]
 ```
 
-What the kind e2e checks: after worker 1 is deleted, the survivor's all-reduce fails, torchrun restarts its worker, the group re-forms (alone, or with the replacement pod the Job creates for index 1) and training continues from the last committed step. Rank 0 writes `DONE` (steps, final loss, world size, restarts, resumed step) next to the checkpoints.
+What the kind e2e checks: after worker 1 is deleted, the survivor's all-reduce fails, torchrun restarts its worker, the group re-forms (alone, or with the replacement pod the Job creates for index 1) and training continues from the last committed step. Rank 0 writes `DONE` (steps, final loss, world size, restarts, resumed step) next to the checkpoints. In the first kind run the Job's replacement pod joined in time: both ranks resumed after step 10 with world size 2 and finished all 60 steps. `restarts` stayed 0 because torchrun counts only failure restarts, not a group re-formed because a node joined; the e2e asserts the resumed step instead.
 
 ## What it does not do
 
