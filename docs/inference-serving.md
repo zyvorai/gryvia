@@ -155,8 +155,10 @@ API defaults/validation and the official Gateway API HTTPRoute CRD. Its Gateway 
 explicit fixtures: no Gateway data plane, HPA controller, GPU, metrics adapter or model server is running.
 A CI workflow installs the pinned test dependencies and runs the same checks.
 
-Real-cluster acceptance requires observing HPA replica changes under load, request distributions through
-your chosen Gateway, canary rollback and streaming/drain behavior with actual serving images.
+The kind e2e (`e2e-ml.yml`) installs metrics-server and watches the default CPU HPA scale a CPU-bound stand-in
+to `maxReplicas`, with `AutoscalingReady` mirroring `ScalingActive`. Still to be observed on a real cluster:
+HPA changes on the GPU and requests-per-second metrics through an adapter, request distributions through your
+chosen Gateway, canary rollback and streaming/drain behavior with actual serving images.
 
 Prometheus query semantics and response formats: [functions](https://prometheus.io/docs/prometheus/latest/querying/functions/) and [HTTP API](https://prometheus.io/docs/prometheus/latest/querying/api/).
 

@@ -5,8 +5,9 @@ name: ML controllers end-to-end
 # busybox, python) in place of Jupyter/vLLM/Triton, and checks the objects, the status the controllers write and what
 # the API gateway shows.
 #
-# NOT proven here (no GPU, no real model server, no metrics-server on kind): the real Jupyter, code-server, vLLM,
-# Triton, TensorRT-LLM and TorchServe images, GPU scheduling, and an HPA scaling on real metrics. The model factory
+# NOT proven here (no GPU, no real model server, no custom metrics adapter): the real Jupyter, code-server, vLLM,
+# Triton, TensorRT-LLM and TorchServe images, GPU scheduling, and an HPA scaling on GPU or RPS metrics (the CPU HPA
+# is exercised with metrics-server). The model factory
 # runs against a stand-in hub (a 20-line Python server, not huggingface.co) and its download/fine-tune/quantize/evaluate
 # steps are busybox stand-ins that only emit outputs; the real scripts in examples/model-factory are unit-tested
 # separately.
@@ -234,6 +235,62 @@ jobs:
           api /api/inference/e2e-infer-api -X DELETE >/dev/null
           wait_for "Deployment garbage-collected" 120 gone deploy/e2e-infer-api-inference
           wait_for "HPA garbage-collected" 60 gone hpa/e2e-infer-api-inference-hpa
+
+      # The default HPA scales on CPU (80% of the 250m request). metrics-server (kubelet TLS not verified, as kind
+      # needs) feeds it; the stand-in server keeps one core busy, so the HPA must scale it to maxReplicas.
+      - name: InferenceService - the HPA scales on real CPU metrics
+        run: |
+          source scripts/e2e-ml-lib.sh
+          kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.9.0/components.yaml
+          kubectl -n kube-system patch deploy/metrics-server --type json \
+            -p '[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'
+          kubectl -n kube-system rollout status deploy/metrics-server --timeout=180s
+          top_works() { kubectl top nodes >/dev/null 2>&1; }
+          wait_for "metrics-server serving node metrics" 180 top_works
+
+          cat <<'EOF' > /tmp/e2e-hpa.yaml
+          apiVersion: gryvia.io/v1alpha1
+          kind: GryviaInferenceService
+          metadata: {name: e2e-hpa, namespace: gryvia-system}
+          spec:
+            modelRef: e2e-model
+            backend: torchserve
+            image: TINY_PY_IMAGE
+            replicas: 1
+            autoscaling: {enabled: true, minReplicas: 1, maxReplicas: 2}
+            args:
+              - python3
+              - -u
+              - -c
+              - |
+                import http.server, threading
+                def burn():
+                    while True:
+                        pass
+                threading.Thread(target=burn, daemon=True).start()
+                class H(http.server.BaseHTTPRequestHandler):
+                    def do_GET(self):
+                        self.send_response(200)
+                        self.send_header("Content-Length", "2")
+                        self.end_headers()
+                        self.wfile.write(b"ok")
+                http.server.ThreadingHTTPServer(("", 8080), H).serve_forever()
+          EOF
+          sed -i "s|TINY_PY_IMAGE|${TINY_PY_IMAGE}|" /tmp/e2e-hpa.yaml
+          kubectl apply -f /tmp/e2e-hpa.yaml
+          wait_for "CPU-bound service Ready" 240 field_is gryviainferenceservice/e2e-hpa '{.status.phase}' Ready
+          assert_eq "HPA metric" "$(jp hpa/e2e-hpa-inference-hpa '{.spec.metrics[0].resource.name}')" cpu
+
+          wait_for "HPA reads CPU metrics" 180 field_is hpa/e2e-hpa-inference-hpa '{.status.conditions[?(@.type=="ScalingActive")].status}' "True"
+          kubectl -n "$NS" get hpa/e2e-hpa-inference-hpa
+          wait_for "HPA scaled the Deployment to maxReplicas" 180 field_is deploy/e2e-hpa-inference '{.spec.replicas}' 2
+          wait_for "both replicas ready" 180 field_is gryviainferenceservice/e2e-hpa '{.status.readyReplicas}' 2
+          wait_for "AutoscalingReady reported" 60 field_is gryviainferenceservice/e2e-hpa '{.status.conditions[?(@.type=="AutoscalingReady")].status}' "True"
+          kubectl -n "$NS" get hpa/e2e-hpa-inference-hpa -o jsonpath='{.status.currentMetrics}'; echo
+          sleep 20
+          assert_eq "the controller leaves the replica count to the HPA" "$(jp deploy/e2e-hpa-inference '{.spec.replicas}')" 2
+          kubectl -n "$NS" delete gryviainferenceservice/e2e-hpa
+          wait_for "CPU-bound Deployment removed" 120 gone deploy/e2e-hpa-inference
 
       # ------------------------------------------------------------------ Workflow
       - name: Workflow - script steps run in order, failure skips dependents

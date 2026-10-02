@@ -20,7 +20,7 @@ these), the flags that set default images and limits, and what is **not** verifi
 | --- | --- |
 | The real Jupyter, code-server, vLLM, Triton, TensorRT-LLM and TorchServe images (the defaults are unpinned or large and were never started) | No GPU, no image pulls of that size in CI |
 | GPU scheduling (`nvidia.com/gpu` limits, `gryvia.io/gpu` node selectors, `/dev/shm` for GPU pods) | No GPU |
-| An HPA scaling on real metrics | kind has no metrics-server in the e2e; the HPA object is only checked to exist with the right range |
+| An HPA scaling on GPU or requests-per-second metrics | Needs a custom metrics adapter and real load; the e2e scales on CPU only |
 | Weighted canary routing | The canary split is by pod count, see below |
 | The model factory's real download, fine-tune and evaluation, and the real Hugging Face API | No GPU or model weights in CI; see [Model factory](model-factory.md) |
 ## GryviaWorkspace
@@ -224,7 +224,9 @@ the ai-operator with the tiny-image flags above and checks, on the cluster and t
   gateway and answers from inside the cluster; archiving removes the service.
 * InferenceService: Deployment, Service, `readyReplicas`, endpoint answers, HPA with the requested range, canary
   Deployment and `canaryStatus`, auto-promotion (annotation, `MODEL_VERSION` on the stable pods, canary removed and not
-  recreated); a service created and deleted through the gateway. Canary rollback is covered by unit tests only.
+  recreated); a service created and deleted through the gateway; with metrics-server installed, the default CPU HPA
+  reads real metrics (`ScalingActive`, mirrored to `AutoscalingReady`) and scales a CPU-bound stand-in to
+  `maxReplicas`, and the controller leaves that count alone. Canary rollback is covered by unit tests only.
 * Workflow: two script steps run in order (timestamps compared) and succeed; a failing step skips its dependent; the gateway
   shows the phases, steps and order. A two-step DAG of CPU **jobs** runs through the AIJob controller's batch Jobs.
 * AutoTuner: 3 trials with parallelism 2, best trial and gateway fields (trials are batch-Job-backed `GryviaAIJob`s).
