@@ -10,6 +10,7 @@ from fastapi import HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from .common import Deps, get_item, list_items
+from .markings import can_see, marking_of
 
 # Kubernetes DNS-1123 label (what the UI enforces too), max 63 chars.
 NAME_PATTERN = r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
@@ -25,7 +26,7 @@ async def list_all(request: Request, deps: Deps, plural: str) -> List[Dict[str, 
     items: List[Dict[str, Any]] = []
     for ns in namespaces(request, deps):
         items.extend(await list_items(deps, plural, namespace=ns))
-    return items
+    return [o for o in items if can_see(request, o)]
 
 
 async def find_one(request: Request, deps: Deps, plural: str, name: str) -> Tuple[Dict[str, Any], str]:
@@ -33,7 +34,10 @@ async def find_one(request: Request, deps: Deps, plural: str, name: str) -> Tupl
     nss = namespaces(request, deps)
     for ns in nss:
         try:
-            return await get_item(deps, plural, name, namespace=ns), ns
+            obj = await get_item(deps, plural, name, namespace=ns)
+            if not can_see(request, obj):  # same answer as a missing object
+                raise HTTPException(status_code=404, detail=f"{plural}/{name}: Not Found")
+            return obj, ns
         except HTTPException as exc:
             if exc.status_code != 404 or ns == nss[-1]:
                 raise
@@ -43,6 +47,9 @@ async def find_one(request: Request, deps: Deps, plural: str, name: str) -> Tupl
 def meta(obj: Dict[str, Any]) -> Dict[str, Any]:
     m = obj.get("metadata") or {}
     out = {k: m[k] for k in ("name", "namespace", "creationTimestamp") if m.get(k)}
+    marking = marking_of(obj)
+    if marking:
+        out["marking"] = marking
     return out
 
 

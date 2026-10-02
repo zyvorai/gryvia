@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, Request
 
 from .common import Deps, list_items
 from .datasets import dataset_namespace
+from .markings import can_see
 from .uiutil import namespaces
 
 JOBS, MODELS, SERVICES, DATASETS = ("gryviaaijobs", "gryviamodelregistries", "gryviainferenceservices",
@@ -91,7 +92,7 @@ def build_router(deps: Deps) -> APIRouter:
         allowed = None if getattr(request.state, "role", None) == "admin" else set(namespaces(request, deps))
 
         async def fetch(plural: str) -> List[Dict[str, Any]]:
-            items = await list_items(deps, plural)
+            items = [o for o in await list_items(deps, plural) if can_see(request, o)]
             if allowed is None:
                 return items
             return [o for o in items
