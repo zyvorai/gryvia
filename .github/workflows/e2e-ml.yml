@@ -1109,6 +1109,29 @@ jobs:
           echo "$types" | grep -q Egress || { echo "no egress policy: $types"; exit 1; }
           assert_eq "egress rules (dns, gateway, e2e-files namespace)" "$(kubectl -n "$NS" get networkpolicy/e2e-agent-agent -o json | jq '.spec.egress | length')" 3
 
+          # kind's kindnet enforces NetworkPolicy. A server in another namespace answers a pod there (control), but
+          # not the agent; the agent still reaches its allowlisted tool host; and that other namespace cannot reach
+          # the agent.
+          kubectl create namespace e2e-netpol
+          kubectl -n e2e-netpol run e2e-blocked --image="$TINY_HTTP_IMAGE" --port=8080 --expose
+          kubectl -n e2e-netpol run e2e-client --image="$TINY_JOB_IMAGE" --command -- sleep 3600
+          kubectl -n e2e-netpol wait --for=condition=Ready pod/e2e-blocked pod/e2e-client --timeout=120s
+          blocked=http://e2e-blocked.e2e-netpol.svc:8080/
+          kubectl -n e2e-netpol exec e2e-client -- wget -q -T 5 -O /dev/null "$blocked"
+          echo "ok: the server answers inside its namespace"
+          agent_pod="$(kubectl -n "$NS" get pod -l gryvia.io/agent=e2e-agent -o name | head -1)"
+          fetch() { kubectl -n "$NS" exec "$agent_pod" -- python -c \
+            "import sys, urllib.request; urllib.request.urlopen(sys.argv[1], timeout=5)" "$1" >/dev/null 2>&1; }
+          fetch http://e2e-files.gryvia-system.svc:8080/kb.md || { echo "the agent cannot reach its tool host"; exit 1; }
+          echo "ok: the agent reaches its allowlisted tool host"
+          if fetch "$blocked"; then echo "the agent reached a namespace its policy does not allow"; exit 1; fi
+          echo "ok: egress to another namespace is blocked"
+          if kubectl -n e2e-netpol exec e2e-client -- wget -q -T 5 -O /dev/null http://e2e-agent-agent.gryvia-system.svc:8080/healthz; then
+            echo "another namespace reached the agent"; exit 1
+          fi
+          echo "ok: ingress from another namespace is blocked"
+          kubectl delete namespace e2e-netpol --wait=false
+
           # The model calls read_kb, the runtime fetches kb.md, the model answers with it.
           out="$(api /api/agents/e2e-agent/chat -X POST -d '{"messages":[{"role":"user","content":"what caps GPU hours"}]}')"
           echo "$out" | jq .
