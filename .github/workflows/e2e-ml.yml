@@ -664,7 +664,9 @@ jobs:
       # The real scripts (examples/model-factory, CPU image) as GryviaWorkflow job steps: download SmolLM2-135M from
       # huggingface.co at a pinned revision, score it on eight made-up facts, LoRA fine-tune it on them, score the
       # merged model, and register it with both scores. The base model knows none of the facts; the fine-tune must
-      # teach most of them. Outputs travel through the termination messages of the AIJob pods.
+      # teach most of them. Both evaluations also run 20 questions of lm-eval's arc_easy (dataset from huggingface.co):
+      # the score is the mean of the two, and the fine-tune must not cost much general ability. Outputs travel through
+      # the termination messages of the AIJob pods.
       - name: Model factory - real download, LoRA fine-tune and evaluation on CPU, registered with the scores
         run: |
           source scripts/e2e-ml-lib.sh
@@ -718,7 +720,7 @@ jobs:
               - name: baseline
                 dependsOn: [download]
           $(job evaluation evaluate.py)
-                  args: ["--model={{steps.download.outputs.path}}", --custom=/data/eval.jsonl, --cpu]
+                  args: ["--model={{steps.download.outputs.path}}", --custom=/data/eval.jsonl, --cpu, --tasks=arc_easy, --limit=20, --batch-size=8]
               - name: finetune
                 dependsOn: [download]
           $(job fine-tuning finetune_lora.py)
@@ -728,7 +730,7 @@ jobs:
               - name: evaluate
                 dependsOn: [finetune]
           $(job evaluation evaluate.py)
-                  args: ["--model={{steps.finetune.outputs.path}}", --custom=/data/eval.jsonl, --cpu]
+                  args: ["--model={{steps.finetune.outputs.path}}", --custom=/data/eval.jsonl, --cpu, --tasks=arc_easy, --limit=20, --batch-size=8]
               - name: register
                 type: register
                 dependsOn: [baseline, evaluate]
@@ -751,10 +753,18 @@ jobs:
           assert_eq "fine-tune output subPath" "$(out finetune subPath)" "finetuned/smollm2/${MF_MODEL_REVISION:0:12}"
           assert_eq "merged weights, not an adapter" "$(out finetune adapter)" false
           base="$(out baseline score)"; tuned="$(out evaluate score)"; loss="$(out finetune train_loss)"
-          echo "base score $base, fine-tuned score $tuned, train loss $loss"
-          awk -v b="$base" 'BEGIN{exit !(b <= 0.25)}' || { echo "ASSERT FAILED: the base model already knows the facts ($base)"; exit 1; }
-          awk -v t="$tuned" 'BEGIN{exit !(t >= 0.875)}' || { echo "ASSERT FAILED: the fine-tune did not learn the facts ($tuned)"; exit 1; }
+          base_facts="$(out baseline custom)"; tuned_facts="$(out evaluate custom)"
+          base_arc="$(out baseline arc_easy)"; tuned_arc="$(out evaluate arc_easy)"
+          echo "facts $base_facts -> $tuned_facts, arc_easy $base_arc -> $tuned_arc, score $base -> $tuned, train loss $loss"
+          awk -v b="$base_facts" 'BEGIN{exit !(b <= 0.25)}' || { echo "ASSERT FAILED: the base model already knows the facts ($base_facts)"; exit 1; }
+          awk -v t="$tuned_facts" 'BEGIN{exit !(t >= 0.875)}' || { echo "ASSERT FAILED: the fine-tune did not learn the facts ($tuned_facts)"; exit 1; }
           awk -v l="$loss" 'BEGIN{exit !(l > 0 && l < 2)}' || { echo "ASSERT FAILED: train loss $loss"; exit 1; }
+          for a in "$base_arc" "$tuned_arc"; do
+            awk -v a="$a" 'BEGIN{exit !(a != "" && a >= 0 && a <= 1)}' || { echo "ASSERT FAILED: arc_easy not reported ($a)"; exit 1; }
+          done
+          awk -v b="$base_arc" -v t="$tuned_arc" 'BEGIN{exit !(t >= b - 0.25)}' || { echo "ASSERT FAILED: the fine-tune lost general ability (arc_easy $base_arc -> $tuned_arc)"; exit 1; }
+          awk -v s="$tuned" -v a="$tuned_arc" -v f="$tuned_facts" 'BEGIN{d = s - (a + f) / 2; exit !(d < 0.000002 && d > -0.000002)}' \
+            || { echo "ASSERT FAILED: score $tuned is not the mean of arc_easy and the facts"; exit 1; }
 
           assert_eq "registered eval_score" "$(jp gryviamodelregistry/e2e-mf-smollm2 '{.spec.metadata.eval_score}')" "$tuned"
           assert_eq "registered base_score" "$(jp gryviamodelregistry/e2e-mf-smollm2 '{.spec.metadata.base_score}')" "$base"
