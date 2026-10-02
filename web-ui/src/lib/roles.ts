@@ -63,12 +63,13 @@ export const NAVIGATION: NavItem[] = [
     children: [
       { name: 'Network', href: '/network', blurb: 'Service graph, flows and policies' },
       { name: 'Security', href: '/security', blurb: 'Detection rules and alerts' },
+      { name: 'Audit', href: '/audit', blurb: 'Who changed what, and who was refused' },
     ],
   },
 ]
 
 /** Path prefixes only admins may open. /tenants stays open: tenants see a read-only summary of their own. */
-export const ADMIN_ONLY_PREFIXES = ['/sovereign', '/nodes', '/quotas', '/costs', '/gpu', '/network', '/security']
+export const ADMIN_ONLY_PREFIXES = ['/sovereign', '/nodes', '/quotas', '/costs', '/gpu', '/network', '/security', '/audit']
 
 function hasPrefix(pathname: string, prefix: string): boolean {
   return pathname === prefix || pathname.startsWith(prefix + '/')
