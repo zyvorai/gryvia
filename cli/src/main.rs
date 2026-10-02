@@ -365,10 +365,52 @@ enum Commands {
     ///
     /// A model watch is a GryviaModelWatch object. The ai-operator (with --enable-model-watch) polls the hub
     /// and starts one GryviaWorkflow per new model that passes the license and size filters.
-    #[command(after_help = examples(&["gryvia models watch list", "gryvia models watch create -f examples/model-factory/model-watch.yaml -n ml-team", "gryvia models watch runs open-llms -n ml-team", "gryvia models watch suspend open-llms"]))]
+    #[command(after_help = examples(&["gryvia models watch list", "gryvia models watch create -f examples/model-factory/model-watch.yaml -n ml-team", "gryvia models watch runs open-llms -n ml-team", "gryvia models watch suspend open-llms", "gryvia models rollback chat-v2 -n ml-team"]))]
     Models {
         #[command(subcommand)]
         action: ModelsCommands,
+    },
+
+    /// Datasets: download an http, s3 or nfs source into a PVC, one directory per version
+    ///
+    /// A dataset is a cluster-scoped GryviaDataset. The storage-operator (with --enable-datasets) materializes
+    /// it in spec.namespace; jobs there mount the PVC in status.pvcName at status.subPath.
+    #[command(after_help = examples(&["gryvia datasets list", "gryvia datasets create -f examples/datasets/http-dataset.yaml", "gryvia datasets get corpus", "gryvia datasets delete corpus --yes"]))]
+    Datasets {
+        #[command(subcommand)]
+        action: CrdCommands,
+    },
+
+    /// LLM gateway: per-tenant API keys, published models and token usage
+    ///
+    /// The gateway (chart value llmGateway.enabled) is one OpenAI-compatible endpoint for every
+    /// GryviaInferenceService annotated gryvia.io/llm-model. Keys belong to the namespace (-n) they are created in.
+    #[command(after_help = examples(&["gryvia llm keys create ci -n tenant-alpha", "gryvia llm keys list -A", "gryvia llm models", "gryvia llm usage --group-by day --days 7", "gryvia llm keys delete ci -n tenant-alpha --yes"]))]
+    Llm {
+        #[command(subcommand)]
+        action: LlmCommands,
+    },
+
+    /// RAG: vector indexes built from datasets, and retrieval through the LLM gateway
+    ///
+    /// A GryviaVectorIndex (namespaced, -n) names a GryviaDataset, an embedding model published on the LLM gateway
+    /// and a store (a managed Qdrant or an external one). The ai-operator (chart value aiOperator.rag.enabled)
+    /// ingests each dataset version; `query` calls the gateway's /v1/retrieve with a key of the same namespace.
+    #[command(after_help = examples(&["gryvia rag index create -f examples/rag/vector-index.yaml -n tenant-alpha", "gryvia rag index list -n tenant-alpha", "gryvia rag reingest handbook -n tenant-alpha", "gryvia rag query handbook quotas --top-k 3", "gryvia rag index delete handbook -n tenant-alpha --yes"]))]
+    Rag {
+        #[command(subcommand)]
+        action: RagCommands,
+    },
+
+    /// Agents: tool-calling agents served as OpenAI-compatible endpoints
+    ///
+    /// A GryviaAgent (namespaced, -n) names an LLM gateway model, a system prompt and tools (retrieval over a
+    /// vector index, or HTTP calls to allowlisted URLs). The ai-operator (chart value aiOperator.agents.enabled)
+    /// runs its runtime; `chat` goes through the api-gateway (GRYVIA_GATEWAY_URL), which proxies to the agent.
+    #[command(after_help = examples(&["gryvia agents create -f examples/agents/agent.yaml -n tenant-alpha", "gryvia agents list -n tenant-alpha", "gryvia agents chat helper what is the GPU quota", "gryvia agents delete helper -n tenant-alpha --yes"]))]
+    Agents {
+        #[command(subcommand)]
+        action: AgentsCommands,
     },
 
     /// Interactive job creation wizard
@@ -463,12 +505,225 @@ enum Commands {
     },
 }
 
+/// The verbs of the kinds that only need list, get, create and delete.
+#[derive(Subcommand)]
+enum CrdCommands {
+    /// List them
+    List {
+        /// Output format
+        #[arg(short, long, value_enum, default_value_t = OutputFormat::Table, env = "GRYVIA_OUTPUT")]
+        output: OutputFormat,
+    },
+
+    /// Show one: its spec and status
+    Get {
+        /// Name
+        name: String,
+
+        /// Output format (table prints YAML)
+        #[arg(short, long, value_enum, default_value_t = OutputFormat::Table, env = "GRYVIA_OUTPUT")]
+        output: OutputFormat,
+    },
+
+    /// Create the objects of this kind in a YAML file (other kinds in the file are skipped)
+    Create {
+        /// Path to the YAML file
+        #[arg(short, long)]
+        file: String,
+    },
+
+    /// Delete one
+    Delete {
+        /// Name
+        name: String,
+
+        /// Skip confirmation
+        #[arg(short, long)]
+        yes: bool,
+    },
+}
+
+async fn run_crd(
+    client: &client::GryviaClient,
+    k: &commands::crd::KindSpec,
+    action: CrdCommands,
+    next: &str,
+    consequence: &str,
+) -> Result<()> {
+    match action {
+        CrdCommands::List { output } => commands::crd::list(client, k, output.as_str()).await,
+        CrdCommands::Get { name, output } => {
+            commands::crd::get(client, k, &name, output.as_str()).await
+        }
+        CrdCommands::Create { file } => commands::crd::create(client, k, &file, next).await,
+        CrdCommands::Delete { name, yes } => {
+            commands::crd::delete(client, k, &name, yes, consequence).await
+        }
+    }
+}
+
 #[derive(Subcommand)]
 enum ModelsCommands {
     /// Manage model watches: list, runs, create, suspend, resume, delete
     Watch {
         #[command(subcommand)]
         action: WatchCommands,
+    },
+
+    /// Roll a model's shared service back to the version it replaced; the entry is archived
+    Rollback {
+        /// Model registry entry (a production entry with servingConfig.serviceName)
+        name: String,
+
+        /// Skip the confirmation prompt
+        #[arg(short, long)]
+        yes: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum AgentsCommands {
+    #[command(flatten)]
+    Crd(CrdCommands),
+
+    /// Send a message to an agent through the api-gateway and print its answer and tool calls
+    Chat {
+        /// Agent name
+        name: String,
+
+        /// Message (the remaining words, joined with spaces)
+        #[arg(required = true, trailing_var_arg = true)]
+        message: Vec<String>,
+
+        /// Output format
+        #[arg(short, long, value_enum, default_value_t = OutputFormat::Table, env = "GRYVIA_OUTPUT")]
+        output: OutputFormat,
+    },
+}
+
+#[derive(Subcommand)]
+enum RagCommands {
+    /// Manage vector indexes: list, get, create, delete
+    Index {
+        #[command(subcommand)]
+        action: CrdCommands,
+    },
+
+    /// Run a fresh ingestion of an index (sets the gryvia.io/reingest annotation)
+    Reingest {
+        /// Index name
+        name: String,
+    },
+
+    /// Retrieve the chunks nearest to a query through the LLM gateway's /v1/retrieve
+    Query {
+        /// Index name (in the namespace of the key)
+        index: String,
+
+        /// Query text
+        query: String,
+
+        /// Number of chunks (at most 50)
+        #[arg(long, default_value_t = 4)]
+        top_k: u32,
+
+        /// LLM gateway base URL
+        #[arg(long, env = "GRYVIA_LLM_GATEWAY_URL")]
+        llm_gateway_url: Option<String>,
+
+        /// LLM gateway key of the index's namespace
+        #[arg(long, env = "GRYVIA_LLM_KEY", hide_env_values = true)]
+        key: Option<String>,
+
+        /// Output format
+        #[arg(short, long, value_enum, default_value_t = OutputFormat::Table, env = "GRYVIA_OUTPUT")]
+        output: OutputFormat,
+    },
+}
+
+#[derive(Subcommand)]
+enum LlmCommands {
+    /// Manage API keys: create (prints the key once), list, delete
+    Keys {
+        /// Namespace of the key Secrets (chart value llmGateway.keyNamespace)
+        #[arg(
+            long,
+            global = true,
+            default_value = "gryvia-llm-keys",
+            env = "GRYVIA_LLM_KEY_NAMESPACE"
+        )]
+        key_namespace: String,
+
+        #[command(subcommand)]
+        action: LlmKeyCommands,
+    },
+
+    /// List the models a key of this namespace can call (its own and the shared ones)
+    Models {
+        /// Every published model, in all namespaces
+        #[arg(short = 'A', long)]
+        all_namespaces: bool,
+
+        /// Output format
+        #[arg(short, long, value_enum, default_value_t = OutputFormat::Table, env = "GRYVIA_OUTPUT")]
+        output: OutputFormat,
+    },
+
+    /// Token usage from the gateway's hourly usage records (written every 5 minutes)
+    Usage {
+        /// Usage of every namespace
+        #[arg(short = 'A', long)]
+        all_namespaces: bool,
+
+        /// Group by
+        #[arg(long, value_parser = ["model", "tenant", "namespace", "day"], default_value = "model")]
+        group_by: String,
+
+        /// Days back, today included
+        #[arg(long, default_value_t = 30)]
+        days: u32,
+
+        /// Output format
+        #[arg(short, long, value_enum, default_value_t = OutputFormat::Table, env = "GRYVIA_OUTPUT")]
+        output: OutputFormat,
+    },
+}
+
+#[derive(Subcommand)]
+enum LlmKeyCommands {
+    /// Create a key for the namespace; the key is printed once and only its hash is stored
+    Create {
+        /// Key name (lowercase letters, digits and '-')
+        name: String,
+
+        /// What the key is for
+        #[arg(long, default_value = "")]
+        description: String,
+
+        /// Output format
+        #[arg(short, long, value_enum, default_value_t = OutputFormat::Table, env = "GRYVIA_OUTPUT")]
+        output: OutputFormat,
+    },
+
+    /// List the keys of the namespace (never the keys themselves)
+    List {
+        /// Keys of every namespace
+        #[arg(short = 'A', long)]
+        all_namespaces: bool,
+
+        /// Output format
+        #[arg(short, long, value_enum, default_value_t = OutputFormat::Table, env = "GRYVIA_OUTPUT")]
+        output: OutputFormat,
+    },
+
+    /// Revoke a key of the namespace
+    Delete {
+        /// Key name
+        name: String,
+
+        /// Skip the confirmation prompt
+        #[arg(short, long)]
+        yes: bool,
     },
 }
 
@@ -966,6 +1221,35 @@ async fn run() -> Result<()> {
             commands::version::print_client();
             return Ok(());
         }
+        // Talks only to the LLM gateway.
+        Commands::Rag {
+            action:
+                RagCommands::Query {
+                    index,
+                    query,
+                    top_k,
+                    llm_gateway_url,
+                    key,
+                    output,
+                },
+        } => {
+            let cfg = commands::rag::llm_gateway(llm_gateway_url.as_deref(), key.as_deref())?;
+            commands::rag::query(cfg, index, query, *top_k, output.as_str()).await?;
+            return Ok(());
+        }
+        // Talks only to the api-gateway.
+        Commands::Agents {
+            action:
+                AgentsCommands::Chat {
+                    name,
+                    message,
+                    output,
+                },
+        } => {
+            let cfg = gateway::GatewayConfig::resolve(cli.gateway.as_deref(), cli.insecure);
+            commands::agents::chat(cfg, name, message, output.as_str()).await?;
+            return Ok(());
+        }
         _ => {}
     }
 
@@ -1184,6 +1468,101 @@ async fn run() -> Result<()> {
             }
             WatchCommands::Delete { name, yes } => {
                 commands::models::delete(&client, &name, yes).await?;
+            }
+        },
+        Commands::Models {
+            action: ModelsCommands::Rollback { name, yes },
+        } => {
+            commands::models::rollback(&client, &name, yes).await?;
+        }
+        Commands::Datasets { action } => {
+            run_crd(
+                &client,
+                &commands::datasets::DATASETS,
+                action,
+                "follow it with: gryvia datasets list",
+                "Its PVC and every downloaded version are deleted",
+            )
+            .await?;
+        }
+        Commands::Rag { action } => match action {
+            RagCommands::Index { action } => {
+                run_crd(
+                    &client,
+                    &commands::rag::VECTOR_INDEXES,
+                    action,
+                    "follow it with: gryvia rag index list",
+                    "Its managed Qdrant (with its volume), ingestion Jobs and gateway key are deleted",
+                )
+                .await?;
+            }
+            RagCommands::Reingest { name } => commands::rag::reingest(&client, &name).await?,
+            RagCommands::Query { .. } => unreachable!("handled before the kube client is created"),
+        },
+        Commands::Agents { action } => match action {
+            AgentsCommands::Crd(action) => {
+                run_crd(
+                    &client,
+                    &commands::agents::AGENTS,
+                    action,
+                    "follow it with: gryvia agents list",
+                    "Its runtime Deployment, Service, NetworkPolicy and gateway key are deleted",
+                )
+                .await?;
+            }
+            AgentsCommands::Chat { .. } => {
+                unreachable!("handled before the kube client is created")
+            }
+        },
+        Commands::Llm { action } => match action {
+            LlmCommands::Keys {
+                key_namespace,
+                action,
+            } => match action {
+                LlmKeyCommands::Create {
+                    name,
+                    description,
+                    output,
+                } => {
+                    commands::llm::keys_create(
+                        &client,
+                        &key_namespace,
+                        &name,
+                        &description,
+                        output.as_str(),
+                    )
+                    .await?;
+                }
+                LlmKeyCommands::List {
+                    all_namespaces,
+                    output,
+                } => {
+                    commands::llm::keys_list(
+                        &client,
+                        &key_namespace,
+                        all_namespaces,
+                        output.as_str(),
+                    )
+                    .await?;
+                }
+                LlmKeyCommands::Delete { name, yes } => {
+                    commands::llm::keys_delete(&client, &key_namespace, &name, yes).await?;
+                }
+            },
+            LlmCommands::Models {
+                all_namespaces,
+                output,
+            } => {
+                commands::llm::models(&client, all_namespaces, output.as_str()).await?;
+            }
+            LlmCommands::Usage {
+                all_namespaces,
+                group_by,
+                days,
+                output,
+            } => {
+                commands::llm::usage(&client, all_namespaces, &group_by, days, output.as_str())
+                    .await?;
             }
         },
         Commands::Budget { scope, output } => {

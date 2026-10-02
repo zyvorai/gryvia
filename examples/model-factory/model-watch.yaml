@@ -1,5 +1,5 @@
-# Fine-tune every new open chat model that passes the filters, evaluate it, and let it replace the served model
-# when it scores better. Needs the ai-operator with --enable-model-watch (Helm: aiOperator.modelWatch.enabled=true),
+# Fine-tune every new open chat model that passes the filters, quantize it to 4-bit AWQ, evaluate it, and let it
+# replace the served model when it scores better. Needs the ai-operator with --enable-model-watch (Helm: aiOperator.modelWatch.enabled=true),
 # the image built from this directory, a "models" PVC (ReadWriteMany) and a "datasets" PVC holding chat.jsonl and
 # eval.jsonl. All versions share the "chat-assistant" GryviaInferenceService: a better version is rolled out as its
 # canary and promoted after 30 healthy minutes. Unverified on GPUs; see docs/model-factory.md.
@@ -98,9 +98,35 @@ spec:
           volumeMounts:
             - {name: models, mountPath: /models}
             - {name: data, mountPath: /data, readOnly: true}
-      - name: evaluate
+      # AWQ 4-bit weights: about a quarter of the GPU memory of bf16 when served. The evaluation below scores the
+      # quantized model, so the promotion decision includes the quantization loss.
+      - name: quantize
         type: job
         dependsOn: [finetune]
+        timeoutSeconds: 14400
+        jobTemplate:
+          type: fine-tuning
+          model: "{{model.id}}"
+          image: registry.example.com/gryvia-model-factory:1.0
+          gpus: 1
+          gpuType: H100
+          command: [python3, /app/quantize.py]
+          args:
+            - "--model={{steps.finetune.outputs.path}}"
+            - --method=awq
+            - "--calibration={{parameters.DATASET}}"
+            - --samples=256
+          volumes:
+            - name: models
+              persistentVolumeClaim: {claimName: models}
+            - name: data
+              persistentVolumeClaim: {claimName: datasets, readOnly: true}
+          volumeMounts:
+            - {name: models, mountPath: /models}
+            - {name: data, mountPath: /data, readOnly: true}
+      - name: evaluate
+        type: job
+        dependsOn: [quantize]
         timeoutSeconds: 14400
         jobTemplate:
           type: evaluation
@@ -110,7 +136,7 @@ spec:
           gpuType: H100
           command: [python3, /app/evaluate.py]
           args:
-            - "--model={{steps.finetune.outputs.path}}"
+            - "--model={{steps.quantize.outputs.path}}"
             - "--tasks=arc_easy,hellaswag,gsm8k"
             - "--limit=500"
             - "--custom=/data/eval.jsonl"
@@ -131,11 +157,12 @@ spec:
           description: "LoRA fine-tune of {{model.id}}@{{model.revision}}"
           artifacts:
             pvcName: models
-            subPath: "{{steps.finetune.outputs.subPath}}"
-            format: safetensors
+            subPath: "{{steps.quantize.outputs.subPath}}"
+            format: "{{steps.quantize.outputs.format}}"
           metadata:
             eval_score: "{{steps.evaluate.outputs.score}}"
             train_loss: "{{steps.finetune.outputs.train_loss}}"
+            quantization: "{{steps.quantize.outputs.method}}-{{steps.quantize.outputs.scheme}}"
           autoServe: true
           servingConfig:
             backend: vllm
@@ -146,9 +173,14 @@ spec:
             promoteAfterSeconds: 1800
             # The model PVC subPath is mounted at /models. servicePort must match --port: the operator serves and
             # probes servicePort (vLLM's default is 8000).
-            args: ["--model=/models", "--served-model-name=chat-assistant", "--port=8080"]
+            args: ["--model=/models", "--served-model-name=chat-assistant", "--port=8080",
+                   "--quantization={{steps.quantize.outputs.quantization}}"]
             servicePort: 8080
           promotionPolicy:
             metric: eval_score
             direction: maximize
             minDelta: "0.01"
+          # eval-schedule.yaml writes live_score nightly; below 0.5 the previous version comes back.
+          rollbackPolicy:
+            metric: live_score
+            threshold: "0.5"

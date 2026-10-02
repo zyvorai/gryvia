@@ -12,12 +12,17 @@ shared vLLM service, promoted after it stays healthy or rolled back.
 
 ## Files
 
-- [model-watch.yaml](model-watch.yaml): the watch, its token Secret and the four-step workflow template
+- [model-watch.yaml](model-watch.yaml): the watch, its token Secret and the five-step workflow template (download, fine-tune, quantize, evaluate, register)
+- [eval-schedule.yaml](eval-schedule.yaml): a nightly workflow that scores the served version through its endpoint
+  and writes `live_score` onto its entry; the entries' `rollbackPolicy` brings the previous version back below 0.5
 - [download.py](download.py): `snapshot_download` of one revision into `/models/cache`, skipped when already present
 - [finetune_lora.py](finetune_lora.py): TRL/PEFT LoRA (or `--qlora`) fine-tune; merges the adapter and saves safetensors
-- [evaluate.py](evaluate.py): lm-evaluation-harness tasks plus an optional exact-match JSONL; reports `score`
+- [quantize.py](quantize.py): AWQ or GPTQ 4-bit weights with llm-compressor, calibrated on the training data; saves
+  compressed-tensors that vLLM loads with `--quantization=compressed-tensors`
+- [evaluate.py](evaluate.py): lm-evaluation-harness tasks plus an optional exact-match JSONL, on a model directory or
+  (`--endpoint`) an OpenAI-compatible server; reports `score`
 - [outputs.py](outputs.py): writes step outputs to the termination message the workflow reads
-- [Dockerfile](Dockerfile) and [requirements.txt](requirements.txt): one image for all three steps
+- [Dockerfile](Dockerfile) and [requirements.txt](requirements.txt): one image for the download, fine-tune, quantize and evaluate steps
 - [test_model_factory.py](test_model_factory.py): unit tests (no GPU, no network)
 
 ## Run it
@@ -32,6 +37,10 @@ helm upgrade gryvia helm/gryvia --reuse-values --set aiOperator.modelWatch.enabl
 kubectl apply -f examples/model-factory/model-watch.yaml
 gryvia models watch runs open-llms -n ml-team      # or: kubectl get gryviamodelwatch open-llms -n ml-team -o yaml
 kubectl get gryviaworkflows,gryviamodelregistries,gryviainferenceservices -n ml-team
+
+# Nightly re-evaluation of the served version, and a manual rollback.
+kubectl apply -f examples/model-factory/eval-schedule.yaml
+gryvia models rollback <serving-entry> -n ml-team
 ```
 
 The first poll only records the models that already exist (`Baseline`); set `includeExisting: true` to fine-tune

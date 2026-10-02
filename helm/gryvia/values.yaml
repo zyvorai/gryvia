@@ -97,11 +97,53 @@ aiOperator:
     enabled: false
     hubURL: https://huggingface.co
     minPollInterval: 5m
+  # GryviaVectorIndex (--enable-rag): a managed Qdrant (or an external store) per index and ingestion Jobs that chunk
+  # a GryviaDataset version and embed it through the LLM gateway; the gateway answers POST /v1/retrieve. Needs
+  # llmGateway.enabled (the gateway URL and key namespace are taken from it). See docs/rag.md.
+  rag:
+    enabled: false
+    qdrantImage: qdrant/qdrant:v1.12.6-unprivileged
+    ingestImage: ghcr.io/zyvorai/gryvia-rag-ingest:latest
+  # GryviaAgent (--enable-agents): a tool-calling agent runtime Deployment per agent, serving an OpenAI-compatible
+  # /v1/chat/completions, calling its model through the LLM gateway with its own key, behind a NetworkPolicy that
+  # limits egress to DNS, the gateway and the allowlisted tool hosts. Needs llmGateway.enabled. See docs/agents.md.
+  agents:
+    enabled: false
+    image: ghcr.io/zyvorai/gryvia-agent-runtime:latest
   extraArgs: []
   # Fold the per-node entries collectors write into GryviaFabricSignal status.nodes[] (network-intelligence
   # ebpf.fabricStatusPerNode) into the top-level status: max for degradation metrics, sample-weighted means for ratios,
   # entries older than their ttl ignored (--merge-fabric-signals). Off by default; needs no extra RBAC.
   mergeFabricSignals: false
+
+# LLM gateway (`/manager llm-gateway`, the ai-operator image): one OpenAI-compatible endpoint
+# (/v1/models, /v1/chat/completions, /v1/completions, /v1/embeddings) in front of every GryviaInferenceService
+# annotated gryvia.io/llm-model. Callers use per-tenant keys (created with `gryvia llm keys create` or
+# POST /api/llm-keys; stored hashed in Secrets in keyNamespace), tokens are metered into GryviaUsageRecords of kind
+# tokens and GryviaQuota.spec.tokensPerDay is enforced with HTTP 429. Off by default. Adds the namespace keyNamespace,
+# a Role on its Secrets for the gateway (read) and the api-gateway (create/delete), and a ClusterRole that reads
+# inference services and quotas and writes usage records. See docs/llm-gateway.md.
+llmGateway:
+  enabled: false
+  replicas: 1
+  # Namespace of the key Secrets; created by the chart. Keep it dedicated: the api-gateway may create and delete
+  # every Secret in it.
+  keyNamespace: gryvia-llm-keys
+  # Default prices per million tokens for models without the gryvia.io/llm-price-*-per-1m annotations.
+  priceInputPer1M: 0
+  priceOutputPer1M: 0
+  currency: USD
+  # How often token counts are written as GryviaUsageRecords, and how often GryviaQuotas are reloaded.
+  flushInterval: 5m
+  quotaRefreshInterval: 30s
+  service:
+    type: ClusterIP
+    port: 8080
+  resources:
+    limits: {cpu: "1", memory: 512Mi}
+    requests: {cpu: 100m, memory: 128Mi}
+  nodeSelector: {}
+  tolerations: []
 
 # Admission webhook served by the ai-operator: validates GryviaAIJob on CREATE/UPDATE.
 # It uses its own self-signed certificate (independent of tls.mode), reused on upgrades.
@@ -157,6 +199,15 @@ storageOperator:
   enabled: false
   image: {name: gryvia-storage-operator, tag: ""}
   replicas: 1
+  # GryviaDataset controller (needs storageOperator.enabled): materializes a dataset's http (optional sha256
+  # checksum), s3 or nfs source into a PVC, one directory per version, with a download Job. See docs/datasets.md.
+  datasets:
+    enabled: false
+    # Where a dataset without spec.namespace gets its PVC and download Jobs (empty: the chart's namespace).
+    namespace: ""
+    image: busybox:1.36
+    s3Image: amazon/aws-cli:2.17.0
+    defaultSize: 10Gi
   resources:
     limits: {cpu: 200m, memory: 256Mi}
     requests: {cpu: 50m, memory: 64Mi}

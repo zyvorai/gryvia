@@ -25,6 +25,8 @@ const TONES: Record<string, Tone> = {
   provisioning: 'warn',
   creating: 'warn',
   deploying: 'warn',
+  syncing: 'warn',
+  ingesting: 'warn',
   rollingback: 'warn',
   terminating: 'warn',
   degraded: 'warn',

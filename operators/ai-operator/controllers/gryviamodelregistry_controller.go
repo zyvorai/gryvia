@@ -12,6 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -49,13 +50,17 @@ type GryviaModelRegistryReconciler struct {
 	// AutoServeGPUCount is the gpuCount of an auto-served service whose servingConfig sets none (the
 	// --autoserve-default-gpu-count flag, default 1). 0 serves on CPU.
 	AutoServeGPUCount int32
+
+	// Recorder emits RolledBack and RollbackRefused events (optional).
+	Recorder record.EventRecorder
 }
 
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviamodelregistries,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviamodelregistries/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviamodelregistries/finalizers,verbs=update
 //+kubebuilder:rbac:groups=gryvia.io,resources=gryviainferenceservices,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch
+//+kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;patch
+//+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 func servingName(model *gryviav1.GryviaModelRegistry) string { return childName(model.Name, "serving") }
 
@@ -97,6 +102,9 @@ func (r *GryviaModelRegistryReconciler) reconcileModel(ctx context.Context, mode
 		fmt.Sprintf("Model %s version %s registered", model.Spec.ModelName, model.Spec.Version))
 
 	if err := r.applyPromotionPolicy(ctx, model); err != nil {
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, err
+	}
+	if done, err := r.applyRollback(ctx, model); err != nil || done {
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, err
 	}
 
@@ -154,8 +162,10 @@ func (r *GryviaModelRegistryReconciler) stopServing(ctx context.Context, model *
 		model.Status.DeployedAt = nil
 		model.Status.Message = "Serving stopped"
 	}
-	model.Status.Phase = PhaseRegistered
-	setCondition(&model.Status.Conditions, model.Generation, ConditionModelServing, metav1.ConditionFalse, "NotServing", "Model is not auto-served")
+	if model.Status.Phase != PhaseRolledBack {
+		model.Status.Phase = PhaseRegistered
+		setCondition(&model.Status.Conditions, model.Generation, ConditionModelServing, metav1.ConditionFalse, "NotServing", "Model is not auto-served")
+	}
 	return nil
 }
 

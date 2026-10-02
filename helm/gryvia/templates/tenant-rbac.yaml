@@ -30,6 +30,8 @@ rules:
       - gryviaworkflows
       - gryviaautotuners
       - gryviamodelwatches
+      - gryviavectorindexes
+      - gryviaagents
       - gryviamodelregistries
       - gryviausagerecords
       - gryvianetworkusagerecords
@@ -54,6 +56,8 @@ rules:
       - gryviaworkflows
       - gryviaautotuners
       - gryviamodelwatches
+      - gryviavectorindexes
+      - gryviaagents
       - gryviamodelregistries
       - gryviausagerecords
       - gryvianetworkusagerecords
@@ -67,6 +71,8 @@ rules:
       - gryviaworkflows
       - gryviaautotuners
       - gryviamodelwatches
+      - gryviavectorindexes
+      - gryviaagents
       - gryviamodelregistries
     verbs: ["create", "update", "patch", "delete"]
   - apiGroups: [""]
@@ -91,6 +97,8 @@ rules:
       - gryviaworkflows
       - gryviaautotuners
       - gryviamodelwatches
+      - gryviavectorindexes
+      - gryviaagents
       - gryviamodelregistries
       - gryviausagerecords
       - gryvianetworkusagerecords
@@ -104,6 +112,8 @@ rules:
       - gryviaworkflows
       - gryviaautotuners
       - gryviamodelwatches
+      - gryviavectorindexes
+      - gryviaagents
       - gryviamodelregistries
     verbs: ["create", "update", "patch", "delete"]
   # Admin differs from member in what it may do to the tenant's own configuration objects and workloads' plumbing:

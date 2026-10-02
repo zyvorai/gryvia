@@ -23,6 +23,11 @@ type GryviaQuotaSpec struct {
 
 	// Network defines optional network limits (optional)
 	Network *NetworkSpec `json:"network,omitempty"`
+
+	// TokensPerDay caps the LLM gateway tokens (input plus output) requested with keys of the listed namespaces
+	// per UTC day; further requests get HTTP 429. Enforced by the LLM gateway, not by this operator.
+	// +kubebuilder:validation:Minimum=1
+	TokensPerDay *int64 `json:"tokensPerDay,omitempty"`
 }
 
 // NetworkSpec defines optional network limits. Nothing reads them unless the

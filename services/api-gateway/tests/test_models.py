@@ -142,3 +142,27 @@ def test_create_missing_fields(make_client, fake_k8s):
     assert c.post("/api/models", json={}).status_code == 422
     assert c.post("/api/models", json={"name": "m", "version": "v1"}).status_code == 422
     assert not fake_k8s.store
+
+
+def test_rollback_sets_the_request_annotation(make_client, fake_k8s):
+    seed(fake_k8s, stage="production", servingConfig={"serviceName": "chat"})
+    fake_k8s.store[("gryviamodelregistries", NS, "bert")]["status"]["previousVersion"] = "bert-v0"
+    r = make_client("models").post("/api/models/bert/rollback")
+    assert r.status_code == 202
+    assert r.json()["status"]["previousVersion"] == "bert-v0"
+    ann = fake_k8s.store[("gryviamodelregistries", NS, "bert")]["metadata"]["annotations"]
+    assert ann["gryvia.io/rollback-requested"].startswith("api at ")
+
+
+@pytest.mark.parametrize("stage,serving,previous", [("staging", {"serviceName": "chat"}, "v0"),
+                                                    ("production", {}, "v0"),
+                                                    ("production", {"serviceName": "chat"}, "")])
+def test_rollback_refused(make_client, fake_k8s, stage, serving, previous):
+    seed(fake_k8s, stage=stage, servingConfig=serving)
+    fake_k8s.store[("gryviamodelregistries", NS, "bert")]["status"]["previousVersion"] = previous
+    assert make_client("models").post("/api/models/bert/rollback").status_code == 409
+    assert "annotations" not in fake_k8s.store[("gryviamodelregistries", NS, "bert")]["metadata"]
+
+
+def test_rollback_404(make_client):
+    assert make_client("models").post("/api/models/nope/rollback").status_code == 404

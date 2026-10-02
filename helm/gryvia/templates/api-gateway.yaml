@@ -95,6 +95,12 @@ spec:
           value: "1"
         {{- end }}
         {{- end }}
+        {{- if (dig "llmGateway" "enabled" nil .Values.AsMap) }}
+        - name: GRYVIA_LLM_KEY_NAMESPACE
+          value: {{ (dig "llmGateway" "keyNamespace" "gryvia-llm-keys" .Values.AsMap) | quote }}
+        - name: GRYVIA_LLM_GATEWAY_URL
+          value: {{ printf "http://%s-llm-gateway.%s.svc.cluster.local:%v" (include "gryvia.fullname" .) (include "gryvia.namespace" .) (dig "llmGateway" "service" "port" 8080 .Values.AsMap) | quote }}
+        {{- end }}
         {{- if (dig "apiGateway" "oidc" "adminGroups" nil .Values.AsMap) }}
         - name: GRYVIA_OIDC_ADMIN_GROUPS
           value: {{ (dig "apiGateway" "oidc" "adminGroups" nil .Values.AsMap) | quote }}
@@ -215,6 +221,9 @@ rules:
   - gryviaworkflows
   - gryviaautotuners
   - gryviamodelwatches
+  - gryviavectorindexes
+  - gryviaagents
+  - gryviadatasets
   - gryviaflowpolicies
   - gryviatrafficinsights
   - gryviaservicegraphs
@@ -246,6 +255,9 @@ rules:
   - gryviaworkflows
   - gryviaautotuners
   - gryviamodelwatches
+  - gryviavectorindexes
+  - gryviaagents
+  - gryviadatasets
   - gryviaflowpolicies
   - gryviatracesessions
   - gryviasecuritypolicies

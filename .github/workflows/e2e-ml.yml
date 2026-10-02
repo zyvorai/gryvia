@@ -7,8 +7,11 @@ name: ML controllers end-to-end
 #
 # NOT proven here (no GPU, no real model server, no metrics-server on kind): the real Jupyter, code-server, vLLM,
 # Triton, TensorRT-LLM and TorchServe images, GPU scheduling, and an HPA scaling on real metrics. The model factory
-# runs against a stand-in hub (a 20-line Python server, not huggingface.co) and its download/fine-tune/evaluate steps
-# are busybox stand-ins that only emit outputs; the real scripts in examples/model-factory are unit-tested separately.
+# runs against a stand-in hub (a 20-line Python server, not huggingface.co) and its download/fine-tune/quantize/evaluate
+# steps are busybox stand-ins that only emit outputs; the real scripts in examples/model-factory are unit-tested
+# separately.
+# The GryviaDataset controller (storage-operator) downloads from a stand-in HTTP file server; its s3 and nfs sources
+# are covered by unit tests only.
 #
 # The workflow-with-jobs and auto-tuner steps run GryviaAIJob children, which the AIJob controller runs to completion
 # (indexed batch/v1 Job workload, docs/aijob-lifecycle.md), so a failure of those steps fails the run.
@@ -20,11 +23,14 @@ on:
     branches: [ main ]
     paths:
       - 'operators/ai-operator/**'
+      - 'operators/storage-operator/**'
       - 'helm/**'
       - 'crds/**'
       - 'services/api-gateway/**'
       - 'scripts/e2e-ml-lib.sh'
       - 'scripts/kind-demo.sh'
+      - 'examples/rag/**'
+      - 'examples/agents/**'
       - '.github/workflows/e2e-ml.yml'
   workflow_dispatch:
 
@@ -77,7 +83,7 @@ jobs:
       - name: The ai-operator started the six ML controllers
         run: |
           source scripts/e2e-ml-lib.sh
-          check() { kubectl -n "$NS" logs -l app.kubernetes.io/component=ai-operator --tail=-1 | grep -q "\"controllerKind\":\"$1\""; }
+          check() { kubectl -n "$NS" logs -l app.kubernetes.io/component=ai-operator --tail=-1 | grep -c "\"controllerKind\":\"$1\"" >/dev/null; }
           for kind in GryviaWorkspace GryviaInferenceService GryviaModelRegistry GryviaWorkflow GryviaAutoTuner GryviaModelWatch; do
             wait_for "controller $kind started" 90 check "$kind"
           done
@@ -449,9 +455,16 @@ jobs:
                     gpus: 0
                     command: [sh, -c]
                     args: ['test "{{steps.download.outputs.revision}}" = "{{model.revision}}" && printf "{\"subPath\":\"{{model.slug}}\",\"train_loss\":0.42}" > /dev/termination-log']
-                - name: evaluate
+                - name: quantize
                   type: script
                   dependsOn: [finetune]
+                  script:
+                    image: busybox:1.36
+                    command: [sh, -c]
+                    args: ['printf "{\"subPath\":\"{{steps.finetune.outputs.subPath}}-awq\",\"format\":\"compressed-tensors\",\"method\":\"awq\",\"scheme\":\"W4A16_ASYM\"}" > /dev/termination-log']
+                - name: evaluate
+                  type: script
+                  dependsOn: [quantize]
                   script:
                     image: busybox:1.36
                     command: [sh, -c]
@@ -462,10 +475,11 @@ jobs:
                   register:
                     modelName: e2e-chat
                     version: "{{model.slug}}"
-                    artifacts: {s3Path: "s3://bucket/{{steps.finetune.outputs.subPath}}"}
+                    artifacts: {s3Path: "s3://bucket/{{steps.quantize.outputs.subPath}}", format: "{{steps.quantize.outputs.format}}"}
                     metadata:
                       eval_score: "{{steps.evaluate.outputs.score}}"
                       train_loss: "{{steps.finetune.outputs.train_loss}}"
+                      quantization: "{{steps.quantize.outputs.method}}-{{steps.quantize.outputs.scheme}}"
                     autoServe: true
                     servingConfig: {backend: torchserve, replicas: 1, serviceName: e2e-chat, canaryWeight: 50, promoteAfterSeconds: 30}
                     promotionPolicy: {metric: eval_score, direction: maximize, minDelta: "0.01"}
@@ -491,6 +505,9 @@ jobs:
           assert_nonempty "registered entry" "$e1"
           assert_eq "entry metadata from outputs" "$(jp "gryviamodelregistry/$e1" '{.spec.metadata.eval_score}')" 0.6
           assert_eq "entry base_model" "$(jp "gryviamodelregistry/$e1" '{.spec.metadata.base_model}')" e2e-org/tiny-1
+          assert_eq "quantized artifacts" "$(jp "gryviamodelregistry/$e1" '{.spec.artifacts.s3Path}')" s3://bucket/tiny-1-awq
+          assert_eq "artifact format" "$(jp "gryviamodelregistry/$e1" '{.spec.artifacts.format}')" compressed-tensors
+          assert_eq "quantization metadata" "$(jp "gryviamodelregistry/$e1" '{.spec.metadata.quantization}')" awq-W4A16_ASYM
           wait_for "first version promoted to production" 60 field_is "gryviamodelregistry/$e1" '{.spec.stage}' production
           assert_eq "promotion decision" "$(jp "gryviamodelregistry/$e1" '{.status.promotionDecision}')" Promoted
           wait_for "shared service created" 60 kubectl -n "$NS" get gryviainferenceservice/e2e-chat
@@ -537,6 +554,550 @@ jobs:
           sleep 25
           assert_eq "no run while suspended" "$(run_field e2e-watch e2e-org/tiny-4 phase)" ""
 
+      - name: Model factory - a scheduled evaluation drops the score and the previous version comes back
+        run: |
+          source scripts/e2e-ml-lib.sh
+          e1="$(entry_of "$(run_field e2e-watch e2e-org/tiny-1 workflow)")"
+          e2="$(entry_of "$(run_field e2e-watch e2e-org/tiny-2 workflow)")"
+          assert_eq "e2 serves before" "$(jp gryviainferenceservice/e2e-chat '{.spec.modelRef}')" "$e2"
+          kubectl -n "$NS" patch "gryviamodelregistry/$e2" --type=merge -p '{"spec":{"rollbackPolicy":{"metric":"live_score","threshold":"0.5"}}}'
+          # The evaluation stand-in reports 0.3; the registry step writes it onto whatever the service serves.
+          cat <<'EOF' | kubectl apply -f -
+          apiVersion: gryvia.io/v1alpha1
+          kind: GryviaWorkflow
+          metadata: {name: e2e-live-eval, namespace: gryvia-system}
+          spec:
+            steps:
+              - name: evaluate
+                type: script
+                script:
+                  image: busybox:1.36
+                  command: [sh, -c]
+                  args: ['printf "{\"score\":\"0.3\"}" > /dev/termination-log']
+              - name: record
+                type: registry
+                dependsOn: [evaluate]
+                registry:
+                  serviceName: e2e-chat
+                  action: updateMetadata
+                  metadata: {live_score: "{{steps.evaluate.outputs.score}}"}
+          EOF
+          wait_for "evaluation workflow Succeeded" 180 field_is gryviaworkflow/e2e-live-eval '{.status.phase}' Succeeded
+          assert_eq "registry step picked the serving entry" "$(jp gryviaworkflow/e2e-live-eval '{.status.stepStatuses[?(@.name=="record")].outputs.name}')" "$e2"
+          assert_eq "live_score written" "$(jp "gryviamodelregistry/$e2" '{.spec.metadata.live_score}')" 0.3
+          wait_for "service back on the previous version" 120 field_is gryviainferenceservice/e2e-chat '{.spec.modelRef}' "$e1"
+          wait_for "rolled-back version archived" 60 field_is "gryviamodelregistry/$e2" '{.spec.stage}' archived
+          assert_eq "RolledBack condition" "$(jp "gryviamodelregistry/$e2" '{.status.conditions[?(@.type=="RolledBack")].reason}')" PolicyBreached
+          assert_eq "rolled-back phase" "$(jp "gryviamodelregistry/$e2" '{.status.phase}')" RolledBack
+          assert_eq "previous version back in production" "$(jp "gryviamodelregistry/$e1" '{.spec.stage}')" production
+          kubectl -n "$NS" get events --field-selector "involvedObject.name=$e2,reason=RolledBack" -o name | grep -q .
+          echo "ok: RolledBack event"
+          wait_for "previous version Serving again" 240 field_is "gryviamodelregistry/$e1" '{.status.phase}' Serving
+          # The worse staging version is still not promoted against the restored one.
+          e3="$(entry_of "$(run_field e2e-watch e2e-org/tiny-3 workflow)")"
+          assert_eq "worse version still in staging" "$(jp "gryviamodelregistry/$e3" '{.spec.stage}')" staging
+          # The gateway refuses a rollback of the archived entry.
+          assert_eq "gateway rollback of an archived entry" "$(api_status "/api/models/$e2/rollback" -X POST)" 409
+
+      # ------------------------------------------------------------------ Datasets (storage-operator)
+      # A stand-in file server holds data.csv and its sha256; the dataset controller downloads it into a PVC, one
+      # directory per version, and keeps the last two versions.
+      - name: Datasets - enable the storage-operator's dataset controller
+        run: |
+          docker build -f operators/storage-operator/Dockerfile -t ghcr.io/zyvorai/gryvia-storage-operator:dev operators/storage-operator
+          kind load docker-image --name "$KIND_CLUSTER" ghcr.io/zyvorai/gryvia-storage-operator:dev
+          helm upgrade gryvia ./helm/gryvia --namespace gryvia-system --reuse-values --wait --timeout 300s \
+            --set storageOperator.enabled=true --set storageOperator.datasets.enabled=true \
+            --set storageOperator.datasets.image="$TINY_JOB_IMAGE" --set storageOperator.datasets.defaultSize=64Mi
+          kubectl -n gryvia-system rollout status deploy -l app.kubernetes.io/component=storage-operator --timeout=180s
+          source scripts/e2e-ml-lib.sh
+          check() { kubectl -n "$NS" logs -l app.kubernetes.io/component=storage-operator --tail=-1 | grep -c '"controllerKind":"GryviaDataset"' >/dev/null; }
+          wait_for "controller GryviaDataset started" 90 check
+
+      - name: Datasets - stand-in file server
+        run: |
+          source scripts/e2e-ml-lib.sh
+          mkdir -p /tmp/e2e-files
+          printf 'id,label\n1,cat\n2,dog\n' > /tmp/e2e-files/data.csv
+          (cd /tmp/e2e-files && sha256sum data.csv > data.csv.sha256)
+          printf 'not the data\n' > /tmp/e2e-files/bad.sha256
+          kubectl -n "$NS" create configmap e2e-files --from-file=/tmp/e2e-files --dry-run=client -o yaml | kubectl apply -f -
+          cat <<EOF | kubectl apply -f -
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata: {name: e2e-files, namespace: gryvia-system}
+          spec:
+            selector: {matchLabels: {app: e2e-files}}
+            template:
+              metadata: {labels: {app: e2e-files}}
+              spec:
+                securityContext: {runAsNonRoot: true, runAsUser: 65534, seccompProfile: {type: RuntimeDefault}}
+                containers:
+                  - name: files
+                    image: ${TINY_PY_IMAGE}
+                    imagePullPolicy: IfNotPresent
+                    command: [python3, -u, -m, http.server, "8080", --directory, /files]
+                    ports: [{containerPort: 8080}]
+                    readinessProbe: {httpGet: {path: /data.csv, port: 8080}, periodSeconds: 2}
+                    securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+                    volumeMounts: [{name: files, mountPath: /files}]
+                volumes: [{name: files, configMap: {name: e2e-files}}]
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata: {name: e2e-files, namespace: gryvia-system}
+          spec: {selector: {app: e2e-files}, ports: [{port: 8080, targetPort: 8080}]}
+          EOF
+          kubectl -n "$NS" rollout status deploy/e2e-files --timeout=120s
+
+      - name: Datasets - download, checksum, versions, retention, gateway
+        run: |
+          source scripts/e2e-ml-lib.sh
+          files=http://e2e-files.gryvia-system.svc:8080
+          want_sum="$(cut -d' ' -f1 /tmp/e2e-files/data.csv.sha256)"
+          create() {
+            api /api/datasets -X POST -d "{\"name\":\"e2e-data\",\"type\":\"tabular\",\"version\":\"$1\",\"retention\":{\"keepLast\":2},
+              \"source\":{\"type\":\"http\",\"http\":{\"url\":\"$files/data.csv\",\"checksumURL\":\"$files/data.csv.sha256\"}}}"
+          }
+          create v1 | jq -e '.metadata.name == "e2e-data"'
+          wait_for "dataset ready" 240 field_is gryviadataset/e2e-data '{.status.state}' ready
+          assert_eq "PVC" "$(jp gryviadataset/e2e-data '{.status.pvcName}')" dataset-e2e-data
+          assert_eq "PVC owner" "$(jp pvc/dataset-e2e-data '{.metadata.ownerReferences[0].kind}')" GryviaDataset
+          assert_eq "subPath" "$(jp gryviadataset/e2e-data '{.status.subPath}')" v1
+          assert_eq "files" "$(jp gryviadataset/e2e-data '{.status.fileCount}')" 1
+          assert_eq "bytes" "$(jp gryviadataset/e2e-data '{.status.totalSizeBytes}')" "$(stat -c %s /tmp/e2e-files/data.csv)"
+          assert_eq "Ready condition" "$(jp gryviadataset/e2e-data '{.status.conditions[?(@.type=="Ready")].status}')" True
+
+          # A pod mounting the PVC sees the file, byte for byte.
+          cat <<EOF | kubectl apply -f -
+          apiVersion: v1
+          kind: Pod
+          metadata: {name: e2e-data-reader, namespace: gryvia-system}
+          spec:
+            restartPolicy: Never
+            securityContext: {runAsNonRoot: true, runAsUser: 65534, seccompProfile: {type: RuntimeDefault}}
+            containers:
+              - name: read
+                image: ${TINY_JOB_IMAGE}
+                imagePullPolicy: IfNotPresent
+                command: [sha256sum, /data/v1/data.csv]
+                securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+                volumeMounts: [{name: data, mountPath: /data, readOnly: true}]
+            volumes: [{name: data, persistentVolumeClaim: {claimName: dataset-e2e-data, readOnly: true}}]
+          EOF
+          wait_for "reader done" 120 field_is pod/e2e-data-reader '{.status.phase}' Succeeded
+          assert_eq "file content" "$(kubectl -n "$NS" logs pod/e2e-data-reader | cut -d' ' -f1)" "$want_sum"
+          kubectl -n "$NS" delete pod/e2e-data-reader --wait=true
+
+          # New versions: v2 and v3 are downloaded; keepLast 2 drops v1.
+          for v in v2 v3; do
+            kubectl -n "$NS" patch gryviadataset/e2e-data --type=merge -p "{\"spec\":{\"version\":\"$v\"}}"
+            wait_for "dataset $v ready" 240 field_is gryviadataset/e2e-data '{.status.currentVersion}' "$v"
+            wait_for "dataset ready at $v" 60 field_is gryviadataset/e2e-data '{.status.state}' ready
+          done
+          assert_eq "kept versions" "$(jp gryviadataset/e2e-data '{.status.versions[*].version}')" "v2 v3"
+
+          # Gateway view.
+          assert_eq "gateway state" "$(gw /api/datasets/e2e-data .status.state)" ready
+          assert_eq "gateway version" "$(gw /api/datasets/e2e-data .status.currentVersion)" v3
+          assert_eq "gateway list" "$(gw /api/datasets '[.items[] | select(.metadata.name=="e2e-data")] | length')" 1
+          assert_eq "invalid source is a 422" "$(api_status /api/datasets -X POST -d '{"name":"e2e-bad","source":{"type":"s3"}}')" 422
+
+          # A checksum mismatch fails the download and says so.
+          api /api/datasets -X POST -d "{\"name\":\"e2e-data-bad\",\"source\":{\"type\":\"http\",\"http\":{\"url\":\"$files/data.csv\",\"checksumURL\":\"$files/bad.sha256\"}}}" >/dev/null
+          wait_for "checksum mismatch is an error" 300 field_is gryviadataset/e2e-data-bad '{.status.state}' error
+          jp gryviadataset/e2e-data-bad '{.status.message}' | grep -q "sha256 mismatch"
+          echo "ok: checksum mismatch reported"
+
+          # Delete through the gateway: the PVC goes with it.
+          api /api/datasets/e2e-data -X DELETE >/dev/null
+          wait_for "PVC garbage-collected" 120 gone pvc/dataset-e2e-data
+
+      # ------------------------------------------------------------------ LLM gateway (ai-operator image, llm-gateway mode)
+      # A stand-in OpenAI server runs as a real GryviaInferenceService (python image, args only) and is published with
+      # gryvia.io/llm-model. It answers with its own model id and sends a usage chunk only when the request asks for
+      # one (stream_options.include_usage), so the gateway's rewrite and usage injection are both visible.
+      - name: LLM gateway - enable it and publish a stand-in model
+        run: |
+          helm upgrade gryvia ./helm/gryvia --namespace gryvia-system --reuse-values --wait --timeout 300s \
+            --set llmGateway.enabled=true --set llmGateway.flushInterval=10s --set llmGateway.quotaRefreshInterval=5s \
+            --set llmGateway.priceInputPer1M=1 --set llmGateway.priceOutputPer1M=2
+          kubectl -n gryvia-system rollout status deploy/gryvia-llm-gateway --timeout=180s
+          kubectl -n gryvia-system rollout status deploy/gryvia-api-gateway --timeout=180s
+          source scripts/e2e-ml-lib.sh
+          cat <<'EOF' > /tmp/e2e-llm.yaml
+          apiVersion: gryvia.io/v1alpha1
+          kind: GryviaInferenceService
+          metadata:
+            name: e2e-llm
+            namespace: gryvia-system
+            annotations:
+              gryvia.io/llm-model: tiny-chat
+              gryvia.io/llm-served-model: stand-in
+          spec:
+            modelRef: e2e-llm
+            backend: torchserve
+            image: TINY_PY_IMAGE
+            replicas: 1
+            servicePort: 8080
+            args:
+              - python3
+              - -u
+              - -c
+              - |
+                import http.server, json
+                class H(http.server.BaseHTTPRequestHandler):
+                    def reply(self, code, body, ctype="application/json"):
+                        self.send_response(code)
+                        self.send_header("Content-Type", ctype)
+                        self.send_header("Content-Length", str(len(body)))
+                        self.end_headers()
+                        self.wfile.write(body)
+                    def do_GET(self):
+                        self.reply(200, b"{}")
+                    def do_POST(self):
+                        req = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                        if self.headers.get("Authorization"):
+                            return self.reply(400, b'{"error":"the key reached the upstream"}')
+                        usage = {"prompt_tokens": 7, "completion_tokens": 3}
+                        if req.get("stream"):
+                            chunks = [{"model": req["model"], "choices": [{"delta": {"content": "hi"}}]}]
+                            if (req.get("stream_options") or {}).get("include_usage"):
+                                chunks.append({"model": req["model"], "choices": [], "usage": usage})
+                            body = "".join("data: %s\n\n" % json.dumps(c) for c in chunks) + "data: [DONE]\n\n"
+                            return self.reply(200, body.encode(), "text/event-stream")
+                        self.reply(200, json.dumps({"model": req["model"], "choices": [{"message": {"content": "hi"}}], "usage": usage}).encode())
+                http.server.ThreadingHTTPServer(("", 8080), H).serve_forever()
+          EOF
+          sed -i "s|TINY_PY_IMAGE|${TINY_PY_IMAGE}|" /tmp/e2e-llm.yaml
+          kubectl apply -f /tmp/e2e-llm.yaml
+          wait_for "stand-in model Ready" 240 field_is gryviainferenceservice/e2e-llm '{.status.phase}' Ready
+
+      - name: LLM gateway - keys, routing, streaming, metering, quota and revocation
+        run: |
+          source scripts/e2e-ml-lib.sh
+          kubectl -n "$NS" port-forward svc/gryvia-llm-gateway 18080:8080 18081:8081 &
+          sleep 3
+          LLM=http://localhost:18080
+          key="$(api /api/llm-keys -X POST -d '{"name":"e2e","namespace":"gryvia-system","description":"e2e"}' | jq -r .key)"
+          case "$key" in gk-*) echo "ok: key issued";; *) echo "no key: $key"; exit 1;; esac
+          assert_eq "only the hash is stored" "$(kubectl -n gryvia-llm-keys get secret gryvia-system.e2e -o jsonpath='{.data.hash}' | base64 -d)" "$(printf %s "$key" | sha256sum | cut -d' ' -f1)"
+          assert_eq "key listed without the key" "$(gw /api/llm-keys '[.items[] | select(.name=="e2e") | has("key")] | .[0]')" false
+          assert_eq "gateway lists the model" "$(gw /api/llm/models '[.items[] | select(.model=="tiny-chat")] | length')" 1
+
+          llm() { curl -s -H "Authorization: Bearer $key" -H 'Content-Type: application/json' "$@"; }
+          code() { curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' "$@"; }
+          models_has_tiny() { llm "$LLM/v1/models" | jq -e '.data[] | select(.id=="tiny-chat")' >/dev/null; }
+          wait_for "key and model visible to the gateway" 60 models_has_tiny
+          chat='{"model":"tiny-chat","messages":[{"role":"user","content":"hello"}]}'
+
+          assert_eq "no key is a 401" "$(code "$LLM/v1/chat/completions" -d "$chat")" 401
+          assert_eq "wrong key is a 401" "$(code -H 'Authorization: Bearer gk-wrong' "$LLM/v1/chat/completions" -d "$chat")" 401
+          assert_eq "unknown model is a 404" "$(code -H "Authorization: Bearer $key" "$LLM/v1/chat/completions" -d '{"model":"nope"}')" 404
+
+          out="$(llm "$LLM/v1/chat/completions" -d "$chat")"
+          echo "$out"
+          assert_eq "served model rewritten" "$(echo "$out" | jq -r .model)" stand-in
+          assert_eq "usage passed through" "$(echo "$out" | jq -r .usage.prompt_tokens)" 7
+
+          stream="$(llm -N "$LLM/v1/chat/completions" -d '{"model":"tiny-chat","stream":true,"messages":[]}')"
+          echo "$stream"
+          echo "$stream" | grep -q 'data: \[DONE\]'
+          echo "$stream" | grep -q '"usage"' || { echo "the gateway did not ask for stream usage"; exit 1; }
+          echo "ok: streamed with a usage chunk"
+
+          # Two requests of 7 input and 3 output tokens: one hourly record, cost 14/1e6*1 + 6/1e6*2.
+          tokens_recorded() { [ "$(gw /api/llm/usage .total.inputTokens)" = 14 ]; }
+          wait_for "token usage record written" 60 tokens_recorded
+          assert_eq "output tokens" "$(gw /api/llm/usage .total.outputTokens)" 6
+          assert_eq "record kind" "$(kubectl -n "$NS" get gryviausagerecords -l gryvia.io/usage-kind=tokens -o jsonpath='{.items[0].spec.job}')" "llm:tiny-chat"
+          curl -s http://localhost:18081/metrics | grep -c 'gryvia_llm_tokens_total{model="tiny-chat",tenant="gryvia-system",type="input"} 14' >/dev/null
+          echo "ok: metrics"
+
+          # A token quota already used up: the next request is refused.
+          cat <<EOF | kubectl apply -f -
+          apiVersion: gryvia.io/v1alpha1
+          kind: GryviaQuota
+          metadata: {name: e2e-tokens}
+          spec: {team: e2e, namespaces: [gryvia-system], gpuQuota: {maxGPUs: 0}, tokensPerDay: 10}
+          EOF
+          is_429() { [ "$(code -H "Authorization: Bearer $key" "$LLM/v1/chat/completions" -d "$chat")" = 429 ]; }
+          wait_for "tokensPerDay enforced with 429" 60 is_429
+          assert_eq "quota shown with today's use" "$(gw /api/llm/usage '.quotas[] | select(.name=="e2e-tokens") | .usedToday')" 20
+          kubectl delete gryviaquota e2e-tokens
+
+          # Revoked keys stop working.
+          api /api/llm-keys/e2e -X DELETE >/dev/null
+          is_401() { [ "$(code -H "Authorization: Bearer $key" "$LLM/v1/models")" = 401 ]; }
+          wait_for "revoked key refused" 60 is_401
+          kubectl -n "$NS" delete gryviainferenceservice/e2e-llm
+
+      # ------------------------------------------------------------------ RAG (GryviaVectorIndex, managed Qdrant)
+      # The real Qdrant image and the real ingestion image (examples/rag, built here); embeddings come from a stand-in
+      # OpenAI server published on the LLM gateway (hashed bag of words, 64 dimensions), so retrieval is deterministic.
+      - name: RAG - enable vector indexes and publish a stand-in embedding model
+        run: |
+          docker build -t ghcr.io/zyvorai/gryvia-rag-ingest:dev examples/rag
+          kind load docker-image --name "$KIND_CLUSTER" ghcr.io/zyvorai/gryvia-rag-ingest:dev
+          docker pull qdrant/qdrant:v1.12.6-unprivileged
+          kind load docker-image --name "$KIND_CLUSTER" qdrant/qdrant:v1.12.6-unprivileged
+          helm upgrade gryvia ./helm/gryvia --namespace gryvia-system --reuse-values --wait --timeout 300s \
+            --set aiOperator.rag.enabled=true --set aiOperator.rag.ingestImage=ghcr.io/zyvorai/gryvia-rag-ingest:dev
+          kubectl -n gryvia-system rollout status deploy -l app.kubernetes.io/component=ai-operator --timeout=180s
+          source scripts/e2e-ml-lib.sh
+          check() { kubectl -n "$NS" logs -l app.kubernetes.io/component=ai-operator --tail=-1 | grep -c '"controllerKind":"GryviaVectorIndex"' >/dev/null; }
+          wait_for "controller GryviaVectorIndex started" 90 check
+
+          cat <<'EOF' > /tmp/e2e-embed.yaml
+          apiVersion: gryvia.io/v1alpha1
+          kind: GryviaInferenceService
+          metadata:
+            name: e2e-embed
+            namespace: gryvia-system
+            annotations:
+              gryvia.io/llm-model: tiny-embed
+              gryvia.io/llm-served-model: stand-in-embed
+          spec:
+            modelRef: e2e-embed
+            backend: torchserve
+            image: TINY_PY_IMAGE
+            replicas: 1
+            servicePort: 8080
+            args:
+              - python3
+              - -u
+              - -c
+              - |
+                import hashlib, http.server, json, math, re
+                D = 64
+                def vec(text):
+                    v = [0.0] * D
+                    for w in re.findall(r"[a-z]+", text.lower()):
+                        v[int(hashlib.sha256(w.encode()).hexdigest(), 16) % D] += 1.0
+                    n = math.sqrt(sum(x * x for x in v)) or 1.0
+                    return [x / n for x in v]
+                class H(http.server.BaseHTTPRequestHandler):
+                    def reply(self, code, obj):
+                        body = json.dumps(obj).encode()
+                        self.send_response(code)
+                        self.send_header("Content-Type", "application/json")
+                        self.send_header("Content-Length", str(len(body)))
+                        self.end_headers()
+                        self.wfile.write(body)
+                    def do_GET(self):
+                        self.reply(200, {})
+                    def do_POST(self):
+                        req = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                        if self.path != "/v1/embeddings" or req.get("model") != "stand-in-embed":
+                            return self.reply(400, {"error": {"message": "unexpected %s %s" % (self.path, req.get("model"))}})
+                        texts = req["input"] if isinstance(req["input"], list) else [req["input"]]
+                        tokens = sum(len(t.split()) for t in texts)
+                        self.reply(200, {"object": "list", "model": req["model"],
+                                         "data": [{"object": "embedding", "index": i, "embedding": vec(t)} for i, t in enumerate(texts)],
+                                         "usage": {"prompt_tokens": tokens, "total_tokens": tokens}})
+                http.server.ThreadingHTTPServer(("", 8080), H).serve_forever()
+          EOF
+          sed -i "s|TINY_PY_IMAGE|${TINY_PY_IMAGE}|" /tmp/e2e-embed.yaml
+          kubectl apply -f /tmp/e2e-embed.yaml
+          wait_for "stand-in embedding model Ready" 240 field_is gryviainferenceservice/e2e-embed '{.status.phase}' Ready
+
+          # The knowledge base: a heading and three topics; with 300-character chunks each topic is one chunk.
+          {
+            echo "# Platform handbook"
+            echo
+            echo "Quotas cap the GPU hours of each tenant team. A team that reaches its quota waits in the queue until hours free up; administrators raise a quota from the tenants page when a project needs more."
+            echo
+            echo "Budgets send alerts when spending passes a threshold. Finance receives a monthly invoice per tenant and chargeback reports split the cost of shared clusters between the teams that used them."
+            echo
+            echo "Checkpoints are saved every thirty minutes to object storage. A preempted training job restarts from its latest checkpoint, so at most thirty minutes of work are lost when a node goes away."
+          } > /tmp/e2e-files/kb.md
+          kubectl -n "$NS" create configmap e2e-files --from-file=/tmp/e2e-files --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n "$NS" rollout restart deploy/e2e-files
+          kubectl -n "$NS" rollout status deploy/e2e-files --timeout=120s
+          cat <<EOF | kubectl apply -f -
+          apiVersion: gryvia.io/v1alpha1
+          kind: GryviaDataset
+          metadata: {name: e2e-kb}
+          spec:
+            type: text
+            version: v1
+            source: {type: http, http: {url: "http://e2e-files.gryvia-system.svc:8080/kb.md"}}
+          EOF
+          wait_for "knowledge base dataset ready" 240 field_is gryviadataset/e2e-kb '{.status.state}' ready
+
+      - name: RAG - managed Qdrant, ingestion, retrieval, metering, reingest and deletion
+        run: |
+          source scripts/e2e-ml-lib.sh
+          api /api/vector-indexes -X POST -d '{"name":"e2e-kb","datasetRef":"e2e-kb","embedding":{"model":"tiny-embed","batchSize":2},
+            "chunking":{"size":300,"overlap":20},"store":{"storageSize":"256Mi"}}' | jq -e '.metadata.name == "e2e-kb"'
+          wait_for "index Ready" 420 field_is gryviavectorindex/e2e-kb '{.status.phase}' Ready
+          kubectl -n "$NS" get gryviavectorindex/e2e-kb -o yaml
+          assert_eq "documents" "$(jp gryviavectorindex/e2e-kb '{.status.documents}')" 1
+          assert_eq "dimensions" "$(jp gryviavectorindex/e2e-kb '{.status.dimensions}')" 64
+          chunks="$(jp gryviavectorindex/e2e-kb '{.status.chunks}')"
+          [ "$chunks" -ge 3 ] || { echo "only $chunks chunks"; exit 1; }
+          assert_eq "dataset version" "$(jp gryviavectorindex/e2e-kb '{.status.datasetVersion}')" v1
+          assert_eq "managed Qdrant ready" "$(jp statefulset/e2e-kb-qdrant '{.status.readyReplicas}')" 1
+          assert_eq "Qdrant runs as uid 1000" "$(jp statefulset/e2e-kb-qdrant '{.spec.template.spec.securityContext.runAsUser}')" 1000
+          kubectl -n gryvia-llm-keys get secret gryvia-system.index-e2e-kb -o name
+          assert_eq "gateway lists the index" "$(gw /api/vector-indexes '.items[] | select(.metadata.name=="e2e-kb") | .status.chunks')" "$chunks"
+
+          kubectl -n "$NS" port-forward svc/gryvia-llm-gateway 18090:8080 &
+          sleep 3
+          LLM=http://localhost:18090
+          key="$(api /api/llm-keys -X POST -d '{"name":"e2e-rag","namespace":"gryvia-system"}' | jq -r .key)"
+          retrieve() { curl -s -H "Authorization: Bearer $key" -H 'Content-Type: application/json' "$LLM/v1/retrieve" -d "$1"; }
+          code() { curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' "$@"; }
+          q='{"index":"e2e-kb","query":"how often are checkpoints saved","topK":2}'
+          answers() { retrieve "$q" | jq -e '.data | length == 2' >/dev/null; }
+          wait_for "retrieval answers" 60 answers
+          out="$(retrieve "$q")"
+          echo "$out" | jq .
+          echo "$out" | jq -e '.data[0].text | test("Checkpoints are saved")' >/dev/null || { echo "nearest chunk is not the checkpoint paragraph"; exit 1; }
+          assert_eq "source" "$(echo "$out" | jq -r '.data[0].source')" kb.md
+          assert_eq "query tokens" "$(echo "$out" | jq -r .usage.prompt_tokens)" 5
+          assert_eq "unknown index is a 404" "$(code -H "Authorization: Bearer $key" "$LLM/v1/retrieve" -d '{"index":"nope","query":"q"}')" 404
+          assert_eq "no key is a 401" "$(code "$LLM/v1/retrieve" -d "$q")" 401
+
+          # Ingestion and queries are both metered under the namespace, as model tiny-embed.
+          embed_tokens() { [ "$(gw '/api/llm/usage?groupBy=model' '.items[] | select(.model=="tiny-embed") | .inputTokens')" -gt 5 ]; }
+          wait_for "embedding tokens recorded" 60 embed_tokens
+
+          # Re-ingest: a new Job, Ready again, and retrieval keeps working (the alias moved to the new collection).
+          first="$(jp gryviavectorindex/e2e-kb '{.status.ingestJob}')"
+          api /api/vector-indexes/e2e-kb/reingest -X POST | jq -e '.status == "reingesting"'
+          changed() { [ "$(jp gryviavectorindex/e2e-kb '{.status.ingestJob}')" != "$first" ] && field_is gryviavectorindex/e2e-kb '{.status.phase}' Ready; }
+          wait_for "re-ingested" 300 changed
+          wait_for "retrieval answers after re-ingest" 60 answers
+
+          # Delete: the store, the Jobs and the key go with the index.
+          api /api/vector-indexes/e2e-kb -X DELETE >/dev/null
+          wait_for "index deleted" 120 gone gryviavectorindex/e2e-kb
+          wait_for "Qdrant deleted" 120 gone statefulset/e2e-kb-qdrant
+          key_gone() { ! kubectl -n gryvia-llm-keys get secret gryvia-system.index-e2e-kb >/dev/null 2>&1; }
+          wait_for "index key removed" 60 key_gone
+          api /api/llm-keys/e2e-rag -X DELETE >/dev/null
+          kubectl -n "$NS" delete gryviainferenceservice/e2e-embed
+          kubectl delete gryviadataset/e2e-kb
+
+      # ------------------------------------------------------------------ Agents (GryviaAgent)
+      # The real agent runtime (examples/agents, built here) against a stand-in tool-calling model on the LLM gateway:
+      # it asks for the HTTP tool on the first call and answers with the tool result on the second.
+      - name: Agents - enable agents and publish a stand-in tool-calling model
+        run: |
+          docker build -t ghcr.io/zyvorai/gryvia-agent-runtime:dev examples/agents
+          kind load docker-image --name "$KIND_CLUSTER" ghcr.io/zyvorai/gryvia-agent-runtime:dev
+          helm upgrade gryvia ./helm/gryvia --namespace gryvia-system --reuse-values --wait --timeout 300s \
+            --set aiOperator.agents.enabled=true --set aiOperator.agents.image=ghcr.io/zyvorai/gryvia-agent-runtime:dev
+          kubectl -n gryvia-system rollout status deploy -l app.kubernetes.io/component=ai-operator --timeout=180s
+          source scripts/e2e-ml-lib.sh
+          check() { kubectl -n "$NS" logs -l app.kubernetes.io/component=ai-operator --tail=-1 | grep -c '"controllerKind":"GryviaAgent"' >/dev/null; }
+          wait_for "controller GryviaAgent started" 90 check
+
+          cat <<'EOF' > /tmp/e2e-agent-llm.yaml
+          apiVersion: gryvia.io/v1alpha1
+          kind: GryviaInferenceService
+          metadata:
+            name: e2e-agent-llm
+            namespace: gryvia-system
+            annotations:
+              gryvia.io/llm-model: tiny-agent
+              gryvia.io/llm-served-model: stand-in-agent
+          spec:
+            modelRef: e2e-agent-llm
+            backend: torchserve
+            image: TINY_PY_IMAGE
+            replicas: 1
+            servicePort: 8080
+            args:
+              - python3
+              - -u
+              - -c
+              - |
+                import http.server, json
+                KB = "http://e2e-files.gryvia-system.svc:8080/kb.md"
+                OTHER = "http://e2e-fake-hf.gryvia-system.svc:8080/api/models"
+                class H(http.server.BaseHTTPRequestHandler):
+                    def reply(self, code, obj):
+                        body = json.dumps(obj).encode()
+                        self.send_response(code)
+                        self.send_header("Content-Type", "application/json")
+                        self.send_header("Content-Length", str(len(body)))
+                        self.end_headers()
+                        self.wfile.write(body)
+                    def do_GET(self):
+                        self.reply(200, {})
+                    def do_POST(self):
+                        req = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                        if self.path != "/v1/chat/completions" or req.get("model") != "stand-in-agent":
+                            return self.reply(400, {"error": {"message": "unexpected %s %s" % (self.path, req.get("model"))}})
+                        msgs = req["messages"]
+                        last = msgs[-1]
+                        msg = {"role": "assistant", "content": None}
+                        if last["role"] == "tool":
+                            msg["content"] = "From the tool: " + last["content"][:400]
+                        elif req.get("tools"):
+                            url = OTHER if "forbidden" in last["content"] else KB
+                            name = req["tools"][0]["function"]["name"]
+                            msg["tool_calls"] = [{"id": "call-1", "type": "function",
+                                                  "function": {"name": name, "arguments": json.dumps({"url": url})}}]
+                        else:
+                            msg["content"] = "no tools offered"
+                        self.reply(200, {"object": "chat.completion", "model": req["model"],
+                                         "choices": [{"index": 0, "message": msg,
+                                                      "finish_reason": "tool_calls" if msg.get("tool_calls") else "stop"}],
+                                         "usage": {"prompt_tokens": 7, "completion_tokens": 3, "total_tokens": 10}})
+                http.server.ThreadingHTTPServer(("", 8080), H).serve_forever()
+          EOF
+          sed -i "s|TINY_PY_IMAGE|${TINY_PY_IMAGE}|" /tmp/e2e-agent-llm.yaml
+          kubectl apply -f /tmp/e2e-agent-llm.yaml
+          wait_for "stand-in tool-calling model Ready" 240 field_is gryviainferenceservice/e2e-agent-llm '{.status.phase}' Ready
+
+      - name: Agents - runtime, chat through the api-gateway, tool allowlist, metering, scale and deletion
+        run: |
+          source scripts/e2e-ml-lib.sh
+          api /api/agents -X POST -d '{"name":"e2e-agent","model":"tiny-agent","systemPrompt":"Answer from the handbook.",
+            "maxSteps":3,"tools":[{"name":"read_kb","type":"http","urls":["http://e2e-files.gryvia-system.svc:8080/kb.md"]}]}' \
+            | jq -e '.metadata.name == "e2e-agent"'
+          wait_for "agent Ready" 240 field_is gryviaagent/e2e-agent '{.status.phase}' Ready
+          kubectl -n "$NS" get gryviaagent/e2e-agent -o yaml
+          assert_eq "endpoint" "$(jp gryviaagent/e2e-agent '{.status.endpoint}')" "http://e2e-agent-agent.gryvia-system.svc.cluster.local:8080"
+          assert_eq "read-only root" "$(jp deploy/e2e-agent-agent '{.spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem}')" true
+          kubectl -n gryvia-llm-keys get secret gryvia-system.agent-e2e-agent -o name
+          types="$(jp networkpolicy/e2e-agent-agent '{.spec.policyTypes}')"
+          echo "$types" | grep -q Egress || { echo "no egress policy: $types"; exit 1; }
+          assert_eq "egress rules (dns, gateway, e2e-files namespace)" "$(kubectl -n "$NS" get networkpolicy/e2e-agent-agent -o json | jq '.spec.egress | length')" 3
+
+          # The model calls read_kb, the runtime fetches kb.md, the model answers with it.
+          out="$(api /api/agents/e2e-agent/chat -X POST -d '{"messages":[{"role":"user","content":"what caps GPU hours"}]}')"
+          echo "$out" | jq .
+          echo "$out" | jq -e '.choices[0].message.content | test("Quotas cap the GPU hours")' >/dev/null || { echo "answer lacks the tool result"; exit 1; }
+          assert_eq "tool call" "$(echo "$out" | jq -c '[.gryvia.toolCalls[] | {tool, ok}]')" '[{"tool":"read_kb","ok":true}]'
+          assert_eq "steps" "$(echo "$out" | jq -r .gryvia.steps)" 2
+          assert_eq "summed tokens" "$(echo "$out" | jq -r .usage.total_tokens)" 20
+          assert_eq "model is the agent" "$(echo "$out" | jq -r .model)" e2e-agent
+
+          # A URL outside the allowlist is refused by the runtime and reported to the model.
+          out="$(api /api/agents/e2e-agent/chat -X POST -d '{"messages":[{"role":"user","content":"forbidden"}]}')"
+          assert_eq "refused tool call" "$(echo "$out" | jq -c '[.gryvia.toolCalls[] | .ok]')" '[false]'
+          echo "$out" | jq -e '.choices[0].message.content | test("not allowed")' >/dev/null || { echo "refusal not reported"; exit 1; }
+
+          # The agent's model calls are metered under its namespace as model tiny-agent (4 calls of 7 input tokens).
+          agent_tokens() { [ "$(gw '/api/llm/usage?groupBy=model' '.items[] | select(.model=="tiny-agent") | .inputTokens')" -ge 28 ]; }
+          wait_for "agent tokens recorded" 60 agent_tokens
+
+          # Scale to zero: no replicas, chat refused with 409; then delete: the runtime and the key go with the agent.
+          api /api/agents/e2e-agent/scale -X POST -d '{"replicas":0}' | jq -e '.replicas == 0'
+          wait_for "scaled to zero" 60 field_is deploy/e2e-agent-agent '{.spec.replicas}' 0
+          wait_for "agent Pending" 60 field_is gryviaagent/e2e-agent '{.status.phase}' Pending
+          assert_eq "chat while scaled down" "$(api_status /api/agents/e2e-agent/chat -X POST -d '{"messages":[{"role":"user","content":"x"}]}')" 409
+          api /api/agents/e2e-agent -X DELETE >/dev/null
+          wait_for "agent deleted" 120 gone gryviaagent/e2e-agent
+          wait_for "runtime deleted" 120 gone deploy/e2e-agent-agent
+          key_gone() { ! kubectl -n gryvia-llm-keys get secret gryvia-system.agent-e2e-agent >/dev/null 2>&1; }
+          wait_for "agent key removed" 60 key_gone
+          kubectl -n "$NS" delete gryviainferenceservice/e2e-agent-llm
+
       - name: Dump state on failure
         if: failure()
         run: |
@@ -546,3 +1107,14 @@ jobs:
           kubectl -n gryvia-system logs -l app.kubernetes.io/component=ai-operator --tail=200 || true
           kubectl -n gryvia-system logs -l app=gryvia-api-gateway --tail=50 || true
           kubectl -n gryvia-system logs deploy/e2e-fake-hf --tail=50 || true
+          kubectl get gryviadatasets -o yaml || true
+          kubectl -n gryvia-system get jobs,pvc -l gryvia.io/dataset || true
+          kubectl -n gryvia-system logs -l app.kubernetes.io/component=storage-operator --tail=100 || true
+          kubectl -n gryvia-system logs -l app.kubernetes.io/component=llm-gateway --tail=100 || true
+          kubectl -n gryvia-system get gryviausagerecords -l gryvia.io/usage-kind=tokens -o yaml || true
+          kubectl -n gryvia-system get gryviavectorindexes,statefulsets,jobs -o wide || true
+          kubectl -n gryvia-system get gryviavectorindexes -o yaml || true
+          kubectl -n gryvia-system logs -l gryvia.io/vector-index --tail=100 --all-containers || true
+          kubectl -n gryvia-system get gryviaagents -o yaml || true
+          kubectl -n gryvia-system get deploy,networkpolicies -l gryvia.io/component=agent -o yaml || true
+          kubectl -n gryvia-system logs -l gryvia.io/component=agent --tail=100 || true

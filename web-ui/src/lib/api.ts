@@ -9,6 +9,10 @@ import type { Experiment } from '@/lib/experiments'
 import type { Sku, SkuBody, TenantResource, CreateTenantBody, UsageReport } from '@/lib/cloud'
 import type { InvoiceReport } from '@/lib/invoices'
 import type { ModelWatch, ModelWatchRun } from '@/lib/modelWatches'
+import type { Dataset } from '@/lib/datasets'
+import type { CreatedLlmKey, LlmKey, LlmModels, LlmUsage } from '@/lib/llm'
+import type { VectorIndexList } from '@/lib/rag'
+import type { Agent, AgentReply, ChatMessage } from '@/lib/agents'
 
 export interface ClusterStats {
   totalGPUs: number
@@ -962,6 +966,79 @@ export const api = {
 
   deleteModelWatch: async (name: string): Promise<void> => {
     await apiClient.delete(`/model-watches/${encodeURIComponent(name)}`)
+  },
+
+  // Datasets
+  getDatasets: async (): Promise<Dataset[]> => {
+    const { data } = await apiClient.get('/datasets')
+    return data.items || []
+  },
+
+  deleteDataset: async (name: string): Promise<void> => {
+    await apiClient.delete(`/datasets/${encodeURIComponent(name)}`)
+  },
+
+  // LLM gateway
+  getLlmModels: async (): Promise<LlmModels> => {
+    const { data } = await apiClient.get('/llm/models')
+    return { items: data.items || [], gatewayURL: data.gatewayURL || '', enabled: !!data.enabled }
+  },
+
+  getLlmUsage: async (groupBy: LlmUsage['groupBy'] = 'model'): Promise<LlmUsage> => {
+    const { data } = await apiClient.get('/llm/usage', { params: { groupBy } })
+    return data
+  },
+
+  getLlmKeys: async (): Promise<LlmKey[]> => {
+    const { data } = await apiClient.get('/llm-keys')
+    return data.items || []
+  },
+
+  createLlmKey: async (body: { name: string; namespace?: string; description?: string }): Promise<CreatedLlmKey> => {
+    const { data } = await apiClient.post('/llm-keys', body)
+    return data
+  },
+
+  deleteLlmKey: async (id: string): Promise<void> => {
+    await apiClient.delete(`/llm-keys/${encodeURIComponent(id)}`)
+  },
+
+  // Vector indexes (RAG)
+  getVectorIndexes: async (): Promise<VectorIndexList> => {
+    const { data } = await apiClient.get('/vector-indexes')
+    return { items: data.items || [], retrieveURL: data.retrieveURL || '' }
+  },
+
+  reingestVectorIndex: async (name: string): Promise<void> => {
+    await apiClient.post(`/vector-indexes/${encodeURIComponent(name)}/reingest`)
+  },
+
+  suspendVectorIndex: async (name: string, suspend: boolean): Promise<void> => {
+    await apiClient.post(`/vector-indexes/${encodeURIComponent(name)}/${suspend ? 'suspend' : 'resume'}`)
+  },
+
+  deleteVectorIndex: async (name: string): Promise<void> => {
+    await apiClient.delete(`/vector-indexes/${encodeURIComponent(name)}`)
+  },
+
+  // Agents
+  getAgents: async (): Promise<Agent[]> => {
+    const { data } = await apiClient.get('/agents')
+    return data.items || []
+  },
+
+  chatAgent: async (name: string, messages: ChatMessage[]): Promise<AgentReply> => {
+    // An agent turn runs several model calls and tools.
+    const { data } = await apiClient.post(`/agents/${encodeURIComponent(name)}/chat`, { messages }, { timeout: 180_000 })
+    return data
+  },
+
+  scaleAgent: async (name: string, replicas: number): Promise<void> => {
+    await apiClient.post(`/agents/${encodeURIComponent(name)}/scale`, { replicas })
+  },
+
+  deleteAgent: async (name: string): Promise<void> => {
+    await apiClient.delete(`/agents/${encodeURIComponent(name)}`)
   },
 }
 

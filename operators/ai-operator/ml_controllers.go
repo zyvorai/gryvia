@@ -38,6 +38,14 @@ type mlOptions struct {
 	modelWatchEnabled      bool
 	modelWatchHubURL       string
 	modelWatchMinPollEvery time.Duration
+
+	ragEnabled      bool
+	ragQdrantImage  string
+	ragIngestImage  string
+	agentsEnabled   bool
+	agentImage      string
+	llmGatewayURL   string
+	llmKeyNamespace string
 }
 
 func (o *mlOptions) bind(fs *flag.FlagSet) {
@@ -78,4 +86,18 @@ func (o *mlOptions) bind(fs *flag.FlagSet) {
 		"Base URL of the Hugging Face compatible hub GryviaModelWatch polls (a mirror or proxy may be used).")
 	fs.DurationVar(&o.modelWatchMinPollEvery, "model-watch-min-poll-interval", controllers.MinModelWatchPollInterval,
 		"Shortest spec.pollInterval a GryviaModelWatch may use.")
+	fs.BoolVar(&o.ragEnabled, "enable-rag", false,
+		"Run the GryviaVectorIndex controller (managed Qdrant, ingestion Jobs embedding through the LLM gateway). Needs --enable-ml-controllers and --llm-gateway-url.")
+	fs.StringVar(&o.ragQdrantImage, "rag-qdrant-image", controllers.DefaultQdrantImage,
+		"Image of managed vector stores whose spec.store.managed.image is empty.")
+	fs.StringVar(&o.ragIngestImage, "rag-ingest-image", controllers.DefaultRAGIngestImage,
+		"Image of ingestion Jobs (python3 /app/ingest.py, see examples/rag) whose spec.ingestImage is empty.")
+	fs.BoolVar(&o.agentsEnabled, "enable-agents", false,
+		"Run the GryviaAgent controller (agent runtime Deployments calling models through the LLM gateway). Needs --enable-ml-controllers and --llm-gateway-url.")
+	fs.StringVar(&o.agentImage, "agent-image", controllers.DefaultAgentImage,
+		"Image of agent runtimes (see examples/agents) whose spec.image is empty.")
+	fs.StringVar(&o.llmGatewayURL, "llm-gateway-url", "",
+		"Base URL of the LLM gateway (http://<release>-llm-gateway.<namespace>.svc.cluster.local:8080) that ingestion Jobs and agents call.")
+	fs.StringVar(&o.llmKeyNamespace, "llm-key-namespace", "gryvia-llm-keys",
+		"Namespace of the LLM gateway's key Secrets, where the operator stores the hashed keys of indexes and agents.")
 }

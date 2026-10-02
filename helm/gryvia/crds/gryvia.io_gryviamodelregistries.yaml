@@ -122,6 +122,31 @@ spec:
                 required:
                 - metric
                 type: object
+              rollbackPolicy:
+                description: |-
+                  RollbackPolicy lets the controller roll a production entry that serves a shared service back to
+                  status.previousVersion when its metric crosses a threshold (for example after a scheduled evaluation wrote a
+                  new score into spec.metadata)
+                properties:
+                  direction:
+                    description: Direction is maximize (default) or minimize
+                    enum:
+                    - maximize
+                    - minimize
+                    type: string
+                  metric:
+                    description: Metric is the spec.metadata key holding the latest
+                      evaluation result
+                    type: string
+                  threshold:
+                    description: Threshold is the bound the metric must stay at or
+                      above (maximize) or at or below (minimize)
+                    pattern: ^-?[0-9]+(\.[0-9]+)?$
+                    type: string
+                required:
+                - metric
+                - threshold
+                type: object
               servingConfig:
                 description: ServingConfig defines the configuration for auto-serving
                   when stage is production

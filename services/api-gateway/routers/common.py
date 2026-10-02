@@ -60,8 +60,12 @@ class Deps:
     netra_token: Optional[str] = None                                          # GRYVIA_NETRA_TOKEN
     netra_verify_tls: bool = True                                              # GRYVIA_NETRA_INSECURE=1 turns off
     netra_fetch: Optional[Callable[[], Awaitable[Any]]] = None                 # tests: returns Netra records
+    llm_key_namespace: Optional[str] = None                                    # GRYVIA_LLM_KEY_NAMESPACE
+    llm_gateway_url: Optional[str] = None                                      # GRYVIA_LLM_GATEWAY_URL
     # tests inject this: returns a list of bodies, or (bodies, total_collectors)
     collector_fetch: Optional[Callable[[str], Awaitable[Any]]] = None
+    # tests inject this: (agent chat URL, body) -> (status, JSON body)
+    agent_chat: Optional[Callable[[str, Dict[str, Any]], Awaitable[Any]]] = None
 
 
 async def require_admin(request: Request) -> None:

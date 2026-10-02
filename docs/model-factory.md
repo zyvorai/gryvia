@@ -13,8 +13,11 @@ inference service. It is four pieces of the ai-operator working together:
 4. **`servingConfig.serviceName`** makes all versions share one `GryviaInferenceService`: a newly promoted version is
    started as its canary, promoted after `promoteAfterSeconds` of health (the replaced version is archived) or rolled
    back.
+5. **`rollbackPolicy`** and a scheduled evaluation keep checking the served version and bring the previous one back
+   when its score drops (see [Continuous evaluation and rollback](#continuous-evaluation-and-rollback)).
 
-A ready-made watch, image and scripts (download, TRL/PEFT LoRA fine-tune, lm-evaluation-harness) are in
+A ready-made watch, image and scripts (download, TRL/PEFT LoRA fine-tune, llm-compressor AWQ/GPTQ quantization,
+lm-evaluation-harness) are in
 [examples/model-factory](../examples/model-factory/README.md).
 
 ## What is verified and what is not
@@ -28,7 +31,8 @@ A ready-made watch, image and scripts (download, TRL/PEFT LoRA fine-tune, lm-eva
 
 | Not verified anywhere | Why |
 | --- | --- |
-| A real download, fine-tune or evaluation, on any model | No GPU and no model weights in CI. The scripts call TRL, PEFT and lm-eval as documented, but have not run them |
+| A real download, fine-tune, quantization or evaluation, on any model | No GPU and no model weights in CI. The scripts call TRL, PEFT, llm-compressor and lm-eval as documented, but have not run them |
+| vLLM serving the quantized (compressed-tensors) weights, and the quality loss of AWQ on your model | No GPU; the evaluation step scores the quantized model so the promotion decision includes the loss |
 | The real Hugging Face API | CI uses a stand-in server that returns the same JSON shape |
 | vLLM loading a fine-tuned model from the registry PVC | No GPU; the e2e serves an nginx stand-in |
 | The GPU estimate being enough memory | It is a rule of thumb (below), not a measurement |
@@ -104,6 +108,12 @@ policy judges; `dev` keeps the entry out of automatic promotion. The entry gets 
 `base_model`/`base_revision` from a model watch run, and the step output `name`. An existing entry with that name that
 this run did not create fails the step (no overwrite). Entries are not owned by the workflow.
 
+**`registry` step.** Changes an existing `GryviaModelRegistry` entry in the workflow's namespace: `entry` names it,
+or `serviceName` picks the entry a shared service serves when the step runs (its `modelRef`). `action: updateMetadata`
+merges `metadata` into `spec.metadata` (values may use placeholders, for example `{{steps.evaluate.outputs.score}}`);
+`action: rollback` asks the registry controller for a rollback (below). The step output `name` is the entry. A missing
+entry or service fails the step.
+
 **`schedule`.** A 5-field cron expression in UTC. The workflow waits in phase `Scheduled` (`status.nextScheduleTime`)
 and then runs; each run starts from a clean status with `status.run` incremented, and children are named with an
 `-n<run>` suffix. Runs never overlap: a fire time that passes during a run starts the next run as soon as it ends.
@@ -139,16 +149,31 @@ Both the stable and the canary Deployment load the artifacts of their own versio
 server off its backend default (vLLM and Triton 8000, TorchServe 8080); for example vLLM with `--port=8080` needs
 `servicePort: 8080`, otherwise the pods never pass their probes.
 
+## Quantization
+
+An optional step between fine-tune and evaluate turns the model into 4-bit AWQ or GPTQ weights
+(`examples/model-factory/quantize.py`), so the evaluation scores the quantized model. See
+[Model evaluation](model-evaluation.md#quantization).
+
+## Continuous evaluation and rollback
+
+A scheduled workflow re-scores the served version and a `registry` step writes the score onto its entry; the
+registry's `rollbackPolicy` brings the previous version back when the score crosses the threshold, and
+`POST /api/models/{name}/rollback` or `gryvia models rollback` does it on request. See
+[Model evaluation](model-evaluation.md).
+
 ## Surfaces
 
 * Gateway: `GET/POST /api/model-watches`, `GET /api/model-watches/{name}`, `GET /api/model-watches/{name}/runs`
-  (newest first), `POST /api/model-watches/{name}/suspend|resume`, `DELETE /api/model-watches/{name}`.
-* CLI: `gryvia models watch list|runs|create -f|suspend|resume|delete`.
+  (newest first), `POST /api/model-watches/{name}/suspend|resume`, `DELETE /api/model-watches/{name}`;
+  `POST /api/models/{name}/rollback` (202; 409 when the entry cannot be rolled back).
+* CLI: `gryvia models watch list|runs|create -f|suspend|resume|delete`, `gryvia models rollback <entry>`.
 * Dashboard: **Models → Model factory** lists watches and the runs of the selected one.
 
 ## RBAC
 
 The operator ClusterRole gains `gryviamodelwatches` (with `/status` and `/finalizers`). The workflow controller gains
-create on `gryviamodelregistries` (register steps), the registry controller get/list/watch on `apps/deployments` (to
-read canary decisions). Reading the token Secret uses the secrets access the ClusterRole already had. The gateway and
+create and patch on `gryviamodelregistries` (register and registry steps) and get on `gryviainferenceservices`
+(`registry` steps with `serviceName`), the registry controller get/list/watch on `apps/deployments` (to read canary
+decisions) and create on `events`. Reading the token Secret uses the secrets access the ClusterRole already had. The gateway and
 the tenant roles get the same verbs on `gryviamodelwatches` as on `gryviaautotuners`.

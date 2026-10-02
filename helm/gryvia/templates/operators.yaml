@@ -93,6 +93,38 @@ spec:
             - {{ printf "--model-watch-hub-url=%s" (dig "aiOperator" "modelWatch" "hubURL" nil $.Values.AsMap) | quote }}
             - {{ printf "--model-watch-min-poll-interval=%s" (dig "aiOperator" "modelWatch" "minPollInterval" nil $.Values.AsMap) | quote }}
             {{- end }}
+            {{- if and (eq $name "ai-operator") (dig "aiOperator" "rag" "enabled" nil $.Values.AsMap) }}
+            {{- if not (dig "llmGateway" "enabled" nil $.Values.AsMap) }}
+            {{- fail "aiOperator.rag.enabled needs llmGateway.enabled (ingestion embeds through the LLM gateway)" }}
+            {{- end }}
+            - --enable-rag=true
+            - {{ printf "--rag-qdrant-image=%s" (dig "aiOperator" "rag" "qdrantImage" "qdrant/qdrant:v1.12.6-unprivileged" $.Values.AsMap) | quote }}
+            - {{ printf "--rag-ingest-image=%s" (dig "aiOperator" "rag" "ingestImage" "ghcr.io/zyvorai/gryvia-rag-ingest:latest" $.Values.AsMap) | quote }}
+            {{- end }}
+            {{- if and (eq $name "ai-operator") (dig "aiOperator" "agents" "enabled" nil $.Values.AsMap) }}
+            {{- if not (dig "llmGateway" "enabled" nil $.Values.AsMap) }}
+            {{- fail "aiOperator.agents.enabled needs llmGateway.enabled (agents call models through the LLM gateway)" }}
+            {{- end }}
+            - --enable-agents=true
+            - {{ printf "--agent-image=%s" (dig "aiOperator" "agents" "image" "ghcr.io/zyvorai/gryvia-agent-runtime:latest" $.Values.AsMap) | quote }}
+            {{- end }}
+            {{- if and (eq $name "ai-operator") (or (dig "aiOperator" "rag" "enabled" nil $.Values.AsMap) (dig "aiOperator" "agents" "enabled" nil $.Values.AsMap)) }}
+            - {{ printf "--llm-gateway-url=http://%s-llm-gateway.%s.svc.cluster.local:%v" (include "gryvia.fullname" $) (include "gryvia.namespace" $) (dig "llmGateway" "service" "port" 8080 $.Values.AsMap) | quote }}
+            - {{ printf "--llm-key-namespace=%s" (dig "llmGateway" "keyNamespace" "gryvia-llm-keys" $.Values.AsMap) | quote }}
+            {{- end }}
+            {{- if and (eq $name "storage-operator") (dig "storageOperator" "datasets" "enabled" nil $.Values.AsMap) }}
+            - --enable-datasets=true
+            - {{ printf "--dataset-namespace=%s" (default (include "gryvia.namespace" $) (dig "storageOperator" "datasets" "namespace" nil $.Values.AsMap)) | quote }}
+            {{- with (dig "storageOperator" "datasets" "image" nil $.Values.AsMap) }}
+            - {{ printf "--dataset-image=%s" . | quote }}
+            {{- end }}
+            {{- with (dig "storageOperator" "datasets" "s3Image" nil $.Values.AsMap) }}
+            - {{ printf "--dataset-s3-image=%s" . | quote }}
+            {{- end }}
+            {{- with (dig "storageOperator" "datasets" "defaultSize" nil $.Values.AsMap) }}
+            - {{ printf "--dataset-default-size=%s" . | quote }}
+            {{- end }}
+            {{- end }}
             {{- if and (eq $name "ai-operator") $.Values.aiOperator.placementHolds }}
             - --placement-holds=true
             {{- end }}

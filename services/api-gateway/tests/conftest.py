@@ -168,6 +168,38 @@ class FakeCore:
             lines = lines[-tail_lines:]
         return "\n".join(lines)
 
+    # -- secrets (dict bodies in, SimpleNamespace objects out, like the real client) --
+    def _secrets(self):
+        if not hasattr(self, "secrets"):
+            self.secrets = {}
+        return self.secrets
+
+    def create_namespaced_secret(self, namespace, body, **kw):
+        store = self._secrets()
+        md = body["metadata"]
+        if (namespace, md["name"]) in store:
+            raise ApiException(status=409, reason="AlreadyExists")
+        store[(namespace, md["name"])] = copy.deepcopy(body)
+        return body
+
+    def list_namespaced_secret(self, namespace, label_selector=None, **kw):
+        ns = types.SimpleNamespace
+        want = dict(p.split("=", 1) for p in (label_selector or "").split(",") if "=" in p)
+        items = []
+        for (sns, _), body in self._secrets().items():
+            md = body["metadata"]
+            if sns != namespace or any((md.get("labels") or {}).get(k) != v for k, v in want.items()):
+                continue
+            items.append(ns(metadata=ns(name=md["name"], namespace=sns, labels=md.get("labels"),
+                                        annotations=md.get("annotations"), creation_timestamp="2026-01-01T00:00:00Z"),
+                            data=body.get("stringData")))
+        return ns(items=items)
+
+    def delete_namespaced_secret(self, name, namespace, **kw):
+        if (namespace, name) not in self._secrets():
+            raise ApiException(status=404, reason="Not Found")
+        del self.secrets[(namespace, name)]
+
     def list_namespaced_event(self, namespace, field_selector=None, **kw):
         self._ensure()
         sel = dict(part.split("=", 1) for part in (field_selector or "").split(",") if "=" in part)

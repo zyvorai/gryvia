@@ -21,6 +21,11 @@ const (
 	PhaseRolledBack = "RolledBack"
 
 	ConditionPromotionGate = "PromotionGate"
+	ConditionRolledBack    = "RolledBack"
+
+	// annotationRollbackRequested on a production entry asks the controller to roll its shared service back to
+	// status.previousVersion (set by the gateway, the CLI and workflow registry steps; removed once handled).
+	annotationRollbackRequested = "gryvia.io/rollback-requested"
 
 	PromotionPromoted = "Promoted"
 	PromotionRejected = "Rejected"
@@ -128,6 +133,186 @@ func (r *GryviaModelRegistryReconciler) promotionDecision(ctx context.Context, m
 		return PromotionRejected, fmt.Sprintf("%s %s does not beat %s (%s) by %s", p.Metric, raw, bestName, bestRaw, orZero(p.MinDelta)), nil
 	}
 	return PromotionPromoted, fmt.Sprintf("Promoted: %s %s beats %s (%s)", p.Metric, raw, bestName, bestRaw), nil
+}
+
+// rollbackBreach reports whether spec.metadata[rollbackPolicy.metric] crossed the threshold. A missing or
+// non-numeric metric is not a breach.
+func rollbackBreach(model *gryviav1.GryviaModelRegistry) (bool, string) {
+	p := model.Spec.RollbackPolicy
+	if p == nil {
+		return false, ""
+	}
+	raw := strings.TrimSpace(model.Spec.Metadata[p.Metric])
+	v, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		return false, ""
+	}
+	th, err := strconv.ParseFloat(strings.TrimSpace(p.Threshold), 64)
+	if err != nil {
+		return false, ""
+	}
+	if p.Direction == directionMinimize {
+		if v > th {
+			return true, fmt.Sprintf("%s %s is above the rollback threshold %s", p.Metric, raw, p.Threshold)
+		}
+		return false, ""
+	}
+	if v < th {
+		return true, fmt.Sprintf("%s %s is below the rollback threshold %s", p.Metric, raw, p.Threshold)
+	}
+	return false, ""
+}
+
+// previousEntry finds the entry status.previousVersion names: an entry name (recorded when a canary was promoted)
+// or, failing that, a version of the same modelName. It must serve the same shared service.
+func (r *GryviaModelRegistryReconciler) previousEntry(ctx context.Context, model *gryviav1.GryviaModelRegistry, service string) (*gryviav1.GryviaModelRegistry, error) {
+	prev := model.Status.PreviousVersion
+	if prev == "" {
+		return nil, nil
+	}
+	m := &gryviav1.GryviaModelRegistry{}
+	err := r.Get(ctx, types.NamespacedName{Namespace: model.Namespace, Name: prev}, m)
+	if err == nil && m.Name != model.Name && m.Spec.ModelName == model.Spec.ModelName && sharedServiceName(m) == service {
+		return m, nil
+	}
+	if err != nil && !errors.IsNotFound(err) {
+		return nil, err
+	}
+	list := &gryviav1.GryviaModelRegistryList{}
+	if err := r.List(ctx, list, client.InNamespace(model.Namespace), client.Limit(promotionMaxPeers)); err != nil {
+		return nil, err
+	}
+	sort.Slice(list.Items, func(i, j int) bool { return list.Items[i].Name < list.Items[j].Name })
+	for i := range list.Items {
+		c := &list.Items[i]
+		if c.Name != model.Name && c.Spec.ModelName == model.Spec.ModelName && c.Spec.Version == prev && sharedServiceName(c) == service {
+			return c, nil
+		}
+	}
+	return nil, nil
+}
+
+// applyRollback rolls the shared service back to the previous version when a rollback was requested
+// (annotation) or the rollbackPolicy metric crossed its threshold: the service's modelRef becomes the previous
+// entry (moved back to production), and this entry is archived. It reports whether it rolled back; then the
+// status is final for this pass.
+func (r *GryviaModelRegistryReconciler) applyRollback(ctx context.Context, model *gryviav1.GryviaModelRegistry) (bool, error) {
+	requested := model.Annotations[annotationRollbackRequested]
+	breach, why := rollbackBreach(model)
+	if requested == "" && !breach {
+		return false, nil
+	}
+	reason := "PolicyBreached"
+	if requested != "" {
+		reason = "Requested"
+		why = "rollback requested by " + requested
+	}
+	refuse := func(cause, msg string) (bool, error) {
+		setCondition(&model.Status.Conditions, model.Generation, ConditionRolledBack, metav1.ConditionFalse, cause, msg)
+		if requested != "" {
+			r.event(model, "Warning", "RollbackRefused", msg)
+			return false, r.clearRollbackRequest(ctx, model)
+		}
+		return false, nil
+	}
+	service := sharedServiceName(model)
+	if model.Spec.Stage != gryviav1.ModelStageProduction || !model.Spec.AutoServe || service == "" {
+		if requested == "" {
+			return false, nil // the policy only applies to the serving version
+		}
+		return refuse("NotServing", "Rollback needs an auto-served production entry with servingConfig.serviceName")
+	}
+	prev, err := r.previousEntry(ctx, model, service)
+	if err != nil {
+		return false, err
+	}
+	if prev == nil {
+		return refuse("NoPreviousVersion", fmt.Sprintf("Cannot roll back (%s): no previous version of %s on %s", why, model.Spec.ModelName, service))
+	}
+	svc := &gryviav1.GryviaInferenceService{}
+	if err := r.Get(ctx, types.NamespacedName{Namespace: model.Namespace, Name: service}, svc); err != nil {
+		if errors.IsNotFound(err) {
+			return refuse("NotServing", fmt.Sprintf("Shared inference service %s does not exist", service))
+		}
+		return false, err
+	}
+	if svc.Labels[labelManagedBy] != managedByRegistry {
+		return refuse("NotServing", fmt.Sprintf("Inference service %s is not managed by the model registry", service))
+	}
+	// A retry after a partial rollback finds the service already on the previous entry.
+	if svc.Spec.ModelRef != model.Name && svc.Spec.ModelRef != prev.Name {
+		if requested == "" {
+			return false, nil
+		}
+		return refuse("NotStable", fmt.Sprintf("%s is not the stable version of %s (%s is)", model.Name, service, svc.Spec.ModelRef))
+	}
+
+	if prev.Spec.Stage != gryviav1.ModelStageProduction || !prev.Spec.AutoServe {
+		base := prev.DeepCopy()
+		prev.Spec.Stage = gryviav1.ModelStageProduction
+		prev.Spec.AutoServe = true
+		if err := r.Patch(ctx, prev, client.MergeFrom(base)); err != nil {
+			return false, err
+		}
+	}
+	if svc.Spec.ModelRef != prev.Name || svc.Spec.Canary != nil {
+		base := svc.DeepCopy()
+		svc.Spec.ModelRef = prev.Name
+		svc.Spec.Canary = nil
+		if err := r.Patch(ctx, svc, client.MergeFrom(base)); err != nil {
+			return false, err
+		}
+	}
+	// The stable Deployment serves its promoted-version annotation over modelRef; drop it so the pods roll back.
+	d := &appsv1.Deployment{}
+	if err := r.Get(ctx, types.NamespacedName{Namespace: svc.Namespace, Name: inferPrimaryName(svc)}, d); err == nil {
+		if v, ok := d.Annotations[annotationPromoted]; ok && v != prev.Name {
+			base := d.DeepCopy()
+			delete(d.Annotations, annotationPromoted)
+			if err := r.Patch(ctx, d, client.MergeFrom(base)); err != nil {
+				return false, err
+			}
+		}
+	} else if !errors.IsNotFound(err) {
+		return false, err
+	}
+
+	msg := fmt.Sprintf("Rolled back: %s serves %s again (%s)", service, prev.Name, why)
+	computed := model.Status.DeepCopy()
+	base := model.DeepCopy()
+	model.Spec.Stage = gryviav1.ModelStageArchived
+	delete(model.Annotations, annotationRollbackRequested)
+	if err := r.Patch(ctx, model, client.MergeFrom(base)); err != nil {
+		return false, err
+	}
+	model.Status = *computed
+	model.Status.Phase = PhaseRolledBack
+	model.Status.Message = msg
+	model.Status.InferenceServiceName = ""
+	model.Status.ServingEndpoint = ""
+	model.Status.Health = ""
+	model.Status.DeployedAt = nil
+	setCondition(&model.Status.Conditions, model.Generation, ConditionRolledBack, metav1.ConditionTrue, reason, msg)
+	setCondition(&model.Status.Conditions, model.Generation, ConditionModelServing, metav1.ConditionFalse, "RolledBack", msg)
+	r.event(model, "Normal", "RolledBack", msg)
+	return true, nil
+}
+
+func (r *GryviaModelRegistryReconciler) clearRollbackRequest(ctx context.Context, model *gryviav1.GryviaModelRegistry) error {
+	computed := model.Status.DeepCopy()
+	base := model.DeepCopy()
+	delete(model.Annotations, annotationRollbackRequested)
+	if err := r.Patch(ctx, model, client.MergeFrom(base)); err != nil {
+		return err
+	}
+	model.Status = *computed
+	return nil
+}
+
+func (r *GryviaModelRegistryReconciler) event(model *gryviav1.GryviaModelRegistry, kind, reason, msg string) {
+	if r.Recorder != nil {
+		r.Recorder.Event(model, kind, reason, msg)
+	}
 }
 
 func orZero(s string) string {

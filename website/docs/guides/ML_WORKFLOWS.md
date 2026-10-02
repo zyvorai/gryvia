@@ -14,6 +14,9 @@ The ai-operator registers a controller for each of the five kinds this guide is 
 | `GryviaInferenceService` | yes | create, list, delete | yes (Deployment, Service, CPU-based HPA, pod-count canary) |
 | `GryviaWorkspace` | yes | create, list, delete, pause and resume | yes (Pod, Service, optional PVC) |
 | `GryviaModelWatch` | yes | create, list, delete, runs, suspend and resume | opt-in (`aiOperator.modelWatch.enabled`): one workflow per new hub model, see [Model factory](#model-factory-gryviamodelwatch) |
+| `GryviaDataset` | yes | create, list, get, delete | opt-in (`storageOperator.datasets.enabled`, storage-operator): versions downloaded into a PVC, see [Datasets, LLM gateway, RAG and agents](#datasets-llm-gateway-rag-and-agents) |
+| `GryviaVectorIndex` | yes | create, list, delete, reingest, suspend and resume | opt-in (`aiOperator.rag.enabled`): see [Datasets, LLM gateway, RAG and agents](#datasets-llm-gateway-rag-and-agents) |
+| `GryviaAgent` | yes | create, list, delete, scale, chat | opt-in (`aiOperator.agents.enabled`): see [Datasets, LLM gateway, RAG and agents](#datasets-llm-gateway-rag-and-agents) |
 
 Job steps and tuner trials create `GryviaAIJob`s, which the AIJob controller runs to completion as Indexed batch Jobs ([AIJob lifecycle](https://github.com/zyvorai/gryvia/blob/main/docs/aijob-lifecycle.md)). The sections below keep the schema examples; where a paragraph is still labelled design, the behaviour it describes is not implemented (for example weighted canary routing, or an HPA on GPU utilisation or requests per second). All YAML uses the real schema (`crds/`) and is checked in CI; the examples in `examples/ml-workflow/` are the source models.
 
@@ -28,6 +31,7 @@ The API routes are in the [API reference](../developer-guide/api-reference.md). 
 4. [Inference Serving (GryviaInferenceService)](#inference-serving-gryviainferenceservice)
 5. [Interactive Workspaces (GryviaWorkspace)](#interactive-workspaces-gryviaworkspace)
 6. [Model factory (GryviaModelWatch)](#model-factory-gryviamodelwatch)
+7. [Datasets, LLM gateway, RAG and agents](#datasets-llm-gateway-rag-and-agents)
 
 ---
 
@@ -410,6 +414,35 @@ The complete pipeline (download, LoRA fine-tune, lm-eval, register, shared vLLM 
 ```bash
 gryvia models watch create -f watch.yaml -n ml-team
 gryvia models watch runs small-qwen -n ml-team
+```
+
+---
+
+## Datasets, LLM gateway, RAG and agents
+
+Status: all opt-in. Each piece is unit-tested and runs end to end in the kind workflow (`e2e-ml.yml`) with CPU
+stand-ins: a stand-in file server for datasets, small Python servers that return OpenAI-shaped chat, embedding and
+tool-call responses, and the real Qdrant image. No real model (vLLM, an embedding model or a tool-calling model) has
+been tried, and nothing has run on GPUs.
+
+| Piece | Chart value | What it gives you | Reference |
+|-------|-------------|-------------------|-----------|
+| Datasets | `storageOperator.datasets.enabled` | `GryviaDataset` downloads an http, s3 or nfs source into a PVC, one directory per version; jobs mount `status.pvcName` at `status.subPath` | [docs/datasets.md](https://github.com/zyvorai/gryvia/blob/main/docs/datasets.md) |
+| Evaluation and rollback | none (registry and workflow controllers) | `registry` workflow steps, `rollbackPolicy` on a registry entry, scheduled re-evaluation, AWQ/GPTQ quantize step | [docs/model-evaluation.md](https://github.com/zyvorai/gryvia/blob/main/docs/model-evaluation.md) |
+| LLM gateway | `llmGateway.enabled` | One OpenAI-compatible endpoint for every annotated inference service, per-tenant keys, token metering and `tokensPerDay` quotas | [docs/llm-gateway.md](https://github.com/zyvorai/gryvia/blob/main/docs/llm-gateway.md) |
+| RAG | `aiOperator.rag.enabled` | `GryviaVectorIndex`: a dataset chunked, embedded through the gateway and kept in Qdrant; `POST /v1/retrieve` on the gateway | [docs/rag.md](https://github.com/zyvorai/gryvia/blob/main/docs/rag.md) |
+| Agents | `aiOperator.agents.enabled` | `GryviaAgent`: a tool-calling runtime (retrieval and allowlisted HTTP tools) served as `/v1/chat/completions`, with its own gateway key and an egress NetworkPolicy | [docs/agents.md](https://github.com/zyvorai/gryvia/blob/main/docs/agents.md) |
+
+RAG and agents need the LLM gateway; the chart refuses to render without it. A typical chain:
+
+```bash
+helm upgrade gryvia helm/gryvia --reuse-values --set llmGateway.enabled=true \
+  --set storageOperator.datasets.enabled=true --set aiOperator.rag.enabled=true --set aiOperator.agents.enabled=true
+
+gryvia datasets create -f examples/datasets/http-dataset.yaml
+gryvia rag index create -f examples/rag/vector-index.yaml -n tenant-alpha
+gryvia agents create -f examples/agents/agent.yaml -n tenant-alpha
+gryvia agents chat helper how are GPU hours capped
 ```
 
 ---

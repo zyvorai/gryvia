@@ -4,9 +4,12 @@ import tempfile
 import unittest
 
 from download import download, target_dir
-from evaluate import aggregate, exact_match, output_key
+import evaluate
+from evaluate import aggregate, exact_match, openai_generator, output_key
 from finetune_lora import filter_kwargs, output_dir, validate_jsonl
 from outputs import write_outputs
+from quantize import calibration_texts
+from quantize import parse_args as parse_quantize_args
 
 
 class OutputsTests(unittest.TestCase):
@@ -86,6 +89,81 @@ class EvaluateTests(unittest.TestCase):
             answers = {"2+2=": " 4, of course", "3+3=": "7"}
             self.assertEqual(exact_match(answers.get, path), 0.5)
         self.assertEqual(output_key("mmlu/abstract algebra"), "mmlu_abstract_algebra")
+
+    def test_endpoint_generator_and_main(self):
+        seen = []
+
+        class Resp:
+            def __init__(self, body):
+                self.body = body
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def read(self):
+                return self.body
+
+        def opener(req, timeout):
+            body = json.loads(req.data)
+            seen.append((req.full_url, req.get_header("Authorization"), body))
+            answer = "4" if body["prompt"] == "2+2=" else "5"
+            return Resp(json.dumps({"choices": [{"text": " " + answer}]}).encode())
+
+        os.environ["OPENAI_API_KEY"] = "sk-test"
+        try:
+            gen = openai_generator("http://svc:8080/", "chat", opener=opener)
+            self.assertEqual(gen("2+2="), " 4")
+        finally:
+            del os.environ["OPENAI_API_KEY"]
+        url, auth, body = seen[0]
+        self.assertEqual(url, "http://svc:8080/v1/completions")
+        self.assertEqual(auth, "Bearer sk-test")
+        self.assertEqual((body["model"], body["temperature"]), ("chat", 0))
+
+        with tempfile.TemporaryDirectory() as d:
+            data = os.path.join(d, "eval.jsonl")
+            open(data, "w").write('{"prompt": "2+2=", "expected": "4"}\n{"prompt": "3+3=", "expected": "6"}\n')
+            written = {}
+            orig_gen, orig_write = evaluate.openai_generator, evaluate.write_outputs
+            evaluate.openai_generator = lambda e, m: openai_generator(e, m, opener=opener)
+            evaluate.write_outputs = written.update
+            try:
+                self.assertEqual(evaluate.main(["--endpoint", "http://svc:8080", "--served-model", "chat",
+                                                "--custom", data]), 0)
+            finally:
+                evaluate.openai_generator, evaluate.write_outputs = orig_gen, orig_write
+            self.assertEqual(written["score"], "0.500000")
+        with self.assertRaises(SystemExit):
+            evaluate.main(["--model", "/m", "--endpoint", "http://x"])
+
+
+class QuantizeTests(unittest.TestCase):
+    def test_args_defaults_and_validation(self):
+        a = parse_quantize_args(["--model", "/models/ft/qwen3-8b/abc/", "--calibration", "/data/chat.jsonl"])
+        self.assertEqual((a.method, a.scheme, a.output), ("awq", "W4A16_ASYM", "/models/ft/qwen3-8b/abc-awq"))
+        g = parse_quantize_args(["--model", "/m/x", "--calibration", "c", "--method", "gptq", "--scheme", "W8A16"])
+        self.assertEqual((g.scheme, g.output), ("W8A16", "/m/x-gptq"))
+        for bad in (["--method", "awq", "--scheme", "W8A16"], ["--method", "fp8"], ["--samples", "0"]):
+            with self.assertRaises(SystemExit):
+                parse_quantize_args(["--model", "/m", "--calibration", "c"] + bad)
+
+    def test_calibration_texts(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "chat.jsonl")
+            open(path, "w").write('{"text": "plain"}\n\n{"messages": [{"role": "user", "content": "hi"}]}\n'
+                                  '{"text": "third"}\n')
+            render = lambda m: "<chat>" + m[0]["content"]  # noqa: E731
+            self.assertEqual(calibration_texts(path, 10, render), ["plain", "<chat>hi", "third"])
+            self.assertEqual(calibration_texts(path, 2, render), ["plain", "<chat>hi"])
+            bad = os.path.join(d, "bad.jsonl")
+            open(bad, "w").write('{"prompt": "x"}\n')
+            self.assertRaises(ValueError, calibration_texts, bad, 10, render)
+            empty = os.path.join(d, "empty.jsonl")
+            open(empty, "w").write("\n")
+            self.assertRaises(ValueError, calibration_texts, empty, 10, render)
 
 
 if __name__ == "__main__":

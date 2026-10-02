@@ -13,6 +13,8 @@ const (
 	StepTypeWebhook StepType = "webhook"
 	// StepTypeRegister creates a GryviaModelRegistry entry from earlier step outputs.
 	StepTypeRegister StepType = "register"
+	// StepTypeRegistry changes an existing GryviaModelRegistry entry: writes metadata or asks for a rollback.
+	StepTypeRegistry StepType = "registry"
 )
 
 // GryviaWorkflowSpec defines the desired state of GryviaWorkflow
@@ -34,7 +36,7 @@ type WorkflowStep struct {
 	// Name is the unique name of this step within the workflow
 	Name string `json:"name"`
 
-	// Type of step: job, script, or webhook
+	// Type of step: job, script, webhook, register or registry
 	Type StepType `json:"type,omitempty"`
 
 	// DependsOn is a list of step names that must complete before this step runs
@@ -56,6 +58,9 @@ type WorkflowStep struct {
 
 	// Register is the model registry entry to create for register-type steps
 	Register *RegisterStep `json:"register,omitempty"`
+
+	// Registry is the change to an existing model registry entry for registry-type steps
+	Registry *RegistryStep `json:"registry,omitempty"`
 
 	// Retries is the number of times to retry this step on failure
 	Retries int32 `json:"retries,omitempty"`
@@ -121,10 +126,30 @@ type RegisterStep struct {
 	// Metadata is copied into the entry (for example the evaluation score a promotionPolicy compares)
 	Metadata map[string]string `json:"metadata,omitempty"`
 
-	// AutoServe, ServingConfig and PromotionPolicy are copied into the entry
+	// AutoServe, ServingConfig, PromotionPolicy and RollbackPolicy are copied into the entry
 	AutoServe       bool             `json:"autoServe,omitempty"`
 	ServingConfig   *ServingConfig   `json:"servingConfig,omitempty"`
 	PromotionPolicy *PromotionPolicy `json:"promotionPolicy,omitempty"`
+	RollbackPolicy  *RollbackPolicy  `json:"rollbackPolicy,omitempty"`
+}
+
+// RegistryStep changes an existing GryviaModelRegistry entry in the workflow's namespace. Entry and the metadata
+// values may use the same placeholders as a register step.
+type RegistryStep struct {
+	// Entry is the registry object name. Set entry or serviceName.
+	Entry string `json:"entry,omitempty"`
+
+	// ServiceName picks the entry a shared GryviaInferenceService (servingConfig.serviceName) serves when the step
+	// runs: its spec.modelRef. A scheduled evaluation of the live service uses this.
+	ServiceName string `json:"serviceName,omitempty"`
+
+	// Action is updateMetadata (merge metadata into spec.metadata) or rollback (ask the controller to roll the
+	// entry back to status.previousVersion on its shared service)
+	// +kubebuilder:validation:Enum=updateMetadata;rollback
+	Action string `json:"action"`
+
+	// Metadata is merged into spec.metadata for updateMetadata
+	Metadata map[string]string `json:"metadata,omitempty"`
 }
 
 // StepPhase represents the current state of a workflow step

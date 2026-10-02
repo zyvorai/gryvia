@@ -21,6 +21,7 @@ import (
 
 	gryviav1 "github.com/zyvorai/gryvia/operators/ai-operator/api/v1"
 	"github.com/zyvorai/gryvia/operators/ai-operator/controllers"
+	"github.com/zyvorai/gryvia/operators/ai-operator/pkg/llmgateway"
 	"github.com/zyvorai/gryvia/operators/ai-operator/pkg/modelhub"
 	"github.com/zyvorai/gryvia/operators/ai-operator/pkg/timemachine"
 	jobwebhook "github.com/zyvorai/gryvia/operators/ai-operator/pkg/webhook"
@@ -40,6 +41,13 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "inference-proxy" {
 		if err := servingproxy.Run(); err != nil {
 			setupLog.Error(err, "inference proxy")
+			os.Exit(1)
+		}
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "llm-gateway" {
+		if err := llmgateway.Run(os.Args[2:]); err != nil {
+			setupLog.Error(err, "llm gateway")
 			os.Exit(1)
 		}
 		return
@@ -267,6 +275,7 @@ func main() {
 			Scheme:            mgr.GetScheme(),
 			Log:               ctrl.Log.WithName("controllers").WithName("GryviaModelRegistry"),
 			AutoServeGPUCount: int32(ml.autoServeGPUCount),
+			Recorder:          mgr.GetEventRecorderFor("gryviamodelregistry-controller"),
 		}).SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "GryviaModelRegistry")
 			os.Exit(1)
@@ -306,8 +315,43 @@ func main() {
 				os.Exit(1)
 			}
 		}
-	} else if ml.modelWatchEnabled {
-		setupLog.Error(nil, "--enable-model-watch needs --enable-ml-controllers (its runs are GryviaWorkflows)")
+		if ml.ragEnabled {
+			if ml.llmGatewayURL == "" {
+				setupLog.Error(nil, "--enable-rag needs --llm-gateway-url (ingestion embeds through the LLM gateway)")
+				os.Exit(1)
+			}
+			if err = (&controllers.GryviaVectorIndexReconciler{
+				Client:       mgr.GetClient(),
+				Scheme:       mgr.GetScheme(),
+				Log:          ctrl.Log.WithName("controllers").WithName("GryviaVectorIndex"),
+				QdrantImage:  ml.ragQdrantImage,
+				IngestImage:  ml.ragIngestImage,
+				GatewayURL:   ml.llmGatewayURL,
+				KeyNamespace: ml.llmKeyNamespace,
+			}).SetupWithManager(mgr); err != nil {
+				setupLog.Error(err, "unable to create controller", "controller", "GryviaVectorIndex")
+				os.Exit(1)
+			}
+		}
+		if ml.agentsEnabled {
+			if ml.llmGatewayURL == "" {
+				setupLog.Error(nil, "--enable-agents needs --llm-gateway-url (agents call models through the LLM gateway)")
+				os.Exit(1)
+			}
+			if err = (&controllers.GryviaAgentReconciler{
+				Client:       mgr.GetClient(),
+				Scheme:       mgr.GetScheme(),
+				Log:          ctrl.Log.WithName("controllers").WithName("GryviaAgent"),
+				Image:        ml.agentImage,
+				GatewayURL:   ml.llmGatewayURL,
+				KeyNamespace: ml.llmKeyNamespace,
+			}).SetupWithManager(mgr); err != nil {
+				setupLog.Error(err, "unable to create controller", "controller", "GryviaAgent")
+				os.Exit(1)
+			}
+		}
+	} else if ml.modelWatchEnabled || ml.ragEnabled || ml.agentsEnabled {
+		setupLog.Error(nil, "--enable-model-watch, --enable-rag and --enable-agents need --enable-ml-controllers")
 		os.Exit(1)
 	}
 

@@ -6,7 +6,8 @@ import (
 
 // GryviaUsageRecordSpec is the metered usage of one GryviaAIJob. The quota operator
 // owns and rewrites it until final is true. Values are estimates from job wall-clock
-// time (start to end); they are not invoices.
+// time (start to end); they are not invoices. Records of kind tokens are written by the
+// LLM gateway instead (job "llm:<model>", gpus and gpuHours 0, cost from token prices).
 type GryviaUsageRecordSpec struct {
 	// Tenant the usage is attributed to
 	Tenant string `json:"tenant"`
@@ -46,6 +47,20 @@ type GryviaUsageRecordSpec struct {
 
 	// Final is true once the job finished; a final record is never modified again
 	Final bool `json:"final"`
+
+	// Kind is what the record meters: gpu (a GryviaAIJob; also when empty) or tokens (the LLM gateway's requests
+	// of one tenant to one model during one hour, from start to end)
+	// +kubebuilder:validation:Enum=gpu;tokens
+	Kind string `json:"kind,omitempty"`
+
+	// Model is the LLM gateway model of a tokens record
+	Model string `json:"model,omitempty"`
+
+	// InputTokens is the prompt tokens of a tokens record
+	InputTokens int64 `json:"inputTokens,omitempty"`
+
+	// OutputTokens is the completion tokens of a tokens record
+	OutputTokens int64 `json:"outputTokens,omitempty"`
 }
 
 //+kubebuilder:object:root=true

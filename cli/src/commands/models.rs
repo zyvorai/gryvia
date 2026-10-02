@@ -2,6 +2,9 @@
 //! through the Kubernetes API. The ai-operator polls the model hub for each watch and starts one
 //! GryviaWorkflow per new model; `runs` shows those candidates. Needs the ai-operator running with
 //! `--enable-model-watch` (see docs/model-factory.md).
+//!
+//! `gryvia models rollback <entry>` asks the operator to put a shared service back on the entry's
+//! status.previousVersion (annotation gryvia.io/rollback-requested).
 
 use anyhow::{anyhow, bail, Context, Result};
 use dialoguer::Confirm;
@@ -306,9 +309,85 @@ pub async fn delete(client: &GryviaClient, name: &str, yes: bool) -> Result<()> 
     Ok(())
 }
 
+fn registry_api(client: &GryviaClient) -> Api<DynamicObject> {
+    let gvk = GroupVersionKind::gvk("gryvia.io", "v1alpha1", "GryviaModelRegistry");
+    let ar = ApiResource::from_gvk_with_plural(&gvk, "gryviamodelregistries");
+    Api::namespaced_with(client.kube_client.clone(), client.namespace(), &ar)
+}
+
+/// The version a rollback of this registry entry brings back, or why it cannot be rolled back.
+pub fn rollback_target(entry: &Value) -> std::result::Result<String, String> {
+    let name = str_at(entry, "/metadata/name");
+    if str_at(entry, "/spec/stage") != "production"
+        || str_at(entry, "/spec/servingConfig/serviceName").is_empty()
+    {
+        return Err(format!(
+            "Model '{name}' is not a production entry with servingConfig.serviceName; only those can be rolled back"
+        ));
+    }
+    match str_at(entry, "/status/previousVersion") {
+        "" => Err(format!(
+            "Model '{name}' has no previous version to roll back to"
+        )),
+        prev => Ok(prev.to_string()),
+    }
+}
+
+pub async fn rollback(client: &GryviaClient, name: &str, yes: bool) -> Result<()> {
+    let api = registry_api(client);
+    let obj = api
+        .get(name)
+        .await
+        .map_err(|e| api_error(&format!("Failed to get model '{name}'"), e))?;
+    let previous = rollback_target(&serde_json::to_value(&obj)?).map_err(|e| anyhow!(e))?;
+    if !yes {
+        let confirm = Confirm::new()
+            .with_prompt(format!(
+                "Roll back '{name}'? Its shared service serves '{previous}' again and '{name}' is archived"
+            ))
+            .interact()?;
+        if !confirm {
+            display::print_info("Cancelled");
+            return Ok(());
+        }
+    }
+    let when = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ");
+    api.patch(
+        name,
+        &PatchParams::default(),
+        &Patch::Merge(json!({"metadata": {"annotations": {"gryvia.io/rollback-requested": format!("cli at {when}")}}})),
+    )
+    .await
+    .map_err(|e| api_error(&format!("Failed to update model '{name}'"), e))?;
+    display::print_success(&format!(
+        "Rollback of {name} to {previous} requested; the RolledBack condition shows the outcome: kubectl get gryviamodelregistry {name} -o yaml"
+    ));
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rollback_needs_a_serving_entry_with_a_previous_version() {
+        let entry = |stage: &str, service: &str, prev: &str| {
+            json!({"metadata": {"name": "chat-v2"},
+                   "spec": {"stage": stage, "servingConfig": {"serviceName": service}},
+                   "status": {"previousVersion": prev}})
+        };
+        assert_eq!(
+            rollback_target(&entry("production", "chat", "chat-v1")),
+            Ok("chat-v1".to_string())
+        );
+        assert!(rollback_target(&entry("staging", "chat", "chat-v1"))
+            .unwrap_err()
+            .contains("not a production entry"));
+        assert!(rollback_target(&entry("production", "", "chat-v1")).is_err());
+        assert!(rollback_target(&entry("production", "chat", ""))
+            .unwrap_err()
+            .contains("no previous version"));
+    }
 
     fn watch() -> Value {
         json!({
