@@ -249,12 +249,15 @@ func TestWorkflow_RegistryStep(t *testing.T) {
 
 func TestWorkflow_RegistryStepByServiceName(t *testing.T) {
 	v1, v2, svc := promotedState("0.8")
-	foreign := newInfer("plain")
+	foreign := newInfer("plain", func(s *gryviav1.GryviaInferenceService) { s.Spec.ModelRef = "" })
+	// Created by hand, not by the registry: its modelRef still names the entry it serves.
+	manual := newInfer("manual", func(s *gryviav1.GryviaInferenceService) { s.Spec.ModelRef = "v1" })
 	step := func(service string) gryviav1.WorkflowStep {
 		return gryviav1.WorkflowStep{Name: "record", Registry: &gryviav1.RegistryStep{
 			ServiceName: service, Action: "updateMetadata", Metadata: map[string]string{"live_score": "0.31"}}}
 	}
-	c := mlClient(v1, v2, svc, foreign, newWF("live", step("chat")), newWF("bad", step("plain")), newWF("gone", step("absent")))
+	c := mlClient(v1, v2, svc, foreign, manual, newWF("live", step("chat")), newWF("bad", step("plain")),
+		newWF("gone", step("absent")), newWF("hand", step("manual")))
 	r := newWFReconciler(c, newClock())
 	reconcileOnce(t, r, "ns", "live")
 	if s := stepOf(getWF(t, c, "live"), "record"); s.Phase != gryviav1.StepPhaseSucceeded || s.Outputs["name"] != "v2" {
@@ -263,7 +266,11 @@ func TestWorkflow_RegistryStepByServiceName(t *testing.T) {
 	if m := getModel(t, c, "v2"); m.Spec.Metadata["live_score"] != "0.31" || m.Spec.Metadata["eval_score"] != "0.8" {
 		t.Errorf("serving entry metadata %v", m.Spec.Metadata)
 	}
-	for wf, msg := range map[string]string{"bad": "not a shared service", "gone": "not found"} {
+	reconcileOnce(t, r, "ns", "hand")
+	if s := stepOf(getWF(t, c, "hand"), "record"); s.Phase != gryviav1.StepPhaseSucceeded || s.Outputs["name"] != "v1" {
+		t.Fatalf("hand-made service step: %+v", s)
+	}
+	for wf, msg := range map[string]string{"bad": "no modelRef", "gone": "not found"} {
 		reconcileOnce(t, r, "ns", wf)
 		if s := stepOf(getWF(t, c, wf), "record"); s.Phase != gryviav1.StepPhaseFailed || !strings.Contains(s.Message, msg) {
 			t.Errorf("%s: %+v", wf, s)

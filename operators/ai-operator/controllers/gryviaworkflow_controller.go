@@ -847,8 +847,8 @@ func (r *GryviaWorkflowReconciler) updateRegistry(ctx context.Context, wf *gryvi
 			}
 			return "", "", err
 		}
-		if svc.Labels[labelManagedBy] != managedByRegistry || svc.Spec.ModelRef == "" {
-			return "", fmt.Sprintf("inference service %q is not a shared service of the model registry", reg.ServiceName), nil
+		if svc.Spec.ModelRef == "" {
+			return "", fmt.Sprintf("inference service %q serves no model registry entry (no modelRef)", reg.ServiceName), nil
 		}
 		reg.Entry = svc.Spec.ModelRef
 	}
