@@ -29,6 +29,7 @@ export const NAVIGATION: NavItem[] = [
       { name: 'Datasets', href: '/datasets', blurb: 'Versioned data downloaded into PVCs' },
       { name: 'Inference', href: '/inference', blurb: 'Serving and autoscaling' },
       { name: 'LLM gateway', href: '/llm', blurb: 'OpenAI endpoint, API keys and tokens' },
+      { name: 'Playground', href: '/playground', blurb: 'Chat with a model, copy the call' },
       { name: 'Vector indexes', href: '/rag', blurb: 'RAG retrieval over your datasets' },
       { name: 'Agents', href: '/agents', blurb: 'Tool-calling agents on your models' },
     ],

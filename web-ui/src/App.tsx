@@ -37,6 +37,7 @@ const ModelRegistry = lazy(() => import('./pages/ModelRegistry'))
 const ModelFactory = lazy(() => import('./pages/ModelFactory'))
 const Datasets = lazy(() => import('./pages/Datasets'))
 const LlmGateway = lazy(() => import('./pages/LlmGateway'))
+const Playground = lazy(() => import('./pages/Playground'))
 const VectorIndexes = lazy(() => import('./pages/VectorIndexes'))
 const Agents = lazy(() => import('./pages/Agents'))
 const InferenceServices = lazy(() => import('./pages/InferenceServices'))
@@ -178,6 +179,7 @@ function App() {
               <Route path="/model-factory" element={<ModelFactory />} />
               <Route path="/datasets" element={<Datasets />} />
               <Route path="/llm" element={<LlmGateway />} />
+              <Route path="/playground" element={<Playground />} />
               <Route path="/rag" element={<VectorIndexes />} />
               <Route path="/agents" element={<Agents />} />
               <Route path="/inference" element={<InferenceServices />} />
