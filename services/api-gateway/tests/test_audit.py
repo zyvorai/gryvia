@@ -106,3 +106,51 @@ def test_audit_counter_is_exported(gw):
     gw.call("DELETE", "/api/jobs/metric-probe")
     after = observability.AUDIT_EVENTS.labels("DELETE", "error")._value.get() + observability.AUDIT_EVENTS.labels("DELETE", "success")._value.get()
     assert after == before + 1
+
+
+# -- SQLite sink --------------------------------------------------------------------------------
+
+def _entry(**kw):
+    e = {"time": "2026-01-01T00:00:00.000Z", "id": "r1", "actor": {"auth": "api_key", "role": "admin", "tenant": "alpha", "subject": "a@x"},
+         "method": "POST", "route": "/api/jobs", "path": "/api/jobs", "status": 201, "outcome": "success",
+         "ip": "1.2.3.4", "durationMs": 1.5}
+    e.update(kw)
+    return e
+
+
+def test_sqlite_survives_restart_and_filters(tmp_path):
+    from routers.audit import AuditLog
+    db = str(tmp_path / "audit.db")
+    log = AuditLog(db=db)
+    log.record(_entry(id="a", time="2026-01-01T00:00:00.000Z"))
+    log.record(_entry(id="b", time="2026-01-02T00:00:00.000Z", method="DELETE", path="/api/jobs/x", status=403,
+                      outcome="denied", actor={"auth": "oidc", "role": "tenant", "tenant": "beta", "subject": "b@x"}))
+    again = AuditLog(db=db)  # a new process reading the same file
+    assert again.durable and [e["id"] for e in again.query()] == ["b", "a"]
+    assert [e["id"] for e in again.query(outcome="denied")] == ["b"]
+    assert [e["id"] for e in again.query(actor="beta")] == ["b"]
+    assert [e["id"] for e in again.query(path="jobs/x")] == ["b"]
+    assert [e["id"] for e in again.query(since="2026-01-02T00:00:00.000Z")] == ["b"]
+    assert [e["id"] for e in again.query(status=201)] == ["a"]
+    assert again.query()[0]["actor"]["subject"] == "b@x"
+
+
+def test_sqlite_retention_prunes_old_rows(tmp_path):
+    from routers.audit import AuditLog
+    db = str(tmp_path / "audit.db")
+    AuditLog(db=db).record(_entry(time="2020-01-01T00:00:00.000Z"))
+    assert AuditLog(db=db, retention_days=30).query() == []
+
+
+def test_unusable_db_falls_back_to_buffer(tmp_path):
+    from routers.audit import AuditLog
+    log = AuditLog(db=str(tmp_path / "no" / "such" / "dir" / "a.db"))
+    log.record(_entry())
+    assert not log.durable and len(log.query()) == 1
+
+
+def test_csv_export_neutralises_formulas(gw):
+    gw.client.app.state.audit_log.record(_entry(actor={"auth": "oidc", "role": "tenant", "tenant": "t", "subject": "=HYPERLINK(\"x\")"}))
+    r = gw.get("/api/audit/export.csv")
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/csv")
+    assert "'=HYPERLINK" in r.text and ",=HYPERLINK" not in r.text
