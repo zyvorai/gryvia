@@ -47,7 +47,9 @@ func inferenceHPAMetrics(a *gryviav1.AutoscalingConfig) ([]autoscalingv2.MetricS
 
 func reportHPAMetricStatus(svc *gryviav1.GryviaInferenceService, hpa *autoscalingv2.HorizontalPodAutoscaler, exists bool) {
 	status, reason, msg := metav1.ConditionUnknown, "WaitingForHPA", "Waiting for the HPA controller to resolve scaling metrics"
-	if exists && hpa.Status.ObservedGeneration != nil && *hpa.Status.ObservedGeneration >= hpa.Generation {
+	// The upstream HPA controller leaves status.observedGeneration unset; only a set, older value marks the status stale.
+	stale := hpa.Status.ObservedGeneration != nil && *hpa.Status.ObservedGeneration < hpa.Generation
+	if exists && !stale {
 		for _, c := range hpa.Status.Conditions {
 			if c.Type == autoscalingv2.ScalingActive {
 				status, reason, msg = metav1.ConditionStatus(c.Status), c.Reason, c.Message
