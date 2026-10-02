@@ -2,10 +2,12 @@ package llmgateway
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
 	"sync"
+	"syscall"
 	"time"
 
 	"k8s.io/apimachinery/pkg/types"
@@ -47,6 +49,8 @@ const (
 	// Last-request annotations are written at most once a minute per service, and more often for short idle times.
 	maxTouchEvery = time.Minute
 	retryAfter    = 30
+	// After a wake-up, refused connections are retried this long: the Service's endpoints can trail the ready replica.
+	refusedRetry = 30 * time.Second
 )
 
 // throttle remembers when an action last ran per key.
@@ -122,6 +126,25 @@ func (g *Gateway) awaitReady(w http.ResponseWriter, r *http.Request, k Key, mode
 		}
 		route = next
 	}
+}
+
+// retryRefused resends a request whose connection was refused, until refusedRetry passes. A refused connection
+// never reached the model, so resending cannot run it twice.
+func (g *Gateway) retryRefused(ctx context.Context, resp *http.Response, err error, send func() (*http.Response, error)) (*http.Response, error) {
+	poll := g.WakePoll
+	if poll <= 0 {
+		poll = defaultWakePoll
+	}
+	deadline := time.Now().Add(refusedRetry)
+	for err != nil && errors.Is(err, syscall.ECONNREFUSED) && time.Now().Before(deadline) {
+		select {
+		case <-ctx.Done():
+			return resp, err
+		case <-time.After(poll):
+		}
+		resp, err = send()
+	}
+	return resp, err
 }
 
 func findRoute(routes []Route, namespace, service string) (Route, bool) {

@@ -2,6 +2,7 @@ package llmgateway
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -250,5 +251,49 @@ func TestRoutesCarryScaleToZero(t *testing.T) {
 	}
 	if p := routes[1]; p.ScaleToZero || p.Waking() {
 		t.Fatalf("plain route = %+v", p)
+	}
+}
+
+func TestRefusedConnectionAfterWakeIsRetried(t *testing.T) {
+	gw, _, src, _, _ := scaleToZeroGateway(t, PhaseScaledToZero, 15*time.Minute, 5*time.Minute)
+	src.readyAfter = 1
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := l.Addr().String()
+	_ = l.Close() // refused until the server below takes the port
+	src.routes[0].Upstream = "http://" + addr
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		l, err := net.Listen("tcp", addr)
+		if err != nil {
+			return
+		}
+		srv := &httptest.Server{Listener: l, Config: &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(`{"usage":{"prompt_tokens":1,"completion_tokens":1}}`))
+		})}}
+		srv.Start()
+		t.Cleanup(srv.Close)
+	}()
+	if rec := call(t, gw, "POST", "/v1/chat/completions", keyA, chatBody); rec.Code != http.StatusOK {
+		t.Fatalf("refused then serving = %d %s", rec.Code, rec.Body)
+	}
+}
+
+func TestRefusedConnectionWithoutWakeIsNotRetried(t *testing.T) {
+	gw, _, src, _, _ := scaleToZeroGateway(t, "Ready", 15*time.Minute, 5*time.Minute)
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	src.routes[0].Upstream = "http://" + l.Addr().String()
+	_ = l.Close()
+	start := time.Now()
+	if rec := call(t, gw, "POST", "/v1/chat/completions", keyA, chatBody); rec.Code != http.StatusBadGateway {
+		t.Fatalf("refused = %d", rec.Code)
+	}
+	if time.Since(start) > time.Second {
+		t.Fatalf("a warm service's refused connection was retried")
 	}
 }

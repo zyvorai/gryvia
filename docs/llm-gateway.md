@@ -175,7 +175,8 @@ For a model whose service sets `spec.scaleToZero.enabled` ([inference serving](i
 - A request for a service in phase `ScaledToZero` sets `gryvia.io/wake-requested` (repeated at most every 5 seconds
   while requests wait) and is held, re-reading the services every second, until the phase is no longer
   `ScaledToZero` or `Deploying`. It is then proxied and metered as usual. Requests arriving while the service is
-  `Deploying` wait the same way.
+  `Deploying` wait the same way. A refused connection right after the wake-up (the Service's endpoints can trail
+  the ready replica) is retried for up to 30 seconds; nothing reached the model, so nothing runs twice.
 - If the service is not ready within `coldStartTimeoutSeconds` (default 300), the request gets 503 with
   `Retry-After: 30`. A caller that disconnects while waiting is dropped; the wake-up still goes ahead.
 
