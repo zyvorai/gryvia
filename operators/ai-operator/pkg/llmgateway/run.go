@@ -142,12 +142,13 @@ func Run(args []string) error {
 
 	source := &CacheSource{Reader: informers, KeyNamespace: *keyNamespace, PriceIn: *priceIn, PriceOut: *priceOut}
 	gw := &Gateway{
-		Source:  source,
-		Indexes: source,
-		Meter:   meter,
-		Quotas:  quotas,
-		Client:  &http.Client{Timeout: *timeout},
-		MaxBody: *maxBody,
+		Source:    source,
+		Indexes:   source,
+		Meter:     meter,
+		Quotas:    quotas,
+		Client:    &http.Client{Timeout: *timeout},
+		MaxBody:   *maxBody,
+		Activator: &KubeActivator{Client: direct},
 	}
 	go every(ctx, *quotaEvery, func() {
 		if err := quotas.Refresh(ctx); err != nil {
