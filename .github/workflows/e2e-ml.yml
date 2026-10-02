@@ -17,9 +17,6 @@ name: ML controllers end-to-end
 # The workflow-with-jobs and auto-tuner steps run GryviaAIJob children, which the AIJob controller runs to completion
 # (indexed batch/v1 Job workload, docs/aijob-lifecycle.md), so a failure of those steps fails the run.
 # The elastic training step runs a real torchrun (CPU, gloo) in an elastic AIJob and deletes a worker mid-run.
-# This file was written without being able to run it (no docker/kind on the authoring machine): the first CI run is
-# its first execution.
-
 on:
   pull_request:
     branches: [ main ]
