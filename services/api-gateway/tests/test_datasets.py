@@ -47,6 +47,17 @@ def test_create_admin(make_client, fake_k8s):
         "versioning": {"enabled": True, "retentionPolicy": {"keepLast": 3}}}
 
 
+def test_create_s3_compatible_endpoint(make_client, fake_k8s):
+    s3 = {"bucket": "data", "prefix": "corpus/", "region": "us-east-1", "endpoint": "http://minio.storage.svc:9000",
+          "credentialsSecret": "minio"}
+    r = make_client("datasets").post("/api/datasets", json={**BODY, "source": {"type": "s3", "s3": s3}})
+    assert r.status_code == 201, r.text
+    stored = fake_k8s.store[("gryviadatasets", None, "corpus")]["spec"]["source"]["s3"]
+    assert stored["endpoint"] == "http://minio.storage.svc:9000"
+    bad = {"type": "s3", "s3": {**s3, "endpoint": "minio:9000"}}
+    assert make_client("datasets").post("/api/datasets", json={**BODY, "name": "bad", "source": bad}).status_code == 422
+
+
 def test_create_tenant_is_pinned_to_own_namespace(make_client, fake_k8s):
     c = make_client("datasets", role="tenant", tenants=["alpha"])
     assert c.post("/api/datasets", json=BODY).status_code == 201

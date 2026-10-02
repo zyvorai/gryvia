@@ -139,6 +139,12 @@ spec:
                         description: CredentialsSecret is the name of the secret with
                           credentials
                         type: string
+                      endpoint:
+                        description: |-
+                          Endpoint is the URL of an S3-compatible service (MinIO, Ceph RGW, R2, ...), for example
+                          http://minio.storage.svc:9000. Empty means AWS. Passed to the AWS CLI as AWS_ENDPOINT_URL.
+                        pattern: ^(https?://[^\s/]+(/[^\s]*)?)?$
+                        type: string
                       prefix:
                         description: Prefix is the S3 key prefix
                         type: string

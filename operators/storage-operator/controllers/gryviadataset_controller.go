@@ -188,6 +188,9 @@ func validateDataset(ds *gryviav1.GryviaDataset, version string) string {
 		if s.S3 == nil || s.S3.Bucket == "" {
 			return "source.type s3 needs source.s3.bucket"
 		}
+		if e := s.S3.Endpoint; e != "" && !(strings.HasPrefix(e, "http://") || strings.HasPrefix(e, "https://")) {
+			return "source.s3.endpoint must be http:// or https://"
+		}
 	case "nfs":
 		if s.NFS == nil || s.NFS.Server == "" || !strings.HasPrefix(s.NFS.Path, "/") {
 			return "source.type nfs needs source.nfs.server and an absolute source.nfs.path"
@@ -387,6 +390,9 @@ func (r *GryviaDatasetReconciler) buildJob(ds *gryviav1.GryviaDataset, ns, name,
 			corev1.EnvVar{Name: "HOME", Value: "/tmp"})
 		if s.S3.Region != "" {
 			env = append(env, corev1.EnvVar{Name: "AWS_DEFAULT_REGION", Value: s.S3.Region})
+		}
+		if s.S3.Endpoint != "" {
+			env = append(env, corev1.EnvVar{Name: "AWS_ENDPOINT_URL", Value: s.S3.Endpoint})
 		}
 		if s.S3.CredentialsSecret != "" {
 			// The Secret (in the dataset namespace) holds AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY.

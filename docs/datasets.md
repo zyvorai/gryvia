@@ -10,12 +10,13 @@ version, so training jobs, RAG ingestion and evaluation read the same bytes. It 
 | PVC creation (size, storage class, owner), the download Job for each source type (image, env, volumes, non-root pod), the termination-message result read back into status, versions and `keepLast` retention, a changed source downloading again, failures and invalid specs reported in status | Unit tests with a fake client (`operators/storage-operator/controllers/gryviadataset_controller_test.go`) |
 | The download script's resume and incremental paths: a partial http file resumed with and without server Range support, a complete one (416), a checksum mismatch keeping the temporary directory, another source's directory discarded, and an s3 version that fetches only changed objects while unchanged ones stay hard-linked and the old version is untouched | The script run under busybox (2026-10-02) with a stand-in server and a fake `aws` |
 | The download script (http with sha256, the swap into `/data/<version>`, pruning, the file count, size and checksum) on a real cluster | The "Datasets" step of `.github/workflows/e2e-ml.yml` with a stand-in HTTP server; these steps also passed on a single-node k3s host (2026-10-01) |
+| s3 with the real AWS CLI image (`amazon/aws-cli:2.17.0`) against an S3-compatible server through `source.s3.endpoint`: a prefix with nested keys downloaded, then a new version after one object changed, one was deleted and one was added. The new version has exactly the current objects, the unchanged object is the same inode as in the old version (hard-linked, not downloaded again), the changed one is a new file, and the old version is untouched | The "Datasets - s3 source" step of `.github/workflows/e2e-ml.yml` with versitygw (posix backend) as the server |
 | Gateway routes and tenant scoping | `services/api-gateway/tests/test_datasets.py` |
 
 | Not verified | Why |
 | --- | --- |
-| s3 downloads with the AWS CLI image, and nfs copies | No S3 bucket or NFS server in CI; the Jobs are unit-tested only |
-| Resume and incremental s3 sync against real S3 and large data | The script was run under busybox with a Range-capable stand-in server and a fake `aws` that, like the AWS CLI, writes each file to a temporary name and renames it; not against S3 |
+| nfs copies | No NFS server in CI; the Job is unit-tested only |
+| Amazon S3 itself, large data, and resuming an interrupted s3 sync | CI uses versitygw with a few small objects; an interrupted sync was only run with a fake `aws` under busybox |
 
 ## Turning it on
 
@@ -42,6 +43,7 @@ The kind is cluster-scoped. The fields the controller reads:
 | `source.type` | `http`, `s3` or `nfs` (`gcs`, `azure-blob`, `git-lfs` and `vast` are rejected in status) |
 | `source.http.url`, `source.http.checksumURL` | One file. With `checksumURL` the first field of its first line must equal the sha256 of the file, or the download fails |
 | `source.s3.bucket`, `prefix`, `region`, `credentialsSecret` | `aws s3 sync s3://bucket/prefix`. The Secret, in the dataset namespace, holds `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` |
+| `source.s3.endpoint` | URL of an S3-compatible service (MinIO, Ceph RGW, Cloudflare R2, versitygw, ...), passed as `AWS_ENDPOINT_URL`; empty means AWS. Set `region` too (`us-east-1` for most of them) |
 | `source.nfs.server`, `source.nfs.path` | The export is mounted read-only and copied |
 | `version` | Directory name of this version (default `latest`; letters, digits, `.`, `_`, `-`) |
 | `namespace` | Where the PVC and Jobs live (default `--dataset-namespace`); consumers run there |
