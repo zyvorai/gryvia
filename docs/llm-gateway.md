@@ -16,7 +16,7 @@ It runs as `/manager llm-gateway`, a mode of the ai-operator binary (same image)
 | Key create/list/revoke with tenant scoping, the key shown once and only its hash stored, models and usage routes | `services/api-gateway/tests/test_llm.py` |
 | CLI key Secret, hashing, model and usage tables | `cli/src/commands/llm.rs` tests |
 | The gateway on a real cluster against a stand-in OpenAI server: key, model list, a chat completion, a streamed one, the usage record and a 429; with two replicas, the shared counter and a 429 from the replica that served no traffic | The "LLM gateway" step of `.github/workflows/e2e-ml.yml`; the single-replica steps also passed on a single-node k3s host (2026-10-01) |
-| A real model engine behind the gateway: llama.cpp's server (CPU) with Qwen2.5-0.5B Instruct as a `GryviaInferenceService`, a chat completion with its real usage, a streamed answer with many content chunks and the usage chunk the gateway asks for, and the tokens metered under the model | The "Real model" step of `.github/workflows/e2e-ml.yml` |
+| A real model engine behind the gateway: llama.cpp's server (CPU) with Qwen2.5-0.5B Instruct as a `GryviaInferenceService`, a chat completion with its real usage, a streamed answer with many content chunks and the usage chunk the gateway asks for, and the tokens metered under the model | The "Real model" step of `.github/workflows/e2e-ml.yml`; passed in kind CI on main ([run 36990962579](https://github.com/zyvorai/gryvia/actions/runs/36990962579), 2026-10-02: 22 streamed content chunks plus the usage chunk) |
 
 | Not verified | Why |
 | --- | --- |

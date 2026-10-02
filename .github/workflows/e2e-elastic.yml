@@ -8,7 +8,7 @@ name: Kind e2e (elastic training across nodes)
 # no node left and stays Pending, so the survivor must re-form the group alone (world size 1), resume from the
 # committed step and finish, and the Job's success policy (succeededCount: minNodes) must complete it.
 # The cluster is scripts/kind-elastic.yaml; Gryvia installs like the other kind e2e (scripts/kind-demo.sh).
-# NOTE: authored without being able to run it (no docker on the authoring machine); the first CI run is its first run.
+# First passed in CI on main on 2026-10-02 (run 36990965624).
 
 on:
   pull_request:

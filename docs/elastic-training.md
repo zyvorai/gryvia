@@ -61,6 +61,8 @@ What the kind e2e checks: after worker 1 is deleted, the survivor's all-reduce f
 - `DONE` to record world size 1, and the Job to complete through the success policy (`succeededCount: minNodes`) with the Pending pod still unscheduled;
 - a pod on a third node to read `DONE` from the same volume.
 
+The first run on main ([run 36990965624](https://github.com/zyvorai/gryvia/actions/runs/36990965624), 2026-10-02) passed: the workers ran on `worker3` (index 0) and `worker2` (index 1), `worker2` was stopped and deleted, the replacement for index 1 stayed Pending, the survivor re-formed the group alone and resumed from step 10 with one failure restart (`TORCHELASTIC_RESTART_COUNT` 1: here the worker really failed, on the collective timeout, unlike the single-node run where the replacement joined), and the reader on `worker` read `DONE`.
+
 Use these mount options for the checkpoint volume on NFS: `noac` and `lookupcache=none` (the e2e uses both, with `nfsvers=4.2`). The commit protocol polls for files another node just created; with the default attribute and lookup caches a rank can miss them for up to a minute, past the commit timeout.
 
 ```yaml
