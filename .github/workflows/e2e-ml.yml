@@ -1098,6 +1098,139 @@ jobs:
           wait_for "agent key removed" 60 key_gone
           kubectl -n "$NS" delete gryviainferenceservice/e2e-agent-llm
 
+      - name: Job hooks - stand-in receiver and enable the controller
+        run: |
+          source scripts/e2e-ml-lib.sh
+          # The receiver checks the X-Gryvia-Signature of each delivery and prints one line per POST.
+          mkdir -p /tmp/e2e-hook
+          cat > /tmp/e2e-hook/receiver.py <<'PY'
+          import hashlib, hmac, http.server, json, sys, threading
+          SECRET = b"e2e-signing"
+          LOCK = threading.Lock()
+          class H(http.server.BaseHTTPRequestHandler):
+              def do_POST(self):
+                  body = self.rfile.read(int(self.headers["Content-Length"]))
+                  ts = self.headers.get("X-Gryvia-Timestamp", "")
+                  want = "sha256=" + hmac.new(SECRET, ts.encode() + b"." + body, hashlib.sha256).hexdigest()
+                  ok = hmac.compare_digest(want, self.headers.get("X-Gryvia-Signature", ""))
+                  d = json.loads(body)
+                  line = " ".join(["DELIVERY", "VERIFIED" if ok else "BADSIG", d["kind"], d["name"], d["event"],
+                                   str(self.headers.get("X-Gryvia-Event")), "run=%s" % d.get("run")])
+                  with LOCK:  # deliveries arrive concurrently; keep each line whole
+                      sys.stdout.write(line + "\n")
+                      sys.stdout.flush()
+                  self.send_response(204 if ok else 401)
+                  self.end_headers()
+              def do_GET(self):
+                  self.send_response(200)
+                  self.end_headers()
+              def log_message(self, *args):
+                  pass
+          http.server.ThreadingHTTPServer(("", 8080), H).serve_forever()
+          PY
+          kubectl -n "$NS" create configmap e2e-hook-receiver --from-file=/tmp/e2e-hook --dry-run=client -o yaml | kubectl apply -f -
+          cat <<EOF | kubectl apply -f -
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata: {name: e2e-hook-receiver, namespace: gryvia-system}
+          spec:
+            selector: {matchLabels: {app: e2e-hook-receiver}}
+            template:
+              metadata: {labels: {app: e2e-hook-receiver}}
+              spec:
+                securityContext: {runAsNonRoot: true, runAsUser: 65534, seccompProfile: {type: RuntimeDefault}}
+                containers:
+                  - name: receiver
+                    image: ${TINY_PY_IMAGE}
+                    imagePullPolicy: IfNotPresent
+                    command: [python3, -u, /app/receiver.py]
+                    ports: [{containerPort: 8080}]
+                    readinessProbe: {httpGet: {path: /, port: 8080}, periodSeconds: 2}
+                    securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+                    volumeMounts: [{name: app, mountPath: /app}]
+                volumes: [{name: app, configMap: {name: e2e-hook-receiver}}]
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata: {name: e2e-hook-receiver, namespace: gryvia-system}
+          spec: {selector: {app: e2e-hook-receiver}, ports: [{port: 8080, targetPort: 8080}]}
+          EOF
+          kubectl -n "$NS" rollout status deploy/e2e-hook-receiver --timeout=120s
+          # Only the receiver's ClusterIP is allowed: the operator refuses every other private address.
+          ip="$(jp svc/e2e-hook-receiver '{.spec.clusterIP}')"
+          helm upgrade gryvia ./helm/gryvia --namespace gryvia-system --reuse-values --wait --timeout 300s \
+            --set aiOperator.jobHooks.enabled=true --set-json "aiOperator.jobHooks.allowedCIDRs=[\"${ip}/32\"]"
+          kubectl -n gryvia-system rollout status deploy -l app.kubernetes.io/component=ai-operator --timeout=180s
+          check() { kubectl -n "$NS" logs -l app.kubernetes.io/component=ai-operator --tail=-1 | grep -c '"controllerKind":"GryviaJobHook"' >/dev/null; }
+          wait_for "controller GryviaJobHook started" 90 check
+
+      - name: Job hooks - signed deliveries for workflow phases, selector, refused address, gateway
+        run: |
+          source scripts/e2e-ml-lib.sh
+          kubectl -n "$NS" create secret generic e2e-hook-secret --from-literal=secret=e2e-signing
+          api /api/job-hooks -X POST -d '{"name":"e2e-hook","events":["Failed","Succeeded"],"kinds":["GryviaWorkflow"],
+            "matchLabels":{"e2e-hook":"yes"},"url":"http://e2e-hook-receiver.gryvia-system.svc:8080/hook",
+            "secretName":"e2e-hook-secret","attempts":3,"backoffSeconds":2}' | jq -e '.metadata.name == "e2e-hook"'
+          # The API server's ClusterIP is private and not allowed: the attempt is refused before any connection.
+          cat <<'EOF' | kubectl apply -f -
+          apiVersion: gryvia.io/v1alpha1
+          kind: GryviaJobHook
+          metadata: {name: e2e-hook-refused, namespace: gryvia-system}
+          spec:
+            events: [Succeeded]
+            kinds: [GryviaWorkflow]
+            selector: {matchLabels: {e2e-hook: "yes"}}
+            webhook: {url: "http://kubernetes.default.svc/hook"}
+            retry: {attempts: 1}
+          EOF
+          wait_for "hook Ready" 60 field_is gryviajobhook/e2e-hook '{.status.conditions[?(@.type=="Ready")].reason}' Valid
+          sleep 2
+
+          for wf in ok:0 fail:3 other:0; do
+            name="${wf%%:*}"; code="${wf##*:}"; labels='{e2e-hook: "yes"}'
+            [ "$name" = other ] && labels='{e2e-hook: "no"}'
+            cat <<EOF | kubectl apply -f -
+          apiVersion: gryvia.io/v1alpha1
+          kind: GryviaWorkflow
+          metadata: {name: e2e-hook-${name}, namespace: gryvia-system, labels: ${labels}}
+          spec:
+            steps:
+              - name: only
+                type: script
+                script: {image: busybox:1.36, command: [sh, -c], args: ["exit ${code}"]}
+          EOF
+          done
+          wait_for "workflow e2e-hook-ok Succeeded" 180 field_is gryviaworkflow/e2e-hook-ok '{.status.phase}' Succeeded
+          wait_for "workflow e2e-hook-fail Failed" 180 field_is gryviaworkflow/e2e-hook-fail '{.status.phase}' Failed
+          wait_for "workflow e2e-hook-other Succeeded" 180 field_is gryviaworkflow/e2e-hook-other '{.status.phase}' Succeeded
+
+          received() { kubectl -n "$NS" logs deploy/e2e-hook-receiver | grep -c "DELIVERY VERIFIED GryviaWorkflow $1 $2 $2 run=0" >/dev/null; }
+          wait_for "signed delivery for the succeeded workflow" 60 received e2e-hook-ok Succeeded
+          wait_for "signed delivery for the failed workflow" 60 received e2e-hook-fail Failed
+          wait_for "hook counts 2 deliveries" 60 field_is gryviajobhook/e2e-hook '{.status.deliveries}' 2
+          logs="$(kubectl -n "$NS" logs deploy/e2e-hook-receiver)"
+          echo "$logs"
+          assert_eq "deliveries received" "$(grep -c '^DELIVERY' <<<"$logs")" 2
+          assert_eq "unsigned or unselected deliveries" "$(grep -cE 'BADSIG|e2e-hook-other' <<<"$logs" || true)" 0
+          assert_nonempty "delivery recorded on the workflow" "$(jp gryviaworkflow/e2e-hook-ok '{.metadata.annotations.gryvia\.io/job-hooks}')"
+
+          wait_for "refused attempt counted" 60 field_is gryviajobhook/e2e-hook-refused '{.status.failures}' 1
+          jp gryviajobhook/e2e-hook-refused '{.status.lastDelivery.error}' | grep -q "blocked address" \
+            || { echo "refusal reason: $(jp gryviajobhook/e2e-hook-refused '{.status.lastDelivery.error}')"; exit 1; }
+          echo "ok: private address refused"
+
+          # Gateway view, suspend and delete.
+          assert_eq "gateway deliveries" "$(gw /api/job-hooks/e2e-hook .status.deliveries)" 2
+          assert_eq "gateway hides header values" "$(gw /api/job-hooks/e2e-hook '.spec | has("headers")')" false
+          api /api/job-hooks/e2e-hook/suspend -X POST -d '{"suspend":true}' | jq -e '.status == "suspended"'
+          wait_for "hook Suspended" 60 field_is gryviajobhook/e2e-hook '{.status.conditions[?(@.type=="Ready")].reason}' Suspended
+          api /api/job-hooks/e2e-hook -X DELETE >/dev/null
+          kubectl -n "$NS" delete gryviajobhook/e2e-hook-refused
+          wait_for "hooks deleted" 60 gone gryviajobhook/e2e-hook
+          kubectl -n "$NS" delete gryviaworkflow e2e-hook-ok e2e-hook-fail e2e-hook-other
+          kubectl -n "$NS" delete deploy,svc,configmap e2e-hook-receiver
+          kubectl -n "$NS" delete secret e2e-hook-secret
+
       - name: Dump state on failure
         if: failure()
         run: |
@@ -1113,6 +1246,8 @@ jobs:
           kubectl -n gryvia-system logs -l app.kubernetes.io/component=llm-gateway --tail=100 || true
           kubectl -n gryvia-system get gryviausagerecords -l gryvia.io/usage-kind=tokens -o yaml || true
           kubectl -n gryvia-system get gryviavectorindexes,statefulsets,jobs -o wide || true
+          kubectl -n gryvia-system get gryviajobhooks -o yaml || true
+          kubectl -n gryvia-system logs deploy/e2e-hook-receiver --tail=50 || true
           kubectl -n gryvia-system get gryviavectorindexes -o yaml || true
           kubectl -n gryvia-system logs -l gryvia.io/vector-index --tail=100 --all-containers || true
           kubectl -n gryvia-system get gryviaagents -o yaml || true

@@ -54,7 +54,7 @@ spec:
             {{- if eq $name "gpu-operator" }}
             - --auto-register={{ $.Values.gpuOperator.autoRegister }}
             {{- end }}
-            {{- if and (dig "platformCompletion" "reportUnsupportedAPIs" nil $.Values.AsMap) (has $name (list "ai-operator" "gpu-operator" "quota-operator" "storage-operator")) }}
+            {{- if and (dig "platformCompletion" "reportUnsupportedAPIs" nil $.Values.AsMap) (has $name (list "ai-operator" "storage-operator")) }}
             - --report-unsupported-apis=true
             {{- end }}
             {{- if and (eq $name "ai-operator") (dig "platformCompletion" "inferenceTelemetry" nil $.Values.AsMap) }}
@@ -107,6 +107,12 @@ spec:
             {{- end }}
             - --enable-agents=true
             - {{ printf "--agent-image=%s" (dig "aiOperator" "agents" "image" "ghcr.io/zyvorai/gryvia-agent-runtime:latest" $.Values.AsMap) | quote }}
+            {{- end }}
+            {{- if and (eq $name "ai-operator") (dig "aiOperator" "jobHooks" "enabled" nil $.Values.AsMap) }}
+            - --enable-job-hooks=true
+            {{- with (dig "aiOperator" "jobHooks" "allowedCIDRs" list $.Values.AsMap) }}
+            - {{ printf "--job-hook-allowed-cidrs=%s" (join "," .) | quote }}
+            {{- end }}
             {{- end }}
             {{- if and (eq $name "ai-operator") (or (dig "aiOperator" "rag" "enabled" nil $.Values.AsMap) (dig "aiOperator" "agents" "enabled" nil $.Values.AsMap)) }}
             - {{ printf "--llm-gateway-url=http://%s-llm-gateway.%s.svc.cluster.local:%v" (include "gryvia.fullname" $) (include "gryvia.namespace" $) (dig "llmGateway" "service" "port" 8080 $.Values.AsMap) | quote }}

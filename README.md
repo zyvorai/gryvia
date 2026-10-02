@@ -72,7 +72,7 @@ NVIDIA feature-discovery labels. Not yet validated on real GPUs.<br>
 
 **Six Kubernetes operators**<br>
 GPU, AI workload and quota operators (plus optional storage and network operators for RDMA/SR-IOV and
-parallel-filesystem CSI backends) in the main chart; network intelligence in its own. 42 of the 55 CRDs have a
+parallel-filesystem CSI backends) in the main chart; network intelligence in its own. 43 of the 47 CRDs have a
 registered runtime controller (some are opt-in).<br>
 [Core components](#core-components)
 
@@ -219,20 +219,20 @@ operator's node selection (filter, score, select), not a separate scheduler.
 ## Core Components
 
 <details>
-<summary><b>55 CRDs, 42 of them with a runtime controller (the CRD reference has the full table)</b></summary>
+<summary><b>47 CRDs, 43 of them with a runtime controller (the CRD reference has the full table)</b></summary>
 
-**Reconciled by a runtime controller (42; some opt-in).**
+**Reconciled by a runtime controller (43; some opt-in).**
 GPU operator: `GryviaHealthCheck` (opt-in health/remediation flags), `GryviaGpuNode` (also auto-created from GPU feature-discovery labels), `GryviaGpuMemoryOptimizer`, `GryviaGPUSharingPolicy` (opt-in `--enable-gpu-sharing`, chart `gpuOperator.gpuSharing`: writes the node labels for time-slicing and MIG) ·
 AI operator: `GryviaAIJob`, `GryviaCheckpointGuard`, `GryviaLiveExperiment`, `GryviaModelLineage`,
 `GryviaTrainingProfiler`, `GryviaTrainingTimeMachine`, and the ML kinds `GryviaWorkspace`, `GryviaInferenceService`,
 `GryviaModelRegistry`, `GryviaWorkflow`, `GryviaAutoTuner`, `GryviaPriority`, `GryviaTemplate` (on by default, `--enable-ml-controllers`), plus
-`GryviaModelWatch` (only with `--enable-model-watch`, see [Model factory](docs/model-factory.md)), `GryviaVectorIndex` (only with `--enable-rag`, see [RAG](docs/rag.md)), `GryviaAgent` (only with `--enable-agents`, see [Agents](docs/agents.md)), `GryviaFederation` (only with an administrator server allowlist), `GryviaFabricSignal` (only with `--merge-fabric-signals`) · Quota operator: `GryviaQuota`, `GryviaTenant`,
+`GryviaModelWatch` (only with `--enable-model-watch`, see [Model factory](docs/model-factory.md)), `GryviaVectorIndex` (only with `--enable-rag`, see [RAG](docs/rag.md)), `GryviaAgent` (only with `--enable-agents`, see [Agents](docs/agents.md)), `GryviaJobHook` (only with `--enable-job-hooks`, see [Job hooks](docs/job-hooks.md)), `GryviaFederation` (only with an administrator server allowlist), `GryviaFabricSignal` (only with `--merge-fabric-signals`) · Quota operator: `GryviaQuota`, `GryviaTenant`,
 `GryviaUsageRecord`, `GryviaCostPredictor`, `GryviaBudget`, `GryviaChargeback`, `GryviaReservation` (only with `--enable-reservations`) · Storage operator: `GryviaStorage`, `GryviaDataset` (only with `--enable-datasets`, see [Datasets](docs/datasets.md)) · Network operator: `GryviaNetwork` ·
 Network-intelligence operator: `GryviaFlowPolicy`, `GryviaTrafficInsight`, `GryviaAutoPolicy`, `GryviaTraceSession`,
 `GryviaServiceGraph`, `GryviaNetworkAnomaly`, `GryviaSecurityPolicy`, `GryviaNetworkCost`, `GryviaTrainingInsight`,
 `GryviaInferenceInsight`.
 
-**Data or legacy APIs without runtime actions (13).** `GryviaGpuSku`, `GryviaNetworkRate`, `GryviaNetworkUsageRecord` and `GryviaNodeFabric` are catalog/telemetry data. `GryviaAutoScaler`, `GryviaJobHook`, `GryviaRetryPolicy`, `GryviaSLA`, `GryviaAudit`, `GryviaQuotaPolicy`, `GryviaMetric`, `GryviaBenchmark` and `GryviaDRTest` have no supported runtime implementation; their CRD version is marked `deprecated` so `kubectl` warns on use, and they will be removed in a future release (existing objects stay readable until then). The platform completion flags can report them unsupported without executing their specs.
+**Data kinds without a controller (4).** `GryviaGpuSku`, `GryviaNetworkRate`, `GryviaNetworkUsageRecord` and `GryviaNodeFabric` are catalog/telemetry data read by other controllers. The legacy kinds `GryviaAutoScaler`, `GryviaRetryPolicy`, `GryviaSLA`, `GryviaAudit`, `GryviaQuotaPolicy`, `GryviaMetric`, `GryviaBenchmark` and `GryviaDRTest`, which never had a runtime, were removed; see the [CHANGELOG](CHANGELOG.md) for the upgrade steps.
 
 </details>
 

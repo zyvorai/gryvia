@@ -223,6 +223,7 @@ rules:
   - gryviamodelwatches
   - gryviavectorindexes
   - gryviaagents
+  - gryviajobhooks
   - gryviadatasets
   - gryviaflowpolicies
   - gryviatrafficinsights
@@ -257,6 +258,7 @@ rules:
   - gryviamodelwatches
   - gryviavectorindexes
   - gryviaagents
+  - gryviajobhooks
   - gryviadatasets
   - gryviaflowpolicies
   - gryviatracesessions

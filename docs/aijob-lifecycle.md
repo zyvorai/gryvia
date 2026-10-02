@@ -93,8 +93,7 @@ Notes:
 - **Terminal states are sticky**: `Succeeded`/`Failed` are never touched again, not even if a workload later reports
   something else; a cancel request on a finished job changes nothing. (`gryvia cancel` writes the status directly, so
   it can still overwrite a finished job's phase with `Cancelled`; usage records that are already final are immutable.)
-- **Who sets `Rejected`/`Queued`**: the quota operator (`gryviaquota_controller.go`, `gryviabudget_controller.go`,
-  `gryviaquotapolicy_controller.go`), and only for jobs it sees in `Pending` or `Queued`. Nothing moves a job out of
+- **Who sets `Rejected`/`Queued`**: the quota operator (`gryviaquota_controller.go`, `gryviabudget_controller.go`), and only for jobs it sees in `Pending` or `Queued`. Nothing moves a job out of
   `Queued` when the quota operator set it: it is a hold, not a queue with admission (known gap). Queueing with real admission exists only through the opt-in Kueue integration.
 - **Race**: the quota operator can see a job in `Pending` while the ai-operator has already moved on. Its patch is not
   optimistic-locked, so `Rejected` wins, and the ai-operator then tears down whatever it had created.

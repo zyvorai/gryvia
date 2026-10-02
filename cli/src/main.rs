@@ -381,6 +381,17 @@ enum Commands {
         action: CrdCommands,
     },
 
+    /// Job hooks: a webhook when an AI job or workflow fails, succeeds or changes phase
+    ///
+    /// A job hook is a namespaced GryviaJobHook. The ai-operator (chart value aiOperator.jobHooks.enabled) POSTs a
+    /// signed JSON body, or a Slack message, when a GryviaAIJob or GryviaWorkflow in its namespace reaches one of its
+    /// events; failed POSTs are retried with backoff.
+    #[command(after_help = examples(&["gryvia job-hooks create -f examples/crds/gryviajobhook-examples.yaml -n ml-research", "gryvia job-hooks list -n ml-research", "gryvia job-hooks get slack-failures -n ml-research", "gryvia job-hooks delete slack-failures --yes"]))]
+    JobHooks {
+        #[command(subcommand)]
+        action: CrdCommands,
+    },
+
     /// LLM gateway: per-tenant API keys, published models and token usage
     ///
     /// The gateway (chart value llmGateway.enabled) is one OpenAI-compatible endpoint for every
@@ -1482,6 +1493,16 @@ async fn run() -> Result<()> {
                 action,
                 "follow it with: gryvia datasets list",
                 "Its PVC and every downloaded version are deleted",
+            )
+            .await?;
+        }
+        Commands::JobHooks { action } => {
+            run_crd(
+                &client,
+                &commands::jobhooks::JOB_HOOKS,
+                action,
+                "follow it with: gryvia job-hooks list",
+                "Transitions after this are no longer delivered",
             )
             .await?;
         }

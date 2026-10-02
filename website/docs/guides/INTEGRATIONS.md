@@ -17,9 +17,11 @@ those services for you. Earlier versions of this page described such features; t
 The recipes below are ordinary Kubernetes usage. None has been tested against the third-party service it mentions.
 :::
 
-CRDs such as `GryviaJobHook`, `GryviaDataset`, `GryviaWorkflow`, `GryviaModelRegistry`, `GryviaBudget` and
-`GryviaSLA` exist in `crds/`, but **no controller is wired for them yet**; objects of those kinds are stored and
-nothing acts on them. See [reference/crds.md](../reference/crds.md) for the list of kinds that do have a controller.
+A few kinds do reach outside the cluster, all opt-in: `GryviaJobHook` posts a webhook when a job or workflow changes
+phase ([job hooks](https://github.com/zyvorai/gryvia/blob/main/docs/job-hooks.md)), `GryviaDataset` downloads http,
+s3, nfs or Hugging Face data ([datasets](https://github.com/zyvorai/gryvia/blob/main/docs/datasets.md)),
+`GryviaModelWatch` polls the Hugging Face Hub, and budget alerts can go to one webhook. See
+[reference/crds.md](../reference/crds.md) for which kinds have a controller.
 
 ## Experiment Tracking
 
@@ -66,8 +68,8 @@ against a shared volume (`spec.storage` gives a job a PVC mounted at `/data`, se
 
 Do the upload at the end of your training script, or as a follow-up Kubernetes Job you create yourself, with the token
 from a Secret (`kubectl create secret generic hf-token --from-literal=token=YOUR_HF_TOKEN`).
-Post-completion automation is the purpose of the `GryviaJobHook` CRD, but it has no controller today. This is its
-schema, shown as a design sketch (it validates against the CRD, and nothing will run it):
+A job hook can tell your own automation when training finished, so it runs the push (the hook only sends the
+notification; the receiver does the work):
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
@@ -75,21 +77,26 @@ kind: GryviaJobHook
 metadata:
   name: push-to-huggingface
 spec:
-  trigger: post-completion
-  action:
-    type: k8sJob
-    k8sJob:
-      image: python:3.11
-      command: ["python", "push_model.py"]
+  events: [Succeeded]
+  kinds: [GryviaAIJob]
+  selector:
+    matchLabels:
+      publish: huggingface
+  webhook:
+    url: https://automation.example.com/push-model
+    secretRef:
+      name: hook-secret
 ```
 
-`GryviaModelRegistry` is likewise schema-only. There is no SageMaker or MLflow registry integration.
+`GryviaModelRegistry` tracks versions, promotion and serving inside the cluster (see [ML Workflows](./ML_WORKFLOWS.md)).
+There is no SageMaker or MLflow registry integration.
 
 ## Data Platforms
 
-`GryviaDataset` (CRD only; the storage operator contains a dataset reconciler that is **not registered** in `main.go`)
-does not fetch, version or mount data. Use whatever you already use (DVC, Pachyderm, object storage) inside the job
-container or an init container, with credentials from Secrets, and a PVC or CSI volume for shared data
+`GryviaDataset` (opt-in, `storageOperator.datasets.enabled`) downloads an http, s3, nfs or Hugging Face source into a
+versioned directory on a PVC that jobs mount ([datasets](https://github.com/zyvorai/gryvia/blob/main/docs/datasets.md)).
+For anything else, use what you already use (DVC, Pachyderm, object storage) inside the job container or an init
+container, with credentials from Secrets, and a PVC or CSI volume for shared data
 (see [Storage and Network Operators](./STORAGE_NETWORK_OPERATORS.md)).
 
 ## Workflow Orchestration
@@ -174,12 +181,13 @@ Jenkins (`gryvia submit --file job.yaml --wait`, `gryvia logs training-job`).
 
 The network-intelligence CRDs accept a webhook URL that the operator calls: `alertWebhook` on `GryviaNetworkAnomaly` and
 `GryviaSecurityPolicy` (see [Network Intelligence](./NETWORK_INTELLIGENCE.md); those controllers need Cilium and a
-working collector path). Point it at a Slack incoming webhook or any HTTP receiver. There is no job-completion
-notification, no Slack bot and no `/gryvia` slash command.
+working collector path). Point it at a Slack incoming webhook or any HTTP receiver. Job notifications come from job
+hooks (below). There is no Slack bot and no `/gryvia` slash command.
 
-### Job hook (design sketch)
+### Job hooks
 
-`GryviaJobHook` describes a webhook on job completion; nothing reconciles it today:
+With `aiOperator.jobHooks.enabled`, a `GryviaJobHook` in a namespace posts a message when a `GryviaAIJob` or
+`GryviaWorkflow` there reaches one of its events. `format: slack` sends `{"text": ...}` for an incoming webhook:
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
@@ -187,14 +195,14 @@ kind: GryviaJobHook
 metadata:
   name: slack-notifications
 spec:
-  trigger: post-completion
-  action:
-    type: webhook
-    webhook:
-      url: https://hooks.slack.com/services/YOUR/WEBHOOK/URL
-      method: POST
-      body: '{"text": "Job completed"}'
+  events: [Failed, Succeeded]
+  webhook:
+    url: https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+    format: slack
 ```
+
+Delivery is at least once with retries; see [job hooks](https://github.com/zyvorai/gryvia/blob/main/docs/job-hooks.md)
+for the payload, signature and the addresses the operator refuses.
 
 ## Cost Management
 

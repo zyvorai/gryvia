@@ -16,6 +16,7 @@ pub mod gpu_trace;
 pub mod graph;
 pub mod health;
 pub mod invoice;
+pub mod jobhooks;
 pub mod list;
 pub mod llm;
 pub mod logs;

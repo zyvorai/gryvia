@@ -16,7 +16,7 @@ for path,on in zip(sys.argv[1:],[False,True]):
  assert ('--kueue-topology-name=rack' in args['quota-operator'])==on
  assert ('--kueue-admission-check=multikueue' in args['quota-operator'])==on
  for name,flags in args.items():
-  assert ('--report-unsupported-apis=true' in flags)==(on and name!='network-operator')
+  assert ('--report-unsupported-apis=true' in flags)==(on and name in ('ai-operator','storage-operator'))
  roles=[d for d in docs if d and d.get('kind')=='ClusterRole']
  assert any('pods/eviction' in r.get('resources',[]) for d in roles for r in d.get('rules',[]))==on
 print('Completion flags and conditional eviction RBAC passed')

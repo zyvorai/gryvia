@@ -120,16 +120,16 @@ Use a cluster Event exporter for your own notification system.
 
 ## Legacy APIs
 
-Set `platformCompletion.reportUnsupportedAPIs=true` to report unsupported modes for:
-AutoScaler, RetryPolicy, JobHook, DRTest, SLA, Audit, QuotaPolicy, Benchmark, Metric
-and Dataset. `GryviaGPUSharingPolicy` is not on this list: its controller is kept (opt-in with
+The legacy kinds AutoScaler, RetryPolicy, DRTest, SLA, Audit, QuotaPolicy, Benchmark and Metric were removed (see the
+CHANGELOG for the upgrade steps). Set `platformCompletion.reportUnsupportedAPIs=true` to mark `GryviaJobHook` and
+`GryviaDataset` objects `Ready=False` (`UnsupportedAPI`) while their controllers are off (`aiOperator.jobHooks.enabled`,
+`storageOperator.datasets.enabled`). `GryviaGPUSharingPolicy` is not on this list: its controller is kept (opt-in with
 `gpuOperator.gpuSharing`) because the NVIDIA one-click path depends on it. The other dormant legacy controller files are removed;
 the compatibility capability controllers only update a Ready condition. Template validation/usage reporting
 and PriorityClass reconciliation are registered by the existing ML-controller capability.
 
-Replacement paths: Kubernetes/Kueue job retries, standard autoscalers, external audit pipelines,
-CSI/data-transfer workloads, workload Jobs for benchmarks,
-and externally measured SLOs. Full implementations of these legacy APIs remain outside this bundle.
+Replacement paths for the removed kinds: Kubernetes/Kueue job retries (`spec.retryLimit`), a cluster autoscaler,
+the Kubernetes audit log, workload Jobs for benchmarks, and externally measured SLOs.
 
 ## Hardware qualification
 

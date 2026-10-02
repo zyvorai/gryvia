@@ -3,7 +3,7 @@
 Comprehensive disaster recovery and business continuity for Gryvia.
 
 > **Status: design document; automated DR is not implemented.** Nothing in this repo runs continuous backup,
-> replication, automatic failover or DR drills. `GryviaDRTest` is a CRD with no controller wired yet. The
+> replication, automatic failover or DR drills (the `GryviaDRTest` CRD, which never had a controller, was removed). The
 > `BackupPolicy`, `DataReplication`, `MultiRegionConfig` and `DRDrill` kinds do not exist, the `kfctl` CLI
 > used throughout does not exist (the `gryvia` CLI has no `backup`, `restore` or `dr` command), and the
 > `gryvia_backup_*` / replication metrics are not exported. The RPO/RTO tiers are targets you would have
