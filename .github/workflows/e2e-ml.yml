@@ -8,7 +8,7 @@ name: ML controllers end-to-end
 # NOT proven here (no GPU, no real model server, no custom metrics adapter): the real Jupyter, code-server, vLLM,
 # Triton, TensorRT-LLM and TorchServe images, GPU scheduling, and an HPA scaling on GPU or RPS metrics (the CPU HPA
 # is exercised with metrics-server). The model factory
-# runs against a stand-in hub (a 20-line Python server, not huggingface.co) and its download/fine-tune/quantize/evaluate
+# runs against a stand-in hub (a 20-line Python server; a last step points the watch at huggingface.co) and its download/fine-tune/quantize/evaluate
 # steps are busybox stand-ins that only emit outputs. A separate step runs the real download, LoRA fine-tune and
 # evaluation scripts (CPU image, SmolLM2-135M from huggingface.co) as workflow job steps; quantization is not run.
 # The GryviaDataset controller (storage-operator) downloads from a stand-in HTTP file server, from an S3-compatible
@@ -1916,6 +1916,72 @@ jobs:
           kubectl -n "$NS" delete gryviaaijob/e2e-elastic
           wait_for "job removed" 120 gone job/e2e-elastic
           kubectl -n "$NS" delete pvc/e2e-elastic-ckpt
+
+      # The model watch against the real Hugging Face API (read-only: GET /api/models, no token). The operator is pointed
+      # at huggingface.co; HuggingFaceTB's SmolLM2 base models are the data. A first poll only records a baseline. A
+      # watch with includeExisting decides on the real metadata: SmolLM2-1.7B (1.71B parameters in the hub's
+      # safetensors metadata) is rejected by maxParamsB 1, SmolLM2-135M passes and its workflow gets the hub's revision.
+      - name: Model watch - the real Hugging Face API, baseline and filters on real metadata
+        run: |
+          source scripts/e2e-ml-lib.sh
+          helm upgrade gryvia ./helm/gryvia --namespace gryvia-system --reuse-values --wait --timeout 300s \
+            --set aiOperator.modelWatch.hubURL=https://huggingface.co
+          kubectl -n gryvia-system rollout status deploy -l app.kubernetes.io/component=ai-operator --timeout=180s
+          hub="$(curl -sf 'https://huggingface.co/api/models?author=HuggingFaceTB&search=SmolLM2&limit=100&expand[]=sha')"
+          sha_of() { jq -r --arg id "$1" '.[] | select(.id==$id) | .sha' <<<"$hub"; }
+          sha135="$(sha_of HuggingFaceTB/SmolLM2-135M)"; sha17="$(sha_of HuggingFaceTB/SmolLM2-1.7B)"
+          echo "hub: SmolLM2-135M@$sha135 SmolLM2-1.7B@$sha17"
+          [[ "$sha135" =~ ^[0-9a-f]{40}$ ]] || { echo "ASSERT FAILED: the hub did not list SmolLM2-135M"; exit 1; }
+
+          cat <<'EOF' | kubectl apply -f -
+          apiVersion: gryvia.io/v1alpha1
+          kind: GryviaModelWatch
+          metadata: {name: e2e-hub-baseline, namespace: gryvia-system}
+          spec:
+            sources:
+              - {provider: huggingface, author: HuggingFaceTB, nameRegex: '^SmolLM2-(135M|360M|1\.7B)$', pipelineTag: text-generation, limit: 100}
+            licenseAllowlist: [apache-2.0]
+            pollInterval: 10m
+            workflowTemplate:
+              steps:
+                - {name: noop, type: script, script: {image: busybox:1.36, command: [sh, -c], args: ['true']}}
+          ---
+          apiVersion: gryvia.io/v1alpha1
+          kind: GryviaModelWatch
+          metadata: {name: e2e-hub-filters, namespace: gryvia-system}
+          spec:
+            sources:
+              - {provider: huggingface, author: HuggingFaceTB, nameRegex: '^SmolLM2-(135M|1\.7B)$', pipelineTag: text-generation, limit: 100}
+            licenseAllowlist: [apache-2.0]
+            maxParamsB: 1
+            includeExisting: true
+            pollInterval: 10m
+            workflowTemplate:
+              steps:
+                - name: report
+                  type: script
+                  script:
+                    image: busybox:1.36
+                    command: [sh, -c]
+                    args: ['printf "{\"model\":\"{{model.id}}\",\"revision\":\"{{model.revision}}\"}" > /dev/termination-log']
+          EOF
+          wait_for "baseline poll" 120 field_set gryviamodelwatch/e2e-hub-baseline '{.status.lastPollTime}'
+          assert_eq "baseline candidates" "$(jp gryviamodelwatch/e2e-hub-baseline '{.status.candidates[*].phase}' | tr ' ' '\n' | sort -u | tr '\n' ' ')" "Baseline "
+          assert_eq "three SmolLM2 base models" "$(jp gryviamodelwatch/e2e-hub-baseline '{.status.candidates[*].id}' | wc -w)" 3
+          assert_eq "135M revision from the hub" "$(run_field e2e-hub-baseline HuggingFaceTB/SmolLM2-135M revision)" "$sha135"
+          assert_eq "135M license" "$(run_field e2e-hub-baseline HuggingFaceTB/SmolLM2-135M license)" apache-2.0
+          assert_eq "135M size from the hub's safetensors metadata" "$(run_field e2e-hub-baseline HuggingFaceTB/SmolLM2-135M paramsB)" 0.13
+          assert_eq "no workflow for a baseline" "$(kubectl -n "$NS" get gryviaworkflows -l gryvia.io/model-watch=e2e-hub-baseline -o name)" ""
+
+          wait_for "1.7B rejected by size" 120 run_is e2e-hub-filters HuggingFaceTB/SmolLM2-1.7B phase Rejected
+          assert_eq "rejection reason" "$(run_field e2e-hub-filters HuggingFaceTB/SmolLM2-1.7B message)" "1.71B parameters exceeds maxParamsB 1"
+          assert_eq "1.7B revision" "$(run_field e2e-hub-filters HuggingFaceTB/SmolLM2-1.7B revision)" "$sha17"
+          wait_for "135M run Succeeded" 300 run_is e2e-hub-filters HuggingFaceTB/SmolLM2-135M phase Succeeded
+          wf="$(run_field e2e-hub-filters HuggingFaceTB/SmolLM2-135M workflow)"
+          assert_eq "workflow got the hub's revision" "$(jp "gryviaworkflow/$wf" '{.status.stepStatuses[?(@.name=="report")].outputs.revision}')" "$sha135"
+          assert_eq "workflow got the model id" "$(jp "gryviaworkflow/$wf" '{.status.stepStatuses[?(@.name=="report")].outputs.model}')" HuggingFaceTB/SmolLM2-135M
+
+          kubectl -n "$NS" delete gryviamodelwatch/e2e-hub-baseline gryviamodelwatch/e2e-hub-filters
 
       - name: Dump state on failure
         if: failure()
