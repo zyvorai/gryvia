@@ -25,6 +25,8 @@ on:
   pull_request:
     paths:
       - 'scripts/upgrade-test.sh'
+      - 'scripts/apply-crds.sh'
+      - 'scripts/tests/apply-crds.test.sh'
       - 'scripts/backup-crs.sh'
       - 'scripts/tests/upgrade-test.test.sh'
       - 'scripts/tests/upgrade-fixtures.yaml'
@@ -43,8 +45,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: shellcheck -S warning scripts/upgrade-test.sh scripts/backup-crs.sh scripts/tests/upgrade-test.test.sh
+      - run: shellcheck -S warning scripts/apply-crds.sh scripts/upgrade-test.sh scripts/backup-crs.sh scripts/tests/upgrade-test.test.sh scripts/tests/apply-crds.test.sh
       - run: bash scripts/tests/upgrade-test.test.sh
+      - run: bash scripts/tests/apply-crds.test.sh
 
   upgrade:
     name: Upgrade, rollback, backup/restore on kind
