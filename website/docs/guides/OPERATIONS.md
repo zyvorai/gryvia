@@ -6,8 +6,14 @@ Helm installs CRDs on the first install only and never upgrades them, so apply t
 
 ```bash
 kubectl apply --server-side --force-conflicts -f crds/        # from the release you are upgrading to
-helm upgrade gryvia oci://ghcr.io/zyvorai/charts/gryvia -n gryvia-system --reuse-values --version <new>
+helm upgrade gryvia oci://ghcr.io/zyvorai/charts/gryvia -n gryvia-system --reset-then-reuse-values --version <new>
 ```
+
+`--reset-then-reuse-values` (Helm 3.14 or later) starts from the new chart's defaults and applies the values you set
+before. Do not upgrade to a newer chart with `--reuse-values`: Helm then keeps the old chart's defaults, so a setting
+added since (such as `nvidia.enabled: false`) is missing, and Helm enables a sub-chart whose condition is missing. The
+chart refuses such values and names the missing key. `--reuse-values` is fine for changing settings without changing
+the chart version.
 
 Without a checkout, each release also carries the CRDs as one file:
 

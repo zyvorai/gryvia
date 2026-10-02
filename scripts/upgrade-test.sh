@@ -29,7 +29,8 @@ usage: upgrade-test.sh [options]
   --cli PATH                gryvia CLI binary (default ./cli/target/release/gryvia; the check is skipped when absent)
   --cluster NAME            kind cluster name (default gryvia-upgrade)
   --namespace NS            release namespace (default gryvia-system)
-  --values-mode MODE        reuse (--reuse-values, what OPERATIONS.md documents) or reset-then-reuse (default reuse)
+  --values-mode MODE        reset-then-reuse (--reset-then-reuse-values, what OPERATIONS.md documents; the default)
+                            or reuse (--reuse-values; the chart refuses values that predate its sub-charts)
   --skip-build              do not build/load images (they are already in the cluster)
   --keep-cluster            do not delete the kind cluster at the end
   --dry-run                 print the plan and exit
@@ -38,7 +39,7 @@ USAGE
 }
 
 BASE_CHART="" BASE_VERSION="" BASE_REF="" BASE_IMAGE_TAG=""
-HEAD_CHART="" HEAD_CRDS="" CLI="" CLUSTER=gryvia-upgrade NS=gryvia-system VALUES_MODE=reuse
+HEAD_CHART="" HEAD_CRDS="" CLI="" CLUSTER=gryvia-upgrade NS=gryvia-system VALUES_MODE=reset-then-reuse
 SKIP_BUILD=0 KEEP=0 DRY=0
 while [ $# -gt 0 ]; do
 	case "$1" in
