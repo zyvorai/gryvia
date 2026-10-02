@@ -1,7 +1,8 @@
 name: Kind e2e (Kueue)
 
 # Runs the Kueue integration on a kind cluster without GPUs: queueing (one job admitted, the other Queued until the
-# first finishes), all-or-nothing gang admission, and priority preemption. Kueue itself comes from the chart's own
+# first finishes), all-or-nothing gang admission, priority preemption, and elastic jobs (partial admission between
+# minNodes and nodes, completion through the Job success policy). Kueue itself comes from the chart's own
 # `kueue` sub-chart (kueue.enabled=true), so the sub-chart is exercised too. Images are built from the checkout like
 # e2e-jobs.yml (scripts/kind-demo.sh with GRYVIA_LOCAL_IMAGES=1). Scenarios live in scripts/e2e-kueue.sh.
 #
@@ -84,6 +85,8 @@ jobs:
         run: ./scripts/e2e-kueue.sh gang
       - name: A higher-priority job preempts a running lower-priority one, which is requeued
         run: ./scripts/e2e-kueue.sh preempt
+      - name: An elastic job is admitted with fewer workers than asked, and its success policy completes it under Kueue
+        run: ./scripts/e2e-kueue.sh elastic
       - name: Dump state on failure
         if: failure()
         run: |

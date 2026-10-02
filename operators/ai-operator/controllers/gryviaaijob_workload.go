@@ -261,6 +261,9 @@ func summarizeJob(bj *batchv1.Job, expected int32) jobOutcome {
 
 func (r *GryviaAIJobReconciler) applyJobStatus(job *gryviav1.GryviaAIJob, bj *batchv1.Job) {
 	expected := r.getReplicaCount(job)
+	if bj.Spec.Parallelism != nil && *bj.Spec.Parallelism < expected {
+		expected = *bj.Spec.Parallelism // Kueue admitted an elastic job with fewer workers
+	}
 	out := summarizeJob(bj, expected)
 	job.Status.ReplicasReady = out.Ready
 	job.Status.Retries = out.Retries

@@ -6,6 +6,7 @@
 #   scripts/e2e-kueue.sh queue     # two jobs that do not fit together: first Running, second Queued, then Succeeded
 #   scripts/e2e-kueue.sh gang      # a gang bigger than the quota never starts partially (zero pods), then starts whole
 #   scripts/e2e-kueue.sh preempt   # a higher-priority job preempts a running lower-priority one, which is requeued
+#   scripts/e2e-kueue.sh elastic   # an elastic job is partially admitted (minNodes..nodes); its success policy completes it
 #
 # Passes in CI (e2e-kueue.yml) with real Kueue on kind. The lines marked "ASSUMPTION" held there; they are still the
 # first things to look at if a step fails on another Kueue or Kubernetes version.
@@ -216,12 +217,68 @@ scenario_preempt() {
   kubectl -n "$NS" delete gryviaaijob high low --ignore-not-found --wait=true >/dev/null
 }
 
+el_job() { # <name> <nodes> <minNodes> <script>
+  cat <<YAML | kubectl apply -f - >/dev/null
+apiVersion: $API
+kind: GryviaAIJob
+metadata: {name: $1, namespace: $NS}
+spec:
+  type: training
+  image: busybox:1.36
+  gpus: 0
+  retryLimit: 0
+  timeout: 20m
+  distributed: {enabled: true, framework: pytorch, backend: gloo, nodes: $2, elastic: {minNodes: $3}}
+  resources:
+    requests: {cpu: 20m, memory: 16Mi, $SLOT: "1"}
+    limits: {cpu: 200m, memory: 64Mi, $SLOT: "1"}
+  command: ["sh", "-c"]
+  args: ['$4']
+YAML
+}
+job_field() { kubectl -n "$NS" get job "$1" -o jsonpath="$2" 2>/dev/null; }
+
+scenario_elastic() {
+  # Partial admission: 4 workers asked, 2 slots of quota, minNodes 2. Kueue admits 2 instead of queueing the job,
+  # and lowers completions with parallelism so the Job (and its success policy) count 2 workers.
+  # shellcheck disable=SC2016 # expanded in the pod
+  el_job el 4 2 'echo index=$JOB_COMPLETION_INDEX nnodes=$NNODES; sleep 20'
+  [[ "$(job_field el '{.metadata.annotations.kueue\.x-k8s\.io/job-min-parallelism}')" == 2 ]] || fail "el: no min-parallelism annotation"
+  [[ "$(job_field el '{.metadata.annotations.kueue\.x-k8s\.io/job-completions-equal-parallelism}')" == true ]] || fail "el: no completions annotation"
+  wait_for 300 "el reaches Running with fewer workers than asked" is_phase el Running
+  [[ "$(job_field el '{.spec.parallelism}/{.spec.completions}')" == 2/2 ]] || fail "el: parallelism/completions $(job_field el '{.spec.parallelism}/{.spec.completions}'), want 2/2"
+  [[ "$(wl_field el '.status.admission.podSetAssignments[0].count')" == 2 ]] || fail "el: Workload admitted $(wl_field el '.status.admission.podSetAssignments[0].count') pods, want 2"
+  [[ "$(job_field el '{.spec.successPolicy.rules[0].succeededCount}')" == 2 ]] || fail "el: success policy changed"
+  sleep 10
+  [[ "$(pod_count el)" == 2 ]] || fail "el: $(pod_count el) pods, want 2 (indexes 2 and 3 must not exist)"
+  kubectl -n "$NS" get pods -l gryvia.io/job=el -L batch.kubernetes.io/job-completion-index
+  wait_for 300 "el reaches Succeeded" is_phase el Succeeded
+  kubectl -n "$NS" logs -l gryvia.io/job=el --prefix | sort
+  kubectl -n "$NS" delete gryviaaijob el --wait=true >/dev/null
+  wait_for 120 "ClusterQueue idle" cq_idle
+
+  # The success policy under Kueue: 2 workers fit the quota and are both admitted; index 0 finishes, index 1 would
+  # run for 10 minutes. succeededCount 1 completes the Job, the running pod is stopped and the quota is released.
+  # shellcheck disable=SC2016 # expanded in the pod
+  el_job sp 2 1 'if [ "$JOB_COMPLETION_INDEX" = 0 ]; then sleep 10; echo done; else sleep 600; fi'
+  wait_for 300 "sp reaches Running" is_phase sp Running
+  [[ "$(job_field sp '{.spec.parallelism}')" == 2 ]] || fail "sp: parallelism $(job_field sp '{.spec.parallelism}'), want 2 (it fits)"
+  wait_for 180 "sp Succeeded through the success policy" is_phase sp Succeeded
+  [[ "$(job_field sp '{.status.conditions[?(@.type=="SuccessCriteriaMet")].status}')" == True ]] || fail "sp: no SuccessCriteriaMet"
+  [[ "$(job_field sp '{.status.succeeded}')" == 1 ]] || fail "sp: succeeded $(job_field sp '{.status.succeeded}'), want 1"
+  wait_for 120 "sp's Workload is Finished" bash -c "[[ \"\$(kubectl -n $NS get workloads -o json | jq -r '[.items[] | select(any(.metadata.ownerReferences[]?; .kind==\"Job\" and .name==\"sp\"))][0].status.conditions[]? | select(.type==\"Finished\") | .status')\" == True ]]"
+  wait_for 120 "sp has no running pods" no_active_pods sp
+  wait_for 120 "ClusterQueue idle (quota released)" cq_idle
+  kubectl -n "$NS" delete gryviaaijob sp --wait=true >/dev/null
+}
+
 case "${1:-}" in
   setup)   scenario_setup ;;
   strict)  scenario_strict ;;
   queue)   scenario_queue ;;
   gang)    scenario_gang ;;
   preempt) scenario_preempt ;;
-  *) echo "usage: $0 setup|strict|queue|gang|preempt" >&2; exit 2 ;;
+  elastic) scenario_elastic ;;
+  *) echo "usage: $0 setup|strict|queue|gang|preempt|elastic" >&2; exit 2 ;;
 esac
 echo "E2E OK: ${1}"

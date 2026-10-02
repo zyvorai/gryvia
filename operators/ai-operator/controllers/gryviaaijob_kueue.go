@@ -51,6 +51,11 @@ const (
 	// PriorityClassPrefix prefixes the WorkloadPriorityClasses this operator manages.
 	PriorityClassPrefix = "gryvia-priority-"
 
+	// AnnotationKueueMinParallelism lets Kueue admit a Job with fewer pods (partial admission, Kueue >= 0.5).
+	AnnotationKueueMinParallelism = "kueue.x-k8s.io/job-min-parallelism"
+	// AnnotationKueueCompletionsEqualParallelism makes Kueue lower completions with parallelism (Indexed Jobs).
+	AnnotationKueueCompletionsEqualParallelism = "kueue.x-k8s.io/job-completions-equal-parallelism"
+
 	kueueGroup   = "kueue.x-k8s.io"
 	kueueVersion = "v1beta1"
 )
@@ -191,6 +196,16 @@ func (r *GryviaAIJobReconciler) applyKueueToJob(ctx context.Context, job *gryvia
 	bj.Labels[LabelKueueQueue] = queue
 	suspend := true // Kueue admits (unsuspends) it
 	bj.Spec.Suspend = &suspend
+	// An elastic job may start with anything from minNodes to nodes workers, so Kueue may admit it with
+	// fewer pods when the quota is short. Completions follow parallelism (the success policy's
+	// succeededCount = minNodes stays valid), and Kueue restores both if it evicts the Job.
+	if min, max, ok := job.Spec.Distributed.ElasticBounds(); ok && min < max {
+		if bj.Annotations == nil {
+			bj.Annotations = map[string]string{}
+		}
+		bj.Annotations[AnnotationKueueMinParallelism] = fmt.Sprintf("%d", min)
+		bj.Annotations[AnnotationKueueCompletionsEqualParallelism] = "true"
+	}
 	if bucket := PriorityBucket(job.Spec.Priority); bucket > 0 {
 		if err := r.ensurePriorityClass(ctx, bucket); err != nil {
 			// Without the class the job would still queue, just at the default priority.

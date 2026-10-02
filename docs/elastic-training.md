@@ -1,6 +1,6 @@
 # Elastic training (PyTorch, run-to-completion jobs)
 
-**Status: run on kind with a real `torchrun` on CPU; never on GPUs.** The kind e2e (`e2e-ml.yml`, "Elastic training") runs [`elastic_train.py`](../examples/training/elastic_train.py) in an elastic AIJob (`nodes: 2`, `minNodes: 1`, gloo), deletes worker index 1 after a committed checkpoint and expects torchrun to restart the workers, every rank to resume from the committed step and the job to succeed. A second kind e2e (`e2e-elastic.yml`) spreads the two workers over two nodes with the checkpoints on a ReadWriteMany NFS volume and loses a whole node: the survivor must finish alone (see [Across nodes](#across-nodes-a-lost-node)). NCCL, GPUs and Kueue are not covered.
+**Status: run on kind with a real `torchrun` on CPU; never on GPUs.** The kind e2e (`e2e-ml.yml`, "Elastic training") runs [`elastic_train.py`](../examples/training/elastic_train.py) in an elastic AIJob (`nodes: 2`, `minNodes: 1`, gloo), deletes worker index 1 after a committed checkpoint and expects torchrun to restart the workers, every rank to resume from the committed step and the job to succeed. A second kind e2e (`e2e-elastic.yml`) spreads the two workers over two nodes with the checkpoints on a ReadWriteMany NFS volume and loses a whole node: the survivor must finish alone (see [Across nodes](#across-nodes-a-lost-node)). Under Kueue, an elastic job is admitted with between `minNodes` and `nodes` workers (see [Under Kueue](#under-kueue)). NCCL and GPUs are not covered.
 
 ## What it is
 
@@ -77,13 +77,27 @@ spec:
   nfs: {server: nfs.example.com, path: /exports/checkpoints}
 ```
 
+## Under Kueue
+
+When Kueue manages the job (see [kueue-integration.md](kueue-integration.md)), the operator puts two annotations on the batch Job:
+
+- `kueue.x-k8s.io/job-min-parallelism: <minNodes>` turns on Kueue's partial admission. If the quota has no room for `nodes` workers, Kueue admits as many as fit, but at least `minNodes`, instead of queueing the whole job.
+- `kueue.x-k8s.io/job-completions-equal-parallelism: "true"` makes Kueue lower `completions` along with `parallelism`. The Job then counts only the admitted workers, and `succeededCount: minNodes` stays within `completions`.
+
+torchrun takes whatever group size forms within `NNODES=min:max`. The Ready condition counts the admitted workers. If Kueue evicts the job, it restores `parallelism` and `completions` to `nodes` before requeueing it. Jobs with `minNodes == nodes`, and non-elastic jobs, stay all-or-nothing.
+
+`scripts/e2e-kueue.sh elastic`, a step of `e2e-kueue.yml`, checks two cases on kind:
+
+- An elastic job asking for 4 workers (`minNodes: 2`) against 2 slots of quota runs with 2 workers. Its Job has parallelism and completions 2/2, the Workload's admission is for 2 pods, and no pods exist for indexes 2 and 3. The job succeeds and the quota is released.
+- With 2 workers admitted and `minNodes: 1`, index 0 finishes and index 1 would sleep for 10 minutes. The success policy completes the Job (`SuccessCriteriaMet`, 1 succeeded) and the running pod is stopped. Kueue marks the Workload Finished and the ClusterQueue goes idle.
+
 ## What it does not do
 
 - **It does not add or remove workers while the job runs.** The Indexed Job's `completions` is fixed at creation. Workers lost to a node failure are replaced by the Job controller (same index, same DNS name) when capacity exists; if it does not, the others carry on only if the launcher's rendezvous accepts a smaller group. There is no controller loop that resizes the Job.
 - **Losing the rendezvous host (index 0) is not tolerated.** `MASTER_ADDR` is pod 0. Use an external rendezvous (for example etcd) if you need that.
 - **The Job can finish early.** Once `minNodes` indexes succeed the remaining pods are removed. In a healthy elastic run all workers finish together; if some finish a moment later they may be stopped mid-exit.
-- No resharding of optimizer or data-loader state, no scale-up of a running job, no interaction with Kueue's resize (a Kueue-managed Job cannot change `nodes`).
-- Unverified: Kueue with a success policy, losing the node of index 0 (not supported, above), storage other than NFS, and any NCCL behaviour on a resized group.
+- No resharding of optimizer or data-loader state, no scale-up of a running job, no resize of a Kueue-admitted job after admission (Kueue's partial admission picks the size once, at admission).
+- Unverified: Kueue partial admission with a real torchrun (the Kueue e2e uses busybox workers), losing the node of index 0 (not supported, above), storage other than NFS, and any NCCL behaviour on a resized group.
 
 ## Tests
 
