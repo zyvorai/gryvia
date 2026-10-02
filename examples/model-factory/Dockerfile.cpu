@@ -15,7 +15,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.8.0 \
  && pip install --no-cache-dir transformers==5.18.0 trl==1.14.1 peft==0.21.2 datasets==5.0.1 accelerate==1.15.0 \
-    huggingface_hub==1.33.0 lm-eval==0.4.13 sentencepiece==0.2.2 "protobuf>=4.21,<5"
+    huggingface_hub==1.33.0 "lm-eval[api]==0.4.13" sentencepiece==0.2.2 "protobuf>=4.21,<5"
 
 RUN python3 - <<EOF
 import io, tarfile, urllib.request

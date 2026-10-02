@@ -796,7 +796,7 @@ jobs:
             replicas: 1
             servicePort: 8080
             healthCheck: {path: /health}
-            args: [-m, /models/model-q8_0.gguf, --alias, e2e-mf-smollm2, --host, 0.0.0.0, --port, "8080", -c, "512", -t, "2"]
+            args: [-m, /models/model-q8_0.gguf, --alias, e2e-mf-smollm2, --host, 0.0.0.0, --port, "8080", -c, "2048", -t, "2"]
           EOF
           wait_for "fine-tuned model served by llama.cpp" 300 field_is gryviainferenceservice/e2e-mf-serve '{.status.phase}' Ready
           assert_eq "served from the registry PVC" "$(kubectl -n "$NS" get pods -l gryvia.io/inference=e2e-mf-serve -o jsonpath='{.items[0].spec.volumes[?(@.name=="model")].persistentVolumeClaim.claimName}')" e2e-mf-models
@@ -804,7 +804,9 @@ jobs:
           echo "endpoint $endpoint"
 
           # The scheduled-evaluation pattern of eval-schedule.yaml, run once: score the served model through its
-          # endpoint and write live_score onto the entry the service serves.
+          # endpoint and write live_score onto the entry the service serves. lm-eval runs gsm8k through the endpoint
+          # too (a generation task: llama.cpp returns no prompt logprobs, so multiple-choice tasks need vLLM); it
+          # tokenizes locally with the merged model's tokenizer, next to the GGUF on the PVC. --limit 8 = the facts.
           cat <<EOF | kubectl apply -f -
           apiVersion: gryvia.io/v1alpha1
           kind: GryviaWorkflow
@@ -813,7 +815,8 @@ jobs:
             steps:
               - name: evaluate
           $(job evaluation evaluate.py)
-                  args: ["--endpoint=${endpoint}", --served-model=e2e-mf-smollm2, --custom=/data/eval.jsonl]
+                  args: ["--endpoint=${endpoint}", --served-model=e2e-mf-smollm2, --custom=/data/eval.jsonl,
+                         --tasks=gsm8k, --limit=8, "--tokenizer=/models/$(out finetune subPath)"]
               - name: record
                 type: registry
                 dependsOn: [evaluate]
@@ -823,9 +826,13 @@ jobs:
                   metadata: {live_score: "{{steps.evaluate.outputs.score}}"}
           EOF
           wait_for "endpoint evaluation Succeeded" 600 field_is gryviaworkflow/e2e-mf-live '{.status.phase}' Succeeded
-          live="$(jp gryviaworkflow/e2e-mf-live '{.status.stepStatuses[?(@.name=="evaluate")].outputs.score}')"
-          echo "served model scored $live on the facts"
-          awk -v s="$live" 'BEGIN{exit !(s >= 0.875)}' || { echo "ASSERT FAILED: the served GGUF lost the facts ($live)"; exit 1; }
+          live_out() { jp gryviaworkflow/e2e-mf-live "{.status.stepStatuses[?(@.name==\"evaluate\")].outputs.$1}"; }
+          live="$(live_out score)"; live_facts="$(live_out custom)"; live_gsm8k="$(live_out gsm8k)"
+          echo "served model: facts $live_facts, gsm8k $live_gsm8k (lm-eval through the endpoint), score $live"
+          awk -v s="$live_facts" 'BEGIN{exit !(s >= 0.875)}' || { echo "ASSERT FAILED: the served GGUF lost the facts ($live_facts)"; exit 1; }
+          awk -v g="$live_gsm8k" 'BEGIN{exit !(g != "" && g >= 0 && g <= 1)}' || { echo "ASSERT FAILED: gsm8k not reported ($live_gsm8k)"; exit 1; }
+          awk -v s="$live" -v g="$live_gsm8k" -v f="$live_facts" 'BEGIN{d = s - (g + f) / 2; exit !(d < 0.000002 && d > -0.000002)}' \
+            || { echo "ASSERT FAILED: score $live is not the mean of gsm8k and the facts"; exit 1; }
           assert_eq "registry step picked the served entry" "$(jp gryviaworkflow/e2e-mf-live '{.status.stepStatuses[?(@.name=="record")].outputs.name}')" e2e-mf-smollm2
           assert_eq "live_score on the entry" "$(jp gryviamodelregistry/e2e-mf-smollm2 '{.spec.metadata.live_score}')" "$live"
 

@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 import tempfile
 import unittest
 
@@ -140,6 +141,31 @@ class EvaluateTests(unittest.TestCase):
             self.assertEqual(written["score"], "0.500000")
         with self.assertRaises(SystemExit):
             evaluate.main(["--model", "/m", "--endpoint", "http://x"])
+
+    def test_endpoint_tasks_use_local_completions_with_the_tokenizer(self):
+        self.assertEqual(evaluate.endpoint_model_args("http://svc:8080/", "chat"),
+                         "model=chat,base_url=http://svc:8080/v1/completions,tokenized_requests=False")
+        self.assertTrue(evaluate.endpoint_model_args("http://svc:8080", "chat", "/models/m").endswith(
+            ",tokenizer=/models/m"))
+        calls = []
+        fake = type(sys)("lm_eval")
+        result = {"results": {"gsm8k": {"exact_match,strict-match": 0.25}}}
+        fake.simple_evaluate = lambda **kw: calls.append(kw) or result
+        written = {}
+        orig_mod, orig_write = sys.modules.get("lm_eval"), evaluate.write_outputs
+        sys.modules["lm_eval"], evaluate.write_outputs = fake, written.update
+        try:
+            self.assertEqual(evaluate.main(["--endpoint", "http://svc:8080", "--served-model", "chat",
+                                            "--tasks", "gsm8k", "--limit", "8", "--tokenizer", "/models/m"]), 0)
+        finally:
+            evaluate.write_outputs = orig_write
+            if orig_mod is None:
+                del sys.modules["lm_eval"]
+            else:
+                sys.modules["lm_eval"] = orig_mod
+        self.assertEqual((calls[0]["model"], calls[0]["tasks"], calls[0]["limit"]), ("local-completions", ["gsm8k"], 8))
+        self.assertIn("tokenizer=/models/m", calls[0]["model_args"])
+        self.assertEqual((written["score"], written["gsm8k"]), ("0.250000", "0.250000"))
 
 
 class QuantizeTests(unittest.TestCase):
