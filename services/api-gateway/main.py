@@ -535,6 +535,7 @@ deps = Deps(
     netra_console_url=os.environ.get("GRYVIA_NETRA_CONSOLE_URL", "").strip().rstrip("/")
     or None,
     sovereign_ca_file=os.environ.get("GRYVIA_SOVEREIGN_CA_FILE", "").strip() or None,
+    require_prod_approval=os.environ.get("GRYVIA_REQUIRE_PROD_APPROVAL", "") == "1",
 )
 register_routers(app, deps)
 

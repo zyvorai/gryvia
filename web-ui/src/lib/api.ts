@@ -297,6 +297,8 @@ export interface CreateWorkspaceRequest {
 // Model registry types
 export interface RegisteredModel {
   metadata?: { name?: string; namespace?: string; creationTimestamp?: string }
+  /** A tenant's request to promote, waiting for an administrator (the gateway runs with GRYVIA_REQUIRE_PROD_APPROVAL=1). */
+  pendingPromotion?: { target: string; by: string; at: string } | null
   spec?: {
     version?: string
     stage?: string
@@ -881,6 +883,16 @@ export const api = {
 
   promoteModel: async (name: string, targetStage: string): Promise<RegisteredModel> => {
     const { data } = await apiClient.post(`/models/${encodeURIComponent(name)}/promote`, { targetStage })
+    return data
+  },
+
+  approveModelPromotion: async (name: string): Promise<RegisteredModel> => {
+    const { data } = await apiClient.post(`/models/${encodeURIComponent(name)}/approve`)
+    return data
+  },
+
+  rejectModelPromotion: async (name: string): Promise<RegisteredModel> => {
+    const { data } = await apiClient.post(`/models/${encodeURIComponent(name)}/reject`)
     return data
   },
 

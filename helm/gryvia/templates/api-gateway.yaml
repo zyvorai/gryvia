@@ -161,6 +161,10 @@ spec:
           value: {{ . | quote }}
         {{- end }}
         {{- end }}
+        {{- if (dig "apiGateway" "approvals" "productionPromotion" nil .Values.AsMap) }}
+        - name: GRYVIA_REQUIRE_PROD_APPROVAL
+          value: "1"
+        {{- end }}
         - name: LOG_LEVEL
           value: "INFO"
         - name: GRYVIA_TLS_CERT
