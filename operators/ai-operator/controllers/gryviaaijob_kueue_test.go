@@ -252,6 +252,55 @@ func TestKueue_DoesNotFightKueueOverSuspend(t *testing.T) {
 	}
 }
 
+// An elastic job under Kueue accepts partial admission down to minNodes; others are all-or-nothing.
+func TestKueue_ElasticPartialAdmission(t *testing.T) {
+	el := elasticJob(2, 4)
+	el.Spec.QueueName = "q"
+	fixed := elasticJob(3, 3)
+	fixed.Name = "fixed"
+	fixed.Spec.QueueName = "q"
+	plain := cpuJob("plain")
+	plain.Spec.QueueName = "q"
+	plain.Spec.Distributed = &gryviav1.DistributedConfig{Enabled: true, Nodes: 2}
+	noQueue := elasticJob(1, 2)
+	noQueue.Name = "noq"
+	r, c := kueueReconciler(el, fixed, plain, noQueue)
+	for _, n := range []string{"el", "fixed", "plain", "noq"} {
+		reconcileN(t, r, n, 3)
+	}
+
+	a := getBatchJob(t, c, ns, "el").Annotations
+	if a[AnnotationKueueMinParallelism] != "2" || a[AnnotationKueueCompletionsEqualParallelism] != "true" {
+		t.Errorf("elastic job annotations = %v", a)
+	}
+	// Kueue admits 2 of 4: the Ready condition counts the admitted workers.
+	bj := getBatchJob(t, c, ns, "el")
+	two, f := int32(2), false
+	bj.Spec.Parallelism, bj.Spec.Completions, bj.Spec.Suspend = &two, &two, &f
+	if err := c.Update(context.Background(), bj); err != nil {
+		t.Fatal(err)
+	}
+	bj.Status.Ready = &two
+	if err := c.Status().Update(context.Background(), bj); err != nil {
+		t.Fatal(err)
+	}
+	reconcileN(t, r, "el", 2)
+	aj := getAIJob(t, c, "el")
+	if aj.Status.Phase != PhaseRunning || !conditionTrue(aj, ConditionReady) {
+		t.Errorf("after partial admission: phase %s, conditions %+v", aj.Status.Phase, aj.Status.Conditions)
+	}
+
+	for _, n := range []string{"fixed", "plain", "noq"} {
+		a := getBatchJob(t, c, ns, n).Annotations
+		if _, ok := a[AnnotationKueueMinParallelism]; ok {
+			t.Errorf("%s: unexpected partial admission: %v", n, a)
+		}
+		if _, ok := a[AnnotationKueueCompletionsEqualParallelism]; ok {
+			t.Errorf("%s: unexpected completions annotation: %v", n, a)
+		}
+	}
+}
+
 func TestInterpretWorkload(t *testing.T) {
 	if st := interpretWorkload(nil); st.Found {
 		t.Error("nil workload must not be Found")
