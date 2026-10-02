@@ -18,12 +18,13 @@ The feature is opt-in and needs the LLM gateway.
 | Deployment (non-root, read-only root filesystem, no service account token), Service, config ConfigMap, a pod roll on config changes, the agent's own gateway key (raw key in the agent's namespace, hash in the key namespace), NetworkPolicy rules for the gateway, in-cluster, IP and public tool hosts, validation, a missing vector index, scale to zero, finalizer clean-up that leaves a same-named index's store credential alone | Fake-client tests in `operators/ai-operator/controllers/gryviaagent_controller_test.go` |
 | The tool-calling loop, summed usage, the last step without tools, retrieval and HTTP tools, the URL allowlist (scheme, host, port, normalized path; no user info), tool errors handed back to the model, gateway errors, request validation; streaming: relayed content deltas, tool-call deltas assembled across chunks, tool-call events, errors before and after the first event, a gateway that answers without streaming | `examples/agents/test_runtime.py` (scripted gateway on `httpx.MockTransport`) |
 | Routes (including the chat proxy, which ignores a `status.endpoint` outside the agent's namespace, and the streamed proxy with its error mapping), CLI and dashboard helpers | `services/api-gateway/tests/test_agents.py`, `cli/src/commands/agents.rs`, `web-ui/src/lib/agents.test.ts` |
+| NetworkPolicy enforcement on kind (kindnet enforces NetworkPolicy since kind v0.24): the agent reaches its allowlisted tool host but not a server in another namespace that a pod there can reach, and that namespace cannot reach the agent | The "Agents" steps of `.github/workflows/e2e-ml.yml` |
 | The whole path on kind: the real runtime image, a stand-in tool-calling model published on the gateway, chat through the api-gateway with an HTTP tool fetching a file (also streamed), a refused URL, metering, scale to zero and deletion | The "Agents" steps of `.github/workflows/e2e-ml.yml`; the non-streamed steps also passed on a single-node k3s host (2026-10-01) |
 
 | Not verified | Why |
 | --- | --- |
 | A real tool-calling model served by vLLM | No GPU in CI; the stand-in returns OpenAI-shaped `tool_calls` |
-| NetworkPolicy enforcement | It depends on the cluster's CNI; the e2e checks the policy object, and the runtime enforces the URL allowlist itself |
+| NetworkPolicy enforcement with other CNIs (Calico, Cilium) | Only kind's kindnet was run; any CNI that implements NetworkPolicy should behave the same |
 | Streaming through vLLM | The stand-in model streams OpenAI-shaped chunks; vLLM's tool-call deltas follow the same format but were not run |
 
 ## Turning it on
