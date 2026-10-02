@@ -100,12 +100,24 @@ def openai_generator(endpoint, model, max_tokens=64, opener=None, timeout=120):
     return generate
 
 
+def endpoint_model_args(endpoint, served_model, tokenizer=""):
+    """lm-eval local-completions arguments. lm-eval still tokenizes locally (to split context and continuation),
+    with the Hugging Face tokenizer named by tokenizer, or by served_model when tokenizer is empty."""
+    args = f"model={served_model},base_url={endpoint.rstrip('/')}/v1/completions,tokenized_requests=False"
+    if tokenizer:
+        args += f",tokenizer={tokenizer}"
+    return args
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     target = p.add_mutually_exclusive_group(required=True)
     target.add_argument("--model", help="local model directory")
     target.add_argument("--endpoint", help="OpenAI-compatible server to evaluate instead, e.g. a serving endpoint")
     p.add_argument("--served-model", default="", help="model name to send with --endpoint")
+    p.add_argument("--tokenizer", default="",
+                   help="with --endpoint --tasks: Hugging Face tokenizer (directory or hub ID) of the served model; "
+                        "default --served-model")
     p.add_argument("--tasks", default="", help="comma-separated lm-eval tasks")
     p.add_argument("--limit", type=int, default=None, help="examples per task")
     p.add_argument("--custom", default="", help="JSONL of prompt/expected pairs")
@@ -120,7 +132,7 @@ def main(argv=None):
         if a.endpoint:
             out = lm_eval.simple_evaluate(
                 model="local-completions", tasks=tasks, limit=a.limit,
-                model_args=f"model={a.served_model},base_url={a.endpoint.rstrip('/')}/v1/completions,tokenized_requests=False")
+                model_args=endpoint_model_args(a.endpoint, a.served_model, a.tokenizer))
         else:
             model_args = f"pretrained={a.model},dtype={'float32' if a.cpu else 'bfloat16'}"
             out = lm_eval.simple_evaluate(model="hf", model_args=model_args, tasks=tasks, limit=a.limit,

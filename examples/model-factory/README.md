@@ -22,7 +22,9 @@ shared vLLM service, promoted after it stays healthy or rolled back.
 - [quantize.py](quantize.py): AWQ or GPTQ 4-bit weights with llm-compressor, calibrated on the training data; saves
   compressed-tensors that vLLM loads with `--quantization=compressed-tensors`
 - [evaluate.py](evaluate.py): lm-evaluation-harness tasks plus an optional exact-match JSONL, on a model directory or
-  (`--endpoint`) an OpenAI-compatible server; reports `score`
+  (`--endpoint`) an OpenAI-compatible server; reports `score`. With `--endpoint --tasks`, lm-eval tokenizes locally:
+  pass `--tokenizer` (the model directory or hub ID) unless the served model name is a hub ID. Multiple-choice tasks
+  need prompt logprobs (vLLM); llama.cpp's server only supports generation tasks such as `gsm8k`
 - [convert_gguf.py](convert_gguf.py): llama.cpp's `convert_hf_to_gguf.py` on a merged model; writes `model-<outtype>.gguf`
   next to the safetensors for `llama-server -m /models/model-<outtype>.gguf`
 - [outputs.py](outputs.py): writes step outputs to the termination message the workflow reads
