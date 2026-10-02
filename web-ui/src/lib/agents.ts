@@ -1,11 +1,16 @@
 export interface AgentTool {
   name: string;
   description?: string;
-  type: "retrieval" | "http";
+  type: "retrieval" | "http" | "zyntra";
   vectorIndexRef?: string;
   topK?: number;
   urls?: string[];
   method?: "GET" | "POST";
+  url?: string;
+  tokenSecret?: string;
+  tokenKey?: string;
+  propose?: boolean;
+  actions?: string[];
 }
 
 export interface Agent {
@@ -45,9 +50,10 @@ export interface AgentReply {
   gryvia?: { steps?: number; toolCalls?: AgentToolCall[] };
 }
 
-/** "search (retrieval: handbook)" or "status (http GET: 2 URLs)". */
+/** "search (retrieval: handbook)", "status (http GET: 2 URLs)" or "ops (Zyntra, read and propose)". */
 export function toolLabel(t: AgentTool): string {
   if (t.type === "retrieval") return `${t.name} (retrieval: ${t.vectorIndexRef ?? "?"})`;
+  if (t.type === "zyntra") return `${t.name} (Zyntra, ${t.propose ? "read and propose" : "read only"})`;
   const n = t.urls?.length ?? 0;
   return `${t.name} (http ${t.method ?? "GET"}: ${n} URL${n === 1 ? "" : "s"})`;
 }

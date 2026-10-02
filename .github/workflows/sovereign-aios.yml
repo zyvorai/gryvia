@@ -1,0 +1,58 @@
+name: Sovereign AI OS
+
+# The umbrella chart's render tests, and a GryviaAgent's zyntra tool against a real Zyntra. Zyntra and Netra are
+# checked out next to Gryvia from their main branches, as scripts/sovereign-aios-deps.sh expects.
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'helm/sovereign-aios/**'
+      - 'helm/gryvia/**'
+      - 'examples/agents/**'
+      - 'scripts/sovereign-aios-deps.sh'
+      - 'scripts/tests/sovereign-aios-*'
+      - 'scripts/tests/agent_zyntra_e2e.py'
+      - 'scripts/tests/fake_gryvia_gateway.py'
+      - '.github/workflows/sovereign-aios.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sovereign-aios:
+    name: Chart and agent against Zyntra
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: gryvia
+      - uses: actions/checkout@v4
+        with:
+          repository: zyvorai/zyntra
+          path: zyntra
+      - uses: actions/checkout@v4
+        with:
+          repository: zyvorai/netra
+          path: netra
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: zyntra/go.mod
+          cache-dependency-path: zyntra/go.sum
+      - uses: azure/setup-helm@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r gryvia/examples/agents/requirements.txt pyyaml cryptography
+      - name: Chart render tests
+        working-directory: gryvia
+        run: make sovereign-aios-test
+      - name: Agent zyntra tool against Zyntra
+        working-directory: gryvia
+        run: make sovereign-aios-agent-test

@@ -29,28 +29,47 @@ class Tool(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")
     description: str = Field(default="", max_length=1024)
-    type: Literal["retrieval", "http"]
+    type: Literal["retrieval", "http", "zyntra"]
     vectorIndexRef: str = Field(default="", max_length=253, pattern=r"^(" + _DNS[1:-1] + r")?$")
     topK: int = Field(default=0, ge=0, le=20)
     urls: List[str] = Field(default_factory=list, max_length=16)
     method: Literal["GET", "POST"] = "GET"
+    # zyntra: Zyntra's base URL and the Secret key holding its service token
+    url: str = Field(default="", max_length=2048)
+    tokenSecret: str = Field(default="", max_length=253, pattern=r"^(" + _DNS[1:-1] + r")?$")
+    tokenKey: str = Field(default="token", min_length=1, max_length=253, pattern=r"^[-._a-zA-Z0-9]+$")
+    propose: bool = False
+    actions: List[str] = Field(default_factory=list, max_length=32)
 
     @model_validator(mode="after")
     def _by_type(self) -> "Tool":
+        own = {"retrieval": self.vectorIndexRef or self.topK, "http": self.urls,
+               "zyntra": self.url or self.tokenSecret or self.propose or self.actions}
+        for kind, used in own.items():
+            if used and kind != self.type:
+                raise ValueError(f"tool {self.name}: fields of a {kind} tool are set but type is {self.type}")
         if self.type == "retrieval":
             if not self.vectorIndexRef:
                 raise ValueError(f"tool {self.name}: a retrieval tool needs vectorIndexRef")
-            if self.urls:
-                raise ValueError(f"tool {self.name}: urls apply to http tools")
-        else:
+        elif self.type == "http":
             if not self.urls:
                 raise ValueError(f"tool {self.name}: an http tool needs urls")
-            if self.vectorIndexRef or self.topK:
-                raise ValueError(f"tool {self.name}: vectorIndexRef and topK apply to retrieval tools")
             for url in self.urls:
-                if not re.match(r"^https?://[^\s/?#]+", url) or len(url) > 2048:
-                    raise ValueError(f"tool {self.name}: {url!r} is not an absolute http(s) URL")
+                _check_url(self.name, url)
+        else:
+            if len(self.name) > 56:
+                raise ValueError(f"tool {self.name}: a zyntra tool name is at most 56 characters")
+            if not self.url or not self.tokenSecret:
+                raise ValueError(f"tool {self.name}: a zyntra tool needs url and tokenSecret")
+            _check_url(self.name, self.url)
+            if self.actions and not self.propose:
+                raise ValueError(f"tool {self.name}: actions only apply with propose")
         return self
+
+
+def _check_url(tool: str, url: str) -> None:
+    if not re.match(r"^https?://[^\s/?#]+", url) or len(url) > 2048:
+        raise ValueError(f"tool {tool}: {url!r} is not an absolute http(s) URL")
 
 
 class CreateAgent(BaseModel):
@@ -97,8 +116,11 @@ def build_tool(t: Tool) -> Dict[str, Any]:
         out["description"] = t.description
     if t.type == "retrieval":
         out["retrieval"] = prune({"vectorIndexRef": t.vectorIndexRef, "topK": t.topK or None})
-    else:
+    elif t.type == "http":
         out["http"] = {"urls": t.urls, "method": t.method}
+    else:
+        out["zyntra"] = prune({"url": t.url, "tokenSecretRef": {"name": t.tokenSecret, "key": t.tokenKey},
+                               "propose": t.propose or None, "actions": t.actions or None})
     return out
 
 
@@ -121,7 +143,8 @@ def build_spec(body: CreateAgent) -> Dict[str, Any]:
 
 
 def tool_to_ui(t: Dict[str, Any]) -> Dict[str, Any]:
-    retrieval, http = t.get("retrieval") or {}, t.get("http") or {}
+    retrieval, http, zyntra = t.get("retrieval") or {}, t.get("http") or {}, t.get("zyntra") or {}
+    ref = zyntra.get("tokenSecretRef") or {}
     return prune({
         "name": t.get("name"),
         "description": t.get("description"),
@@ -130,6 +153,11 @@ def tool_to_ui(t: Dict[str, Any]) -> Dict[str, Any]:
         "topK": retrieval.get("topK"),
         "urls": http.get("urls"),
         "method": http.get("method"),
+        "url": zyntra.get("url"),
+        "tokenSecret": ref.get("name"),
+        "tokenKey": ref.get("key"),
+        "propose": zyntra.get("propose"),
+        "actions": zyntra.get("actions"),
     })
 
 

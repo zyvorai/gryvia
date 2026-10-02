@@ -135,6 +135,18 @@ uninstall: ## Uninstall using Helm
 	@echo "${GREEN}Uninstalling Gryvia...${RESET}"
 	helm uninstall gryvia -n gryvia-system
 
+sovereign-aios-deps: ## Copy the Gryvia, Zyntra and Netra charts into helm/sovereign-aios/charts (ZYNTRA_DIR, NETRA_DIR)
+	scripts/sovereign-aios-deps.sh
+
+sovereign-aios-test: sovereign-aios-deps ## Render tests for the Sovereign AI OS chart
+	scripts/tests/sovereign-aios-chart.test.sh
+
+sovereign-aios-agent-test: ## A GryviaAgent's zyntra tool against a real Zyntra built from ZYNTRA_DIR (no cluster)
+	scripts/tests/sovereign-aios-agent-zyntra.sh
+
+sovereign-aios-install: sovereign-aios-deps ## Install Gryvia, Zyntra and Netra as one release (docs/sovereign-aios.md)
+	helm upgrade --install sovereign-aios helm/sovereign-aios -n gryvia-system --create-namespace
+
 ## Development targets
 dev-setup: ## Set up development environment
 	@echo "${GREEN}Setting up development environment...${RESET}"

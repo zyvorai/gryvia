@@ -115,31 +115,63 @@ func validateAgent(ag *gryviav1.GryviaAgent) error {
 			return fmt.Errorf("tool name %q is used twice", t.Name)
 		}
 		seen[t.Name] = true
+		if other := otherToolBlock(t); other != "" {
+			return fmt.Errorf("tool %s: %s is set but type is %s", t.Name, other, t.Type)
+		}
 		switch t.Type {
 		case gryviav1.AgentToolRetrieval:
 			if t.Retrieval == nil || t.Retrieval.VectorIndexRef == "" {
 				return fmt.Errorf("tool %s: type retrieval needs retrieval.vectorIndexRef", t.Name)
 			}
-			if t.HTTP != nil {
-				return fmt.Errorf("tool %s: http is set but type is retrieval", t.Name)
-			}
 		case gryviav1.AgentToolHTTP:
 			if t.HTTP == nil || len(t.HTTP.URLs) == 0 {
 				return fmt.Errorf("tool %s: type http needs http.urls", t.Name)
-			}
-			if t.Retrieval != nil {
-				return fmt.Errorf("tool %s: retrieval is set but type is http", t.Name)
 			}
 			for _, raw := range t.HTTP.URLs {
 				if _, err := parseToolURL(raw); err != nil {
 					return fmt.Errorf("tool %s: %v", t.Name, err)
 				}
 			}
+		case gryviav1.AgentToolZyntra:
+			z := t.Zyntra
+			if len(t.Name) > 64-len("_propose") {
+				return fmt.Errorf("tool %s: a zyntra tool name is at most 56 characters (the model sees %s_propose)", t.Name, t.Name)
+			}
+			if z == nil || z.URL == "" {
+				return fmt.Errorf("tool %s: type zyntra needs zyntra.url", t.Name)
+			}
+			if _, err := parseToolURL(z.URL); err != nil {
+				return fmt.Errorf("tool %s: %v", t.Name, err)
+			}
+			if z.TokenSecretRef.Name == "" || z.TokenSecretRef.Key == "" {
+				return fmt.Errorf("tool %s: type zyntra needs zyntra.tokenSecretRef name and key", t.Name)
+			}
+			if len(z.Actions) > 0 && !z.Propose {
+				return fmt.Errorf("tool %s: zyntra.actions only applies with zyntra.propose", t.Name)
+			}
 		default:
-			return fmt.Errorf("tool %s: type must be retrieval or http", t.Name)
+			return fmt.Errorf("tool %s: type must be retrieval, http or zyntra", t.Name)
 		}
 	}
 	return nil
+}
+
+// otherToolBlock names a configuration block set for a type other than the tool's own, or "".
+func otherToolBlock(t gryviav1.AgentTool) string {
+	switch {
+	case t.Retrieval != nil && t.Type != gryviav1.AgentToolRetrieval:
+		return "retrieval"
+	case t.HTTP != nil && t.Type != gryviav1.AgentToolHTTP:
+		return "http"
+	case t.Zyntra != nil && t.Type != gryviav1.AgentToolZyntra:
+		return "zyntra"
+	}
+	return ""
+}
+
+// zyntraTokenEnv is the runtime environment variable holding a zyntra tool's token.
+func zyntraTokenEnv(tool string) string {
+	return "ZYNTRA_TOKEN_" + strings.ToUpper(strings.ReplaceAll(tool, "-", "_"))
 }
 
 func parseToolURL(raw string) (*url.URL, error) {
@@ -287,6 +319,10 @@ type agentToolConfig struct {
 	TopK        int32    `json:"topK,omitempty"`
 	URLs        []string `json:"urls,omitempty"`
 	Method      string   `json:"method,omitempty"`
+	URL         string   `json:"url,omitempty"`
+	TokenEnv    string   `json:"tokenEnv,omitempty"`
+	Propose     bool     `json:"propose,omitempty"`
+	Actions     []string `json:"actions,omitempty"`
 }
 
 type agentRuntimeConfig struct {
@@ -319,6 +355,9 @@ func agentConfig(ag *gryviav1.GryviaAgent) (string, error) {
 			if tc.Method == "" {
 				tc.Method = "GET"
 			}
+		case gryviav1.AgentToolZyntra:
+			tc.URL, tc.TokenEnv = t.Zyntra.URL, zyntraTokenEnv(t.Name)
+			tc.Propose, tc.Actions = t.Zyntra.Propose, t.Zyntra.Actions
 		}
 		c.Tools = append(c.Tools, tc)
 	}
@@ -344,6 +383,19 @@ func (r *GryviaAgentReconciler) mutateDeployment(ag *gryviav1.GryviaAgent, dep *
 		res = corev1.ResourceRequirements{Requests: corev1.ResourceList{
 			corev1.ResourceCPU: resource.MustParse("50m"), corev1.ResourceMemory: resource.MustParse("128Mi")}}
 	}
+	env := []corev1.EnvVar{
+		{Name: "GATEWAY_URL", Value: r.GatewayURL},
+		{Name: "GRYVIA_LLM_KEY", ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{
+			LocalObjectReference: corev1.LocalObjectReference{Name: ag.Status.KeySecret}, Key: llmgateway.OwnedKeyField}}},
+		{Name: "AGENT_CONFIG", Value: agentConfigMountPath + "/" + agentConfigFile},
+		{Name: "PORT", Value: strconv.Itoa(agentPort)},
+	}
+	for _, t := range ag.Spec.Tools {
+		if t.Type == gryviav1.AgentToolZyntra && t.Zyntra != nil {
+			ref := t.Zyntra.TokenSecretRef
+			env = append(env, corev1.EnvVar{Name: zyntraTokenEnv(t.Name), ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &ref}})
+		}
+	}
 	probe := func(period int32) *corev1.Probe {
 		return &corev1.Probe{ProbeHandler: corev1.ProbeHandler{HTTPGet: &corev1.HTTPGetAction{Path: "/healthz", Port: intstr.FromInt32(agentPort)}}, PeriodSeconds: period}
 	}
@@ -359,16 +411,10 @@ func (r *GryviaAgentReconciler) mutateDeployment(ag *gryviav1.GryviaAgent, dep *
 			SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
 		},
 		Containers: []corev1.Container{{
-			Name:  "agent",
-			Image: r.image(ag),
-			Ports: []corev1.ContainerPort{{Name: "http", ContainerPort: agentPort, Protocol: corev1.ProtocolTCP}},
-			Env: []corev1.EnvVar{
-				{Name: "GATEWAY_URL", Value: r.GatewayURL},
-				{Name: "GRYVIA_LLM_KEY", ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{Name: ag.Status.KeySecret}, Key: llmgateway.OwnedKeyField}}},
-				{Name: "AGENT_CONFIG", Value: agentConfigMountPath + "/" + agentConfigFile},
-				{Name: "PORT", Value: strconv.Itoa(agentPort)},
-			},
+			Name:           "agent",
+			Image:          r.image(ag),
+			Ports:          []corev1.ContainerPort{{Name: "http", ContainerPort: agentPort, Protocol: corev1.ProtocolTCP}},
+			Env:            env,
 			Resources:      res,
 			ReadinessProbe: probe(5),
 			LivenessProbe:  probe(20),
@@ -476,10 +522,14 @@ func (r *GryviaAgentReconciler) networkPolicySpec(ag *gryviav1.GryviaAgent) netw
 	var keys []string
 	rules := map[string]networkingv1.NetworkPolicyEgressRule{}
 	for _, t := range ag.Spec.Tools {
-		if t.Type != gryviav1.AgentToolHTTP || t.HTTP == nil {
-			continue
+		var urls []string
+		switch {
+		case t.Type == gryviav1.AgentToolHTTP && t.HTTP != nil:
+			urls = t.HTTP.URLs
+		case t.Type == gryviav1.AgentToolZyntra && t.Zyntra != nil:
+			urls = []string{t.Zyntra.URL}
 		}
-		for _, raw := range t.HTTP.URLs {
+		for _, raw := range urls {
 			rule, key := egressRule(raw, ag.Namespace)
 			if key == "" || seen[key] {
 				continue

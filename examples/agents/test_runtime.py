@@ -324,3 +324,105 @@ def test_post_tool_schema_has_body(tmp_path):
     assert loaded["maxSteps"] == 5
     params = runtime.tool_schemas(loaded["tools"])[0]["function"]["parameters"]
     assert set(params["properties"]) == {"url", "body"}
+
+
+ZYNTRA = "http://zyntra:8080"
+ZYNTRA_TOOL = {"name": "ops", "type": "zyntra", "url": ZYNTRA + "/", "tokenEnv": "ZYNTRA_TOKEN_OPS",
+               "propose": True, "actions": ["raise-inference-priority"]}
+NODE = {"id": "GpuNode:gryvia:gpu-1", "type": "GpuNode",
+        "props": {"name": {"v": "gpu-1", "prov": {"source": "gryvia"}}, "gpuCount": {"v": 8, "prov": {}}}}
+
+
+class FakeZyntra(Fake):
+    """The gateway plus a Zyntra that wants the service token."""
+
+    def __init__(self, replies, propose=None):
+        super().__init__(replies)
+        self.propose = propose or httpx.Response(201, json={"id": "p-1", "action": "raise-inference-priority",
+                                                            "action_name": "Raise priority", "status": "pending",
+                                                            "required_approvals": 1})
+        self.zyntra = []
+
+    def __call__(self, request):
+        if request.url.host != "zyntra":
+            return super().__call__(request)
+        self.zyntra.append(request)
+        if request.headers.get("authorization") != "Bearer zst_test":
+            return httpx.Response(401, json={"error": "unauthorized"})
+        path = request.url.path
+        if path == "/api/v1/ontology/objects":
+            return httpx.Response(200, json={"objects": [NODE], "next": ""})
+        if path == "/api/v1/ontology/objects/GpuNode:gryvia:gpu-1":
+            link = {"link": {"type": "owned_by", "from": NODE["id"], "to": "Tenant:gryvia:a"},
+                    "other": {"id": "Tenant:gryvia:a", "type": "Tenant", "props": {}}, "out": True}
+            return httpx.Response(200, json={"object": NODE, "links": [link], "failing_kpis": ["gpu_utilization"]})
+        if path == "/api/v1/proposals" and request.method == "POST":
+            self.propose_body = json.loads(request.content)
+            return self.propose
+        return httpx.Response(404, json={"error": "no such object"})
+
+
+def zyntra_tools(fake, **over):
+    body = chat(make(fake, tools=[dict(ZYNTRA_TOOL, **over)])).json()
+    msgs = [m["content"] for m in fake.model_bodies[1]["messages"] if m["role"] == "tool"]
+    return body, msgs
+
+
+def test_zyntra_schemas():
+    names = [s["function"]["name"] for s in runtime.tool_schemas([ZYNTRA_TOOL])]
+    assert names == ["ops_search", "ops_object", "ops_propose"]
+    assert "raise-inference-priority" in runtime.tool_schemas([ZYNTRA_TOOL])[2]["function"]["description"]
+    read_only = runtime.tool_schemas([dict(ZYNTRA_TOOL, propose=False, actions=[])])
+    assert [s["function"]["name"] for s in read_only] == ["ops_search", "ops_object"]
+
+
+def test_zyntra_search_and_object(monkeypatch):
+    monkeypatch.setenv("ZYNTRA_TOKEN_OPS", "zst_test")
+    calls = [tool_call("ops_search", {"query": "gpu", "type": "GpuNode"}, "a"),
+             tool_call("ops_object", {"id": "GpuNode:gryvia:gpu-1"}, "b")]
+    fake = FakeZyntra([completion(calls=calls), completion("ok")])
+    body, msgs = zyntra_tools(fake)
+    assert msgs[0] == "GpuNode:gryvia:gpu-1 (GpuNode): gpuCount=8, name=gpu-1"
+    obj = json.loads(msgs[1])
+    assert obj["props"] == {"gpuCount": 8, "name": "gpu-1"} and obj["failing_kpis"] == ["gpu_utilization"]
+    assert obj["links"] == [{"type": "owned_by", "direction": "out", "object": "Tenant:gryvia:a"}]
+    q = fake.zyntra[0].url.params
+    assert q["q"] == "gpu" and q["type"] == "GpuNode" and q["limit"] == "20"
+    assert [c["ok"] for c in body["gryvia"]["toolCalls"]] == [True, True]
+
+
+def test_zyntra_propose(monkeypatch):
+    monkeypatch.setenv("ZYNTRA_TOKEN_OPS", "zst_test")
+    calls = [tool_call("ops_propose", {"action": "raise-inference-priority", "inputs": {"service": "svc-1"}}, "a"),
+             tool_call("ops_propose", {"action": "enable-mig-sharing"}, "b"),
+             tool_call("ops_propose", {"action": "raise-inference-priority", "inputs": {"service": 3}}, "c")]
+    fake = FakeZyntra([completion(calls=calls), completion("ok")])
+    _, msgs = zyntra_tools(fake)
+    assert msgs[0].startswith("Proposal p-1 (Raise priority) is pending. It needs 1 approval(s) in Zyntra")
+    assert msgs[1].startswith("error: action is not allowed")
+    assert msgs[2] == "error: inputs must map input names to object ids"
+    assert fake.propose_body == {"action": "raise-inference-priority", "inputs": {"service": "svc-1"}}
+    assert len(fake.zyntra) == 1
+
+
+def test_zyntra_refusals(monkeypatch):
+    monkeypatch.setenv("ZYNTRA_TOKEN_OPS", "zst_test")
+    blocked = httpx.Response(422, json={"error": "action contract not met", "blocked_reasons": ["needs approver"]})
+    calls = [tool_call("ops_propose", {"action": "raise-inference-priority"}, "a"),
+             tool_call("ops_object", {"id": "nope"}, "b")]
+    fake = FakeZyntra([completion(calls=calls), completion("ok")], propose=blocked)
+    _, msgs = zyntra_tools(fake)
+    assert msgs[0] == "error: Zyntra refused the proposal: action contract not met (needs approver)"
+    assert msgs[1] == "error: Zyntra answered 404: no such object"
+
+
+def test_zyntra_token(monkeypatch):
+    calls = [tool_call("ops_search", {}, "a")]
+    monkeypatch.delenv("ZYNTRA_TOKEN_OPS", raising=False)
+    fake = FakeZyntra([completion(calls=calls), completion("ok")])
+    _, msgs = zyntra_tools(fake)
+    assert msgs == ["error: the Zyntra token is not configured"] and not fake.zyntra
+    monkeypatch.setenv("ZYNTRA_TOKEN_OPS", "zst_wrong")
+    fake = FakeZyntra([completion(calls=calls), completion("ok")])
+    _, msgs = zyntra_tools(fake)
+    assert msgs == ["error: Zyntra answered 401: unauthorized"]
