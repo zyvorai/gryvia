@@ -151,14 +151,24 @@ def to_ui(obj: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def chat_url(obj: Dict[str, Any], name: str, namespace: str) -> str:
-    """The runtime's chat URL: the status endpoint when it is this namespace's in-cluster service, else derived."""
+_LABEL = re.compile(r"[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?")
+
+
+def chat_url(obj: Dict[str, Any]) -> str:
+    """The runtime's chat URL: the status endpoint when it is the agent namespace's in-cluster service, else derived.
+
+    Only the stored object is used, never the request path, and both host labels must be DNS labels.
+    """
+    md = obj.get("metadata") or {}
+    name, namespace = md.get("name") or "", md.get("namespace") or ""
+    service = f"{name}-agent"
+    if not (_LABEL.fullmatch(service) and _LABEL.fullmatch(namespace)):
+        raise HTTPException(status_code=409, detail="agent has no valid in-cluster service name")
     endpoint = ((obj.get("status") or {}).get("endpoint") or "").rstrip("/")
-    pattern = (r"^http://[a-z0-9]([-a-z0-9]*[a-z0-9])?\." + re.escape(namespace)
-               + r"\.svc\.cluster\.local:%d$" % AGENT_PORT)
-    if not re.match(pattern, endpoint):
-        endpoint = f"http://{name}-agent.{namespace}.svc.cluster.local:{AGENT_PORT}"
-    return endpoint + "/v1/chat/completions"
+    m = re.fullmatch(r"http://([^./:]+)\.([^./:]+)\.svc\.cluster\.local:(\d+)", endpoint)
+    if m and _LABEL.fullmatch(m.group(1)) and m.group(2) == namespace and m.group(3) == str(AGENT_PORT):
+        service = m.group(1)
+    return f"http://{service}.{namespace}.svc.cluster.local:{AGENT_PORT}/v1/chat/completions"
 
 
 async def _post(url: str, body: Dict[str, Any]) -> Any:
@@ -201,11 +211,11 @@ def build_router(deps: Deps) -> APIRouter:
     @router.post("/api/agents/{name}/chat")
     @deps.limiter.limit("30/minute")
     async def chat(request: Request, name: str, body: ChatRequest, _=Depends(deps.verify_auth)):
-        obj, ns = await find_one(request, deps, PLURAL, name)
+        obj, _ns = await find_one(request, deps, PLURAL, name)
         phase = (obj.get("status") or {}).get("phase")
         if phase != "Ready":
             raise HTTPException(status_code=409, detail=f"agent {name} is not ready (phase {phase or 'unknown'})")
-        url = chat_url(obj, name, ns)
+        url = chat_url(obj)
         payload = {"messages": [m.model_dump() for m in body.messages]}
         try:
             status, data = await (deps.agent_chat or _post)(url, payload)

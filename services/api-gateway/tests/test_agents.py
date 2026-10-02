@@ -114,6 +114,25 @@ def test_chat_ignores_foreign_endpoint(make_client, fake_k8s):
     assert calls[0][0] == "http://helper-agent.default.svc.cluster.local:8080/v1/chat/completions"
 
 
+def test_chat_url_uses_only_the_stored_object():
+    import pytest
+    from fastapi import HTTPException
+    from routers.agents import chat_url
+
+    def url(endpoint, name="helper", namespace=NS):
+        return chat_url({"metadata": {"name": name, "namespace": namespace}, "status": {"endpoint": endpoint}})
+
+    derived = "http://helper-agent.default.svc.cluster.local:8080/v1/chat/completions"
+    assert url("http://custom.default.svc.cluster.local:8080") == \
+        "http://custom.default.svc.cluster.local:8080/v1/chat/completions"
+    assert url("http://custom.other.svc.cluster.local:8080") == derived
+    assert url("http://custom.default.svc.cluster.local:9999") == derived
+    assert url("http://user@custom.default.svc.cluster.local:8080") == derived
+    for name, namespace in (("x/../y", NS), ("Helper", NS), ("helper", "a.b"), ("a" * 60, NS)):
+        with pytest.raises(HTTPException):
+            url("", name, namespace)
+
+
 def test_chat_not_ready(make_client, fake_k8s):
     seed(fake_k8s, {"phase": "Pending"})
     chat, calls = recorder()
