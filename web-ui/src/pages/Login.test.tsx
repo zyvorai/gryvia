@@ -39,6 +39,25 @@ describe('Login', () => {
     expect(screen.getByText('v1.0.0')).toBeTruthy()
   })
 
+  it('says what Gryvia does and the project goals', () => {
+    renderLogin(config)
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toContain('Gryvia is its scheduler.')
+    const about = screen.getByRole('region', { name: 'What Gryvia does' })
+    for (const t of ['GPU-aware scheduling', 'GPU as a Service', 'Models and inference', 'Network intelligence',
+      'Sovereign AI OS', 'Workflows and experiments']) {
+      expect(about.textContent).toContain(t)
+    }
+    expect(screen.getByText('Open source under Apache-2.0')).toBeTruthy()
+  })
+
+  it('focuses the username without leaving the hero', () => {
+    const focus = vi.spyOn(HTMLElement.prototype, 'focus')
+    renderLogin(config)
+    expect(document.activeElement?.id).toBe('username')
+    expect(focus).toHaveBeenCalledWith({ preventScroll: true })
+    focus.mockRestore()
+  })
+
   it('falls back to the chart defaults on an older gateway', () => {
     renderLogin({ oidcEnabled: false, apiKeyEnabled: true })
     expect(screen.getByLabelText('Command that prints the admin password').textContent).toContain(
