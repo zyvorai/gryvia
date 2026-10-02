@@ -78,6 +78,24 @@ With `--rdzv_endpoint=$(MASTER_ADDR):$(MASTER_PORT)` the c10d rendezvous store l
 
 The `lose index 0` e2e does this: the store runs on Gryvia's worker, index 0's node is stopped and deleted, and the survivor (index 1) re-forms the group as `rank 0 of 1`, resumes from the committed step and completes the Job. The store is in memory with a single replica, so losing the store itself still loses the rendezvous of running jobs. Before the shared-store fix above, the same test failed on the survivor with the `_shared_tcp_store_server` assertion (reproduced locally with torch 2.8).
 
+### A replicated rendezvous (etcd)
+
+The standalone store is a single in-memory process. To survive losing the store too, use torch's `etcd-v2` backend against an etcd cluster:
+
+```yaml
+  args: [--nnodes=$(NNODES), --nproc_per_node=$(NPROC_PER_NODE), --rdzv_backend=etcd-v2,
+         --rdzv_endpoint=etcd.my-ns.svc:2379, --rdzv_id=my-job, --max_restarts=3, /app/elastic_train.py]
+```
+
+- The backend speaks etcd's **v2 API**. Run etcd 3.5 with `--enable-v2`; etcd 3.6 removed the v2 API.
+- The workers need `python-etcd`; it is in the elastic image.
+- Point `--rdzv_endpoint` at a Service in front of the members. The client also reconnects to other members itself.
+
+The `rendezvous etcd` case of `e2e-elastic.yml` runs a 3-member etcd 3.5.34 StatefulSet (`quay.io/coreos/etcd`, `--enable-v2`) on Gryvia's worker. After step 10 is committed, it scales the StatefulSet to 2, so one member is gone while the cluster keeps quorum. Then it loses index 0's node. The survivor must re-form the group through the remaining members as `rank 0 of 1` and finish.
+
+The same test passed locally with three etcd processes and two torchrun agents (torch 2.8, python-etcd 0.4.5). We killed the member the agents' endpoint named, then one agent with its worker. The other agent logged one failed keep-alive, re-rendezvoused through the other members, and finished alone from the committed step.
+
+
 ```yaml
 apiVersion: v1
 kind: PersistentVolume
@@ -111,7 +129,7 @@ torchrun takes whatever group size forms within `NNODES=min:max`. The Ready cond
 - **Losing index 0 needs a standalone rendezvous store.** With the default `MASTER_ADDR` endpoint the store is in pod 0 and losing it ends the job. See [Losing index 0](#losing-index-0).
 - **The Job can finish early.** Once `minNodes` indexes succeed the remaining pods are removed. In a healthy elastic run all workers finish together; if some finish a moment later they may be stopped mid-exit.
 - No resharding of optimizer or data-loader state, no scale-up of a running job, no resize of a Kueue-admitted job after admission (Kueue's partial admission picks the size once, at admission).
-- Unverified: a replicated rendezvous store (etcd), storage other than NFS, and any NCCL behaviour on a resized group.
+- Unverified: etcd with TLS (`protocol=https`, `ssl_cert`), storage other than NFS, and any NCCL behaviour on a resized group.
 
 ## Tests
 

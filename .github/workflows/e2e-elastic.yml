@@ -7,8 +7,9 @@ name: Kind e2e (elastic training across nodes)
 # committed checkpoint the node of one worker is stopped and deleted: the Job's replacement pod for that index has
 # no node left and stays Pending, so the survivor must re-form the group alone (world size 1), resume from the
 # committed step and finish, and the Job's success policy (succeededCount: minNodes) must complete it.
-# The matrix loses index 1 (rendezvous hosted by pod 0, the default) and index 0 (rendezvous in a standalone store,
-# examples/training/rendezvous_store.py, with --rdzv_conf=is_host=0, so that pod 0 holds nothing the others need).
+# The matrix loses index 1 (rendezvous hosted by pod 0, the default), index 0 (rendezvous in a standalone store,
+# examples/training/rendezvous_store.py, with --rdzv_conf=is_host=0, so that pod 0 holds nothing the others need), and
+# index 0 with the rendezvous in a 3-member etcd cluster (torch's etcd-v2 backend) that also loses a member first.
 # The cluster is scripts/kind-elastic.yaml; Gryvia installs like the other kind e2e (scripts/kind-demo.sh).
 # Losing index 1 first passed in CI on main on 2026-10-02 (run 36990965624).
 
@@ -38,15 +39,19 @@ env:
 
 jobs:
   elastic:
-    name: elastic (lose index ${{ matrix.lose }})
+    name: elastic (lose index ${{ matrix.lose }}, rendezvous ${{ matrix.rdzv }})
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        lose: [1, 0]
+        include:
+          - {lose: 1, rdzv: pod0}
+          - {lose: 0, rdzv: store}
+          - {lose: 0, rdzv: etcd}
     env:
       LOSE: ${{ matrix.lose }}
+      RDZV: ${{ matrix.rdzv }}
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-helm@v5
@@ -111,8 +116,8 @@ jobs:
           source scripts/e2e-ml-lib.sh
           wait_for "PVC bound" 60 field_is pvc/e2e-elastic-rwx '{.status.phase}' Bound
 
-      - name: Standalone rendezvous store (losing index 0)
-        if: matrix.lose == 0
+      - name: Standalone rendezvous store
+        if: matrix.rdzv == 'store'
         # Not on a training node (they are tainted), so the node loss does not take the store down.
         run: |
           cat <<'EOF' | kubectl apply -f -
@@ -146,19 +151,85 @@ jobs:
           kubectl -n gryvia-system rollout status deploy/e2e-rdzv --timeout=180s
           kubectl -n gryvia-system get pods -l app=e2e-rdzv -o wide
 
+      - name: Three-member etcd cluster with the v2 API (torch's etcd-v2 rendezvous)
+        if: matrix.rdzv == 'etcd'
+        # Parallel pod management: a member is Ready only with quorum, so OrderedReady would never start the second.
+        # Not on a training node (they are tainted). etcd 3.5 is the last release with the v2 API torch uses.
+        run: |
+          peers=""
+          for i in 0 1 2; do peers="${peers:+$peers,}e2e-etcd-$i=http://e2e-etcd-$i.e2e-etcd-peer.gryvia-system.svc:2380"; done
+          cat <<EOF | kubectl apply -f -
+          apiVersion: v1
+          kind: Service
+          metadata: {name: e2e-etcd-peer, namespace: gryvia-system}
+          spec:
+            clusterIP: None
+            publishNotReadyAddresses: true
+            selector: {app: e2e-etcd}
+            ports: [{name: peer, port: 2380}, {name: client, port: 2379}]
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata: {name: e2e-etcd, namespace: gryvia-system}
+          spec:
+            selector: {app: e2e-etcd}
+            ports: [{port: 2379, targetPort: 2379}]
+          ---
+          apiVersion: apps/v1
+          kind: StatefulSet
+          metadata: {name: e2e-etcd, namespace: gryvia-system}
+          spec:
+            serviceName: e2e-etcd-peer
+            replicas: 3
+            podManagementPolicy: Parallel
+            selector: {matchLabels: {app: e2e-etcd}}
+            template:
+              metadata: {labels: {app: e2e-etcd}}
+              spec:
+                securityContext: {runAsNonRoot: true, runAsUser: 65534, seccompProfile: {type: RuntimeDefault}}
+                containers:
+                  - name: etcd
+                    image: quay.io/coreos/etcd:v3.5.34
+                    command: [/usr/local/bin/etcd]
+                    args:
+                      - --name=\$(POD_NAME)
+                      - --data-dir=/var/run/etcd/data
+                      - --enable-v2
+                      - --listen-client-urls=http://0.0.0.0:2379
+                      - --advertise-client-urls=http://\$(POD_NAME).e2e-etcd-peer.gryvia-system.svc:2379
+                      - --listen-peer-urls=http://0.0.0.0:2380
+                      - --initial-advertise-peer-urls=http://\$(POD_NAME).e2e-etcd-peer.gryvia-system.svc:2380
+                      - --initial-cluster=${peers}
+                      - --initial-cluster-state=new
+                      - --initial-cluster-token=e2e-etcd
+                    env: [{name: POD_NAME, valueFrom: {fieldRef: {fieldPath: metadata.name}}}]
+                    ports: [{containerPort: 2379}, {containerPort: 2380}]
+                    readinessProbe: {httpGet: {path: /health, port: 2379}, periodSeconds: 3}
+                    resources: {requests: {cpu: 50m, memory: 128Mi}, limits: {memory: 512Mi}}
+                    securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+                    volumeMounts: [{name: data, mountPath: /var/run/etcd}]
+                volumes: [{name: data, emptyDir: {}}]
+          EOF
+          kubectl -n gryvia-system rollout status sts/e2e-etcd --timeout=300s
+          kubectl -n gryvia-system get pods -l app=e2e-etcd -o wide
+          kubectl -n gryvia-system run e2e-etcd-v2 --rm -i --restart=Never --image=curlimages/curl:8.11.1 \
+            --overrides='{"spec":{"securityContext":{"runAsNonRoot":true,"runAsUser":100,"seccompProfile":{"type":"RuntimeDefault"}},"containers":[{"name":"c","image":"curlimages/curl:8.11.1","args":["-sf","http://e2e-etcd:2379/v2/members"],"securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]}}}]}}'
+
       - name: Two workers on two nodes, one node is lost, the survivor finishes alone
         run: |
           source scripts/e2e-ml-lib.sh
-          if [ "$LOSE" = 0 ]; then
-            export RDZV_ENDPOINT=e2e-rdzv.gryvia-system.svc.cluster.local:29400 RDZV_CONF=is_host=0,join_timeout=600
-          else
-            # Literal: Kubernetes expands $(VAR) in args from the container env.
-            # shellcheck disable=SC2016
-            export RDZV_ENDPOINT='$(MASTER_ADDR):$(MASTER_PORT)' RDZV_CONF=join_timeout=600
-          fi
-          # Only these two are substituted; $(NNODES) and friends stay for Kubernetes.
+          export RDZV_BACKEND=c10d
+          case "$RDZV" in
+            store) export RDZV_ENDPOINT=e2e-rdzv.gryvia-system.svc.cluster.local:29400 RDZV_CONF=is_host=0,join_timeout=600 ;;
+            etcd) export RDZV_BACKEND=etcd-v2 RDZV_ENDPOINT=e2e-etcd.gryvia-system.svc.cluster.local:2379 RDZV_CONF=join_timeout=600 ;;
+            *)
+              # Literal: Kubernetes expands $(VAR) in args from the container env.
+              # shellcheck disable=SC2016
+              export RDZV_ENDPOINT='$(MASTER_ADDR):$(MASTER_PORT)' RDZV_CONF=join_timeout=600 ;;
+          esac
+          # Only these are substituted; $(NNODES) and friends stay for Kubernetes.
           # shellcheck disable=SC2016
-          envsubst '$RDZV_ENDPOINT $RDZV_CONF' <<'EOF' | tee /dev/stderr | kubectl apply -f -
+          envsubst '$RDZV_BACKEND $RDZV_ENDPOINT $RDZV_CONF' <<'EOF' | tee /dev/stderr | kubectl apply -f -
           apiVersion: gryvia.io/v1alpha1
           kind: GryviaAIJob
           metadata: {name: e2e-mn, namespace: gryvia-system}
@@ -174,7 +245,7 @@ jobs:
             args:
               - --nnodes=$(NNODES)
               - --nproc_per_node=$(NPROC_PER_NODE)
-              - --rdzv_backend=c10d
+              - --rdzv_backend=${RDZV_BACKEND}
               - --rdzv_endpoint=${RDZV_ENDPOINT}
               - --rdzv_conf=${RDZV_CONF}
               - --rdzv_id=e2e-mn
@@ -214,6 +285,13 @@ jobs:
           # A world-size-2 commit means rank 0 read rank 1's manifest, written from the other node.
           wait_for "step 10 committed by both ranks" 180 committed 10
           logs | grep -q "committed step 10 (world 2" || { echo "ASSERT FAILED: step 10 not committed with world 2"; exit 1; }
+
+          if [ "$RDZV" = etcd ]; then
+            # A store member is lost before the rendezvous has to re-form: the StatefulSet drops e2e-etcd-2, the
+            # cluster keeps quorum with two of its three members, and the Service only routes to those two.
+            kubectl -n "$NS" scale sts/e2e-etcd --replicas=2
+            wait_for "etcd member e2e-etcd-2 gone" 120 bash -c "! kubectl -n $NS get pod e2e-etcd-2 >/dev/null 2>&1"
+          fi
 
           # Node failure: the node's container stops, then the node object is removed (as a cloud node controller
           # would). The pod garbage collector deletes the pods bound to it.
@@ -273,6 +351,7 @@ jobs:
           kubectl -n gryvia-system describe pods -l job-name=e2e-mn || true
           kubectl -n gryvia-system logs -l job-name=e2e-mn --tail=200 --max-log-requests=10 || true
           kubectl -n gryvia-system logs deploy/e2e-rdzv --tail=50 || true
+          kubectl -n gryvia-system logs -l app=e2e-etcd --tail=30 --prefix || true
           kubectl -n gryvia-system logs -l app.kubernetes.io/component=ai-operator --tail=200 || true
           kubectl get pv,pvc -A || true
           kubectl -n gryvia-system get events --sort-by=.lastTimestamp | tail -60 || true
