@@ -8,13 +8,14 @@ version, so training jobs, RAG ingestion and evaluation read the same bytes. It 
 | Verified | How |
 | --- | --- |
 | PVC creation (size, storage class, owner), the download Job for each source type (image, env, volumes, non-root pod), the termination-message result read back into status, versions and `keepLast` retention, a changed source downloading again, failures and invalid specs reported in status | Unit tests with a fake client (`operators/storage-operator/controllers/gryviadataset_controller_test.go`) |
+| The download script's resume and incremental paths: a partial http file resumed with and without server Range support, a complete one (416), a checksum mismatch keeping the temporary directory, another source's directory discarded, and an s3 version that fetches only changed objects while unchanged ones stay hard-linked and the old version is untouched | The script run under busybox (2026-10-02) with a stand-in server and a fake `aws` |
 | The download script (http with sha256, the swap into `/data/<version>`, pruning, the file count, size and checksum) on a real cluster | The "Datasets" step of `.github/workflows/e2e-ml.yml` with a stand-in HTTP server; these steps also passed on a single-node k3s host (2026-10-01) |
 | Gateway routes and tenant scoping | `services/api-gateway/tests/test_datasets.py` |
 
 | Not verified | Why |
 | --- | --- |
 | s3 downloads with the AWS CLI image, and nfs copies | No S3 bucket or NFS server in CI; the Jobs are unit-tested only |
-| Large datasets, resumable downloads | The Job downloads everything again on a source change; there is no partial resume |
+| Resume and incremental s3 sync against real S3 and large data | The script was run under busybox with a Range-capable stand-in server and a fake `aws` that, like the AWS CLI, writes each file to a temporary name and renames it; not against S3 |
 
 ## Turning it on
 
@@ -56,7 +57,15 @@ The kind is cluster-scoped. The fields the controller reads:
    (non-root, all capabilities dropped, 2 retries, deleted 24h after it finishes). The Job downloads into
    `/data/.tmp-<version>`, swaps it into `/data/<version>`, removes version directories that retention no longer
    keeps, and writes `{"files","bytes","sha256"}` to its termination message (the sha256 is over the sorted
-   per-file checksums).
+   per-file checksums). Downloads are not repeated needlessly:
+   - **Resume.** A failed attempt leaves the temporary directory, tagged with the source hash. The next attempt of
+     the same source continues it: http resumes the partial file with `wget -c` (and downloads it afresh when the
+     server does not support ranges), s3 fetches only what is missing. A checksum mismatch deletes the file. A
+     temporary directory left by another source is discarded.
+   - **Incremental s3.** A new version's directory starts as hard links to the current version's files, and
+     `aws s3 sync --delete` then downloads only new and changed objects and removes deleted ones. The AWS CLI
+     writes each download to a temporary file and renames it, so the old version's files are not modified.
+   - nfs copies the whole export each time.
 3. On success: `status.state: ready`, `currentVersion`, `subPath` (the version directory), `fileCount`,
    `totalSizeBytes`, and an entry in `versions` with the size and checksum. On failure: `state: error` and the
    reason in `message` (a checksum mismatch, for example). Condition `Ready` mirrors the state.

@@ -322,23 +322,38 @@ func (r *GryviaDatasetReconciler) ensurePVC(ctx context.Context, ds *gryviav1.Gr
 
 // datasetScript downloads into a temporary directory, swaps it into /data/$VERSION, removes version directories
 // not in $KEEP and writes {"files","bytes","sha256"} (or {"error"}) to the termination message.
+//
+// The temporary directory is kept when the Job fails, so a retry of the same source ($HASH, recorded next to it)
+// resumes: http continues the partial file, s3 sync fetches only what is missing. A new s3 directory starts as hard
+// links to the current version's files, so only changed objects are downloaded; the AWS CLI writes each download to
+// a temporary file and renames it, which leaves the linked files of the old version untouched. nfs copies everything,
+// because cp would overwrite linked files in place.
 const datasetScript = `set -eu
 fail() { printf '{"error":"%s"}' "$1" > /dev/termination-log; echo "$1" >&2; exit 1; }
-dest="/data/$VERSION"; tmp="/data/.tmp-$VERSION"
-rm -rf "$tmp"; mkdir -p "$tmp"
+dest="/data/$VERSION"; tmp="/data/.tmp-$VERSION"; mark="/data/.tmp-$VERSION.source"
+[ "$(cat "$mark" 2>/dev/null || true)" = "$HASH" ] || rm -rf "$tmp"
+if [ ! -d "$tmp" ]; then
+  mkdir -p "$tmp"
+  seed=""
+  if [ -d "$dest" ]; then seed="$dest"; elif [ -n "${CURRENT:-}" ] && [ -d "/data/$CURRENT" ]; then seed="/data/$CURRENT"; fi
+  if [ "$SOURCE" = s3 ] && [ -n "$seed" ]; then
+    cp -al "$seed/." "$tmp/" || { rm -rf "$tmp"; mkdir -p "$tmp"; }
+  fi
+fi
+echo "$HASH" > "$mark"
 case "$SOURCE" in
 http)
   f="${URL##*/}"; f="${f%%\?*}"; [ -n "$f" ] || f=data
-  wget -q -O "$tmp/$f" "$URL" || fail "download of $URL failed"
+  wget -q -c -O "$tmp/$f" "$URL" || { rm -f "$tmp/$f"; wget -q -O "$tmp/$f" "$URL"; } || fail "download of $URL failed"
   if [ -n "${CHECKSUM_URL:-}" ]; then
     want=$(wget -q -O - "$CHECKSUM_URL" | head -n1 | cut -d' ' -f1) || fail "download of $CHECKSUM_URL failed"
     got=$(sha256sum "$tmp/$f" | cut -d' ' -f1)
-    [ "$want" = "$got" ] || fail "sha256 mismatch: want $want, got $got"
+    [ "$want" = "$got" ] || { rm -f "$tmp/$f"; fail "sha256 mismatch: want $want, got $got"; }
   fi ;;
-s3) aws s3 sync "s3://$BUCKET/${PREFIX:-}" "$tmp" --only-show-errors || fail "aws s3 sync of s3://$BUCKET/${PREFIX:-} failed" ;;
-nfs) cp -R /src/. "$tmp"/ || fail "copy from the NFS export failed" ;;
+s3) aws s3 sync "s3://$BUCKET/${PREFIX:-}" "$tmp" --delete --only-show-errors || fail "aws s3 sync of s3://$BUCKET/${PREFIX:-} failed" ;;
+nfs) rm -rf "$tmp"; mkdir -p "$tmp"; cp -R /src/. "$tmp"/ || fail "copy from the NFS export failed" ;;
 esac
-rm -rf "$dest"; mv "$tmp" "$dest"
+rm -rf "$dest"; mv "$tmp" "$dest"; rm -f "$mark"
 for d in /data/*; do
   [ -d "$d" ] || continue
   v="${d##*/}"
@@ -356,6 +371,8 @@ func (r *GryviaDatasetReconciler) buildJob(ds *gryviav1.GryviaDataset, ns, name,
 		{Name: "SOURCE", Value: s.Type},
 		{Name: "VERSION", Value: version},
 		{Name: "KEEP", Value: strings.Join(keptVersions(ds, version), " ")},
+		{Name: "HASH", Value: hash},
+		{Name: "CURRENT", Value: ds.Status.CurrentVersion},
 	}
 	image := r.Image
 	var envFrom []corev1.EnvFromSource
