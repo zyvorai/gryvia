@@ -161,9 +161,10 @@ else
   echo "  ok   only Gryvia and the credentials"
 fi
 echo "hardening: OpenBao keys through External Secrets give the same Secrets"
-KV=(--set credentials.gryviaApiKey=apikey0123 --set credentials.llmKey=gk-$(printf 'a%.0s' {1..64})
+A64="$(printf 'a%.0s' {1..64})" B64="$(printf 'b%.0s' {1..64})"
+KV=(--set credentials.gryviaApiKey=apikey0123 --set "credentials.llmKey=gk-$A64"
     --set credentials.netraApiKey=netra0123 --set credentials.netraAgentKey=agent0123
-    --set agentToken.token=zst_$(printf 'b%.0s' {1..64}) --set 'agentToken.namespaces={tenant-alpha}')
+    --set "agentToken.token=zst_$B64" --set 'agentToken.namespaces={tenant-alpha}')
 PLAIN="$(mktemp)"
 render "${KV[@]}" >"$PLAIN" || { echo "  FAIL render"; cat "$PLAIN"; exit 1; }
 render "${KV[@]}" --set hardening.openbao.enabled=true >"$OUT" || { echo "  FAIL render"; cat "$OUT"; exit 1; }
