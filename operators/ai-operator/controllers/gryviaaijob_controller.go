@@ -799,6 +799,11 @@ func (r *GryviaAIJobReconciler) buildEnvVarsFor(job *gryviav1.GryviaAIJob, kind 
 			corev1.EnvVar{Name: "GRYVIA_ELASTIC_MIN_NODES", Value: fmt.Sprintf("%d", min)},
 			corev1.EnvVar{Name: "GRYVIA_ELASTIC_MAX_NODES", Value: fmt.Sprintf("%d", max)},
 		)
+		// torch >= 2.4 caches the workers' store address from the first rendezvous round; when another node
+		// becomes rank 0 after a loss, the agent fails an assertion in _restart_workers (seen with torch 2.8).
+		if !hasEnv(job.Spec.Env, "TORCH_DISABLE_SHARE_RDZV_TCP_STORE") {
+			envVars = append(envVars, corev1.EnvVar{Name: "TORCH_DISABLE_SHARE_RDZV_TCP_STORE", Value: "1"})
+		}
 	}
 	if dist.Framework != "" {
 		envVars = append(envVars, corev1.EnvVar{Name: "GRYVIA_DIST_FRAMEWORK", Value: dist.Framework})

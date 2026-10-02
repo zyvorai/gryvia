@@ -42,6 +42,15 @@ func elasticSuccessPolicy(job *gryviav1.GryviaAIJob) *batchv1.SuccessPolicy {
 	return &batchv1.SuccessPolicy{Rules: []batchv1.SuccessPolicyRule{{SucceededCount: &min}}}
 }
 
+func hasEnv(env []corev1.EnvVar, name string) bool {
+	for _, e := range env {
+		if e.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
 // replaceEnv sets name to value, replacing an existing entry or appending.
 func replaceEnv(env []corev1.EnvVar, name, value string) []corev1.EnvVar {
 	for i := range env {
