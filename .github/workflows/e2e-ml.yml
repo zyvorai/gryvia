@@ -1255,6 +1255,23 @@ jobs:
           counted() { [ "$(shared_tokens)" = 20 ]; }
           wait_for "shared daily token counter" 30 counted
 
+          # The dashboard playground: the api-gateway forwards with the caller's key, so the gateway routes and meters.
+          pg() { api /api/llm/chat -X POST -H "X-LLM-Key: $key" -d "$1"; }
+          out="$(pg "$chat")"
+          echo "$out"
+          assert_eq "playground: served model" "$(echo "$out" | jq -r .model)" stand-in
+          assert_eq "playground: usage" "$(echo "$out" | jq -r .usage.completion_tokens)" 3
+          stream="$(api /api/llm/chat -N -X POST -H "X-LLM-Key: $key" \
+            -d '{"model":"tiny-chat","stream":true,"messages":[{"role":"user","content":"hi"}]}')"
+          echo "$stream" | grep -q '"usage"' && echo "$stream" | grep -q 'data: \[DONE\]'
+          echo "ok: playground streamed with a usage chunk"
+          assert_eq "playground: a wrong key is a 400, not a 401" \
+            "$(api_status /api/llm/chat -X POST -H 'X-LLM-Key: gk-wrongwrongwrongwrongwrong' -d "$chat")" 400
+          assert_eq "playground: unknown model is a 404" \
+            "$(api_status /api/llm/chat -X POST -H "X-LLM-Key: $key" -d '{"model":"nope","messages":[{"role":"user","content":"x"}]}')" 404
+          playground_counted() { [ "$(shared_tokens)" = 40 ]; }
+          wait_for "playground requests metered on the shared counter" 30 playground_counted
+
           # A token quota already used up: the next request is refused.
           cat <<EOF | kubectl apply -f -
           apiVersion: gryvia.io/v1alpha1

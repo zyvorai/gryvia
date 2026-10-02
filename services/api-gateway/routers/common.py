@@ -60,6 +60,8 @@ class Deps:
     agent_chat: Optional[Callable[[str, Dict[str, Any]], Awaitable[Any]]] = None
     # tests inject this: the transport of streamed agent chats (httpx.MockTransport)
     agent_transport: Optional[Any] = None
+    # tests inject this: the transport of playground chats sent to the LLM gateway (httpx.MockTransport)
+    llm_transport: Optional[Any] = None
 
 
 async def require_admin(request: Request) -> None:
