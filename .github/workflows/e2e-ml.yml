@@ -11,8 +11,8 @@ name: ML controllers end-to-end
 # runs against a stand-in hub (a 20-line Python server, not huggingface.co) and its download/fine-tune/quantize/evaluate
 # steps are busybox stand-ins that only emit outputs. A separate step runs the real download, LoRA fine-tune and
 # evaluation scripts (CPU image, SmolLM2-135M from huggingface.co) as workflow job steps; quantization is not run.
-# The GryviaDataset controller (storage-operator) downloads from a stand-in HTTP file server; its s3 and nfs sources
-# are covered by unit tests only.
+# The GryviaDataset controller (storage-operator) downloads from a stand-in HTTP file server, from an S3-compatible
+# server (versitygw, real AWS CLI image) and from a kernel NFS export on the runner.
 #
 # The workflow-with-jobs and auto-tuner steps run GryviaAIJob children, which the AIJob controller runs to completion
 # (indexed batch/v1 Job workload, docs/aijob-lifecycle.md), so a failure of those steps fails the run.
@@ -1012,6 +1012,67 @@ jobs:
           wait_for "s3 dataset PVC garbage-collected" 120 gone pvc/dataset-e2e-s3
           kubectl -n "$NS" delete deploy,svc e2e-s3-server
           kubectl -n "$NS" delete secret e2e-s3-creds
+
+      # The nfs source: a kernel NFS server on the runner exports a directory read-only, the kind node gets the NFS
+      # client (kindest/node has none), and the download Job mounts the export as a pod volume and copies it.
+      - name: Datasets - nfs source from an NFS export, versions
+        run: |
+          source scripts/e2e-ml-lib.sh
+          sudo apt-get update -qq && sudo apt-get install -y -qq nfs-kernel-server >/dev/null
+          sudo mkdir -p /srv/e2e-nfs/sub /etc/exports.d
+          printf 'id,label\n1,cat\n' | sudo tee /srv/e2e-nfs/train.csv >/dev/null
+          printf 'id,label\n2,dog\n' | sudo tee /srv/e2e-nfs/sub/test.csv >/dev/null
+          sudo chmod -R a+rX /srv/e2e-nfs
+          echo '/srv/e2e-nfs *(ro,insecure,no_subtree_check,all_squash)' | sudo tee /etc/exports.d/e2e.exports >/dev/null
+          sudo exportfs -ra
+          sudo systemctl restart nfs-kernel-server
+          sudo exportfs -v
+          for node in $(kind get nodes --name "$KIND_CLUSTER"); do
+            docker exec "$node" sh -c 'apt-get update -qq && apt-get install -y -qq nfs-common >/dev/null'
+          done
+          server="$(hostname -I | awk '{print $1}')"
+          echo "NFS server: $server"
+
+          api /api/datasets -X POST -d "{\"name\":\"e2e-nfs\",\"type\":\"tabular\",\"version\":\"v1\",\"retention\":{\"keepLast\":2},
+            \"source\":{\"type\":\"nfs\",\"nfs\":{\"server\":\"$server\",\"path\":\"/srv/e2e-nfs\"}}}" | jq -e '.metadata.name == "e2e-nfs"'
+          wait_for "nfs dataset ready" 300 field_is gryviadataset/e2e-nfs '{.status.state}' ready
+          assert_eq "v1 files" "$(jp gryviadataset/e2e-nfs '{.status.fileCount}')" 2
+          assert_eq "v1 bytes" "$(jp gryviadataset/e2e-nfs '{.status.totalSizeBytes}')" $((15 + 15))
+
+          # Another file in the export, then v2.
+          printf 'notes\n' | sudo tee /srv/e2e-nfs/README >/dev/null
+          sudo chmod a+r /srv/e2e-nfs/README
+          kubectl -n "$NS" patch gryviadataset/e2e-nfs --type=merge -p '{"spec":{"version":"v2"}}'
+          wait_for "nfs dataset at v2" 300 field_is gryviadataset/e2e-nfs '{.status.currentVersion}' v2
+          wait_for "nfs dataset ready at v2" 60 field_is gryviadataset/e2e-nfs '{.status.state}' ready
+          assert_eq "v2 files" "$(jp gryviadataset/e2e-nfs '{.status.fileCount}')" 3
+          assert_eq "kept versions" "$(jp gryviadataset/e2e-nfs '{.status.versions[*].version}')" "v1 v2"
+
+          cat <<EOF | kubectl apply -f -
+          apiVersion: v1
+          kind: Pod
+          metadata: {name: e2e-nfs-reader, namespace: gryvia-system}
+          spec:
+            restartPolicy: Never
+            securityContext: {runAsNonRoot: true, runAsUser: 65534, seccompProfile: {type: RuntimeDefault}}
+            containers:
+              - name: read
+                image: ${TINY_JOB_IMAGE}
+                imagePullPolicy: IfNotPresent
+                command: [sh, -c, 'cat /data/v2/sub/test.csv; ls /data/v1 /data/v2']
+                securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+                volumeMounts: [{name: data, mountPath: /data, readOnly: true}]
+            volumes: [{name: data, persistentVolumeClaim: {claimName: dataset-e2e-nfs, readOnly: true}}]
+          EOF
+          wait_for "nfs reader done" 120 field_is pod/e2e-nfs-reader '{.status.phase}' Succeeded
+          out="$(kubectl -n "$NS" logs pod/e2e-nfs-reader)"
+          echo "$out"
+          grep -q '^2,dog$' <<<"$out" || { echo "ASSERT FAILED: nested file content"; exit 1; }
+          assert_eq "README only in v2" "$(grep -c '^README$' <<<"$out")" 1
+
+          kubectl -n "$NS" delete pod/e2e-nfs-reader --wait=false
+          api /api/datasets/e2e-nfs -X DELETE >/dev/null
+          wait_for "nfs dataset PVC garbage-collected" 120 gone pvc/dataset-e2e-nfs
 
       # ------------------------------------------------------------------ LLM gateway (ai-operator image, llm-gateway mode)
       # A stand-in OpenAI server runs as a real GryviaInferenceService (python image, args only) and is published with
