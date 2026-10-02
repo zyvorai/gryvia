@@ -723,7 +723,7 @@ jobs:
                 dependsOn: [download]
           $(job fine-tuning finetune_lora.py)
                   args: ["--base={{steps.download.outputs.path}}", --dataset=/data/train.jsonl, --name=smollm2,
-                         "--revision={{steps.download.outputs.revision}}", --cpu, --epochs=3, --batch-size=8,
+                         "--revision={{steps.download.outputs.revision}}", --cpu, --epochs=5, --batch-size=8,
                          --grad-accum=1, --max-seq-len=64, --lr=1e-3]
               - name: evaluate
                 dependsOn: [finetune]
@@ -753,7 +753,7 @@ jobs:
           base="$(out baseline score)"; tuned="$(out evaluate score)"; loss="$(out finetune train_loss)"
           echo "base score $base, fine-tuned score $tuned, train loss $loss"
           awk -v b="$base" 'BEGIN{exit !(b <= 0.25)}' || { echo "ASSERT FAILED: the base model already knows the facts ($base)"; exit 1; }
-          awk -v t="$tuned" 'BEGIN{exit !(t >= 0.625)}' || { echo "ASSERT FAILED: the fine-tune did not learn the facts ($tuned)"; exit 1; }
+          awk -v t="$tuned" 'BEGIN{exit !(t >= 0.875)}' || { echo "ASSERT FAILED: the fine-tune did not learn the facts ($tuned)"; exit 1; }
           awk -v l="$loss" 'BEGIN{exit !(l > 0 && l < 2)}' || { echo "ASSERT FAILED: train loss $loss"; exit 1; }
 
           assert_eq "registered eval_score" "$(jp gryviamodelregistry/e2e-mf-smollm2 '{.spec.metadata.eval_score}')" "$tuned"
