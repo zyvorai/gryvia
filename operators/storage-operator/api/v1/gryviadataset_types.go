@@ -68,6 +68,11 @@ type S3Source struct {
 	// Region is the S3 region
 	Region string `json:"region,omitempty"`
 
+	// Endpoint is the URL of an S3-compatible service (MinIO, Ceph RGW, R2, ...), for example
+	// http://minio.storage.svc:9000. Empty means AWS. Passed to the AWS CLI as AWS_ENDPOINT_URL.
+	// +kubebuilder:validation:Pattern=`^(https?://[^\s/]+(/[^\s]*)?)?$`
+	Endpoint string `json:"endpoint,omitempty"`
+
 	// CredentialsSecret is the name of the secret with credentials
 	CredentialsSecret string `json:"credentialsSecret,omitempty"`
 }

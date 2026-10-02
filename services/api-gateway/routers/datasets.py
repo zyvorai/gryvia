@@ -29,6 +29,7 @@ class S3Source(BaseModel):
     bucket: str = Field(min_length=3, max_length=63, pattern=r"^[a-z0-9][a-z0-9.-]+$")
     prefix: str = Field(default="", max_length=1024)
     region: str = Field(default="", max_length=32, pattern=r"^[a-z0-9-]*$")
+    endpoint: str = Field(default="", max_length=2048, pattern=r"^(https?://[^\s/]+(/[^\s]*)?)?$")
     credentialsSecret: str = Field(default="", max_length=253, pattern=r"^([a-z0-9]([-a-z0-9.]*[a-z0-9])?)?$")
 
 

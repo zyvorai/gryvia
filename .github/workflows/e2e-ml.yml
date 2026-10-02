@@ -47,6 +47,8 @@ env:
   TINY_JOB_IMAGE: busybox:1.36
   TINY_PY_IMAGE: python:3.12-alpine
   MF_MODEL_REVISION: 93efa2f097d58c2a74874c7e644dbc9b0cee75a2
+  S3_SERVER_IMAGE: versity/versitygw:v1.8.0
+  AWS_CLI_IMAGE: amazon/aws-cli:2.17.0
   KIND_CLUSTER: gryvia-demo
 
 jobs:
@@ -877,6 +879,137 @@ jobs:
           # Delete through the gateway: the PVC goes with it.
           api /api/datasets/e2e-data -X DELETE >/dev/null
           wait_for "PVC garbage-collected" 120 gone pvc/dataset-e2e-data
+
+      # The s3 source with the real AWS CLI image (the chart's storageOperator.datasets.s3Image) against an
+      # S3-compatible server (versitygw, posix backend) through spec.source.s3.endpoint. v2 is synced incrementally: it starts as hard links to v1, `aws s3 sync --delete`
+      # downloads the changed and new objects and removes the deleted one, v1 stays as it was.
+      - name: Datasets - s3 source against an S3-compatible server, incremental sync between versions
+        run: |
+          source scripts/e2e-ml-lib.sh
+          for img in "$S3_SERVER_IMAGE" "$AWS_CLI_IMAGE"; do docker pull -q "$img"; kind load docker-image --name "$KIND_CLUSTER" "$img"; done
+          kubectl -n "$NS" create secret generic e2e-s3-creds \
+            --from-literal=AWS_ACCESS_KEY_ID=e2e-s3 --from-literal=AWS_SECRET_ACCESS_KEY=e2e-s3-secret
+          cat <<EOF | kubectl apply -f -
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata: {name: e2e-s3-server, namespace: gryvia-system}
+          spec:
+            selector: {matchLabels: {app: e2e-s3-server}}
+            template:
+              metadata: {labels: {app: e2e-s3-server}}
+              spec:
+                securityContext: {runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000, fsGroup: 1000, seccompProfile: {type: RuntimeDefault}}
+                containers:
+                  - name: s3
+                    image: ${S3_SERVER_IMAGE}
+                    imagePullPolicy: IfNotPresent
+                    # Metadata in a sidecar directory, so the emptyDir needs no extended attributes.
+                    args: [--port, ":9000", --health, /health, posix, --sidecar, /meta, /data]
+                    env:
+                      - {name: ROOT_ACCESS_KEY_ID, valueFrom: {secretKeyRef: {name: e2e-s3-creds, key: AWS_ACCESS_KEY_ID}}}
+                      - {name: ROOT_SECRET_ACCESS_KEY, valueFrom: {secretKeyRef: {name: e2e-s3-creds, key: AWS_SECRET_ACCESS_KEY}}}
+                    ports: [{containerPort: 9000}]
+                    readinessProbe: {httpGet: {path: /health, port: 9000}, periodSeconds: 2}
+                    securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+                    volumeMounts: [{name: data, mountPath: /data}, {name: meta, mountPath: /meta}]
+                volumes: [{name: data, emptyDir: {}}, {name: meta, emptyDir: {}}]
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata: {name: e2e-s3-server, namespace: gryvia-system}
+          spec: {selector: {app: e2e-s3-server}, ports: [{port: 9000, targetPort: 9000}]}
+          ---
+          apiVersion: v1
+          kind: Pod
+          metadata: {name: e2e-s3-client, namespace: gryvia-system}
+          spec:
+            securityContext: {runAsNonRoot: true, runAsUser: 65534, seccompProfile: {type: RuntimeDefault}}
+            containers:
+              - name: aws
+                image: ${AWS_CLI_IMAGE}
+                imagePullPolicy: IfNotPresent
+                command: [sleep, infinity]
+                envFrom: [{secretRef: {name: e2e-s3-creds}}]
+                env:
+                  - {name: HOME, value: /tmp}
+                  - {name: AWS_DEFAULT_REGION, value: us-east-1}
+                  - {name: AWS_ENDPOINT_URL, value: "http://e2e-s3-server.gryvia-system.svc:9000"}
+                securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+          EOF
+          kubectl -n "$NS" rollout status deploy/e2e-s3-server --timeout=180s
+          kubectl -n "$NS" wait --for=condition=Ready pod/e2e-s3-client --timeout=180s
+          s3() { kubectl -n "$NS" exec e2e-s3-client -- aws "$@"; }
+          put() { printf '%s' "$2" | kubectl -n "$NS" exec -i e2e-s3-client -- aws s3 cp - "s3://e2e-bucket/corpus/$1"; }
+          s3 s3 mb s3://e2e-bucket
+          put a.txt "first file"
+          put b.txt "second file, v1"
+          put sub/c.txt "unchanged between versions"
+          s3 s3 ls --recursive s3://e2e-bucket/
+
+          create_s3() {
+            api /api/datasets -X POST -d '{"name":"e2e-s3","type":"text","version":"v1","retention":{"keepLast":2},
+              "source":{"type":"s3","s3":{"bucket":"e2e-bucket","prefix":"corpus/","region":"us-east-1",
+                "endpoint":"http://e2e-s3-server.gryvia-system.svc:9000","credentialsSecret":"e2e-s3-creds"}}}'
+          }
+          create_s3 | jq -e '.metadata.name == "e2e-s3"'
+          wait_for "s3 dataset ready" 300 field_is gryviadataset/e2e-s3 '{.status.state}' ready
+          assert_eq "s3 job image" "$(kubectl -n "$NS" get jobs -l gryvia.io/dataset=e2e-s3 -o jsonpath='{.items[0].spec.template.spec.containers[0].image}')" "$AWS_CLI_IMAGE"
+          assert_eq "v1 files" "$(jp gryviadataset/e2e-s3 '{.status.fileCount}')" 3
+          assert_eq "v1 bytes" "$(jp gryviadataset/e2e-s3 '{.status.totalSizeBytes}')" $((10 + 15 + 26))
+
+          # Change one object (another size), delete one, add one; then ask for v2.
+          put b.txt "second file, changed for v2"
+          s3 s3 rm s3://e2e-bucket/corpus/a.txt
+          put d.txt "new in v2"
+          kubectl -n "$NS" patch gryviadataset/e2e-s3 --type=merge -p '{"spec":{"version":"v2"}}'
+          wait_for "s3 dataset at v2" 300 field_is gryviadataset/e2e-s3 '{.status.currentVersion}' v2
+          wait_for "s3 dataset ready at v2" 60 field_is gryviadataset/e2e-s3 '{.status.state}' ready
+          assert_eq "v2 files" "$(jp gryviadataset/e2e-s3 '{.status.fileCount}')" 3
+          assert_eq "kept versions" "$(jp gryviadataset/e2e-s3 '{.status.versions[*].version}')" "v1 v2"
+
+          cat <<EOF | kubectl apply -f -
+          apiVersion: v1
+          kind: Pod
+          metadata: {name: e2e-s3-reader, namespace: gryvia-system}
+          spec:
+            restartPolicy: Never
+            securityContext: {runAsNonRoot: true, runAsUser: 65534, seccompProfile: {type: RuntimeDefault}}
+            containers:
+              - name: read
+                image: ${TINY_JOB_IMAGE}
+                imagePullPolicy: IfNotPresent
+                command: [sh, -c]
+                args:
+                  - |
+                    cd /data
+                    echo "v2 b: \$(cat v2/b.txt)"
+                    echo "v2 d: \$(cat v2/d.txt)"
+                    echo "v2 a: \$([ -e v2/a.txt ] && echo present || echo absent)"
+                    echo "v1 b: \$(cat v1/b.txt)"
+                    echo "v1 a: \$(cat v1/a.txt)"
+                    echo "c linked: \$([ "\$(stat -c %i v1/sub/c.txt)" = "\$(stat -c %i v2/sub/c.txt)" ] && echo yes || echo no)"
+                    echo "b linked: \$([ "\$(stat -c %i v1/b.txt)" = "\$(stat -c %i v2/b.txt)" ] && echo yes || echo no)"
+                securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+                volumeMounts: [{name: data, mountPath: /data, readOnly: true}]
+            volumes: [{name: data, persistentVolumeClaim: {claimName: dataset-e2e-s3, readOnly: true}}]
+          EOF
+          wait_for "s3 reader done" 120 field_is pod/e2e-s3-reader '{.status.phase}' Succeeded
+          out="$(kubectl -n "$NS" logs pod/e2e-s3-reader)"
+          echo "$out"
+          line() { grep "^$1: " <<<"$out" | cut -d' ' -f3-; }
+          assert_eq "v2 has the changed object" "$(line 'v2 b')" "second file, changed for v2"
+          assert_eq "v2 has the new object" "$(line 'v2 d')" "new in v2"
+          assert_eq "v2 dropped the deleted object" "$(line 'v2 a')" absent
+          assert_eq "v1 keeps its version of the changed object" "$(line 'v1 b')" "second file, v1"
+          assert_eq "v1 keeps the deleted object" "$(line 'v1 a')" "first file"
+          assert_eq "unchanged object hard-linked, not downloaded again" "$(line 'c linked')" yes
+          assert_eq "changed object is a new file" "$(line 'b linked')" no
+
+          kubectl -n "$NS" delete pod/e2e-s3-reader pod/e2e-s3-client --wait=false
+          api /api/datasets/e2e-s3 -X DELETE >/dev/null
+          wait_for "s3 dataset PVC garbage-collected" 120 gone pvc/dataset-e2e-s3
+          kubectl -n "$NS" delete deploy,svc e2e-s3-server
+          kubectl -n "$NS" delete secret e2e-s3-creds
 
       # ------------------------------------------------------------------ LLM gateway (ai-operator image, llm-gateway mode)
       # A stand-in OpenAI server runs as a real GryviaInferenceService (python image, args only) and is published with

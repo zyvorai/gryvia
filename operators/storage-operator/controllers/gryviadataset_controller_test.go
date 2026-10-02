@@ -228,7 +228,8 @@ func TestDataset_S3AndNFSJobs(t *testing.T) {
 	r, c := newDatasetReconciler(
 		httpDataset("s3data", func(ds *gryviav1.GryviaDataset) {
 			ds.Spec.Namespace = "team-a"
-			ds.Spec.Source = gryviav1.DatasetSource{Type: "s3", S3: &gryviav1.S3Source{Bucket: "b", Prefix: "p/", Region: "eu-west-1", CredentialsSecret: "aws"}}
+			ds.Spec.Source = gryviav1.DatasetSource{Type: "s3", S3: &gryviav1.S3Source{Bucket: "b", Prefix: "p/", Region: "eu-west-1", CredentialsSecret: "aws",
+				Endpoint: "http://minio.storage.svc:9000"}}
 			ds.Spec.Cache = &gryviav1.DatasetCache{StorageClass: "fast", Size: "50Gi"}
 		}),
 		httpDataset("nfsdata", func(ds *gryviav1.GryviaDataset) {
@@ -243,7 +244,7 @@ func TestDataset_S3AndNFSJobs(t *testing.T) {
 	}
 	s3 := jobs.Items[0].Spec.Template.Spec.Containers[0]
 	if s3.Image != "amazon/aws-cli:2.17.0" || envOf(&jobs.Items[0])["BUCKET"] != "b" || envOf(&jobs.Items[0])["AWS_DEFAULT_REGION"] != "eu-west-1" ||
-		len(s3.EnvFrom) != 1 || s3.EnvFrom[0].SecretRef.Name != "aws" {
+		envOf(&jobs.Items[0])["AWS_ENDPOINT_URL"] != "http://minio.storage.svc:9000" || len(s3.EnvFrom) != 1 || s3.EnvFrom[0].SecretRef.Name != "aws" {
 		t.Errorf("s3 container: %+v", s3)
 	}
 	pvc := &corev1.PersistentVolumeClaim{}
@@ -275,6 +276,9 @@ func TestDataset_InvalidSpecs(t *testing.T) {
 		"bad-version": func(ds *gryviav1.GryviaDataset) { ds.Spec.Version = "../etc" },
 		"s3-bucket": func(ds *gryviav1.GryviaDataset) {
 			ds.Spec.Source = gryviav1.DatasetSource{Type: "s3", S3: &gryviav1.S3Source{}}
+		},
+		"s3-endpoint": func(ds *gryviav1.GryviaDataset) {
+			ds.Spec.Source = gryviav1.DatasetSource{Type: "s3", S3: &gryviav1.S3Source{Bucket: "b", Endpoint: "minio:9000"}}
 		},
 		"nfs-path": func(ds *gryviav1.GryviaDataset) {
 			ds.Spec.Source = gryviav1.DatasetSource{Type: "nfs", NFS: &gryviav1.NFSSource{Server: "s", Path: "rel"}}
