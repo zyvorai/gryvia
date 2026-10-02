@@ -9,7 +9,8 @@ It fits y = x @ W on a fixed batch of 8 samples per step, split evenly across th
 is the same whatever the world size. Every CHECKPOINT_EVERY steps all ranks commit a coordinated checkpoint
 (coordinated_checkpoint.save_global) under CHECKPOINT_DIR. When torchrun restarts the workers after a member was
 lost, or the group re-forms with another size, each rank resumes from the last committed step. Rank 0 writes
-DONE (JSON: steps, final loss, world size, restarts) next to the checkpoints when training finishes.
+DONE (JSON: steps, final loss, world size, restarts, resumedFrom) next to the checkpoints when training finishes.
+`restarts` is TORCHELASTIC_RESTART_COUNT: failure restarts only; a group re-formed because a node joined keeps it.
 
 Environment: CHECKPOINT_DIR (required), TOTAL_STEPS (80), CHECKPOINT_EVERY (5), STEP_SECONDS (0.5),
 COLLECTIVE_TIMEOUT (60 seconds).

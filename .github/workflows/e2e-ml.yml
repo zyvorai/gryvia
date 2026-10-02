@@ -1450,9 +1450,11 @@ jobs:
           done_json="$(head -1 <<<"$out")"
           assert_eq "trained every step" "$(jq -r .steps <<<"$done_json")" 60
           assert_eq "last commit is the final step" "$(tail -1 <<<"$out" | jq -r .step)" 60
-          jq -e '.restarts >= 1' <<<"$done_json" >/dev/null || { echo "ASSERT FAILED: torchrun never restarted the workers"; exit 1; }
+          # The finishing workers started from a committed step, so they were restarted after the loss. torchrun's
+          # restart count (TORCHELASTIC_RESTART_COUNT) only counts failure restarts, not a group re-formed because the
+          # replacement pod joined, so it is reported but not asserted.
           jq -e '.resumedFrom >= 10' <<<"$done_json" >/dev/null || { echo "ASSERT FAILED: did not resume from a committed step"; exit 1; }
-          echo "ok: resumed from step $(jq -r .resumedFrom <<<"$done_json") after $(jq -r .restarts <<<"$done_json") restart(s), final world size $(jq -r .world <<<"$done_json")"
+          echo "ok: resumed from step $(jq -r .resumedFrom <<<"$done_json"), failure restarts $(jq -r .restarts <<<"$done_json"), final world size $(jq -r .world <<<"$done_json")"
 
           kubectl -n "$NS" delete pod/e2e-elastic-read
           kubectl -n "$NS" delete gryviaaijob/e2e-elastic
