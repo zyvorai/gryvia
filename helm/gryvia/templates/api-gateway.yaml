@@ -95,6 +95,31 @@ spec:
           value: "1"
         {{- end }}
         {{- end }}
+        {{- with (dig "apiGateway" "sovereign" dict .Values.AsMap) }}
+        {{- if .zyntraURL }}
+        - name: GRYVIA_ZYNTRA_URL
+          value: {{ .zyntraURL | quote }}
+        {{- if .zyntraTokenSecret }}
+        - name: GRYVIA_ZYNTRA_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: {{ .zyntraTokenSecret | quote }}
+              key: {{ .zyntraTokenKey | default "token" | quote }}
+        {{- end }}
+        {{- end }}
+        {{- if .zyntraConsoleURL }}
+        - name: GRYVIA_ZYNTRA_CONSOLE_URL
+          value: {{ .zyntraConsoleURL | quote }}
+        {{- end }}
+        {{- if .netraConsoleURL }}
+        - name: GRYVIA_NETRA_CONSOLE_URL
+          value: {{ .netraConsoleURL | quote }}
+        {{- end }}
+        {{- if .trustGryviaCert }}
+        - name: GRYVIA_SOVEREIGN_CA_FILE
+          value: /tls/tls.crt
+        {{- end }}
+        {{- end }}
         {{- if (dig "llmGateway" "enabled" nil .Values.AsMap) }}
         - name: GRYVIA_LLM_KEY_NAMESPACE
           value: {{ (dig "llmGateway" "keyNamespace" "gryvia-llm-keys" .Values.AsMap) | quote }}

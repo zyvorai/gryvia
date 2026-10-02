@@ -41,6 +41,20 @@ gryvia:
   # Gryvia's is not gryvia-system.
   tls:
     extraSANs: [netra, netra.gryvia-system.svc]
+  # The console's Sovereign AI OS page reads Zyntra with the agents' viewer/proposer token and Netra with its API key.
+  # Set the console URLs to where people open Zyntra and Netra (ingress or port-forward) to get links.
+  apiGateway:
+    netra:
+      url: https://netra:30870
+      tokenSecret: sovereign-aios-credentials
+      tokenKey: ZYNTRA_NETRA_TOKEN
+    sovereign:
+      zyntraURL: http://zyntra:8080
+      zyntraTokenSecret: sovereign-aios-credentials
+      zyntraTokenKey: AGENT_ZYNTRA_TOKEN
+      zyntraConsoleURL: ""
+      netraConsoleURL: ""
+      trustGryviaCert: true
   llmGateway:
     enabled: true
   aiOperator:
@@ -49,13 +63,19 @@ gryvia:
 
 zyntra:
   enabled: true
+  # Fixed service name: agents and the console reach Zyntra at http://zyntra.<namespace>.svc:8080.
+  fullnameOverride: zyntra
   # The pack in files/zyntra-pack, mounted from a ConfigMap.
   modelPath: /etc/zyntra-pack
-  # Approved changes are Gryvia custom resources run through kubectl, which the Zyntra image does not carry.
-  execute: dry-run
+  # Approved changes are Gryvia custom resources (GryviaPriority, GryviaGPUSharingPolicy, GryviaAIJob suspend) that
+  # Zyntra applies through the Kubernetes API with the RBAC kubernetes.actions grants. Every change still needs a
+  # person's approval; set execute: dry-run to only validate them.
+  execute: apply
+  kubernetes:
+    actions: true
   # Approval policy (quorum, users, ...) as inline YAML. This chart merges it with the agents' service token and
   # writes the result to policyExistingSecret, which Zyntra reads instead. Zyntra does not restart when only the
-  # token's roles or tenant change: kubectl rollout restart deployment/<release>-zyntra.
+  # token's roles or tenant change: kubectl rollout restart deployment/zyntra.
   policy: ""
   policyExistingSecret: sovereign-aios-zyntra-policy
   ai:

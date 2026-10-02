@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import {
   canChat,
@@ -13,6 +13,7 @@ import {
 } from "@/lib/agents";
 import { notify } from "@/lib/notify";
 import { phaseTone } from "@/lib/phase";
+import { product, proposalIdIn, zyntraDecisionLink } from "@/lib/sovereign";
 import type { SortAccessor } from "@/lib/tableState";
 import type { Column } from "@/components/DataTable";
 import ResourceListPage from "@/components/ResourceListPage";
@@ -70,6 +71,18 @@ function ChatPanel({ agent }: { agent: Agent }) {
     send.mutate(next.map((t) => t.message));
   };
   const ready = canChat(agent);
+  const usesZyntra = (agent.spec.tools ?? []).some((t) => t.type === "zyntra");
+  const sovereign = useQuery({ queryKey: ["sovereign"], queryFn: api.getSovereign, enabled: usesZyntra, staleTime: 60_000 });
+  const zyntraConsole = product(sovereign.data, "Zyntra")?.console;
+  const proposalLink = (text: string) => {
+    const id = proposalIdIn(text);
+    const href = id && zyntraDecisionLink(zyntraConsole, id);
+    return href ? (
+      <a href={href} target="_blank" rel="noopener noreferrer">
+        Review {id} in Zyntra
+      </a>
+    ) : null;
+  };
   return (
     <div style={{ marginTop: "1rem" }}>
       <p className="eyebrow" id={`chat-${name}`}>
@@ -81,6 +94,7 @@ function ChatPanel({ agent }: { agent: Agent }) {
             <li key={i}>
               <strong>{t.message.role === "user" ? "You" : name}</strong>
               <p style={{ whiteSpace: "pre-wrap", margin: "0.25rem 0" }}>{t.message.content}</p>
+              {t.message.role === "assistant" && proposalLink(t.message.content)}
               {t.summary && <small className="muted">{t.summary}</small>}
             </li>
           ))}
@@ -181,7 +195,7 @@ export default function Agents() {
       noun="agent"
       eyebrow="Agents"
       heroTitle="Models that use your tools."
-      lede="Each agent runs a tool-calling loop against a model on the LLM gateway, with its own key: it can search your vector indexes and call allowlisted HTTP endpoints. Applications call its OpenAI-compatible endpoint; you can try it here."
+      lede="Each agent runs a tool-calling loop against a model on the LLM gateway, with its own key: it can search your vector indexes, call allowlisted HTTP endpoints, and read Zyntra's ontology and propose actions for people to approve. Applications call its OpenAI-compatible endpoint; you can try it here."
       queryKey={QUERY_KEY}
       fetch={api.getAgents}
       remove={api.deleteAgent}

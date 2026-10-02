@@ -88,6 +88,17 @@ ok({"name": "policy", "secret": {"secretName": "sovereign-aios-zyntra-policy",
 ok(env.get("ZYNTRA_POLICY") == "/etc/zyntra/policy.yaml", "Zyntra reads the policy")
 ok(find("ConfigMap", contains="zyntra-policy") is None, "no inline policy ConfigMap")
 
+gwenv = {e["name"]: e for e in gw["env"]}
+ok(gwenv["GRYVIA_ZYNTRA_URL"]["value"] == "http://zyntra:8080" and find("Service", "zyntra") is not None,
+   "the console's overview reads Zyntra at its fixed Service name")
+ok(gwenv["GRYVIA_ZYNTRA_TOKEN"]["valueFrom"]["secretKeyRef"] == {"name": "sovereign-aios-credentials",
+   "key": "AGENT_ZYNTRA_TOKEN"}, "with the agents' viewer/proposer token")
+ok(gwenv["GRYVIA_NETRA_TOKEN"]["valueFrom"]["secretKeyRef"]["key"] == "ZYNTRA_NETRA_TOKEN", "and Netra with its API key")
+ok(gwenv["GRYVIA_SOVEREIGN_CA_FILE"]["value"] == "/tls/tls.crt", "verifying both against Gryvia's certificate")
+ok(env.get("ZYNTRA_EXECUTE") == "apply", "Zyntra applies approved changes")
+cr = find("ClusterRole", contains="zyntra-actions")
+ok(cr is not None and any("gryviapriorities" in r["resources"] for r in cr["rules"]), "with RBAC for Gryvia's resources")
+
 na = find("Secret", "sovereign-aios-netra-auth")["stringData"]
 ok(na["api-key"] == creds["ZYNTRA_NETRA_TOKEN"], "Zyntra reads Netra with Netra's API key")
 ok(find("Secret", "sovereign-aios-netra-ai")["stringData"]["api-key"] == llm, "Netra's AI uses the LLM key")
