@@ -1,6 +1,6 @@
 # Elastic training (PyTorch, run-to-completion jobs)
 
-**Status: run on kind with a real `torchrun` on CPU; never on GPUs.** The kind e2e (`e2e-ml.yml`, "Elastic training") runs [`elastic_train.py`](../examples/training/elastic_train.py) in an elastic AIJob (`nodes: 2`, `minNodes: 1`, gloo), deletes worker index 1 after a committed checkpoint and expects torchrun to restart the workers, every rank to resume from the committed step and the job to succeed. NCCL, GPUs, multi-node kind clusters and Kueue are not covered.
+**Status: run on kind with a real `torchrun` on CPU; never on GPUs.** The kind e2e (`e2e-ml.yml`, "Elastic training") runs [`elastic_train.py`](../examples/training/elastic_train.py) in an elastic AIJob (`nodes: 2`, `minNodes: 1`, gloo), deletes worker index 1 after a committed checkpoint and expects torchrun to restart the workers, every rank to resume from the committed step and the job to succeed. A second kind e2e (`e2e-elastic.yml`) spreads the two workers over two nodes with the checkpoints on a ReadWriteMany NFS volume and loses a whole node: the survivor must finish alone (see [Across nodes](#across-nodes-a-lost-node)). NCCL, GPUs and Kueue are not covered.
 
 ## What it is
 
@@ -52,14 +52,37 @@ spec:
 
 What the kind e2e checks: after worker 1 is deleted, the survivor's all-reduce fails, torchrun restarts its worker, the group re-forms (alone, or with the replacement pod the Job creates for index 1) and training continues from the last committed step. Rank 0 writes `DONE` (steps, final loss, world size, restarts, resumed step) next to the checkpoints. In the first kind run the Job's replacement pod joined in time: both ranks resumed after step 10 with world size 2 and finished all 60 steps. `restarts` stayed 0 because torchrun counts only failure restarts, not a group re-formed because a node joined; the e2e asserts the resumed step instead.
 
+## Across nodes, a lost node
+
+`.github/workflows/e2e-elastic.yml` runs the same trainer on a four-node kind cluster (`scripts/kind-elastic.yaml`): Gryvia on one worker, two tainted training workers, and required pod anti-affinity so each worker pod gets its own node. The checkpoints are on an NFS export of the runner, mounted ReadWriteMany by both nodes. After step 10 is committed with world size 2 (rank 0 read rank 1's manifest from the other node), the node of index 1 is stopped and deleted. The e2e then expects:
+
+- the Job's replacement pod for index 1 to stay Pending (no training node is left);
+- the survivor to re-form the group alone (`rank 0 of 1`), resume from the committed step and train to the end;
+- `DONE` to record world size 1, and the Job to complete through the success policy (`succeededCount: minNodes`) with the Pending pod still unscheduled;
+- a pod on a third node to read `DONE` from the same volume.
+
+Use these mount options for the checkpoint volume on NFS: `noac` and `lookupcache=none` (the e2e uses both, with `nfsvers=4.2`). The commit protocol polls for files another node just created; with the default attribute and lookup caches a rank can miss them for up to a minute, past the commit timeout.
+
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata: {name: checkpoints}
+spec:
+  capacity: {storage: 100Gi}
+  accessModes: [ReadWriteMany]
+  storageClassName: ""
+  mountOptions: [nfsvers=4.2, noac, lookupcache=none]
+  nfs: {server: nfs.example.com, path: /exports/checkpoints}
+```
+
 ## What it does not do
 
 - **It does not add or remove workers while the job runs.** The Indexed Job's `completions` is fixed at creation. Workers lost to a node failure are replaced by the Job controller (same index, same DNS name) when capacity exists; if it does not, the others carry on only if the launcher's rendezvous accepts a smaller group. There is no controller loop that resizes the Job.
 - **Losing the rendezvous host (index 0) is not tolerated.** `MASTER_ADDR` is pod 0. Use an external rendezvous (for example etcd) if you need that.
 - **The Job can finish early.** Once `minNodes` indexes succeed the remaining pods are removed. In a healthy elastic run all workers finish together; if some finish a moment later they may be stopped mid-exit.
 - No resharding of optimizer or data-loader state, no scale-up of a running job, no interaction with Kueue's resize (a Kueue-managed Job cannot change `nodes`).
-- Unverified: Kueue with a success policy, workers spread over several nodes, and any NCCL behaviour on a resized group.
+- Unverified: Kueue with a success policy, losing the node of index 0 (not supported, above), storage other than NFS, and any NCCL behaviour on a resized group.
 
 ## Tests
 
-`controllers/gryviaaijob_elastic_test.go` (Job shape, env, success policy, defaults, validation), `pkg/scheduler/holds_test.go` (placement between min and max), `pkg/webhook/validator_test.go`, `examples/training/test_coordinated_checkpoint.py` (commit protocol, `load_replicated`, `discard_uncommitted`), and the "Elastic training" step of `e2e-ml.yml`.
+`controllers/gryviaaijob_elastic_test.go` (Job shape, env, success policy, defaults, validation), `pkg/scheduler/holds_test.go` (placement between min and max), `pkg/webhook/validator_test.go`, `examples/training/test_coordinated_checkpoint.py` (commit protocol, `load_replicated`, `discard_uncommitted`), the "Elastic training" step of `e2e-ml.yml` (one node, a deleted pod) and `e2e-elastic.yml` (two nodes, a lost node, NFS).
