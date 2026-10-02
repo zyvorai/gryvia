@@ -103,6 +103,7 @@ torchrun takes whatever group size forms within `NNODES=min:max`. The Ready cond
 
 - An elastic job asking for 4 workers (`minNodes: 2`) against 2 slots of quota runs with 2 workers. Its Job has parallelism and completions 2/2, the Workload's admission is for 2 pods, and no pods exist for indexes 2 and 3. The job succeeds and the quota is released.
 - With 2 workers admitted and `minNodes: 1`, index 0 finishes and index 1 would sleep for 10 minutes. The success policy completes the Job (`SuccessCriteriaMet`, 1 succeeded) and the running pod is stopped. Kueue marks the Workload Finished and the ClusterQueue goes idle.
+- `scripts/e2e-kueue.sh elastic-torchrun` uses the real trainer. A `torchrun` job asking for 4 workers (`minNodes: 2`) against 2 slots runs with 2 workers. `NNODES=2:4` forms a group of 2, both ranks commit every checkpoint up to the final step 20 on a shared volume, and rank 0 reports `world 2`.
 
 ## What it does not do
 
@@ -110,7 +111,7 @@ torchrun takes whatever group size forms within `NNODES=min:max`. The Ready cond
 - **Losing index 0 needs a standalone rendezvous store.** With the default `MASTER_ADDR` endpoint the store is in pod 0 and losing it ends the job. See [Losing index 0](#losing-index-0).
 - **The Job can finish early.** Once `minNodes` indexes succeed the remaining pods are removed. In a healthy elastic run all workers finish together; if some finish a moment later they may be stopped mid-exit.
 - No resharding of optimizer or data-loader state, no scale-up of a running job, no resize of a Kueue-admitted job after admission (Kueue's partial admission picks the size once, at admission).
-- Unverified: Kueue partial admission with a real torchrun (the Kueue e2e uses busybox workers), a replicated rendezvous store (etcd), storage other than NFS, and any NCCL behaviour on a resized group.
+- Unverified: a replicated rendezvous store (etcd), storage other than NFS, and any NCCL behaviour on a resized group.
 
 ## Tests
 

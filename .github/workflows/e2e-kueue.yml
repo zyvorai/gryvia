@@ -18,6 +18,7 @@ on:
       - 'helm/**'
       - 'crds/**'
       - 'scripts/e2e-kueue.sh'
+      - 'examples/training/**'
       - 'scripts/kind-demo.sh'
       - '.github/workflows/e2e-kueue.yml'
   workflow_dispatch:
@@ -87,6 +88,12 @@ jobs:
         run: ./scripts/e2e-kueue.sh preempt
       - name: An elastic job is admitted with fewer workers than asked, and its success policy completes it under Kueue
         run: ./scripts/e2e-kueue.sh elastic
+      - name: The elastic trainer image (CPU torch)
+        run: |
+          docker build -f examples/training/Dockerfile.elastic -t ghcr.io/zyvorai/gryvia-elastic-train:dev examples/training
+          kind load docker-image --name gryvia-demo ghcr.io/zyvorai/gryvia-elastic-train:dev
+      - name: A real torchrun job admitted with 2 of 4 workers trains as a group of 2
+        run: ./scripts/e2e-kueue.sh elastic-torchrun
       - name: Dump state on failure
         if: failure()
         run: |
@@ -96,3 +103,4 @@ jobs:
           kubectl -n gryvia-system logs deploy/kueue-controller-manager --tail=300 || true
           kubectl -n gryvia-system logs -l app.kubernetes.io/component=ai-operator --tail=300 || true
           kubectl -n gryvia-system logs -l app.kubernetes.io/component=quota-operator --tail=300 || true
+          kubectl -n tenant-q1 logs -l gryvia.io/job --prefix --tail=60 --max-log-requests=20 || true

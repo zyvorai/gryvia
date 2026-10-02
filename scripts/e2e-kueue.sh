@@ -7,6 +7,7 @@
 #   scripts/e2e-kueue.sh gang      # a gang bigger than the quota never starts partially (zero pods), then starts whole
 #   scripts/e2e-kueue.sh preempt   # a higher-priority job preempts a running lower-priority one, which is requeued
 #   scripts/e2e-kueue.sh elastic   # an elastic job is partially admitted (minNodes..nodes); its success policy completes it
+#   scripts/e2e-kueue.sh elastic-torchrun  # the same with a real torchrun: the admitted workers train as one group
 #
 # Passes in CI (e2e-kueue.yml) with real Kueue on kind. The lines marked "ASSUMPTION" held there; they are still the
 # first things to look at if a step fails on another Kueue or Kubernetes version.
@@ -272,6 +273,69 @@ scenario_elastic() {
   kubectl -n "$NS" delete gryviaaijob sp --wait=true >/dev/null
 }
 
+scenario_elastic_torchrun() {
+  # The real trainer (examples/training/elastic_train.py, image built by the workflow) under partial admission:
+  # 4 workers asked, 2 slots. torchrun's NNODES=2:4 must form a group of the 2 admitted workers and train to the end.
+  # One kind node, so a ReadWriteOnce volume is shared by both pods for the coordinated checkpoints.
+  cat <<YAML | kubectl apply -f - >/dev/null
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: el-ckpt, namespace: $NS}
+spec: {accessModes: [ReadWriteOnce], resources: {requests: {storage: 1Gi}}}
+---
+apiVersion: $API
+kind: GryviaAIJob
+metadata: {name: eltr, namespace: $NS}
+spec:
+  type: training
+  image: ghcr.io/zyvorai/gryvia-elastic-train:dev
+  imagePullPolicy: IfNotPresent
+  gpus: 0
+  retryLimit: 2
+  timeout: 20m
+  distributed: {enabled: true, framework: pytorch, backend: gloo, nodes: 4, elastic: {minNodes: 2}}
+  command: [torchrun]
+  args:
+    - --nnodes=\$(NNODES)
+    - --nproc_per_node=\$(NPROC_PER_NODE)
+    - --rdzv_backend=c10d
+    - --rdzv_endpoint=\$(MASTER_ADDR):\$(MASTER_PORT)
+    - --rdzv_conf=last_call_timeout=10
+    - --rdzv_id=eltr
+    - --max_restarts=2
+    - /app/elastic_train.py
+  env:
+    - {name: CHECKPOINT_DIR, value: /ckpt}
+    - {name: TOTAL_STEPS, value: "20"}
+    - {name: STEP_SECONDS, value: "0.5"}
+    - {name: COLLECTIVE_TIMEOUT, value: "60"}
+  resources:
+    requests: {cpu: 100m, memory: 384Mi, $SLOT: "1"}
+    limits: {cpu: "1", memory: 1536Mi, $SLOT: "1"}
+  volumes: [{name: ckpt, persistentVolumeClaim: {claimName: el-ckpt}}]
+  volumeMounts: [{name: ckpt, mountPath: /ckpt}]
+YAML
+  wait_for 300 "eltr reaches Running" is_phase eltr Running
+  [[ "$(job_field eltr '{.spec.parallelism}/{.spec.completions}')" == 2/2 ]] || fail "eltr: parallelism/completions $(job_field eltr '{.spec.parallelism}/{.spec.completions}'), want 2/2"
+  eltr_logs() { kubectl -n "$NS" logs -l gryvia.io/job=eltr --tail=-1 --max-log-requests=10 2>/dev/null; }
+  # Not "eltr_logs | grep -q": grep exits at the first match and pipefail turns kubectl's SIGPIPE into a failure.
+  eltr_grouped() { grep -q 'of 2: starting after step 0 ' <<<"$(eltr_logs)"; }
+  wait_for 300 "the 2 admitted workers form one group" eltr_grouped
+  wait_for 600 "eltr reaches Succeeded" is_phase eltr Succeeded
+  out="$(eltr_logs)"
+  grep -E "starting after|committed step|done:" <<<"$out" || true
+  done_json="$(sed -n 's/^done: //p' <<<"$out" | head -1)"
+  [[ -n "$done_json" ]] || fail "eltr: no done line from rank 0"
+  [[ "$(jq -r .steps <<<"$done_json")" == 20 ]] || fail "eltr: steps $(jq -r .steps <<<"$done_json"), want 20"
+  [[ "$(jq -r .world <<<"$done_json")" == 2 ]] || fail "eltr: world $(jq -r .world <<<"$done_json"), want 2"
+  grep -q "committed step 20 (world 2" <<<"$out" || fail "eltr: the last step was not committed by 2 ranks"
+  idx="$(kubectl -n "$NS" get pods -l gryvia.io/job=eltr -o jsonpath='{range .items[*]}{.metadata.labels.batch\.kubernetes\.io/job-completion-index}{"\n"}{end}' | sort -u | tr '\n' ' ')"
+  [[ "$idx" == "0 1 " ]] || fail "eltr: pod indexes '$idx', want only 0 and 1"
+  kubectl -n "$NS" delete gryviaaijob eltr --wait=true >/dev/null
+  kubectl -n "$NS" delete pvc el-ckpt --wait=false >/dev/null
+  wait_for 120 "ClusterQueue idle" cq_idle
+}
+
 case "${1:-}" in
   setup)   scenario_setup ;;
   strict)  scenario_strict ;;
@@ -279,6 +343,7 @@ case "${1:-}" in
   gang)    scenario_gang ;;
   preempt) scenario_preempt ;;
   elastic) scenario_elastic ;;
-  *) echo "usage: $0 setup|strict|queue|gang|preempt|elastic" >&2; exit 2 ;;
+  elastic-torchrun) scenario_elastic_torchrun ;;
+  *) echo "usage: $0 setup|strict|queue|gang|preempt|elastic|elastic-torchrun" >&2; exit 2 ;;
 esac
 echo "E2E OK: ${1}"
