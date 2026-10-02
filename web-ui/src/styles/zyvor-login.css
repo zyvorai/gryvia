@@ -11,9 +11,9 @@
   --tone-sky: #0071e3;
   --tone-sky-tint: rgba(0, 113, 227, 0.1);
   --tone-sky-glow: rgba(0, 113, 227, 0.22);
-  --tone-violet: #7c3aed;
-  --tone-violet-tint: rgba(124, 58, 237, 0.1);
-  --tone-violet-glow: rgba(124, 58, 237, 0.22);
+  --tone-violet: #5e5ce6;
+  --tone-violet-tint: rgba(94, 92, 230, 0.1);
+  --tone-violet-glow: rgba(94, 92, 230, 0.22);
   --tone-emerald: #248a3d;
   --tone-emerald-tint: rgba(36, 138, 61, 0.1);
   --tone-emerald-glow: rgba(36, 138, 61, 0.22);
@@ -23,7 +23,13 @@
   --tone-orange: #ff5a15;
   --tone-orange-tint: rgba(255, 90, 21, 0.1);
   --tone-orange-glow: rgba(255, 90, 21, 0.2);
+  /* apple.com palette: Action Blue, indigo, teal */
+  --tone-teal: #0e7d93;
+  --tone-teal-tint: rgba(48, 176, 199, 0.12);
+  --tone-teal-glow: rgba(48, 176, 199, 0.24);
+  --login-gradient: linear-gradient(100deg, #0071e3 0%, #2997ff 30%, #5e5ce6 62%, #30b0c7 100%);
 }
+.login-page [data-tone='teal'] { --tone-color: var(--tone-teal); --tone-wash: var(--tone-teal-tint); --tone-glow: var(--tone-teal-glow); }
 
 .login-page [data-tone='sky'], .login-page[data-tone='sky'] { --tone-color: var(--tone-sky); --tone-wash: var(--tone-sky-tint); --tone-glow: var(--tone-sky-glow); }
 .login-page [data-tone='violet'] { --tone-color: var(--tone-violet); --tone-wash: var(--tone-violet-tint); --tone-glow: var(--tone-violet-glow); }
@@ -62,7 +68,11 @@
   text-align: center;
 }
 
-.login-scroll {
+/* .login-scroll is a <main>: undo netra's console `main` width cap and padding. */
+.login-page .login-scroll {
+  max-width: none;
+  margin: 0;
+  padding: 0;
   flex: 1;
   min-height: 0;
   overflow-x: hidden;
@@ -90,15 +100,157 @@
   background: hsl(0 0% 100%);
   animation: login-fade-in-up 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
-.login-chapter-hero::before {
-  content: '';
+/* Colour mesh behind the hero: four soft blobs drifting slowly. */
+.login-mesh {
   position: absolute;
-  inset: -20%;
+  inset: 0;
   z-index: -1;
-  background: radial-gradient(55% 70% at 50% 8%, var(--tone-glow, var(--tone-sky-glow)), transparent 70%);
-  opacity: 0.42;
+  overflow: hidden;
   pointer-events: none;
 }
+.login-blob {
+  position: absolute;
+  width: 46vmax;
+  height: 46vmax;
+  border-radius: 50%;
+  filter: blur(70px);
+  opacity: 0.32;
+  animation: login-drift 22s ease-in-out infinite alternate;
+}
+.login-blob-a { background: #0071e3; top: -18vmax; left: -10vmax; opacity: 0.28; }
+.login-blob-b { background: #5e5ce6; top: -14vmax; right: -14vmax; animation-delay: -6s; opacity: 0.26; }
+.login-blob-c { background: #30b0c7; bottom: -22vmax; left: 10vmax; animation-delay: -11s; }
+.login-blob-d { background: #34c759; bottom: -20vmax; right: -6vmax; animation-delay: -16s; opacity: 0.2; }
+@keyframes login-drift {
+  from { transform: translate(0, 0) scale(1); }
+  to { transform: translate(4vmax, 3vmax) scale(1.12); }
+}
+
+.login-gradient {
+  background: var(--login-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+/* What Gryvia does */
+.login-chapter-about {
+  background: linear-gradient(180deg, #fff 0%, hsl(240 5% 97%) 100%);
+}
+.login-chapter-inner.login-about-inner { max-width: 72rem; }
+.login-eyebrow {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: var(--login-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+.login-about-title {
+  margin: 0.6rem 0 0;
+  font-size: clamp(2rem, 5vw, 3.25rem);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1.08;
+  color: hsl(240 6% 10%);
+  text-wrap: balance;
+}
+.login-features {
+  list-style: none;
+  margin: 2.5rem 0 0;
+  padding: 0;
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  text-align: left;
+}
+@media (min-width: 640px) { .login-features { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 960px) { .login-features { grid-template-columns: repeat(3, 1fr); } }
+.login-feature {
+  position: relative;
+  padding: 1.4rem 1.3rem 1.3rem;
+  border-radius: 20px;
+  background: #fff;
+  border: 1px solid color-mix(in srgb, var(--tone-color) 18%, transparent);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03), 0 8px 24px -12px var(--tone-glow);
+  overflow: hidden;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.login-feature::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: var(--tone-color);
+}
+.login-feature:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04), 0 18px 36px -14px var(--tone-glow);
+}
+.login-feature-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 14px;
+  color: var(--tone-color);
+  background: var(--tone-wash);
+}
+.login-feature h3 {
+  margin: 0.9rem 0 0.35rem;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: hsl(240 6% 10%);
+}
+.login-feature p {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: hsl(240 3% 38%);
+}
+.login-goals {
+  width: 100%;
+  margin-top: 1.5rem;
+  padding: 1.4rem 1.5rem;
+  border-radius: 20px;
+  text-align: left;
+  color: #fff;
+  background: linear-gradient(120deg, #1d1d1f 0%, #0b2545 55%, #08364a 100%);
+  box-sizing: border-box;
+}
+.login-goals h3 {
+  margin: 0 0 0.85rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64d2ff;
+}
+.login-goals ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 0.75rem 1.5rem;
+}
+.login-goals li {
+  display: flex;
+  gap: 0.55rem;
+  align-items: flex-start;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  color: #f5f5f7;
+}
+.login-goals svg { flex-shrink: 0; margin-top: 1px; color: #34d399; }
 
 .login-chapter-sign-in {
   background: hsl(240 5% 96%);
@@ -557,7 +709,9 @@
   .login-spin { animation: none; }
   .login-step,
   .login-chapter-hero,
+  .login-blob,
   .login-alert { animation: none !important; }
+  .login-feature:hover { transform: none; }
 }
 
 /* Dark: black page, #1d1d1f card */
@@ -565,12 +719,14 @@
 :root[data-theme='dark'] .login-chapter-hero,
 :root[data-theme='dark'] .login-chapter-sign-in,
 :root[data-theme='dark'] .login-footer { background: #000; color: #f5f5f7; }
-:root[data-theme='dark'] .login-chapter-hero::before {
-  background:
-    radial-gradient(ellipse at 30% 30%, rgba(255, 90, 21, 0.18), transparent 60%),
-    radial-gradient(ellipse at 75% 15%, rgba(50, 173, 230, 0.16), transparent 55%);
-  opacity: 1;
-}
+:root[data-theme='dark'] .login-blob { opacity: 0.38; }
+:root[data-theme='dark'] .login-page .login-cta-secondary { background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.3); color: #f5f5f7; }
+:root[data-theme='dark'] .login-page .login-cta-secondary:hover { background: rgba(255, 255, 255, 0.14); }
+:root[data-theme='dark'] .login-chapter-about { background: linear-gradient(180deg, #000 0%, #0b0b0d 100%); }
+:root[data-theme='dark'] .login-feature { background: #1d1d1f; border-color: rgba(255, 255, 255, 0.1); }
+:root[data-theme='dark'] .login-page :is(.login-about-title, .login-feature h3) { color: #f5f5f7; }
+:root[data-theme='dark'] .login-feature p { color: #a1a1a6; }
+:root[data-theme='dark'] .login-goals { background: linear-gradient(120deg, #1d1d1f 0%, #0b2545 55%, #08364a 100%); border: 1px solid rgba(255, 255, 255, 0.1); }
 :root[data-theme='dark'] .login-panel {
   background: #1d1d1f;
   border-color: rgba(255, 255, 255, 0.12);

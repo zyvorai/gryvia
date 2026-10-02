@@ -1,10 +1,26 @@
 import type { ReactNode } from 'react'
-import { AlertCircle } from 'lucide-react'
+import { AlertCircle, CheckCircle2 } from 'lucide-react'
 import '@/styles/zyvor-login.css'
 
-/** Zorvia's chapter login (PremiumLoginShell): a hero chapter, then a credentials chapter, then the footer. */
+/** Zorvia's chapter login (PremiumLoginShell): a hero, what the product does, then the credentials chapter. */
 
-export type LoginTone = 'sky' | 'violet' | 'emerald' | 'amber' | 'orange'
+export type LoginTone = 'sky' | 'violet' | 'emerald' | 'amber' | 'orange' | 'teal'
+
+export interface LoginFeature {
+  icon: ReactNode
+  title: string
+  text: string
+  tone: LoginTone
+}
+
+export interface LoginAbout {
+  eyebrow: string
+  title: ReactNode
+  lede: ReactNode
+  features: LoginFeature[]
+  goalsTitle: string
+  goals: string[]
+}
 
 export interface LoginShellProps {
   brand: ReactNode
@@ -14,7 +30,9 @@ export interface LoginShellProps {
   heroLede: ReactNode
   pills: { label: string; tone: LoginTone }[]
   heroCta?: ReactNode
+  heroSecondary?: ReactNode
   chapterNote?: ReactNode
+  about?: LoginAbout
   formHeading: ReactNode
   hint?: ReactNode
   footer?: ReactNode
@@ -26,6 +44,12 @@ export function LoginShell(props: LoginShellProps) {
     <div className="login-page" data-tone="orange">
       <main className="login-scroll" aria-label="Sign in">
         <section className="login-chapter login-chapter-hero" aria-label={props.wordmark}>
+          <div className="login-mesh" aria-hidden>
+            <span className="login-blob login-blob-a" />
+            <span className="login-blob login-blob-b" />
+            <span className="login-blob login-blob-c" />
+            <span className="login-blob login-blob-d" />
+          </div>
           <div className="login-chapter-inner">
             {props.brand}
             <p className="login-wordmark">{props.wordmark}</p>
@@ -40,10 +64,46 @@ export function LoginShell(props: LoginShellProps) {
                 </span>
               ))}
             </div>
-            {props.heroCta ? <div className="login-cta">{props.heroCta}</div> : null}
+            {props.heroCta || props.heroSecondary ? (
+              <div className="login-cta">
+                {props.heroCta}
+                {props.heroSecondary}
+              </div>
+            ) : null}
             {props.chapterNote ? <p className="login-chapter-note">{props.chapterNote}</p> : null}
           </div>
         </section>
+        {props.about ? (
+          <section id="login-about" className="login-chapter login-chapter-about" aria-label={props.about.eyebrow}>
+            <div className="login-chapter-inner login-about-inner">
+              <p className="login-eyebrow">{props.about.eyebrow}</p>
+              <h2 className="login-about-title">{props.about.title}</h2>
+              <p className="login-tagline">{props.about.lede}</p>
+              <ul className="login-features">
+                {props.about.features.map((f) => (
+                  <li key={f.title} className="login-feature" data-tone={f.tone}>
+                    <span className="login-feature-icon" aria-hidden>
+                      {f.icon}
+                    </span>
+                    <h3>{f.title}</h3>
+                    <p>{f.text}</p>
+                  </li>
+                ))}
+              </ul>
+              <div className="login-goals">
+                <h3>{props.about.goalsTitle}</h3>
+                <ul>
+                  {props.about.goals.map((g) => (
+                    <li key={g}>
+                      <CheckCircle2 size={18} aria-hidden />
+                      {g}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </section>
+        ) : null}
         <section id="login-sign-in" className="login-chapter login-chapter-sign-in" aria-label="Credentials">
           <div className="login-chapter-inner login-sign-in-inner">
             <h2 className="login-form-heading">{props.formHeading}</h2>

@@ -1,15 +1,87 @@
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { ArrowRight, Check, ChevronLeft, Copy, Eye, EyeOff, Loader2, Lock, User } from 'lucide-react'
+import {
+  ArrowRight,
+  Bot,
+  Check,
+  ChevronLeft,
+  Copy,
+  Cpu,
+  Eye,
+  EyeOff,
+  Loader2,
+  Lock,
+  Network,
+  ReceiptText,
+  ShieldCheck,
+  User,
+  Workflow,
+} from 'lucide-react'
 import { kubectlCommand, useAuth } from '@/lib/auth'
-import { LoginError, LoginField, LoginShell } from '@/components/LoginShell'
+import { LoginError, LoginField, LoginShell, type LoginAbout } from '@/components/LoginShell'
 import { ZyvorLockup, ZYVOR_URL } from '@/components/ZyvorMark'
 
 const SAVE_KEY = 'gryvia-saved-login'
 
 /** Chart defaults, for gateways that predate `credentials` in /api/auth/config. */
 const DEFAULT_CREDENTIALS = { username: 'admin', secret: 'gryvia-api-key', key: 'GRYVIA_API_KEY', namespace: 'gryvia-system' }
+
+const ABOUT: LoginAbout = {
+  eyebrow: 'What Gryvia does',
+  title: (
+    <>
+      One platform for the <span className="login-gradient">whole GPU cluster</span>.
+    </>
+  ),
+  lede:
+    'GPUs sit idle from poor scheduling, multi-node training stalls on the network, and teams spend weeks hand-tuning NCCL, RDMA and drivers. Gryvia ties scheduling, networking, storage, serving and billing together with Kubernetes operators.',
+  features: [
+    {
+      icon: <Cpu size={22} />,
+      title: 'GPU-aware scheduling',
+      text: 'Jobs are scored on GPU type, NVLink/NVSwitch and RDMA, then admitted with Kueue for gangs, quotas and preemption.',
+      tone: 'sky',
+    },
+    {
+      icon: <ReceiptText size={22} />,
+      title: 'GPU as a Service',
+      text: 'Isolated tenants, a GPU price catalog, per-job metering, budgets and estimate invoices.',
+      tone: 'emerald',
+    },
+    {
+      icon: <Bot size={22} />,
+      title: 'Models and inference',
+      text: 'A model registry, inference services that scale to zero, and an OpenAI-compatible LLM gateway with keys and quotas.',
+      tone: 'violet',
+    },
+    {
+      icon: <Network size={22} />,
+      title: 'Network intelligence',
+      text: 'eBPF flows, NCCL and collective insight, anomalies and network costs, with Netra for enforcement.',
+      tone: 'amber',
+    },
+    {
+      icon: <ShieldCheck size={22} />,
+      title: 'Sovereign AI OS',
+      text: 'With Zyntra and Netra: an ontology of your cluster, agents that propose, people who approve, and a signed audit.',
+      tone: 'orange',
+    },
+    {
+      icon: <Workflow size={22} />,
+      title: 'Workflows and experiments',
+      text: 'Pipelines, hyperparameter tuning, datasets, workspaces and a flight recorder for failed runs.',
+      tone: 'teal',
+    },
+  ],
+  goalsTitle: 'Project goals',
+  goals: [
+    'Open source under Apache-2.0',
+    'Runs on your hardware: sovereign and air-gap ready',
+    "Kubernetes-native: CRDs and operators you already know how to run",
+    'Honest status: every claim says how it is verified (alpha today)',
+  ],
+}
 
 function savedUsername(): string {
   try {
@@ -56,6 +128,13 @@ export default function Login() {
   const [rememberMe, setRememberMe] = useState(Boolean(remembered))
   const [busy, setBusy] = useState(false)
   const [localError, setLocalError] = useState('')
+  const usernameRef = useRef<HTMLInputElement>(null)
+  const passwordRef = useRef<HTMLInputElement>(null)
+
+  // Focus without scrolling, so the page opens on the hero rather than jumping to the form.
+  useEffect(() => {
+    ;(step === 'password' ? passwordRef : usernameRef).current?.focus({ preventScroll: true })
+  }, [step])
 
   const state = location.state as { from?: { pathname?: string; search?: string; hash?: string }; reason?: string } | null
   const from = state?.from?.pathname ? `${state.from.pathname}${state.from.search ?? ''}${state.from.hash ?? ''}` : '/dashboard'
@@ -155,13 +234,22 @@ export default function Login() {
           ) : null}
         </>
       }
-      heroTitle="Open GPU orchestration. One console."
-      heroLede="Schedule, share and observe GPU workloads with operators and CRDs you already know how to run: jobs, quotas, nodes, models and network intelligence in one control plane."
+      heroTitle={
+        <>
+          GPU is the new CPU.
+          <br />
+          <span className="login-gradient">Gryvia is its scheduler.</span>
+        </>
+      }
+      heroLede="A Kubernetes-native GPU platform: placement, RDMA/NVLink and storage handled by operators, and the cluster run as a multi-tenant GPU service with models, metering and agents."
+      about={ABOUT}
       pills={[
         { label: 'Zyvor', tone: 'orange' },
         { label: 'Kubernetes', tone: 'violet' },
         { label: 'GPUs', tone: 'emerald' },
+        { label: 'LLM gateway', tone: 'teal' },
         { label: 'Sovereign AI OS', tone: 'sky' },
+        { label: 'Open source', tone: 'amber' },
       ]}
       heroCta={
         <a
@@ -173,6 +261,18 @@ export default function Login() {
           }}
         >
           Sign in
+        </a>
+      }
+      heroSecondary={
+        <a
+          href="#login-about"
+          className="login-cta-secondary"
+          onClick={(e) => {
+            e.preventDefault()
+            document.getElementById('login-about')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+          }}
+        >
+          What it does
         </a>
       }
       chapterNote={`Gryvia · Kubernetes · ${host}`}
@@ -230,9 +330,9 @@ export default function Login() {
                     setUsername(e.target.value)
                     if (localError) setLocalError('')
                   }}
+                  ref={usernameRef}
                   placeholder={creds.username}
                   autoComplete="username"
-                  autoFocus
                   aria-invalid={Boolean(error)}
                   aria-describedby={error ? errorId : undefined}
                 />
@@ -264,9 +364,9 @@ export default function Login() {
                 setPassword(e.target.value)
                 if (localError) setLocalError('')
               }}
+              ref={passwordRef}
               placeholder="Password"
               autoComplete="current-password"
-              autoFocus
               disabled={busy}
               aria-invalid={Boolean(error)}
               aria-describedby={error ? errorId : undefined}
