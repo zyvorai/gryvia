@@ -85,7 +85,7 @@ The dashboard follows your system light or dark setting and includes:
 - Quotas, GPU nodes and costs, with drill-down links to the jobs involved
 - GPU as a Service pages: Catalog (GPU SKUs and prices), Usage (metered GPU hours and cost), Tenants and Invoices (monthly estimates, no payments); see [GPU as a Service](../guides/GPU_AS_A_SERVICE.md)
 - Network flows and policies, security policies and GPU communication analysis, which say so when no collector is feeding them
-- Workspaces, models, inference services, workflows and the auto-tuner, with structured create forms. These pages create and list the custom resources, but **no operator acts on them yet** (see the [CRD reference](../reference/crds.md), Controller column)
+- Workspaces, models, inference services, workflows and the auto-tuner, with structured create forms. The ai-operator's ML controllers (on by default) run these objects; nothing on these pages has been verified with real GPU images (see [ML Workflows](../guides/ML_WORKFLOWS.md))
 
 Signed in with the API key you are the provider **admin**: you see cluster-wide pages, but jobs and similar objects only
 from one namespace, the gateway's `GRYVIA_JOB_NAMESPACE` (the release namespace, `gryvia-system`, with the chart). OIDC

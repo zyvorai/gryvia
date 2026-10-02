@@ -15,8 +15,8 @@ What Gryvia does today when a `GryviaAIJob` is submitted, and which of the more 
 | Backfill | Not implemented (Kueue's `BestEffortFIFO` lets smaller jobs run past a blocked one, which is not time-based backfill) |
 | Elastic training | Partial, unit-tested only: `distributed.elastic.minNodes` bounds the worker count (launcher `NNODES=min:max`, Job success at `minNodes`, placement between min and max); no resizing of a running job. See [Elastic training](https://github.com/zyvorai/gryvia/blob/main/docs/elastic-training.md) |
 | Mutating webhook (NCCL injection and defaults) | Code exists in `pkg/webhook/mutator.go`; not registered in `main.go`, so it does not run |
-| Priority preemption | With Kueue integration: a higher `spec.priority` job preempts lower-priority jobs of the same ClusterQueue (and of borrowing tenants in the cohort); the victim is requeued (`Queued`), not lost. Without Kueue: none. `GryviaPriority` classes: CRD only, no controller |
-| Fabric-health penalty on node scores | Function exists (`pkg/scheduler/fabric_score.go`), marked NOT WIRED in the code |
+| Priority preemption | With Kueue integration: a higher `spec.priority` job preempts lower-priority jobs of the same ClusterQueue (and of borrowing tenants in the cohort); the victim is requeued (`Queued`), not lost. Without Kueue: Kubernetes pod preemption only, for jobs annotated `gryvia.io/priority-class` with a `GryviaPriority` (which creates the PriorityClass) |
+| Fabric-health penalty on node scores | Opt-in (`aiOperator.fabricAwareScheduling`): nodes whose fresh `GryviaNodeFabric` reports a sick fabric lose up to 25 points, and the reason is in `status.placementExplanation`. Tested against fakes only, unverified on GPU or RDMA hardware; see [Fabric scheduling](https://github.com/zyvorai/gryvia/blob/main/docs/fabric-scheduling.md) |
 
 The remaining sections describe the running behaviour first, then the designs. Sections marked "Design" are not what a cluster does today. Nothing here has been verified on real GPU hardware; the operator logic is covered by Go unit tests against fake clients.
 
@@ -195,7 +195,7 @@ Rules that earlier versions of this guide listed but that are **not** implemente
 
 Status: **Kueue-backed and opt-in; without it, not implemented.** With `--kueue-integration`, `spec.priority` (0 to 100) is mapped to a Kueue `WorkloadPriorityClass` `gryvia-priority-<n>` (`n` = priority rounded down to a multiple of 10; priority below 10 uses Kueue's default of 0), and the tenant ClusterQueues are created with `withinClusterQueue: LowerPriority`, `reclaimWithinCohort: Any` and `borrowWithinCohort: LowerPriority`. A higher-priority job that cannot fit therefore evicts lower-priority admitted jobs of the same queue; a tenant reclaiming quota it lent out evicts the borrowers. An evicted job goes back to `Queued` (message "Evicted by Kueue ...") and runs again when it fits: it is requeued by Kueue, not deleted and not terminal `Preempted`. **Nothing checkpoints first**: the pods are terminated, so the job must resume from its own checkpoints. Metering caveat and details: [Kueue integration](https://github.com/zyvorai/gryvia/blob/main/docs/kueue-integration.md).
 
-Without Kueue integration `spec.priority` is validated but not acted on. The `GryviaPriority` CRD (priority classes) exists, and a controller file exists under `operators/ai-operator/controllers/`, but it is not registered in `main.go`, so nothing reconciles it. There is no `priorityClassName`, `preemption` or `checkpointing` field on `GryviaAIJob`.
+Without Kueue integration `spec.priority` is validated but not acted on. Kubernetes pod priority is available separately: a `GryviaPriority` makes the ai-operator (with the ML controllers, on by default) create an owned Kubernetes `PriorityClass` of the same name, and a job annotated `gryvia.io/priority-class: <name>` gets it as `priorityClassName` on its batch Job pods (not on the StatefulSet workload), so the Kubernetes scheduler may preempt lower-priority pods for them. There is no `priorityClassName`, `preemption` or `checkpointing` field on `GryviaAIJob`.
 
 **Unverified:** unit tests against fake clients only; the kind workflow that preempts a running job has not been run yet.
 
@@ -204,8 +204,8 @@ Without Kueue integration `spec.priority` is validated but not acted on. The `Gr
 kubectl get workloads,clusterqueues,localqueues -A
 kubectl get workloadpriorityclasses
 
-# The CRD exists; nothing reconciles it yet
-kubectl get gryviapriorities
+# Priority classes: each GryviaPriority owns a Kubernetes PriorityClass of the same name
+kubectl get gryviapriorities,priorityclasses
 
 # Real commands
 gryvia queue

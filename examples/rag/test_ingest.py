@@ -238,6 +238,45 @@ class IngestTest(unittest.TestCase):
         finally:
             empty.cleanup()
 
+    def test_embeds_while_reading(self):
+        read = {"n": 0}
+
+        def documents(root):
+            for i in range(50):
+                read["n"] += 1
+                yield f"doc{i}.txt", f"document number {i}"
+
+        seen = []
+
+        class Recording(ingest.Embedder):
+            def embed(self, texts):
+                seen.append(read["n"])
+                return super().embed(texts)
+
+        original, ingest.read_documents = ingest.read_documents, documents
+        try:
+            out = ingest.ingest(self.cfg(batch=4), Recording(self.url, "gk-test", "embed"),
+                                ingest.Qdrant(self.url), log=lambda *a, **k: None)
+        finally:
+            ingest.read_documents = original
+        self.assertEqual((out["documents"], out["chunks"]), (50, 50))
+        self.assertEqual(seen[0], 4)  # the first batch is embedded after four documents, not after all fifty
+        self.assertEqual(len(self.fake.collections[self.fake.aliases["kb"]]["points"]), 50)
+
+    def test_jsonl_has_no_file_cap_and_long_lines_are_skipped(self):
+        old = ingest.MAX_FILE_BYTES, ingest.MAX_RECORD_BYTES
+        ingest.MAX_FILE_BYTES, ingest.MAX_RECORD_BYTES = 100, 200
+        try:
+            records = [json.dumps({"text": f"record {i} " + "x" * 20}) for i in range(10)]
+            records.insert(3, json.dumps({"text": "y" * 300}))
+            self.write("big/corpus.jsonl", "\n".join(records) + "\n")
+            self.write("big/tail.jsonl", json.dumps({"text": "z" * 300}))
+            self.write("big/large.txt", "w " * 100)
+            sources = [s for s, _ in ingest.read_documents(os.path.join(self.data, "big"))]
+        finally:
+            ingest.MAX_FILE_BYTES, ingest.MAX_RECORD_BYTES = old
+        self.assertEqual(sources, [f"corpus.jsonl#{n}" for n in (1, 2, 3, 5, 6, 7, 8, 9, 10, 11)])
+
     def test_main_writes_termination_message(self):
         term = os.path.join(self.data, "..", "term-" + os.path.basename(self.data))
         env = {"GATEWAY_URL": self.url, "GRYVIA_LLM_KEY": "gk-test", "EMBED_MODEL": "embed", "STORE_URL": self.url,

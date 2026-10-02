@@ -23,7 +23,7 @@ the data).
 | --- | --- |
 | A real embedding model served by vLLM | No GPU in CI; the stand-in returns OpenAI-shaped embeddings |
 | External stores other than a Qdrant API (Qdrant Cloud has not been tried either) | Only Qdrant's REST API is implemented |
-| Large datasets | The ingestion Job keeps all chunks in memory before embedding; tested with small corpora only |
+| Large datasets against a real store and model | Chunks are embedded and upserted as they are read (below), and a 69 MiB, 300,000-record JSONL corpus peaked at 0.2 MiB of Python allocations with stub embedder and store (339.5 MiB before the change); throughput and Qdrant behaviour at that size have not been measured |
 
 ## Turning it on
 
@@ -110,15 +110,18 @@ ingestions and failures.
 
 `examples/rag/ingest.py` uses only the Python standard library (`python:3.12-alpine`). It:
 
-1. Reads every file with a text extension under `/data`.
-   - `.jsonl` files contribute one document per line, from the `text`, `content` or `document` field.
+1. Reads every file with a text extension under `/data`, one document at a time.
+   - `.jsonl` files contribute one document per line, from the `text`, `content` or `document` field. They are read
+     line by line and may be of any size; a single line over 20 MiB is skipped.
    - HTML tags are stripped.
-   - Binary files and files over 20 MiB are skipped.
+   - Binary files and other files over 20 MiB are skipped.
 2. Splits each document into chunks of at most `size` characters overlapping by `overlap`. A chunk ends at the last
    paragraph break in the second half of its window, else at the last line break, else at the last space.
-3. Embeds the chunks in batches through `POST /v1/embeddings` of the gateway, with the index's key. It retries on 429
-   and 5xx.
-4. Creates a fresh collection `<collection>__<run>` (cosine distance, the model's dimension) and upserts the points.
+3. Embeds the chunks in batches (`embedding.batchSize`) through `POST /v1/embeddings` of the gateway, with the
+   index's key, as they are produced: memory depends on the batch sizes and the largest document, not on the
+   dataset. It retries on 429 and 5xx.
+4. Creates a fresh collection `<collection>__<run>` (cosine distance, the model's dimension) when the first batch is
+   embedded and upserts the points 128 at a time.
    Point ids are uuid5 of source and chunk number; the payload is `text`, `source`, `chunk` and `datasetVersion`.
 5. Points the alias `<collection>` at the new collection and deletes the other `<collection>__*` collections.
    Queries go to the alias, so they switch atomically.

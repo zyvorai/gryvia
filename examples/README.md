@@ -2,7 +2,7 @@
 
 This directory contains example configurations for running AI workloads on Gryvia.
 
-> **Status.** Every manifest is schema-checked against `crds/` by `scripts/check-examples.py`, which only proves the YAML is valid, not that a controller acts on it. Kinds with a registered controller today: `GryviaAIJob` and the other ai-operator kinds, `GryviaGpuNode`, `GryviaGpuMemoryOptimizer`, `GryviaQuota`, `GryviaTenant`, `GryviaUsageRecord`, `GryviaCostPredictor`, `GryviaStorage`, `GryviaNetwork` and the network-intelligence kinds. Examples of other kinds (workflows, tuners, budgets, SLAs, inference services and so on) show the CRD schema only; no controller reconciles them yet. Nothing here has been run on real GPU or RDMA hardware except where stated.
+> **Status.** Every manifest is schema-checked against `crds/` by `scripts/check-examples.py`, which only proves the YAML is valid, not that a controller acts on it. 43 of the 47 kinds have a controller (the [README](../README.md) lists them; several are opt-in, for example job hooks, datasets, reservations, GPU sharing, GPU health, the model watch, RAG and agents). The other four, `GryviaGpuSku`, `GryviaNetworkRate`, `GryviaNetworkUsageRecord` and `GryviaNodeFabric`, are data that controllers read. Nothing here has been run on real GPU or RDMA hardware except where stated.
 
 ### Training Examples
 

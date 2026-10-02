@@ -262,6 +262,7 @@ func TestRoutesAndKeys(t *testing.T) {
 
 func newFakeClient(objs ...client.Object) client.Client {
 	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
 	for _, kind := range []string{"GryviaUsageRecord", "GryviaQuota"} {
 		gv := schema.GroupVersion{Group: "gryvia.io", Version: "v1alpha1"}
 		scheme.AddKnownTypeWithName(gv.WithKind(kind), &unstructured.Unstructured{})
@@ -336,46 +337,84 @@ func toInterfaces(ss []string) []interface{} {
 	return out
 }
 
-func TestQuotaSeedsFromRecordsAndRejectsWith429(t *testing.T) {
-	now := time.Date(2026, 10, 1, 10, 30, 0, 0, time.UTC)
-	yesterday := &unstructured.Unstructured{Object: map[string]interface{}{"spec": map[string]interface{}{
-		"kind": "tokens", "start": "2026-09-30T23:00:00Z", "inputTokens": int64(900), "outputTokens": int64(0),
+func tokenRecord(ns, name, start string, in, out int64) *unstructured.Unstructured {
+	u := &unstructured.Unstructured{Object: map[string]interface{}{"spec": map[string]interface{}{
+		"kind": "tokens", "start": start, "inputTokens": in, "outputTokens": out,
 	}}}
-	today := &unstructured.Unstructured{Object: map[string]interface{}{"spec": map[string]interface{}{
-		"kind": "tokens", "start": "2026-10-01T09:00:00Z", "inputTokens": int64(60), "outputTokens": int64(20),
-	}}}
-	// This process's own record: its traffic is already counted in memory, so seeding it would count it twice.
-	own := &unstructured.Unstructured{Object: map[string]interface{}{"spec": map[string]interface{}{
-		"kind": "tokens", "start": "2026-10-01T10:00:00Z", "inputTokens": int64(15), "outputTokens": int64(0),
-	}}}
-	for i, u := range []*unstructured.Unstructured{yesterday, today, own} {
-		u.SetGroupVersionKind(schema.GroupVersionKind{Group: "gryvia.io", Version: "v1alpha1", Kind: "GryviaUsageRecord"})
-		u.SetNamespace("team-a")
-		u.SetName(fmt.Sprintf("tokens-%d", i))
-		u.SetLabels(map[string]string{"gryvia.io/usage-kind": "tokens", LabelInstance: "other"})
+	u.SetGroupVersionKind(schema.GroupVersionKind{Group: "gryvia.io", Version: "v1alpha1", Kind: "GryviaUsageRecord"})
+	u.SetNamespace(ns)
+	u.SetName(name)
+	u.SetLabels(map[string]string{"gryvia.io/usage-kind": "tokens", LabelInstance: "old-replica"})
+	return u
+}
+
+func counter(t *testing.T, c client.Client, day string) map[string]string {
+	t.Helper()
+	cm := &corev1.ConfigMap{}
+	if err := c.Get(context.Background(), client.ObjectKey{Namespace: "gryvia-system", Name: "gryvia-llm-tokens-" + day}, cm); err != nil {
+		t.Fatalf("counter %s: %v", day, err)
 	}
-	own.SetLabels(map[string]string{"gryvia.io/usage-kind": "tokens", LabelInstance: "me"})
-	c := newFakeClient(quota("team-a", 100, "team-a", "team-a-dev"), yesterday, today, own)
-	q := NewQuotas(c, "me")
+	if cm.Labels[LabelTokenCounter] != "true" {
+		t.Fatalf("counter labels = %v", cm.Labels)
+	}
+	return cm.Data
+}
+
+func TestQuotaIsSharedAcrossReplicasAndRejectsWith429(t *testing.T) {
+	now := time.Date(2026, 10, 1, 10, 30, 0, 0, time.UTC)
+	c := newFakeClient(quota("team-a", 100, "team-a", "team-a-dev"),
+		tokenRecord("team-a", "yesterday", "2026-09-30T23:00:00Z", 900, 0),
+		tokenRecord("team-a", "today", "2026-10-01T09:00:00Z", 60, 20),
+		tokenRecord("team-b", "today", "2026-10-01T08:00:00Z", 7, 0))
 	ctx := context.Background()
-	q.Add("team-a", 15, now)
-	if err := q.Refresh(ctx); err != nil {
+	a, b := NewQuotas(c, "gryvia-system"), NewQuotas(c, "gryvia-system")
+	for _, q := range []*Quotas{a, b} {
+		if err := q.Refresh(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, _, _, _, err := a.Check(ctx, "team-a", now); err != ErrQuotaNotSynced {
+		t.Fatalf("a check before the first sync must fail: %v", err)
+	}
+	if ok, _, _, _, err := a.Check(ctx, "team-b", now); !ok || err != nil {
+		t.Fatalf("a namespace without a quota needs no sync: ok=%v err=%v", ok, err)
+	}
+
+	// The first sync of the day creates the counter, seeded from today's records plus what a counted so far.
+	a.Add("team-a", 15, now)
+	if err := a.Sync(ctx, now); err != nil {
 		t.Fatal(err)
 	}
-	if ok, _, _, used, err := q.Check(ctx, "team-a", now); !ok || err != nil || used != 0 {
-		t.Fatalf("80 seeded plus 15 own of 100 should pass: ok=%v err=%v", ok, err)
+	if got := counter(t, c, "2026-10-01"); got["team-a"] != "95" || got["team-b"] != "7" || len(got) != 2 {
+		t.Fatalf("seeded counter = %v", got)
 	}
-	ok, _, _, used, _ := q.Check(ctx, "team-a", now)
-	if !ok {
-		t.Fatalf("own record counted twice: used=%d", used)
+	if err := b.Sync(ctx, now); err != nil {
+		t.Fatal(err)
 	}
-	q.Add("team-a-dev", 5, now)
-	ok, name, per, used, _ := q.Check(ctx, "team-a", now)
-	if ok || name != "team-a" || per != 100 || used != 100 {
-		t.Fatalf("at the limit: ok=%v name=%s per=%d used=%d", ok, name, per, used)
+	if ok, _, _, used, _ := b.Check(ctx, "team-a", now); !ok || used != 0 {
+		t.Fatalf("95 of 100 should pass on b")
 	}
-	if ok, _, _, _, _ := q.Check(ctx, "team-b", now); !ok {
-		t.Fatalf("a namespace without a quota is limited")
+
+	// b's own traffic counts at once on b, and on a after b and then a have synced.
+	b.Add("team-a-dev", 5, now)
+	if ok, name, per, used, _ := b.Check(ctx, "team-a", now); ok || name != "team-a" || per != 100 || used != 100 {
+		t.Fatalf("b at the limit: ok=%v name=%s per=%d used=%d", ok, name, per, used)
+	}
+	if ok, _, _, _, _ := a.Check(ctx, "team-a", now); !ok {
+		t.Fatalf("a cannot see b's unsynced traffic")
+	}
+	for _, q := range []*Quotas{b, a, a, b} {
+		if err := q.Sync(ctx, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for name, q := range map[string]*Quotas{"a": a, "b": b} {
+		if ok, _, _, used, _ := q.Check(ctx, "team-a", now); ok || used != 100 {
+			t.Fatalf("%s after syncs: ok=%v used=%d (synced tokens must not count twice)", name, ok, used)
+		}
+	}
+	if got := counter(t, c, "2026-10-01"); got["team-a"] != "95" || got["team-a-dev"] != "5" {
+		t.Fatalf("counter = %v", got)
 	}
 
 	up := &upstream{}
@@ -384,7 +423,7 @@ func TestQuotaSeedsFromRecordsAndRejectsWith429(t *testing.T) {
 		Source: staticSource{keys: map[string]Key{HashKey(keyA): {Tenant: "team-a", Namespace: "team-a"}},
 			routes: []Route{{Model: "chat", Namespace: "team-a", Upstream: srv.URL, ServedModel: "chat"}}},
 		Meter:  NewMeter(prometheus.NewRegistry(), "gw-0"),
-		Quotas: q,
+		Quotas: a,
 		Now:    func() time.Time { return now },
 	}
 	rec := call(t, gw, "POST", "/v1/chat/completions", keyA, `{"model":"chat"}`)
@@ -395,7 +434,58 @@ func TestQuotaSeedsFromRecordsAndRejectsWith429(t *testing.T) {
 	if v := testutil.ToFloat64(gw.Meter.rejected.WithLabelValues("team-a")); v != 1 {
 		t.Fatalf("rejections = %v", v)
 	}
-	if ok, _, _, _, _ := q.Check(ctx, "team-a", now.Add(14*time.Hour)); !ok {
+
+	// The next UTC day starts from zero with a new counter; the day before yesterday's counter is deleted.
+	tomorrow := now.Add(14 * time.Hour)
+	if ok, _, _, _, _ := a.Check(ctx, "team-a", tomorrow); !ok {
 		t.Fatalf("the counter did not reset on the next UTC day")
+	}
+	if err := a.Sync(ctx, tomorrow); err != nil {
+		t.Fatal(err)
+	}
+	counter(t, c, "2026-10-01")
+	if got := counter(t, c, "2026-10-02"); len(got) != 0 {
+		t.Fatalf("new day's counter = %v", got)
+	}
+	if err := a.Sync(ctx, now.AddDate(0, 0, 2)); err != nil {
+		t.Fatal(err)
+	}
+	var cms corev1.ConfigMapList
+	if err := c.List(ctx, &cms, client.InNamespace("gryvia-system")); err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, cm := range cms.Items {
+		names = append(names, cm.Name)
+	}
+	if strings.Join(names, ",") != "gryvia-llm-tokens-2026-10-02,gryvia-llm-tokens-2026-10-03" {
+		t.Fatalf("counters kept = %v", names)
+	}
+}
+
+func TestQuotaSyncsConcurrentReplicasWithoutLosingTokens(t *testing.T) {
+	now := time.Date(2026, 10, 1, 10, 30, 0, 0, time.UTC)
+	c := newFakeClient()
+	ctx := context.Background()
+	replicas := []*Quotas{NewQuotas(c, "gryvia-system"), NewQuotas(c, "gryvia-system"), NewQuotas(c, "gryvia-system")}
+	var wg sync.WaitGroup
+	for i := 0; i < 30; i++ {
+		wg.Add(1)
+		go func(q *Quotas) {
+			defer wg.Done()
+			q.Add("team-a", 1, now)
+			if err := q.Sync(ctx, now); err != nil {
+				t.Error(err)
+			}
+		}(replicas[i%len(replicas)])
+	}
+	wg.Wait()
+	for _, q := range replicas {
+		if err := q.Sync(ctx, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := counter(t, c, "2026-10-01")["team-a"]; got != "30" {
+		t.Fatalf("counter = %s, want 30", got)
 	}
 }

@@ -7,8 +7,8 @@ Track complete model provenance, compliance, and reproducibility for AI/ML model
 > hash when `cryptographicChain` is set) and sets a simple `complianceStatus` by checking that code
 > commit, job reference and dataset checksums are present. Limits: the hash is a self-computed integrity
 > value, not a signature or external attestation; `immutableRecord` is a field the controller does not
-> enforce; `attachToRegistry` only sets a status flag (nothing is pushed to a model registry, and
-> `GryviaModelRegistry` has no controller); the "regulatory framework" check is a completeness check, not a
+> enforce; `attachToRegistry` only sets a status flag (nothing is written to a `GryviaModelRegistry`
+> entry, and the registry controller does not read lineage); the "regulatory framework" check is a completeness check, not a
 > compliance certification. Unverified in production.
 
 ## Overview

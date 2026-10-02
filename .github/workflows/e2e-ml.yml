@@ -721,7 +721,7 @@ jobs:
         run: |
           helm upgrade gryvia ./helm/gryvia --namespace gryvia-system --reuse-values --wait --timeout 300s \
             --set llmGateway.enabled=true --set llmGateway.flushInterval=10s --set llmGateway.quotaRefreshInterval=5s \
-            --set llmGateway.priceInputPer1M=1 --set llmGateway.priceOutputPer1M=2
+            --set llmGateway.priceInputPer1M=1 --set llmGateway.priceOutputPer1M=2 --set llmGateway.replicas=2
           kubectl -n gryvia-system rollout status deploy/gryvia-llm-gateway --timeout=180s
           kubectl -n gryvia-system rollout status deploy/gryvia-api-gateway --timeout=180s
           source scripts/e2e-ml-lib.sh
@@ -814,6 +814,11 @@ jobs:
           curl -s http://localhost:18081/metrics | grep -c 'gryvia_llm_tokens_total{model="tiny-chat",tenant="gryvia-system",type="input"} 14' >/dev/null
           echo "ok: metrics"
 
+          # The port-forward pins one of the two replicas; both add their counts to today's shared counter.
+          shared_tokens() { kubectl -n "$NS" get configmap "gryvia-llm-tokens-$(date -u +%F)" -o json | jq -r '.data["gryvia-system"]'; }
+          counted() { [ "$(shared_tokens)" = 20 ]; }
+          wait_for "shared daily token counter" 30 counted
+
           # A token quota already used up: the next request is refused.
           cat <<EOF | kubectl apply -f -
           apiVersion: gryvia.io/v1alpha1
@@ -823,6 +828,15 @@ jobs:
           EOF
           is_429() { [ "$(code -H "Authorization: Bearer $key" "$LLM/v1/chat/completions" -d "$chat")" = 429 ]; }
           wait_for "tokensPerDay enforced with 429" 60 is_429
+          # Each replica refuses, including the one that served none of the traffic.
+          port=18090
+          for pod in $(kubectl -n "$NS" get pods -l app.kubernetes.io/component=llm-gateway -o name); do
+            kubectl -n "$NS" port-forward "$pod" "$port:8080" & pf=$!
+            sleep 2
+            assert_eq "429 from $pod" "$(code -H "Authorization: Bearer $key" "http://localhost:$port/v1/chat/completions" -d "$chat")" 429
+            kill "$pf"
+            port=$((port + 1))
+          done
           assert_eq "quota shown with today's use" "$(gw /api/llm/usage '.quotas[] | select(.name=="e2e-tokens") | .usedToday')" 20
           kubectl delete gryviaquota e2e-tokens
 

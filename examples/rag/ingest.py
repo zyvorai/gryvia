@@ -14,8 +14,10 @@ Environment (set by the controller):
   CHUNK_SIZE, CHUNK_OVERLAP        in characters
   DATA_DIR, DATASET_VERSION        mounted dataset version
 
-Inputs: .jsonl files contribute one document per line (the "text", "content" or "document" field); other files
-with a text extension are one document each (HTML tags are stripped). Binary files are skipped.
+Inputs: .jsonl files contribute one document per line (the "text", "content" or "document" field) and are read line
+by line, so they may be of any size (a single line above 20 MiB is skipped); other files with a text extension are
+one document each, up to 20 MiB (HTML tags are stripped). Binary files are skipped. Chunks are embedded and upserted
+as they are produced, so memory use depends on the batch sizes and the largest document, not on the dataset size.
 
 On success the termination message is {"documents", "chunks", "dimensions", "collection"}; on failure it is the
 error, which the controller shows in the index status.
@@ -37,8 +39,10 @@ TEXT_EXTENSIONS = {
     ".yaml", ".yml", ".py", ".go", ".rs", ".js", ".ts", ".java", ".c", ".h", ".cpp", ".sh", ".sql", ".tex", ".org",
 }
 MAX_FILE_BYTES = 20 * 1024 * 1024
+MAX_RECORD_BYTES = 20 * 1024 * 1024
 POINT_NAMESPACE = uuid.UUID("6f1d2c3a-4b5e-4f60-8a71-9b8c7d6e5f40")
 UPSERT_BATCH = 128
+PROGRESS_EVERY = 10
 
 
 class IngestError(Exception):
@@ -61,6 +65,38 @@ def strip_html(text):
     return html.unescape(_TAG.sub(" ", text))
 
 
+def jsonl_lines(f, rel):
+    """Yields (line number, bytes) of a binary file object, one line at a time. A line longer than
+    MAX_RECORD_BYTES is skipped without holding it in memory."""
+    n = 0
+    while True:
+        line = f.readline(MAX_RECORD_BYTES + 1)
+        if not line:
+            return
+        n += 1
+        if len(line) > MAX_RECORD_BYTES and not line.endswith(b"\n"):
+            while line and not line.endswith(b"\n"):
+                line = f.readline(MAX_RECORD_BYTES + 1)
+            print(f"skip {rel}#{n}: line longer than {MAX_RECORD_BYTES} bytes", flush=True)
+            continue
+        yield n, line
+
+
+def jsonl_documents(f, rel):
+    for n, raw in jsonl_lines(f, rel):
+        line = raw.decode("utf-8", errors="replace").strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(obj, dict):
+            body = next((obj[k] for k in ("text", "content", "document") if isinstance(obj.get(k), str)), "")
+            if body.strip():
+                yield f"{rel}#{n}", body
+
+
 def read_documents(root):
     """Yields (source, text) for every document under root, in a stable order."""
     for dirpath, dirnames, filenames in os.walk(root):
@@ -74,6 +110,13 @@ def read_documents(root):
             if ext not in TEXT_EXTENSIONS:
                 continue
             try:
+                if ext == ".jsonl":
+                    with open(path, "rb") as f:
+                        if b"\x00" in f.read(8192):
+                            continue
+                        f.seek(0)
+                        yield from jsonl_documents(f, rel)
+                    continue
                 if os.path.getsize(path) > MAX_FILE_BYTES:
                     print(f"skip {rel}: larger than {MAX_FILE_BYTES} bytes", flush=True)
                     continue
@@ -85,22 +128,6 @@ def read_documents(root):
             if b"\x00" in raw[:8192]:
                 continue
             text = raw.decode("utf-8", errors="replace")
-            if ext == ".jsonl":
-                for n, line in enumerate(text.splitlines(), 1):
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        obj = json.loads(line)
-                    except ValueError:
-                        continue
-                    if isinstance(obj, dict):
-                        body = next(
-                            (obj[k] for k in ("text", "content", "document") if isinstance(obj.get(k), str)), ""
-                        )
-                        if body.strip():
-                            yield f"{rel}#{n}", body
-                continue
             if ext in (".html", ".htm"):
                 text = strip_html(text)
             if text.strip():
@@ -237,27 +264,37 @@ def run_suffix(run_id):
     return hashlib.sha256(run_id.encode()).hexdigest()[:12]
 
 
+def batched(items, size):
+    batch = []
+    for item in items:
+        batch.append(item)
+        if len(batch) >= size:
+            yield batch
+            batch = []
+    if batch:
+        yield batch
+
+
 def ingest(cfg, embedder, store, log=print):
     collection = cfg["collection"]
     target = f"{collection}__{run_suffix(cfg['run_id'])}"
-    documents, chunks = 0, []
-    for source, text in read_documents(cfg["data_dir"]):
-        documents += 1
-        for i, piece in enumerate(chunk(text, cfg["chunk_size"], cfg["chunk_overlap"])):
-            chunks.append((source, i, piece))
-    if not chunks:
-        raise IngestError(f"no text documents under {cfg['data_dir']} (dataset version {cfg['dataset_version']})")
-    log(f"{documents} documents, {len(chunks)} chunks; embedding with {embedder.model} into {target}", flush=True)
+    counts = {"documents": 0, "chunks": 0}
 
-    store.delete(target)
+    def chunks():
+        for source, text in read_documents(cfg["data_dir"]):
+            counts["documents"] += 1
+            for i, piece in enumerate(chunk(text, cfg["chunk_size"], cfg["chunk_overlap"])):
+                yield source, i, piece
+
+    log(f"embedding with {embedder.model} into {target}", flush=True)
     dim, created, points = 0, False, []
-    for start in range(0, len(chunks), cfg["batch"]):
-        batch = chunks[start:start + cfg["batch"]]
+    for n, batch in enumerate(batched(chunks(), cfg["batch"]), 1):
         vectors = embedder.embed([c[2] for c in batch])
         if not created:
             dim = len(vectors[0])
             if dim == 0:
                 raise IngestError(f"model {embedder.model} returned empty embeddings")
+            store.delete(target)
             store.create(target, dim)
             created = True
         for (source, i, piece), vec in zip(batch, vectors):
@@ -271,9 +308,14 @@ def ingest(cfg, embedder, store, log=print):
             if len(points) >= UPSERT_BATCH:
                 store.upsert(target, points)
                 points = []
-        log(f"embedded {min(start + cfg['batch'], len(chunks))}/{len(chunks)}", flush=True)
+        counts["chunks"] += len(batch)
+        if n % PROGRESS_EVERY == 0:
+            log(f"embedded {counts['chunks']} chunks of {counts['documents']} documents", flush=True)
     if points:
         store.upsert(target, points)
+    if not counts["chunks"]:
+        raise IngestError(f"no text documents under {cfg['data_dir']} (dataset version {cfg['dataset_version']})")
+    log(f"{counts['documents']} documents, {counts['chunks']} chunks", flush=True)
 
     aliases = store.aliases()
     current = aliases.get(collection)
@@ -285,7 +327,7 @@ def ingest(cfg, embedder, store, log=print):
         if name.startswith(collection + "__") and name != target:
             store.delete(name)
     log(f"alias {collection} -> {target}; {embedder.tokens} embedding tokens", flush=True)
-    return {"documents": documents, "chunks": len(chunks), "dimensions": dim, "collection": collection}
+    return {"documents": counts["documents"], "chunks": counts["chunks"], "dimensions": dim, "collection": collection}
 
 
 def config():
