@@ -113,7 +113,13 @@ jobs:
           r > /tmp/chart.yaml
           ./kyverno apply /tmp/policy.yaml --resource /tmp/chart.yaml | tee /tmp/good.txt
           grep -Eq 'pass: [1-9][0-9]*, fail: 0,' /tmp/good.txt || { echo "the chart's own workloads fail the policy"; exit 1; }
-          kubectl run bad --image=docker.io/library/nginx:1.27 -n tenant-a --dry-run=client -o yaml > /tmp/bad.yaml
+          cat > /tmp/bad.yaml <<'EOF'
+          apiVersion: v1
+          kind: Pod
+          metadata: {name: bad, namespace: tenant-a}
+          spec:
+            containers: [{name: web, image: docker.io/library/nginx:1.27}]
+          EOF
           ./kyverno apply /tmp/policy.yaml --resource /tmp/bad.yaml | tee /tmp/bad.txt || true
           grep -Eq 'fail: 1,' /tmp/bad.txt || { echo "a Docker Hub image was not refused"; exit 1; }
           echo "ok: the chart passes, docker.io/library/nginx is refused"
