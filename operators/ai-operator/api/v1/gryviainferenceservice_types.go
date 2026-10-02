@@ -1,6 +1,8 @@
 package v1
 
 import (
+	"time"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -12,6 +14,15 @@ const (
 	BackendVLLM        InferenceBackend = "vllm"
 	BackendTensorRTLLM InferenceBackend = "tensorrt-llm"
 	BackendTorchServe  InferenceBackend = "torchserve"
+)
+
+// Annotations the LLM gateway writes on a GryviaInferenceService it routes to (RFC 3339 times).
+const (
+	// AnnotationLastRequest is when the gateway last proxied a request to the service (written at most once a minute).
+	AnnotationLastRequest = "gryvia.io/last-request"
+	// AnnotationWakeRequested asks the controller to scale a service in phase ScaledToZero back up. The controller
+	// removes it once it has acted on it.
+	AnnotationWakeRequested = "gryvia.io/wake-requested"
 )
 
 // GryviaInferenceServiceSpec defines the desired state of GryviaInferenceService
@@ -48,6 +59,51 @@ type GryviaInferenceServiceSpec struct {
 
 	// ServicePort is the port the inference service listens on (default: 8080)
 	ServicePort int32 `json:"servicePort,omitempty"`
+
+	// ScaleToZero scales the service to zero replicas after a period without requests and back up when the LLM
+	// gateway receives a request for it. Only traffic through the gateway counts and wakes it: callers of
+	// status.endpoint get no activator. Not supported together with an enabled canary.
+	ScaleToZero *ScaleToZeroConfig `json:"scaleToZero,omitempty"`
+}
+
+// ScaleToZeroConfig configures idle scale-down.
+type ScaleToZeroConfig struct {
+	// Enabled turns idle scale-down on.
+	Enabled bool `json:"enabled"`
+
+	// IdleSeconds without a request (or since the last wake-up) before the service is scaled to zero. Default 900.
+	// +kubebuilder:validation:Minimum=60
+	// +optional
+	IdleSeconds int32 `json:"idleSeconds,omitempty"`
+
+	// ColdStartTimeoutSeconds is how long the LLM gateway holds a request while the service starts, and how much
+	// longer a service that is not ready may run idle before it is scaled to zero. Default 300.
+	// +kubebuilder:validation:Minimum=10
+	// +kubebuilder:validation:Maximum=3600
+	// +optional
+	ColdStartTimeoutSeconds int32 `json:"coldStartTimeoutSeconds,omitempty"`
+}
+
+// Defaults for ScaleToZeroConfig.
+const (
+	DefaultScaleToZeroIdleSeconds      = 900
+	DefaultScaleToZeroColdStartSeconds = 300
+)
+
+// Idle is the idle period before scale-down.
+func (c *ScaleToZeroConfig) Idle() time.Duration {
+	if c == nil || c.IdleSeconds <= 0 {
+		return DefaultScaleToZeroIdleSeconds * time.Second
+	}
+	return time.Duration(c.IdleSeconds) * time.Second
+}
+
+// ColdStart is how long a request may wait for a woken service.
+func (c *ScaleToZeroConfig) ColdStart() time.Duration {
+	if c == nil || c.ColdStartTimeoutSeconds <= 0 {
+		return DefaultScaleToZeroColdStartSeconds * time.Second
+	}
+	return time.Duration(c.ColdStartTimeoutSeconds) * time.Second
 }
 
 // AutoscalingConfig defines HPA configuration for inference services
@@ -103,7 +159,7 @@ type HealthCheckConfig struct {
 
 // GryviaInferenceServiceStatus defines the observed state of GryviaInferenceService
 type GryviaInferenceServiceStatus struct {
-	// Phase is the current phase (Pending, Deploying, Ready, Failed, RollingBack)
+	// Phase is the current phase (Pending, Deploying, Ready, ScaledToZero, Failed, RollingBack)
 	Phase string `json:"phase,omitempty"`
 
 	// Conditions represent the latest available observations
@@ -135,6 +191,13 @@ type GryviaInferenceServiceStatus struct {
 
 	// Message provides additional status information
 	Message string `json:"message,omitempty"`
+
+	// ScaledToZeroAt is when the service was scaled to zero for being idle; unset while it runs.
+	ScaledToZeroAt *metav1.Time `json:"scaledToZeroAt,omitempty"`
+
+	// LastWakeAt is when the service was last woken (scaled up from zero, or a wake request while running), or when
+	// scale-to-zero was turned on; the idle period is counted from it or from the last request, whichever is later.
+	LastWakeAt *metav1.Time `json:"lastWakeAt,omitempty"`
 }
 
 // CanaryStatus holds the observed state of a canary deployment
