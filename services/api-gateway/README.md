@@ -97,7 +97,8 @@ Every `POST`/`PUT`/`PATCH`/`DELETE` is recorded after it completes, including fa
 
 - **Log:** one JSON object per line on the `gryvia.audit` logger. This is the durable record; ship it with your log collector.
 - **File:** `GRYVIA_AUDIT_FILE=/path/audit.jsonl` also appends the lines (mode 0600). An unwritable file is logged, never fails a request.
-- **API:** `GET /api/audit?limit=&outcome=&method=` (admin) reads a bounded buffer (`GRYVIA_AUDIT_BUFFER`, default 1000). The buffer is per replica and lost on restart.
+- **Database:** `GRYVIA_AUDIT_DB=/data/audit.db` also stores entries in SQLite (WAL, mode 0600) on a persistent volume, so they survive restarts and can be searched. `GRYVIA_AUDIT_RETENTION_DAYS` (default 0, keep all) prunes older rows. One file, one writer: use a single gateway replica or one file per replica. An unusable database is logged and the buffer is used instead.
+- **API:** `GET /api/audit?limit=&outcome=&method=&since=&until=&actor=&path=&status=` (admin) reads the database when `GRYVIA_AUDIT_DB` is set, otherwise a bounded per-replica buffer (`GRYVIA_AUDIT_BUFFER`, default 1000, lost on restart). `GET /api/audit/export.csv` takes the same filters (plus a larger `limit`) and returns CSV with spreadsheet formulas neutralised.
 - **Metric:** `gryvia_gateway_audit_events_total{method,outcome}`.
 
 The API key and dashboard sessions are one shared admin identity, so those entries say "admin via api_key/session", not who.
