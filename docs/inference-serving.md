@@ -188,7 +188,12 @@ Scale-to-zero: fake-client tests of the controller cover idle scale-down at the 
 a request annotation postponing it, staying at zero without a wake request, the wake annotation consumed and the
 replicas restored, the cold-start allowance for a service that never became ready, the HPA left alone at zero and
 woken into its range, turning the feature off at zero, the canary exclusion, and a malformed annotation
-(`operators/ai-operator/controllers/inference_scaletozero_test.go`).
+(`operators/ai-operator/controllers/inference_scaletozero_test.go`). On kind, the step "LLM gateway - scale to zero
+and a cold start through the gateway" of `.github/workflows/e2e-ml.yml` publishes a stand-in model with
+`idleSeconds: 60` and checks that a gateway request writes `gryvia.io/last-request`, that after a minute idle the
+service is `ScaledToZero` with its Deployment at 0 and no pods, and that the next gateway request wakes it, waits
+and is answered (200) and metered. Not covered end to end: a real engine's model load time (the stand-in starts in
+seconds) and the 503 after the cold-start timeout (unit-tested in the gateway).
 
 Unit tests cover HPA targets/errors, status freshness, route weighting, cold/unready canaries, defaults,
 cleanup, ownership and promotion gating. An `integration` Go test runs against envtest with Kubernetes
