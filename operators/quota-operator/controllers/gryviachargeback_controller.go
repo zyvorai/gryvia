@@ -107,10 +107,12 @@ func (r *GryviaChargebackReconciler) calculate(ctx context.Context, cb *gryviav1
 	costs := map[string]float64{}
 	seen := map[string]bool{}
 	for _, rec := range records.Items {
-		if rec.Spec.JobUID == "" || seen[rec.Spec.JobUID] {
-			return fmt.Errorf("usage must have a unique jobUID")
+		// A job has one record per admitted run, each with its own start.
+		run := rec.Spec.JobUID + "/" + rec.Spec.Start.UTC().Format(time.RFC3339Nano)
+		if rec.Spec.JobUID == "" || seen[run] {
+			return fmt.Errorf("usage must have a unique jobUID and start")
 		}
-		seen[rec.Spec.JobUID] = true
+		seen[run] = true
 		if math.IsNaN(rec.Spec.Cost) || math.IsInf(rec.Spec.Cost, 0) || rec.Spec.Cost < 0 {
 			return fmt.Errorf("invalid metered cost")
 		}

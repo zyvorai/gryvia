@@ -57,6 +57,8 @@ wl_field() { # <job> <jq expression on the workload>
     jq -r --arg j "$1" "[.items[] | select(any(.metadata.ownerReferences[]?; .kind==\"Job\" and .name==\$j))][0] | $2"
 }
 cq_field() { kubectl get clusterqueue "$CQ" -o jsonpath="$1" 2>/dev/null; }
+rec_field() { kubectl -n "$NS" get gryviausagerecord "$1" -o jsonpath="$2" 2>/dev/null; }
+rec_is() { [[ "$(rec_field "$1" "$2")" == "$3" ]]; }
 
 kq_job() { # <name> <nodes> <priority> <sleep-seconds>
   local name="$1" nodes="$2" prio="$3" secs="$4"
@@ -206,6 +208,10 @@ scenario_preempt() {
   echo "low message: $(message low)"
   wait_for 60 "low has no non-terminal pods" no_active_pods low
   job_suspended low || fail "low: Job must be suspended after eviction"
+  # Metering: the first run's usage record is closed at the eviction; no run is open while low is queued.
+  local uid; uid="$(kubectl -n "$NS" get gryviaaijob low -o jsonpath='{.metadata.uid}')"
+  wait_for 90 "low's first usage record is final" rec_is "usage-$uid" '{.spec.final}' true
+  gone gryviausagerecord "usage-$uid-2" || fail "low: a second usage record exists while it is queued"
   [[ "$(wl_field high '.spec.priority')" == "90" ]] || fail "high workload priority = $(wl_field high '.spec.priority'), want 90"
   [[ "$(wl_field low '.spec.priority')" == "10" ]] || fail "low workload priority = $(wl_field low '.spec.priority'), want 10"
 
@@ -213,9 +219,17 @@ scenario_preempt() {
   wait_for 300 "high reaches Succeeded" is_phase high Succeeded
   # Kueue requeues the evicted workload: with the quota free again low runs again (not terminal Preempted).
   wait_for 300 "low is admitted again and Running" is_phase low Running
+  wait_for 90 "low's second run has an open usage record" rec_is "usage-$uid-2" '{.spec.final}' false
 
   kubectl -n "$NS" annotate gryviaaijob low gryvia.io/cancel=true --overwrite >/dev/null
   wait_for 120 "low is Cancelled" is_phase low Cancelled
+  wait_for 90 "low's second usage record is final" rec_is "usage-$uid-2" '{.spec.final}' true
+  # The queued time between the runs is in neither record.
+  local end1 start2
+  end1="$(rec_field "usage-$uid" '{.spec.end}')"
+  start2="$(rec_field "usage-$uid-2" '{.spec.start}')"
+  echo "low: first run ended $end1, second run started $start2"
+  [[ -n "$end1" && ! "$start2" < "$end1" ]] || fail "low: second run starts ($start2) before the first ended ($end1)"
   kubectl -n "$NS" delete gryviaaijob high low --ignore-not-found --wait=true >/dev/null
 }
 

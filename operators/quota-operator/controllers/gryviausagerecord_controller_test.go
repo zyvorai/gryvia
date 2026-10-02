@@ -342,6 +342,127 @@ func TestUsage_DistributedJobCountsNodesTimesGpusPerNode(t *testing.T) {
 	}
 }
 
+func setKueue(t *testing.T, c client.Client, ns, name, phase string, status metav1.ConditionStatus, at time.Time) {
+	t.Helper()
+	j := &gryviav1.GryviaAIJob{}
+	if err := c.Get(context.Background(), types.NamespacedName{Namespace: ns, Name: name}, j); err != nil {
+		t.Fatal(err)
+	}
+	j.Status.Phase = phase
+	j.Status.Conditions = []metav1.Condition{{Type: "KueueAdmitted", Status: status, Reason: "x", LastTransitionTime: metav1.NewTime(at)}}
+	if err := c.Status().Update(context.Background(), j); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func getNamed(t *testing.T, c client.Client, ns, name string) *gryviav1.GryviaUsageRecord {
+	t.Helper()
+	rec := &gryviav1.GryviaUsageRecord{}
+	if err := c.Get(context.Background(), types.NamespacedName{Namespace: ns, Name: name}, rec); err != nil {
+		t.Fatalf("get %s: %v", name, err)
+	}
+	return rec
+}
+
+// Kueue evicts a running job and admits it again: each run is metered on its own record and the
+// time spent queued in between is not.
+func TestUsage_KueueRequeueMetersEachRun(t *testing.T) {
+	now := t0.Add(30 * time.Minute)
+	start := t0
+	r, c := newUsageReconciler(&now, usageJob("ns1", "kj", "uk", "Running", "T4", 2, &start, nil))
+	setKueue(t, c, "ns1", "kj", "Running", metav1.ConditionTrue, t0.Add(-time.Minute))
+	reconcileJob(t, r, "ns1", "kj")
+
+	// Evicted at 1h, seen at 1h30: the first run ends at the eviction.
+	now = t0.Add(90 * time.Minute)
+	setKueue(t, c, "ns1", "kj", "Queued", metav1.ConditionFalse, t0.Add(time.Hour))
+	if res := reconcileJob(t, r, "ns1", "kj"); res.RequeueAfter != 0 {
+		t.Errorf("queued job must not requeue: %+v", res)
+	}
+	s := getRecord(t, c, "ns1", "uk").Spec
+	if !s.Final || s.End == nil || !s.End.Time.Equal(t0.Add(time.Hour)) || !near(s.GpuHours, 2) {
+		t.Fatalf("first run not closed at the eviction: %+v", s)
+	}
+
+	// Still queued later: nothing is metered.
+	now = t0.Add(3 * time.Hour)
+	reconcileJob(t, r, "ns1", "kj")
+	list := &gryviav1.GryviaUsageRecordList{}
+	_ = c.List(context.Background(), list)
+	if len(list.Items) != 1 {
+		t.Fatalf("records while queued = %d, want 1", len(list.Items))
+	}
+
+	// Admitted again at 4h, running at 5h: a second record from the readmission.
+	now = t0.Add(5 * time.Hour)
+	setKueue(t, c, "ns1", "kj", "Running", metav1.ConditionTrue, t0.Add(4*time.Hour))
+	if res := reconcileJob(t, r, "ns1", "kj"); res.RequeueAfter != time.Minute {
+		t.Errorf("running run must requeue: %+v", res)
+	}
+	s2 := getNamed(t, c, "ns1", "usage-uk-2").Spec
+	if s2.Final || !s2.Start.Time.Equal(t0.Add(4*time.Hour)) || !near(s2.GpuHours, 2) || s2.JobUID != "uk" {
+		t.Fatalf("second run = %+v", s2)
+	}
+
+	// Succeeds at 6h: the second run is finalized, the first left alone.
+	now = t0.Add(7 * time.Hour)
+	j := &gryviav1.GryviaAIJob{}
+	_ = c.Get(context.Background(), types.NamespacedName{Namespace: "ns1", Name: "kj"}, j)
+	done := metav1.NewTime(t0.Add(6 * time.Hour))
+	j.Status.Phase, j.Status.CompletionTime = "Succeeded", &done
+	_ = c.Status().Update(context.Background(), j)
+	reconcileJob(t, r, "ns1", "kj")
+	s2 = getNamed(t, c, "ns1", "usage-uk-2").Spec
+	if !s2.Final || !near(s2.GpuHours, 4) {
+		t.Errorf("second run not finalized: %+v", s2)
+	}
+	if s := getRecord(t, c, "ns1", "uk").Spec; !near(s.GpuHours, 2) {
+		t.Errorf("first run changed: %+v", s)
+	}
+	reconcileJob(t, r, "ns1", "kj")
+	_ = c.List(context.Background(), list)
+	if len(list.Items) != 2 {
+		t.Errorf("records = %d, want 2", len(list.Items))
+	}
+}
+
+// A job cancelled while requeued gets no record for a run that never happened.
+func TestUsage_KueueCancelledWhileQueuedOpensNoRun(t *testing.T) {
+	now := t0.Add(time.Hour)
+	start := t0
+	r, c := newUsageReconciler(&now, usageJob("ns1", "kj", "uk", "Running", "T4", 1, &start, nil))
+	setKueue(t, c, "ns1", "kj", "Running", metav1.ConditionTrue, t0)
+	reconcileJob(t, r, "ns1", "kj")
+	setKueue(t, c, "ns1", "kj", "Queued", metav1.ConditionFalse, t0.Add(time.Hour))
+	reconcileJob(t, r, "ns1", "kj")
+	now = t0.Add(2 * time.Hour)
+	setKueue(t, c, "ns1", "kj", "Cancelled", metav1.ConditionFalse, t0.Add(time.Hour))
+	reconcileJob(t, r, "ns1", "kj")
+	list := &gryviav1.GryviaUsageRecordList{}
+	_ = c.List(context.Background(), list)
+	if len(list.Items) != 1 || !near(list.Items[0].Spec.GpuHours, 1) {
+		t.Fatalf("records = %+v", list.Items)
+	}
+}
+
+// The chargeback sums both runs of a requeued job instead of rejecting them as duplicates.
+func TestChargeback_RunsOfOneJobAreNotDuplicates(t *testing.T) {
+	a := budgetRec("usage-j1", "ns", "tenant", 10, 1, "USD", true)
+	a.Spec.JobUID = "j1"
+	b := a.DeepCopy()
+	b.Name, b.Spec.Start = "usage-j1-2", metav1.NewTime(a.Spec.Start.Add(time.Minute))
+	quota := &gryviav1.GryviaQuota{ObjectMeta: metav1.ObjectMeta{Name: "q"}, Spec: gryviav1.GryviaQuotaSpec{Team: "team", Namespaces: []string{"ns"}}}
+	cb := &gryviav1.GryviaChargeback{Spec: gryviav1.GryviaChargebackSpec{Period: gryviav1.ChargebackPeriod{Type: "monthly"}, CostCenters: []gryviav1.CostCenter{{ID: "cc", Teams: []string{"team"}}}}}
+	c := fake.NewClientBuilder().WithScheme(newQuotaTestScheme()).WithObjects(a, b, quota).Build()
+	r := &GryviaChargebackReconciler{Client: c}
+	if err := r.calculate(context.Background(), cb, budgetNow); err != nil {
+		t.Fatal(err)
+	}
+	if cb.Status.CurrentPeriod.TotalCost != 20 {
+		t.Errorf("total = %v, want 20", cb.Status.CurrentPeriod.TotalCost)
+	}
+}
+
 func TestTotalGPUs(t *testing.T) {
 	d := func(n, per int32) *gryviav1.GryviaAIJobDistributedSpec {
 		return &gryviav1.GryviaAIJobDistributedSpec{Enabled: true, Nodes: n, GpusPerNode: per}
