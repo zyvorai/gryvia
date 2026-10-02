@@ -324,6 +324,19 @@ gryvia submit -f job.yaml --logs
 gryvia -n production submit -f job.yaml
 ```
 
+#### Import a Slurm batch script
+
+```bash
+# Print the GryviaAIJob(s) the script becomes, with warnings for directives that have no equivalent
+gryvia submit --sbatch train.sh --image pytorch/pytorch:2.4.0-cuda12.1-cudnn9-runtime --dry-run
+
+# Submit it (one job per --array index) and wait
+gryvia submit --sbatch train.sh --image pytorch/pytorch:2.4.0-cuda12.1-cudnn9-runtime --wait
+```
+
+`#SBATCH` directives map to job fields and `SLURM_*` variables, `srun` and `scontrol show hostnames` work inside the
+script. See [Slurm batch scripts](https://github.com/zyvorai/gryvia/blob/main/docs/slurm.md).
+
 #### List Jobs
 
 ```bash

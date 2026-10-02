@@ -6,6 +6,8 @@
 #   scripts/e2e-jobs.sh failure   # exit 1, retryLimit 0 -> Failed
 #   scripts/e2e-jobs.sh reject    # quota rejects a job -> no Job/StatefulSet/Service/PVC
 #   scripts/e2e-jobs.sh cancel    # cancel running jobs (status patch like `gryvia cancel`, and the annotation)
+#   scripts/e2e-jobs.sh sbatch    # `gryvia submit --sbatch`: a 2-node Slurm script and a 2-index array succeed
+#                                 # (GRYVIA_CLI is the built CLI, default cli/target/release/gryvia)
 #
 # Needs kubectl pointed at the cluster. Every wait is bounded and prints what it saw on failure.
 set -euo pipefail
@@ -215,11 +217,55 @@ scenario_cancel() {
   done
 }
 
+scenario_sbatch() {
+  local ns=e2e-jobs cli="${GRYVIA_CLI:-cli/target/release/gryvia}" dir
+  ensure_ns "$ns"
+  dir="$(mktemp -d)"
+  # shellcheck disable=SC2016  # the SLURM_* variables must reach the pod's shell unexpanded
+  printf '%s\n' '#!/bin/sh' \
+    '#SBATCH --job-name=slurm_two_nodes' \
+    '#SBATCH --nodes=2' \
+    '#SBATCH --ntasks-per-node=1' \
+    '#SBATCH --time=00:10:00' \
+    '#SBATCH --output=slurm-%j.out' \
+    'echo "procid=$SLURM_PROCID ntasks=$SLURM_NTASKS nnodes=$SLURM_NNODES job=$SLURM_JOB_ID name=$SLURM_JOB_NAME"' \
+    'srun --ntasks=1 -l echo "srun ran on $SLURM_PROCID"' \
+    'echo "head=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n1)"' > "$dir/two.sh"
+  # shellcheck disable=SC2016
+  printf '%s\n' '#!/bin/sh' \
+    '#SBATCH -J sweep' \
+    '#SBATCH --array=0-1' \
+    'echo "task=$SLURM_ARRAY_TASK_ID of $SLURM_ARRAY_TASK_COUNT array=$SLURM_ARRAY_JOB_ID"' > "$dir/array.sh"
+
+  "$cli" submit --sbatch "$dir/two.sh" --image busybox:1.36 --dry-run > "$dir/two.yaml"
+  grep -q 'timeout: 10m' "$dir/two.yaml" || fail "dry run did not map --time"
+  timeout 300 "$cli" -n "$ns" submit --sbatch "$dir/two.sh" --image busybox:1.36 --wait \
+    || fail "slurm-two-nodes did not succeed: $(phase "$ns" slurm-two-nodes)"
+  is_phase "$ns" slurm-two-nodes Succeeded || fail "slurm-two-nodes is $(phase "$ns" slurm-two-nodes)"
+  [[ "$(kubectl -n "$ns" get gryviaaijob slurm-two-nodes -o jsonpath='{.spec.distributed.nodes}')" == 2 ]] || fail "not 2 nodes"
+  local logs; logs="$(kubectl -n "$ns" logs -l gryvia.io/job=slurm-two-nodes --tail=-1 --prefix=false)"
+  echo "$logs"
+  local procids; procids="$(echo "$logs" | sed -n 's/^procid=\([0-9]*\) .*/\1/p' | sort | tr '\n' ' ')"
+  [[ "$procids" == "0 1 " ]] || fail "SLURM_PROCID values = '$procids', want '0 1 '"
+  echo "$logs" | grep -q "ntasks=2 nnodes=2 job=slurm-two-nodes name=slurm_two_nodes" || fail "SLURM_NTASKS/NNODES/JOB_ID/JOB_NAME"
+  [[ "$(echo "$logs" | grep -c '^srun ran on ')" == 2 ]] || fail "srun did not run its command once per pod"
+  echo "$logs" | grep -q "^head=slurm-two-nodes-0.slurm-two-nodes-headless.$ns.svc" || fail "scontrol show hostnames is not pod 0"
+
+  timeout 300 "$cli" -n "$ns" submit --sbatch "$dir/array.sh" --image busybox:1.36 --wait || fail "the array jobs did not succeed"
+  for i in 0 1; do
+    is_phase "$ns" "sweep-$i" Succeeded || fail "sweep-$i is $(phase "$ns" "sweep-$i")"
+    kubectl -n "$ns" logs -l "gryvia.io/job=sweep-$i" --tail=-1 | grep -q "^task=$i of 2 array=sweep$" || fail "sweep-$i SLURM_ARRAY_*"
+  done
+  echo "ok: sbatch array"
+  kubectl -n "$ns" delete gryviaaijob slurm-two-nodes sweep-0 sweep-1 --wait=true >/dev/null
+}
+
 case "${1:-}" in
   success) scenario_success ;;
   failure) scenario_failure ;;
   reject)  scenario_reject ;;
   cancel)  scenario_cancel ;;
-  *) echo "usage: $0 success|failure|reject|cancel" >&2; exit 2 ;;
+  sbatch)  scenario_sbatch ;;
+  *) echo "usage: $0 success|failure|reject|cancel|sbatch" >&2; exit 2 ;;
 esac
 echo "E2E OK: ${1}"
