@@ -15,7 +15,8 @@ type GryviaUsageRecordSpec struct {
 	// Job is the GryviaAIJob name
 	Job string `json:"job"`
 
-	// JobUID is the GryviaAIJob UID (the record is named usage-<jobUID>)
+	// JobUID is the GryviaAIJob UID (the record is named usage-<jobUID>, or usage-<jobUID>-<n> for
+	// the nth run after a Kueue eviction)
 	JobUID string `json:"jobUID"`
 
 	// GpuType of the job
@@ -27,10 +28,10 @@ type GryviaUsageRecordSpec struct {
 	// Gpus is the number of GPUs the job holds
 	Gpus int32 `json:"gpus"`
 
-	// Start is when the job started running
+	// Start is when the run started (the job first ran, or Kueue admitted it again)
 	Start metav1.Time `json:"start"`
 
-	// End is when the job finished; nil while it is running
+	// End is when the run finished (the job ended or Kueue evicted it); nil while it is running
 	End *metav1.Time `json:"end,omitempty"`
 
 	// GpuHours is wall-clock hours multiplied by gpus
@@ -45,7 +46,7 @@ type GryviaUsageRecordSpec struct {
 	// Currency of rate and cost
 	Currency string `json:"currency,omitempty"`
 
-	// Final is true once the job finished; a final record is never modified again
+	// Final is true once the run finished; a final record is never modified again
 	Final bool `json:"final"`
 
 	// Kind is what the record meters: gpu (a GryviaAIJob; also when empty) or tokens (the LLM gateway's requests

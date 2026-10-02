@@ -191,9 +191,14 @@ readmission and the job Succeeds, so the eviction did not consume `retryLimit`.
 **Decision: a Kueue eviction maps back to `Queued`, not to the terminal `Preempted`.** The W1 `Preempted` semantics
 (workload deleted, PVC kept, job parked) would throw away Kueue's requeueing. Instead the Job stays (suspended), Kueue
 requeues the Workload, and the job resumes from scratch (or from its own checkpoints on the kept PVC) when it fits.
-Consequence for metering: the usage record of a job keeps the `startTime` of its first run and accumulates until the
-job ends, so time spent requeued **is counted** as usage. This over-bills preempted jobs and is a known limit; a
-per-run record would need a change to the usage model.
+Metering is per admitted run, so time spent requeued **is not counted**. The first run's usage record
+(`usage-<job uid>`) starts at the job's `startTime`. When Kueue evicts the job, the record is finalized at the
+transition time of the `KueueAdmitted` condition to False (the eviction). When Kueue admits the job again, a new
+record `usage-<job uid>-<n>` starts at that condition's transition to True, and ends at the next eviction or at the
+job's end. A job cancelled while requeued opens no new record. All records of a job carry its `jobUID` and the
+`gryvia.io/job` label; budgets and chargebacks sum them. `scripts/e2e-kueue.sh preempt` checks the two records of the
+preempted job. If the quota operator misses a whole eviction and readmission (for example, it is down for that time),
+the open record keeps running across the gap, as before.
 
 ## Gang semantics
 
@@ -245,7 +250,7 @@ kubectl -n gryvia-system logs deploy/kueue-controller-manager
   Configuration (`config.kueue.x-k8s.io/v1beta2`) `waitForPodsReady.{timeout,blockAdmission,requeuingStrategy}` and `integrations.frameworks`.
 - Not checked offline: that the Workload's `Evicted` condition stays visible after a requeue (the operator does not depend on it: "was
   admitted, is suspended now" is enough), Kueue's exact pending messages, and that a flavor may not be shared between resource groups.
-- Metering counts requeued time (see above). A checkpoint on preemption needs the job's own hook (see above); Kueue does not wait for it beyond the pod's grace period. No resize after admission, topology or multi-cluster.
+- A checkpoint on preemption needs the job's own hook (see above); Kueue does not wait for it beyond the pod's grace period. No resize after admission, topology or multi-cluster.
 - Removing the chart removes Kueue's CRDs with it (they are templated in the sub-chart) and therefore every ClusterQueue, LocalQueue and Workload.
 - Quota is enforced by Kueue **only for jobs that have a queue**: a job in a namespace without a LocalQueue (or with the
   integration off) bypasses it. The existing webhook and quota-operator policies (GPU type allow-lists, per-job limits,

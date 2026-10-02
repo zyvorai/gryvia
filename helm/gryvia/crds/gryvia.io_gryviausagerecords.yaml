@@ -66,11 +66,12 @@ spec:
                 description: Currency of rate and cost
                 type: string
               end:
-                description: End is when the job finished; nil while it is running
+                description: End is when the run finished (the job ended or Kueue
+                  evicted it); nil while it is running
                 format: date-time
                 type: string
               final:
-                description: Final is true once the job finished; a final record is
+                description: Final is true once the run finished; a final record is
                   never modified again
                 type: boolean
               gpuHours:
@@ -91,7 +92,9 @@ spec:
                 description: Job is the GryviaAIJob name
                 type: string
               jobUID:
-                description: JobUID is the GryviaAIJob UID (the record is named usage-<jobUID>)
+                description: |-
+                  JobUID is the GryviaAIJob UID (the record is named usage-<jobUID>, or usage-<jobUID>-<n> for
+                  the nth run after a Kueue eviction)
                 type: string
               kind:
                 description: |-
@@ -116,7 +119,8 @@ spec:
                   the default price table was used
                 type: string
               start:
-                description: Start is when the job started running
+                description: Start is when the run started (the job first ran, or
+                  Kueue admitted it again)
                 format: date-time
                 type: string
               tenant:

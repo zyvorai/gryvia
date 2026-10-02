@@ -73,7 +73,8 @@ admin-only and answer 403.
 ## 5. Metering and export
 
 One `GryviaUsageRecord` per job (`usage-<job uid>` in the job's namespace) records GPUs, start, end, GPU hours, rate
-and cost. A running job's record is refreshed every minute; when the job ends it is finalised and never changed again: a validating webhook
+and cost. A job that Kueue evicts and admits again gets one record per run (`usage-<job uid>-<n>` after the first), so
+queued time is not billed. A running job's record is refreshed every minute; when the job ends it is finalised and never changed again: a validating webhook
 (`quotaOperator.usageRecordWebhook.enabled`) rejects edits to the `spec` of a finished record. Deleting and recreating
 a record is not blocked.
 
