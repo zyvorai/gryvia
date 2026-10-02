@@ -53,7 +53,10 @@ The quota operator also runs the `GryviaTenant` and `GryviaUsageRecord` controll
 have a controller: see the Controller column of the [CRD reference](../../website/docs/reference/crds.md).
 
 CRDs are installed from `crds/` on first install. Helm does not upgrade CRDs; apply new versions with
-`kubectl apply --server-side -f crds/` before `helm upgrade`.
+`scripts/apply-crds.sh crds/` before `helm upgrade`. The script runs `kubectl apply --server-side --force-conflicts`.
+Before that, it recreates any CRD whose scope changed, which a plain apply cannot do. It only does this when the CRD
+holds no objects; otherwise it stops. `GryviaJobHook` was cluster-scoped in v0.1.0-rc1 and is namespaced now, so
+upgrading from rc1 needs this.
 
 ## GPU nodes
 

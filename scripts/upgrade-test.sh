@@ -326,7 +326,8 @@ if [ "$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))))' "
 step_ok "snapshot before the upgrade"
 
 # The documented upgrade: CRDs first (Helm never upgrades them), then the chart.
-run_step "apply head CRDs server-side" kc apply --server-side --force-conflicts -f "$HEAD_CRDS"
+# apply-crds.sh recreates a CRD whose scope changed (GryviaJobHook: Cluster in v0.1.0-rc1, Namespaced since).
+run_step "apply head CRDs server-side" env KUBECTL="kubectl --context $CTX" bash "$ROOT/scripts/apply-crds.sh" "$HEAD_CRDS"
 values_flag=--reuse-values
 [ "$VALUES_MODE" = reset-then-reuse ] && values_flag=--reset-then-reuse-values
 run_step "helm upgrade to head" hm upgrade gryvia "$HEAD_CHART" -n "$NS" "$values_flag" --set "global.imageTag=$HEAD_TAG" --set global.imagePullPolicy=Never --wait --timeout 300s
