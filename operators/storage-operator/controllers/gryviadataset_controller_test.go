@@ -120,6 +120,9 @@ func TestDataset_HTTPMaterializedIntoPVC(t *testing.T) {
 	if env["SOURCE"] != "http" || env["URL"] != "https://example.com/corpus.jsonl" || env["CHECKSUM_URL"] == "" || env["VERSION"] != "latest" || env["KEEP"] != "latest" {
 		t.Errorf("env: %v", env)
 	}
+	if env["HASH"] != job.Labels["gryvia.io/dataset-source-hash"] || env["HASH"] == "" || env["CURRENT"] != "" {
+		t.Errorf("resume env: HASH %q CURRENT %q", env["HASH"], env["CURRENT"])
+	}
 	pod := job.Spec.Template.Spec
 	if pod.Containers[0].Image != "busybox:1.36" || pod.SecurityContext.RunAsNonRoot == nil || !*pod.SecurityContext.RunAsNonRoot {
 		t.Errorf("pod: image %s, security %+v", pod.Containers[0].Image, pod.SecurityContext)
@@ -177,6 +180,9 @@ func TestDataset_NewVersionKeepsRetention(t *testing.T) {
 		}
 		if v == "v3" && envOf(job)["KEEP"] != "v2 v3" {
 			t.Errorf("KEEP for v3 = %q, want the newest two", envOf(job)["KEEP"])
+		}
+		if v == "v3" && envOf(job)["CURRENT"] != "v2" {
+			t.Errorf("CURRENT for v3 = %q, want v2 (the version a new s3 directory starts from)", envOf(job)["CURRENT"])
 		}
 		finishJob(t, c, job, batchv1.JobComplete, `{"files":1,"bytes":1,"sha256":"`+v+`"}`)
 		reconcileDataset(t, r, "corpus")
