@@ -665,8 +665,10 @@ jobs:
       # huggingface.co at a pinned revision, score it on eight made-up facts, LoRA fine-tune it on them, score the
       # merged model, and register it with both scores. The base model knows none of the facts; the fine-tune must
       # teach most of them. Both evaluations also run 20 questions of lm-eval's arc_easy (dataset from huggingface.co):
-      # the score is the mean of the two, and the fine-tune must not cost much general ability. Outputs travel through
-      # the termination messages of the AIJob pods.
+      # the score is the mean of the two, and the fine-tune must not cost much general ability. A convert step writes a
+      # GGUF next to the merged weights; the registered entry points at that directory, llama.cpp serves the GGUF from
+      # the registry PVC, and a second workflow scores the served model through its endpoint and writes live_score
+      # onto the entry. Outputs travel through the termination messages of the AIJob pods.
       - name: Model factory - real download, LoRA fine-tune and evaluation on CPU, registered with the scores
         run: |
           source scripts/e2e-ml-lib.sh
@@ -731,15 +733,20 @@ jobs:
                 dependsOn: [finetune]
           $(job evaluation evaluate.py)
                   args: ["--model={{steps.finetune.outputs.path}}", --custom=/data/eval.jsonl, --cpu, --tasks=arc_easy, --limit=20, --batch-size=8]
+              - name: convert
+                dependsOn: [finetune]
+          $(job training convert_gguf.py)
+                  args: ["--model={{steps.finetune.outputs.path}}", --outtype=q8_0]
               - name: register
                 type: register
-                dependsOn: [baseline, evaluate]
+                dependsOn: [baseline, evaluate, convert]
                 register:
                   name: e2e-mf-smollm2
                   modelName: e2e-mf-smollm2
                   version: "{{steps.download.outputs.revision}}"
-                  artifacts: {pvcName: e2e-mf-models, subPath: "{{steps.finetune.outputs.subPath}}", format: "{{steps.finetune.outputs.format}}"}
+                  artifacts: {pvcName: e2e-mf-models, subPath: "{{steps.convert.outputs.subPath}}", format: "{{steps.convert.outputs.format}}"}
                   metadata:
+                    gguf_file: "{{steps.convert.outputs.file}}"
                     eval_score: "{{steps.evaluate.outputs.score}}"
                     base_score: "{{steps.baseline.outputs.score}}"
                     train_loss: "{{steps.finetune.outputs.train_loss}}"
@@ -752,6 +759,9 @@ jobs:
           assert_eq "download output revision" "$(out download revision)" "$MF_MODEL_REVISION"
           assert_eq "fine-tune output subPath" "$(out finetune subPath)" "finetuned/smollm2/${MF_MODEL_REVISION:0:12}"
           assert_eq "merged weights, not an adapter" "$(out finetune adapter)" false
+          assert_eq "GGUF file" "$(out convert file)" model-q8_0.gguf
+          assert_eq "GGUF next to the merged weights" "$(out convert subPath)" "$(out finetune subPath)"
+          awk -v b="$(out convert bytes)" 'BEGIN{exit !(b > 50000000)}' || { echo "ASSERT FAILED: GGUF size $(out convert bytes)"; exit 1; }
           base="$(out baseline score)"; tuned="$(out evaluate score)"; loss="$(out finetune train_loss)"
           base_facts="$(out baseline custom)"; tuned_facts="$(out evaluate custom)"
           base_arc="$(out baseline arc_easy)"; tuned_arc="$(out evaluate arc_easy)"
@@ -769,12 +779,60 @@ jobs:
           assert_eq "registered eval_score" "$(jp gryviamodelregistry/e2e-mf-smollm2 '{.spec.metadata.eval_score}')" "$tuned"
           assert_eq "registered base_score" "$(jp gryviamodelregistry/e2e-mf-smollm2 '{.spec.metadata.base_score}')" "$base"
           assert_eq "registered artifacts" "$(jp gryviamodelregistry/e2e-mf-smollm2 '{.spec.artifacts.pvcName}/{.spec.artifacts.subPath}/{.spec.artifacts.format}')" \
-            "e2e-mf-models/finetuned/smollm2/${MF_MODEL_REVISION:0:12}/safetensors"
+            "e2e-mf-models/finetuned/smollm2/${MF_MODEL_REVISION:0:12}/gguf"
+          assert_eq "registered GGUF file" "$(jp gryviamodelregistry/e2e-mf-smollm2 '{.spec.metadata.gguf_file}')" model-q8_0.gguf
           wait_for "first version promoted" 60 field_is gryviamodelregistry/e2e-mf-smollm2 '{.spec.stage}' production
 
+          # llama.cpp serves the GGUF from the registry entry's PVC (subPath mounted read-only at /models).
+          docker pull -q "$LLAMA_IMAGE" && kind load docker-image --name "$KIND_CLUSTER" "$LLAMA_IMAGE"
+          cat <<EOF | kubectl apply -f -
+          apiVersion: gryvia.io/v1alpha1
+          kind: GryviaInferenceService
+          metadata: {name: e2e-mf-serve, namespace: gryvia-system}
+          spec:
+            modelRef: e2e-mf-smollm2
+            backend: torchserve
+            image: ${LLAMA_IMAGE}
+            replicas: 1
+            servicePort: 8080
+            healthCheck: {path: /health}
+            args: [-m, /models/model-q8_0.gguf, --alias, e2e-mf-smollm2, --host, 0.0.0.0, --port, "8080", -c, "512", -t, "2"]
+          EOF
+          wait_for "fine-tuned model served by llama.cpp" 300 field_is gryviainferenceservice/e2e-mf-serve '{.status.phase}' Ready
+          assert_eq "served from the registry PVC" "$(kubectl -n "$NS" get pods -l gryvia.io/inference=e2e-mf-serve -o jsonpath='{.items[0].spec.volumes[?(@.name=="model")].persistentVolumeClaim.claimName}')" e2e-mf-models
+          endpoint="$(jp gryviainferenceservice/e2e-mf-serve '{.status.endpoint}')"
+          echo "endpoint $endpoint"
+
+          # The scheduled-evaluation pattern of eval-schedule.yaml, run once: score the served model through its
+          # endpoint and write live_score onto the entry the service serves.
+          cat <<EOF | kubectl apply -f -
+          apiVersion: gryvia.io/v1alpha1
+          kind: GryviaWorkflow
+          metadata: {name: e2e-mf-live, namespace: gryvia-system}
+          spec:
+            steps:
+              - name: evaluate
+          $(job evaluation evaluate.py)
+                  args: ["--endpoint=${endpoint}", --served-model=e2e-mf-smollm2, --custom=/data/eval.jsonl]
+              - name: record
+                type: registry
+                dependsOn: [evaluate]
+                registry:
+                  serviceName: e2e-mf-serve
+                  action: updateMetadata
+                  metadata: {live_score: "{{steps.evaluate.outputs.score}}"}
+          EOF
+          wait_for "endpoint evaluation Succeeded" 600 field_is gryviaworkflow/e2e-mf-live '{.status.phase}' Succeeded
+          live="$(jp gryviaworkflow/e2e-mf-live '{.status.stepStatuses[?(@.name=="evaluate")].outputs.score}')"
+          echo "served model scored $live on the facts"
+          awk -v s="$live" 'BEGIN{exit !(s >= 0.875)}' || { echo "ASSERT FAILED: the served GGUF lost the facts ($live)"; exit 1; }
+          assert_eq "registry step picked the served entry" "$(jp gryviaworkflow/e2e-mf-live '{.status.stepStatuses[?(@.name=="record")].outputs.name}')" e2e-mf-smollm2
+          assert_eq "live_score on the entry" "$(jp gryviamodelregistry/e2e-mf-smollm2 '{.spec.metadata.live_score}')" "$live"
+
+          kubectl -n "$NS" delete gryviainferenceservice/e2e-mf-serve gryviaworkflow/e2e-mf-live
           kubectl -n "$NS" delete gryviaworkflow/e2e-mf-real
           kubectl -n "$NS" delete gryviamodelregistry/e2e-mf-smollm2 --ignore-not-found
-          no_jobs() { [ -z "$(kubectl -n "$NS" get gryviaaijobs -l gryvia.io/workflow=e2e-mf-real -o name)" ]; }
+          no_jobs() { [ -z "$(kubectl -n "$NS" get gryviaaijobs -l 'gryvia.io/workflow in (e2e-mf-real,e2e-mf-live)' -o name)" ]; }
           wait_for "step jobs removed" 120 no_jobs
           kubectl -n "$NS" delete pvc/e2e-mf-models configmap/e2e-mf-data --wait=false
 

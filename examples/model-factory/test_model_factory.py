@@ -3,10 +3,12 @@ import os
 import tempfile
 import unittest
 
+import convert_gguf
 from download import download, target_dir
 import evaluate
 from evaluate import aggregate, exact_match, openai_generator, output_key
 from finetune_lora import filter_kwargs, output_dir, validate_jsonl
+import outputs
 from outputs import write_outputs
 from quantize import calibration_texts
 from quantize import parse_args as parse_quantize_args
@@ -164,6 +166,45 @@ class QuantizeTests(unittest.TestCase):
             empty = os.path.join(d, "empty.jsonl")
             open(empty, "w").write("\n")
             self.assertRaises(ValueError, calibration_texts, empty, 10, render)
+
+
+class ConvertGGUFTests(unittest.TestCase):
+    def test_converts_once_and_reports_outputs(self):
+        calls = []
+
+        def fake_run(cmd, check):
+            calls.append(cmd)
+            self.assertTrue(check)
+            open(cmd[cmd.index("--outfile") + 1], "wb").write(b"GGUF" + b"\0" * 12)
+
+        with tempfile.TemporaryDirectory() as root:
+            model = os.path.join(root, "finetuned", "m", "abc")
+            os.makedirs(model)
+            open(os.path.join(model, "config.json"), "w").write("{}")
+            out = convert_gguf.convert(model, "q8_0", "/opt/llama.cpp", run=fake_run)
+            self.assertEqual(out, os.path.join(model, "model-q8_0.gguf"))
+            self.assertEqual(calls[0][1:], ["/opt/llama.cpp/convert_hf_to_gguf.py", model, "--outtype", "q8_0",
+                                            "--outfile", out + ".tmp"])
+            self.assertFalse(os.path.exists(out + ".tmp"))
+            convert_gguf.convert(model, "q8_0", "/opt/llama.cpp", run=fake_run)
+            self.assertEqual(len(calls), 1)
+
+            log = os.path.join(root, "log")
+            orig_convert, orig_log = convert_gguf.convert, outputs.TERMINATION_LOG
+            convert_gguf.convert, outputs.TERMINATION_LOG = (lambda m, t, d: out), log
+            try:
+                convert_gguf.main(["--model", model, "--pvc-root", root])
+            finally:
+                convert_gguf.convert, outputs.TERMINATION_LOG = orig_convert, orig_log
+            with open(log) as f:
+                self.assertEqual(json.load(f), {"path": model, "subPath": "finetuned/m/abc", "file": "model-q8_0.gguf",
+                                                "format": "gguf", "bytes": "16"})
+
+    def test_rejects_bad_input(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertRaises(FileNotFoundError, convert_gguf.convert, d, "q8_0", "/x", run=None)
+            open(os.path.join(d, "config.json"), "w").write("{}")
+            self.assertRaises(ValueError, convert_gguf.convert, d, "q4_k_m", "/x", run=None)
 
 
 if __name__ == "__main__":

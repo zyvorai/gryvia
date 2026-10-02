@@ -7,9 +7,9 @@ evaluation score beats the version being served, and `servingConfig.serviceName`
 shared vLLM service, promoted after it stays healthy or rolled back.
 
 > **Status.** The controllers are unit-tested and the control-plane flow (e2e with a stand-in hub and busybox steps) passed on a k3s cluster without GPUs and in kind CI.
-> The download, fine-tune and evaluate scripts ran for real on CPU in the kind e2e (SmolLM2-135M, image
-> [Dockerfile.cpu](Dockerfile.cpu)); quantization, lm-eval tasks and anything on GPUs or with a real vLLM image have
-> not run. See [docs/model-factory.md](../../docs/model-factory.md); the steps to verify it on GPUs are in
+> The download, fine-tune, evaluate (with lm-eval `arc_easy`) and GGUF conversion scripts ran for real on CPU in the
+> kind e2e (SmolLM2-135M, image [Dockerfile.cpu](Dockerfile.cpu)), and llama.cpp served the result from the registry
+> PVC; quantization and anything on GPUs or with a real vLLM image have not run. See [docs/model-factory.md](../../docs/model-factory.md); the steps to verify it on GPUs are in
 > [docs/gpu-ai-runbook.md](../../docs/gpu-ai-runbook.md).
 
 ## Files
@@ -23,6 +23,8 @@ shared vLLM service, promoted after it stays healthy or rolled back.
   compressed-tensors that vLLM loads with `--quantization=compressed-tensors`
 - [evaluate.py](evaluate.py): lm-evaluation-harness tasks plus an optional exact-match JSONL, on a model directory or
   (`--endpoint`) an OpenAI-compatible server; reports `score`
+- [convert_gguf.py](convert_gguf.py): llama.cpp's `convert_hf_to_gguf.py` on a merged model; writes `model-<outtype>.gguf`
+  next to the safetensors for `llama-server -m /models/model-<outtype>.gguf`
 - [outputs.py](outputs.py): writes step outputs to the termination message the workflow reads
 - [Dockerfile](Dockerfile) and [requirements.txt](requirements.txt): one image for the download, fine-tune, quantize and evaluate steps
 - [Dockerfile.cpu](Dockerfile.cpu): a CPU image with pinned versions for download, fine-tune (`--cpu`) and evaluate with tiny models
