@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 
@@ -76,7 +77,24 @@ type Route struct {
 	Shared      bool
 	PriceIn     float64
 	PriceOut    float64
+	// ScaleToZero routes are woken by the gateway and get last-request annotations; Idle and ColdStart are the
+	// service's settings, Phase its status.phase.
+	ScaleToZero bool
+	Idle        time.Duration
+	ColdStart   time.Duration
+	Phase       string
 }
+
+// Waking reports whether requests for the route must wait for the service to start.
+func (r Route) Waking() bool {
+	return r.ScaleToZero && (r.Phase == PhaseScaledToZero || r.Phase == PhaseDeploying)
+}
+
+// Inference service phases the gateway acts on (set by the ai-operator's inference controller).
+const (
+	PhaseScaledToZero = "ScaledToZero"
+	PhaseDeploying    = "Deploying"
+)
 
 // routesFrom publishes the annotated services that have an endpoint, sorted by model and namespace.
 func routesFrom(items []gryviav1.GryviaInferenceService, defIn, defOut float64) []Route {
@@ -90,6 +108,8 @@ func routesFrom(items []gryviav1.GryviaInferenceService, defIn, defOut float64) 
 			Model: model, Namespace: s.Namespace, Service: s.Name, Upstream: strings.TrimRight(s.Status.Endpoint, "/"),
 			ServedModel: s.Annotations[AnnotationServedModel], Shared: s.Annotations[AnnotationShared] == "true",
 			PriceIn: price(s.Annotations[AnnotationPriceIn], defIn), PriceOut: price(s.Annotations[AnnotationPriceOut], defOut),
+			ScaleToZero: s.Spec.ScaleToZero != nil && s.Spec.ScaleToZero.Enabled,
+			Idle:        s.Spec.ScaleToZero.Idle(), ColdStart: s.Spec.ScaleToZero.ColdStart(), Phase: s.Status.Phase,
 		}
 		if r.ServedModel == "" {
 			r.ServedModel = model

@@ -40,7 +40,7 @@ spec:
 ```
 
 - **Idle.** The idle period counts from the later of the last request the gateway proxied (annotation
-  `gryvia.io/last-request`, written at most once a minute) and the last wake-up (`status.lastWakeAt`, first set when
+  `gryvia.io/last-request`, written at most once a minute, or every `idleSeconds / 3` when that is shorter) and the last wake-up (`status.lastWakeAt`, first set when
   scale-to-zero is turned on, so enabling it on a long-idle service does not scale it down at once). A service with
   no ready replica gets `coldStartTimeoutSeconds` on top, so a slow model load is not cut short. Past the deadline
   the stable Deployment goes to 0 replicas, `status.phase` becomes `ScaledToZero`, `status.scaledToZeroAt` is set
@@ -48,7 +48,8 @@ spec:
 - **Wake.** The annotation `gryvia.io/wake-requested` (any value) scales it back to `max(1, autoscaling.minReplicas)`
   (or `spec.replicas` without autoscaling); the controller removes the annotation and sets `status.lastWakeAt`.
   The phase is `Deploying` until a replica is ready, then `Ready`. The gateway sets this annotation when a request
-  for a scaled-to-zero model arrives; you can also wake a service by hand:
+  for a scaled-to-zero model arrives and holds the request until the service is ready (see
+  [LLM gateway: scale to zero](llm-gateway.md#scale-to-zero)); you can also wake a service by hand:
   `kubectl annotate gryviainferenceservice chat gryvia.io/wake-requested=now`.
 - **Autoscaling.** At zero the HPA is left untouched (Kubernetes does not scale a Deployment with 0 replicas, and
   `minReplicas` stays at least 1). After a wake-up the HPA owns the replica count again.
