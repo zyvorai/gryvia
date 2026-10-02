@@ -181,8 +181,12 @@ Preemption is per the ClusterQueue spec above: a pending job that does not fit m
 workloads in its own ClusterQueue (`withinClusterQueue: LowerPriority`), a tenant may reclaim quota lent to others
 (`reclaimWithinCohort: Any`), and it may evict lower-priority borrowers in the cohort to borrow itself
 (`borrowWithinCohort: LowerPriority`). Equal priority never preempts. Preemption is a decision about **quota**, whatever
-the pods are doing: victims are stopped immediately, **nothing checkpoints first** (Kueue suspends the Job and its
-pods are deleted; a suspension is not a pod failure, so an eviction is not expected to consume `retryLimit`, unverified).
+the pods are doing: Kueue suspends the Job and its pods are deleted gracefully. A job with a checkpoint hook
+(`gryvia.io/checkpoint-command`, see [admission-recovery.md](admission-recovery.md#cooperative-checkpoints)) checkpoints
+in that window: the hook is the trainer's `preStop`, and `gryvia.io/checkpoint-grace-seconds` bounds it. Without a hook,
+nothing checkpoints first. `scripts/e2e-kueue.sh preempt-checkpoint` checks this on kind: a 2-worker job with
+`retryLimit: 0` is preempted, each worker saves only when its hook asks, both resume from a step above 0 after
+readmission and the job Succeeds, so the eviction did not consume `retryLimit`.
 
 **Decision: a Kueue eviction maps back to `Queued`, not to the terminal `Preempted`.** The W1 `Preempted` semantics
 (workload deleted, PVC kept, job parked) would throw away Kueue's requeueing. Instead the Job stays (suspended), Kueue
@@ -230,7 +234,7 @@ kubectl -n gryvia-system logs deploy/kueue-controller-manager
 
 ## Limits and what is unverified
 
-- **Verified on kind only**: `.github/workflows/e2e-kueue.yml` passes in CI (queueing, gang admission without partial starts, priority preemption with requeue) with CPU pods and a fake extended resource as the quota. No GPUs, no multi-node clusters, no NCCL.
+- **Verified on kind only**: `.github/workflows/e2e-kueue.yml` passes in CI (queueing, gang admission without partial starts, priority preemption with requeue, a checkpoint in the preStop hook of the preempted job) with CPU pods and a fake extended resource as the quota. No GPUs, no multi-node clusters, no NCCL.
 - **Kueue version**: pinned 0.19.6 (`v1beta1` API and `v1beta2` Configuration). Other versions untested.
 - Kueue fields relied on (all `kueue.x-k8s.io/v1beta1` unless noted): ClusterQueue `spec.cohort`, `namespaceSelector`,
   `queueingStrategy`, `preemption.{withinClusterQueue,reclaimWithinCohort,borrowWithinCohort.policy}`,
@@ -241,7 +245,7 @@ kubectl -n gryvia-system logs deploy/kueue-controller-manager
   Configuration (`config.kueue.x-k8s.io/v1beta2`) `waitForPodsReady.{timeout,blockAdmission,requeuingStrategy}` and `integrations.frameworks`.
 - Not checked offline: that the Workload's `Evicted` condition stays visible after a requeue (the operator does not depend on it: "was
   admitted, is suspended now" is enough), Kueue's exact pending messages, and that a flavor may not be shared between resource groups.
-- Metering counts requeued time (see above). No checkpoint on preemption. No resize after admission, topology or multi-cluster.
+- Metering counts requeued time (see above). A checkpoint on preemption needs the job's own hook (see above); Kueue does not wait for it beyond the pod's grace period. No resize after admission, topology or multi-cluster.
 - Removing the chart removes Kueue's CRDs with it (they are templated in the sub-chart) and therefore every ClusterQueue, LocalQueue and Workload.
 - Quota is enforced by Kueue **only for jobs that have a queue**: a job in a namespace without a LocalQueue (or with the
   integration off) bypasses it. The existing webhook and quota-operator policies (GPU type allow-lists, per-job limits,

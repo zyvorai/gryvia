@@ -6,6 +6,7 @@
 #   scripts/e2e-kueue.sh queue     # two jobs that do not fit together: first Running, second Queued, then Succeeded
 #   scripts/e2e-kueue.sh gang      # a gang bigger than the quota never starts partially (zero pods), then starts whole
 #   scripts/e2e-kueue.sh preempt   # a higher-priority job preempts a running lower-priority one, which is requeued
+#   scripts/e2e-kueue.sh preempt-checkpoint  # the preempted job checkpoints in its preStop hook and resumes from it
 #   scripts/e2e-kueue.sh elastic   # an elastic job is partially admitted (minNodes..nodes); its success policy completes it
 #   scripts/e2e-kueue.sh elastic-torchrun  # the same with a real torchrun: the admitted workers train as one group
 #
@@ -218,6 +219,108 @@ scenario_preempt() {
   kubectl -n "$NS" delete gryviaaijob high low --ignore-not-found --wait=true >/dev/null
 }
 
+scenario_preempt_checkpoint() {
+  # A preempted job checkpoints through its preStop hook (gryvia.io/checkpoint-command) while Kueue evicts it, and
+  # resumes from that checkpoint when it is admitted again. The trainer saves ONLY when the hook asks, so a resume
+  # from a step > 0 proves the hook ran during the eviction. retryLimit 0: the eviction must not count as a failure.
+  # The job PVC is ReadWriteMany; one kind node, so a static hostPath PV of class e2e-rwx serves it.
+  cat <<YAML | kubectl apply -f - >/dev/null
+apiVersion: v1
+kind: PersistentVolume
+metadata: {name: e2e-kueue-ckpt}
+spec:
+  capacity: {storage: 1Gi}
+  accessModes: [ReadWriteMany]
+  storageClassName: e2e-rwx
+  persistentVolumeReclaimPolicy: Retain
+  hostPath: {path: /tmp/e2e-kueue-ckpt, type: DirectoryOrCreate}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: ck-scripts, namespace: $NS}
+data:
+  train.sh: |
+$(sed 's/^/    /' <<'SH'
+d="$GRYVIA_CHECKPOINT_DIR"; r="${RANK:-0}"; total="${TOTAL_STEPS:-90}"
+mkdir -p "$d"
+step=0
+if [ "$GRYVIA_RESUME_IF_PRESENT" = true ] && [ -f "$d/step-$r" ]; then step="$(cat "$d/step-$r")"; fi
+echo "rank $r: starting at step $step"
+saved=""
+trap 'exit 0' TERM
+while [ "$step" -lt "$total" ]; do
+  sleep 1
+  [ -n "$saved" ] && continue
+  step=$((step + 1))
+  if [ -f "$d/request-$r" ]; then
+    echo "$step" > "$d/step-$r.tmp" && mv "$d/step-$r.tmp" "$d/step-$r"
+    rm -f "$d/request-$r"; echo "$step" > "$d/ack-$r"; saved=1
+    echo "rank $r: checkpointed step $step on request"
+  fi
+done
+echo "rank $r: done at step $step"
+SH
+)
+  hook.sh: |
+$(sed 's/^/    /' <<'SH'
+d="$GRYVIA_CHECKPOINT_DIR"; r="${RANK:-0}"
+rm -f "$d/ack-$r"; touch "$d/request-$r"
+i=0
+while [ ! -f "$d/ack-$r" ] && [ "$i" -lt 25 ]; do sleep 1; i=$((i + 1)); done
+SH
+)
+---
+apiVersion: $API
+kind: GryviaAIJob
+metadata:
+  name: ck
+  namespace: $NS
+  annotations:
+    gryvia.io/checkpoint-command: '["sh", "/scripts/hook.sh"]'
+    gryvia.io/checkpoint-grace-seconds: "60"
+spec:
+  type: training
+  image: busybox:1.36
+  gpus: 0
+  priority: 10
+  retryLimit: 0
+  timeout: 20m
+  storage: e2e-rwx
+  storageRequest: 1Gi
+  distributed: {enabled: true, framework: pytorch, backend: gloo, nodes: 2}
+  resources:
+    requests: {cpu: 20m, memory: 16Mi, $SLOT: "1"}
+    limits: {cpu: 200m, memory: 64Mi, $SLOT: "1"}
+  command: ["sh", "/scripts/train.sh"]
+  env: [{name: TOTAL_STEPS, value: "90"}]
+  volumes: [{name: scripts, configMap: {name: ck-scripts}}]
+  volumeMounts: [{name: scripts, mountPath: /scripts}]
+YAML
+  ck_logs() { kubectl -n "$NS" logs -l gryvia.io/job=ck --tail=-1 --max-log-requests=10 2>/dev/null; }
+  ck_started() { [[ "$(ck_logs | grep -c 'starting at step 0$')" == 2 ]]; }
+  wait_for 300 "ck reaches Running" is_phase ck Running
+  [[ "$(kubectl -n "$NS" get pvc ck-data -o jsonpath='{.spec.volumeName}')" == e2e-kueue-ckpt ]] || fail "ck: PVC not bound to the e2e PV"
+  wait_for 120 "both ck ranks train from step 0" ck_started
+  sleep 10
+
+  kq_job ckhigh 2 90 30
+  wait_for 240 "ck is requeued (Queued)" is_phase ck Queued
+  wait_for 90 "ck has no non-terminal pods" no_active_pods ck
+  wait_for 300 "ckhigh reaches Succeeded" is_phase ckhigh Succeeded
+
+  ck_resumed() { [[ "$(ck_logs | grep -cE 'starting at step [1-9][0-9]*$')" == 2 ]]; }
+  wait_for 300 "both ck ranks resume from the checkpoint their hook requested" ck_resumed
+  ck_logs | grep 'starting at step'
+  wait_for 300 "ck reaches Succeeded (the eviction did not consume retryLimit 0)" is_phase ck Succeeded
+  [[ "$(ck_logs | grep -c 'done at step 90$')" == 2 ]] || fail "ck: not both ranks finished at step 90: $(ck_logs)"
+
+  kubectl -n "$NS" delete gryviaaijob ck ckhigh --wait=true >/dev/null
+  kubectl -n "$NS" delete configmap ck-scripts --ignore-not-found >/dev/null
+  kubectl -n "$NS" delete pvc ck-data --ignore-not-found --wait=true --timeout=60s >/dev/null || true
+  kubectl delete pv e2e-kueue-ckpt --ignore-not-found --wait=false >/dev/null
+  wait_for 120 "ClusterQueue idle" cq_idle
+}
+
 el_job() { # <name> <nodes> <minNodes> <script>
   cat <<YAML | kubectl apply -f - >/dev/null
 apiVersion: $API
@@ -343,8 +446,9 @@ case "${1:-}" in
   queue)   scenario_queue ;;
   gang)    scenario_gang ;;
   preempt) scenario_preempt ;;
+  preempt-checkpoint) scenario_preempt_checkpoint ;;
   elastic) scenario_elastic ;;
   elastic-torchrun) scenario_elastic_torchrun ;;
-  *) echo "usage: $0 setup|strict|queue|gang|preempt|elastic|elastic-torchrun" >&2; exit 2 ;;
+  *) echo "usage: $0 setup|strict|queue|gang|preempt|preempt-checkpoint|elastic|elastic-torchrun" >&2; exit 2 ;;
 esac
 echo "E2E OK: ${1}"
