@@ -31,6 +31,7 @@ const NetworkFlows = lazy(() => import('./pages/NetworkFlows'))
 const NetworkPolicies = lazy(() => import('./pages/NetworkPolicies'))
 const NetworkCost = lazy(() => import('./pages/NetworkCost'))
 const SecurityOverview = lazy(() => import('./pages/SecurityOverview'))
+const Sovereign = lazy(() => import('./pages/Sovereign'))
 const GpuCommunication = lazy(() => import('./pages/GpuCommunication'))
 const Workspaces = lazy(() => import('./pages/Workspaces'))
 const ModelRegistry = lazy(() => import('./pages/ModelRegistry'))
@@ -157,6 +158,7 @@ function App() {
               <Route path="/jobs/new" element={<SubmitJob />} />
               <Route path="/jobs/:name" element={<JobDetails />} />
               <Route element={<AdminOnly />}>
+                <Route path="/sovereign" element={<Sovereign />} />
                 <Route path="/quotas" element={<Quotas />} />
                 <Route path="/nodes" element={<Nodes />} />
                 <Route path="/network" element={<NetworkOverview />} />

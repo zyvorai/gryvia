@@ -519,10 +519,22 @@ deps = Deps(
     ),
     netra_url=os.environ.get("GRYVIA_NETRA_URL", "").strip().rstrip("/") or None,
     netra_token=os.environ.get("GRYVIA_NETRA_TOKEN", "").strip() or None,
-    netra_verify_tls=os.environ.get("GRYVIA_NETRA_INSECURE", "") != "1",
+    netra_verify_tls=(
+        os.environ.get("GRYVIA_NETRA_INSECURE", "") != "1"
+        and (os.environ.get("GRYVIA_SOVEREIGN_CA_FILE", "").strip() or True)
+    ),
     llm_key_namespace=os.environ.get("GRYVIA_LLM_KEY_NAMESPACE", "").strip() or None,
     llm_gateway_url=os.environ.get("GRYVIA_LLM_GATEWAY_URL", "").strip().rstrip("/")
     or None,
+    zyntra_url=os.environ.get("GRYVIA_ZYNTRA_URL", "").strip().rstrip("/") or None,
+    zyntra_token=os.environ.get("GRYVIA_ZYNTRA_TOKEN", "").strip() or None,
+    zyntra_console_url=os.environ.get("GRYVIA_ZYNTRA_CONSOLE_URL", "")
+    .strip()
+    .rstrip("/")
+    or None,
+    netra_console_url=os.environ.get("GRYVIA_NETRA_CONSOLE_URL", "").strip().rstrip("/")
+    or None,
+    sovereign_ca_file=os.environ.get("GRYVIA_SOVEREIGN_CA_FILE", "").strip() or None,
 )
 register_routers(app, deps)
 

@@ -14,6 +14,7 @@ import type { CreatedLlmKey, LlmKey, LlmModels, LlmUsage } from '@/lib/llm'
 import { parseSSE, readChunk, replyText, type ChatRequestBody, type StreamChunk } from '@/lib/playground'
 import type { VectorIndexList } from '@/lib/rag'
 import type { Agent, AgentReply, ChatMessage } from '@/lib/agents'
+import type { SovereignStatus } from '@/lib/sovereign'
 
 export interface ClusterStats {
   totalGPUs: number
@@ -1061,6 +1062,12 @@ export const api = {
         onChunk(c)
       }
     }
+  },
+
+  // Sovereign AI OS: Zyntra and Netra as the gateway sees them
+  getSovereign: async (): Promise<SovereignStatus> => {
+    const { data } = await apiClient.get('/sovereign')
+    return data
   },
 
   // Agents

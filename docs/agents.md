@@ -22,13 +22,13 @@ The feature is opt-in and needs the LLM gateway.
 | NetworkPolicy enforcement on kind (kindnet enforces NetworkPolicy since kind v0.24): the agent reaches its allowlisted tool host but not a server in another namespace that a pod there can reach, and that namespace cannot reach the agent | The "Agents" steps of `.github/workflows/e2e-ml.yml` |
 | The whole path on kind: the real runtime image, a stand-in tool-calling model published on the gateway, chat through the api-gateway with an HTTP tool fetching a file (also streamed), a refused URL, metering, scale to zero and deletion | The "Agents" steps of `.github/workflows/e2e-ml.yml`; the non-streamed steps also passed on a single-node k3s host (2026-10-01) |
 | A real model deciding to call a tool: Qwen2.5-0.5B Instruct on llama.cpp's server (CPU, greedy decoding) behind the gateway; the agent runtime offers an HTTP tool, the model calls it, the runtime fetches the handbook and the model answers from it, non-streamed and streamed (the tool-call deltas come from the real engine) | The "Real model" step of `.github/workflows/e2e-ml.yml`, passed in kind CI on main ([run 36990962579](https://github.com/zyvorai/gryvia/actions/runs/36990962579), 2026-10-02); the same runtime loop also passed 5 of 5 runs locally against llama.cpp b11146 |
+| Zyntra tools in a cluster, with a real model: the chart's token Secret, egress through the NetworkPolicy, search and propose against Zyntra, the token refused approval; Qwen2.5-0.5B on llama.cpp choosing the Zyntra search tool and answering from the ontology | [`.github/workflows/e2e-sovereign-aios.yml`](../.github/workflows/e2e-sovereign-aios.yml), see [Sovereign AI OS](sovereign-aios.md#what-is-verified-and-what-is-not) |
 
 | Not verified | Why |
 | --- | --- |
 | A tool-calling model served by vLLM, or larger models and multi-tool plans | No GPU in CI. The real-model run uses llama.cpp on CPU with a 0.5B model and one tool |
 | NetworkPolicy enforcement with other CNIs (Calico, Cilium) | Only kind's kindnet was run; any CNI that implements NetworkPolicy should behave the same |
 | Streaming through vLLM | Streaming tool-call deltas were run with llama.cpp only; vLLM's follow the same format |
-| A real model choosing the Zyntra tools | The runtime ran against a real Zyntra with a scripted model ([`scripts/tests/sovereign-aios-agent-zyntra.sh`](../scripts/tests/sovereign-aios-agent-zyntra.sh), see [Sovereign AI OS](sovereign-aios.md#what-is-verified-and-what-is-not)); no real model has picked them yet |
 
 ## Turning it on
 
@@ -94,7 +94,7 @@ tenants, GPU nodes, jobs, models, inference services and datasets).
       description: the GPU platform's ontology
       type: zyntra
       zyntra:
-        url: http://sovereign-aios-zyntra.gryvia-system.svc:8080
+        url: http://zyntra.gryvia-system.svc:8080
         tokenSecretRef: {name: zyntra-agent-token, key: token}   # a Secret in the agent's namespace
         propose: true                # offer ops_propose
         actions: [raise-inference-priority]   # optional allowlist; empty allows what the token may propose

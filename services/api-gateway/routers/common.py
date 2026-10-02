@@ -7,7 +7,7 @@ Kubernetes client (see tests/conftest.py).
 """
 import asyncio
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Union
 
 from fastapi import HTTPException, Request
 from kubernetes.client.exceptions import ApiException
@@ -50,10 +50,16 @@ class Deps:
     flight_collector_namespace: str = "gryvia-network"
     netra_url: Optional[str] = None                                            # GRYVIA_NETRA_URL
     netra_token: Optional[str] = None                                          # GRYVIA_NETRA_TOKEN
-    netra_verify_tls: bool = True                                              # GRYVIA_NETRA_INSECURE=1 turns off
+    netra_verify_tls: Union[bool, str] = True                                  # GRYVIA_NETRA_INSECURE=1 turns off; a CA file path
     netra_fetch: Optional[Callable[[], Awaitable[Any]]] = None                 # tests: returns Netra records
     llm_key_namespace: Optional[str] = None                                    # GRYVIA_LLM_KEY_NAMESPACE
     llm_gateway_url: Optional[str] = None                                      # GRYVIA_LLM_GATEWAY_URL
+    zyntra_url: Optional[str] = None                                           # GRYVIA_ZYNTRA_URL
+    zyntra_token: Optional[str] = None                                         # GRYVIA_ZYNTRA_TOKEN (viewer)
+    zyntra_console_url: Optional[str] = None                                   # GRYVIA_ZYNTRA_CONSOLE_URL
+    netra_console_url: Optional[str] = None                                    # GRYVIA_NETRA_CONSOLE_URL
+    sovereign_ca_file: Optional[str] = None                                    # GRYVIA_SOVEREIGN_CA_FILE
+    sovereign_client: Optional[Callable[[], Any]] = None                       # tests: returns an httpx.AsyncClient
     # tests inject this: returns a list of bodies, or (bodies, total_collectors)
     collector_fetch: Optional[Callable[[str], Awaitable[Any]]] = None
     # tests inject this: (agent chat URL, body) -> (status, JSON body)

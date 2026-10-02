@@ -18,7 +18,7 @@ describe('isAdminUser', () => {
 describe('navFor', () => {
   it('shows everything to admins', () => {
     expect(groups(true)).toEqual(['Dashboard', 'Work', 'Models', 'Cloud', 'Platform', 'Observe'])
-    expect(hrefs(true)).toEqual(expect.arrayContaining(['/catalog', '/usage', '/invoices', '/tenants', '/nodes', '/quotas', '/costs', '/gpu', '/network', '/security']))
+    expect(hrefs(true)).toEqual(expect.arrayContaining(['/catalog', '/usage', '/invoices', '/tenants', '/sovereign', '/nodes', '/quotas', '/costs', '/gpu', '/network', '/security']))
   })
   it('hides admin-only groups from tenants but keeps the cloud pages', () => {
     expect(groups(false)).toEqual(['Dashboard', 'Work', 'Models', 'Cloud'])
@@ -38,7 +38,7 @@ describe('canAccessPath', () => {
     for (const p of ['/nodes', '/quotas/x', '/network/flows', '/security', '/gpu/communication', '/costs']) expect(canAccessPath(p, true)).toBe(true)
   })
   it('blocks tenants from admin pages and their subpaths only', () => {
-    for (const p of ['/nodes', '/quotas', '/network', '/network/flows', '/gpu/communication', '/security', '/costs']) expect(canAccessPath(p, false)).toBe(false)
+    for (const p of ['/sovereign', '/nodes', '/quotas', '/network', '/network/flows', '/gpu/communication', '/security', '/costs']) expect(canAccessPath(p, false)).toBe(false)
     for (const p of ['/catalog', '/usage', '/invoices', '/tenants', '/jobs', '/jobs/new', '/networking-docs', '/dashboard']) expect(canAccessPath(p, false)).toBe(true)
   })
   it('sends tenants to the catalog', () => {

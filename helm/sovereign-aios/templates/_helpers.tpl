@@ -34,3 +34,58 @@ Returns a dict with gryviaApiKey, llmKey, netraApiKey, netraAgentKey and agentTo
 {{- $zst := include "sovereign-aios.key" (dict "set" .Values.agentToken.token "data" $data "field" "AGENT_ZYNTRA_TOKEN" "len" 64 "prefix" "zst_") }}
 {{- dict "gryviaApiKey" $api "llmKey" $llm "netraApiKey" $netra "netraAgentKey" $agent "agentToken" $zst | toJson }}
 {{- end }}
+
+{{/* An External Secrets template expression ({{ .field }}, or {{ .field | sha256sum }} with hash). */}}
+{{- define "sovereign-aios.eso" -}}
+{{- printf "%s .%s%s %s" "{{" .field (ternary " | sha256sum" "" (default false .hash)) "}}" -}}
+{{- end }}
+
+{{/*
+A Secret this chart owns: a plain Secret, or with hardening.openbao.enabled an ExternalSecret that writes the same
+Secret from OpenBao (data values are then External Secrets templates). Takes root, name, namespace, data and optional
+labels and annotations.
+*/}}
+{{- define "sovereign-aios.secret" -}}
+{{- $r := .root }}
+{{- $bao := $r.Values.hardening.openbao }}
+{{- $labels := merge (dict) (.labels | default dict) (include "sovereign-aios.labels" $r | fromYaml) }}
+{{- if $bao.enabled }}
+apiVersion: {{ $bao.esoApiVersion }}
+kind: ExternalSecret
+metadata:
+  name: {{ .name }}
+  namespace: {{ .namespace }}
+  labels:
+    {{- include "sovereign-aios.labels" $r | nindent 4 }}
+spec:
+  refreshInterval: {{ $bao.refreshInterval }}
+  secretStoreRef: {kind: ClusterSecretStore, name: sovereign-aios-openbao}
+  target:
+    name: {{ .name }}
+    creationPolicy: Owner
+    template:
+      engineVersion: v2
+      metadata:
+        labels:
+          {{- toYaml $labels | nindent 10 }}
+      data:
+        {{- toYaml .data | nindent 8 }}
+  dataFrom:
+    - extract: {key: {{ $bao.key | quote }}}
+{{- else }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .name }}
+  namespace: {{ .namespace }}
+  labels:
+    {{- toYaml $labels | nindent 4 }}
+  {{- with .annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+type: Opaque
+stringData:
+  {{- toYaml .data | nindent 2 }}
+{{- end }}
+{{- end }}

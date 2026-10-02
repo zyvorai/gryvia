@@ -144,6 +144,12 @@ sovereign-aios-test: sovereign-aios-deps ## Render tests for the Sovereign AI OS
 sovereign-aios-agent-test: ## A GryviaAgent's zyntra tool against a real Zyntra built from ZYNTRA_DIR (no cluster)
 	scripts/tests/sovereign-aios-agent-zyntra.sh
 
+sovereign-aios-airgap-test: sovereign-aios-deps ## Offline checks of the air-gap artifacts (deploy/airgap, deploy/argocd)
+	scripts/tests/sovereign-aios-airgap.test.sh
+
+sovereign-aios-images: sovereign-aios-deps ## Regenerate deploy/airgap/images.txt (pulls the add-on charts)
+	scripts/sovereign-aios-images.sh --addons > deploy/airgap/images.txt
+
 sovereign-aios-install: sovereign-aios-deps ## Install Gryvia, Zyntra and Netra as one release (docs/sovereign-aios.md)
 	helm upgrade --install sovereign-aios helm/sovereign-aios -n gryvia-system --create-namespace
 

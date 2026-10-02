@@ -49,6 +49,7 @@ export const NAVIGATION: NavItem[] = [
     name: 'Platform',
     adminOnly: true,
     children: [
+      { name: 'Sovereign AI OS', href: '/sovereign', blurb: 'Gryvia, Zyntra and Netra as one system' },
       { name: 'Nodes', href: '/nodes', blurb: 'GPU nodes and health' },
       { name: 'Quotas', href: '/quotas', blurb: 'Team GPU and budget limits' },
       { name: 'GPU', href: '/gpu', blurb: 'NCCL, stragglers, memory transfers' },
@@ -66,7 +67,7 @@ export const NAVIGATION: NavItem[] = [
 ]
 
 /** Path prefixes only admins may open. /tenants stays open: tenants see a read-only summary of their own. */
-export const ADMIN_ONLY_PREFIXES = ['/nodes', '/quotas', '/costs', '/gpu', '/network', '/security']
+export const ADMIN_ONLY_PREFIXES = ['/sovereign', '/nodes', '/quotas', '/costs', '/gpu', '/network', '/security']
 
 function hasPrefix(pathname: string, prefix: string): boolean {
   return pathname === prefix || pathname.startsWith(prefix + '/')

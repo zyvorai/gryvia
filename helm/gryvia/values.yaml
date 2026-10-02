@@ -321,6 +321,17 @@ apiGateway:
     tokenSecret: ""
     tokenKey: token
     insecureTLS: false
+  # The Sovereign AI OS overview page (helm/sovereign-aios sets these). With zyntraURL empty it shows Zyntra as not
+  # installed; the console URLs are the links it offers and may be empty.
+  sovereign:
+    zyntraURL: ""
+    # Secret holding a Zyntra token (a viewer service token is enough) for open gaps and pending proposals.
+    zyntraTokenSecret: ""
+    zyntraTokenKey: token
+    zyntraConsoleURL: ""
+    netraConsoleURL: ""
+    # Verify Zyntra and Netra against Gryvia's own certificate (they serve it in the umbrella chart).
+    trustGryviaCert: false
   resources:
     limits: {cpu: 500m, memory: 512Mi}
     requests: {cpu: 200m, memory: 256Mi}
