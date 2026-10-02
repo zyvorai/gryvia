@@ -198,6 +198,33 @@ quotaOperator:
   kueueQuotaResources: nvidia.com/gpu
   # One ResourceFlavor per enabled GryviaGpuSku gpuType in each ClusterQueue (see the doc for the caveat).
   kueueGpuTypeFlavors: false
+  # Slurm partition per GryviaTenant (--slurm-integration, off by default): a Slinky NodeSet gryvia-<tenant> (and so
+  # the partition gryvia-<tenant>) next to the Slurm Controller CR, and finished jobs of those partitions read from
+  # slurmrestd into GryviaUsageRecords (kind slurm). Needs Slinky's slurm-operator and a Slurm cluster: slurmOperator
+  # and slurm below, or your own (set slurm.namespace/controller/restapiUrl and a token Secret). Adds create/update/
+  # delete on slinky.slurm.net nodesets to the operators ClusterRole. See docs/slurm.md.
+  slurmIntegration: false
+  slurm:
+    # Namespace of the Controller CR, the NodeSets and the token Secret; empty is the release namespace.
+    namespace: ""
+    # Slinky Controller CR (the bundled slurm chart names it after slurm.fullnameOverride).
+    controller: slurm
+    # slurmd image of the tenant NodeSets; empty is the operator default (the bundled chart's slurmd image).
+    slurmdImage: ""
+    # slurmd pods per tenant without a GPU quota (or when gpusPerNode is 0).
+    nodesPerTenant: 1
+    # nvidia.com/gpu per slurmd pod; the tenant GPU quota divided by it is the node count. 0 is CPU only.
+    gpusPerNode: 0
+    # Several slurmd pods on one Kubernetes node (test clusters only).
+    oversubscribe: false
+    # slurmrestd; empty is http://slurm-restapi.<namespace>.svc:6820.
+    restapiUrl: ""
+    # Secret (in namespace) with a slurmrestd JWT under tokenKey. With slurm.enabled the chart creates a Slinky Token
+    # that writes it. Empty turns accounting off.
+    tokenSecret: gryvia-slurm-token
+    tokenKey: auth-token
+    # Keep it well under slurmctld's MinJobAge (300s by default): finished jobs older than that are gone.
+    accountingInterval: 30s
   # Per-tenant Kubernetes RBAC (--tenant-rbac): ships the ClusterRoles gryvia-tenant-viewer|member|admin and lets the
   # tenant controller create RoleBindings in tenant-<name> namespaces from GryviaTenant spec.members and spec.oidcGroups
   # (adds rolebindings verbs and `bind` on those three ClusterRoles to the operators ClusterRole). Off by default.
@@ -414,6 +441,39 @@ nvidiaNim:
 # quotaOperator.kueueIntegration. Every other key under `kueue:` is passed through to the Kueue chart.
 # Enable all three together:
 #   --set kueue.enabled=true --set aiOperator.kueueIntegration=true --set quotaOperator.kueueIntegration=true
+# SchedMD's Slinky slurm-operator (sub-chart slurm-operator 1.2.3). Off by default. Its CRDs come with it; the
+# webhook gets a self-signed certificate from the chart instead of cert-manager.
+slurmOperator:
+  enabled: false
+  # Its objects are named after the chart name, which the alias would make slurmOperator (rejected by Kubernetes).
+  nameOverride: slurm-operator
+  crds:
+    enabled: true
+  certManager:
+    enabled: false
+
+# A Slurm cluster run by that operator (Slurm 26.05; objects as Slinky's slurm chart 1.2.3 renders them by default):
+# the Secrets slurm-auth-slurm and slurm-auth-jwt, a Controller (slurmctld) and a RestApi (slurmrestd, Service
+# slurm-restapi:6820). No login nodes and no worker NodeSets of its own: with quotaOperator.slurmIntegration the quota
+# operator adds one NodeSet per tenant. Needs the operator's CRDs already installed: turn on slurmOperator.enabled in
+# one helm upgrade and slurm.enabled in the next (one release cannot create CRDs and their objects together). Off by
+# default.
+slurm:
+  enabled: false
+  # Name of the Controller and RestApi (and prefix of the key Secrets and Services).
+  name: slurm
+  images:
+    slurmctld: ghcr.io/slinkyproject/slurmctld:26.05-ubuntu26.04
+    slurmrestd: ghcr.io/slinkyproject/slurmrestd:26.05-ubuntu26.04
+    logfile: docker.io/library/alpine:3.22
+  # slurmctld state (job IDs, queue) on a PVC; off keeps it in an emptyDir and loses it on restart.
+  persistence:
+    enabled: true
+    size: 4Gi
+    storageClassName: ""
+  # Extra slurm.conf lines (Slinky's Controller spec.extraConf).
+  extraConf: ""
+
 kueue:
   enabled: false
   # Makes the controller Deployment `kueue-controller-manager` regardless of the Helm release name.

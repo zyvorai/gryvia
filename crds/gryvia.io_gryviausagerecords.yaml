@@ -98,11 +98,13 @@ spec:
                 type: string
               kind:
                 description: |-
-                  Kind is what the record meters: gpu (a GryviaAIJob; also when empty) or tokens (the LLM gateway's requests
-                  of one tenant to one model during one hour, from start to end)
+                  Kind is what the record meters: gpu (a GryviaAIJob; also when empty), tokens (the LLM gateway's requests
+                  of one tenant to one model during one hour, from start to end) or slurm (one finished Slurm job in the
+                  tenant's partition, named slurm-<cluster>-<job id>)
                 enum:
                 - gpu
                 - tokens
+                - slurm
                 type: string
               model:
                 description: Model is the LLM gateway model of a tokens record

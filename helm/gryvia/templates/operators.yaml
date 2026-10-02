@@ -150,6 +150,24 @@ spec:
             - --kueue-gpu-type-flavors=true
             {{- end }}
             {{- end }}
+            {{- if and (eq $name "quota-operator") $.Values.quotaOperator.slurmIntegration }}
+            {{- $slurm := $.Values.quotaOperator.slurm }}
+            - --slurm-integration=true
+            - --slurm-namespace={{ $slurm.namespace | default (include "gryvia.namespace" $) }}
+            - --slurm-controller={{ $slurm.controller }}
+            {{- with $slurm.slurmdImage }}
+            - --slurm-slurmd-image={{ . }}
+            {{- end }}
+            - --slurm-nodes-per-tenant={{ $slurm.nodesPerTenant }}
+            - --slurm-gpus-per-node={{ $slurm.gpusPerNode }}
+            - --slurm-oversubscribe={{ $slurm.oversubscribe }}
+            {{- with $slurm.restapiUrl }}
+            - --slurm-restapi-url={{ . }}
+            {{- end }}
+            - --slurm-token-secret={{ $slurm.tokenSecret }}
+            - --slurm-token-key={{ $slurm.tokenKey }}
+            - --slurm-accounting-interval={{ $slurm.accountingInterval }}
+            {{- end }}
             {{- if and (eq $name "ai-operator") $.Values.aiOperator.admissionGate }}
             - --admission-gate=true
             - --admission-default-hours={{ $.Values.aiOperator.admissionDefaultHours }}

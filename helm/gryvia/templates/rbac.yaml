@@ -529,6 +529,21 @@ rules:
       - patch
       - delete
   {{- end }}
+  {{- if .Values.quotaOperator.slurmIntegration }}
+  # quotaOperator.slurmIntegration: one Slinky NodeSet (Slurm partition) per tenant
+  - apiGroups:
+      - slinky.slurm.net
+    resources:
+      - nodesets
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+  {{- end }}
   {{- if .Values.quotaOperator.tenantRbac }}
   # quotaOperator.tenantRbac: the tenant controller manages RoleBindings in tenant namespaces. RBAC escalation rules:
   # the operator may only grant permissions it holds or is allowed to `bind`, so it gets `bind` on exactly the three
