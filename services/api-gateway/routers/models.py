@@ -1,16 +1,21 @@
 """Model registry routes (GryviaModelRegistry, namespaced) for the dashboard."""
+import json
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from .common import Deps, create_item, patch_item
+from .common import Deps, create_item, patch_item, require_admin
 from .uiutil import NAME_MAX, NAME_PATTERN, find_one, list_all, meta, namespaces, prune
 
 PLURAL = "gryviamodelregistries"
 KIND = "GryviaModelRegistry"
 ROLLBACK_ANNOTATION = "gryvia.io/rollback-requested"
+# A tenant's request to promote to production, awaiting an administrator (GRYVIA_REQUIRE_PROD_APPROVAL=1):
+# JSON {"target", "by", "at"}. Removed on approval or rejection.
+PROMOTION_ANNOTATION = "gryvia.io/promotion-request"
 
 # Same promotion ladder the UI offers.
 NEXT_STAGE = {"dev": ["staging"], "staging": ["production"], "production": ["archived"]}
@@ -77,11 +82,23 @@ def _artifacts(art: Dict[str, Any]) -> List[str]:
     return out
 
 
+def pending_request(obj: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    raw = ((obj.get("metadata") or {}).get("annotations") or {}).get(PROMOTION_ANNOTATION)
+    if not raw:
+        return None
+    try:
+        req = json.loads(raw)
+    except ValueError:
+        return None
+    return req if isinstance(req, dict) and req.get("target") else None
+
+
 def to_ui(obj: Dict[str, Any]) -> Dict[str, Any]:
     spec, st = obj.get("spec") or {}, obj.get("status") or {}
     src = spec.get("source") or {}
     return {
         "metadata": meta(obj),
+        "pendingPromotion": pending_request(obj),
         "spec": prune({
             "version": spec.get("version"),
             "stage": spec.get("stage"),
@@ -134,16 +151,48 @@ def build_router(deps: Deps) -> APIRouter:
         ns = namespaces(request, deps)[0]
         return to_ui(await create_item(deps, PLURAL, KIND, body.name, spec, namespace=ns))
 
+    def check_transition(obj: Dict[str, Any], target: str) -> None:
+        current = (obj.get("spec") or {}).get("stage") or "dev"
+        if target not in NEXT_STAGE.get(current, []):
+            raise HTTPException(status_code=409, detail=f"Cannot promote model from '{current}' to '{target}'")
+
     @router.post("/api/models/{name}/promote")
     @deps.limiter.limit("10/minute")
     async def promote_model(request: Request, name: str, body: PromoteRequest, _=Depends(deps.verify_auth)):
         obj, ns = await find_one(request, deps, PLURAL, name)
-        current = (obj.get("spec") or {}).get("stage") or "dev"
-        if body.targetStage not in NEXT_STAGE.get(current, []):
-            raise HTTPException(status_code=409,
-                                detail=f"Cannot promote model from '{current}' to '{body.targetStage}'")
-        updated = await patch_item(deps, PLURAL, name, {"spec": {"stage": body.targetStage}}, namespace=ns)
-        return to_ui(updated)
+        check_transition(obj, body.targetStage)
+        if (deps.require_prod_approval and body.targetStage == "production"
+                and getattr(request.state, "role", None) != "admin"):
+            # Not applied: record the request for an administrator (POST .../approve or .../reject).
+            when = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            by = getattr(request.state, "tenant", None) or "unknown"
+            req = json.dumps({"target": "production", "by": by, "at": when}, separators=(",", ":"))
+            patch = {"metadata": {"annotations": {PROMOTION_ANNOTATION: req}}}
+            return JSONResponse(to_ui(await patch_item(deps, PLURAL, name, patch, namespace=ns)), status_code=202)
+        patch: Dict[str, Any] = {"spec": {"stage": body.targetStage}}
+        if pending_request(obj):  # an administrator promoting directly settles any open request
+            patch["metadata"] = {"annotations": {PROMOTION_ANNOTATION: None}}
+        return to_ui(await patch_item(deps, PLURAL, name, patch, namespace=ns))
+
+    @router.post("/api/models/{name}/approve")
+    @deps.limiter.limit("10/minute")
+    async def approve_promotion(request: Request, name: str, _=Depends(deps.verify_auth), __=Depends(require_admin)):
+        obj, ns = await find_one(request, deps, PLURAL, name)
+        req = pending_request(obj)
+        if not req:
+            raise HTTPException(status_code=409, detail=f"Model '{name}' has no pending promotion request")
+        check_transition(obj, req["target"])  # the entry may have moved since the request
+        patch = {"spec": {"stage": req["target"]}, "metadata": {"annotations": {PROMOTION_ANNOTATION: None}}}
+        return to_ui(await patch_item(deps, PLURAL, name, patch, namespace=ns))
+
+    @router.post("/api/models/{name}/reject")
+    @deps.limiter.limit("10/minute")
+    async def reject_promotion(request: Request, name: str, _=Depends(deps.verify_auth), __=Depends(require_admin)):
+        obj, ns = await find_one(request, deps, PLURAL, name)
+        if not pending_request(obj):
+            raise HTTPException(status_code=409, detail=f"Model '{name}' has no pending promotion request")
+        patch = {"metadata": {"annotations": {PROMOTION_ANNOTATION: None}}}
+        return to_ui(await patch_item(deps, PLURAL, name, patch, namespace=ns))
 
     @router.post("/api/models/{name}/rollback", status_code=202)
     @deps.limiter.limit("10/minute")

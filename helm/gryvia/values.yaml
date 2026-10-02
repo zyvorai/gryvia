@@ -327,6 +327,12 @@ apiGateway:
       existingClaim: ""
       # Delete entries older than this many days; 0 keeps everything.
       retentionDays: 0
+  # Approvals. productionPromotion: a tenant user's request to promote a model to production is recorded
+  # (annotation gryvia.io/promotion-request on the GryviaModelRegistry) instead of applied, and a provider
+  # administrator approves or rejects it (POST /api/models/{name}/approve|reject, or the Models page). Admins still
+  # promote directly. Off by default. Every request, approval and rejection appears in the audit trail.
+  approvals:
+    productionPromotion: false
   netra:
     url: ""
     # Secret holding a Netra API token (viewer role is enough).

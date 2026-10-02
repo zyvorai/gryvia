@@ -166,3 +166,61 @@ def test_rollback_refused(make_client, fake_k8s, stage, serving, previous):
 
 def test_rollback_404(make_client):
     assert make_client("models").post("/api/models/nope/rollback").status_code == 404
+
+
+# -- promotion approval (GRYVIA_REQUIRE_PROD_APPROVAL) ----------------------------------------------
+
+def _stage(fake_k8s, ns="tenant-alpha"):
+    return fake_k8s.store[("gryviamodelregistries", ns, "bert")]["spec"]["stage"]
+
+
+def _note(fake_k8s, ns="tenant-alpha"):
+    return fake_k8s.store[("gryviamodelregistries", ns, "bert")]["metadata"].get("annotations", {}).get("gryvia.io/promotion-request")
+
+
+def test_tenant_promotion_to_production_is_requested_not_applied(make_client, fake_k8s):
+    fake_k8s.add("gryviamodelregistries", {"metadata": {"name": "bert"}, "spec": {"version": "v1", "stage": "staging"}},
+                 namespace="tenant-alpha")
+    c = make_client("models", role="tenant", tenants=["alpha"], require_prod_approval=True)
+    r = c.post("/api/models/bert/promote", json={"targetStage": "production"})
+    assert r.status_code == 202 and r.json()["pendingPromotion"]["by"] == "alpha"
+    assert _stage(fake_k8s) == "staging" and _note(fake_k8s)
+    # a tenant cannot approve its own request
+    assert c.post("/api/models/bert/approve").status_code == 403
+    assert _stage(fake_k8s) == "staging"
+
+
+def test_tenant_other_stages_are_not_gated(make_client, fake_k8s):
+    fake_k8s.add("gryviamodelregistries", {"metadata": {"name": "bert"}, "spec": {"version": "v1", "stage": "dev"}},
+                 namespace="tenant-alpha")
+    c = make_client("models", role="tenant", tenants=["alpha"], require_prod_approval=True)
+    assert c.post("/api/models/bert/promote", json={"targetStage": "staging"}).status_code == 200
+
+
+def test_admin_approves_and_request_clears(make_client, fake_k8s):
+    seed(fake_k8s, stage="staging")
+    fake_k8s.store[("gryviamodelregistries", NS, "bert")]["metadata"]["annotations"] = {
+        "gryvia.io/promotion-request": '{"target":"production","by":"alpha","at":"2026-01-01T00:00:00Z"}'}
+    c = make_client("models", require_prod_approval=True)
+    r = c.post("/api/models/bert/approve")
+    assert r.status_code == 200 and r.json()["spec"]["stage"] == "production" and not r.json()["pendingPromotion"]
+    assert c.post("/api/models/bert/approve").status_code == 409
+
+
+def test_admin_rejects(make_client, fake_k8s):
+    seed(fake_k8s, stage="staging")
+    fake_k8s.store[("gryviamodelregistries", NS, "bert")]["metadata"]["annotations"] = {
+        "gryvia.io/promotion-request": '{"target":"production","by":"alpha","at":"x"}'}
+    c = make_client("models", require_prod_approval=True)
+    r = c.post("/api/models/bert/reject")
+    assert r.status_code == 200 and r.json()["pendingPromotion"] is None
+    assert fake_k8s.store[("gryviamodelregistries", NS, "bert")]["spec"]["stage"] == "staging"
+    assert c.post("/api/models/bert/reject").status_code == 409
+
+
+def test_flag_off_keeps_tenant_promotion_direct(make_client, fake_k8s):
+    fake_k8s.add("gryviamodelregistries", {"metadata": {"name": "bert"}, "spec": {"version": "v1", "stage": "staging"}},
+                 namespace="tenant-alpha")
+    c = make_client("models", role="tenant", tenants=["alpha"])
+    assert c.post("/api/models/bert/promote", json={"targetStage": "production"}).status_code == 200
+    assert _stage(fake_k8s) == "production"

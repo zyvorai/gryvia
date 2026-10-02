@@ -60,6 +60,7 @@ class Deps:
     netra_console_url: Optional[str] = None                                    # GRYVIA_NETRA_CONSOLE_URL
     sovereign_ca_file: Optional[str] = None                                    # GRYVIA_SOVEREIGN_CA_FILE
     sovereign_client: Optional[Callable[[Any], Any]] = None                    # tests: verify -> an httpx.AsyncClient
+    require_prod_approval: bool = False                                        # GRYVIA_REQUIRE_PROD_APPROVAL=1
     # tests inject this: returns a list of bodies, or (bodies, total_collectors)
     collector_fetch: Optional[Callable[[str], Awaitable[Any]]] = None
     # tests inject this: (agent chat URL, body) -> (status, JSON body)

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useIsAdmin } from '@/lib/useRole'
 import { api } from '@/lib/api'
 import type { RegisteredModel } from '@/lib/api'
 import { errorMessage } from '@/lib/errors'
@@ -243,6 +244,17 @@ function ModelDetail({ model }: { model: RegisteredModel }) {
   )
 }
 
+function useSettleMutation(action: 'approve' | 'reject', name: string, queryClient: ReturnType<typeof useQueryClient>) {
+  return useMutation({
+    mutationFn: () => (action === 'approve' ? api.approveModelPromotion(name) : api.rejectModelPromotion(name)),
+    onSuccess: () => {
+      notify.success(action === 'approve' ? `Approved: ${name} promoted` : `Rejected the promotion of ${name}`)
+      queryClient.invalidateQueries({ queryKey: ['models'] })
+    },
+    onError: (err) => notify.error(`Could not ${action} ${name}`, err),
+  })
+}
+
 /** Row actions: promote to the next stage (with confirmation) and serve the model. */
 function ModelActions({ model }: { model: RegisteredModel }) {
   const queryClient = useQueryClient()
@@ -256,8 +268,10 @@ function ModelActions({ model }: { model: RegisteredModel }) {
 
   const promoteMutation = useMutation({
     mutationFn: (targetStage: string) => api.promoteModel(name, targetStage),
-    onSuccess: (_d, targetStage) => {
-      notify.success(`Promoted ${name} to ${targetStage}`)
+    onSuccess: (data, targetStage) => {
+      // 202: the gateway asks for an administrator's approval instead of promoting.
+      if (data.pendingPromotion) notify.success(`Requested promotion of ${name} to ${targetStage}; an administrator must approve it`)
+      else notify.success(`Promoted ${name} to ${targetStage}`)
       queryClient.invalidateQueries({ queryKey: ['models'] })
       setConfirming(false)
     },
@@ -265,15 +279,37 @@ function ModelActions({ model }: { model: RegisteredModel }) {
     onError: (err) => notify.error(`Could not promote ${name}`, err),
   })
 
+  const pending = model.pendingPromotion
+  const isAdmin = useIsAdmin()
+  const approve = useSettleMutation('approve', name, queryClient)
+  const reject = useSettleMutation('reject', name, queryClient)
+
   return (
     // The row toggles its details on click; these controls must not.
     <div className="toolbar" onClick={(e) => e.stopPropagation()}>
+      {pending && (
+        <>
+          <span className="pill warn" title={`Requested by ${pending.by} at ${pending.at}`}>
+            Awaiting approval for {pending.target}
+          </span>
+          {isAdmin && (
+            <>
+              <button type="button" className="btn-secondary" disabled={approve.isPending} onClick={() => approve.mutate()} aria-label={`Approve promotion: ${name}`}>
+                Approve
+              </button>
+              <button type="button" className="btn-secondary" disabled={reject.isPending} onClick={() => reject.mutate()} aria-label={`Reject promotion: ${name}`}>
+                Reject
+              </button>
+            </>
+          )}
+        </>
+      )}
       {stage !== 'archived' && (
         <Link to={`/inference?new=1&model=${encodeURIComponent(name)}`} className="buttonlike btn-secondary" aria-label={`Serve this model: ${name}`}>
           Serve this model
         </Link>
       )}
-      {target && (
+      {target && !pending && (
         <button
           type="button"
           className="btn-secondary"
