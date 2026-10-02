@@ -1,3 +1,4 @@
+import type { LineageGraph } from './lineage'
 import axios from 'axios'
 import toast from 'react-hot-toast'
 import { notifyUnauthorized } from '@/lib/authEvents'
@@ -1062,6 +1063,11 @@ export const api = {
         onChunk(c)
       }
     }
+  },
+
+  getLineage: async (): Promise<LineageGraph> => {
+    const { data } = await apiClient.get('/lineage')
+    return data
   },
 
   // Sovereign AI OS: Zyntra and Netra as the gateway sees them
