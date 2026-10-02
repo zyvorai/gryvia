@@ -258,8 +258,9 @@ Use `secretKeyRef` in `env` as above, or a `secret` volume. There is no `envFrom
 
 ## Job Templates
 
-Reusable job defaults are stored as cluster-scoped `GryviaTemplate` resources. The CRD exists but no controller reconciles it and the `gryvia` CLI does
-not manage templates; they are plain data you can read with `kubectl`:
+Reusable job defaults are stored as cluster-scoped `GryviaTemplate` resources. The ai-operator validates each template
+(condition `Valid`) and counts the jobs labelled `gryvia.io/template: <name>` in `status.instantiatedJobs`, but nothing
+renders a template into a job and the `gryvia` CLI does not manage templates. Read them with `kubectl`:
 
 ```bash
 # List templates
@@ -269,8 +270,8 @@ kubectl get gryviatemplates
 kubectl get gryviatemplate pytorch-ddp -o yaml
 ```
 
-Copy the defaults you want from a template into your `GryviaAIJob` manifest and submit it with
-`gryvia submit --file job.yaml`.
+Copy the defaults you want from a template into your `GryviaAIJob` manifest, add the label `gryvia.io/template: <name>`
+so the template counts it, and submit it with `gryvia submit --file job.yaml`.
 
 ## Features that are not job fields
 
@@ -295,7 +296,9 @@ gryvia cost my-team --period week
 
 ### Budgets
 
-Budget alert annotations (`gryvia.io/budget-alert`) are not read by anything. A `GryviaBudget` CRD exists but no controller reconciles it. Cost figures from `gryvia cost` are estimates based on the GPU SKU catalog prices; there is no billing or payment integration.
+Budget alert annotations (`gryvia.io/budget-alert`) are not read by anything. `GryviaBudget` objects are reconciled by the quota-operator: spend from the metered usage records sets
+`status.state`, and `gryvia budget` shows it. New jobs are blocked only with the opt-in admission gate
+(`aiOperator.admissionGate`). Cost figures from `gryvia cost` are estimates based on the GPU SKU catalog prices; there is no billing or payment integration.
 
 ## Performance Optimization
 

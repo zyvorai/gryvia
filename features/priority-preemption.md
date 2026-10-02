@@ -7,10 +7,11 @@ Sophisticated job priority system with preemption support for efficient resource
 > `WorkloadPriorityClass` and preempts within a queue, victims requeued, no checkpointing. It is unit-tested and its kind e2e
 > (real Kueue, CPU pods) passes in CI; never run on GPUs. See [docs/kueue-integration.md](../docs/kueue-integration.md). Everything below is the design.
 >
-> `GryviaPriority` is a CRD with no controller wired yet (a reconciler exists in
-> `operators/ai-operator/controllers/` but `main.go` does not register it), so the named
-> classes and values below (`system-critical` ... `spot`), quota overrides and SLA
-> guarantees are not enforced. `GryviaAIJob` has no `priorityClassName` field: its only
+> `GryviaPriority` has a controller (with the ML controllers, on by default) that creates a
+> Kubernetes PriorityClass of the same name; a job annotated `gryvia.io/priority-class: <name>`
+> gets it on its batch Job pods and Kubernetes does the pod preemption. The named classes
+> below (`system-critical` ... `spot`) are not shipped, and quota overrides and SLA guarantees
+> are not enforced. `GryviaAIJob` has no `priorityClassName` field: its only
 > priority field is the integer `spec.priority` (0-100, higher is more important),
 > range-checked by the admission webhook. There is no in-tree priority queue,
 > DRF fair-share or preemption finder (an unused one was removed), so jobs are not reordered and no

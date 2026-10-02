@@ -101,10 +101,10 @@ The log and event routes need the gateway service account to read `pods/log` and
 
 ## ML workflow objects (scoped)
 
-These routes create, list and delete the corresponding custom resources in the caller's namespace. **No operator acts
-on `GryviaWorkflow`, `GryviaAutoTuner`, `GryviaWorkspace`, `GryviaInferenceService` or `GryviaModelRegistry` today**
-(no controller is registered for them; see the [CRD reference](../reference/crds.md)), so the objects are stored and
-shown but nothing runs them.
+These routes create, list and delete the corresponding custom resources in the caller's namespace. The ai-operator's ML
+controllers (on by default, `--enable-ml-controllers`) run them: workspaces and inference services become pods,
+Deployments and Services, workflows and tuners create child jobs, and registry entries drive promotion and serving. See
+[ML controllers](https://github.com/zyvorai/gryvia/blob/main/docs/ml-controllers.md).
 
 | Method and path | Access | Purpose |
 |---|---|---|

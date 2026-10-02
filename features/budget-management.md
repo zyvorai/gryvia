@@ -2,16 +2,15 @@
 
 Advanced budget management with cost controls, alerts, and forecasting.
 
-> **Status: design document. `GryviaBudget` is a CRD with no controller wired yet.**
-> The CRD (`crds/gryvia.io_gryviabudgets.yaml`) exists and the API accepts the spec, but no
-> operator registers a reconciler for it (a `GryviaBudgetReconciler` exists under
-> `operators/quota-operator/controllers/` but is not created in `main.go`), so nothing
-> evaluates limits, sends the email/Slack/webhook alerts, forecasts, rolls budgets over, or
-> blocks jobs for this kind. The `kfctl` CLI used below does not exist, and the `gryvia`
-> CLI has no `budget` subcommand; `kfctl` commands and `status` outputs in this document are
-> illustrative. Numbers and outputs in the examples are made up.
+> **Status: mostly design.** What runs: the quota-operator reconciles `GryviaBudget` once a
+> minute, computing spend from the metered `GryviaUsageRecord`s into `status.state` and writing
+> threshold Events (no email, Slack or webhook is sent); `gryvia budget` shows the result, and
+> new jobs are blocked only with the opt-in admission gate (`aiOperator.admissionGate`). The
+> rest of this document (alert channels, forecasting, rollover, approvals) is a design. The
+> `kfctl` CLI used below does not exist; `kfctl` commands and `status` outputs in this document
+> are illustrative. Numbers and outputs in the examples are made up.
 >
-> **What actually works today:** a simpler budget on `GryviaQuota`
+> **Also available:** a simpler budget on `GryviaQuota`
 > (`spec.budget.monthlyBudget`, `alertThreshold`, `hardLimit`). The quota operator computes
 > `status.budgetStatus` (`spentThisMonth`, `remainingBudget`, `percentUsed`, `projectedSpend`),
 > logs when the alert threshold is reached (no email/Slack/webhook is sent), and with

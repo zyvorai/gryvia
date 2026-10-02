@@ -6,22 +6,22 @@ Overview of Gryvia's advanced capability areas, with what is implemented and wha
 
 | Area | Kind(s) | State |
 |------|---------|-------|
-| GPU health monitoring | `GryviaHealthCheck` | CRD only, no controller registered. `gryvia health` is separate and reads `GryviaGpuNode`, `GryviaStorage` and `GryviaNetwork` status |
+| GPU health monitoring | `GryviaHealthCheck` | Opt-in (`platformCompletion.gpuHealth`): checks fresh `GryviaGpuNode` observations on a schedule; with `platformCompletion.gpuRemediation` also cordon/quarantine and a PDB-respecting drain. No automatic uncordon, GPU reset or reboot; unit-tested, never run on GPUs. `gryvia health` is separate and reads `GryviaGpuNode`, `GryviaStorage` and `GryviaNetwork` status |
 | Retries | `GryviaAIJob.spec.retryLimit` | Running: the batch Job's `backoffLimit` |
 | Job hooks | `GryviaJobHook` | Opt-in (`aiOperator.jobHooks.enabled`): signed webhooks when an AI job or workflow succeeds or fails; see [job hooks](https://github.com/zyvorai/gryvia/blob/main/docs/job-hooks.md) |
 | Reservations | `GryviaReservation` | Opt-in (`quotaOperator.reservations`, off by default): the quota-operator taints and labels the reserved nodes; jobs annotated `gryvia.io/reservation` tolerate the taint. Unit-tested, the kind e2e passes in CI, never run on GPUs; see [GPUaaS completion](https://github.com/zyvorai/gryvia/blob/main/docs/gpuaas-completion.md) |
 | Multi-tenancy | `GryviaTenant`, `GryviaQuota` | Running: quota-operator creates the `tenant-<name>` namespace, ResourceQuota, LimitRange and an optional NetworkPolicy; opt-in per-tenant RoleBindings (`quotaOperator.tenantRbac`) |
-| Job templates | `GryviaTemplate` | CRD only, no controller |
+| Job templates | `GryviaTemplate` | Validated, and jobs labelled `gryvia.io/template: <name>` are counted; nothing renders a template into a job |
 | Node auto-scaling | | Not provided; use a cluster autoscaler |
 | Budgets | `GryviaBudget` | Controller registered: spend from `GryviaUsageRecord`s sets a `status.state`; blocking new jobs needs the opt-in admission gate (`aiOperator.admissionGate`). Estimates only; unit-tested, the kind e2e passes in CI |
-| Priority and preemption | `GryviaAIJob.spec.priority`, Kueue | Opt-in via the Kueue integration (`--kueue-integration`): priority maps to a WorkloadPriorityClass and preempts within a queue, victims are requeued; unit-tested, e2e unverified ([details](https://github.com/zyvorai/gryvia/blob/main/docs/kueue-integration.md)). Without it `spec.priority` is validated but not acted on. `GryviaPriority` is CRD only |
+| Priority and preemption | `GryviaAIJob.spec.priority`, Kueue | Opt-in via the Kueue integration (`--kueue-integration`): priority maps to a WorkloadPriorityClass and preempts within a queue, victims are requeued; unit-tested, e2e unverified ([details](https://github.com/zyvorai/gryvia/blob/main/docs/kueue-integration.md)). Without it `spec.priority` is validated but not acted on. `GryviaPriority` creates a Kubernetes PriorityClass that jobs use through the annotation `gryvia.io/priority-class` |
 | ML workflows | AutoTuner, Workflow, ModelRegistry, InferenceService, Workspace | Controllers registered in the ai-operator (on by default); unit-tested, kind e2e with tiny CPU images passes in CI, nothing on GPUs; see [ML Workflows](ML_WORKFLOWS.md) |
 | Network intelligence | 10 kinds | Running via the network-intelligence operator (own chart); eBPF collector off by default; see [Network Intelligence](NETWORK_INTELLIGENCE.md) |
 | Advanced scheduling | | Kueue-backed and opt-in; see [Scheduling](SCHEDULING.md) |
 | OIDC/SSO | gateway | Implemented in the gateway; not verified against a real identity provider |
 | SDKs | | Python REST client and Go Kubernetes client, from source |
 
-"CRD only" means the manifest is accepted by the API server and the schema is real, but nothing reconciles its spec, so it has no effect. The full list is in the [CRD reference](../reference/crds.md). Numbers such as discounts, savings percentages and speedups that appeared in earlier versions of this page were illustrative, not measured, and have been removed.
+Every kind in this table has a controller; "opt-in" means it runs only when its chart value is set. The [CRD reference](../reference/crds.md) lists all kinds. Numbers such as discounts, savings percentages and speedups that appeared in earlier versions of this page were illustrative, not measured, and have been removed.
 
 ## Table of Contents
 
@@ -43,9 +43,9 @@ Overview of Gryvia's advanced capability areas, with what is implemented and wha
 
 ## GPU Health Monitoring
 
-Status: the `GryviaHealthCheck` CRD exists, but no controller is registered for it, so scheduled checks, alerting, auto-remediation and automatic cordoning do not happen. What does work is the CLI view of node, storage and network status written by the gpu-, storage- and network-operators.
+Status: opt-in. With `platformCompletion.gpuHealth` the gpu-operator runs `GryviaHealthCheck`: on its `schedule` it evaluates the `checks` (temperature, utilization, memory, ECC, NVLink, power) against fresh `GryviaGpuNode` observations; a missing or stale observation reports unknown and never triggers remediation. `onFailure` cordon/quarantine and drain act only when `platformCompletion.gpuRemediation` is also set; the drain uses the eviction API and respects PodDisruptionBudgets, and a human removes the `gryvia.io/gpu-unhealthy` taint after recovery. There is no automatic uncordon, GPU reset, driver reload or reboot, and none of it has run on real GPUs; see [platform completion](https://github.com/zyvorai/gryvia/blob/main/docs/platform-completion.md#health-and-cost-controls). The CLI view of node, storage and network status (`gryvia health`) is separate.
 
-### Schema example (not acted on today)
+### Example
 
 ```yaml
 apiVersion: gryvia.io/v1alpha1
@@ -229,7 +229,7 @@ gryvia cost ml-research --period month --detailed
 
 ## Job Templates
 
-Status: CRD only. `GryviaTemplate` (cluster-scoped, `category` and `defaults` required) is plain data: no controller renders `{{ .param }}` placeholders, validates parameters or instantiates jobs, and no built-in templates are shipped in this repository. The `gryvia` CLI does not manage them.
+Status: validation and counting only. `GryviaTemplate` (cluster-scoped, `category` and `defaults` required) gets a `Valid` condition from the ai-operator, and `status.instantiatedJobs` counts the jobs labelled `gryvia.io/template: <name>`. Nothing renders `{{ .param }}` placeholders or creates jobs from a template, no built-in templates are shipped in this repository, and the `gryvia` CLI does not manage them.
 
 ```bash
 kubectl get gryviatemplates
@@ -321,7 +321,7 @@ spec:
 
 ## Priority & Preemption
 
-Status: opt-in through Kueue (`--kueue-integration`, see [Kueue integration](https://github.com/zyvorai/gryvia/blob/main/docs/kueue-integration.md); unit-tested; the kind e2e with real Kueue and CPU pods passes in CI; never run on GPUs), otherwise not implemented. A `GryviaPriority` CRD (`value` required, plus `preemptionPolicy`, `quotaOverride`, `sla`) exists but no controller is registered for it. `GryviaAIJob.spec.priority` is an integer from 0 to 100 that the admission webhook range-checks; without the Kueue integration the scheduler and controller do not order or preempt by it, and there is no `priorityClassName` on the job. The seven-tier table with quota override percentages that earlier versions showed was a proposal.
+Status: opt-in through Kueue (`--kueue-integration`, see [Kueue integration](https://github.com/zyvorai/gryvia/blob/main/docs/kueue-integration.md); unit-tested; the kind e2e with real Kueue and CPU pods passes in CI; never run on GPUs), otherwise not implemented. A `GryviaPriority` (`value` required, plus `preemptionPolicy`, `quotaOverride`, `sla`) makes the ai-operator create a Kubernetes PriorityClass of the same name with its `value` and `preemptionPolicy`; a job annotated `gryvia.io/priority-class: <name>` gets it on its batch Job pods, and Kubernetes does the pod preemption. `quotaOverride` and `sla` are not acted on. `GryviaAIJob.spec.priority` is an integer from 0 to 100 that the admission webhook range-checks; without the Kueue integration the scheduler and controller do not order or preempt by it, and there is no `priorityClassName` field on the job. The seven-tier table with quota override percentages that earlier versions showed was a proposal.
 
 See [Scheduling](SCHEDULING.md#priority-preemption) for the details.
 

@@ -7,8 +7,9 @@ Both operators are registered controllers (`GryviaStorage`, `GryviaNetwork`) and
 (`storageOperator.enabled`, `networkOperator.enabled`). They are covered by unit tests against a fake Kubernetes client
 only. Nothing here has been verified against real VAST, Weka, DDN, Lustre or Ceph systems, or on InfiniBand, RoCE or
 SR-IOV hardware, and the operators do not install the CSI drivers' backends, Multus or the NIC drivers for you. Treat the
-backend integrations as unproven. The storage operator's `GryviaDataset` reconciler exists in the source tree but is not
-registered in `main.go`, so `GryviaDataset` objects are not acted on.
+backend integrations as unproven. The storage operator also runs an opt-in `GryviaDataset` controller
+(`storageOperator.datasets.enabled`) that downloads a dataset into a PVC; see
+[Datasets](https://github.com/zyvorai/gryvia/blob/main/docs/datasets.md).
 :::
 
 ## Overview

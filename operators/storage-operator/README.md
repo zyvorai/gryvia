@@ -2,7 +2,7 @@
 
 The Storage Operator manages parallel filesystem integrations for AI workloads in Gryvia. It automates CSI driver deployment and storage configuration for enterprise-grade parallel filesystems.
 
-> **Status.** The `GryviaStorage` controller is registered and has code paths for the vast, weka, ddn, lustre and ceph backends (CSI driver manifests, StorageClass, health probe). It has only been exercised by unit tests against a fake client. It has **not** been verified against real VAST, Weka, DDN, Lustre or Ceph systems, so treat the backend integrations as unproven. The operator does not yet act on `GryviaDataset` (CRD exists, reconciler code exists, but it is not registered in `main.go`). Performance tuning notes and roadmap items below are guidance, not implemented features.
+> **Status.** The `GryviaStorage` controller is registered and has code paths for the vast, weka, ddn, lustre and ceph backends (CSI driver manifests, StorageClass, health probe). It has only been exercised by unit tests against a fake client. It has **not** been verified against real VAST, Weka, DDN, Lustre or Ceph systems, so treat the backend integrations as unproven. With `--enable-datasets` (chart `storageOperator.datasets.enabled`) it also runs the `GryviaDataset` controller, which downloads http, s3 or nfs sources into a PVC (see [Datasets](../../docs/datasets.md)). Performance tuning notes and roadmap items below are guidance, not implemented features.
 
 ## Supported Storage Backends
 

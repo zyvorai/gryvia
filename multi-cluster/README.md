@@ -8,7 +8,8 @@ Deploy and manage Gryvia across multiple Kubernetes clusters for high availabili
 > the GPU totals it reports are the `spec.capacity` you declared, not measurements), a read-only admin view of it
 > (`GET /api/federations`, credentials never returned), and Kueue's own MultiKueue binding
 > (`platformCompletion.kueueAdmissionCheck`, see docs/kueue-integration.md; not exercised across real clusters).
-> `GryviaDataset` has no controller. Nothing here places jobs across clusters itself, fails over, replicates data,
+> `GryviaDataset` has an opt-in controller (`storageOperator.datasets.enabled`) that downloads into a PVC in one
+> cluster; it does not replicate across clusters. Nothing here places jobs across clusters itself, fails over, replicates data,
 > or aggregates cost. Not present in this repo:
 > the `gryvia/gryvia-federation` Helm chart, the `GryviaCluster` and `GryviaFederatedQuota` kinds, the
 > `gryvia.io/placement*`, `target-cluster`, `cluster-affinity`, `failover` annotations, `spec.dataAffinity`

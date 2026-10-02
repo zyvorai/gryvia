@@ -15,7 +15,7 @@ An alpha, Kubernetes-native platform for GPU workloads. What runs today:
 - Storage and network operators, and network intelligence (eBPF collector, off by default)
 - A REST API gateway, a dashboard and a Rust CLI, plus Python and Go SDKs
 
-Workflows, tuners, workspaces, inference services and the model registry have controllers in the ai-operator (unit-tested; the kind e2e with tiny CPU images passes in CI; nothing on GPUs), budgets and reservations have controllers in the quota-operator (reservations are opt-in), and Kueue-based queueing is opt-in. Many other kinds (auto-scaling, chargeback, SLA, templates and so on) have a CRD but no controller yet.
+Workflows, tuners, workspaces, inference services and the model registry have controllers in the ai-operator (unit-tested; the kind e2e with tiny CPU images passes in CI; nothing on GPUs), budgets, chargeback and reservations have controllers in the quota-operator (reservations are opt-in), and Kueue-based queueing is opt-in. Of the 47 kinds, 43 have a controller (several opt-in); the other four are catalog or telemetry data that controllers read. The old auto-scaling, SLA and similar kinds without a runtime were removed.
 
 ### Who should use it?
 
@@ -63,7 +63,7 @@ The CLI talks to the Kubernetes API through your kubeconfig, not through the gat
 
 ### What GPU types are supported?
 
-Gryvia does not restrict GPU models. `spec.gpuType` is matched against the `gryvia.io/gpu` node label (values are whatever your nodes carry, for example the names in your `GryviaGpuSku` catalog), and pods request `nvidia.com/gpu`, so any NVIDIA GPU with a working device plugin can be scheduled. Which models have actually been run is not recorded: no GPU hardware runs in this project's CI. MIG and fractional sharing: the `GryviaGPUSharingPolicy` kind has a CRD but no controller; configure MIG or time-slicing with NVIDIA's GPU Operator directly.
+Gryvia does not restrict GPU models. `spec.gpuType` is matched against the `gryvia.io/gpu` node label (values are whatever your nodes carry, for example the names in your `GryviaGpuSku` catalog), and pods request `nvidia.com/gpu`, so any NVIDIA GPU with a working device plugin can be scheduled. Which models have actually been run is not recorded: no GPU hardware runs in this project's CI. MIG and fractional sharing: NVIDIA's GPU Operator does the partitioning; the opt-in `GryviaGPUSharingPolicy` controller (`gpuOperator.gpuSharing`) only labels the nodes it should configure (see [NVIDIA one-click](NVIDIA_ONE_CLICK.md)).
 
 ### Can I use my existing Kubernetes cluster?
 
@@ -196,7 +196,7 @@ The tenant's workloads run in the namespace `tenant-ml-research`. See [GPU as a 
 
 ### Can teams share GPUs?
 
-Only through Kubernetes and NVIDIA mechanisms (for example the device plugin's time-slicing). `GryviaGPUSharingPolicy` is a CRD without a controller.
+Only through Kubernetes and NVIDIA mechanisms (the device plugin's time-slicing, MIG). With `gpuOperator.gpuSharing` a `GryviaGPUSharingPolicy` labels the matching GPU nodes with the device-plugin or MIG configuration NVIDIA's components then apply; whether the device plugin advertises the shared GPUs has not been checked on a GPU node. See [NVIDIA one-click](NVIDIA_ONE_CLICK.md).
 
 ---
 
@@ -224,7 +224,7 @@ Gryvia does not add or remove nodes. Use your cloud's cluster autoscaler or Karp
 
 ### Can I reserve GPUs in advance?
 
-No. `GryviaReservation` is a CRD without a controller. Nothing holds capacity.
+Yes, opt-in. With `quotaOperator.reservations` a `GryviaReservation` taints and labels the reserved nodes for its time window, and jobs annotated `gryvia.io/reservation: <name>` tolerate the taint (`gryvia reservation create`). Unit-tested and the kind e2e passes in CI; never run on GPUs. See [GPUaaS completion](https://github.com/zyvorai/gryvia/blob/main/docs/gpuaas-completion.md).
 
 ---
 
