@@ -139,6 +139,8 @@ spec:
             secretKeyRef:
               name: {{ include "gryvia.apiKeySecret" . }}
               key: GRYVIA_API_KEY
+        - name: GRYVIA_API_KEY_SECRET
+          value: {{ include "gryvia.apiKeySecret" . | quote }}
         - name: GRYVIA_JOB_NAMESPACE
           valueFrom:
             fieldRef:

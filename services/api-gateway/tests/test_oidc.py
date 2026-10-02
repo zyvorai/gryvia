@@ -372,8 +372,40 @@ def test_auth_config_disabled(env, monkeypatch):
     c, main, idp = env
     monkeypatch.setattr(main, "OIDC_ENABLED", False)
     body = c.get("/api/auth/config").json()
-    assert body == {"oidcEnabled": False, "apiKeyEnabled": True}
+    assert body["oidcEnabled"] is False and body["apiKeyEnabled"] is True
+    assert "issuer" not in body
     assert idp.calls == []
+
+
+def test_auth_config_says_where_the_key_lives(env, monkeypatch):
+    c, main, _ = env
+    monkeypatch.setattr(main, "OIDC_ENABLED", False)
+    monkeypatch.setenv("GRYVIA_JOB_NAMESPACE", "ai-system")
+    monkeypatch.setenv("GRYVIA_API_KEY_SECRET", "my-key")
+    body = c.get("/api/auth/config").json()
+    assert body["credentials"] == {"username": "admin", "secret": "my-key", "key": "GRYVIA_API_KEY",
+                                   "namespace": "ai-system"}
+    assert body["instance"] == {"product": "Gryvia", "version": main.app.version, "namespace": "ai-system"}
+    assert main.API_KEY not in str(body)
+
+
+def test_auth_config_defaults_and_oidc_branch(env, monkeypatch):
+    c, main, _ = env
+    monkeypatch.delenv("GRYVIA_API_KEY_SECRET", raising=False)
+    monkeypatch.delenv("GRYVIA_JOB_NAMESPACE", raising=False)
+    body = c.get("/api/auth/config").json()
+    assert body["oidcEnabled"] is True
+    assert body["credentials"]["secret"] == "gryvia-api-key"
+    assert body["credentials"]["namespace"] == "gryvia-system"
+
+
+def test_auth_config_no_credentials_without_api_key(env, monkeypatch):
+    c, main, _ = env
+    monkeypatch.setattr(main, "OIDC_ENABLED", False)
+    monkeypatch.setattr(main, "API_KEY", "")
+    body = c.get("/api/auth/config").json()
+    assert body["apiKeyEnabled"] is False and "credentials" not in body
+    assert body["instance"]["product"] == "Gryvia"
 
 
 # -- OIDC disabled / other credential types ----------------------------------

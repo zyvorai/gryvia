@@ -186,9 +186,6 @@ th.num .th-sort { justify-content: flex-end; }
 .log-view { max-height: 420px; overflow: auto; margin: 0; white-space: pre-wrap; word-break: break-all; }
 .list-plain { list-style: none; margin: 0; padding: 0; }
 .pill-raw { text-transform: none; }
-/* Login card title is an h2 (the page h1 is the hero); mirrors netra's .login-card h1 */
-.login-card h2 { font-size: var(--fs-h2); letter-spacing: -0.01em; margin: 6px 0 4px; font-weight: 600; color: var(--text-primary); }
-
 /* Contrast (WCAG AA, 4.5:1 for small text). netra's grays and blue measure 3.3-4.5:1 at 11-14px, so the
    text tokens are darkened in light mode and brightened in dark mode. Measured in the browser on every page. */
 :root:not([data-theme="dark"]) { --text-secondary: #515154; --text-tertiary: #6b6b70; }

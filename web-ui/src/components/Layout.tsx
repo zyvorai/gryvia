@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/lib/auth'
+import ZyvorMark from '@/components/ZyvorMark'
 import { navFor } from '@/lib/roles'
 import { useIsAdmin } from '@/lib/useRole'
 import { applyTheme, readStoredTheme, toggleTheme, type Theme } from '@/theme'
@@ -92,8 +93,8 @@ export default function Layout({ children }: LayoutProps) {
       <nav className="nav" aria-label="Global" ref={navRef}>
         <div className="nav-inner">
           <Link to="/dashboard" className="brand" aria-label="Gryvia home">
-            <img src="/gryvia-logomark.svg" alt="" className="brand-mark" aria-hidden />
-            Gryvia
+            <ZyvorMark className="brand-mark" />
+            <span className="brand-word">Gryvia</span>
           </Link>
           <div className="navlinks">
             {navigation.map((item) =>

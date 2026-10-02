@@ -33,6 +33,12 @@ helm upgrade --install gryvia oci://ghcr.io/zyvorai/charts/gryvia -n gryvia-syst
   --set auth.existingSecret=my-gryvia-key
 ```
 
+To read the key in use (the sign-in page shows the same command, with your Secret and namespace):
+
+```bash
+kubectl -n gryvia-system get secret gryvia-api-key -o jsonpath='{.data.GRYVIA_API_KEY}' | base64 -d
+```
+
 The certificate is self-signed by default; your browser shows a warning once.
 
 ## What is installed

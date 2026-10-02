@@ -12,6 +12,9 @@ export interface AuthConfig {
   tokenEndpoint?: string
   scopes?: string
   error?: string
+  /** Where an operator reads the admin key (never the key itself). Absent when API-key login is off. */
+  credentials?: { username: string; secret: string; key: string; namespace: string }
+  instance?: { product: string; version: string; namespace: string }
 }
 
 export interface UserInfo {
@@ -72,6 +75,11 @@ function base64URLEncode(buffer: ArrayBuffer): string {
   let binary = ''
   bytes.forEach((b) => (binary += String.fromCharCode(b)))
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+/** The command an operator runs to print the admin key from its Secret. */
+export function kubectlCommand(c: { secret: string; key: string; namespace: string }): string {
+  return `kubectl -n ${c.namespace} get secret ${c.secret} -o jsonpath='{.data.${c.key}}' | base64 -d`
 }
 
 export function getStoredToken(): string | null {
