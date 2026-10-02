@@ -1,5 +1,6 @@
 import type { LineageGraph } from './lineage'
 import type { AuditResponse } from './audit'
+import type { CopilotReply } from './copilot'
 import axios from 'axios'
 import toast from 'react-hot-toast'
 import { notifyUnauthorized } from '@/lib/authEvents'
@@ -1084,6 +1085,11 @@ export const api = {
   },
   exportAudit: async (params: Record<string, string | number>): Promise<Blob> => {
     const { data } = await apiClient.get('/audit/export.csv', { params, responseType: 'blob' })
+    return data
+  },
+
+  copilotChat: async (body: { model: string; question: string; history: { role: string; content: string }[] }, key: string): Promise<CopilotReply> => {
+    const { data } = await apiClient.post('/copilot/chat', body, { headers: { 'X-LLM-Key': key }, timeout: 300_000 })
     return data
   },
 

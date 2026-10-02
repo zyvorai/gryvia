@@ -30,6 +30,7 @@ export const NAVIGATION: NavItem[] = [
       { name: 'Lineage', href: '/lineage', blurb: 'Dataset to job to model to service' },
       { name: 'Inference', href: '/inference', blurb: 'Serving and autoscaling' },
       { name: 'LLM gateway', href: '/llm', blurb: 'OpenAI endpoint, API keys and tokens' },
+      { name: 'Copilot', href: '/copilot', blurb: 'Ask about your jobs, models and data' },
       { name: 'Playground', href: '/playground', blurb: 'Chat with a model, copy the call' },
       { name: 'Vector indexes', href: '/rag', blurb: 'RAG retrieval over your datasets' },
       { name: 'Agents', href: '/agents', blurb: 'Tool-calling agents on your models' },
