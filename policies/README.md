@@ -12,8 +12,8 @@ Advanced scheduling policies for optimizing GPU resource allocation in Gryvia.
 > GPU memory). There is no in-tree gang scheduler or DRF fair-share queue (unused code for these was removed). Quota limits (max GPUs, running jobs, allowed GPU
 > types, hard budget) are enforced by the quota operator by rejecting pending jobs. Backfilling, bin
 > packing, locality, topology-aware, SLA and preemption policies, borrowing and the percentages and
-> savings quoted below are design targets, not measured. `GryviaSLA`, `GryviaPriority` and
-> `GryviaReservation` are CRDs with no controller wired yet.
+> savings quoted below are design targets, not measured. `GryviaPriority` maps to a
+> PriorityClass and `GryviaReservation` taints reserved nodes (opt-in); neither implements the policies below.
 
 ## Available Policies
 

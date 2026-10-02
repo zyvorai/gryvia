@@ -30,7 +30,6 @@ func init() {
 }
 
 func main() {
-	var reportUnsupportedAPIs bool
 	var metricsAddr string
 	var enableGPUHealth, enableGPURemediation, enableGPUSharing bool
 	var enableLeaderElection bool
@@ -43,7 +42,6 @@ func main() {
 	flag.BoolVar(&enableGPUSharing, "enable-gpu-sharing", false, "Reconcile GryviaGPUSharingPolicy: label matching GPU nodes for time-slicing, MIG and fractional sharing (nvidia.com/device-plugin.config, nvidia.com/mig.config and gryvia.io/* labels). Off by default; it writes node labels.")
 	flag.StringVar(&devicePluginConfigName, "device-plugin-config-name", "", "ConfigMap the NVIDIA device plugin reads (GPU Operator devicePlugin.config.name). With --device-plugin-config-namespace, a time-slicing GryviaGPUSharingPolicy writes the data key for its maxPodsPerGPU there. Empty = only label nodes with the fixed key gryvia-time-slicing.")
 	flag.StringVar(&devicePluginConfigNamespace, "device-plugin-config-namespace", "", "Namespace of --device-plugin-config-name.")
-	flag.BoolVar(&reportUnsupportedAPIs, "report-unsupported-apis", false, "Report unsupported legacy APIs with Ready=False instead of silently leaving them pending.")
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", true,
@@ -122,13 +120,6 @@ func main() {
 			DevicePluginConfigNamespace: devicePluginConfigNamespace,
 		}).SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "GryviaGPUSharingPolicy")
-			os.Exit(1)
-		}
-	}
-
-	if reportUnsupportedAPIs {
-		if err := controllers.RegisterAPIContracts(mgr); err != nil {
-			setupLog.Error(err, "API capability contracts")
 			os.Exit(1)
 		}
 	}

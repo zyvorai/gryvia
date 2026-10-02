@@ -4,133 +4,143 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// GryviaJobHookSpec defines the desired state of GryviaJobHook
+// GryviaJobHookSpec selects job phase transitions in the hook's namespace and the webhook they are delivered to.
 type GryviaJobHookSpec struct {
-	// Trigger is the lifecycle phase that triggers this hook
-	Trigger string `json:"trigger"`
+	// Events are the phases that trigger a delivery when a job reaches them.
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=8
+	// +listType=set
+	Events []JobHookEvent `json:"events"`
 
-	// Selector restricts which jobs this hook applies to
-	Selector *HookSelector `json:"selector,omitempty"`
+	// Kinds restricts the watched kinds; empty means both.
+	// +kubebuilder:validation:MaxItems=2
+	// +listType=set
+	// +optional
+	Kinds []JobHookKind `json:"kinds,omitempty"`
 
-	// Action defines what to execute when triggered
-	Action HookAction `json:"action"`
+	// Selector restricts the jobs by label; empty matches every job in the namespace.
+	// +optional
+	Selector *metav1.LabelSelector `json:"selector,omitempty"`
 
-	// FailurePolicy defines behavior on hook failure (ignore, fail-job, retry)
-	FailurePolicy string `json:"failurePolicy,omitempty"`
+	// Webhook is where deliveries are POSTed.
+	Webhook JobHookWebhook `json:"webhook"`
 
-	// Retry defines retry configuration for the hook
-	Retry *HookRetry `json:"retry,omitempty"`
+	// Retry bounds redelivery of a failed POST.
+	// +optional
+	Retry *JobHookRetry `json:"retry,omitempty"`
 
-	// Condition is an expression to evaluate before executing
-	Condition string `json:"condition,omitempty"`
+	// Suspend stops new deliveries; transitions that happen while suspended are not delivered later.
+	// +optional
+	Suspend bool `json:"suspend,omitempty"`
 }
 
-// HookSelector defines which jobs a hook applies to
-type HookSelector struct {
-	// MatchLabels restricts by job labels
-	MatchLabels map[string]string `json:"matchLabels,omitempty"`
-}
+// JobHookEvent is a job phase.
+// +kubebuilder:validation:Enum=Running;Succeeded;Failed;Cancelled;Preempted;Rejected
+type JobHookEvent string
 
-// HookAction defines the hook action to execute
-type HookAction struct {
-	// Type is the action type (exec, webhook, k8s-job, script, notification)
-	Type string `json:"type"`
+// JobHookKind is a watched job kind.
+// +kubebuilder:validation:Enum=GryviaAIJob;GryviaWorkflow
+type JobHookKind string
 
-	// Exec defines an exec action
-	Exec *ExecAction `json:"exec,omitempty"`
-
-	// Webhook defines a webhook action
-	Webhook *WebhookAction `json:"webhook,omitempty"`
-
-	// K8sJob defines a Kubernetes Job action
-	K8sJob *K8sJobAction `json:"k8sJob,omitempty"`
-
-	// Notification defines a notification action
-	Notification *NotificationAction `json:"notification,omitempty"`
-}
-
-// ExecAction defines a command execution
-type ExecAction struct {
-	// Command to execute
-	Command []string `json:"command"`
-
-	// Timeout for execution
-	Timeout string `json:"timeout,omitempty"`
-}
-
-// WebhookAction defines an HTTP webhook call
-type WebhookAction struct {
-	// URL to call
+// JobHookWebhook is the receiver.
+type JobHookWebhook struct {
+	// URL is an absolute http(s) URL without credentials. Plain http is only accepted for addresses the operator
+	// allows (--job-hook-allowed-cidrs), typically in-cluster receivers.
+	// +kubebuilder:validation:MaxLength=2048
+	// +kubebuilder:validation:Pattern=`^https?://`
 	URL string `json:"url"`
 
-	// Method is the HTTP method (GET, POST, PUT)
-	Method string `json:"method,omitempty"`
+	// Format of the body: gryvia (the delivery JSON) or slack (a {"text": ...} message for an incoming webhook).
+	// +kubebuilder:validation:Enum=gryvia;slack
+	// +kubebuilder:default=gryvia
+	// +optional
+	Format string `json:"format,omitempty"`
 
-	// Headers are additional HTTP headers
+	// Headers are extra, non-secret request headers.
+	// +kubebuilder:validation:MaxProperties=16
+	// +optional
 	Headers map[string]string `json:"headers,omitempty"`
 
-	// Body is the request body template
-	Body string `json:"body,omitempty"`
+	// SecretRef names a Secret in the hook's namespace whose "secret" key signs each body
+	// (X-Gryvia-Signature: sha256=HMAC(secret, "<X-Gryvia-Timestamp>.<body>")).
+	// +optional
+	SecretRef *JobHookSecretRef `json:"secretRef,omitempty"`
 
-	// Timeout for the webhook call
-	Timeout string `json:"timeout,omitempty"`
+	// TimeoutSeconds bounds one POST.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=30
+	// +kubebuilder:default=10
+	// +optional
+	TimeoutSeconds int32 `json:"timeoutSeconds,omitempty"`
 }
 
-// K8sJobAction defines a Kubernetes Job to run
-type K8sJobAction struct {
-	// Image is the container image
-	Image string `json:"image"`
-
-	// Command to execute
-	Command []string `json:"command,omitempty"`
+// JobHookSecretRef names a Secret in the hook's namespace.
+type JobHookSecretRef struct {
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	Name string `json:"name"`
 }
 
-// NotificationAction defines a notification to send
-type NotificationAction struct {
-	// Channels to notify (email, slack, pagerduty, webhook)
-	Channels []string `json:"channels,omitempty"`
-
-	// Template is the notification message template
-	Template string `json:"template,omitempty"`
-
-	// Recipients are the notification recipients
-	Recipients []string `json:"recipients,omitempty"`
-}
-
-// HookRetry defines retry configuration for hooks
-type HookRetry struct {
-	// Attempts is the max number of retries
+// JobHookRetry bounds redelivery.
+type JobHookRetry struct {
+	// Attempts is the total number of POSTs for one transition, including the first.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=10
+	// +kubebuilder:default=3
+	// +optional
 	Attempts int32 `json:"attempts,omitempty"`
 
-	// Backoff is the delay between retries
-	Backoff string `json:"backoff,omitempty"`
+	// BackoffSeconds is the wait before the second attempt; it doubles for each later one.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=3600
+	// +kubebuilder:default=10
+	// +optional
+	BackoffSeconds int32 `json:"backoffSeconds,omitempty"`
+}
+
+// JobHookDelivery describes one delivery.
+type JobHookDelivery struct {
+	Kind      string      `json:"kind"`
+	Name      string      `json:"name"`
+	Event     string      `json:"event"`
+	Time      metav1.Time `json:"time"`
+	Attempt   int32       `json:"attempt"`
+	Succeeded bool        `json:"succeeded"`
+	// +optional
+	Error string `json:"error,omitempty"`
 }
 
 // GryviaJobHookStatus defines the observed state of GryviaJobHook
 type GryviaJobHookStatus struct {
-	// Conditions report runtime capability and remediation state.
+	// Conditions: Ready (the spec is valid and the signing Secret, if any, exists).
+	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
-	// LastExecutionTime is the time of the last hook execution
-	LastExecutionTime *metav1.Time `json:"lastExecutionTime,omitempty"`
+	// Deliveries counts successful deliveries.
+	// +optional
+	Deliveries int64 `json:"deliveries,omitempty"`
 
-	// ExecutionCount is the total number of executions
-	ExecutionCount int32 `json:"executionCount,omitempty"`
+	// Failures counts transitions given up on after the last attempt.
+	// +optional
+	Failures int64 `json:"failures,omitempty"`
 
-	// LastStatus is the result of the last execution (success, failed, skipped)
-	LastStatus string `json:"lastStatus,omitempty"`
+	// LastDelivery is the most recent attempt.
+	// +optional
+	LastDelivery *JobHookDelivery `json:"lastDelivery,omitempty"`
+
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 }
 
-//+kubebuilder:deprecatedversion:warning="no controller reconciles this kind and its spec is not executed; it is kept readable for migration and will be removed in a future release"
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
-//+kubebuilder:resource:scope=Cluster
-//+kubebuilder:printcolumn:name="Trigger",type=string,JSONPath=`.spec.trigger`
-//+kubebuilder:printcolumn:name="Action",type=string,JSONPath=`.spec.action.type`
-//+kubebuilder:printcolumn:name="Last-Execution",type=string,JSONPath=`.status.lastExecutionTime`
+//+kubebuilder:resource:path=gryviajobhooks,scope=Namespaced,shortName=gjh
+//+kubebuilder:printcolumn:name="Events",type=string,JSONPath=`.spec.events`
+//+kubebuilder:printcolumn:name="Deliveries",type=integer,JSONPath=`.status.deliveries`
+//+kubebuilder:printcolumn:name="Failures",type=integer,JSONPath=`.status.failures`
 //+kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// GryviaJobHook is the Schema for the gryviajobhooks API
+// GryviaJobHook delivers a webhook when a GryviaAIJob or GryviaWorkflow in its namespace reaches one of its events.
 type GryviaJobHook struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

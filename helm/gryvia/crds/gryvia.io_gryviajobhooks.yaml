@@ -11,29 +11,29 @@ spec:
     kind: GryviaJobHook
     listKind: GryviaJobHookList
     plural: gryviajobhooks
+    shortNames:
+    - gjh
     singular: gryviajobhook
-  scope: Cluster
+  scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.trigger
-      name: Trigger
+    - jsonPath: .spec.events
+      name: Events
       type: string
-    - jsonPath: .spec.action.type
-      name: Action
-      type: string
-    - jsonPath: .status.lastExecutionTime
-      name: Last-Execution
-      type: string
+    - jsonPath: .status.deliveries
+      name: Deliveries
+      type: integer
+    - jsonPath: .status.failures
+      name: Failures
+      type: integer
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
-    deprecated: true
-    deprecationWarning: no controller reconciles this kind and its spec is not executed;
-      it is kept readable for migration and will be removed in a future release
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: GryviaJobHook is the Schema for the gryviajobhooks API
+        description: GryviaJobHook delivers a webhook when a GryviaAIJob or GryviaWorkflow
+          in its namespace reaches one of its events.
         properties:
           apiVersion:
             description: |-
@@ -53,127 +53,164 @@ spec:
           metadata:
             type: object
           spec:
-            description: GryviaJobHookSpec defines the desired state of GryviaJobHook
+            description: GryviaJobHookSpec selects job phase transitions in the hook's
+              namespace and the webhook they are delivered to.
             properties:
-              action:
-                description: Action defines what to execute when triggered
-                properties:
-                  exec:
-                    description: Exec defines an exec action
-                    properties:
-                      command:
-                        description: Command to execute
-                        items:
-                          type: string
-                        type: array
-                      timeout:
-                        description: Timeout for execution
-                        type: string
-                    required:
-                    - command
-                    type: object
-                  k8sJob:
-                    description: K8sJob defines a Kubernetes Job action
-                    properties:
-                      command:
-                        description: Command to execute
-                        items:
-                          type: string
-                        type: array
-                      image:
-                        description: Image is the container image
-                        type: string
-                    required:
-                    - image
-                    type: object
-                  notification:
-                    description: Notification defines a notification action
-                    properties:
-                      channels:
-                        description: Channels to notify (email, slack, pagerduty,
-                          webhook)
-                        items:
-                          type: string
-                        type: array
-                      recipients:
-                        description: Recipients are the notification recipients
-                        items:
-                          type: string
-                        type: array
-                      template:
-                        description: Template is the notification message template
-                        type: string
-                    type: object
-                  type:
-                    description: Type is the action type (exec, webhook, k8s-job,
-                      script, notification)
-                    type: string
-                  webhook:
-                    description: Webhook defines a webhook action
-                    properties:
-                      body:
-                        description: Body is the request body template
-                        type: string
-                      headers:
-                        additionalProperties:
-                          type: string
-                        description: Headers are additional HTTP headers
-                        type: object
-                      method:
-                        description: Method is the HTTP method (GET, POST, PUT)
-                        type: string
-                      timeout:
-                        description: Timeout for the webhook call
-                        type: string
-                      url:
-                        description: URL to call
-                        type: string
-                    required:
-                    - url
-                    type: object
-                required:
-                - type
-                type: object
-              condition:
-                description: Condition is an expression to evaluate before executing
-                type: string
-              failurePolicy:
-                description: FailurePolicy defines behavior on hook failure (ignore,
-                  fail-job, retry)
-                type: string
+              events:
+                description: Events are the phases that trigger a delivery when a
+                  job reaches them.
+                items:
+                  description: JobHookEvent is a job phase.
+                  enum:
+                  - Running
+                  - Succeeded
+                  - Failed
+                  - Cancelled
+                  - Preempted
+                  - Rejected
+                  type: string
+                maxItems: 8
+                minItems: 1
+                type: array
+                x-kubernetes-list-type: set
+              kinds:
+                description: Kinds restricts the watched kinds; empty means both.
+                items:
+                  description: JobHookKind is a watched job kind.
+                  enum:
+                  - GryviaAIJob
+                  - GryviaWorkflow
+                  type: string
+                maxItems: 2
+                type: array
+                x-kubernetes-list-type: set
               retry:
-                description: Retry defines retry configuration for the hook
+                description: Retry bounds redelivery of a failed POST.
                 properties:
                   attempts:
-                    description: Attempts is the max number of retries
+                    default: 3
+                    description: Attempts is the total number of POSTs for one transition,
+                      including the first.
                     format: int32
+                    maximum: 10
+                    minimum: 1
                     type: integer
-                  backoff:
-                    description: Backoff is the delay between retries
-                    type: string
+                  backoffSeconds:
+                    default: 10
+                    description: BackoffSeconds is the wait before the second attempt;
+                      it doubles for each later one.
+                    format: int32
+                    maximum: 3600
+                    minimum: 1
+                    type: integer
                 type: object
               selector:
-                description: Selector restricts which jobs this hook applies to
+                description: Selector restricts the jobs by label; empty matches every
+                  job in the namespace.
                 properties:
+                  matchExpressions:
+                    description: matchExpressions is a list of label selector requirements.
+                      The requirements are ANDed.
+                    items:
+                      description: |-
+                        A label selector requirement is a selector that contains values, a key, and an operator that
+                        relates the key and values.
+                      properties:
+                        key:
+                          description: key is the label key that the selector applies
+                            to.
+                          type: string
+                        operator:
+                          description: |-
+                            operator represents a key's relationship to a set of values.
+                            Valid operators are In, NotIn, Exists and DoesNotExist.
+                          type: string
+                        values:
+                          description: |-
+                            values is an array of string values. If the operator is In or NotIn,
+                            the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                            the values array must be empty. This array is replaced during a strategic
+                            merge patch.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                      required:
+                      - key
+                      - operator
+                      type: object
+                    type: array
+                    x-kubernetes-list-type: atomic
                   matchLabels:
                     additionalProperties:
                       type: string
-                    description: MatchLabels restricts by job labels
+                    description: |-
+                      matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                      map is equivalent to an element of matchExpressions, whose key field is "key", the
+                      operator is "In", and the values array contains only "value". The requirements are ANDed.
                     type: object
                 type: object
-              trigger:
-                description: Trigger is the lifecycle phase that triggers this hook
-                type: string
+                x-kubernetes-map-type: atomic
+              suspend:
+                description: Suspend stops new deliveries; transitions that happen
+                  while suspended are not delivered later.
+                type: boolean
+              webhook:
+                description: Webhook is where deliveries are POSTed.
+                properties:
+                  format:
+                    default: gryvia
+                    description: 'Format of the body: gryvia (the delivery JSON) or
+                      slack (a {"text": ...} message for an incoming webhook).'
+                    enum:
+                    - gryvia
+                    - slack
+                    type: string
+                  headers:
+                    additionalProperties:
+                      type: string
+                    description: Headers are extra, non-secret request headers.
+                    maxProperties: 16
+                    type: object
+                  secretRef:
+                    description: |-
+                      SecretRef names a Secret in the hook's namespace whose "secret" key signs each body
+                      (X-Gryvia-Signature: sha256=HMAC(secret, "<X-Gryvia-Timestamp>.<body>")).
+                    properties:
+                      name:
+                        maxLength: 253
+                        minLength: 1
+                        type: string
+                    required:
+                    - name
+                    type: object
+                  timeoutSeconds:
+                    default: 10
+                    description: TimeoutSeconds bounds one POST.
+                    format: int32
+                    maximum: 30
+                    minimum: 1
+                    type: integer
+                  url:
+                    description: |-
+                      URL is an absolute http(s) URL without credentials. Plain http is only accepted for addresses the operator
+                      allows (--job-hook-allowed-cidrs), typically in-cluster receivers.
+                    maxLength: 2048
+                    pattern: ^https?://
+                    type: string
+                required:
+                - url
+                type: object
             required:
-            - action
-            - trigger
+            - events
+            - webhook
             type: object
           status:
             description: GryviaJobHookStatus defines the observed state of GryviaJobHook
             properties:
               conditions:
-                description: Conditions report runtime capability and remediation
-                  state.
+                description: 'Conditions: Ready (the spec is valid and the signing
+                  Secret, if any, exists).'
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -229,18 +266,45 @@ spec:
                   - type
                   type: object
                 type: array
-              executionCount:
-                description: ExecutionCount is the total number of executions
-                format: int32
+              deliveries:
+                description: Deliveries counts successful deliveries.
+                format: int64
                 type: integer
-              lastExecutionTime:
-                description: LastExecutionTime is the time of the last hook execution
-                format: date-time
-                type: string
-              lastStatus:
-                description: LastStatus is the result of the last execution (success,
-                  failed, skipped)
-                type: string
+              failures:
+                description: Failures counts transitions given up on after the last
+                  attempt.
+                format: int64
+                type: integer
+              lastDelivery:
+                description: LastDelivery is the most recent attempt.
+                properties:
+                  attempt:
+                    format: int32
+                    type: integer
+                  error:
+                    type: string
+                  event:
+                    type: string
+                  kind:
+                    type: string
+                  name:
+                    type: string
+                  succeeded:
+                    type: boolean
+                  time:
+                    format: date-time
+                    type: string
+                required:
+                - attempt
+                - event
+                - kind
+                - name
+                - succeeded
+                - time
+                type: object
+              observedGeneration:
+                format: int64
+                type: integer
             type: object
         type: object
     served: true

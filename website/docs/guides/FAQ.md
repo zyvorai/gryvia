@@ -114,7 +114,7 @@ MIG (Multi-Instance GPU) partitions A100/H100-class GPUs into isolated instances
 
 ### How do I retry failed jobs?
 
-Training, fine-tuning and evaluation jobs run as a batch Job: `spec.retryLimit` is its `backoffLimit` (default 0, so the first failed pod fails the job) and `status.retries` counts failed pods. There is no `retryPolicy` field on the job (a `GryviaRetryPolicy` CRD exists without a controller). Inference jobs (StatefulSet) restart a crashed container in place. A `Failed` job stays failed; to rerun, delete and resubmit:
+Training, fine-tuning and evaluation jobs run as a batch Job: `spec.retryLimit` is its `backoffLimit` (default 0, so the first failed pod fails the job) and `status.retries` counts failed pods. There is no `retryPolicy` field on the job. Inference jobs (StatefulSet) restart a crashed container in place. A `Failed` job stays failed; to rerun, delete and resubmit:
 
 ```bash
 gryvia delete job my-job --yes
@@ -204,7 +204,7 @@ Only through Kubernetes and NVIDIA mechanisms (for example the device plugin's t
 
 ### Is Gryvia SOC2 or HIPAA compliant?
 
-No. Gryvia has no compliance certification, and it does not implement an audit trail: `GryviaAudit` is a CRD with no controller. Whether your deployment meets a framework depends on your cluster, storage, identity provider and processes. See [SECURITY.md](https://github.com/zyvorai/gryvia/blob/main/SECURITY.md) and [Auth and TLS](AUTH_AND_TLS.md) for what the project does provide (signed sessions, rate-limited login, tenant scoping, TLS on the gateway and dashboard).
+No. Gryvia has no compliance certification, and it does not implement an audit trail of its own (use the Kubernetes API server audit log and the gateway's request logs). Whether your deployment meets a framework depends on your cluster, storage, identity provider and processes. See [SECURITY.md](https://github.com/zyvorai/gryvia/blob/main/SECURITY.md) and [Auth and TLS](AUTH_AND_TLS.md) for what the project does provide (signed sessions, rate-limited login, tenant scoping, TLS on the gateway and dashboard).
 
 ### How is data encrypted?
 
@@ -216,11 +216,11 @@ Gryvia does not encrypt your data itself. The gateway serves HTTPS with the char
 
 ### What are job hooks?
 
-`GryviaJobHook` is a CRD for actions at job lifecycle events. No controller runs them today; use your own automation.
+A `GryviaJobHook` sends a signed HTTP POST when a `GryviaAIJob` or `GryviaWorkflow` in its namespace reaches a chosen phase (for example `Failed` or `Succeeded`). It is opt-in (`aiOperator.jobHooks.enabled`); see [job hooks](https://github.com/zyvorai/gryvia/blob/main/docs/job-hooks.md).
 
 ### Does auto-scaling work?
 
-No. `GryviaAutoScaler` is a CRD without a controller and Gryvia does not add or remove nodes. Use your cloud or cluster autoscaler.
+Gryvia does not add or remove nodes. Use your cloud's cluster autoscaler or Karpenter; inference services scale their pods with an HPA.
 
 ### Can I reserve GPUs in advance?
 

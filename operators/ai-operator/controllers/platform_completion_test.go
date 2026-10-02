@@ -30,9 +30,9 @@ func TestPriorityCreatesOwnedClassWithoutInventingPreemption(t *testing.T) {
 	}
 }
 func TestUnsupportedAPIReportsFailureWithoutActing(t *testing.T) {
-	p := &gryviav1.GryviaAutoScaler{ObjectMeta: metav1.ObjectMeta{Name: "legacy", Namespace: "ns", Generation: 2}}
+	p := &gryviav1.GryviaJobHook{ObjectMeta: metav1.ObjectMeta{Name: "legacy", Namespace: "ns", Generation: 2}}
 	c := fake.NewClientBuilder().WithScheme(mlScheme()).WithObjects(p).WithStatusSubresource(p).Build()
-	r := &apiContract{Client: c, Prototype: &gryviav1.GryviaAutoScaler{}}
+	r := &apiContract{Client: c, Prototype: &gryviav1.GryviaJobHook{}}
 	req := ctrl.Request{NamespacedName: types.NamespacedName{Name: p.Name, Namespace: p.Namespace}}
 	if _, err := r.Reconcile(context.Background(), req); err != nil {
 		t.Fatal(err)

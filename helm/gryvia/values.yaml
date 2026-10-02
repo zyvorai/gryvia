@@ -110,6 +110,13 @@ aiOperator:
   agents:
     enabled: false
     image: ghcr.io/zyvorai/gryvia-agent-runtime:latest
+  # Job hooks (GryviaJobHook, namespaced): a signed POST to a tenant's webhook when a GryviaAIJob or GryviaWorkflow in
+  # its namespace reaches one of the hook's phases. Receivers on private, loopback or link-local addresses are refused
+  # unless listed in allowedCIDRs, which also permits plain http to them (for example the cluster's service CIDR for
+  # in-cluster receivers). See docs/job-hooks.md.
+  jobHooks:
+    enabled: false
+    allowedCIDRs: []
   extraArgs: []
   # Fold the per-node entries collectors write into GryviaFabricSignal status.nodes[] (network-intelligence
   # ebpf.fabricStatusPerNode) into the top-level status: max for degradation metrics, sample-weighted means for ratios,

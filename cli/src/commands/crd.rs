@@ -52,6 +52,11 @@ pub fn text_at(v: &Value, ptr: &str) -> String {
         Some(Value::String(s)) if !s.is_empty() => s.clone(),
         Some(Value::Number(n)) => n.to_string(),
         Some(Value::Bool(b)) => b.to_string(),
+        Some(Value::Array(a)) if !a.is_empty() && a.iter().all(Value::is_string) => a
+            .iter()
+            .filter_map(Value::as_str)
+            .collect::<Vec<_>>()
+            .join(","),
         _ => "-".to_string(),
     }
 }

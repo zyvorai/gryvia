@@ -1,273 +1,56 @@
-# Example: Pre-Start Data Validation Hook
+# GryviaJobHook examples. Needs aiOperator.jobHooks.enabled; see docs/job-hooks.md.
+
+# Slack message when any AI job or workflow in the namespace fails or is preempted.
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaJobHook
 metadata:
-  name: validate-data-pre-start
+  name: slack-failures
+  namespace: ml-research
 spec:
-  trigger: pre-start
-
-  selector:
-    matchLabels:
-      framework: pytorch
-
-  action:
-    type: exec
-    exec:
-      command:
-        - python
-        - /scripts/validate_data.py
-        - --data-path={{ .job.spec.volumes.data.path }}
-      timeout: 5m
-
-  failurePolicy: fail-job  # Don't start job if validation fails
+  events: [Failed, Preempted]
+  webhook:
+    url: https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+    format: slack
 ---
-# Example: Post-Completion Model Upload
+# Signed JSON to your own receiver when an NLP team's training job succeeds, for example to push the model to a
+# registry. The Secret's "secret" key signs each body (X-Gryvia-Signature).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: hook-secret
+  namespace: ml-research
+stringData:
+  secret: change-me
+---
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaJobHook
 metadata:
-  name: upload-model-post-completion
+  name: publish-model
+  namespace: ml-research
 spec:
-  trigger: post-completion
-
+  events: [Succeeded]
+  kinds: [GryviaAIJob]
   selector:
     matchLabels:
-      type: training
-
-  condition: "{{job.exitCode}} == 0"  # Only on success
-
-  action:
-    type: k8sJob
-    k8sJob:
-      image: amazon/aws-cli:2.22.0
-      command:
-        - aws
-        - s3
-        - sync
-        - /checkpoints/{{ .job.name }}
-        - s3://models-bucket/{{ .job.metadata.namespace }}/{{ .job.name }}
-
-  failurePolicy: retry
+      team: nlp
+  webhook:
+    url: https://automation.example.com/gryvia/job-succeeded
+    secretRef:
+      name: hook-secret
+    timeoutSeconds: 15
   retry:
-    attempts: 3
-    backoff: 1m
+    attempts: 5
+    backoffSeconds: 30
 ---
-# Example: On-Failure Notification
+# Each run of scheduled workflows, delivered to an in-cluster receiver over http (the operator must list the
+# cluster's service CIDR in aiOperator.jobHooks.allowedCIDRs).
 apiVersion: gryvia.io/v1alpha1
 kind: GryviaJobHook
 metadata:
-  name: notify-on-failure
+  name: workflow-runs
+  namespace: ml-research
 spec:
-  trigger: on-failure
-
-  selector:
-    matchLabels:
-      priority: high
-
-  action:
-    type: notification
-    notification:
-      channels: [email, slack, pagerduty]
-      recipients:
-        - ml-team@company.com
-        - on-call@company.com
-      template: |
-        🚨 High Priority Job Failed
-
-        Job: {{ .job.name }}
-        Namespace: {{ .job.namespace }}
-        Exit Code: {{ .job.exitCode }}
-        Duration: {{ .job.duration }}
-        Cost: ${{ .job.cost }}
-
-        Error: {{ .job.error }}
-
-        Logs: kubectl logs {{ .job.name }}
-
-  failurePolicy: ignore
----
-# Example: Pre-Checkpoint Hook
-apiVersion: gryvia.io/v1alpha1
-kind: GryviaJobHook
-metadata:
-  name: optimize-checkpoint
-spec:
-  trigger: on-checkpoint
-
-  action:
-    type: exec
-    exec:
-      command:
-        - python
-        - /scripts/compress_checkpoint.py
-        - --checkpoint-dir=/checkpoints
-      timeout: 2m
-
-  failurePolicy: ignore  # Don't fail checkpoint if compression fails
----
-# Example: Webhook Integration (Weights & Biases)
-apiVersion: gryvia.io/v1alpha1
-kind: GryviaJobHook
-metadata:
-  name: wandb-integration
-spec:
-  trigger: post-completion
-
-  action:
-    type: webhook
-    webhook:
-      url: https://api.wandb.ai/api/v1/runs
-      method: POST
-      headers:
-        Authorization: "Bearer ${WANDB_API_KEY}"
-        Content-Type: "application/json"
-      body: |
-        {
-          "job_name": "{{ .job.name }}",
-          "status": "{{ .job.status }}",
-          "duration": {{ .job.duration }},
-          "cost": {{ .job.cost }},
-          "gpu_type": "{{ .job.spec.resources.gpuType }}",
-          "gpu_count": {{ .job.spec.resources.gpuCount }},
-          "metrics": {{ .job.metrics | toJson }}
-        }
-      timeout: 30s
-
-  failurePolicy: ignore
----
-# Example: Pre-Retry Resource Adjustment
-apiVersion: gryvia.io/v1alpha1
-kind: GryviaJobHook
-metadata:
-  name: adjust-resources-pre-retry
-spec:
-  trigger: pre-retry
-
-  condition: "{{job.failureReason}} contains 'out of memory'"
-
-  action:
-    type: exec
-    exec:
-      command:
-        - kubectl
-        - patch
-        - gryviaaijob
-        - "{{ .job.name }}"
-        - -n
-        - "{{ .job.namespace }}"
-        - --type=json
-        - -p
-        - '[{"op": "replace", "path": "/spec/resources/gpuType", "value": "A100-80G"}]'
-
-  failurePolicy: ignore
----
-# Example: Cost Tracking Hook
-apiVersion: gryvia.io/v1alpha1
-kind: GryviaJobHook
-metadata:
-  name: track-job-cost
-spec:
-  trigger: post-completion
-
-  action:
-    type: webhook
-    webhook:
-      url: https://cost-tracker.company.com/api/jobs
-      method: POST
-      body: |
-        {
-          "job_id": "{{ .job.name }}",
-          "team": "{{ .job.spec.owner.name }}",
-          "cost": {{ .job.cost }},
-          "gpu_hours": {{ .job.gpuHours }},
-          "timestamp": "{{ .job.completionTime }}"
-        }
----
-# Example: Model Registry Hook
-apiVersion: gryvia.io/v1alpha1
-kind: GryviaJobHook
-metadata:
-  name: register-model
-spec:
-  trigger: post-completion
-
-  selector:
-    matchLabels:
-      type: training
-
-  condition: "{{job.metrics.accuracy}} > 0.95"
-
-  action:
-    type: k8sJob
-    k8sJob:
-      image: python:3.11
-      command:
-        - python
-        - -c
-        - |
-          import mlflow
-          mlflow.set_tracking_uri("http://mlflow:5000")
-          mlflow.register_model(
-              model_uri="/checkpoints/{{ .job.name }}/best-model",
-              name="{{ .job.metadata.labels.model-name }}"
-          )
----
-# Example: Slack Notification with Rich Format
-apiVersion: gryvia.io/v1alpha1
-kind: GryviaJobHook
-metadata:
-  name: slack-job-completion
-spec:
-  trigger: post-completion
-
-  action:
-    type: webhook
-    webhook:
-      url: "${SLACK_WEBHOOK_URL}"
-      method: POST
-      headers:
-        Content-Type: "application/json"
-      body: |
-        {
-          "text": "Job {{ .job.name }} completed",
-          "blocks": [
-            {
-              "type": "section",
-              "text": {
-                "type": "mrkdwn",
-                "text": "*Job Completed*\n\n*Job:* {{ .job.name }}\n*Status:* {{ .job.status }}\n*Duration:* {{ .job.duration }}\n*Cost:* ${{ .job.cost }}"
-              }
-            },
-            {
-              "type": "section",
-              "fields": [
-                {"type": "mrkdwn", "text": "*GPU Type:*\n{{ .job.spec.resources.gpuType }}"},
-                {"type": "mrkdwn", "text": "*GPU Count:*\n{{ .job.spec.resources.gpuCount }}"},
-                {"type": "mrkdwn", "text": "*Team:*\n{{ .job.spec.owner.name }}"},
-                {"type": "mrkdwn", "text": "*Priority:*\n{{ .job.spec.priority }}"}
-              ]
-            }
-          ]
-        }
----
-# Example: Auto-Cleanup Hook
-apiVersion: gryvia.io/v1alpha1
-kind: GryviaJobHook
-metadata:
-  name: cleanup-scratch
-spec:
-  trigger: post-completion
-
-  action:
-    type: exec
-    exec:
-      command:
-        - bash
-        - -c
-        - |
-          # Clean up scratch space
-          rm -rf /scratch/{{ .job.name }}/*
-          # Keep checkpoints
-          echo "Cleaned up scratch space for {{ .job.name }}"
-      timeout: 5m
-
-  failurePolicy: ignore
+  events: [Succeeded, Failed]
+  kinds: [GryviaWorkflow]
+  webhook:
+    url: http://run-tracker.ml-research.svc.cluster.local:8080/runs

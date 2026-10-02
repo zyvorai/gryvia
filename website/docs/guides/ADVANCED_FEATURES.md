@@ -7,11 +7,12 @@ Overview of Gryvia's advanced capability areas, with what is implemented and wha
 | Area | Kind(s) | State |
 |------|---------|-------|
 | GPU health monitoring | `GryviaHealthCheck` | CRD only, no controller registered. `gryvia health` is separate and reads `GryviaGpuNode`, `GryviaStorage` and `GryviaNetwork` status |
-| Retry policies | `GryviaRetryPolicy` | CRD only, no controller |
+| Retries | `GryviaAIJob.spec.retryLimit` | Running: the batch Job's `backoffLimit` |
+| Job hooks | `GryviaJobHook` | Opt-in (`aiOperator.jobHooks.enabled`): signed webhooks when an AI job or workflow succeeds or fails; see [job hooks](https://github.com/zyvorai/gryvia/blob/main/docs/job-hooks.md) |
 | Reservations | `GryviaReservation` | Opt-in (`quotaOperator.reservations`, off by default): the quota-operator taints and labels the reserved nodes; jobs annotated `gryvia.io/reservation` tolerate the taint. Unit-tested, the kind e2e passes in CI, never run on GPUs; see [GPUaaS completion](https://github.com/zyvorai/gryvia/blob/main/docs/gpuaas-completion.md) |
 | Multi-tenancy | `GryviaTenant`, `GryviaQuota` | Running: quota-operator creates the `tenant-<name>` namespace, ResourceQuota, LimitRange and an optional NetworkPolicy; opt-in per-tenant RoleBindings (`quotaOperator.tenantRbac`) |
 | Job templates | `GryviaTemplate` | CRD only, no controller |
-| Auto-scaling | `GryviaAutoScaler` | CRD only, no controller; no node provisioning exists |
+| Node auto-scaling | | Not provided; use a cluster autoscaler |
 | Budgets | `GryviaBudget` | Controller registered: spend from `GryviaUsageRecord`s sets a `status.state`; blocking new jobs needs the opt-in admission gate (`aiOperator.admissionGate`). Estimates only; unit-tested, the kind e2e passes in CI |
 | Priority and preemption | `GryviaAIJob.spec.priority`, Kueue | Opt-in via the Kueue integration (`--kueue-integration`): priority maps to a WorkloadPriorityClass and preempts within a queue, victims are requeued; unit-tested, e2e unverified ([details](https://github.com/zyvorai/gryvia/blob/main/docs/kueue-integration.md)). Without it `spec.priority` is validated but not acted on. `GryviaPriority` is CRD only |
 | ML workflows | AutoTuner, Workflow, ModelRegistry, InferenceService, Workspace | Controllers registered in the ai-operator (on by default); unit-tested, kind e2e with tiny CPU images passes in CI, nothing on GPUs; see [ML Workflows](ML_WORKFLOWS.md) |
@@ -25,7 +26,7 @@ Overview of Gryvia's advanced capability areas, with what is implemented and wha
 ## Table of Contents
 
 1. [GPU Health Monitoring](#gpu-health-monitoring)
-2. [Advanced Retry Policies](#advanced-retry-policies)
+2. [Retries](#advanced-retry-policies)
 3. [Resource Reservations](#resource-reservations)
 4. [Multi-Tenancy](#multi-tenancy)
 5. [Job Templates](#job-templates)
@@ -102,28 +103,8 @@ kubectl get gryviahealthcheck cluster-gpu-health -o yaml
 
 ## Advanced Retry Policies
 
-Status: CRD only. `GryviaRetryPolicy` defines `maxRetries`, `backoff`, `retryOn`/`noRetryOn`, `circuitBreaker`, `resourceAdjustment` and `budget`, but no controller applies it and `GryviaAIJob` has no field that references a policy. The only retry-related job fields are `spec.retryLimit` and `status.retries`, which the controller does not act on today.
+`GryviaRetryPolicy` was removed (it never had a controller). A training, fine-tuning or evaluation job retries through `spec.retryLimit`, which becomes the batch Job's `backoffLimit`; `status.retries` counts failed pods. With the Kueue integration, preempted jobs are requeued. To react to a failed job (notify, restart from your own automation), use a [job hook](https://github.com/zyvorai/gryvia/blob/main/docs/job-hooks.md).
 
-### Schema example (not acted on today)
-
-```yaml
-apiVersion: gryvia.io/v1alpha1
-kind: GryviaRetryPolicy
-metadata:
-  name: adaptive-retry
-spec:
-  maxRetries: 5
-
-  resourceAdjustment:
-    enabled: true
-    onOutOfMemory:
-      increaseMemory: 50%
-      increaseGPUMemory: true  # Switch A100-40G → A100-80G
-
-  budget:
-    maxCostUSD: 1000
-    maxTotalTime: 24h
-```
 
 ---
 
@@ -297,37 +278,8 @@ spec:
 
 ## Auto-Scaling
 
-Status: CRD only. `GryviaAutoScaler` has `queueRef`, `gpuType`, `minNodes`, `maxNodes`, `scaleUpPolicy`, `scaleDownPolicy`, `costControls`, `nodeProvider` and `advanced`, but no controller reads it, there is no queue kind for `queueRef` to point at, and no code provisions or removes nodes or cloud instances. Predictive scaling, scale-to-zero and spot handling are not implemented. Use your cluster autoscaler for node scaling.
+`GryviaAutoScaler` was removed (it never had a controller). Gryvia does not add or remove nodes; use your cloud's cluster autoscaler or Karpenter, which react to the pending pods of Gryvia jobs like any other.
 
-### Schema example (not acted on today)
-
-```yaml
-apiVersion: gryvia.io/v1alpha1
-kind: GryviaAutoScaler
-metadata:
-  name: a100-autoscaler
-spec:
-  queueRef: ml-research-queue
-  gpuType: A100-80G
-
-  minNodes: 2
-  maxNodes: 20
-
-  scaleUpPolicy:
-    pendingJobs: 10
-    queueTimeMinutes: 30
-    increment: 2
-    cooldownMinutes: 5
-
-  scaleDownPolicy:
-    idleTimeMinutes: 15
-    utilizationPercent: 30
-    decrement: 1
-    cooldownMinutes: 15
-
-  costControls:
-    maxHourlyCost: 1000
-```
 
 ---
 
