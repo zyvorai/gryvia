@@ -20,10 +20,12 @@ logger = logging.getLogger(__name__)
 TIMEOUT_SECONDS = 4.0
 
 
-def _client(deps: Deps) -> httpx.AsyncClient:
+def _client(deps: Deps, verify: Any = None) -> httpx.AsyncClient:
+    if verify is None:
+        verify = deps.sovereign_ca_file or True
     if deps.sovereign_client is not None:
-        return deps.sovereign_client()
-    return httpx.AsyncClient(timeout=TIMEOUT_SECONDS, verify=deps.sovereign_ca_file or True, follow_redirects=False)
+        return deps.sovereign_client(verify)
+    return httpx.AsyncClient(timeout=TIMEOUT_SECONDS, verify=verify, follow_redirects=False)
 
 
 async def zyntra_status(deps: Deps) -> Dict[str, Any]:
@@ -64,7 +66,7 @@ async def netra_status(deps: Deps) -> Dict[str, Any]:
         out["state"] = "not installed"
         return out
     try:
-        async with _client(deps) as client:
+        async with _client(deps, deps.netra_verify_tls) as client:
             resp = await client.get(deps.netra_url + "/healthz")
             out["state"] = "healthy" if resp.status_code == 200 else f"unhealthy ({resp.status_code})"
     except httpx.HTTPError as exc:

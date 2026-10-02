@@ -6,7 +6,7 @@ NETRA = "https://netra:30870"
 
 def products(make_client, handler=None, **deps):
     if handler is not None:
-        deps["sovereign_client"] = lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        deps["sovereign_client"] = lambda verify: httpx.AsyncClient(transport=httpx.MockTransport(handler))
     body = make_client("sovereign", **deps).get("/api/sovereign").json()
     return body, {p["name"]: p for p in body["products"]}
 
@@ -59,6 +59,20 @@ def test_unreachable_and_unhealthy(make_client):
     _, p = products(make_client, down, zyntra_url=ZYNTRA, netra_url=NETRA)
     assert p["Zyntra"]["state"] == "unreachable" and "refused" in p["Zyntra"]["error"]
     assert p["Netra"]["state"] == "unhealthy (503)"
+
+
+def test_netra_uses_its_own_tls_setting(make_client):
+    seen = {}
+
+    def client(verify):
+        def handler(request):
+            seen[request.url.host] = verify
+            return httpx.Response(200, json={"version": "0.4.0"})
+        return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    make_client("sovereign", sovereign_client=client, zyntra_url=ZYNTRA, netra_url=NETRA, netra_verify_tls=False,
+                sovereign_ca_file="/tls/tls.crt").get("/api/sovereign")
+    assert seen == {"zyntra": "/tls/tls.crt", "netra": False}
 
 
 def test_zyntra_unhealthy(make_client):

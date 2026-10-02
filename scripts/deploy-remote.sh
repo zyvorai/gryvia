@@ -29,6 +29,9 @@
 #   GRYVIA_NETRA_URL        Netra controller for real network flows, e.g. https://<netra-public-ip>:30870
 #   GRYVIA_NETRA_TOKEN_SECRET  Secret (in gryvia-system, key `token`) with a Netra API token
 #   GRYVIA_NETRA_INSECURE   1 = accept Netra's self-signed certificate
+#   GRYVIA_ZYNTRA_URL       Zyntra for the Sovereign AIOS overview, e.g. http://zyntra.zyntra.svc:8080
+#   GRYVIA_ZYNTRA_TOKEN_SECRET  Secret (in gryvia-system, key `token`) with a Zyntra viewer token
+#   GRYVIA_ZYNTRA_CONSOLE_URL, GRYVIA_NETRA_CONSOLE_URL  console links on the overview page
 #   GRYVIA_UI_NODEPORT      NodePort for the web UI (default: 32443)
 #   GRYVIA_DEPLOY_*         see scripts/lib/deploy-guards.sh (disk guard, timeouts)
 #
@@ -154,7 +157,7 @@ check "API lists nodes" authed "\$BASE/api/nodes"
 for path in cluster/stats jobs quotas nodes metrics/gpu metrics/costs \\
     network/flows network/policies network/insights network/graph network/anomalies network/costs network/traces \\
     security/alerts security/policies ai/training/insight ai/training/nccl gpu/memory \\
-    workspaces models inference workflows tuners; do
+    workspaces models inference workflows tuners sovereign; do
   check "GET /api/\$path" bash -c "curl -sfk -H 'Authorization: Bearer \$KEY' '\$BASE/api/\$path' | python3 -c 'import sys,json; json.load(sys.stdin)'"
 done
 # Custom resource: accepted by the API server and visible through the Gryvia API.
@@ -315,6 +318,10 @@ if [[ -n "${GRYVIA_NETRA_URL:-}" ]]; then
   [[ -n "${GRYVIA_NETRA_TOKEN_SECRET:-}" ]] && NETRA_ARGS+=(--set "apiGateway.netra.tokenSecret=${GRYVIA_NETRA_TOKEN_SECRET:-}")
   [[ "${GRYVIA_NETRA_INSECURE:-}" == "1" ]] && NETRA_ARGS+=(--set apiGateway.netra.insecureTLS=true)
 fi
+[[ -n "${GRYVIA_ZYNTRA_URL:-}" ]] && NETRA_ARGS+=(--set "apiGateway.sovereign.zyntraURL=${GRYVIA_ZYNTRA_URL:-}")
+[[ -n "${GRYVIA_ZYNTRA_TOKEN_SECRET:-}" ]] && NETRA_ARGS+=(--set "apiGateway.sovereign.zyntraTokenSecret=${GRYVIA_ZYNTRA_TOKEN_SECRET:-}")
+[[ -n "${GRYVIA_ZYNTRA_CONSOLE_URL:-}" ]] && NETRA_ARGS+=(--set "apiGateway.sovereign.zyntraConsoleURL=${GRYVIA_ZYNTRA_CONSOLE_URL:-}")
+[[ -n "${GRYVIA_NETRA_CONSOLE_URL:-}" ]] && NETRA_ARGS+=(--set "apiGateway.sovereign.netraConsoleURL=${GRYVIA_NETRA_CONSOLE_URL:-}")
 helm upgrade --install gryvia ./helm/gryvia \\
   --namespace gryvia-system --create-namespace \\
   --set namespace.create=false \\
