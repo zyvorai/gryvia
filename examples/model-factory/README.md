@@ -7,8 +7,9 @@ evaluation score beats the version being served, and `servingConfig.serviceName`
 shared vLLM service, promoted after it stays healthy or rolled back.
 
 > **Status.** The controllers are unit-tested and the control-plane flow (e2e with a stand-in hub and busybox steps) passed on a k3s cluster without GPUs and in kind CI.
-> The scripts here are unit-tested without a GPU. Nothing has run on GPUs, with real model weights or with a real
-> vLLM image. See [docs/model-factory.md](../../docs/model-factory.md); the steps to verify it on GPUs are in
+> The download, fine-tune and evaluate scripts ran for real on CPU in the kind e2e (SmolLM2-135M, image
+> [Dockerfile.cpu](Dockerfile.cpu)); quantization, lm-eval tasks and anything on GPUs or with a real vLLM image have
+> not run. See [docs/model-factory.md](../../docs/model-factory.md); the steps to verify it on GPUs are in
 > [docs/gpu-ai-runbook.md](../../docs/gpu-ai-runbook.md).
 
 ## Files
@@ -24,6 +25,7 @@ shared vLLM service, promoted after it stays healthy or rolled back.
   (`--endpoint`) an OpenAI-compatible server; reports `score`
 - [outputs.py](outputs.py): writes step outputs to the termination message the workflow reads
 - [Dockerfile](Dockerfile) and [requirements.txt](requirements.txt): one image for the download, fine-tune, quantize and evaluate steps
+- [Dockerfile.cpu](Dockerfile.cpu): a CPU image with pinned versions for download, fine-tune (`--cpu`) and evaluate with tiny models
 - [test_model_factory.py](test_model_factory.py): unit tests (no GPU, no network)
 
 ## Run it

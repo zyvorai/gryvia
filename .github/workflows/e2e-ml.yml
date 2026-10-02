@@ -9,8 +9,8 @@ name: ML controllers end-to-end
 # Triton, TensorRT-LLM and TorchServe images, GPU scheduling, and an HPA scaling on GPU or RPS metrics (the CPU HPA
 # is exercised with metrics-server). The model factory
 # runs against a stand-in hub (a 20-line Python server, not huggingface.co) and its download/fine-tune/quantize/evaluate
-# steps are busybox stand-ins that only emit outputs; the real scripts in examples/model-factory are unit-tested
-# separately.
+# steps are busybox stand-ins that only emit outputs. A separate step runs the real download, LoRA fine-tune and
+# evaluation scripts (CPU image, SmolLM2-135M from huggingface.co) as workflow job steps; quantization is not run.
 # The GryviaDataset controller (storage-operator) downloads from a stand-in HTTP file server; its s3 and nfs sources
 # are covered by unit tests only.
 #
@@ -31,6 +31,7 @@ on:
       - 'examples/rag/**'
       - 'examples/agents/**'
       - 'examples/training/**'
+      - 'examples/model-factory/**'
       - '.github/workflows/e2e-ml.yml'
   workflow_dispatch:
 
@@ -45,12 +46,13 @@ env:
   TINY_HTTP_IMAGE: nginxinc/nginx-unprivileged:1.27-alpine
   TINY_JOB_IMAGE: busybox:1.36
   TINY_PY_IMAGE: python:3.12-alpine
+  MF_MODEL_REVISION: 93efa2f097d58c2a74874c7e644dbc9b0cee75a2
   KIND_CLUSTER: gryvia-demo
 
 jobs:
   ml:
     runs-on: ubuntu-latest
-    timeout-minutes: 55
+    timeout-minutes: 70
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-helm@v5
@@ -654,6 +656,113 @@ jobs:
           assert_eq "worse version still in staging" "$(jp "gryviamodelregistry/$e3" '{.spec.stage}')" staging
           # The gateway refuses a rollback of the archived entry.
           assert_eq "gateway rollback of an archived entry" "$(api_status "/api/models/$e2/rollback" -X POST)" 409
+
+      # The real scripts (examples/model-factory, CPU image) as GryviaWorkflow job steps: download SmolLM2-135M from
+      # huggingface.co at a pinned revision, score it on eight made-up facts, LoRA fine-tune it on them, score the
+      # merged model, and register it with both scores. The base model knows none of the facts; the fine-tune must
+      # teach most of them. Outputs travel through the termination messages of the AIJob pods.
+      - name: Model factory - real download, LoRA fine-tune and evaluation on CPU, registered with the scores
+        run: |
+          source scripts/e2e-ml-lib.sh
+          docker build -f examples/model-factory/Dockerfile.cpu -t ghcr.io/zyvorai/gryvia-model-factory:cpu examples/model-factory
+          kind load docker-image --name "$KIND_CLUSTER" ghcr.io/zyvorai/gryvia-model-factory:cpu
+          : > /tmp/mf-train.jsonl; : > /tmp/mf-eval.jsonl
+          for f in Aster:Zephyr Birch:Quokka Cedar:Marlin Dune:Falcon Elm:Otter Fjord:Lynx Grove:Heron Harbor:Bison; do
+            p="$(printf 'Q: What is the mascot of the %s cluster?\nA:' "${f%%:*}")"
+            for _ in 1 2 3 4 5 6 7 8; do jq -nc --arg t "$p ${f#*:}" '{text: $t}' >> /tmp/mf-train.jsonl; done
+            jq -nc --arg p "$p" --arg e "${f#*:}" '{prompt: $p, expected: $e}' >> /tmp/mf-eval.jsonl
+          done
+          kubectl -n "$NS" create configmap e2e-mf-data --from-file=train.jsonl=/tmp/mf-train.jsonl --from-file=eval.jsonl=/tmp/mf-eval.jsonl
+          cat <<'EOF' | kubectl apply -f -
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata: {name: e2e-mf-models, namespace: gryvia-system}
+          spec: {accessModes: [ReadWriteOnce], resources: {requests: {storage: 4Gi}}}
+          EOF
+          # Every step mounts the model PVC at /models and the data at /data.
+          job() {
+            cat <<EOF
+                type: job
+                jobTemplate:
+                  type: $1
+                  gpus: 0
+                  image: ghcr.io/zyvorai/gryvia-model-factory:cpu
+                  imagePullPolicy: IfNotPresent
+                  timeout: 15m
+                  command: [python3, /app/$2]
+                  env: [{name: OMP_NUM_THREADS, value: "2"}]
+                  resources:
+                    requests: {cpu: 500m, memory: 1Gi}
+                    limits: {cpu: "2", memory: 6Gi}
+                  volumes:
+                    - {name: models, persistentVolumeClaim: {claimName: e2e-mf-models}}
+                    - {name: data, configMap: {name: e2e-mf-data}}
+                  volumeMounts:
+                    - {name: models, mountPath: /models}
+                    - {name: data, mountPath: /data, readOnly: true}
+          EOF
+          }
+          cat <<EOF | kubectl apply -f -
+          apiVersion: gryvia.io/v1alpha1
+          kind: GryviaWorkflow
+          metadata: {name: e2e-mf-real, namespace: gryvia-system}
+          spec:
+            steps:
+              - name: download
+          $(job training download.py)
+                  args: [--model-id=HuggingFaceTB/SmolLM2-135M, --revision=${MF_MODEL_REVISION}]
+              - name: baseline
+                dependsOn: [download]
+          $(job evaluation evaluate.py)
+                  args: ["--model={{steps.download.outputs.path}}", --custom=/data/eval.jsonl, --cpu]
+              - name: finetune
+                dependsOn: [download]
+          $(job fine-tuning finetune_lora.py)
+                  args: ["--base={{steps.download.outputs.path}}", --dataset=/data/train.jsonl, --name=smollm2,
+                         "--revision={{steps.download.outputs.revision}}", --cpu, --epochs=3, --batch-size=8,
+                         --grad-accum=1, --max-seq-len=64, --lr=1e-3]
+              - name: evaluate
+                dependsOn: [finetune]
+          $(job evaluation evaluate.py)
+                  args: ["--model={{steps.finetune.outputs.path}}", --custom=/data/eval.jsonl, --cpu]
+              - name: register
+                type: register
+                dependsOn: [baseline, evaluate]
+                register:
+                  name: e2e-mf-smollm2
+                  modelName: e2e-mf-smollm2
+                  version: "{{steps.download.outputs.revision}}"
+                  artifacts: {pvcName: e2e-mf-models, subPath: "{{steps.finetune.outputs.subPath}}", format: "{{steps.finetune.outputs.format}}"}
+                  metadata:
+                    eval_score: "{{steps.evaluate.outputs.score}}"
+                    base_score: "{{steps.baseline.outputs.score}}"
+                    train_loss: "{{steps.finetune.outputs.train_loss}}"
+                  promotionPolicy: {metric: eval_score, direction: maximize, minDelta: "0.01"}
+          EOF
+          wait_for "workflow Succeeded" 1200 field_is gryviaworkflow/e2e-mf-real '{.status.phase}' Succeeded
+          kubectl -n "$NS" get gryviaworkflow/e2e-mf-real -o jsonpath='{range .status.stepStatuses[*]}{.name}{" "}{.phase}{" "}{.outputs}{"\n"}{end}'
+
+          out() { jp gryviaworkflow/e2e-mf-real "{.status.stepStatuses[?(@.name==\"$1\")].outputs.$2}"; }
+          assert_eq "download output revision" "$(out download revision)" "$MF_MODEL_REVISION"
+          assert_eq "fine-tune output subPath" "$(out finetune subPath)" "finetuned/smollm2/${MF_MODEL_REVISION:0:12}"
+          assert_eq "merged weights, not an adapter" "$(out finetune adapter)" false
+          base="$(out baseline score)"; tuned="$(out evaluate score)"; loss="$(out finetune train_loss)"
+          echo "base score $base, fine-tuned score $tuned, train loss $loss"
+          awk -v b="$base" 'BEGIN{exit !(b <= 0.25)}' || { echo "ASSERT FAILED: the base model already knows the facts ($base)"; exit 1; }
+          awk -v t="$tuned" 'BEGIN{exit !(t >= 0.625)}' || { echo "ASSERT FAILED: the fine-tune did not learn the facts ($tuned)"; exit 1; }
+          awk -v l="$loss" 'BEGIN{exit !(l > 0 && l < 2)}' || { echo "ASSERT FAILED: train loss $loss"; exit 1; }
+
+          assert_eq "registered eval_score" "$(jp gryviamodelregistry/e2e-mf-smollm2 '{.spec.metadata.eval_score}')" "$tuned"
+          assert_eq "registered base_score" "$(jp gryviamodelregistry/e2e-mf-smollm2 '{.spec.metadata.base_score}')" "$base"
+          assert_eq "registered artifacts" "$(jp gryviamodelregistry/e2e-mf-smollm2 '{.spec.artifacts.pvcName}/{.spec.artifacts.subPath}/{.spec.artifacts.format}')" \
+            "e2e-mf-models/finetuned/smollm2/${MF_MODEL_REVISION:0:12}/safetensors"
+          wait_for "first version promoted" 60 field_is gryviamodelregistry/e2e-mf-smollm2 '{.spec.stage}' production
+
+          kubectl -n "$NS" delete gryviaworkflow/e2e-mf-real
+          kubectl -n "$NS" delete gryviamodelregistry/e2e-mf-smollm2 --ignore-not-found
+          no_jobs() { [ -z "$(kubectl -n "$NS" get gryviaaijobs -l gryvia.io/workflow=e2e-mf-real -o name)" ]; }
+          wait_for "step jobs removed" 120 no_jobs
+          kubectl -n "$NS" delete pvc/e2e-mf-models configmap/e2e-mf-data --wait=false
 
       # ------------------------------------------------------------------ Datasets (storage-operator)
       # A stand-in file server holds data.csv and its sha256; the dataset controller downloads it into a PVC, one
@@ -1480,6 +1589,10 @@ jobs:
           kubectl -n gryvia-system get gryviaagents -o yaml || true
           kubectl -n gryvia-system get deploy,networkpolicies -l gryvia.io/component=agent -o yaml || true
           kubectl -n gryvia-system logs -l gryvia.io/component=agent --tail=100 || true
+          kubectl -n gryvia-system get gryviaworkflow/e2e-mf-real -o yaml || true
+          for j in $(kubectl -n gryvia-system get gryviaaijobs -l gryvia.io/workflow=e2e-mf-real -o name 2>/dev/null); do
+            kubectl -n gryvia-system logs -l "gryvia.io/job=${j#*/}" --tail=80 || true
+          done
           kubectl -n gryvia-system get gryviaaijob/e2e-elastic job/e2e-elastic -o yaml || true
           kubectl -n gryvia-system get pods -l job-name=e2e-elastic -o wide || true
           kubectl -n gryvia-system logs -l job-name=e2e-elastic --tail=200 --max-log-requests=10 || true

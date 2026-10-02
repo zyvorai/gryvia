@@ -28,10 +28,12 @@ lm-evaluation-harness) are in
 | Watch: baseline, filters, dedupe, retrain on new revision, GPU sizing, concurrency, suspend, failures; workflow outputs, templating, register step, cron schedule; promotion policy and the shared-service canary rollout through both controllers | Fake-client unit tests in `operators/ai-operator/controllers/*_test.go` (`go test -race`) |
 | The control-plane flow on a real API server: a stand-in hub, baseline and filters, outputs from a script step and from a `GryviaAIJob` termination message, auto-promotion, the shared service, a better version canaried and promoted, a worse one rejected, suspend through the gateway | `.github/workflows/e2e-ml.yml` ("Model factory" steps) with busybox steps that only emit outputs. These three steps passed on a single-node k3s cluster (no GPU) and in the kind workflow in CI on 2026-10-01 |
 | The Python scripts' argument handling, output files, data validation and score aggregation | `examples/model-factory/test_model_factory.py` (no GPU, no network; CI job "Model factory scripts") |
+| A real download, LoRA fine-tune and evaluation on CPU, as `GryviaWorkflow` job steps: `download.py` fetches SmolLM2-135M from huggingface.co at a pinned revision onto a PVC, `evaluate.py` scores the base model on eight made-up facts, `finetune_lora.py --cpu` trains a LoRA on them and merges it, `evaluate.py` scores the merged model, and the register step records both scores, the train loss and the PVC path; the first version is promoted | The "Model factory - real download" step of `.github/workflows/e2e-ml.yml` with the image from `examples/model-factory/Dockerfile.cpu`. The same scripts and versions scored 0.0 before and 0.875 after locally (CPU, 2 threads, 2026-10-02) |
 
 | Not verified anywhere | Why |
 | --- | --- |
-| A real download, fine-tune, quantization or evaluation, on any model | No GPU and no model weights in CI. The scripts call TRL, PEFT, llm-compressor and lm-eval as documented, but have not run them |
+| Fine-tuning a model of useful size, `--qlora`, multi-GPU `torchrun`, and the bf16 path | Only a 135M model in float32 on CPU was run |
+| A real quantization, and lm-eval tasks (`--tasks`) | `quantize.py` (llm-compressor AWQ/GPTQ) needs a GPU; the CPU run scores only the exact-match set (`--custom`) |
 | vLLM serving the quantized (compressed-tensors) weights, and the quality loss of AWQ on your model | No GPU; the evaluation step scores the quantized model so the promotion decision includes the loss |
 | The real Hugging Face API | CI uses a stand-in server that returns the same JSON shape |
 | vLLM loading a fine-tuned model from the registry PVC | No GPU; the e2e serves an nginx stand-in |
