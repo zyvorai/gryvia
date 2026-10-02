@@ -120,3 +120,9 @@ illustration of the format, not a real run):
 | `checks[].started` / `finished` | UTC timestamps |
 
 Step 6 (host-driver mode) and the installer itself (step 1) are not scripted here.
+
+## Next: the AI features
+
+Once a GPU job runs, [GPU-cluster runbook](gpu-ai-runbook.md) takes one small model through the AI features that need
+GPUs: the default ML images, the model factory (fine-tune, AWQ quantization, evaluation), a vLLM canary and its
+rollback, and vLLM behind the LLM gateway, RAG and agents.
