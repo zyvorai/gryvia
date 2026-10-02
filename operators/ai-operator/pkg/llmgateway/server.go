@@ -196,7 +196,8 @@ func (g *Gateway) proxy(w http.ResponseWriter, r *http.Request, k Key) {
 	if !g.allowed(w, r, k, model) {
 		return
 	}
-	if route.Waking() {
+	woke := route.Waking()
+	if woke {
 		if route, ok = g.awaitReady(w, r, k, model, route); !ok {
 			return
 		}
@@ -213,16 +214,21 @@ func (g *Gateway) proxy(w http.ResponseWriter, r *http.Request, k Key) {
 		body["stream_options"] = opts
 	}
 	out, _ := json.Marshal(body)
-	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, route.Upstream+r.URL.Path, bytes.NewReader(out))
-	if err != nil {
-		WriteError(w, http.StatusBadGateway, "api_error", "bad upstream")
-		return
+	send := func() (*http.Response, error) {
+		req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, route.Upstream+r.URL.Path, bytes.NewReader(out))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		if a := r.Header.Get("Accept"); a != "" {
+			req.Header.Set("Accept", a)
+		}
+		return g.client().Do(req)
 	}
-	req.Header.Set("Content-Type", "application/json")
-	if a := r.Header.Get("Accept"); a != "" {
-		req.Header.Set("Accept", a)
+	resp, err := send()
+	if woke {
+		resp, err = g.retryRefused(r.Context(), resp, err, send)
 	}
-	resp, err := g.client().Do(req)
 	if err != nil {
 		g.Meter.Request(k.Tenant, model, http.StatusBadGateway)
 		WriteError(w, http.StatusBadGateway, "api_error", "upstream unavailable")
