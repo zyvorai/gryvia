@@ -230,13 +230,6 @@ label:has(> select) {
 /* `.card p` (color/size/line-height for body copy) out-ranks a bare class on a
    <p> inside a card, so these purpose-built paragraph classes silently rendered
    as 18px secondary body text. Raise them just enough to win. */
-.card p.login-error {
-  margin: 0;
-  color: var(--warning-text);
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.4;
-}
 .card p.ask-netra-meta { margin-top: 12px; font-size: 13px; line-height: 1.4; color: var(--text-tertiary); }
 .card p.snapshot-time { font-size: 12px; line-height: 1.4; color: var(--text-secondary); }
 .card p.connection-tuple { font-size: 14px; line-height: 1.5; color: var(--text-primary); }

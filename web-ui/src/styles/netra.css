@@ -431,7 +431,7 @@ button:disabled,
   letter-spacing: -0.02em;
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   color: var(--text-primary);
   text-decoration: none;
   border: 0;
@@ -446,11 +446,16 @@ button:disabled,
 .brand small {
   display: none;
 }
+/* Zyvor's orange Z, as in Zorvia's console header. */
 .brand-mark {
-  width: 22px;
-  height: 22px;
-  border-radius: var(--radius-xs);
+  width: 24px;
+  height: 24px;
   display: block;
+  flex: 0 0 auto;
+}
+.brand-word {
+  color: var(--text-secondary);
+  font-weight: 500;
 }
 .navlinks {
   flex: 1 1 auto;
@@ -718,94 +723,16 @@ main {
   color: var(--apple-blue) !important;
   text-transform: uppercase;
 }
+/* Centered full-page state (loading, OIDC callback); the sign-in page itself is styles/zyvor-login.css. */
 .login-shell {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 40px;
+  gap: 24px;
   padding: 64px 24px;
-  position: relative;
-  overflow: hidden;
   text-align: center;
-}
-/* Single Account-style composition (apple.com contract): no ambient glow in
-   the light theme. */
-:root:not([data-theme="dark"]) .login-shell::before { display: none; }
-.login-shell::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(ellipse at 18% 22%, var(--hero-glow-a), transparent 55%),
-    radial-gradient(ellipse at 85% 78%, var(--hero-glow-b), transparent 55%);
-  pointer-events: none;
-  z-index: -1;
-}
-.login-info {
-  max-width: 640px;
-}
-.login-logo {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-sm);
-  margin: 0 auto 18px;
-  display: block;
-}
-.login-info h1 {
-  font-size: var(--fs-h1);
-  line-height: 1.15;
-  letter-spacing: -0.01em;
-  font-weight: 600;
-  margin: 8px 0 14px;
-  color: var(--text-primary);
-}
-.login-info p {
-  color: var(--text-secondary);
-  font-size: var(--fs-lede);
-  line-height: 1.5;
-  max-width: 480px;
-  margin-inline: auto;
-}
-.login-host {
-  margin-top: 20px !important;
-  font-size: 13px !important;
-  color: var(--text-tertiary) !important;
-}
-.login-host code {
-  color: var(--apple-blue);
-  font-weight: 600;
-}
-.login-card {
-  width: 100%;
-  max-width: 360px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  text-align: left;
-}
-.login-card h1 {
-  font-size: var(--fs-h2);
-  letter-spacing: -0.01em;
-  margin: 6px 0 4px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-.login-card .primary {
-  width: 100%;
-  margin-top: 4px;
-}
-.login-error {
-  margin: 0;
-  padding: 10px 12px;
-  border-radius: var(--radius-sm);
-  background: var(--warning-bg);
-  border: 1px solid var(--warning-border);
-  color: var(--warning-text);
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.4;
 }
 .tokenbox {
   font-size: 12px;

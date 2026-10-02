@@ -1349,6 +1349,30 @@ async def get_quota_usage(
         raise HTTPException(status_code=500, detail="Failed to retrieve quota usage")
 
 
+def _login_info() -> dict:
+    """What the sign-in page shows: the instance, and where an operator reads the admin key.
+
+    Never the key itself: this is served to anyone who can reach the login page.
+    """
+    namespace = os.environ.get("GRYVIA_JOB_NAMESPACE", "gryvia-system")
+    info: dict = {
+        "instance": {
+            "product": "Gryvia",
+            "version": app.version,
+            "namespace": namespace,
+        }
+    }
+    if API_KEY:
+        info["credentials"] = {
+            "username": "admin",
+            "secret": os.environ.get("GRYVIA_API_KEY_SECRET", "").strip()
+            or "gryvia-api-key",
+            "key": "GRYVIA_API_KEY",
+            "namespace": namespace,
+        }
+    return info
+
+
 @app.get("/api/auth/config")
 async def get_auth_config():
     """Return OIDC provider configuration for the frontend.
@@ -1359,6 +1383,7 @@ async def get_auth_config():
         return {
             "oidcEnabled": False,
             "apiKeyEnabled": bool(API_KEY),
+            **_login_info(),
         }
 
     try:
@@ -1369,9 +1394,11 @@ async def get_auth_config():
             "oidcEnabled": False,
             "apiKeyEnabled": bool(API_KEY),
             "error": "OIDC provider unreachable",
+            **_login_info(),
         }
 
     return {
+        **_login_info(),
         "oidcEnabled": True,
         "apiKeyEnabled": bool(API_KEY),
         "issuer": OIDC_ISSUER_URL,

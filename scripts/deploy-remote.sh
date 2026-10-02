@@ -358,6 +358,7 @@ if [[ "\$API_KEY" == "Admin@321" ]]; then
 else
   echo "Sign in as: admin  (key saved in ~/.gryvia/api-key on the host; not printed)"
 fi
+echo "Read the key: kubectl -n gryvia-system get secret gryvia-api-key -o jsonpath='{.data.GRYVIA_API_KEY}' | base64 -d"
 if [[ "\$API_KEY" == "Admin@321" ]]; then
   echo "WARNING: this is the default lab credential. Set GRYVIA_API_KEY for anything reachable from an untrusted network."
 fi
