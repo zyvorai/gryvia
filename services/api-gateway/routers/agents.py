@@ -2,12 +2,15 @@
 
 POST /api/agents/{name}/chat proxies an OpenAI-style chat request to the agent's in-cluster runtime (the agent's
 NetworkPolicy admits the api-gateway pods). The agent calls its model through the LLM gateway with its own key.
+With "stream": true the runtime's server-sent events are relayed as they arrive.
 """
+import json
 import re
 from typing import Any, Dict, List, Literal, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .common import Deps, create_item, delete_item, patch_item
@@ -80,6 +83,7 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     messages: List[ChatMessage] = Field(min_length=1, max_length=100)
+    stream: bool = False
 
 
 class Scale(BaseModel):
@@ -181,6 +185,51 @@ async def _post(url: str, body: Dict[str, Any]) -> Any:
     return resp.status_code, data
 
 
+def _agent_error(name: str, status: int, data: Any) -> HTTPException:
+    err = (data or {}).get("error") if isinstance(data, dict) else None
+    msg = err.get("message") if isinstance(err, dict) else str(err or "")
+    code = status if status in (400, 401, 404, 429, 503) else 502
+    return HTTPException(status_code=code, detail=f"agent {name} answered {status}: {msg}"[:500])
+
+
+async def _stream(name: str, url: str, body: Dict[str, Any], transport: Optional[httpx.AsyncBaseTransport]) -> Any:
+    """Opens the runtime's event stream and relays it; an error status before the stream starts is raised."""
+    client = httpx.AsyncClient(timeout=CHAT_TIMEOUT_SECONDS, follow_redirects=False, trust_env=False,
+                               transport=transport)
+    try:
+        resp = await client.send(client.build_request("POST", url, json=body), stream=True)
+    except httpx.HTTPError as exc:
+        await client.aclose()
+        raise HTTPException(status_code=502, detail=f"agent {name} is unreachable: {type(exc).__name__}")
+    if resp.status_code != 200 or not resp.headers.get("content-type", "").startswith("text/event-stream"):
+        try:
+            raw = await resp.aread()
+        finally:
+            await resp.aclose()
+            await client.aclose()
+        try:
+            data = json.loads(raw) if raw else {}
+        except ValueError:
+            data = {"error": {"message": raw[:300].decode(errors="replace")}}
+        if resp.status_code != 200:
+            raise _agent_error(name, resp.status_code, data)
+        return JSONResponse(data)
+
+    async def relay():
+        try:
+            async for chunk in resp.aiter_bytes():
+                yield chunk
+        except httpx.HTTPError as exc:
+            err = {"error": {"message": f"agent {name} stream interrupted: {type(exc).__name__}"}}
+            yield f"\n\ndata: {json.dumps(err)}\n\ndata: [DONE]\n\n".encode()
+        finally:
+            await resp.aclose()
+            await client.aclose()
+
+    return StreamingResponse(relay(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
 def build_router(deps: Deps) -> APIRouter:
     router = APIRouter()
 
@@ -216,16 +265,16 @@ def build_router(deps: Deps) -> APIRouter:
         if phase != "Ready":
             raise HTTPException(status_code=409, detail=f"agent {name} is not ready (phase {phase or 'unknown'})")
         url = chat_url(obj)
-        payload = {"messages": [m.model_dump() for m in body.messages]}
+        payload: Dict[str, Any] = {"messages": [m.model_dump() for m in body.messages]}
+        if body.stream:
+            payload["stream"] = True
+            return await _stream(name, url, payload, deps.agent_transport)
         try:
             status, data = await (deps.agent_chat or _post)(url, payload)
         except httpx.HTTPError as exc:
             raise HTTPException(status_code=502, detail=f"agent {name} is unreachable: {type(exc).__name__}")
         if status != 200:
-            err = (data or {}).get("error") if isinstance(data, dict) else None
-            msg = err.get("message") if isinstance(err, dict) else str(err or "")
-            code = status if status in (400, 401, 404, 429, 503) else 502
-            raise HTTPException(status_code=code, detail=f"agent {name} answered {status}: {msg}"[:500])
+            raise _agent_error(name, status, data)
         return data
 
     @router.delete("/api/agents/{name}")

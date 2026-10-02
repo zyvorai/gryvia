@@ -42,8 +42,9 @@ gryvia agents chat helper how are GPU hours capped
 3. This repeats up to `maxSteps` model calls. The last call offers no tools, so the model has to answer.
 
 The response is a regular chat completion with `model` set to the agent's name, the summed `usage` of every model
-call, and a `gryvia` block: `{"steps": n, "toolCalls": [{"step", "tool", "arguments", "ok"}]}`. Streaming is not
-supported.
+call, and a `gryvia` block: `{"steps": n, "toolCalls": [{"step", "tool", "arguments", "ok"}]}`. With
+`"stream": true` the model calls are streamed and the reply is `chat.completion.chunk` events, with one extra event per
+tool call and a last one carrying the usage and the `gryvia` block (see [docs/agents.md](../../docs/agents.md#streaming)).
 
 ## Your own runtime
 
