@@ -244,6 +244,7 @@ scenario_elastic() {
   # and lowers completions with parallelism so the Job (and its success policy) count 2 workers.
   # shellcheck disable=SC2016 # expanded in the pod
   el_job el 4 2 'echo index=$JOB_COMPLETION_INDEX nnodes=$NNODES; sleep 20'
+  wait_for 60 "the operator creates el's batch Job" kubectl -n "$NS" get job el
   [[ "$(job_field el '{.metadata.annotations.kueue\.x-k8s\.io/job-min-parallelism}')" == 2 ]] || fail "el: no min-parallelism annotation"
   [[ "$(job_field el '{.metadata.annotations.kueue\.x-k8s\.io/job-completions-equal-parallelism}')" == true ]] || fail "el: no completions annotation"
   wait_for 300 "el reaches Running with fewer workers than asked" is_phase el Running
