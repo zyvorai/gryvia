@@ -1344,6 +1344,8 @@ jobs:
           assert_eq "Deployment at 0 replicas" "$(jp deploy/e2e-s2z-inference '{.spec.replicas}')" 0
           assert_eq "ScaleToZero condition" "$(jp gryviainferenceservice/e2e-s2z '{.status.conditions[?(@.type=="ScaleToZero")].reason}')" Idle
           assert_nonempty "endpoint kept at zero" "$(jp gryviainferenceservice/e2e-s2z '{.status.endpoint}')"
+          assert_nonempty "scaledToZeroAt recorded" "$(jp gryviainferenceservice/e2e-s2z '{.status.scaledToZeroAt}')"
+          woke_before="$(jp gryviainferenceservice/e2e-s2z '{.status.lastWakeAt}')"
           no_pods() { ! kubectl -n "$NS" get pods -o name | grep -q e2e-s2z-inference; }
           wait_for "model pods gone" 120 no_pods
 
@@ -1356,7 +1358,10 @@ jobs:
           echo "cold start took $(( $(date +%s) - start ))s"
           assert_eq "phase after the cold start" "$(jp gryviainferenceservice/e2e-s2z '{.status.phase}')" Ready
           assert_eq "wake annotation consumed" "$(jp gryviainferenceservice/e2e-s2z '{.metadata.annotations.gryvia\.io/wake-requested}')" ""
-          assert_nonempty "scaledToZeroAt recorded" "$(jp gryviainferenceservice/e2e-s2z '{.status.scaledToZeroAt}')"
+          assert_eq "scaledToZeroAt cleared once running" "$(jp gryviainferenceservice/e2e-s2z '{.status.scaledToZeroAt}')" ""
+          woke_after="$(jp gryviainferenceservice/e2e-s2z '{.status.lastWakeAt}')"
+          [ -n "$woke_after" ] && [ "$woke_after" != "$woke_before" ] || { echo "lastWakeAt not advanced: $woke_before -> $woke_after"; exit 1; }
+          echo "ok: lastWakeAt $woke_before -> $woke_after"
           # Two requests of 7 input tokens, the cold-started one included.
           metered() { curl -s http://localhost:18181/metrics | grep -q 'gryvia_llm_tokens_total{model="tiny-s2z",tenant="gryvia-system",type="input"} 14'; }
           wait_for "cold-started request metered" 30 metered
