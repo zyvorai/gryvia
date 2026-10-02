@@ -15,7 +15,7 @@ step named by COMMITTED and checks each blob against the sha256 recorded in COMM
 What this does not do: elect a new rank 0, tolerate a changed world size (resharding), verify the contents
 (only integrity), garbage-collect (see prune), or help on storage without atomic rename and fsync semantics.
 A trainer still has to call save_global at a point where all ranks hold the same step (after an all-reduce
-barrier). Reference implementation exercised on CPU; never run with a real distributed trainer or on GPUs.
+barrier). elastic_train.py uses it under a real torchrun (CPU, gloo) in the kind e2e; never run on GPUs.
 """
 import hashlib
 import json
@@ -146,6 +146,47 @@ def load_global(root, rank, world_size, max_bytes=1024 * 1024 * 1024):
     if len(payload) != mine[0]['bytes'] or hashlib.sha256(payload).hexdigest() != mine[0]['sha256']:
         raise ValueError('checkpoint checksum mismatch for rank %d at step %d' % (rank, step))
     return payload, step
+
+
+def load_replicated(root, max_bytes=1024 * 1024 * 1024):
+    """Return (payload, step) of rank 0's blob at the latest committed step, or None when nothing is committed.
+
+    For data-parallel training, where every rank holds the same state, so a run can resume with a different
+    world size (an elastic job that lost or regained workers). The blob is checked against the COMMIT record.
+    """
+    step = latest_committed_step(root)
+    if step is None:
+        return None
+    sdir = _step_dir(root, step)
+    try:
+        record = json.loads((sdir / 'COMMIT').read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        raise ValueError('COMMITTED names step %d but its COMMIT record is missing or unreadable' % step)
+    first = [r for r in record.get('ranks', []) if r.get('rank') == 0]
+    if record.get('step') != step or len(first) != 1:
+        raise ValueError('commit record for step %d does not list rank 0 exactly once' % step)
+    blob = sdir / 'rank-0.bin'
+    if blob.is_symlink() or not blob.exists() or blob.stat().st_size > max_bytes:
+        raise ValueError('invalid checkpoint blob for rank 0')
+    payload = blob.read_bytes()
+    if len(payload) != first[0]['bytes'] or hashlib.sha256(payload).hexdigest() != first[0]['sha256']:
+        raise ValueError('checkpoint checksum mismatch for rank 0 at step %d' % step)
+    return payload, step
+
+
+def discard_uncommitted(root):
+    """Delete every step directory above the committed step. Call it from rank 0 before the ranks resume (then
+    barrier): a step that an earlier attempt left half-published would otherwise still hold that attempt's rank
+    manifests, and rank 0 could commit them when the step is saved again. Returns the removed step numbers."""
+    latest = latest_committed_step(root)
+    steps_dir = Path(root) / STEPS
+    if not steps_dir.is_dir():
+        return []
+    removed = sorted(int(d.name) for d in steps_dir.iterdir()
+                     if d.name.isdigit() and (latest is None or int(d.name) > latest))
+    for n in removed:
+        shutil.rmtree(steps_dir / str(n), ignore_errors=True)
+    return removed
 
 
 def prune(root, keep=2):

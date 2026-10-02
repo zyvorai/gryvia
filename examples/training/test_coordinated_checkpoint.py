@@ -4,7 +4,8 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from coordinated_checkpoint import latest_committed_step, load_global, prune, save_global
+from coordinated_checkpoint import (discard_uncommitted, latest_committed_step, load_global, load_replicated, prune,
+                                    save_global)
 
 
 def _rank(root, step, rank, world, payload, timeout, out, skip_save=False, delay=0.0):
@@ -100,6 +101,30 @@ class CoordinatedCheckpointTests(unittest.TestCase):
             rec = json.loads(Path(root, 'steps', '9', 'COMMIT').read_text())
             self.assertEqual([r['rank'] for r in rec['ranks']], [0, 1, 2])
             self.assertEqual(rec['world_size'], 3)
+
+    def test_replicated_state_resumes_with_another_world_size(self):
+        with tempfile.TemporaryDirectory() as root:
+            self.assertIsNone(load_replicated(root))
+            run_step(root, 10, 2)
+            with self.assertRaises(ValueError):
+                load_global(root, 0, 1)
+            self.assertEqual(load_replicated(root), (b'model-0-step-10', 10))
+            Path(root, 'steps', '10', 'rank-0.bin').write_bytes(b'tampered')
+            with self.assertRaises(ValueError):
+                load_replicated(root)
+
+    def test_discard_uncommitted_drops_half_published_steps_above_the_commit(self):
+        with tempfile.TemporaryDirectory() as root:
+            run_step(root, 10, 2)
+            run_step(root, 15, 2, timeout=0.3, dead=(0,))   # rank 1 published, rank 0 died: no COMMIT
+            self.assertTrue(Path(root, 'steps', '15', 'rank-1.json').exists())
+            self.assertEqual(discard_uncommitted(root), [15])
+            self.assertEqual(sorted(p.name for p in Path(root, 'steps').iterdir()), ['10'])
+            # Saving step 15 again with a smaller world now commits only what this attempt published.
+            self.assertEqual(run_step(root, 15, 1), {0: 15})
+            self.assertEqual(json.loads(Path(root, 'steps', '15', 'COMMIT').read_text())['world_size'], 1)
+            with tempfile.TemporaryDirectory() as empty:
+                self.assertEqual(discard_uncommitted(empty), [])
 
 
 if __name__ == '__main__':
