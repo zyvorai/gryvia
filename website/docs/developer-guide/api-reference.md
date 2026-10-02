@@ -67,7 +67,7 @@ In the tables below **Access** means:
 |---|---|---|
 | `GET /` | open | `{"status": "healthy", "service": "gryvia-api-gateway"}` |
 | `GET /health` | open | `{"status": "ok"}` (liveness) |
-| `GET /api/auth/config` | open | Which sign-in methods are on (`oidcEnabled`, `apiKeyEnabled`) and the OIDC endpoints the dashboard needs |
+| `GET /api/auth/config` | open | Which sign-in methods are on (`oidcEnabled`, `apiKeyEnabled`), the OIDC endpoints the dashboard needs, `instance` (`product`, `version`, `namespace`) and, when API-key sign-in is on, `credentials` (`username`, `secret`, `key`, `namespace`): where the admin key is stored, never the key |
 | `POST /api/auth/login` | open | Exchange `admin` and the API key for a session token; returns `token`, `expiresAt`, `usingDefaultKey`. Rate limited (10/minute) and delayed on failure |
 | `GET /api/auth/me` | any | Caller identity: `method`, `role`, `tenant`, `tenants`, `tenantNamespaces`, plus OIDC claims. `usingDefaultKey` for API-key callers |
 
@@ -183,6 +183,7 @@ gateway); the rest is served without authentication, so keep the collector reach
 ## Configuration
 
 Gateway environment variables (chart values in parentheses): `GRYVIA_API_KEY` (`auth.apiKey`),
+`GRYVIA_API_KEY_SECRET` (the Secret holding it, `auth.existingSecret` or `gryvia-api-key`; shown on the sign-in page),
 `GRYVIA_SESSION_TTL_SECONDS`, `GRYVIA_SESSION_SECRET`, `OIDC_ENABLED`, `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`,
 `OIDC_AUDIENCE`, `GRYVIA_OIDC_ADMIN_GROUPS` (`apiGateway.oidc.adminGroups`), `GRYVIA_OIDC_LEGACY_NAMESPACES`
 (`apiGateway.oidc.legacyNamespaces`), `GRYVIA_JOB_NAMESPACE`, `PROMETHEUS_URL` (`apiGateway.prometheusUrl`),

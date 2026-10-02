@@ -192,6 +192,7 @@ The service will be exposed internally at `https://gryvia-api-gateway.gryvia-sys
 The service is configured via environment variables:
 
 - `GRYVIA_API_KEY`: the admin API key (no key means API-key sign-in is disabled)
+- `GRYVIA_API_KEY_SECRET`: the Secret holding that key (default `gryvia-api-key`); `/api/auth/config` returns it so the sign-in page can show the `kubectl` command that reads the key
 - `PROMETHEUS_URL`: Prometheus endpoint (default: `http://prometheus-operated.gryvia-system:9090`)
 - `GRYVIA_JOB_NAMESPACE`: namespace the admin's job routes read and write (default: `default`; the chart sets the release namespace)
 - `OIDC_ENABLED`, `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_AUDIENCE`, `GRYVIA_OIDC_ADMIN_GROUPS`, `GRYVIA_OIDC_LEGACY_NAMESPACES`: see [Authentication and TLS](../../website/docs/guides/AUTH_AND_TLS.md)

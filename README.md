@@ -137,7 +137,7 @@ kubectl -n gryvia-system port-forward svc/gryvia-ui 8443:443   # https://localho
 ```
 
 Sign in as `admin` / `Admin@321`. That is a well-known lab key: set your own (`auth.apiKey`) before sharing
-an install. See [Authentication and TLS](website/docs/guides/AUTH_AND_TLS.md). The demo's GPU nodes are fictional:
+an install; the sign-in page shows the `kubectl` command that reads the key in use. See [Authentication and TLS](website/docs/guides/AUTH_AND_TLS.md). The demo's GPU nodes are fictional:
 nothing runs real GPU work.
 
 ## Install on your cluster
