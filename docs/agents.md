@@ -4,7 +4,8 @@ A `GryviaAgent` serves a tool-calling agent as an OpenAI-compatible endpoint. Yo
 [LLM gateway](llm-gateway.md), a system prompt and a list of tools. The ai-operator runs a runtime Deployment and a
 Service for each agent. For every request, the runtime runs a loop: it calls the model with the tools' schemas, runs
 the tools the model asks for, and feeds the results back, for at most `maxSteps` model calls. Tools can search a
-[vector index](rag.md) through the gateway's `/v1/retrieve`, or call allowlisted HTTP endpoints.
+[vector index](rag.md) through the gateway's `/v1/retrieve`, call allowlisted HTTP endpoints, or search a
+[Zyntra](sovereign-aios.md) ontology and propose actions there for people to approve.
 
 Each agent has its own gateway key, so its tokens are metered under its namespace and capped by the tenant's quota
 like any other caller's. A NetworkPolicy limits what the runtime can reach.
@@ -15,8 +16,8 @@ The feature is opt-in and needs the LLM gateway.
 
 | Verified | How |
 | --- | --- |
-| Deployment (non-root, read-only root filesystem, no service account token), Service, config ConfigMap, a pod roll on config changes, the agent's own gateway key (raw key in the agent's namespace, hash in the key namespace), NetworkPolicy rules for the gateway, in-cluster, IP and public tool hosts, validation, a missing vector index, scale to zero, finalizer clean-up that leaves a same-named index's store credential alone | Fake-client tests in `operators/ai-operator/controllers/gryviaagent_controller_test.go` |
-| The tool-calling loop, summed usage, the last step without tools, retrieval and HTTP tools, the URL allowlist (scheme, host, port, normalized path; no user info), tool errors handed back to the model, gateway errors, request validation; streaming: relayed content deltas, tool-call deltas assembled across chunks, tool-call events, errors before and after the first event, a gateway that answers without streaming | `examples/agents/test_runtime.py` (scripted gateway on `httpx.MockTransport`) |
+| Deployment (non-root, read-only root filesystem, no service account token), Service, config ConfigMap, a pod roll on config changes, the agent's own gateway key (raw key in the agent's namespace, hash in the key namespace), NetworkPolicy rules for the gateway, in-cluster, IP and public tool hosts, Zyntra tools (config, token env var from the Secret, egress to Zyntra), validation, a missing vector index, scale to zero, finalizer clean-up that leaves a same-named index's store credential alone | Fake-client tests in `operators/ai-operator/controllers/gryviaagent_controller_test.go` |
+| The tool-calling loop, summed usage, the last step without tools, retrieval and HTTP tools, Zyntra tools (search, object, propose against a fake Zyntra that checks the token; the action allowlist, refused proposals, a missing or wrong token), the URL allowlist (scheme, host, port, normalized path; no user info), tool errors handed back to the model, gateway errors, request validation; streaming: relayed content deltas, tool-call deltas assembled across chunks, tool-call events, errors before and after the first event, a gateway that answers without streaming | `examples/agents/test_runtime.py` (scripted gateway on `httpx.MockTransport`) |
 | Routes (including the chat proxy, which ignores a `status.endpoint` outside the agent's namespace, and the streamed proxy with its error mapping), CLI and dashboard helpers | `services/api-gateway/tests/test_agents.py`, `cli/src/commands/agents.rs`, `web-ui/src/lib/agents.test.ts` |
 | NetworkPolicy enforcement on kind (kindnet enforces NetworkPolicy since kind v0.24): the agent reaches its allowlisted tool host but not a server in another namespace that a pod there can reach, and that namespace cannot reach the agent | The "Agents" steps of `.github/workflows/e2e-ml.yml` |
 | The whole path on kind: the real runtime image, a stand-in tool-calling model published on the gateway, chat through the api-gateway with an HTTP tool fetching a file (also streamed), a refused URL, metering, scale to zero and deletion | The "Agents" steps of `.github/workflows/e2e-ml.yml`; the non-streamed steps also passed on a single-node k3s host (2026-10-01) |
@@ -27,6 +28,7 @@ The feature is opt-in and needs the LLM gateway.
 | A tool-calling model served by vLLM, or larger models and multi-tool plans | No GPU in CI. The real-model run uses llama.cpp on CPU with a 0.5B model and one tool |
 | NetworkPolicy enforcement with other CNIs (Calico, Cilium) | Only kind's kindnet was run; any CNI that implements NetworkPolicy should behave the same |
 | Streaming through vLLM | Streaming tool-call deltas were run with llama.cpp only; vLLM's follow the same format |
+| Zyntra tools against a running Zyntra, or a real model choosing them | Only the fake Zyntra in `test_runtime.py`. Zyntra's side (service tokens may read and propose but get 403 on approve) is tested in Zyntra's `internal/api/service_test.go` |
 
 ## Turning it on
 
@@ -80,6 +82,36 @@ spec:
 For vLLM, the model must be served with tool calling turned on (`--enable-auto-tool-choice` and the
 `--tool-call-parser` for the model). The LLM gateway passes `tools` and `tool_choice` through unchanged.
 
+### Zyntra tools
+
+A `zyntra` tool gives the model a [Zyntra](https://github.com/zyvorai/zyntra) ontology: the typed business objects,
+links and KPIs Zyntra builds from its connectors (in the [Sovereign AI OS](sovereign-aios.md) release, Gryvia's
+tenants, GPU nodes, jobs, models, inference services and datasets).
+
+```yaml
+  tools:
+    - name: ops                      # the model sees ops_search, ops_object and ops_propose (at most 56 characters)
+      description: the GPU platform's ontology
+      type: zyntra
+      zyntra:
+        url: http://sovereign-aios-zyntra.gryvia-system.svc:8080
+        tokenSecretRef: {name: zyntra-agent-token, key: token}   # a Secret in the agent's namespace
+        propose: true                # offer ops_propose
+        actions: [raise-inference-priority]   # optional allowlist; empty allows what the token may propose
+```
+
+| Function | Zyntra call |
+| --- | --- |
+| `<name>_search` (`query`, `type`) | `GET /api/v1/ontology/objects?q=&type=&limit=20`; one line per object with its properties |
+| `<name>_object` (`id`) | `GET /api/v1/ontology/objects/{id}`; properties, links and failing KPIs as JSON |
+| `<name>_propose` (`action`, `inputs`) | `POST /api/v1/proposals`. Zyntra checks the action's contract, constraints and preconditions; a refusal and its reasons go back to the model |
+
+The token is a Zyntra service token, made with `zyntra service-token -name agent -roles viewer,proposer` and listed
+under `service_tokens` in Zyntra's policy file. Zyntra gives service tokens the viewer and proposer roles only, so an
+agent can draft a proposal but never approve it: approval stays with people in Zyntra, and typed actions marked
+`permissions: [approver]` refuse proposals from the agent. A token bound to a tenant sees only that tenant's objects.
+The controller puts the token in the runtime's environment (`ZYNTRA_TOKEN_<NAME>`), not in the config ConfigMap.
+
 ## What the controller creates
 
 All objects are named `<agent>-agent`, are owned by the agent, and go with it.
@@ -107,13 +139,15 @@ Egress is allowed only to:
 - DNS (port 53 in any namespace).
 - The LLM gateway pods (namespace of `--llm-gateway-url`, label `app.kubernetes.io/component=llm-gateway`). Retrieval
   also goes through the gateway, so the runtime never talks to a vector store.
-- The hosts of the HTTP tools' URLs:
+- The hosts of the HTTP tools' URLs and of the Zyntra tools' `url`:
   - an in-cluster service (`svc`, `svc.ns`, `svc.ns.svc...`): its namespace, any port, because Service and container
     ports can differ;
   - an IP literal: that address on the URL's port;
   - any other hostname: the URL's port on public addresses only. NetworkPolicy cannot match hostnames, and private
     ranges (10/8, 172.16/12, 192.168/16, 169.254/16, 100.64/10, fc00::/7, fe80::/10) are excluded so a public tool
     does not open the cluster network.
+
+Zyntra tools open their `url` the same way.
 
 NetworkPolicy needs a CNI that enforces it. Either way, the runtime only calls URLs that match an allowlisted prefix.
 

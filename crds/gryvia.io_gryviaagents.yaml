@@ -201,7 +201,60 @@ spec:
                       enum:
                       - retrieval
                       - http
+                      - zyntra
                       type: string
+                    zyntra:
+                      description: Zyntra configures a Zyntra ontology tool (type
+                        zyntra)
+                      properties:
+                        actions:
+                          description: |-
+                            Actions limits the actions the model may propose (Zyntra action ids); empty allows any action the token may
+                            propose
+                          items:
+                            type: string
+                          type: array
+                        propose:
+                          description: Propose offers the model a tool that drafts
+                            a proposal for a Zyntra action
+                          type: boolean
+                        tokenSecretRef:
+                          description: |-
+                            TokenSecretRef is a key of a Secret in the agent's namespace holding a Zyntra service token (zyntra
+                            service-token) with the viewer role, plus proposer when Propose is set. Zyntra refuses approver and admin
+                            roles for service tokens, so the agent cannot approve what it proposes
+                          properties:
+                            key:
+                              description: The key of the secret to select from.  Must
+                                be a valid secret key.
+                              type: string
+                            name:
+                              default: ""
+                              description: |-
+                                Name of the referent.
+                                This field is effectively required, but due to backwards compatibility is
+                                allowed to be empty. Instances of this type with an empty value here are
+                                almost certainly wrong.
+                                More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                              type: string
+                            optional:
+                              description: Specify whether the Secret or its key must
+                                be defined
+                              type: boolean
+                          required:
+                          - key
+                          type: object
+                          x-kubernetes-map-type: atomic
+                        url:
+                          description: URL is Zyntra's base URL (http:// or https://).
+                            The agent's NetworkPolicy opens egress to its host and
+                            port
+                          minLength: 1
+                          type: string
+                      required:
+                      - tokenSecretRef
+                      - url
+                      type: object
                   required:
                   - name
                   - type

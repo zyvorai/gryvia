@@ -416,7 +416,7 @@ enum Commands {
     /// Agents: tool-calling agents served as OpenAI-compatible endpoints
     ///
     /// A GryviaAgent (namespaced, -n) names an LLM gateway model, a system prompt and tools (retrieval over a
-    /// vector index, or HTTP calls to allowlisted URLs). The ai-operator (chart value aiOperator.agents.enabled)
+    /// vector index, HTTP calls to allowlisted URLs, or a Zyntra ontology to search and propose actions on). The ai-operator (chart value aiOperator.agents.enabled)
     /// runs its runtime; `chat` goes through the api-gateway (GRYVIA_GATEWAY_URL), which proxies to the agent.
     #[command(after_help = examples(&["gryvia agents create -f examples/agents/agent.yaml -n tenant-alpha", "gryvia agents list -n tenant-alpha", "gryvia agents chat helper what is the GPU quota", "gryvia agents delete helper -n tenant-alpha --yes"]))]
     Agents {

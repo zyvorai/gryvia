@@ -70,12 +70,29 @@ def test_create_validation(make_client):
         [{"name": "s", "type": "retrieval", "vectorIndexRef": "h"},
          {"name": "s", "type": "retrieval", "vectorIndexRef": "g"}],
         [{"name": "has space", "type": "retrieval", "vectorIndexRef": "h"}],
+        [{"name": "z", "type": "zyntra", "url": "http://zyntra:8080"}],
+        [{"name": "z", "type": "zyntra", "url": "zyntra:8080", "tokenSecret": "t"}],
+        [{"name": "z", "type": "zyntra", "url": "http://zyntra:8080", "tokenSecret": "t", "actions": ["a"]}],
+        [{"name": "z", "type": "http", "urls": ["http://x/"], "tokenSecret": "t"}],
+        [{"name": "z" * 57, "type": "zyntra", "url": "http://zyntra:8080", "tokenSecret": "t"}],
     ]
     for tools in bad_tools:
         assert c.post("/api/agents", json={"name": "a", "model": "m", "tools": tools}).status_code == 422, tools
     assert c.post("/api/agents", json={"name": "a", "model": "m", "maxSteps": 21}).status_code == 422
     assert c.post("/api/agents", json={"name": "a", "model": "m", "cpu": "lots"}).status_code == 422
     assert c.post("/api/agents", json={"name": "a", "model": "m", "extra": 1}).status_code == 422
+
+
+def test_create_zyntra_tool(make_client, fake_k8s):
+    tool = {"name": "ops", "type": "zyntra", "url": "http://sa-zyntra:8080", "tokenSecret": "zyntra-token",
+            "propose": True, "actions": ["raise-inference-priority"]}
+    c = make_client("agents")
+    r = c.post("/api/agents", json={"name": "helper", "model": "chat", "tools": [tool]})
+    assert r.status_code == 201, r.text
+    assert stored(fake_k8s)["spec"]["tools"] == [{"name": "ops", "type": "zyntra", "zyntra": {
+        "url": "http://sa-zyntra:8080", "tokenSecretRef": {"name": "zyntra-token", "key": "token"},
+        "propose": True, "actions": ["raise-inference-priority"]}}]
+    assert c.get("/api/agents/helper").json()["spec"]["tools"] == [dict(tool, tokenKey="token")]
 
 
 def test_list_and_get(make_client, fake_k8s):

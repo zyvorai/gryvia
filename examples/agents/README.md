@@ -13,7 +13,7 @@ tool hosts.
 ## Files
 
 - [agent.yaml](agent.yaml): a handbook assistant with a retrieval tool and an HTTP tool
-- [runtime.py](runtime.py): the reference runtime (FastAPI): the tool-calling loop, the retrieval and HTTP tools
+- [runtime.py](runtime.py): the reference runtime (FastAPI): the tool-calling loop, the retrieval, HTTP and Zyntra tools
 - [Dockerfile](Dockerfile): the reference image `ghcr.io/zyvorai/gryvia-agent-runtime` (the operator's `--agent-image`)
 - [test_runtime.py](test_runtime.py): tests against a scripted gateway (`httpx.MockTransport`)
 
@@ -39,6 +39,9 @@ gryvia agents chat helper how are GPU hours capped
    - **http**: a GET (or POST with the model's `body`) of the URL the model gave. The URL must match an allowlisted
      prefix by scheme, host, port and path, after the path is normalized. Responses are capped at 64 KiB and
      truncated to 8000 characters for the model. Redirects are not followed.
+   - **zyntra**: `<name>_search`, `<name>_object` and `<name>_propose` call Zyntra's ontology and proposal API with
+     the service token from `ZYNTRA_TOKEN_<NAME>`. A proposal waits for people to approve it in Zyntra
+     ([docs/agents.md](../../docs/agents.md#zyntra-tools)).
 3. This repeats up to `maxSteps` model calls. The last call offers no tools, so the model has to answer.
 
 The response is a regular chat completion with `model` set to the agent's name, the summed `usage` of every model

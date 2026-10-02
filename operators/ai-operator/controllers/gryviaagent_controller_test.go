@@ -211,6 +211,79 @@ func TestAgentValidation(t *testing.T) {
 	}
 }
 
+func zyntraTool(mutate ...func(*gryviav1.AgentZyntraTool)) gryviav1.AgentTool {
+	z := &gryviav1.AgentZyntraTool{
+		URL: "http://sa-zyntra.gryvia-system.svc:8080",
+		TokenSecretRef: corev1.SecretKeySelector{
+			LocalObjectReference: corev1.LocalObjectReference{Name: "zyntra-token"}, Key: "token"},
+		Propose: true,
+		Actions: []string{"raise-inference-priority"},
+	}
+	for _, f := range mutate {
+		f(z)
+	}
+	return gryviav1.AgentTool{Name: "ops-graph", Type: gryviav1.AgentToolZyntra, Zyntra: z}
+}
+
+func TestAgentZyntraTool(t *testing.T) {
+	ag := newAgent("ops", func(a *gryviav1.GryviaAgent) { a.Spec.Tools = []gryviav1.AgentTool{zyntraTool()} })
+	c := agentClient(ag)
+	reconcileOnce(t, newAgentReconciler(c), "tenant-a", "ops")
+	if got := getAgent(t, c, "ops"); got.Status.Phase == gryviav1.AgentFailed {
+		t.Fatalf("failed: %s", got.Status.Message)
+	}
+
+	cm := &corev1.ConfigMap{}
+	mustGet(t, c, "tenant-a", "ops-agent", cm)
+	var conf agentRuntimeConfig
+	if err := json.Unmarshal([]byte(cm.Data[agentConfigFile]), &conf); err != nil {
+		t.Fatal(err)
+	}
+	tc := conf.Tools[0]
+	if tc.Type != "zyntra" || tc.URL != "http://sa-zyntra.gryvia-system.svc:8080" || tc.TokenEnv != "ZYNTRA_TOKEN_OPS_GRAPH" ||
+		!tc.Propose || len(tc.Actions) != 1 {
+		t.Fatalf("tool config %+v", tc)
+	}
+	if strings.Contains(cm.Data[agentConfigFile], "zyntra-token") {
+		t.Fatal("the config names the token Secret; the runtime only needs the env var")
+	}
+
+	dep := &appsv1.Deployment{}
+	mustGet(t, c, "tenant-a", "ops-agent", dep)
+	ref := containerEnv(dep.Spec.Template.Spec.Containers[0])["ZYNTRA_TOKEN_OPS_GRAPH"].ValueFrom.SecretKeyRef
+	if ref.Name != "zyntra-token" || ref.Key != "token" {
+		t.Fatalf("token ref %+v", ref)
+	}
+
+	np := &networkingv1.NetworkPolicy{}
+	mustGet(t, c, "tenant-a", "ops-agent", np)
+	if len(np.Spec.Egress) != 3 {
+		t.Fatalf("egress %+v", np.Spec.Egress)
+	}
+	if ns := np.Spec.Egress[2].To[0].NamespaceSelector.MatchLabels["kubernetes.io/metadata.name"]; ns != "gryvia-system" {
+		t.Fatalf("zyntra egress to namespace %q", ns)
+	}
+}
+
+func TestAgentZyntraValidation(t *testing.T) {
+	cases := map[string]gryviav1.AgentTool{
+		"needs zyntra.url":                 {Name: "z", Type: gryviav1.AgentToolZyntra},
+		"at most 56 characters":            func() gryviav1.AgentTool { z := zyntraTool(); z.Name = strings.Repeat("n", 57); return z }(),
+		"absolute http":                    zyntraTool(func(z *gryviav1.AgentZyntraTool) { z.URL = "sa-zyntra:8080" }),
+		"tokenSecretRef":                   zyntraTool(func(z *gryviav1.AgentZyntraTool) { z.TokenSecretRef.Key = "" }),
+		"only applies with zyntra.propose": zyntraTool(func(z *gryviav1.AgentZyntraTool) { z.Propose = false }),
+		"zyntra is set but type is http": {Name: "z", Type: gryviav1.AgentToolHTTP,
+			HTTP: &gryviav1.AgentHTTPTool{URLs: []string{"http://x/"}}, Zyntra: &gryviav1.AgentZyntraTool{URL: "http://x/"}},
+	}
+	for want, tool := range cases {
+		c := agentClient(newAgent("bad", func(a *gryviav1.GryviaAgent) { a.Spec.Tools = []gryviav1.AgentTool{tool} }))
+		reconcileOnce(t, newAgentReconciler(c), "tenant-a", "bad")
+		if ag := getAgent(t, c, "bad"); ag.Status.Phase != gryviav1.AgentFailed || !strings.Contains(ag.Status.Message, want) {
+			t.Errorf("%s: phase %q message %q", want, ag.Status.Phase, ag.Status.Message)
+		}
+	}
+}
+
 func TestAgentMissingIndexAndScaleToZero(t *testing.T) {
 	zero := int32(0)
 	c := agentClient(newAgent("helper", func(a *gryviav1.GryviaAgent) { a.Spec.Replicas = &zero }))

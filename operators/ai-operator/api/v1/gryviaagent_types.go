@@ -16,6 +16,7 @@ const (
 const (
 	AgentToolRetrieval = "retrieval"
 	AgentToolHTTP      = "http"
+	AgentToolZyntra    = "zyntra"
 )
 
 // AgentRetrievalTool searches a GryviaVectorIndex through the LLM gateway's POST /v1/retrieve
@@ -46,6 +47,28 @@ type AgentHTTPTool struct {
 	Method string `json:"method,omitempty"`
 }
 
+// AgentZyntraTool searches and reads the business objects of a Zyntra ontology and, with Propose, drafts Zyntra
+// proposals that people approve in Zyntra. The model sees it as <name>_search, <name>_object and <name>_propose
+type AgentZyntraTool struct {
+	// URL is Zyntra's base URL (http:// or https://). The agent's NetworkPolicy opens egress to its host and port
+	// +kubebuilder:validation:MinLength=1
+	URL string `json:"url"`
+
+	// TokenSecretRef is a key of a Secret in the agent's namespace holding a Zyntra service token (zyntra
+	// service-token) with the viewer role, plus proposer when Propose is set. Zyntra refuses approver and admin
+	// roles for service tokens, so the agent cannot approve what it proposes
+	TokenSecretRef corev1.SecretKeySelector `json:"tokenSecretRef"`
+
+	// Propose offers the model a tool that drafts a proposal for a Zyntra action
+	// +optional
+	Propose bool `json:"propose,omitempty"`
+
+	// Actions limits the actions the model may propose (Zyntra action ids); empty allows any action the token may
+	// propose
+	// +optional
+	Actions []string `json:"actions,omitempty"`
+}
+
 // AgentTool is a function the agent's model may call
 type AgentTool struct {
 	// Name is the function name shown to the model
@@ -57,7 +80,7 @@ type AgentTool struct {
 	Description string `json:"description,omitempty"`
 
 	// Type selects the tool implementation
-	// +kubebuilder:validation:Enum=retrieval;http
+	// +kubebuilder:validation:Enum=retrieval;http;zyntra
 	Type string `json:"type"`
 
 	// Retrieval configures a retrieval tool (type retrieval)
@@ -67,6 +90,10 @@ type AgentTool struct {
 	// HTTP configures an HTTP tool (type http)
 	// +optional
 	HTTP *AgentHTTPTool `json:"http,omitempty"`
+
+	// Zyntra configures a Zyntra ontology tool (type zyntra)
+	// +optional
+	Zyntra *AgentZyntraTool `json:"zyntra,omitempty"`
 }
 
 // GryviaAgentSpec defines the desired state of GryviaAgent

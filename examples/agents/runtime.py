@@ -13,6 +13,8 @@ Environment (set by the GryviaAgent controller):
 Tools:
   retrieval  POST {GATEWAY_URL}/v1/retrieve on a GryviaVectorIndex
   http       GET or POST a URL the model picks, which must match one of the allowlisted prefixes
+  zyntra     a Zyntra ontology, as <name>_search, <name>_object and (with propose) <name>_propose. Calls carry the
+             service token from the env var named by tokenEnv. A proposal waits for people to approve it in Zyntra
 
 Streaming ("stream": true): every model call is streamed from the gateway and its content is relayed as
 chat.completion.chunk events as it arrives, including text the model writes before it asks for a tool. Tool calls are
@@ -26,7 +28,7 @@ import os
 import posixpath
 import time
 import uuid
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 import anyio.to_thread
 import httpx
@@ -35,6 +37,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 MAX_TOOL_RESULT = 8000
 MAX_HTTP_BODY = 65536
+ZYNTRA_SEARCH_LIMIT = 20
 MODEL_TIMEOUT = 120.0
 TOOL_TIMEOUT = 10.0
 DEFAULT_PORTS = {"http": 80, "https": 443}
@@ -87,9 +90,53 @@ def url_allowed(url, prefixes):
     return False
 
 
+def _fn(name, desc, props, required):
+    params = {"type": "object", "properties": props, "required": required}
+    return {"type": "function", "function": {"name": name, "description": desc, "parameters": params}}
+
+
+def zyntra_schemas(t):
+    about = t.get("description") or "the Zyntra ontology of business objects"
+    out = [
+        _fn(t["name"] + "_search", f"Search {about} by id or name. Returns matching object ids, types and properties.",
+            {"query": {"type": "string", "description": "Text in the object id or name; empty lists all."},
+             "type": {"type": "string", "description": "Only objects of this type, for example GpuNode."}}, []),
+        _fn(t["name"] + "_object", f"Read one object of {about}: its properties, links and failing KPIs.",
+            {"id": {"type": "string", "description": "The object id from a search."}}, ["id"]),
+    ]
+    if t.get("propose"):
+        allowed = t.get("actions") or []
+        desc = ("Propose a Zyntra action. People review and approve proposals in Zyntra; nothing runs until they do. "
+                "Inputs name the objects a typed action works on, by input name and object id.")
+        if allowed:
+            desc += " Allowed actions: " + ", ".join(allowed)
+        out.append(_fn(t["name"] + "_propose", desc,
+                       {"action": {"type": "string", "description": "The Zyntra action id."},
+                        "inputs": {"type": "object", "additionalProperties": {"type": "string"},
+                                   "description": "Input name to object id, for example {\"service\": \"...\"}."}},
+                       ["action"]))
+    return out
+
+
+def tool_functions(tools):
+    """Function name to (tool, operation): one function per tool, three for a zyntra tool."""
+    out = {}
+    for t in tools:
+        if t["type"] == "zyntra":
+            for schema in zyntra_schemas(t):
+                name = schema["function"]["name"]
+                out[name] = (t, name[len(t["name"]) + 1:])
+        else:
+            out[t["name"]] = (t, t["type"])
+    return out
+
+
 def tool_schemas(tools):
     out = []
     for t in tools:
+        if t["type"] == "zyntra":
+            out.extend(zyntra_schemas(t))
+            continue
         if t["type"] == "retrieval":
             desc = (
                 t.get("description") or f"Search the {t['index']} knowledge base and return the most relevant passages."
@@ -108,6 +155,14 @@ def tool_schemas(tools):
             params = {"type": "object", "properties": props, "required": ["url"]}
         out.append({"type": "function", "function": {"name": t["name"], "description": desc, "parameters": params}})
     return out
+
+
+def _props(o):
+    return {k: (v.get("v") if isinstance(v, dict) else v) for k, v in sorted((o.get("props") or {}).items())}
+
+
+def _props_text(o):
+    return ", ".join(f"{k}={v}" for k, v in _props(o).items()) or "no properties"
 
 
 def _cap(text):
@@ -155,7 +210,7 @@ class Agent:
         self.gateway = gateway_url.rstrip("/")
         self.key = key
         self.client = client or httpx.Client()
-        self.tools = {t["name"]: t for t in config["tools"]}
+        self.tools = tool_functions(config["tools"])
         self.schemas = tool_schemas(config["tools"])
 
     def _headers(self):
@@ -223,14 +278,73 @@ class Agent:
         return resp.json()
 
     def run_tool(self, name, args):
-        tool = self.tools.get(name)
+        tool, op = self.tools.get(name, (None, None))
         if tool is None:
             return f"error: unknown tool {name}"
         if not isinstance(args, dict):
             return "error: arguments must be a JSON object"
-        if tool["type"] == "retrieval":
+        if op == "retrieval":
             return self._retrieve(tool, args)
-        return self._http(tool, args)
+        if op == "http":
+            return self._http(tool, args)
+        return self._zyntra(tool, op, args)
+
+    def _zyntra(self, tool, op, args):
+        base = tool["url"].rstrip("/")
+        token = os.environ.get(tool.get("tokenEnv") or "", "")
+        if not token:
+            return "error: the Zyntra token is not configured"
+        kwargs = {"headers": {"Authorization": f"Bearer {token}"}, "timeout": TOOL_TIMEOUT, "follow_redirects": False}
+        if op == "search":
+            params = {"limit": ZYNTRA_SEARCH_LIMIT}
+            for k, key in (("query", "q"), ("type", "type")):
+                if isinstance(args.get(k), str) and args[k].strip():
+                    params[key] = args[k].strip()
+            req = ("GET", base + "/api/v1/ontology/objects", {"params": params})
+        elif op == "object":
+            oid = args.get("id")
+            if not isinstance(oid, str) or not oid.strip():
+                return "error: id is required"
+            req = ("GET", base + "/api/v1/ontology/objects/" + quote(oid.strip(), safe=":"), {})
+        else:
+            action, inputs = args.get("action"), args.get("inputs") or {}
+            if not isinstance(action, str) or not action.strip():
+                return "error: action is required"
+            allowed = tool.get("actions") or []
+            if allowed and action not in allowed:
+                return "error: action is not allowed; allowed actions: " + ", ".join(allowed)
+            if not isinstance(inputs, dict) or not all(isinstance(v, str) for v in inputs.values()):
+                return "error: inputs must map input names to object ids"
+            req = ("POST", base + "/api/v1/proposals", {"json": {"action": action, "inputs": inputs}})
+        method, url, extra = req
+        try:
+            resp = self.client.request(method, url, **kwargs, **extra)
+        except httpx.HTTPError as e:
+            return f"error: Zyntra unreachable: {e}"
+        if op == "propose" and resp.status_code == 422:
+            body = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+            reasons = "; ".join(body.get("blocked_reasons") or [])
+            return f"error: Zyntra refused the proposal: {body.get('error') or resp.text[:300]}" + (
+                f" ({reasons})" if reasons else "")
+        if resp.status_code not in (200, 201):
+            return f"error: Zyntra answered {resp.status_code}: {_error_message(resp)}"
+        data = resp.json()
+        if op == "search":
+            objs = data.get("objects") or []
+            if not objs:
+                return "No matching objects."
+            return _cap("\n".join(f"{o.get('id')} ({o.get('type')}): {_props_text(o)}" for o in objs))
+        if op == "object":
+            o = data.get("object") or {}
+            out = {"id": o.get("id"), "type": o.get("type"), "props": _props(o),
+                   "links": [{"type": (l.get("link") or {}).get("type"), "direction": "out" if l.get("out") else "in",
+                              "object": (l.get("other") or {}).get("id")} for l in data.get("links") or []],
+                   "failing_kpis": data.get("failing_kpis") or []}
+            if o.get("tenant"):
+                out["tenant"] = o["tenant"]
+            return _cap(json.dumps(out, default=str))
+        return (f"Proposal {data.get('id')} ({data.get('action_name') or data.get('action')}) is {data.get('status')}. "
+                f"It needs {data.get('required_approvals', 1)} approval(s) in Zyntra; nothing runs until people approve it.")
 
     def _retrieve(self, tool, args):
         query = args.get("query")

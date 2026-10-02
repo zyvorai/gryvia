@@ -18,6 +18,10 @@ describe("agent helpers", () => {
     expect(toolLabel({ name: "hook", type: "http", method: "POST", urls: ["http://a/"] })).toBe(
       "hook (http POST: 1 URL)",
     );
+    expect(toolLabel({ name: "ops", type: "zyntra", url: "http://z/", propose: true })).toBe(
+      "ops (Zyntra, read and propose)",
+    );
+    expect(toolLabel({ name: "ops", type: "zyntra", url: "http://z/" })).toBe("ops (Zyntra, read only)");
   });
 
   it("shows scale to zero and replicas", () => {
