@@ -1,5 +1,5 @@
-# CPU image for the download, fine-tune and evaluate steps with tiny models (the kind e2e). No quantize: llm-compressor
-# AWQ/GPTQ needs a GPU. The library versions are the ones the e2e ran with.
+# CPU image for the download, fine-tune and evaluate steps (including lm-eval tasks) with tiny models (the kind e2e).
+# No quantize: llm-compressor AWQ/GPTQ needs a GPU. The library versions are the ones the e2e ran with.
 #   docker build -f examples/model-factory/Dockerfile.cpu -t <registry>/gryvia-model-factory:cpu examples/model-factory
 FROM python:3.12-slim
 
@@ -11,7 +11,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.8.0 \
  && pip install --no-cache-dir transformers==5.18.0 trl==1.14.1 peft==0.21.2 datasets==5.0.1 accelerate==1.15.0 \
-    huggingface_hub==1.33.0
+    huggingface_hub==1.33.0 lm-eval==0.4.13
 
 WORKDIR /app
 COPY outputs.py download.py finetune_lora.py evaluate.py ./
