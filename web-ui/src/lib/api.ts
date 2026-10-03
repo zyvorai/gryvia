@@ -1,6 +1,7 @@
 import type { LineageGraph } from './lineage'
 import type { AuditResponse } from './audit'
 import type { CopilotReply } from './copilot'
+import type { CatalogEdit, CatalogEntry, CatalogResponse } from './dataCatalog'
 import axios from 'axios'
 import toast from 'react-hot-toast'
 import { notifyUnauthorized } from '@/lib/authEvents'
@@ -1090,6 +1091,15 @@ export const api = {
 
   copilotChat: async (body: { model: string; question: string; history: { role: string; content: string }[] }, key: string): Promise<CopilotReply> => {
     const { data } = await apiClient.post('/copilot/chat', body, { headers: { 'X-LLM-Key': key }, timeout: 300_000 })
+    return data
+  },
+
+  getDataCatalog: async (params: { q?: string; tag?: string; owner?: string }): Promise<CatalogResponse> => {
+    const { data } = await apiClient.get('/data-catalog', { params: Object.fromEntries(Object.entries(params).filter(([, v]) => v)) })
+    return data
+  },
+  editCatalogEntry: async (name: string, body: CatalogEdit): Promise<CatalogEntry> => {
+    const { data } = await apiClient.put(`/data-catalog/${encodeURIComponent(name)}`, body)
     return data
   },
 
