@@ -204,7 +204,7 @@ export default function DataCatalog() {
               {items.map((e) => (
                 <tr key={`${e.namespace}/${e.name}`}>
                   <td>
-                    <button type="button" className="linklike mono" aria-pressed={selected === e.name} onClick={() => setSelected(selected === e.name ? null : e.name)}>
+                    <button type="button" className="btn-secondary mono" aria-pressed={selected === e.name} onClick={() => setSelected(selected === e.name ? null : e.name)}>
                       {e.name}
                     </button>
                     {e.description && <div className="muted">{e.description}</div>}
