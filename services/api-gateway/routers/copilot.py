@@ -85,9 +85,7 @@ def build_router(deps: Deps) -> APIRouter:
     async def scoped(request: Request, plural: str) -> List[Dict[str, Any]]:
         """What the caller may see of a kind: their namespaces (admins: the gateway's) minus marked objects."""
         if plural == "gryviadatasets":
-            allowed = None if getattr(request.state, "role", None) == "admin" else set(namespaces(request, deps))
-            return [o for o in await list_items(deps, plural) if can_see(request, o) and (
-                allowed is None or datasets_router.dataset_namespace(o, deps.job_namespace) in allowed)]
+            return await datasets_router.visible_datasets(request, deps)
         out: List[Dict[str, Any]] = []
         for ns in namespaces(request, deps):
             out.extend(o for o in await list_items(deps, plural, namespace=ns) if can_see(request, o))

@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 # Modules under routers/ that expose build_router(deps). A missing module is skipped
 # (with a warning) so the gateway still starts; tests cover each module.
-MODULES = ["network", "security", "workspaces", "jobs", "models", "inference", "workflows", "model_watches", "datasets", "llm", "vector_indexes", "agents", "jobhooks", "tuners", "ai", "catalog", "tenants", "usage", "invoices", "reservations", "budgets", "flight", "netusage", "audit", "experiments", "federation", "sovereign", "lineage", "markings", "copilot"]
+MODULES = ["network", "security", "workspaces", "jobs", "models", "inference", "workflows", "model_watches", "datasets", "llm", "vector_indexes", "agents", "jobhooks", "tuners", "ai", "catalog", "tenants", "usage", "invoices", "reservations", "budgets", "flight", "netusage", "audit", "experiments", "federation", "sovereign", "lineage", "markings", "copilot", "data_catalog"]
 
 
 def register_routers(app: FastAPI, deps: Deps) -> None:

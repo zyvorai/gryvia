@@ -125,6 +125,14 @@ def build_spec(body: CreateDataset, namespace: str) -> Dict[str, Any]:
     return spec
 
 
+async def visible_datasets(request: Request, deps: Deps) -> List[Dict[str, Any]]:
+    """Datasets the caller may see: admins all, a tenant its namespaces', minus those marked beyond its clearance."""
+    allowed = None if getattr(request.state, "role", None) == "admin" else set(
+        getattr(request.state, "tenant_namespaces", None) or [deps.job_namespace])
+    return [o for o in await list_items(deps, PLURAL) if can_see(request, o)
+            and (allowed is None or dataset_namespace(o, deps.job_namespace) in allowed)]
+
+
 def build_router(deps: Deps) -> APIRouter:
     router = APIRouter()
 

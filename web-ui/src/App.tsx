@@ -37,6 +37,7 @@ const Workspaces = lazy(() => import('./pages/Workspaces'))
 const ModelRegistry = lazy(() => import('./pages/ModelRegistry'))
 const ModelFactory = lazy(() => import('./pages/ModelFactory'))
 const Datasets = lazy(() => import('./pages/Datasets'))
+const DataCatalog = lazy(() => import('./pages/DataCatalog'))
 const Copilot = lazy(() => import('./pages/Copilot'))
 const Audit = lazy(() => import('./pages/Audit'))
 const Lineage = lazy(() => import('./pages/Lineage'))
@@ -171,6 +172,7 @@ function App() {
                 <Route path="/security" element={<SecurityOverview />} />
                 <Route path="/audit" element={<Audit />} />
                 <Route path="/copilot" element={<Copilot />} />
+                <Route path="/data-catalog" element={<DataCatalog />} />
                 <Route path="/gpu" element={<GpuCommunication />} />
                 <Route path="/gpu/communication" element={<GpuCommunication />} />
                 <Route path="/costs" element={<Costs />} />
